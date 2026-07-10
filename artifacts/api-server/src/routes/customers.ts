@@ -28,6 +28,8 @@ function formatCustomer(
     customFieldValues: (c.customFieldValues as Record<string, unknown>) ?? {},
     totalSpend: c.totalSpend,
     acquiredFromCampaignId: c.acquiredFromCampaignId ?? null,
+    smsOptOut: c.smsOptOut ?? false,
+    emailOptOut: c.emailOptOut ?? false,
     thisYearSpend: extras?.thisYearSpend ?? null,
     lastYearSpend: extras?.lastYearSpend ?? null,
     propertyCount: extras?.propertyCount ?? 0,
@@ -149,7 +151,7 @@ router.patch("/customers/:id", async (req, res): Promise<void> => {
   const {
     name, email, phone, secondaryPhone, company, customerType, referralSource,
     billingAddress, billingCity, billingState, billingZip, notes, tags, customFieldValues,
-    acquiredFromCampaignId,
+    acquiredFromCampaignId, smsOptOut, emailOptOut,
   } = req.body;
 
   const updates: Partial<typeof customersTable.$inferInsert> = {};
@@ -170,6 +172,8 @@ router.patch("/customers/:id", async (req, res): Promise<void> => {
   if (acquiredFromCampaignId !== undefined) {
     updates.acquiredFromCampaignId = acquiredFromCampaignId ? parseInt(acquiredFromCampaignId, 10) : null;
   }
+  if (smsOptOut !== undefined) updates.smsOptOut = smsOptOut;
+  if (emailOptOut !== undefined) updates.emailOptOut = emailOptOut;
 
   const [updated] = await db.update(customersTable)
     .set(updates)

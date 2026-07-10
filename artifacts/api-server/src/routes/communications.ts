@@ -1,0 +1,407 @@
+import { Router, type IRouter } from "express";
+import { createHmac, timingSafeEqual } from "crypto";
+import { db, communicationsLogTable, customersTable, tenantsTable, jobsTable, propertiesTable } from "@workspace/db";
+import { eq, and, desc, or } from "drizzle-orm";
+import { getTenantId } from "../lib/tenantHelper";
+import { sendSms, type SmsProviderConfig } from "../lib/smsProvider";
+import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
+
+const router: IRouter = Router();
+
+// ---------------------------------------------------------------------------
+// GET /communications/customers/:customerId — conversation thread for a customer
+// ---------------------------------------------------------------------------
+router.get("/communications/customers/:customerId", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const customerId = parseInt(req.params.customerId, 10);
+
+  const rows = await db
+    .select()
+    .from(communicationsLogTable)
+    .where(
+      and(
+        eq(communicationsLogTable.tenantId, tenantId),
+        eq(communicationsLogTable.customerId, customerId),
+      ),
+    )
+    .orderBy(desc(communicationsLogTable.createdAt));
+
+  res.json(rows.map(r => ({
+    id: r.id,
+    direction: r.direction,
+    channel: r.channel,
+    fromAddress: r.fromAddress ?? null,
+    toAddress: r.toAddress ?? null,
+    subject: r.subject ?? null,
+    body: r.body,
+    status: r.status,
+    externalId: r.externalId ?? null,
+    messageType: r.messageType,
+    jobId: r.jobId ?? null,
+    createdAt: r.createdAt.toISOString(),
+  })));
+});
+
+// ---------------------------------------------------------------------------
+// POST /communications/send — manually send a message to a customer
+// ---------------------------------------------------------------------------
+router.post("/communications/send", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const { customerId, channel, body, subject, jobId } = req.body as {
+    customerId?: number;
+    channel?: string;
+    body?: string;
+    subject?: string;
+    jobId?: number;
+  };
+
+  if (!customerId || !channel || !body) {
+    res.status(400).json({ error: "customerId, channel, and body are required" });
+    return;
+  }
+  if (!["sms", "email"].includes(channel)) {
+    res.status(400).json({ error: "channel must be 'sms' or 'email'" });
+    return;
+  }
+
+  const [[customer], [tenant]] = await Promise.all([
+    db.select().from(customersTable).where(and(eq(customersTable.id, customerId), eq(customersTable.tenantId, tenantId))).limit(1),
+    db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
+  ]);
+
+  if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
+  if (!tenant) { res.status(404).json({ error: "Tenant not found" }); return; }
+
+  if (channel === "sms" && customer.smsOptOut) {
+    res.status(422).json({ error: "Customer has opted out of SMS" });
+    return;
+  }
+  if (channel === "email" && customer.emailOptOut) {
+    res.status(422).json({ error: "Customer has opted out of email" });
+    return;
+  }
+
+  let result;
+  let toAddress: string;
+
+  if (channel === "sms") {
+    toAddress = customer.phone;
+    const smsConfig: SmsProviderConfig = {
+      platform: (tenant.phonePlatform as "openphone" | "grasshopper" | "twilio" | null) ?? null,
+      config: (tenant.phonePlatformConfig as Record<string, string>) ?? {},
+      fromNumber: tenant.mainPhoneNumber ?? null,
+    };
+    result = await sendSms(smsConfig, toAddress, body);
+  } else {
+    toAddress = customer.email;
+    const emailConfig: EmailProviderConfig = {
+      provider: (tenant.emailProvider as "smtp" | "sendgrid" | "mailgun" | "resend" | null) ?? null,
+      config: (tenant.emailProviderConfig as Record<string, string>) ?? {},
+      fromAddress: (tenant.emailProviderConfig as Record<string, string>)?.["fromAddress"] ?? null,
+    };
+    result = await sendEmail(emailConfig, toAddress, subject ?? "(no subject)", body);
+  }
+
+  const [log] = await db.insert(communicationsLogTable).values({
+    tenantId,
+    customerId,
+    direction: "outbound",
+    channel,
+    fromAddress: channel === "sms" ? (tenant.mainPhoneNumber ?? null) : ((tenant.emailProviderConfig as Record<string, string>)?.["fromAddress"] ?? null),
+    toAddress,
+    subject: subject ?? null,
+    body,
+    status: result.success ? "sent" : "failed",
+    externalId: result.externalId ?? null,
+    messageType: "manual",
+    jobId: jobId ?? null,
+  }).returning();
+
+  res.status(result.success ? 201 : 500).json({
+    id: log.id,
+    direction: log.direction,
+    channel: log.channel,
+    toAddress: log.toAddress,
+    body: log.body,
+    status: log.status,
+    createdAt: log.createdAt.toISOString(),
+    error: result.success ? undefined : result.error,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Webhook signature verification helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Verify a Twilio request signature.
+ * https://www.twilio.com/docs/usage/webhooks/webhooks-security
+ */
+function verifyTwilioSignature(authToken: string, signature: string, url: string, params: Record<string, string>): boolean {
+  try {
+    const sortedKeys = Object.keys(params).sort();
+    const paramStr = sortedKeys.map(k => `${k}${params[k]}`).join("");
+    const expected = createHmac("sha1", authToken).update(`${url}${paramStr}`).digest("base64");
+    const sigBuf = Buffer.from(signature, "base64");
+    const expBuf = Buffer.from(expected, "base64");
+    if (sigBuf.length !== expBuf.length) return false;
+    return timingSafeEqual(sigBuf, expBuf);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Verify an OpenPhone webhook signature.
+ * OpenPhone sends X-OpenPhone-Signature: sha256=<hex>
+ */
+function verifyOpenPhoneSignature(secret: string, signature: string, rawBody: string): boolean {
+  try {
+    const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
+    const expectedFull = `sha256=${expected}`;
+    const sigBuf = Buffer.from(signature, "utf8");
+    const expBuf = Buffer.from(expectedFull, "utf8");
+    if (sigBuf.length !== expBuf.length) return false;
+    return timingSafeEqual(sigBuf, expBuf);
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// POST /communications/webhook — inbound message webhook (OpenPhone / Twilio / Grasshopper)
+// ---------------------------------------------------------------------------
+router.post("/communications/webhook", async (req, res): Promise<void> => {
+  // OpenPhone, Twilio, and Grasshopper all send webhooks with slightly different shapes.
+  // We verify the signature before processing to prevent spoofed opt-out requests.
+  const payload = req.body as Record<string, unknown>;
+
+  // Detect provider from headers and verify signature before trusting the payload.
+  // Without verification, anyone could spoof opt-out/opt-in requests.
+  const twilioSig = req.headers["x-twilio-signature"] as string | undefined;
+  const openPhoneSig = req.headers["x-openphone-signature"] as string | undefined;
+
+  if (twilioSig) {
+    // Twilio webhook — verify HMAC-SHA1 against the auth token.
+    // We need to find the tenant's auth token to verify. Look up by 'To' number first.
+    const toNumber = (payload["To"] ?? payload["to"] ?? "") as string;
+    const matchingTenants = toNumber
+      ? await db.select().from(tenantsTable).where(
+          or(
+            eq(tenantsTable.mainPhoneNumber, toNumber),
+            eq(tenantsTable.marketingPhoneNumber, toNumber),
+          ),
+        )
+      : [];
+
+    const fullUrl = `${req.protocol}://${req.hostname}${req.originalUrl}`;
+    const verified = matchingTenants.some(t => {
+      const cfg = (t.phonePlatformConfig as Record<string, string>) ?? {};
+      const authToken = cfg["authToken"] ?? "";
+      if (!authToken) return false;
+      return verifyTwilioSignature(authToken, twilioSig, fullUrl, req.body as Record<string, string>);
+    });
+
+    if (!verified) {
+      res.status(403).json({ error: "Invalid Twilio signature" });
+      return;
+    }
+  } else if (openPhoneSig) {
+    // OpenPhone webhook — verify HMAC-SHA256 against the webhook secret.
+    // Use the raw request bytes to avoid normalization differences after JSON parse.
+    const rawBody = ((req as unknown as { rawBody?: Buffer }).rawBody ?? Buffer.alloc(0)).toString("utf8");
+    const toNumber = (payload["to"] ?? "") as string;
+    const matchingTenants = toNumber
+      ? await db.select().from(tenantsTable).where(
+          or(
+            eq(tenantsTable.mainPhoneNumber, toNumber),
+            eq(tenantsTable.marketingPhoneNumber, toNumber),
+          ),
+        )
+      : [];
+
+    const verified = matchingTenants.some(t => {
+      const cfg = (t.phonePlatformConfig as Record<string, string>) ?? {};
+      const secret = cfg["webhookSecret"] ?? "";
+      if (!secret) return false;
+      return verifyOpenPhoneSignature(secret, openPhoneSig, rawBody);
+    });
+
+    if (!verified) {
+      res.status(403).json({ error: "Invalid OpenPhone signature" });
+      return;
+    }
+  } else {
+    // No recognised signature header — reject unauthenticated payloads.
+    // This prevents spoofed opt-out mutations from unknown callers.
+    res.status(403).json({ error: "Missing webhook signature header" });
+    return;
+  }
+
+  // Extract common fields across providers
+  const from = (payload["from"] ?? payload["From"] ?? "") as string;
+  const to = (payload["to"] ?? payload["To"] ?? "") as string;
+  const body = (payload["body"] ?? payload["Body"] ?? payload["content"] ?? "") as string;
+
+  if (!from || !body) {
+    res.sendStatus(200); // Always 200 to prevent retries
+    return;
+  }
+
+  // Try to match the inbound number to a tenant's mainPhoneNumber or marketingPhoneNumber
+  const tenants = await db
+    .select()
+    .from(tenantsTable)
+    .where(
+      or(
+        eq(tenantsTable.mainPhoneNumber, to),
+        eq(tenantsTable.marketingPhoneNumber, to),
+      ),
+    );
+
+  if (tenants.length === 0) {
+    res.sendStatus(200);
+    return;
+  }
+
+  for (const tenant of tenants) {
+    // Try to match caller to a customer
+    const [customer] = await db
+      .select()
+      .from(customersTable)
+      .where(
+        and(
+          eq(customersTable.tenantId, tenant.id),
+          or(
+            eq(customersTable.phone, from),
+            eq(customersTable.secondaryPhone ?? "", from),
+          ),
+        ),
+      )
+      .limit(1);
+
+    await db.insert(communicationsLogTable).values({
+      tenantId: tenant.id,
+      customerId: customer?.id ?? null,
+      direction: "inbound",
+      channel: "sms",
+      fromAddress: from,
+      toAddress: to,
+      body,
+      status: "received",
+      messageType: "manual",
+    });
+
+    // Check for opt-out keywords
+    const normalizedBody = body.trim().toUpperCase();
+    if (["STOP", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"].includes(normalizedBody) && customer) {
+      await db.update(customersTable)
+        .set({ smsOptOut: true })
+        .where(eq(customersTable.id, customer.id));
+    }
+    // Opt back in
+    if (["START", "YES", "UNSTOP"].includes(normalizedBody) && customer) {
+      await db.update(customersTable)
+        .set({ smsOptOut: false })
+        .where(eq(customersTable.id, customer.id));
+    }
+  }
+
+  res.sendStatus(200);
+});
+
+// ---------------------------------------------------------------------------
+// POST /jobs/:id/send-reminder — manual "send reminder now" override
+// ---------------------------------------------------------------------------
+router.post("/jobs/:id/send-reminder", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const jobId = parseInt(req.params.id, 10);
+  const { channel } = req.body as { channel?: "sms" | "email" | "both" };
+
+  const [[row], [tenant]] = await Promise.all([
+    db.select({ job: jobsTable, customer: customersTable, propertyAddress: propertiesTable.address })
+      .from(jobsTable)
+      .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
+      .leftJoin(propertiesTable, eq(jobsTable.propertyId, propertiesTable.id))
+      .where(and(eq(jobsTable.id, jobId), eq(jobsTable.tenantId, tenantId)))
+      .limit(1),
+    db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
+  ]);
+
+  if (!row?.job) { res.status(404).json({ error: "Job not found" }); return; }
+  if (!row.customer) { res.status(422).json({ error: "Job has no customer" }); return; }
+  if (!tenant) { res.status(404).json({ error: "Tenant not found" }); return; }
+
+  const { job, customer, propertyAddress } = row;
+  const companyName = tenant.name;
+  const sendChannels = channel === "both" ? ["sms", "email"] : [channel ?? "sms"];
+
+  const { buildReminderSmsBody, buildReminderEmailBody, sendEmail: sendEmailNow } = await import("../lib/emailProvider");
+  const { sendSms: sendSmsNow } = await import("../lib/smsProvider");
+
+  const results: string[] = [];
+
+  if (sendChannels.includes("sms") && customer.phone && !customer.smsOptOut) {
+    const smsBody = buildReminderSmsBody({
+      customerName: customer.name.split(" ")[0] ?? customer.name,
+      jobTitle: job.title,
+      scheduledAt: job.scheduledAt,
+      propertyAddress: propertyAddress ?? null,
+      companyName,
+    });
+    const smsConfig: SmsProviderConfig = {
+      platform: (tenant.phonePlatform as "openphone" | "grasshopper" | "twilio" | null) ?? null,
+      config: (tenant.phonePlatformConfig as Record<string, string>) ?? {},
+      fromNumber: tenant.mainPhoneNumber ?? null,
+    };
+    const r = await sendSms(smsConfig, customer.phone, smsBody);
+    await db.insert(communicationsLogTable).values({
+      tenantId,
+      customerId: customer.id,
+      direction: "outbound",
+      channel: "sms",
+      fromAddress: tenant.mainPhoneNumber ?? null,
+      toAddress: customer.phone,
+      body: smsBody,
+      status: r.success ? "sent" : "failed",
+      externalId: r.externalId ?? null,
+      messageType: "manual",
+      jobId,
+    });
+    if (r.success) results.push("sms");
+  }
+
+  if (sendChannels.includes("email") && customer.email && !customer.emailOptOut) {
+    const { subject, body } = buildReminderEmailBody({
+      customerName: customer.name.split(" ")[0] ?? customer.name,
+      jobTitle: job.title,
+      scheduledAt: job.scheduledAt,
+      propertyAddress: propertyAddress ?? null,
+      companyName,
+    });
+    const emailConfig: EmailProviderConfig = {
+      provider: (tenant.emailProvider as "smtp" | "sendgrid" | "mailgun" | "resend" | null) ?? null,
+      config: (tenant.emailProviderConfig as Record<string, string>) ?? {},
+      fromAddress: (tenant.emailProviderConfig as Record<string, string>)?.["fromAddress"] ?? null,
+    };
+    const r = await sendEmail(emailConfig, customer.email, subject, body);
+    await db.insert(communicationsLogTable).values({
+      tenantId,
+      customerId: customer.id,
+      direction: "outbound",
+      channel: "email",
+      toAddress: customer.email,
+      subject,
+      body,
+      status: r.success ? "sent" : "failed",
+      externalId: r.externalId ?? null,
+      messageType: "manual",
+      jobId,
+    });
+    if (r.success) results.push("email");
+  }
+
+  res.json({ sent: results, jobId });
+});
+
+export default router;

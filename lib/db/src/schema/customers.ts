@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, real, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, jsonb, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -22,6 +22,10 @@ export const customersTable = pgTable("customers", {
   customFieldValues: jsonb("custom_field_values").default("{}"),
   /** Campaign that acquired this customer (denormalised for quick lookup) */
   acquiredFromCampaignId: integer("acquired_from_campaign_id"),
+  /** Customer opted out of SMS communications */
+  smsOptOut: boolean("sms_opt_out").notNull().default(false),
+  /** Customer opted out of email communications */
+  emailOptOut: boolean("email_opt_out").notNull().default(false),
   totalSpend: real("total_spend").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

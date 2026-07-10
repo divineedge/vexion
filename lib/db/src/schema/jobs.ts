@@ -28,6 +28,8 @@ export const jobsTable = pgTable("jobs", {
   lineItems: jsonb("line_items").default("[]"),
   /** parts used on this job: [{inventoryItemId, name, quantity, unitPrice, total}] */
   jobParts: jsonb("job_parts").default("[]"),
+  /** Reminder tracking: {sent7d: boolean, sent24h: boolean, sentAt7d: string|null, sentAt24h: string|null} */
+  remindersSent: jsonb("reminders_sent").default("{}"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

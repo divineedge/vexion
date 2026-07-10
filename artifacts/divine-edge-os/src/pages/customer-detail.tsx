@@ -6,6 +6,8 @@ import {
   useListJobs, getListJobsQueryKey,
   useGetTenantSettings, getGetTenantSettingsQueryKey,
   useGetCustomerPortalLink, getGetCustomerPortalLinkQueryKey,
+  useListCustomerMessages, getListCustomerMessagesQueryKey,
+  useSendMessage,
 } from '@workspace/api-client-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
@@ -21,9 +23,11 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 import {
   ArrowLeft, Building, Phone, Mail, Edit, Plus, Calendar, MapPin,
   Save, X, User, FileText, Tag, DollarSign, Home, Briefcase, Megaphone, AlertTriangle, Link,
+  MessageSquare, Send, PhoneOff, MailMinus, ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -78,6 +82,12 @@ export default function CustomerDetailPage() {
   const [form, setForm] = useState<FormData>({});
   const [tagInput, setTagInput] = useState('');
 
+  // Messaging state
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [composeChannel, setComposeChannel] = useState<'sms' | 'email'>('sms');
+  const [composeBody, setComposeBody] = useState('');
+  const [composeSubject, setComposeSubject] = useState('');
+
   // Add property state
   const [addPropertyOpen, setAddPropertyOpen] = useState(false);
   const [propForm, setPropForm] = useState<PropertyForm>(BLANK_PROPERTY);
@@ -124,6 +134,10 @@ export default function CustomerDetailPage() {
   const { data: portalLink } = useGetCustomerPortalLink(id, {
     query: { enabled: !!id, queryKey: getGetCustomerPortalLinkQueryKey(id) },
   });
+  const { data: messages, refetch: refetchMessages } = useListCustomerMessages(id, {
+    query: { enabled: !!id, queryKey: getListCustomerMessagesQueryKey(id) },
+  });
+  const sendMessage = useSendMessage();
 
   const openEdit = () => {
     if (!customer) return;
@@ -311,6 +325,7 @@ export default function CustomerDetailPage() {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="properties">Properties ({properties?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="jobs">Jobs ({jobs?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="messages">Messages ({messages?.length ?? 0})</TabsTrigger>
         </TabsList>
 
         {/* Overview tab */}
@@ -501,6 +516,78 @@ export default function CustomerDetailPage() {
           </Card>
         </TabsContent>
 
+        {/* Messages tab */}
+        <TabsContent value="messages" className="focus-visible:outline-none">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <div>
+                <CardTitle>Conversation Thread</CardTitle>
+                <CardDescription>All sent and received SMS/email messages with this customer.</CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                {(customer as any).smsOptOut && (
+                  <Badge variant="outline" className="text-orange-600 border-orange-300 gap-1 text-xs">
+                    <PhoneOff className="w-3 h-3" /> SMS opt-out
+                  </Badge>
+                )}
+                {(customer as any).emailOptOut && (
+                  <Badge variant="outline" className="text-orange-600 border-orange-300 gap-1 text-xs">
+                    <MailMinus className="w-3 h-3" /> Email opt-out
+                  </Badge>
+                )}
+                <Button size="sm" className="gap-2" onClick={() => setComposeOpen(true)}>
+                  <MessageSquare className="w-4 h-4" /> Send Message
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {!messages?.length ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                  <p className="text-sm">No messages yet.</p>
+                  <Button variant="outline" size="sm" className="mt-3 gap-2" onClick={() => setComposeOpen(true)}>
+                    <Send className="w-4 h-4" /> Send First Message
+                  </Button>
+                </div>
+              ) : (
+                <div className="divide-y">
+                  {(messages ?? []).map(msg => (
+                    <div key={msg.id} className={`flex gap-3 px-6 py-4 ${msg.direction === 'outbound' ? 'bg-muted/20' : ''}`}>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${
+                        msg.direction === 'outbound' ? 'bg-primary/10 text-primary' : 'bg-emerald-100 text-emerald-700'
+                      }`}>
+                        {msg.direction === 'outbound' ? 'US' : customer.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className="text-xs font-medium text-muted-foreground capitalize">
+                            {msg.direction} · {msg.channel.toUpperCase()}
+                          </span>
+                          {msg.subject && <span className="text-xs text-muted-foreground">· {msg.subject}</span>}
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] px-1.5 py-0 ml-auto ${
+                              msg.status === 'sent' || msg.status === 'delivered' ? 'text-emerald-600 border-emerald-200' :
+                              msg.status === 'received' ? 'text-blue-600 border-blue-200' :
+                              msg.status === 'failed' ? 'text-red-600 border-red-200' : 'text-muted-foreground'
+                            }`}
+                          >
+                            {msg.status}
+                          </Badge>
+                        </div>
+                        <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {new Date(msg.createdAt).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {/* Jobs tab */}
         <TabsContent value="jobs" className="focus-visible:outline-none">
           <Card>
@@ -551,6 +638,116 @@ export default function CustomerDetailPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Compose Message Sheet */}
+      <Sheet open={composeOpen} onOpenChange={open => { if (!open) { setComposeOpen(false); setComposeBody(''); setComposeSubject(''); } }}>
+        <SheetContent className="w-full sm:max-w-md">
+          <SheetHeader className="pb-4">
+            <SheetTitle>Send Message to {customer.name}</SheetTitle>
+            <SheetDescription>Choose SMS or Email and compose your message.</SheetDescription>
+          </SheetHeader>
+          <div className="space-y-4 pb-6">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Channel</label>
+              <div className="flex rounded-md border bg-muted/50 p-1 gap-1 w-fit">
+                <button
+                  type="button"
+                  onClick={() => setComposeChannel('sms')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors ${composeChannel === 'sms' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                  <Phone className="w-3.5 h-3.5" /> SMS
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setComposeChannel('email')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors ${composeChannel === 'email' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                  <Mail className="w-3.5 h-3.5" /> Email
+                </button>
+              </div>
+            </div>
+
+            {composeChannel === 'sms' && (customer as any).smsOptOut && (
+              <div className="rounded-lg border border-orange-300 bg-orange-50 p-3 text-sm text-orange-800 flex items-start gap-2">
+                <PhoneOff className="w-4 h-4 shrink-0 mt-0.5" />
+                <p>This customer has opted out of SMS. Remove the opt-out flag on their record before sending.</p>
+              </div>
+            )}
+            {composeChannel === 'email' && (customer as any).emailOptOut && (
+              <div className="rounded-lg border border-orange-300 bg-orange-50 p-3 text-sm text-orange-800 flex items-start gap-2">
+                <MailMinus className="w-4 h-4 shrink-0 mt-0.5" />
+                <p>This customer has opted out of email. Remove the opt-out flag on their record before sending.</p>
+              </div>
+            )}
+
+            <div className="text-xs text-muted-foreground">
+              To: <span className="font-medium text-foreground">{composeChannel === 'sms' ? customer.phone : customer.email}</span>
+            </div>
+
+            {composeChannel === 'email' && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Subject</label>
+                <Input
+                  placeholder="Subject..."
+                  value={composeSubject}
+                  onChange={e => setComposeSubject(e.target.value)}
+                />
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Message</label>
+              <Textarea
+                placeholder={composeChannel === 'sms' ? 'Type your SMS message...' : 'Type your email body...'}
+                rows={composeChannel === 'sms' ? 4 : 8}
+                value={composeBody}
+                onChange={e => setComposeBody(e.target.value)}
+                maxLength={composeChannel === 'sms' ? 1600 : undefined}
+              />
+              {composeChannel === 'sms' && (
+                <p className="text-xs text-muted-foreground text-right">{composeBody.length}/1600</p>
+              )}
+            </div>
+
+            <Separator />
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" onClick={() => setComposeOpen(false)}>Cancel</Button>
+              <Button
+                disabled={!composeBody.trim() || sendMessage.isPending}
+                onClick={() => {
+                  sendMessage.mutate(
+                    {
+                      data: {
+                        customerId: id,
+                        channel: composeChannel,
+                        body: composeBody.trim(),
+                        ...(composeChannel === 'email' && composeSubject ? { subject: composeSubject } : {}),
+                      },
+                    },
+                    {
+                      onSuccess: () => {
+                        toast.success('Message sent');
+                        setComposeOpen(false);
+                        setComposeBody('');
+                        setComposeSubject('');
+                        qc.invalidateQueries({ queryKey: getListCustomerMessagesQueryKey(id) });
+                      },
+                      onError: (err: any) => {
+                        const msg = err?.message ?? 'Failed to send message';
+                        toast.error(msg.includes('opted out') ? 'Customer has opted out' : msg);
+                      },
+                    }
+                  );
+                }}
+                className="gap-2"
+              >
+                <Send className="w-4 h-4" />
+                {sendMessage.isPending ? 'Sending...' : `Send ${composeChannel.toUpperCase()}`}
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Add Property Sheet */}
       <Sheet open={addPropertyOpen} onOpenChange={open => { if (!open) { setAddPropertyOpen(false); setPropForm(BLANK_PROPERTY); } }}>
@@ -829,6 +1026,36 @@ export default function CustomerDetailPage() {
                 </Section>
               );
             })()}
+
+            {/* Opt-out preferences */}
+            <Section title="Communication Preferences" icon={<MessageSquare className="w-4 h-4" />}>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <p className="text-sm font-medium flex items-center gap-1.5">
+                      <PhoneOff className="w-3.5 h-3.5 text-muted-foreground" /> SMS Opt-Out
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Customer will not receive any SMS messages</p>
+                  </div>
+                  <Switch
+                    checked={!!(form.smsOptOut ?? (customer as any).smsOptOut)}
+                    onCheckedChange={v => setField('smsOptOut', v as any)}
+                  />
+                </div>
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <p className="text-sm font-medium flex items-center gap-1.5">
+                      <MailMinus className="w-3.5 h-3.5 text-muted-foreground" /> Email Opt-Out
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Customer will not receive any email messages</p>
+                  </div>
+                  <Switch
+                    checked={!!(form.emailOptOut ?? (customer as any).emailOptOut)}
+                    onCheckedChange={v => setField('emailOptOut', v as any)}
+                  />
+                </div>
+              </div>
+            </Section>
 
             <Separator />
             <div className="flex gap-3 justify-end pt-2">

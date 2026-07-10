@@ -26,7 +26,8 @@ import { Separator } from '@/components/ui/separator';
 import {
   Building, CreditCard, Users, Shield, CheckCircle2, Plus, Trash2,
   GripVertical, EyeOff, Eye, Star, Settings as SettingsIcon, TrendingUp,
-  ArrowRight, FlaskConical, Pencil, X, MapPin, Ruler, Navigation,
+  ArrowRight, FlaskConical, Pencil, X, MapPin, Ruler, Navigation, MessageSquare,
+  Phone, Mail, Send, Wifi, WifiOff, CheckCircle, AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BUILT_IN_CUSTOMER_FIELDS, getActiveCustomerFields, type CustomerFieldConfig } from '@/lib/fieldConfig';
@@ -77,6 +78,23 @@ export default function SettingsPage() {
   const [equipRepairPct, setEquipRepairPct] = useState('50');
   const [equipResalePct, setEquipResalePct] = useState('20');
 
+  // Communications
+  const [mainPhoneNumber, setMainPhoneNumber] = useState('');
+  const [marketingPhoneNumber, setMarketingPhoneNumber] = useState('');
+  const [phonePlatform, setPhonePlatform] = useState('');
+  const [phonePlatformApiKey, setPhonePlatformApiKey] = useState('');
+  const [phonePlatformAccountSid, setPhonePlatformAccountSid] = useState('');
+  const [phonePlatformAuthToken, setPhonePlatformAuthToken] = useState('');
+  const [phonePlatformWebhookSecret, setPhonePlatformWebhookSecret] = useState('');
+  const [emailProvider, setEmailProvider] = useState('');
+  const [emailApiKey, setEmailApiKey] = useState('');
+  const [emailFromAddress, setEmailFromAddress] = useState('');
+  const [emailDomain, setEmailDomain] = useState('');
+  const [smtpHost, setSmtpHost] = useState('');
+  const [smtpPort, setSmtpPort] = useState('587');
+  const [smtpUser, setSmtpUser] = useState('');
+  const [smtpPass, setSmtpPass] = useState('');
+
   // Maps & measurement
   const [defaultGeofenceRadius, setDefaultGeofenceRadius] = useState('100');
   const [defaultGeofenceUnit, setDefaultGeofenceUnit] = useState<'m' | 'ft'>('m');
@@ -119,6 +137,22 @@ export default function SettingsPage() {
       const labels: string[] = (settings as any).measurementZoneLabels ?? ['Front Lawn', 'Back Yard', 'Bed Areas', 'Side Yard', 'Common Area'];
       setZoneLabelsRaw(labels.join(', '));
       setCustomerFields(getActiveCustomerFields(settings));
+      // Communications
+      const s = settings as any;
+      setMainPhoneNumber(s.mainPhoneNumber ?? '');
+      setMarketingPhoneNumber(s.marketingPhoneNumber ?? '');
+      setPhonePlatform(s.phonePlatform ?? '');
+      setPhonePlatformApiKey(s.phonePlatformConfig?.apiKey ?? '');
+      setPhonePlatformAccountSid(s.phonePlatformConfig?.accountSid ?? '');
+      setPhonePlatformWebhookSecret(s.phonePlatformConfig?.webhookSecret ?? '');
+      setEmailProvider(s.emailProvider ?? '');
+      setEmailApiKey(s.emailProviderConfig?.apiKey ?? '');
+      setEmailFromAddress(s.emailProviderConfig?.fromAddress ?? '');
+      setEmailDomain(s.emailProviderConfig?.domain ?? '');
+      setSmtpHost(s.emailProviderConfig?.smtpHost ?? '');
+      setSmtpPort(s.emailProviderConfig?.smtpPort ?? '587');
+      setSmtpUser(s.emailProviderConfig?.smtpUser ?? '');
+      setSmtpPass(s.emailProviderConfig?.smtpPass ?? '');
     }
   }, [settings]);
 
@@ -262,6 +296,7 @@ export default function SettingsPage() {
           <TabsTrigger value="general"><Building className="w-4 h-4 mr-2" />General</TabsTrigger>
           <TabsTrigger value="customer-fields"><SettingsIcon className="w-4 h-4 mr-2" />Customer Fields</TabsTrigger>
           <TabsTrigger value="payments"><CreditCard className="w-4 h-4 mr-2" />Integrations</TabsTrigger>
+          <TabsTrigger value="communications"><MessageSquare className="w-4 h-4 mr-2" />Communications</TabsTrigger>
           <TabsTrigger value="users"><Users className="w-4 h-4 mr-2" />Team</TabsTrigger>
           {isSuperAdmin && <TabsTrigger value="plans"><Shield className="w-4 h-4 mr-2" />Plans</TabsTrigger>}
           <TabsTrigger value="operational"><SettingsIcon className="w-4 h-4 mr-2" />Operational</TabsTrigger>
@@ -699,6 +734,365 @@ export default function SettingsPage() {
                   </p>
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Communications ── */}
+        <TabsContent value="communications" className="space-y-6 focus-visible:outline-none">
+          {/* Phone Numbers */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><Phone className="w-5 h-5" /> Phone Numbers</CardTitle>
+              <CardDescription>
+                Configure the phone numbers used for outbound messages. The main number is used for service reminders; the marketing number for campaigns.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Main Number <span className="text-xs text-muted-foreground">(reminders & transactional)</span></label>
+                  <Input
+                    placeholder="+15551234567"
+                    value={mainPhoneNumber}
+                    onChange={e => setMainPhoneNumber(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Marketing Number <span className="text-xs text-muted-foreground">(campaigns)</span></label>
+                  <Input
+                    placeholder="+15559876543"
+                    value={marketingPhoneNumber}
+                    onChange={e => setMarketingPhoneNumber(e.target.value)}
+                  />
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                disabled={updateSettings.isPending}
+                onClick={() => updateSettings.mutate(
+                  { data: { mainPhoneNumber, marketingPhoneNumber } as any },
+                  { onSuccess: () => toast.success('Phone numbers saved'), onError: () => toast.error('Failed to save') }
+                )}
+              >
+                Save Phone Numbers
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* SMS Provider */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><MessageSquare className="w-5 h-5" /> SMS Provider</CardTitle>
+              <CardDescription>
+                Connect a business phone platform to send SMS. Once connected, outbound messages route through the selected provider. Inbound replies are logged automatically via webhook.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Platform</label>
+                <Select value={phonePlatform || 'none'} onValueChange={v => setPhonePlatform(v === 'none' ? '' : v)}>
+                  <SelectTrigger className="max-w-xs">
+                    <SelectValue placeholder="Not connected" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Not connected (dev mode)</SelectItem>
+                    <SelectItem value="openphone">OpenPhone</SelectItem>
+                    <SelectItem value="grasshopper">Grasshopper</SelectItem>
+                    <SelectItem value="twilio">Twilio</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {phonePlatform === 'openphone' && (
+                <div className="rounded-lg border p-4 space-y-3 bg-muted/20">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <div className="w-6 h-6 rounded bg-violet-600 flex items-center justify-center text-white text-xs font-bold">OP</div>
+                    OpenPhone Configuration
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">API Key</label>
+                    <Input
+                      type="password"
+                      placeholder={phonePlatformApiKey.startsWith('••') ? '(saved)' : 'Enter OpenPhone API key'}
+                      value={phonePlatformApiKey}
+                      onChange={e => setPhonePlatformApiKey(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">Find in OpenPhone → Settings → API keys</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Webhook Signing Secret</label>
+                    <Input
+                      type="password"
+                      placeholder={phonePlatformWebhookSecret.startsWith('••') ? '(saved)' : 'Enter OpenPhone webhook secret'}
+                      value={phonePlatformWebhookSecret}
+                      onChange={e => setPhonePlatformWebhookSecret(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">Found in OpenPhone → Settings → Webhooks → Signing secret. Required to verify inbound messages.</p>
+                  </div>
+                  <div className="rounded-md bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800 space-y-1">
+                    <p className="font-medium">Webhook URL for inbound messages:</p>
+                    <code className="block font-mono break-all">{`${window.location.origin}/api/communications/webhook`}</code>
+                    <p className="text-blue-700">Add this URL in OpenPhone → Settings → Webhooks → Message received</p>
+                  </div>
+                </div>
+              )}
+
+              {(phonePlatform === 'grasshopper' || phonePlatform === 'twilio') && (
+                <div className="rounded-lg border p-4 space-y-3 bg-muted/20">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <div className={`w-6 h-6 rounded flex items-center justify-center text-white text-xs font-bold ${phonePlatform === 'grasshopper' ? 'bg-green-600' : 'bg-red-600'}`}>
+                      {phonePlatform === 'grasshopper' ? 'GH' : 'TW'}
+                    </div>
+                    {phonePlatform === 'grasshopper' ? 'Grasshopper' : 'Twilio'} Configuration
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Account SID</label>
+                      <Input
+                        placeholder="ACxxxxxxxx"
+                        value={phonePlatformAccountSid}
+                        onChange={e => setPhonePlatformAccountSid(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Auth Token</label>
+                      <Input
+                        type="password"
+                        placeholder="(saved)"
+                        value={phonePlatformAuthToken}
+                        onChange={e => setPhonePlatformAuthToken(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="rounded-md bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800 space-y-1">
+                    <p className="font-medium">Webhook URL for inbound messages:</p>
+                    <code className="block font-mono break-all">{`${window.location.origin}/api/communications/webhook`}</code>
+                    <p className="text-blue-700">Configure this as your messaging webhook in {phonePlatform === 'grasshopper' ? 'Grasshopper' : 'Twilio'} console</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                {(settings as any)?.phonePlatform ? (
+                  <Badge className="bg-emerald-500/10 text-emerald-700 border-transparent gap-1">
+                    <CheckCircle className="w-3 h-3" /> Connected — {(settings as any).phonePlatform}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-muted-foreground gap-1">
+                    <WifiOff className="w-3 h-3" /> Not connected — SMS will be logged to console
+                  </Badge>
+                )}
+              </div>
+
+              <Button
+                variant="outline"
+                disabled={updateSettings.isPending}
+                onClick={() => updateSettings.mutate(
+                  {
+                    data: {
+                      phonePlatform: phonePlatform || null,
+                      phonePlatformConfig: {
+                        apiKey: phonePlatformApiKey,
+                        accountSid: phonePlatformAccountSid,
+                        authToken: phonePlatformAuthToken,
+                        webhookSecret: phonePlatformWebhookSecret,
+                      },
+                    } as any
+                  },
+                  {
+                    onSuccess: () => { toast.success('SMS provider saved'); },
+                    onError: () => toast.error('Failed to save'),
+                  }
+                )}
+              >
+                Save SMS Provider
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Email Provider */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><Mail className="w-5 h-5" /> Email Provider</CardTitle>
+              <CardDescription>
+                Connect a transactional email provider to send service reminders and messages from your own domain.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Provider</label>
+                <Select value={emailProvider || 'none'} onValueChange={v => setEmailProvider(v === 'none' ? '' : v)}>
+                  <SelectTrigger className="max-w-xs">
+                    <SelectValue placeholder="Not connected" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Not connected (dev mode)</SelectItem>
+                    <SelectItem value="resend">Resend</SelectItem>
+                    <SelectItem value="sendgrid">SendGrid</SelectItem>
+                    <SelectItem value="mailgun">Mailgun</SelectItem>
+                    <SelectItem value="smtp">SMTP</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {emailProvider && emailProvider !== 'smtp' && (
+                <div className="rounded-lg border p-4 space-y-3 bg-muted/20">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">API Key</label>
+                    <Input
+                      type="password"
+                      placeholder={emailApiKey.startsWith('••') ? '(saved)' : `Enter ${emailProvider} API key`}
+                      value={emailApiKey}
+                      onChange={e => setEmailApiKey(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">From Address</label>
+                    <Input
+                      placeholder="noreply@yourcompany.com"
+                      value={emailFromAddress}
+                      onChange={e => setEmailFromAddress(e.target.value)}
+                    />
+                  </div>
+                  {emailProvider === 'mailgun' && (
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Mailgun Domain</label>
+                      <Input
+                        placeholder="mg.yourcompany.com"
+                        value={emailDomain}
+                        onChange={e => setEmailDomain(e.target.value)}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {emailProvider === 'smtp' && (
+                <div className="rounded-lg border p-4 space-y-3 bg-muted/20">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">SMTP Host</label>
+                      <Input
+                        placeholder="smtp.mailserver.com"
+                        value={smtpHost}
+                        onChange={e => setSmtpHost(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Port</label>
+                      <Input
+                        placeholder="587"
+                        value={smtpPort}
+                        onChange={e => setSmtpPort(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Username</label>
+                      <Input
+                        placeholder="smtp-user@yourcompany.com"
+                        value={smtpUser}
+                        onChange={e => setSmtpUser(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Password</label>
+                      <Input
+                        type="password"
+                        placeholder={smtpPass.startsWith('••') ? '(saved)' : 'SMTP password'}
+                        value={smtpPass}
+                        onChange={e => setSmtpPass(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">From Address</label>
+                    <Input
+                      placeholder="noreply@yourcompany.com"
+                      value={emailFromAddress}
+                      onChange={e => setEmailFromAddress(e.target.value)}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">Port 465 uses TLS; 587 uses STARTTLS (recommended).</p>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                {(settings as any)?.emailProvider ? (
+                  <Badge className="bg-emerald-500/10 text-emerald-700 border-transparent gap-1">
+                    <CheckCircle className="w-3 h-3" /> Connected — {(settings as any).emailProvider}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-muted-foreground gap-1">
+                    <WifiOff className="w-3 h-3" /> Not connected — emails will be logged to console
+                  </Badge>
+                )}
+              </div>
+
+              <Button
+                variant="outline"
+                disabled={updateSettings.isPending}
+                onClick={() => updateSettings.mutate(
+                  {
+                    data: {
+                      emailProvider: emailProvider || null,
+                      emailProviderConfig: {
+                        apiKey: emailApiKey,
+                        fromAddress: emailFromAddress,
+                        domain: emailDomain,
+                        smtpHost,
+                        smtpPort,
+                        smtpUser,
+                        smtpPass,
+                      },
+                    } as any
+                  },
+                  {
+                    onSuccess: () => toast.success('Email provider saved'),
+                    onError: () => toast.error('Failed to save'),
+                  }
+                )}
+              >
+                Save Email Provider
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Automated Reminders Info */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><Send className="w-5 h-5" /> Automated Service Reminders</CardTitle>
+              <CardDescription>
+                The system automatically sends reminders to customers before their scheduled jobs.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="rounded-lg border p-4 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                    <span className="text-blue-700 text-xs font-bold">7d</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">7-Day Reminder</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Sent one week before the scheduled job. Includes date, time, service, and property address.</p>
+                  </div>
+                </div>
+                <div className="rounded-lg border p-4 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                    <span className="text-amber-700 text-xs font-bold">24h</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">24-Hour Reminder</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Sent the day before. All messages include a "Reply STOP to opt out" footer.</p>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-md bg-muted/40 border border-dashed p-3 text-sm text-muted-foreground">
+                <p>Reminders are dispatched every 15 minutes. A customer's opt-out preference is respected — toggled on their customer record.</p>
+                <p className="mt-1">Staff can also trigger a manual reminder from any job's detail view.</p>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

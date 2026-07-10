@@ -45,8 +45,91 @@ tags:
     description: Chemical products, mixtures, and application records
   - name: equipment
     description: Equipment management, maintenance logs, and fuel tracking
+  - name: communications
+    description: SMS, email, and communications log
 
 paths:
+  # COMMUNICATIONS
+  /communications/customers/{customerId}:
+    get:
+      operationId: listCustomerMessages
+      tags: [communications]
+      summary: Get conversation thread for a customer
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Message list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CommunicationsLogEntry"
+
+  /communications/send:
+    post:
+      operationId: sendMessage
+      tags: [communications]
+      summary: Send an SMS or email to a customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageInput"
+      responses:
+        "201":
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunicationsLogEntry"
+
+  /communications/webhook:
+    post:
+      operationId: communicationsWebhook
+      tags: [communications]
+      summary: Inbound message webhook (OpenPhone / Grasshopper)
+      responses:
+        "200":
+          description: OK
+
+  /jobs/{id}/send-reminder:
+    post:
+      operationId: sendJobReminder
+      tags: [jobs]
+      summary: Manually send a service reminder for a job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendReminderInput"
+      responses:
+        "200":
+          description: Reminder sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sent:
+                    type: array
+                    items:
+                      type: string
+                  jobId:
+                    type: integer
+
   /healthz:
     get:
       operationId: healthCheck
@@ -4233,3 +4316,58 @@ components:
           type: string
         expiresAt:
           type: string
+
+    CommunicationsLogEntry:
+      type: object
+      required: [id, direction, channel, body, status, messageType, createdAt]
+      properties:
+        id:
+          type: integer
+        direction:
+          type: string
+          enum: [inbound, outbound]
+        channel:
+          type: string
+          enum: [sms, email]
+        fromAddress:
+          type: ["string", "null"]
+        toAddress:
+          type: ["string", "null"]
+        subject:
+          type: ["string", "null"]
+        body:
+          type: string
+        status:
+          type: string
+          enum: [queued, sent, delivered, failed, received]
+        externalId:
+          type: ["string", "null"]
+        messageType:
+          type: string
+        jobId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+
+    SendMessageInput:
+      type: object
+      required: [customerId, channel, body]
+      properties:
+        customerId:
+          type: integer
+        channel:
+          type: string
+          enum: [sms, email]
+        body:
+          type: string
+        subject:
+          type: string
+        jobId:
+          type: integer
+
+    SendReminderInput:
+      type: object
+      properties:
+        channel:
+          type: string
+          enum: [sms, email, both]

@@ -38,6 +38,19 @@ export const tenantsTable = pgTable("tenants", {
   measurementZoneLabels: jsonb("measurement_zone_labels").default('["Front Lawn","Back Yard","Bed Areas","Side Yard","Common Area"]'),
   /** Preferred area unit for measurements: 'sqft' | 'acres' */
   preferredAreaUnit: text("preferred_area_unit").notNull().default("sqft"),
+  // ── Communications ───────────────────────────────────────────────────────
+  /** Phone number used for automated service reminders and transactional SMS */
+  mainPhoneNumber: text("main_phone_number"),
+  /** Phone number used for marketing/campaign SMS blasts */
+  marketingPhoneNumber: text("marketing_phone_number"),
+  /** SMS platform: 'openphone' | 'grasshopper' | 'twilio' | null */
+  phonePlatform: text("phone_platform"),
+  /** JSONB: platform-specific credentials/config (API keys etc.) */
+  phonePlatformConfig: jsonb("phone_platform_config").default("{}"),
+  /** Email sending provider: 'smtp' | 'sendgrid' | 'mailgun' | 'resend' | null */
+  emailProvider: text("email_provider"),
+  /** JSONB: provider-specific config (API key, from address, SMTP host etc.) */
+  emailProviderConfig: jsonb("email_provider_config").default("{}"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

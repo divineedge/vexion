@@ -23,6 +23,7 @@ import equipmentRouter from "./equipment";
 import quotesRouter from "./quotes";
 import widgetRouter from "./widget";
 import portalRouter from "./portal";
+import communicationsRouter from "./communications";
 
 const router: IRouter = Router();
 
@@ -50,5 +51,6 @@ router.use(equipmentRouter);
 router.use(quotesRouter);
 router.use(widgetRouter);
 router.use(portalRouter);
+router.use(communicationsRouter);
 
 export default router;

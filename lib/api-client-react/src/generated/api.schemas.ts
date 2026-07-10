@@ -1596,6 +1596,87 @@ export interface PortalLinkResult {
   expiresAt: string;
 }
 
+export type CommunicationsLogEntryDirection = typeof CommunicationsLogEntryDirection[keyof typeof CommunicationsLogEntryDirection];
+
+
+export const CommunicationsLogEntryDirection = {
+  inbound: 'inbound',
+  outbound: 'outbound',
+} as const;
+
+export type CommunicationsLogEntryChannel = typeof CommunicationsLogEntryChannel[keyof typeof CommunicationsLogEntryChannel];
+
+
+export const CommunicationsLogEntryChannel = {
+  sms: 'sms',
+  email: 'email',
+} as const;
+
+export type CommunicationsLogEntryStatus = typeof CommunicationsLogEntryStatus[keyof typeof CommunicationsLogEntryStatus];
+
+
+export const CommunicationsLogEntryStatus = {
+  queued: 'queued',
+  sent: 'sent',
+  delivered: 'delivered',
+  failed: 'failed',
+  received: 'received',
+} as const;
+
+export interface CommunicationsLogEntry {
+  id: number;
+  direction: CommunicationsLogEntryDirection;
+  channel: CommunicationsLogEntryChannel;
+  /** @nullable */
+  fromAddress?: string | null;
+  /** @nullable */
+  toAddress?: string | null;
+  /** @nullable */
+  subject?: string | null;
+  body: string;
+  status: CommunicationsLogEntryStatus;
+  /** @nullable */
+  externalId?: string | null;
+  messageType: string;
+  /** @nullable */
+  jobId?: number | null;
+  createdAt: string;
+}
+
+export type SendMessageInputChannel = typeof SendMessageInputChannel[keyof typeof SendMessageInputChannel];
+
+
+export const SendMessageInputChannel = {
+  sms: 'sms',
+  email: 'email',
+} as const;
+
+export interface SendMessageInput {
+  customerId: number;
+  channel: SendMessageInputChannel;
+  body: string;
+  subject?: string;
+  jobId?: number;
+}
+
+export type SendReminderInputChannel = typeof SendReminderInputChannel[keyof typeof SendReminderInputChannel];
+
+
+export const SendReminderInputChannel = {
+  sms: 'sms',
+  email: 'email',
+  both: 'both',
+} as const;
+
+export interface SendReminderInput {
+  channel?: SendReminderInputChannel;
+}
+
+export type SendJobReminder200 = {
+  sent?: string[];
+  jobId?: number;
+};
+
 export type ListCustomersParams = {
 /**
  * Search query

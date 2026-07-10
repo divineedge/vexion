@@ -9,6 +9,80 @@ import * as zod from 'zod';
 
 
 /**
+ * @summary Get conversation thread for a customer
+ */
+export const ListCustomerMessagesParams = zod.object({
+  "customerId": zod.coerce.number()
+})
+
+export const ListCustomerMessagesResponseItem = zod.object({
+  "id": zod.number(),
+  "direction": zod.enum(['inbound', 'outbound']),
+  "channel": zod.enum(['sms', 'email']),
+  "fromAddress": zod.string().nullish(),
+  "toAddress": zod.string().nullish(),
+  "subject": zod.string().nullish(),
+  "body": zod.string(),
+  "status": zod.enum(['queued', 'sent', 'delivered', 'failed', 'received']),
+  "externalId": zod.string().nullish(),
+  "messageType": zod.string(),
+  "jobId": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+export const ListCustomerMessagesResponse = zod.array(ListCustomerMessagesResponseItem)
+
+
+/**
+ * @summary Send an SMS or email to a customer
+ */
+export const SendMessageBody = zod.object({
+  "customerId": zod.number(),
+  "channel": zod.enum(['sms', 'email']),
+  "body": zod.string(),
+  "subject": zod.string().optional(),
+  "jobId": zod.number().optional()
+})
+
+export const SendMessageResponse = zod.object({
+  "id": zod.number(),
+  "direction": zod.enum(['inbound', 'outbound']),
+  "channel": zod.enum(['sms', 'email']),
+  "fromAddress": zod.string().nullish(),
+  "toAddress": zod.string().nullish(),
+  "subject": zod.string().nullish(),
+  "body": zod.string(),
+  "status": zod.enum(['queued', 'sent', 'delivered', 'failed', 'received']),
+  "externalId": zod.string().nullish(),
+  "messageType": zod.string(),
+  "jobId": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Inbound message webhook (OpenPhone / Grasshopper)
+ */
+export const CommunicationsWebhookResponse = zod.unknown()
+
+
+/**
+ * @summary Manually send a service reminder for a job
+ */
+export const SendJobReminderParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SendJobReminderBody = zod.object({
+  "channel": zod.enum(['sms', 'email', 'both']).optional()
+})
+
+export const SendJobReminderResponse = zod.object({
+  "sent": zod.array(zod.string()).optional(),
+  "jobId": zod.number().optional()
+})
+
+
+/**
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({

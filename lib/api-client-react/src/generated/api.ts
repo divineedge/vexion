@@ -33,6 +33,7 @@ import type {
   ChemicalMixtureInput,
   ChemicalProduct,
   ChemicalProductInput,
+  CommunicationsLogEntry,
   Crew,
   CrewInput,
   CrewUpdate,
@@ -100,6 +101,9 @@ import type {
   Routine,
   RoutineInput,
   RoutineUpdate,
+  SendJobReminder200,
+  SendMessageInput,
+  SendReminderInput,
   StatusCount,
   StockAdjustmentInput,
   SubTimer,
@@ -138,6 +142,297 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getListCustomerMessagesUrl = (customerId: number,) => {
+
+
+
+
+  return `/api/communications/customers/${customerId}`
+}
+
+/**
+ * @summary Get conversation thread for a customer
+ */
+export const listCustomerMessages = async (customerId: number, options?: RequestInit): Promise<CommunicationsLogEntry[]> => {
+
+  return customFetch<CommunicationsLogEntry[]>(getListCustomerMessagesUrl(customerId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListCustomerMessagesQueryKey = (customerId: number,) => {
+    return [
+    `/api/communications/customers/${customerId}`
+    ] as const;
+    }
+
+
+export const getListCustomerMessagesQueryOptions = <TData = Awaited<ReturnType<typeof listCustomerMessages>>, TError = ErrorType<unknown>>(customerId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCustomerMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListCustomerMessagesQueryKey(customerId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCustomerMessages>>> = ({ signal }) => listCustomerMessages(customerId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: customerId !== null && customerId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCustomerMessages>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListCustomerMessagesQueryResult = NonNullable<Awaited<ReturnType<typeof listCustomerMessages>>>
+export type ListCustomerMessagesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get conversation thread for a customer
+ */
+
+export function useListCustomerMessages<TData = Awaited<ReturnType<typeof listCustomerMessages>>, TError = ErrorType<unknown>>(
+ customerId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCustomerMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListCustomerMessagesQueryOptions(customerId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSendMessageUrl = () => {
+
+
+
+
+  return `/api/communications/send`
+}
+
+/**
+ * @summary Send an SMS or email to a customer
+ */
+export const sendMessage = async (sendMessageInput: SendMessageInput, options?: RequestInit): Promise<CommunicationsLogEntry> => {
+
+  return customFetch<CommunicationsLogEntry>(getSendMessageUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(sendMessageInput)
+  }
+);}
+
+
+
+
+
+export const getSendMessageMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendMessage>>, TError,{data: BodyType<SendMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendMessage>>, TError,{data: BodyType<SendMessageInput>}, TContext> => {
+
+const mutationKey = ['sendMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendMessage>>, {data: BodyType<SendMessageInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  sendMessage(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendMessageMutationResult = NonNullable<Awaited<ReturnType<typeof sendMessage>>>
+    export type SendMessageMutationBody = BodyType<SendMessageInput>
+    export type SendMessageMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Send an SMS or email to a customer
+ */
+export const useSendMessage = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendMessage>>, TError,{data: BodyType<SendMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendMessage>>,
+        TError,
+        {data: BodyType<SendMessageInput>},
+        TContext
+      > => {
+      return useMutation(getSendMessageMutationOptions(options));
+    }
+
+export const getCommunicationsWebhookUrl = () => {
+
+
+
+
+  return `/api/communications/webhook`
+}
+
+/**
+ * @summary Inbound message webhook (OpenPhone / Grasshopper)
+ */
+export const communicationsWebhook = async ( options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getCommunicationsWebhookUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCommunicationsWebhookMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof communicationsWebhook>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof communicationsWebhook>>, TError,void, TContext> => {
+
+const mutationKey = ['communicationsWebhook'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof communicationsWebhook>>, void> = () => {
+
+
+          return  communicationsWebhook(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CommunicationsWebhookMutationResult = NonNullable<Awaited<ReturnType<typeof communicationsWebhook>>>
+
+    export type CommunicationsWebhookMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Inbound message webhook (OpenPhone / Grasshopper)
+ */
+export const useCommunicationsWebhook = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof communicationsWebhook>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof communicationsWebhook>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getCommunicationsWebhookMutationOptions(options));
+    }
+
+export const getSendJobReminderUrl = (id: number,) => {
+
+
+
+
+  return `/api/jobs/${id}/send-reminder`
+}
+
+/**
+ * @summary Manually send a service reminder for a job
+ */
+export const sendJobReminder = async (id: number,
+    sendReminderInput?: SendReminderInput, options?: RequestInit): Promise<SendJobReminder200> => {
+
+  return customFetch<SendJobReminder200>(getSendJobReminderUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(sendReminderInput)
+  }
+);}
+
+
+
+
+
+export const getSendJobReminderMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendJobReminder>>, TError,{id: number;data?: BodyType<SendReminderInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendJobReminder>>, TError,{id: number;data?: BodyType<SendReminderInput>}, TContext> => {
+
+const mutationKey = ['sendJobReminder'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendJobReminder>>, {id: number;data?: BodyType<SendReminderInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  sendJobReminder(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendJobReminderMutationResult = NonNullable<Awaited<ReturnType<typeof sendJobReminder>>>
+    export type SendJobReminderMutationBody = BodyType<SendReminderInput> | undefined
+    export type SendJobReminderMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Manually send a service reminder for a job
+ */
+export const useSendJobReminder = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendJobReminder>>, TError,{id: number;data?: BodyType<SendReminderInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendJobReminder>>,
+        TError,
+        {id: number;data?: BodyType<SendReminderInput>},
+        TContext
+      > => {
+      return useMutation(getSendJobReminderMutationOptions(options));
+    }
 
 export const getHealthCheckUrl = () => {
 

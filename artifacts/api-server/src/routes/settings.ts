@@ -9,6 +9,8 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
   const cfJson = tenant.customFields as Record<string, unknown> | null;
   const rolePerms = tenant.rolePermissions as Record<string, Record<string, boolean>> | null;
   const defaultZoneLabels = (tenant.measurementZoneLabels as string[] | null) ?? ["Front Lawn", "Back Yard", "Bed Areas", "Side Yard", "Common Area"];
+  const phonePlatformConfig = (tenant.phonePlatformConfig as Record<string, string>) ?? {};
+  const emailProviderConfig = (tenant.emailProviderConfig as Record<string, string>) ?? {};
   return {
     id: tenant.id,
     tenantId: tenant.id,
@@ -36,6 +38,28 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     autoCreateGeofence: tenant.autoCreateGeofence ?? false,
     measurementZoneLabels: defaultZoneLabels,
     preferredAreaUnit: (tenant.preferredAreaUnit ?? "sqft") as "sqft" | "acres",
+    // Communications
+    mainPhoneNumber: tenant.mainPhoneNumber ?? null,
+    marketingPhoneNumber: tenant.marketingPhoneNumber ?? null,
+    phonePlatform: tenant.phonePlatform ?? null,
+    phonePlatformConfig: {
+      apiKey: phonePlatformConfig["apiKey"] ? "••••••••" : "",
+      accountSid: phonePlatformConfig["accountSid"] ?? "",
+      // Never expose auth token or webhook secret; just indicate if set
+      authTokenSet: !!(phonePlatformConfig["authToken"]),
+      webhookSecret: phonePlatformConfig["webhookSecret"] ? "••••••••" : "",
+    },
+    emailProvider: tenant.emailProvider ?? null,
+    emailProviderConfig: {
+      apiKey: emailProviderConfig["apiKey"] ? "••••••••" : "",
+      fromAddress: emailProviderConfig["fromAddress"] ?? "",
+      domain: emailProviderConfig["domain"] ?? "",
+      // SMTP fields — mask password, expose others
+      smtpHost: emailProviderConfig["smtpHost"] ?? "",
+      smtpPort: emailProviderConfig["smtpPort"] ?? "587",
+      smtpUser: emailProviderConfig["smtpUser"] ?? "",
+      smtpPass: emailProviderConfig["smtpPass"] ? "••••••••" : "",
+    },
   };
 }
 
@@ -57,6 +81,10 @@ router.patch("/settings", async (req, res): Promise<void> => {
     equipmentRepairThresholdPct, equipmentResaleThresholdPct,
     defaultGeofenceRadius, defaultGeofenceUnit, autoCreateGeofence,
     measurementZoneLabels, preferredAreaUnit,
+    // Communications
+    mainPhoneNumber, marketingPhoneNumber,
+    phonePlatform, phonePlatformConfig,
+    emailProvider, emailProviderConfig,
   } = req.body;
 
   const updates: Partial<typeof tenantsTable.$inferInsert> = {};
@@ -87,6 +115,37 @@ router.patch("/settings", async (req, res): Promise<void> => {
   if (autoCreateGeofence !== undefined) updates.autoCreateGeofence = autoCreateGeofence;
   if (measurementZoneLabels !== undefined) updates.measurementZoneLabels = measurementZoneLabels;
   if (preferredAreaUnit !== undefined) updates.preferredAreaUnit = preferredAreaUnit;
+  // Communications
+  if (mainPhoneNumber !== undefined) updates.mainPhoneNumber = mainPhoneNumber || null;
+  if (marketingPhoneNumber !== undefined) updates.marketingPhoneNumber = marketingPhoneNumber || null;
+  if (phonePlatform !== undefined) updates.phonePlatform = phonePlatform || null;
+  if (phonePlatformConfig !== undefined) {
+    // Merge with existing so we don't overwrite secrets with masked values
+    const [existing] = await db.select({ phonePlatformConfig: tenantsTable.phonePlatformConfig }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+    const prev = (existing?.phonePlatformConfig as Record<string, string>) ?? {};
+    const incoming = phonePlatformConfig as Record<string, string>;
+    const merged: Record<string, string> = { ...prev };
+    if (incoming["apiKey"] && !incoming["apiKey"].startsWith("••")) merged["apiKey"] = incoming["apiKey"];
+    if (incoming["accountSid"]) merged["accountSid"] = incoming["accountSid"];
+    if (incoming["authToken"] && !incoming["authToken"].startsWith("••")) merged["authToken"] = incoming["authToken"];
+    if (incoming["webhookSecret"] && !incoming["webhookSecret"].startsWith("••")) merged["webhookSecret"] = incoming["webhookSecret"];
+    updates.phonePlatformConfig = merged;
+  }
+  if (emailProvider !== undefined) updates.emailProvider = emailProvider || null;
+  if (emailProviderConfig !== undefined) {
+    const [existing] = await db.select({ emailProviderConfig: tenantsTable.emailProviderConfig }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+    const prev = (existing?.emailProviderConfig as Record<string, string>) ?? {};
+    const incoming = emailProviderConfig as Record<string, string>;
+    const merged: Record<string, string> = { ...prev };
+    if (incoming["apiKey"] && !incoming["apiKey"].startsWith("••")) merged["apiKey"] = incoming["apiKey"];
+    if (incoming["fromAddress"]) merged["fromAddress"] = incoming["fromAddress"];
+    if (incoming["domain"]) merged["domain"] = incoming["domain"];
+    if (incoming["smtpHost"]) merged["smtpHost"] = incoming["smtpHost"];
+    if (incoming["smtpPort"]) merged["smtpPort"] = incoming["smtpPort"];
+    if (incoming["smtpUser"]) merged["smtpUser"] = incoming["smtpUser"];
+    if (incoming["smtpPass"] && !incoming["smtpPass"].startsWith("••")) merged["smtpPass"] = incoming["smtpPass"];
+    updates.emailProviderConfig = merged;
+  }
 
   const [updated] = await db.update(tenantsTable).set(updates).where(eq(tenantsTable.id, tenantId)).returning();
   if (!updated) { res.status(404).json({ error: "Tenant not found" }); return; }

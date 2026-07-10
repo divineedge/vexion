@@ -13,6 +13,7 @@ import {
   useDeleteChemicalApplication,
   useListJobAlerts, getListJobAlertsQueryKey,
   useCreateJobAlert,
+  useSendJobReminder,
 } from '@workspace/api-client-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card } from '@/components/ui/card';
@@ -28,6 +29,7 @@ import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronRight, Clock, MapPin, User, Calendar,
   DollarSign, ClipboardList, Plus, Users, FlaskConical, Trash2, AlertTriangle,
+  Bell, BellOff, Send,
 } from 'lucide-react';
 import {
   startOfWeek, endOfWeek, startOfMonth, endOfMonth,
@@ -122,6 +124,7 @@ export default function SchedulePage() {
     query: { enabled: selectedJobId != null, queryKey: getListJobAlertsQueryKey(selectedJobId ?? 0) },
   });
   const createAlert = useCreateJobAlert();
+  const sendReminder = useSendJobReminder();
   const { data: chemProducts } = useListChemicalProducts({ query: { queryKey: getListChemicalProductsQueryKey() } });
   const { data: chemMixtures } = useListChemicalMixtures({ query: { queryKey: getListChemicalMixturesQueryKey() } });
   const createChemApp = useCreateJobChemicalApplication();
@@ -555,6 +558,74 @@ export default function SchedulePage() {
                     <p className="text-sm text-muted-foreground py-2">No applications logged yet.</p>
                   )}
                 </div>
+
+                {/* Reminders */}
+                {(() => {
+                  const rem = (selectedJob as any).remindersSent as { sent7d?: boolean; sent24h?: boolean; sentAt7d?: string | null; sentAt24h?: string | null } | null;
+                  return (
+                    <>
+                      <Separator />
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1.5">
+                            <Bell className="w-3.5 h-3.5" /> Reminders
+                          </p>
+                          {canManageJobs && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs gap-1"
+                              disabled={sendReminder.isPending}
+                              onClick={() => {
+                                if (!selectedJobId) return;
+                                sendReminder.mutate(
+                                  { id: selectedJobId, data: { channel: 'both' } },
+                                  {
+                                    onSuccess: () => {
+                                      toast.success('Reminder sent');
+                                      qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId) });
+                                    },
+                                    onError: () => toast.error('Failed to send reminder'),
+                                  }
+                                );
+                              }}
+                            >
+                              <Send className="w-3 h-3" /> Send Now
+                            </Button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className={`rounded-lg border p-2.5 flex items-center gap-2 text-xs ${rem?.sent7d ? 'border-emerald-200 bg-emerald-50' : 'bg-muted/30'}`}>
+                            {rem?.sent7d ? (
+                              <Bell className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            ) : (
+                              <BellOff className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                            )}
+                            <div>
+                              <p className={`font-medium ${rem?.sent7d ? 'text-emerald-700' : 'text-muted-foreground'}`}>7-day reminder</p>
+                              <p className="text-muted-foreground">
+                                {rem?.sent7d ? `Sent ${rem.sentAt7d ? new Date(rem.sentAt7d).toLocaleDateString() : ''}` : '⏳ Queued'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className={`rounded-lg border p-2.5 flex items-center gap-2 text-xs ${rem?.sent24h ? 'border-emerald-200 bg-emerald-50' : 'bg-muted/30'}`}>
+                            {rem?.sent24h ? (
+                              <Bell className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            ) : (
+                              <BellOff className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                            )}
+                            <div>
+                              <p className={`font-medium ${rem?.sent24h ? 'text-emerald-700' : 'text-muted-foreground'}`}>24-hr reminder</p>
+                              <p className="text-muted-foreground">
+                                {rem?.sent24h ? `Sent ${rem.sentAt24h ? new Date(rem.sentAt24h).toLocaleDateString() : ''}` : '⏳ Queued'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
 
                 {/* Customer Alerts */}
                 <Separator />

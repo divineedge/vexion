@@ -20,6 +20,8 @@ export const customersTable = pgTable("customers", {
   notes: text("notes"),
   tags: text("tags").array().default([]),
   customFieldValues: jsonb("custom_field_values").default("{}"),
+  /** Campaign that acquired this customer (denormalised for quick lookup) */
+  acquiredFromCampaignId: integer("acquired_from_campaign_id"),
   totalSpend: real("total_spend").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

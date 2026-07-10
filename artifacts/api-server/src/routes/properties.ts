@@ -13,6 +13,35 @@ function formatProperty(p: typeof propertiesTable.$inferSelect, customerName?: s
   };
 }
 
+// GET /properties/check — find existing properties matching an address (duplicate detection)
+router.get("/properties/check", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const { address } = req.query as Record<string, string>;
+
+  if (!address || address.trim().length < 4) {
+    res.json([]);
+    return;
+  }
+
+  const rows = await db
+    .select({
+      property: propertiesTable,
+      customerName: customersTable.name,
+    })
+    .from(propertiesTable)
+    .leftJoin(customersTable, eq(propertiesTable.customerId, customersTable.id))
+    .where(and(
+      eq(propertiesTable.tenantId, tenantId),
+      ilike(propertiesTable.address, `%${address.trim()}%`),
+    ))
+    .orderBy(propertiesTable.createdAt);
+
+  res.json(rows.map(r => ({
+    ...formatProperty(r.property, r.customerName),
+    customerId: r.property.customerId,
+  })));
+});
+
 router.get("/properties", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const { customerId, q } = req.query as Record<string, string>;

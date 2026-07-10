@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
-import { useListJobs, getListJobsQueryKey, useListUsers, getListUsersQueryKey } from '@workspace/api-client-react';
+import { useListJobs, getListJobsQueryKey } from '@workspace/api-client-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -10,10 +10,11 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { AlertTriangle, Plus, CheckCircle, XCircle, Wrench, Users } from 'lucide-react';
+import { AlertTriangle, Plus, CheckCircle, XCircle, Wrench, Users, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface Callback {
@@ -23,6 +24,8 @@ interface Callback {
   originalAssigneeId: number | null;
   callbackJobId: number | null;
   reason: string | null;
+  resolutionNotes: string | null;
+  scheduledFixDate: string | null;
   status: string;
   createdAt: string;
   resolvedAt: string | null;
@@ -51,11 +54,18 @@ export default function CallbacksPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [filterAssignee, setFilterAssignee] = useState('__all__');
   const [filterStatus, setFilterStatus] = useState('__all__');
+
+  // Create form
   const [form, setForm] = useState({
     originalJobId: '',
-    originalAssigneeId: '',
     reason: '',
+    scheduledFixDate: '',
   });
+
+  // Resolve dialog state
+  const [resolveDialogOpen, setResolveDialogOpen] = useState(false);
+  const [resolveTargetId, setResolveTargetId] = useState<number | null>(null);
+  const [resolveNotes, setResolveNotes] = useState('');
 
   const { data: callbacks, isLoading } = useQuery<Callback[]>({
     queryKey: ['callbacks', filterAssignee, filterStatus],
@@ -77,28 +87,29 @@ export default function CallbacksPage() {
     { query: { enabled: createOpen, queryKey: getListJobsQueryKey({ status: 'completed' }) } },
   );
 
-  const { data: users } = useListUsers({ query: { enabled: createOpen, queryKey: getListUsersQueryKey() } });
-
   const createMutation = useMutation({
-    mutationFn: (data: { originalJobId: number; originalAssigneeId?: number; reason?: string }) =>
+    mutationFn: (data: { originalJobId: number; reason?: string; scheduledFixDate?: string }) =>
       customFetch<Callback>('/api/callbacks', { method: 'POST', body: JSON.stringify(data), headers: { 'Content-Type': 'application/json' } }),
     onSuccess: () => {
-      toast.success('Callback ticket created');
+      toast.success('Callback ticket created — technician auto-detected from job');
       qc.invalidateQueries({ queryKey: ['callbacks'] });
       qc.invalidateQueries({ queryKey: ['callback-stats'] });
       setCreateOpen(false);
-      setForm({ originalJobId: '', originalAssigneeId: '', reason: '' });
+      setForm({ originalJobId: '', reason: '', scheduledFixDate: '' });
     },
     onError: () => toast.error('Failed to create callback'),
   });
 
   const resolveMutation = useMutation({
-    mutationFn: ({ id, status }: { id: number; status: string }) =>
-      customFetch(`/api/callbacks/${id}`, { method: 'PATCH', body: JSON.stringify({ status }), headers: { 'Content-Type': 'application/json' } }),
+    mutationFn: ({ id, status, resolutionNotes }: { id: number; status: string; resolutionNotes?: string }) =>
+      customFetch(`/api/callbacks/${id}`, { method: 'PATCH', body: JSON.stringify({ status, resolutionNotes }), headers: { 'Content-Type': 'application/json' } }),
     onSuccess: () => {
       toast.success('Callback updated');
       qc.invalidateQueries({ queryKey: ['callbacks'] });
       qc.invalidateQueries({ queryKey: ['callback-stats'] });
+      setResolveDialogOpen(false);
+      setResolveNotes('');
+      setResolveTargetId(null);
     },
     onError: () => toast.error('Failed to update callback'),
   });
@@ -107,8 +118,23 @@ export default function CallbacksPage() {
     if (!form.originalJobId) { toast.error('Original job is required'); return; }
     createMutation.mutate({
       originalJobId: parseInt(form.originalJobId, 10),
-      originalAssigneeId: form.originalAssigneeId ? parseInt(form.originalAssigneeId, 10) : undefined,
       reason: form.reason || undefined,
+      scheduledFixDate: form.scheduledFixDate || undefined,
+    });
+  };
+
+  const openResolveDialog = (id: number) => {
+    setResolveTargetId(id);
+    setResolveNotes('');
+    setResolveDialogOpen(true);
+  };
+
+  const handleResolve = () => {
+    if (!resolveTargetId) return;
+    resolveMutation.mutate({
+      id: resolveTargetId,
+      status: 'resolved',
+      resolutionNotes: resolveNotes || undefined,
     });
   };
 
@@ -268,6 +294,7 @@ export default function CallbacksPage() {
                 <TableHead>Original Job</TableHead>
                 <TableHead>Technician</TableHead>
                 <TableHead>Reason</TableHead>
+                <TableHead>Fix By</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Logged</TableHead>
                 {canManageJobs && <TableHead />}
@@ -276,11 +303,11 @@ export default function CallbacksPage() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">Loading...</TableCell>
+                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">Loading...</TableCell>
                 </TableRow>
               ) : (callbacks ?? []).length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
                     <Wrench className="w-8 h-8 mx-auto mb-2 opacity-30" />
                     No callbacks logged yet.
                   </TableCell>
@@ -295,6 +322,17 @@ export default function CallbacksPage() {
                     <TableCell>{cb.assigneeName ?? '—'}</TableCell>
                     <TableCell className="max-w-xs">
                       <p className="text-sm truncate">{cb.reason ?? <span className="text-muted-foreground italic">No reason provided</span>}</p>
+                      {cb.resolutionNotes && (
+                        <p className="text-xs text-emerald-600 mt-0.5 truncate">✓ {cb.resolutionNotes}</p>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                      {cb.scheduledFixDate ? (
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3.5 h-3.5" />
+                          {format(new Date(cb.scheduledFixDate), 'MMM d, yyyy')}
+                        </span>
+                      ) : '—'}
                     </TableCell>
                     <TableCell>
                       <Badge variant={cb.status === 'open' ? 'destructive' : 'outline'} className={cb.status === 'resolved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : ''}>
@@ -311,7 +349,7 @@ export default function CallbacksPage() {
                             variant="outline"
                             size="sm"
                             className="h-7 text-xs"
-                            onClick={() => resolveMutation.mutate({ id: cb.id, status: 'resolved' })}
+                            onClick={() => openResolveDialog(cb.id)}
                           >
                             Resolve
                           </Button>
@@ -336,13 +374,13 @@ export default function CallbacksPage() {
       </Card>
 
       {/* Create Sheet */}
-      <Sheet open={createOpen} onOpenChange={open => { if (!open) { setCreateOpen(false); setForm({ originalJobId: '', originalAssigneeId: '', reason: '' }); } }}>
+      <Sheet open={createOpen} onOpenChange={open => { if (!open) { setCreateOpen(false); setForm({ originalJobId: '', reason: '', scheduledFixDate: '' }); } }}>
         <SheetContent className="w-full sm:max-w-md overflow-y-auto">
           <SheetHeader className="pb-4">
             <SheetTitle>Log Callback Ticket</SheetTitle>
             <SheetDescription>
               A callback is a non-revenue fix ticket issued because of a mistake on a prior completed job.
-              It will be linked to the original job and technician, affecting their quality score.
+              The responsible technician is auto-detected from the job's crew.
             </SheetDescription>
           </SheetHeader>
           <div className="space-y-4 pb-6">
@@ -358,21 +396,9 @@ export default function CallbacksPage() {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Technician Responsible</label>
-              <Select value={form.originalAssigneeId} onValueChange={v => setForm(f => ({ ...f, originalAssigneeId: v }))}>
-                <SelectTrigger><SelectValue placeholder="Auto-detect from job..." /></SelectTrigger>
-                <SelectContent>
-                  {(users ?? [])
-                    .filter(u => u.role === 'technician' || u.role === 'crew_manager')
-                    .map(u => (
-                      <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">Leave blank to auto-detect from the job's assigned technician.</p>
+              <p className="text-xs text-muted-foreground">
+                The responsible technician will be auto-detected from who clocked time on this job.
+              </p>
             </div>
 
             <div className="space-y-1.5">
@@ -385,6 +411,16 @@ export default function CallbacksPage() {
               />
             </div>
 
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium flex items-center gap-1.5"><Calendar className="w-4 h-4" />Scheduled Fix Date</label>
+              <Input
+                type="date"
+                value={form.scheduledFixDate}
+                onChange={e => setForm(f => ({ ...f, scheduledFixDate: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">When should this be fixed by?</p>
+            </div>
+
             <Separator />
             <div className="flex gap-3 justify-end">
               <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
@@ -395,6 +431,36 @@ export default function CallbacksPage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Resolve Dialog */}
+      <Dialog open={resolveDialogOpen} onOpenChange={open => { if (!open) { setResolveDialogOpen(false); setResolveNotes(''); setResolveTargetId(null); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Resolve Callback</DialogTitle>
+            <DialogDescription>
+              Mark this callback as resolved. Optionally add notes about what was done to fix the issue.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Resolution Notes (optional)</label>
+              <Textarea
+                placeholder="What was done to fix the issue? e.g. 'Re-edged back gate area and touched up near fence post'"
+                rows={3}
+                value={resolveNotes}
+                onChange={e => setResolveNotes(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResolveDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleResolve} disabled={resolveMutation.isPending} className="gap-2">
+              <CheckCircle className="w-4 h-4" />
+              {resolveMutation.isPending ? 'Resolving...' : 'Mark Resolved'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

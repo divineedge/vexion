@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, callbacksTable, jobsTable, usersTable, activityLogTable } from "@workspace/db";
+import { db, callbacksTable, jobsTable, usersTable, activityLogTable, subTimersTable } from "@workspace/db";
 import { eq, and, count, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 
@@ -28,6 +28,7 @@ router.get("/callbacks", async (req, res): Promise<void> => {
     assigneeName: r.assigneeName ?? null,
     createdAt: r.callback.createdAt.toISOString(),
     resolvedAt: r.callback.resolvedAt?.toISOString() ?? null,
+    scheduledFixDate: r.callback.scheduledFixDate?.toISOString() ?? null,
   }));
 
   if (assigneeId) {
@@ -44,7 +45,7 @@ router.get("/callbacks", async (req, res): Promise<void> => {
 router.post("/callbacks", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
-  const { originalJobId, originalAssigneeId, reason, callbackJobId } = req.body;
+  const { originalJobId, reason, callbackJobId, scheduledFixDate } = req.body;
 
   if (!originalJobId) {
     res.status(400).json({ error: "originalJobId is required" });
@@ -74,11 +75,21 @@ router.post("/callbacks", async (req, res): Promise<void> => {
     }
   }
 
-  // Resolve assignee: if explicitly provided, accept it; otherwise fall back to job's assignee.
-  // Note: the original job's assignee is the authoritative source per the P4P quality rule.
-  const resolvedAssigneeId = originalAssigneeId
-    ? parseInt(originalAssigneeId, 10)
-    : (origJob.assigneeId ?? null);
+  // Auto-detect the responsible technician from sub-timers (clocked-in crew members).
+  // Use DISTINCT user IDs so multiple timer segments for the same person count as one.
+  // Falls back to the job's primary assignee when zero or multiple distinct technicians are found.
+  let resolvedAssigneeId = origJob.assigneeId ?? null;
+  const subTimerRows = await db
+    .select({ userId: subTimersTable.userId })
+    .from(subTimersTable)
+    .where(eq(subTimersTable.jobId, origJob.id));
+
+  const distinctUserIds = [...new Set(subTimerRows.map(r => r.userId))];
+  if (distinctUserIds.length === 1) {
+    // Exactly one technician clocked into this job — unambiguous attribution
+    resolvedAssigneeId = distinctUserIds[0];
+  }
+  // If 0 or 2+ distinct users: fall back to job's primary assignee.
 
   const [callback] = await db
     .insert(callbacksTable)
@@ -88,6 +99,7 @@ router.post("/callbacks", async (req, res): Promise<void> => {
       originalAssigneeId: resolvedAssigneeId,
       callbackJobId: callbackJobId ? parseInt(callbackJobId, 10) : null,
       reason: reason ?? null,
+      scheduledFixDate: scheduledFixDate ? new Date(scheduledFixDate) : null,
       status: "open",
     })
     .returning();
@@ -104,6 +116,7 @@ router.post("/callbacks", async (req, res): Promise<void> => {
     ...callback,
     createdAt: callback.createdAt.toISOString(),
     resolvedAt: null,
+    scheduledFixDate: callback.scheduledFixDate?.toISOString() ?? null,
   });
 });
 
@@ -111,11 +124,13 @@ router.post("/callbacks", async (req, res): Promise<void> => {
 router.patch("/callbacks/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(req.params.id, 10);
-  const { status, reason, callbackJobId } = req.body;
+  const { status, reason, callbackJobId, resolutionNotes, scheduledFixDate } = req.body;
 
   const updates: Partial<typeof callbacksTable.$inferInsert> = {};
   if (status) updates.status = status;
   if (reason) updates.reason = reason;
+  if (resolutionNotes !== undefined) updates.resolutionNotes = resolutionNotes || null;
+  if (scheduledFixDate !== undefined) updates.scheduledFixDate = scheduledFixDate ? new Date(scheduledFixDate) : null;
   if (callbackJobId !== undefined) updates.callbackJobId = callbackJobId ? parseInt(callbackJobId, 10) : null;
   if (status === "resolved") updates.resolvedAt = new Date();
   if (status === "open") updates.resolvedAt = null; // clear resolvedAt on reopen
@@ -127,7 +142,12 @@ router.patch("/callbacks/:id", async (req, res): Promise<void> => {
     .returning();
 
   if (!updated) { res.status(404).json({ error: "Callback not found" }); return; }
-  res.json({ ...updated, createdAt: updated.createdAt.toISOString(), resolvedAt: updated.resolvedAt?.toISOString() ?? null });
+  res.json({
+    ...updated,
+    createdAt: updated.createdAt.toISOString(),
+    resolvedAt: updated.resolvedAt?.toISOString() ?? null,
+    scheduledFixDate: updated.scheduledFixDate?.toISOString() ?? null,
+  });
 });
 
 // DELETE /callbacks/:id

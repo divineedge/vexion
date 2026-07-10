@@ -14,3 +14,4 @@ export * from "./plans";
 export * from "./activityLog";
 export * from "./callbacks";
 export * from "./marketingCampaigns";
+export * from "./services";

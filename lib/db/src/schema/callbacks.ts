@@ -15,6 +15,9 @@ export const callbacksTable = pgTable("callbacks", {
   // Optional: a new job created to fix the issue
   callbackJobId: integer("callback_job_id").references(() => jobsTable.id),
   reason: text("reason"),
+  resolutionNotes: text("resolution_notes"),
+  // When the callback must be fixed by
+  scheduledFixDate: timestamp("scheduled_fix_date", { withTimezone: true }),
   // open | resolved
   status: text("status").notNull().default("open"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

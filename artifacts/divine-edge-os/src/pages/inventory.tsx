@@ -113,8 +113,9 @@ export default function InventoryPage() {
   };
 
   const openCreate = () => {
-    const mPct = String(defaultMarkupPct);
-    setForm({ ...EMPTY_FORM, markupPct: mPct });
+    // Do NOT pre-fill markupPct — leave it blank so the placeholder shows the current
+    // default and the server uses the live tenant default (avoids stale frontend value).
+    setForm({ ...EMPTY_FORM });
     setSellPreview(null);
     setSelectedId(null);
     setSheetMode('create');

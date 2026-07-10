@@ -6,8 +6,9 @@ import {
   useListJobs, getListJobsQueryKey,
   useGetTenantSettings, getGetTenantSettingsQueryKey,
 } from '@workspace/api-client-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { customFetch } from '@workspace/api-client-react';
 import { useParams, useLocation } from 'wouter';
-import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -16,16 +17,18 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
 import {
   ArrowLeft, Building, Phone, Mail, Edit, Plus, Calendar, MapPin,
-  Save, X, User, FileText, Tag, DollarSign, Home, Briefcase, GitMerge,
+  Save, X, User, FileText, Tag, DollarSign, Home, Briefcase, Megaphone, AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import type { CustomerFieldConfig, TenantSettings } from '@/lib/fieldConfig';
-import { getActiveCustomerFields, BUILT_IN_CUSTOMER_FIELDS } from '@/lib/fieldConfig';
+import { getActiveCustomerFields } from '@/lib/fieldConfig';
+import { useDebounce } from '@/hooks/use-debounce';
 
 const STATUS_COLORS: Record<string, string> = {
   completed: 'bg-emerald-500/10 text-emerald-700 border-transparent',
@@ -34,14 +37,33 @@ const STATUS_COLORS: Record<string, string> = {
   on_hold: 'bg-gray-200 text-gray-600 border-transparent',
   cancelled: 'bg-red-500/10 text-red-600 border-transparent',
 };
-const INV_STATUS_COLORS: Record<string, string> = {
-  paid: 'bg-emerald-500/10 text-emerald-700 border-transparent',
-  sent: 'bg-blue-500/10 text-blue-700 border-transparent',
-  draft: 'bg-gray-200 text-gray-600 border-transparent',
-  overdue: 'bg-red-500/10 text-red-600 border-transparent',
-};
 
 type FormData = Record<string, string | string[]>;
+
+type PropertyForm = {
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  type: string;
+  notes: string;
+};
+
+const BLANK_PROPERTY: PropertyForm = { address: '', city: '', state: '', zip: '', type: '', notes: '' };
+
+interface DuplicateProperty {
+  id: number;
+  address: string;
+  city: string | null;
+  state: string | null;
+  customerId: number;
+  customerName: string | null;
+}
+
+interface Campaign {
+  id: number;
+  name: string;
+}
 
 export default function CustomerDetailPage() {
   const params = useParams();
@@ -50,9 +72,19 @@ export default function CustomerDetailPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
 
+  // Edit customer state
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<FormData>({});
   const [tagInput, setTagInput] = useState('');
+
+  // Add property state
+  const [addPropertyOpen, setAddPropertyOpen] = useState(false);
+  const [propForm, setPropForm] = useState<PropertyForm>(BLANK_PROPERTY);
+  const [duplicates, setDuplicates] = useState<DuplicateProperty[]>([]);
+  const [transferTarget, setTransferTarget] = useState<DuplicateProperty | null>(null);
+  const [addingProperty, setAddingProperty] = useState(false);
+
+  const debouncedAddress = useDebounce(propForm.address, 500);
 
   const { data: customer, isLoading } = useGetCustomer(id, {
     query: { enabled: !!id, queryKey: getGetCustomerQueryKey(id) },
@@ -68,6 +100,23 @@ export default function CustomerDetailPage() {
   const { data: settings } = useGetTenantSettings({
     query: { queryKey: getGetTenantSettingsQueryKey() },
   });
+  const { data: campaigns } = useQuery<Campaign[]>({
+    queryKey: ['marketing-campaigns-slim'],
+    queryFn: () => customFetch<Campaign[]>('/api/marketing/campaigns'),
+  });
+
+  // Check for duplicate properties whenever address changes
+  const { data: duplicateCheck } = useQuery<DuplicateProperty[]>({
+    queryKey: ['property-check', debouncedAddress],
+    queryFn: () =>
+      debouncedAddress.trim().length >= 4
+        ? customFetch<DuplicateProperty[]>(`/api/properties/check?address=${encodeURIComponent(debouncedAddress)}`)
+        : Promise.resolve([]),
+    enabled: addPropertyOpen && debouncedAddress.trim().length >= 4,
+  });
+
+  // Filter out properties already belonging to THIS customer
+  const externalDuplicates = (duplicateCheck ?? []).filter(d => d.customerId !== id);
 
   const updateCustomer = useUpdateCustomer();
   const activeFields = getActiveCustomerFields(settings as TenantSettings | undefined);
@@ -89,6 +138,7 @@ export default function CustomerDetailPage() {
       billingZip: customer.billingZip ?? '',
       notes: customer.notes ?? '',
       tags: customer.tags ?? [],
+      acquiredFromCampaignId: String((customer as any).acquiredFromCampaignId ?? ''),
       ...Object.fromEntries(Object.entries(cf).map(([k, v]) => [`cf_${k}`, v])),
     });
     setEditing(true);
@@ -97,16 +147,11 @@ export default function CustomerDetailPage() {
   const handleSave = () => {
     const customFieldValues: Record<string, string> = {};
     const body: Record<string, unknown> = {};
-
     for (const [k, v] of Object.entries(form)) {
-      if (k.startsWith('cf_')) {
-        customFieldValues[k.slice(3)] = v as string;
-      } else {
-        body[k] = v;
-      }
+      if (k.startsWith('cf_')) customFieldValues[k.slice(3)] = v as string;
+      else body[k] = v;
     }
     body.customFieldValues = customFieldValues;
-
     updateCustomer.mutate(
       { id, data: body as Parameters<typeof updateCustomer.mutate>[0]['data'] },
       {
@@ -127,18 +172,68 @@ export default function CustomerDetailPage() {
     if (!cur.includes(t)) setForm(f => ({ ...f, tags: [...cur, t] }));
     setTagInput('');
   };
+  const removeTag = (tag: string) => setForm(f => ({ ...f, tags: ((f.tags as string[]) ?? []).filter(t => t !== tag) }));
+  const setField = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }));
 
-  const removeTag = (tag: string) => {
-    setForm(f => ({ ...f, tags: ((f.tags as string[]) ?? []).filter(t => t !== tag) }));
+  const openAddProperty = () => {
+    setPropForm(BLANK_PROPERTY);
+    setDuplicates([]);
+    setAddPropertyOpen(true);
   };
 
-  const setField = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }));
+  const handleAddProperty = async () => {
+    if (!propForm.address.trim()) { toast.error('Address is required'); return; }
+    setAddingProperty(true);
+    try {
+      await customFetch('/api/properties', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerId: id,
+          address: propForm.address,
+          city: propForm.city || undefined,
+          state: propForm.state || undefined,
+          zip: propForm.zip || undefined,
+          type: propForm.type || undefined,
+          notes: propForm.notes || undefined,
+        }),
+      });
+      toast.success('Property added');
+      qc.invalidateQueries({ queryKey: getListPropertiesQueryKey({ customerId: id }) });
+      qc.invalidateQueries({ queryKey: getGetCustomerQueryKey(id) });
+      setAddPropertyOpen(false);
+      setPropForm(BLANK_PROPERTY);
+    } catch {
+      toast.error('Failed to add property');
+    } finally {
+      setAddingProperty(false);
+    }
+  };
+
+  const handleTransferProperty = async (dup: DuplicateProperty) => {
+    try {
+      await customFetch(`/api/properties/${dup.id}/transfer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newCustomerId: id }),
+      });
+      toast.success(`Property transferred from ${dup.customerName ?? 'previous customer'}`);
+      qc.invalidateQueries({ queryKey: getListPropertiesQueryKey({ customerId: id }) });
+      qc.invalidateQueries({ queryKey: getGetCustomerQueryKey(id) });
+      setTransferTarget(null);
+      setAddPropertyOpen(false);
+      setPropForm(BLANK_PROPERTY);
+    } catch {
+      toast.error('Failed to transfer property');
+    }
+  };
 
   if (isLoading) return <div className="p-8 text-center text-muted-foreground">Loading...</div>;
   if (!customer) return <div className="p-8 text-center text-muted-foreground">Customer not found.</div>;
 
   const totalJobValue = (jobs ?? []).reduce((s, j) => s + (j.totalAmount ?? 0), 0);
   const completedJobs = (jobs ?? []).filter(j => j.status === 'completed').length;
+  const linkedCampaign = campaigns?.find(c => c.id === (customer as any).acquiredFromCampaignId);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -152,6 +247,11 @@ export default function CustomerDetailPage() {
             <h1 className="text-3xl font-bold tracking-tight">{customer.name}</h1>
             {customer.customerType && (
               <Badge variant="secondary" className="capitalize">{customer.customerType}</Badge>
+            )}
+            {linkedCampaign && (
+              <Badge variant="outline" className="gap-1 text-violet-700 border-violet-200 bg-violet-50">
+                <Megaphone className="w-3 h-3" /> {linkedCampaign.name}
+              </Badge>
             )}
           </div>
           <div className="flex flex-wrap gap-4 mt-2 text-sm text-muted-foreground">
@@ -169,8 +269,8 @@ export default function CustomerDetailPage() {
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {[
           { label: 'Lifetime Spend', value: `${(customer.totalSpend ?? 0).toLocaleString()}`, icon: DollarSign, color: 'text-emerald-600' },
-          { label: `${new Date().getFullYear()} Spend`, value: customer.thisYearSpend != null ? `${customer.thisYearSpend.toLocaleString()}` : '—', icon: DollarSign, color: 'text-teal-600' },
-          { label: `${new Date().getFullYear() - 1} Spend`, value: customer.lastYearSpend != null ? `${customer.lastYearSpend.toLocaleString()}` : '—', icon: DollarSign, color: 'text-cyan-600' },
+          { label: `${new Date().getFullYear()} Spend`, value: (customer as any).thisYearSpend != null ? `${(customer as any).thisYearSpend.toLocaleString()}` : '—', icon: DollarSign, color: 'text-teal-600' },
+          { label: `${new Date().getFullYear() - 1} Spend`, value: (customer as any).lastYearSpend != null ? `${(customer as any).lastYearSpend.toLocaleString()}` : '—', icon: DollarSign, color: 'text-cyan-600' },
           { label: 'Properties', value: String(properties?.length ?? 0), icon: Home, color: 'text-blue-600' },
           { label: 'Total Jobs', value: String(jobs?.length ?? 0), icon: Briefcase, color: 'text-violet-600' },
           { label: 'Completed', value: String(completedJobs), icon: Calendar, color: 'text-amber-600' },
@@ -211,29 +311,86 @@ export default function CustomerDetailPage() {
               </CardContent>
             </Card>
 
-            {(customer.billingAddress || customer.notes) && (
-              <Card>
-                <CardHeader><CardTitle className="text-base flex items-center gap-2"><FileText className="w-4 h-4" />Billing & Notes</CardTitle></CardHeader>
-                <CardContent className="space-y-3 text-sm">
-                  {customer.billingAddress && (
+            {/* Marketing Campaign Card */}
+            <Card>
+              <CardHeader><CardTitle className="text-base flex items-center gap-2"><Megaphone className="w-4 h-4" />Marketing Campaign</CardTitle></CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                {linkedCampaign ? (
+                  <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Billing Address</p>
-                      <p>{customer.billingAddress}</p>
-                      {(customer.billingCity || customer.billingState) && (
-                        <p className="text-muted-foreground">{[customer.billingCity, customer.billingState, customer.billingZip].filter(Boolean).join(', ')}</p>
-                      )}
+                      <p className="font-medium">{linkedCampaign.name}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Acquired via this campaign</p>
                     </div>
-                  )}
-                  {customer.notes && (
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Notes</p>
-                      <p className="whitespace-pre-wrap">{customer.notes}</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground hover:text-destructive"
+                      onClick={() => {
+                        updateCustomer.mutate(
+                          { id, data: { acquiredFromCampaignId: null } as any },
+                          {
+                            onSuccess: () => { toast.success('Campaign unlinked'); qc.invalidateQueries({ queryKey: getGetCustomerQueryKey(id) }); },
+                          },
+                        );
+                      }}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-muted-foreground text-sm">No campaign linked to this customer.</p>
+                    {(campaigns ?? []).length > 0 && (
+                      <Select
+                        value=""
+                        onValueChange={v => {
+                          if (!v) return;
+                          updateCustomer.mutate(
+                            { id, data: { acquiredFromCampaignId: v } as any },
+                            {
+                              onSuccess: () => { toast.success('Campaign linked'); qc.invalidateQueries({ queryKey: getGetCustomerQueryKey(id) }); },
+                            },
+                          );
+                        }}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Link to a campaign..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(campaigns ?? []).map(c => (
+                            <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
+
+          {(customer.billingAddress || customer.notes) && (
+            <Card>
+              <CardHeader><CardTitle className="text-base flex items-center gap-2"><FileText className="w-4 h-4" />Billing & Notes</CardTitle></CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                {customer.billingAddress && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Billing Address</p>
+                    <p>{customer.billingAddress}</p>
+                    {(customer.billingCity || customer.billingState) && (
+                      <p className="text-muted-foreground">{[customer.billingCity, customer.billingState, customer.billingZip].filter(Boolean).join(', ')}</p>
+                    )}
+                  </div>
+                )}
+                {customer.notes && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Notes</p>
+                    <p className="whitespace-pre-wrap">{customer.notes}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Tags */}
           {(customer.tags ?? []).length > 0 && (
@@ -271,7 +428,7 @@ export default function CustomerDetailPage() {
                 <CardTitle>Properties</CardTitle>
                 <CardDescription>Properties currently associated with this customer.</CardDescription>
               </div>
-              <Button size="sm" className="gap-2" onClick={() => setLocation('/properties/new')}>
+              <Button size="sm" className="gap-2" onClick={openAddProperty}>
                 <Plus className="w-4 h-4" /> Add Property
               </Button>
             </CardHeader>
@@ -280,6 +437,9 @@ export default function CustomerDetailPage() {
                 <div className="text-center py-12 text-muted-foreground">
                   <Home className="w-10 h-10 mx-auto mb-3 opacity-30" />
                   <p>No properties linked to this customer.</p>
+                  <Button variant="outline" size="sm" className="mt-3 gap-2" onClick={openAddProperty}>
+                    <Plus className="w-4 h-4" /> Add First Property
+                  </Button>
                 </div>
               ) : (
                 <Table>
@@ -331,9 +491,6 @@ export default function CustomerDetailPage() {
                 <CardTitle>Job History</CardTitle>
                 <CardDescription>All jobs associated with this customer.</CardDescription>
               </div>
-              <Button size="sm" variant="outline" className="gap-2">
-                <Plus className="w-4 h-4" /> New Job
-              </Button>
             </CardHeader>
             <CardContent className="p-0">
               <Table>
@@ -377,7 +534,122 @@ export default function CustomerDetailPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Edit Sheet */}
+      {/* Add Property Sheet */}
+      <Sheet open={addPropertyOpen} onOpenChange={open => { if (!open) { setAddPropertyOpen(false); setPropForm(BLANK_PROPERTY); } }}>
+        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader className="pb-4">
+            <SheetTitle>Add Property</SheetTitle>
+            <SheetDescription>Add a property for {customer.name}. We'll check for duplicates automatically.</SheetDescription>
+          </SheetHeader>
+
+          <div className="space-y-4 pb-6">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Street Address <span className="text-destructive">*</span></label>
+              <Input
+                placeholder="123 Main St"
+                value={propForm.address}
+                onChange={e => setPropForm(f => ({ ...f, address: e.target.value }))}
+              />
+            </div>
+
+            {/* Duplicate warning */}
+            {externalDuplicates.length > 0 && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-2">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold text-amber-800">Duplicate address detected</p>
+                    <p className="text-xs text-amber-700 mt-0.5">This address already exists under another customer. You can transfer it here instead.</p>
+                  </div>
+                </div>
+                {externalDuplicates.map(dup => (
+                  <div key={dup.id} className="flex items-center justify-between bg-white rounded border border-amber-200 px-3 py-2">
+                    <div>
+                      <p className="text-xs font-medium">{dup.address}</p>
+                      <p className="text-xs text-muted-foreground">Currently: {dup.customerName ?? 'Unknown customer'}</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs h-7 border-amber-300 text-amber-700 hover:bg-amber-50"
+                      onClick={() => setTransferTarget(dup)}
+                    >
+                      Transfer Here
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-1 space-y-1.5">
+                <label className="text-sm font-medium">City</label>
+                <Input placeholder="Austin" value={propForm.city} onChange={e => setPropForm(f => ({ ...f, city: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">State</label>
+                <Input placeholder="TX" maxLength={2} value={propForm.state} onChange={e => setPropForm(f => ({ ...f, state: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">ZIP</label>
+                <Input placeholder="78701" value={propForm.zip} onChange={e => setPropForm(f => ({ ...f, zip: e.target.value }))} />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Property Type</label>
+              <Select value={propForm.type} onValueChange={v => setPropForm(f => ({ ...f, type: v }))}>
+                <SelectTrigger><SelectValue placeholder="Select type..." /></SelectTrigger>
+                <SelectContent>
+                  {['residential', 'commercial', 'hoa', 'industrial', 'other'].map(t => (
+                    <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Notes</label>
+              <Textarea
+                placeholder="Access codes, gate info, special instructions..."
+                rows={3}
+                value={propForm.notes}
+                onChange={e => setPropForm(f => ({ ...f, notes: e.target.value }))}
+              />
+            </div>
+
+            <Separator />
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" onClick={() => setAddPropertyOpen(false)}>Cancel</Button>
+              <Button onClick={handleAddProperty} disabled={addingProperty}>
+                {addingProperty ? 'Adding...' : 'Add Property'}
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Transfer confirmation dialog */}
+      <Dialog open={!!transferTarget} onOpenChange={open => { if (!open) setTransferTarget(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Transfer Property</DialogTitle>
+            <DialogDescription>
+              This will move <strong>{transferTarget?.address}</strong> from{' '}
+              <strong>{transferTarget?.customerName ?? 'its current owner'}</strong> to{' '}
+              <strong>{customer.name}</strong>. The property's job and invoice history will remain intact.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTransferTarget(null)}>Cancel</Button>
+            <Button onClick={() => transferTarget && handleTransferProperty(transferTarget)}>
+              Confirm Transfer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Customer Sheet */}
       <Sheet open={editing} onOpenChange={setEditing}>
         <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
           <SheetHeader className="pb-4">
@@ -386,7 +658,6 @@ export default function CustomerDetailPage() {
           </SheetHeader>
 
           <div className="space-y-6 pb-6">
-            {/* Core fields always shown */}
             <Section title="Contact Information" icon={<User className="w-4 h-4" />}>
               <Field label="Full Name" required>
                 <Input value={form.name as string} onChange={e => setField('name', e.target.value)} placeholder="Jane Smith" />
@@ -399,8 +670,6 @@ export default function CustomerDetailPage() {
                   <Input value={form.phone as string} onChange={e => setField('phone', e.target.value)} placeholder="(555) 000-0000" />
                 </Field>
               </div>
-
-              {/* Built-in configurable fields */}
               {activeFields.filter(f => f.isBuiltIn && f.visible && f.key === 'secondaryPhone').map(f => (
                 <Field key={f.key} label={f.label} required={f.required}>
                   <Input value={form.secondaryPhone as string} onChange={e => setField('secondaryPhone', e.target.value)} placeholder="(555) 000-0001" />
@@ -437,7 +706,26 @@ export default function CustomerDetailPage() {
               ))}
             </Section>
 
-            {/* Billing address */}
+            {/* Marketing Campaign */}
+            {(campaigns ?? []).length > 0 && (
+              <Section title="Marketing Campaign" icon={<Megaphone className="w-4 h-4" />}>
+                <Field label="Acquired Via Campaign">
+                  <Select
+                    value={form.acquiredFromCampaignId as string || '__none__'}
+                    onValueChange={v => setField('acquiredFromCampaignId', v === '__none__' ? '' : v)}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Select campaign..." /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">No campaign</SelectItem>
+                      {(campaigns ?? []).map(c => (
+                        <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              </Section>
+            )}
+
             {activeFields.some(f => f.key === 'billingAddress' && f.visible) && (
               <Section title="Billing Address" icon={<Home className="w-4 h-4" />}>
                 <Field label="Street Address" required={activeFields.find(f => f.key === 'billingAddress')?.required}>
@@ -459,7 +747,6 @@ export default function CustomerDetailPage() {
               </Section>
             )}
 
-            {/* Notes */}
             {activeFields.some(f => f.key === 'notes' && f.visible) && (
               <Section title="Notes" icon={<FileText className="w-4 h-4" />}>
                 <Textarea
@@ -471,7 +758,6 @@ export default function CustomerDetailPage() {
               </Section>
             )}
 
-            {/* Tags */}
             {activeFields.some(f => f.key === 'tags' && f.visible) && (
               <Section title="Tags" icon={<Tag className="w-4 h-4" />}>
                 <div className="flex flex-wrap gap-2 mb-2">
@@ -497,7 +783,6 @@ export default function CustomerDetailPage() {
               </Section>
             )}
 
-            {/* Custom fields from settings */}
             {(() => {
               const customFields = activeFields.filter(f => !f.isBuiltIn && f.visible);
               if (!customFields.length) return null;

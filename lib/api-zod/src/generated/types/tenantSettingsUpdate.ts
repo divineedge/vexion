@@ -15,5 +15,7 @@ export interface TenantSettingsUpdate {
   stripeEnabled?: boolean;
   quickbooksEnabled?: boolean;
   taxRate?: number;
+  defaultMarkupPct?: number;
+  showCostPriceToTech?: boolean;
   customerFields?: CustomerFieldConfig[];
 }

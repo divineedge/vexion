@@ -20,6 +20,10 @@ export interface TenantSettings {
   stripeEnabled?: boolean;
   quickbooksEnabled?: boolean;
   taxRate?: number;
+  /** Default markup percentage applied to inventory cost prices. */
+  defaultMarkupPct?: number;
+  /** When true, technicians can see the cost/buy price of inventory items. */
+  showCostPriceToTech?: boolean;
   planTier?: TenantSettingsPlanTier;
   customerFields?: CustomerFieldConfig[];
 }

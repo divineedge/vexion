@@ -23,6 +23,8 @@ router.get("/settings", async (req, res): Promise<void> => {
     stripeEnabled: tenant.stripeEnabled,
     quickbooksEnabled: tenant.quickbooksEnabled,
     taxRate: tenant.taxRate,
+    defaultMarkupPct: tenant.defaultMarkupPct,
+    showCostPriceToTech: tenant.showCostPriceToTech,
     planTier: tenant.planTier as "starter" | "professional" | "enterprise",
     customerFields: (cfJson?.customerFields as unknown[]) ?? [],
   });
@@ -30,7 +32,7 @@ router.get("/settings", async (req, res): Promise<void> => {
 
 router.patch("/settings", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { companyName, timezone, workdayCutoffTime, overageMaterialBuffer, stripeEnabled, quickbooksEnabled, taxRate, customerFields } = req.body;
+  const { companyName, timezone, workdayCutoffTime, overageMaterialBuffer, stripeEnabled, quickbooksEnabled, taxRate, defaultMarkupPct, showCostPriceToTech, customerFields } = req.body;
 
   const updates: Partial<typeof tenantsTable.$inferInsert> = {};
   if (companyName) updates.name = companyName;
@@ -40,6 +42,8 @@ router.patch("/settings", async (req, res): Promise<void> => {
   if (stripeEnabled !== undefined) updates.stripeEnabled = stripeEnabled;
   if (quickbooksEnabled !== undefined) updates.quickbooksEnabled = quickbooksEnabled;
   if (taxRate !== undefined) updates.taxRate = taxRate;
+  if (defaultMarkupPct !== undefined) updates.defaultMarkupPct = parseFloat(defaultMarkupPct);
+  if (showCostPriceToTech !== undefined) updates.showCostPriceToTech = showCostPriceToTech;
   if (customerFields !== undefined) {
     // Merge into the JSONB column so other keys (future extensions) are preserved
     const [existing] = await db.select({ customFields: tenantsTable.customFields }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
@@ -62,6 +66,8 @@ router.patch("/settings", async (req, res): Promise<void> => {
     stripeEnabled: updated.stripeEnabled,
     quickbooksEnabled: updated.quickbooksEnabled,
     taxRate: updated.taxRate,
+    defaultMarkupPct: updated.defaultMarkupPct,
+    showCostPriceToTech: updated.showCostPriceToTech,
     planTier: updated.planTier as "starter" | "professional" | "enterprise",
     customerFields: (cfJson?.customerFields as unknown[]) ?? [],
   });

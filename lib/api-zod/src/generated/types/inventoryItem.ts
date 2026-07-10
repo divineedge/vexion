@@ -15,7 +15,15 @@ export interface InventoryItem {
   description?: string | null;
   /** @nullable */
   category?: string | null;
+  /**
+     * What we pay for the item. Only returned for admin/manager roles (or when showCostPriceToTech is true).
+     * @nullable
+     */
+  costPrice?: number | null;
+  /** Sell price — what we charge customers. */
   unitPrice: number;
+  /** Markup percentage applied to cost price. */
+  markupPct?: number;
   markedUpPrice?: number;
   quantity: number;
   reorderPoint?: number;

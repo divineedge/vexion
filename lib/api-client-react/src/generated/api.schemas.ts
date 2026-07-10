@@ -397,7 +397,15 @@ export interface InventoryItem {
   description?: string | null;
   /** @nullable */
   category?: string | null;
+  /**
+     * What we pay for the item. Only returned for admin/manager roles (or when showCostPriceToTech is true).
+     * @nullable
+     */
+  costPrice?: number | null;
+  /** Sell price — what we charge customers. */
   unitPrice: number;
+  /** Markup percentage applied to cost price. */
+  markupPct?: number;
   markedUpPrice?: number;
   quantity: number;
   reorderPoint?: number;
@@ -411,7 +419,10 @@ export interface InventoryItemInput {
   sku: string;
   description?: string;
   category?: string;
-  unitPrice: number;
+  /** What we pay for the item (buy price). */
+  costPrice: number;
+  /** Override markup %. Defaults to tenant default if omitted. */
+  markupPct?: number;
   quantity: number;
   reorderPoint?: number;
   unit?: string;
@@ -421,7 +432,8 @@ export interface InventoryItemUpdate {
   name?: string;
   description?: string;
   category?: string;
-  unitPrice?: number;
+  costPrice?: number;
+  markupPct?: number;
   quantity?: number;
   reorderPoint?: number;
   unit?: string;
@@ -765,6 +777,10 @@ export interface TenantSettings {
   stripeEnabled?: boolean;
   quickbooksEnabled?: boolean;
   taxRate?: number;
+  /** Default markup percentage applied to inventory cost prices. */
+  defaultMarkupPct?: number;
+  /** When true, technicians can see the cost/buy price of inventory items. */
+  showCostPriceToTech?: boolean;
   planTier?: TenantSettingsPlanTier;
   customerFields?: CustomerFieldConfig[];
 }
@@ -777,6 +793,8 @@ export interface TenantSettingsUpdate {
   stripeEnabled?: boolean;
   quickbooksEnabled?: boolean;
   taxRate?: number;
+  defaultMarkupPct?: number;
+  showCostPriceToTech?: boolean;
   customerFields?: CustomerFieldConfig[];
 }
 

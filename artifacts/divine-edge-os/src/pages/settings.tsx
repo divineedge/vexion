@@ -3,7 +3,7 @@ import {
   useGetTenantSettings, getGetTenantSettingsQueryKey,
   useUpdateTenantSettings,
   useListUsers, getListUsersQueryKey,
-  useCreateUser,
+  useCreateUser, useUpdateUser, useDeleteUser,
   useListPlans, getListPlansQueryKey,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -20,13 +20,14 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Separator } from '@/components/ui/separator';
 import {
   Building, CreditCard, Users, Shield, CheckCircle2, Plus, Trash2,
-  GripVertical, EyeOff, Eye, Star, Settings as SettingsIcon,
+  GripVertical, EyeOff, Eye, Star, Settings as SettingsIcon, TrendingUp,
+  ArrowRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BUILT_IN_CUSTOMER_FIELDS, getActiveCustomerFields, type CustomerFieldConfig } from '@/lib/fieldConfig';
 
 export default function SettingsPage() {
-  const { isSuperAdmin } = useAuth();
+  const { isSuperAdmin, isOwner } = useAuth();
   const qc = useQueryClient();
 
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
@@ -35,17 +36,26 @@ export default function SettingsPage() {
 
   const updateSettings = useUpdateTenantSettings();
   const createUser = useCreateUser();
+  const updateUser = useUpdateUser();
+  const deleteUser = useDeleteUser();
 
+  // General
   const [companyName, setCompanyName] = useState('');
   const [timezone, setTimezone] = useState('');
   const [taxRate, setTaxRate] = useState('');
   const [buffer, setBuffer] = useState('');
 
+  // Inventory pricing
+  const [markupPct, setMarkupPct] = useState('');
+  const [showCostToTech, setShowCostToTech] = useState(false);
+
+  // Customer fields
   const [customerFields, setCustomerFields] = useState<CustomerFieldConfig[]>([]);
   const [addFieldOpen, setAddFieldOpen] = useState(false);
   const [newField, setNewField] = useState<Partial<CustomerFieldConfig>>({ type: 'text', visible: true, required: false, isBuiltIn: false });
   const [newOptions, setNewOptions] = useState('');
 
+  // Team
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: 'employee' });
 
@@ -55,6 +65,8 @@ export default function SettingsPage() {
       setTimezone(settings.timezone ?? 'America/Los_Angeles');
       setTaxRate(String(settings.taxRate ?? 8.5));
       setBuffer(String(settings.overageMaterialBuffer ?? 10));
+      setMarkupPct(String(settings.defaultMarkupPct ?? 20));
+      setShowCostToTech(settings.showCostPriceToTech ?? false);
       setCustomerFields(getActiveCustomerFields(settings));
     }
   }, [settings]);
@@ -65,6 +77,16 @@ export default function SettingsPage() {
       {
         onSuccess: () => { toast.success('Settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
         onError: () => toast.error('Failed to save settings'),
+      },
+    );
+  };
+
+  const saveInventoryPricing = () => {
+    updateSettings.mutate(
+      { data: { defaultMarkupPct: parseFloat(markupPct) || 20, showCostPriceToTech: showCostToTech } },
+      {
+        onSuccess: () => { toast.success('Pricing settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
+        onError: () => toast.error('Failed to save pricing settings'),
       },
     );
   };
@@ -80,9 +102,7 @@ export default function SettingsPage() {
   };
 
   const toggleFieldProp = (key: string, prop: 'visible' | 'required') => {
-    const next = customerFields.map(f =>
-      f.key === key ? { ...f, [prop]: !f[prop] } : f
-    );
+    const next = customerFields.map(f => f.key === key ? { ...f, [prop]: !f[prop] } : f);
     setCustomerFields(next);
     saveCustomerFields(next);
   };
@@ -120,15 +140,44 @@ export default function SettingsPage() {
       { data: inviteForm as Parameters<typeof createUser.mutate>[0]['data'] },
       {
         onSuccess: () => {
-          toast.success(`${inviteForm.name} invited`);
+          toast.success(`${inviteForm.name} added`);
           qc.invalidateQueries({ queryKey: getListUsersQueryKey() });
           setInviteOpen(false);
           setInviteForm({ name: '', email: '', role: 'employee' });
         },
-        onError: () => toast.error('Failed to invite user'),
+        onError: () => toast.error('Failed to add user'),
       },
     );
   };
+
+  const toggleUserActive = (id: number, current: boolean) => {
+    updateUser.mutate({ id, data: { isActive: !current } }, {
+      onSuccess: () => {
+        toast.success(current ? 'User deactivated' : 'User activated');
+        qc.invalidateQueries({ queryKey: getListUsersQueryKey() });
+      },
+      onError: () => toast.error('Failed to update user'),
+    });
+  };
+
+  const handleDeleteUser = (id: number, name: string) => {
+    if (!window.confirm(`Remove ${name} from your team?`)) return;
+    deleteUser.mutate({ id }, {
+      onSuccess: () => {
+        toast.success(`${name} removed`);
+        qc.invalidateQueries({ queryKey: getListUsersQueryKey() });
+      },
+      onError: () => toast.error('Failed to remove user'),
+    });
+  };
+
+  // Live sell price preview in inventory pricing card
+  const sellPreview = (() => {
+    const cost = 10; // example cost
+    const m = parseFloat(markupPct);
+    if (isNaN(m)) return null;
+    return cost * (1 + m / 100);
+  })();
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto animate-in fade-in duration-500">
@@ -146,7 +195,7 @@ export default function SettingsPage() {
           {isSuperAdmin && <TabsTrigger value="plans"><Shield className="w-4 h-4 mr-2" />Plans</TabsTrigger>}
         </TabsList>
 
-        {/* General */}
+        {/* ── General ── */}
         <TabsContent value="general" className="space-y-6 focus-visible:outline-none">
           <Card>
             <CardHeader>
@@ -186,9 +235,67 @@ export default function SettingsPage() {
               <Button onClick={saveGeneral} disabled={updateSettings.isPending} variant="outline">Save Defaults</Button>
             </CardContent>
           </Card>
+
+          {/* Inventory Pricing */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><TrendingUp className="w-5 h-5" /> Inventory Pricing</CardTitle>
+              <CardDescription>
+                Set your standard markup on parts. The sell price shown to customers is calculated as:
+                Buy Price × (1 + Markup %).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Default Markup (%)</label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={markupPct}
+                    onChange={e => setMarkupPct(e.target.value)}
+                    placeholder="20"
+                  />
+                  <p className="text-xs text-muted-foreground">Applied when adding a new item unless overridden per-item.</p>
+                </div>
+
+                {/* Live preview */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Preview (on $10.00 cost)</label>
+                  <div className="flex items-center gap-2 rounded-lg border px-3 py-2 bg-muted/30 text-sm h-10">
+                    <span className="text-muted-foreground">$10.00</span>
+                    <ArrowRight className="w-3.5 h-3.5 text-muted-foreground" />
+                    <span className="font-semibold text-primary">
+                      {sellPreview != null ? `$${sellPreview.toFixed(2)}` : '—'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div>
+                  <p className="text-sm font-medium">Show buy price to technicians</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    When off, technicians only see the sell price — not what you paid for an item.
+                  </p>
+                </div>
+                <Switch
+                  checked={showCostToTech}
+                  onCheckedChange={v => setShowCostToTech(v)}
+                />
+              </div>
+
+              <Button onClick={saveInventoryPricing} disabled={updateSettings.isPending} variant="outline">
+                Save Pricing Settings
+              </Button>
+            </CardContent>
+          </Card>
         </TabsContent>
 
-        {/* Customer Fields */}
+        {/* ── Customer Fields ── */}
         <TabsContent value="customer-fields" className="space-y-6 focus-visible:outline-none">
           <Card>
             <CardHeader className="flex flex-row items-start justify-between pb-2">
@@ -204,14 +311,11 @@ export default function SettingsPage() {
               </Button>
             </CardHeader>
             <CardContent className="space-y-2">
-              {/* Legend */}
               <div className="flex items-center gap-6 text-xs text-muted-foreground py-2 border-b mb-3">
                 <div className="flex items-center gap-1.5"><Eye className="w-3 h-3" /> Visible on form</div>
                 <div className="flex items-center gap-1.5"><Star className="w-3 h-3" /> Required to submit</div>
                 <div className="flex items-center gap-1.5"><Badge variant="outline" className="text-[10px] px-1">Built-in</Badge> Cannot be deleted</div>
               </div>
-
-              {/* Built-in fields */}
               <div className="space-y-1">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-2 py-1">Core Fields (always active)</p>
                 {['name', 'email', 'phone'].map(key => (
@@ -220,13 +324,12 @@ export default function SettingsPage() {
                       <span className="font-medium text-sm capitalize">{key === 'name' ? 'Full Name' : key}</span>
                       <Badge variant="outline" className="ml-2 text-[10px] px-1">Built-in</Badge>
                     </div>
-                    <Switch checked disabled title="Always visible" />
-                    <Switch checked disabled title="Always required" />
+                    <Switch checked disabled />
+                    <Switch checked disabled />
                     <div className="w-8" />
                   </div>
                 ))}
               </div>
-
               <div className="space-y-1 pt-2">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-2 py-1">Configurable Fields</p>
                 {customerFields.map(field => (
@@ -242,38 +345,19 @@ export default function SettingsPage() {
                         <span className="text-xs text-muted-foreground capitalize">{field.type}</span>
                       </div>
                     </div>
-                    {/* Visible toggle */}
                     <div className="flex items-center gap-1.5 shrink-0">
                       {field.visible ? <Eye className="w-3.5 h-3.5 text-muted-foreground" /> : <EyeOff className="w-3.5 h-3.5 text-muted-foreground/40" />}
-                      <Switch
-                        checked={field.visible}
-                        onCheckedChange={() => toggleFieldProp(field.key, 'visible')}
-                        title="Toggle visibility"
-                      />
+                      <Switch checked={field.visible} onCheckedChange={() => toggleFieldProp(field.key, 'visible')} />
                     </div>
-                    {/* Required toggle */}
                     <div className="flex items-center gap-1.5 shrink-0">
                       <Star className={`w-3.5 h-3.5 ${field.required ? 'text-amber-500' : 'text-muted-foreground/40'}`} />
-                      <Switch
-                        checked={field.required}
-                        disabled={!field.visible}
-                        onCheckedChange={() => toggleFieldProp(field.key, 'required')}
-                        title="Toggle required"
-                      />
+                      <Switch checked={field.required} disabled={!field.visible} onCheckedChange={() => toggleFieldProp(field.key, 'required')} />
                     </div>
-                    {/* Delete (custom only) */}
                     {!field.isBuiltIn ? (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="w-8 h-8 text-muted-foreground hover:text-destructive"
-                        onClick={() => removeCustomField(field.key)}
-                      >
+                      <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-destructive" onClick={() => removeCustomField(field.key)}>
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
-                    ) : (
-                      <div className="w-8" />
-                    )}
+                    ) : <div className="w-8" />}
                   </div>
                 ))}
               </div>
@@ -322,11 +406,7 @@ export default function SettingsPage() {
                 {newField.type === 'select' && (
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium">Options <span className="text-destructive">*</span></label>
-                    <Input
-                      placeholder="Option 1, Option 2, Option 3"
-                      value={newOptions}
-                      onChange={e => setNewOptions(e.target.value)}
-                    />
+                    <Input placeholder="Option 1, Option 2, Option 3" value={newOptions} onChange={e => setNewOptions(e.target.value)} />
                     <p className="text-xs text-muted-foreground">Comma-separated list of dropdown options.</p>
                   </div>
                 )}
@@ -347,7 +427,7 @@ export default function SettingsPage() {
           </Sheet>
         </TabsContent>
 
-        {/* Integrations */}
+        {/* ── Integrations ── */}
         <TabsContent value="payments" className="space-y-6 focus-visible:outline-none">
           <Card>
             <CardHeader>
@@ -373,26 +453,42 @@ export default function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Accounting</CardTitle>
-              <CardDescription>Sync invoices and customers with QuickBooks.</CardDescription>
+              <CardDescription>Push invoices and customer data to QuickBooks automatically.</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
               <div className="flex items-center justify-between p-4 border rounded-lg">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-[#2CA01C]/10 rounded-xl flex items-center justify-center">
-                    <span className="text-[#2CA01C] font-bold text-xl">qb</span>
+                    <span className="text-[#2CA01C] font-bold text-xl">QB</span>
                   </div>
                   <div>
                     <h3 className="font-semibold text-[#2CA01C]">QuickBooks Online</h3>
-                    <p className="text-sm text-muted-foreground">Two-way sync for financials</p>
+                    <p className="text-sm text-muted-foreground">
+                      One-way push — this app sends to QuickBooks
+                    </p>
                   </div>
                 </div>
                 <Switch checked={settings?.quickbooksEnabled} onCheckedChange={v => updateSettings.mutate({ data: { quickbooksEnabled: v } })} />
               </div>
+
+              {settings?.quickbooksEnabled && (
+                <div className="rounded-lg bg-muted/40 border border-dashed p-4 text-sm space-y-2">
+                  <p className="font-medium">What gets pushed to QuickBooks:</p>
+                  <ul className="space-y-1 text-muted-foreground text-xs list-disc list-inside">
+                    <li>New and updated invoices (status, line items, totals)</li>
+                    <li>Customer names and contact info</li>
+                    <li>Payments marked as Paid</li>
+                  </ul>
+                  <p className="text-xs text-muted-foreground pt-1">
+                    Data flows one-way: changes made in QuickBooks do not sync back here.
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* Team */}
+        {/* ── Team ── */}
         <TabsContent value="users" className="focus-visible:outline-none">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -400,9 +496,11 @@ export default function SettingsPage() {
                 <CardTitle>Team Members</CardTitle>
                 <CardDescription>Manage access and roles for your team.</CardDescription>
               </div>
-              <Button size="sm" onClick={() => setInviteOpen(true)} className="gap-2">
-                <Plus className="w-4 h-4" /> Invite Member
-              </Button>
+              {isOwner && (
+                <Button size="sm" onClick={() => setInviteOpen(true)} className="gap-2">
+                  <Plus className="w-4 h-4" /> Add Member
+                </Button>
+              )}
             </CardHeader>
             <CardContent>
               <Table>
@@ -412,23 +510,48 @@ export default function SettingsPage() {
                     <TableHead>Email</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Status</TableHead>
+                    {isOwner && <TableHead className="w-[100px]">Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {(users ?? []).map(u => (
                     <TableRow key={u.id}>
                       <TableCell className="font-medium">{u.name}</TableCell>
-                      <TableCell className="text-muted-foreground">{u.email}</TableCell>
+                      <TableCell className="text-muted-foreground text-sm">{u.email}</TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="capitalize">{u.role.replace(/_/g, ' ')}</Badge>
                       </TableCell>
                       <TableCell>
                         {u.isActive !== false ? (
-                          <Badge className="bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 border-transparent">Active</Badge>
+                          <Badge className="bg-emerald-500/10 text-emerald-600 border-transparent">Active</Badge>
                         ) : (
                           <Badge variant="outline" className="text-muted-foreground">Inactive</Badge>
                         )}
                       </TableCell>
+                      {isOwner && (
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs px-2"
+                              onClick={() => toggleUserActive(u.id, u.isActive !== false)}
+                              disabled={updateUser.isPending}
+                            >
+                              {u.isActive !== false ? 'Deactivate' : 'Activate'}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                              onClick={() => handleDeleteUser(u.id, u.name)}
+                              disabled={deleteUser.isPending}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -440,7 +563,7 @@ export default function SettingsPage() {
           <Sheet open={inviteOpen} onOpenChange={setInviteOpen}>
             <SheetContent className="w-full sm:max-w-md">
               <SheetHeader className="pb-4">
-                <SheetTitle>Invite Team Member</SheetTitle>
+                <SheetTitle>Add Team Member</SheetTitle>
                 <SheetDescription>Add a new user to your team. They'll receive access immediately.</SheetDescription>
               </SheetHeader>
               <div className="space-y-4 pb-6">
@@ -468,7 +591,7 @@ export default function SettingsPage() {
                 <div className="flex gap-3 justify-end">
                   <Button variant="outline" onClick={() => setInviteOpen(false)}>Cancel</Button>
                   <Button onClick={handleInvite} disabled={createUser.isPending}>
-                    {createUser.isPending ? 'Inviting...' : 'Send Invite'}
+                    {createUser.isPending ? 'Adding...' : 'Add Member'}
                   </Button>
                 </div>
               </div>
@@ -476,7 +599,7 @@ export default function SettingsPage() {
           </Sheet>
         </TabsContent>
 
-        {/* Plans */}
+        {/* ── Plans (superadmin) ── */}
         {isSuperAdmin && (
           <TabsContent value="plans" className="focus-visible:outline-none">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

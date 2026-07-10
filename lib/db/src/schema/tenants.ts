@@ -12,6 +12,8 @@ export const tenantsTable = pgTable("tenants", {
   workdayCutoffTime: text("workday_cutoff_time").notNull().default("18:00"),
   overageMaterialBuffer: real("overage_material_buffer").notNull().default(10),
   taxRate: real("tax_rate").notNull().default(8.5),
+  defaultMarkupPct: real("default_markup_pct").notNull().default(20),
+  showCostPriceToTech: boolean("show_cost_price_to_tech").notNull().default(false),
   logoUrl: text("logo_url"),
   customFields: jsonb("custom_fields").default("[]"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

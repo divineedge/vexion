@@ -1637,8 +1637,15 @@ components:
           type: ["string", "null"]
         category:
           type: ["string", "null"]
+        costPrice:
+          type: ["number", "null"]
+          description: "What we pay for the item. Only returned for admin/manager roles (or when showCostPriceToTech is true)."
         unitPrice:
           type: number
+          description: "Sell price — what we charge customers."
+        markupPct:
+          type: number
+          description: "Markup percentage applied to cost price."
         markedUpPrice:
           type: number
         quantity:
@@ -1654,7 +1661,7 @@ components:
 
     InventoryItemInput:
       type: object
-      required: [name, sku, unitPrice, quantity]
+      required: [name, sku, costPrice, quantity]
       properties:
         name:
           type: string
@@ -1664,8 +1671,12 @@ components:
           type: string
         category:
           type: string
-        unitPrice:
+        costPrice:
           type: number
+          description: "What we pay for the item (buy price)."
+        markupPct:
+          type: number
+          description: "Override markup %. Defaults to tenant default if omitted."
         quantity:
           type: integer
         reorderPoint:
@@ -1682,7 +1693,9 @@ components:
           type: string
         category:
           type: string
-        unitPrice:
+        costPrice:
+          type: number
+        markupPct:
           type: number
         quantity:
           type: integer
@@ -2068,6 +2081,12 @@ components:
           type: boolean
         taxRate:
           type: number
+        defaultMarkupPct:
+          type: number
+          description: "Default markup percentage applied to inventory cost prices."
+        showCostPriceToTech:
+          type: boolean
+          description: "When true, technicians can see the cost/buy price of inventory items."
         planTier:
           type: string
           enum: [starter, professional, enterprise]
@@ -2093,6 +2112,10 @@ components:
           type: boolean
         taxRate:
           type: number
+        defaultMarkupPct:
+          type: number
+        showCostPriceToTech:
+          type: boolean
         customerFields:
           type: array
           items:

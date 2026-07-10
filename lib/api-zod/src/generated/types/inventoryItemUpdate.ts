@@ -10,7 +10,8 @@ export interface InventoryItemUpdate {
   name?: string;
   description?: string;
   category?: string;
-  unitPrice?: number;
+  costPrice?: number;
+  markupPct?: number;
   quantity?: number;
   reorderPoint?: number;
   unit?: string;

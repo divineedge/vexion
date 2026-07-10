@@ -11,7 +11,10 @@ export interface InventoryItemInput {
   sku: string;
   description?: string;
   category?: string;
-  unitPrice: number;
+  /** What we pay for the item (buy price). */
+  costPrice: number;
+  /** Override markup %. Defaults to tenant default if omitted. */
+  markupPct?: number;
   quantity: number;
   reorderPoint?: number;
   unit?: string;

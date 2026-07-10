@@ -1,22 +1,45 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Divine Edge OS - Field Service Management Platform API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication operations
+  - name: dashboard
+    description: Dashboard and summary data
+  - name: customers
+    description: Customer management
+  - name: properties
+    description: Property management
+  - name: jobs
+    description: Job/work order management
+  - name: inventory
+    description: Inventory and parts management
+  - name: invoices
+    description: Invoice management
+  - name: routines
+    description: Daily routines
+  - name: timeTracking
+    description: Time tracking
+  - name: blueprints
+    description: Blueprint canvas
+  - name: settings
+    description: Tenant settings
+  - name: plans
+    description: Subscription plan management
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +47,1105 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # AUTH
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Unauthorized
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout current user
+      responses:
+        "200":
+          description: Logged out
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current authenticated user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+
+  # DASHBOARD
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard summary metrics
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/recent-activity:
+    get:
+      operationId: getRecentActivity
+      tags: [dashboard]
+      summary: Get recent activity feed
+      responses:
+        "200":
+          description: Recent activity
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+
+  /dashboard/jobs-by-status:
+    get:
+      operationId: getJobsByStatus
+      tags: [dashboard]
+      summary: Get job counts grouped by status
+      responses:
+        "200":
+          description: Jobs by status
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StatusCount"
+
+  /dashboard/revenue-trend:
+    get:
+      operationId: getRevenueTrend
+      tags: [dashboard]
+      summary: Get revenue trend for last 30 days
+      responses:
+        "200":
+          description: Revenue trend
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RevenueTrendItem"
+
+  # CUSTOMERS
+  /customers:
+    get:
+      operationId: listCustomers
+      tags: [customers]
+      summary: List all customers
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Search query
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of customers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerListResponse"
+    post:
+      operationId: createCustomer
+      tags: [customers]
+      summary: Create a new customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerInput"
+      responses:
+        "201":
+          description: Customer created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+
+  /customers/{id}:
+    get:
+      operationId: getCustomer
+      tags: [customers]
+      summary: Get a customer by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Customer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateCustomer
+      tags: [customers]
+      summary: Update a customer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerUpdate"
+      responses:
+        "200":
+          description: Updated customer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+    delete:
+      operationId: deleteCustomer
+      tags: [customers]
+      summary: Delete a customer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # PROPERTIES
+  /properties:
+    get:
+      operationId: listProperties
+      tags: [properties]
+      summary: List all properties
+      parameters:
+        - name: customerId
+          in: query
+          schema:
+            type: integer
+        - name: q
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of properties
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Property"
+    post:
+      operationId: createProperty
+      tags: [properties]
+      summary: Create a new property
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PropertyInput"
+      responses:
+        "201":
+          description: Property created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Property"
+
+  /properties/{id}:
+    get:
+      operationId: getProperty
+      tags: [properties]
+      summary: Get a property by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Property
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Property"
+    patch:
+      operationId: updateProperty
+      tags: [properties]
+      summary: Update a property
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PropertyUpdate"
+      responses:
+        "200":
+          description: Updated property
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Property"
+    delete:
+      operationId: deleteProperty
+      tags: [properties]
+      summary: Delete a property
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /properties/{id}/geofence:
+    patch:
+      operationId: updateGeofencePin
+      tags: [properties]
+      summary: Update the geofence center pin for a property
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GeofencePinUpdate"
+      responses:
+        "200":
+          description: Updated property
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Property"
+
+  # JOBS (Schedule)
+  /jobs:
+    get:
+      operationId: listJobs
+      tags: [jobs]
+      summary: List all jobs
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: assigneeId
+          in: query
+          schema:
+            type: integer
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: customerId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Job"
+    post:
+      operationId: createJob
+      tags: [jobs]
+      summary: Create a new job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobInput"
+      responses:
+        "201":
+          description: Job created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+
+  /jobs/{id}:
+    get:
+      operationId: getJob
+      tags: [jobs]
+      summary: Get a job by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateJob
+      tags: [jobs]
+      summary: Update a job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobUpdate"
+      responses:
+        "200":
+          description: Updated job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+    delete:
+      operationId: deleteJob
+      tags: [jobs]
+      summary: Delete a job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /jobs/{id}/complete:
+    post:
+      operationId: completeJob
+      tags: [jobs]
+      summary: Mark a job as complete
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+
+  # INVENTORY
+  /inventory:
+    get:
+      operationId: listInventoryItems
+      tags: [inventory]
+      summary: List all inventory items
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: lowStock
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: List of inventory items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InventoryItem"
+    post:
+      operationId: createInventoryItem
+      tags: [inventory]
+      summary: Create a new inventory item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryItemInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryItem"
+
+  /inventory/{id}:
+    get:
+      operationId: getInventoryItem
+      tags: [inventory]
+      summary: Get an inventory item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Inventory item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryItem"
+    patch:
+      operationId: updateInventoryItem
+      tags: [inventory]
+      summary: Update an inventory item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryItemUpdate"
+      responses:
+        "200":
+          description: Updated item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryItem"
+    delete:
+      operationId: deleteInventoryItem
+      tags: [inventory]
+      summary: Delete an inventory item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /inventory/summary:
+    get:
+      operationId: getInventorySummary
+      tags: [inventory]
+      summary: Get inventory value summary and low stock counts
+      responses:
+        "200":
+          description: Inventory summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventorySummary"
+
+  # INVOICES
+  /invoices:
+    get:
+      operationId: listInvoices
+      tags: [invoices]
+      summary: List all invoices
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: customerId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of invoices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Invoice"
+    post:
+      operationId: createInvoice
+      tags: [invoices]
+      summary: Create a new invoice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvoiceInput"
+      responses:
+        "201":
+          description: Invoice created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+
+  /invoices/{id}:
+    get:
+      operationId: getInvoice
+      tags: [invoices]
+      summary: Get an invoice by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+    patch:
+      operationId: updateInvoice
+      tags: [invoices]
+      summary: Update an invoice
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvoiceUpdate"
+      responses:
+        "200":
+          description: Updated invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+
+  /invoices/from-job/{jobId}:
+    post:
+      operationId: createInvoiceFromJob
+      tags: [invoices]
+      summary: One-click create invoice from a completed job
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "201":
+          description: Invoice created from job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+
+  /invoices/financials-summary:
+    get:
+      operationId: getFinancialsSummary
+      tags: [invoices]
+      summary: Get revenue, outstanding, and overdue summary
+      responses:
+        "200":
+          description: Financials summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinancialsSummary"
+
+  # DAILY ROUTINES
+  /routines:
+    get:
+      operationId: listRoutines
+      tags: [routines]
+      summary: List all daily routines
+      responses:
+        "200":
+          description: List of routines
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Routine"
+    post:
+      operationId: createRoutine
+      tags: [routines]
+      summary: Create a daily routine
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoutineInput"
+      responses:
+        "201":
+          description: Routine created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Routine"
+
+  /routines/{id}:
+    patch:
+      operationId: updateRoutine
+      tags: [routines]
+      summary: Update a routine
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoutineUpdate"
+      responses:
+        "200":
+          description: Updated routine
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Routine"
+    delete:
+      operationId: deleteRoutine
+      tags: [routines]
+      summary: Delete a routine
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # TIME TRACKING
+  /time-tracking/master-clock:
+    get:
+      operationId: getMasterClock
+      tags: [timeTracking]
+      summary: Get current master clock state for logged-in user
+      responses:
+        "200":
+          description: Master clock state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterClockState"
+
+  /time-tracking/master-clock/start:
+    post:
+      operationId: startMasterClock
+      tags: [timeTracking]
+      summary: Start the master clock (clock in)
+      responses:
+        "200":
+          description: Master clock started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterClockState"
+
+  /time-tracking/master-clock/stop:
+    post:
+      operationId: stopMasterClock
+      tags: [timeTracking]
+      summary: Stop the master clock (clock out)
+      responses:
+        "200":
+          description: Master clock stopped
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterClockState"
+
+  /time-tracking/sub-timers:
+    get:
+      operationId: listSubTimers
+      tags: [timeTracking]
+      summary: List active sub-timers for logged-in user
+      responses:
+        "200":
+          description: Sub-timers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SubTimer"
+    post:
+      operationId: startSubTimer
+      tags: [timeTracking]
+      summary: Start a sub-timer for a job or routine
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubTimerInput"
+      responses:
+        "201":
+          description: Sub-timer started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubTimer"
+
+  /time-tracking/sub-timers/{id}/stop:
+    post:
+      operationId: stopSubTimer
+      tags: [timeTracking]
+      summary: Stop a specific sub-timer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Sub-timer stopped
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubTimer"
+
+  /time-tracking/entries:
+    get:
+      operationId: listTimeEntries
+      tags: [timeTracking]
+      summary: List time entries for the current user
+      parameters:
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Time entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TimeEntry"
+
+  # BLUEPRINTS
+  /blueprints:
+    get:
+      operationId: listBlueprints
+      tags: [blueprints]
+      summary: List all blueprints
+      responses:
+        "200":
+          description: List of blueprints
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Blueprint"
+    post:
+      operationId: createBlueprint
+      tags: [blueprints]
+      summary: Create a new blueprint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BlueprintInput"
+      responses:
+        "201":
+          description: Blueprint created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Blueprint"
+
+  /blueprints/{id}:
+    get:
+      operationId: getBlueprint
+      tags: [blueprints]
+      summary: Get a blueprint by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Blueprint
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Blueprint"
+    patch:
+      operationId: updateBlueprint
+      tags: [blueprints]
+      summary: Update a blueprint (save canvas state)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BlueprintUpdate"
+      responses:
+        "200":
+          description: Updated blueprint
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Blueprint"
+    delete:
+      operationId: deleteBlueprint
+      tags: [blueprints]
+      summary: Delete a blueprint
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /blueprints/{id}/estimate:
+    post:
+      operationId: calculateBlueprintEstimate
+      tags: [blueprints]
+      summary: Calculate parts list and price estimate from blueprint canvas
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Estimate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlueprintEstimate"
+
+  # SETTINGS
+  /settings:
+    get:
+      operationId: getTenantSettings
+      tags: [settings]
+      summary: Get tenant settings
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantSettings"
+    patch:
+      operationId: updateTenantSettings
+      tags: [settings]
+      summary: Update tenant settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TenantSettingsUpdate"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantSettings"
+
+  /settings/users:
+    get:
+      operationId: listUsers
+      tags: [settings]
+      summary: List all users in the tenant
+      responses:
+        "200":
+          description: Users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+    post:
+      operationId: createUser
+      tags: [settings]
+      summary: Invite a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserInput"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /settings/users/{id}:
+    patch:
+      operationId: updateUser
+      tags: [settings]
+      summary: Update a user (role, status)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdate"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+    delete:
+      operationId: deleteUser
+      tags: [settings]
+      summary: Remove a user from the tenant
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # PLANS (Super Admin)
+  /plans:
+    get:
+      operationId: listPlans
+      tags: [plans]
+      summary: List all subscription plans
+      responses:
+        "200":
+          description: Plans
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Plan"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +1156,933 @@ components:
       required:
         - status
 
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+
+        password:
+          type: string
+
+    AuthResponse:
+      type: object
+      required: [user, token]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        token:
+          type: string
+
+    User:
+      type: object
+      required: [id, email, name, role, tenantId]
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [super_admin, company_owner, office_manager, employee, technician]
+        tenantId:
+          type: integer
+        planTier:
+          type: ["string", "null"]
+        avatarUrl:
+          type: ["string", "null"]
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+
+    UserInput:
+      type: object
+      required: [email, name, role]
+      properties:
+        email:
+          type: string
+
+        name:
+          type: string
+        role:
+          type: string
+          enum: [company_owner, office_manager, employee, technician]
+        password:
+          type: string
+
+    UserUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        role:
+          type: string
+          enum: [company_owner, office_manager, employee, technician]
+        isActive:
+          type: boolean
+
+    DashboardSummary:
+      type: object
+      required: [totalCustomers, activeJobs, pendingInvoicesCount, pendingInvoicesTotal, completedJobsThisMonth, revenueThisMonth, techniciansClockedIn]
+      properties:
+        totalCustomers:
+          type: integer
+        activeJobs:
+          type: integer
+        pendingInvoicesCount:
+          type: integer
+        pendingInvoicesTotal:
+          type: number
+        completedJobsThisMonth:
+          type: integer
+        revenueThisMonth:
+          type: number
+        techniciansClockedIn:
+          type: integer
+
+    ActivityItem:
+      type: object
+      required: [id, type, message, createdAt]
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [job_created, job_completed, invoice_sent, customer_added, payment_received, routine_completed]
+        message:
+          type: string
+        entityId:
+          type: ["integer", "null"]
+        userAvatar:
+          type: ["string", "null"]
+        userName:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    StatusCount:
+      type: object
+      required: [status, count]
+      properties:
+        status:
+          type: string
+        count:
+          type: integer
+
+    RevenueTrendItem:
+      type: object
+      required: [date, revenue]
+      properties:
+        date:
+          type: string
+        revenue:
+          type: number
+
+    Customer:
+      type: object
+      required: [id, tenantId, name, email, phone, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        company:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        tags:
+          type: array
+          items:
+            type: string
+        propertyCount:
+          type: integer
+        totalSpend:
+          type: number
+        createdAt:
+          type: string
+
+    CustomerInput:
+      type: object
+      required: [name, email, phone]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        company:
+          type: string
+        notes:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    CustomerUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        company:
+          type: string
+        notes:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    CustomerListResponse:
+      type: object
+      required: [items, total, page, limit]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Customer"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    Property:
+      type: object
+      required: [id, tenantId, customerId, address, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        customerId:
+          type: integer
+        customerName:
+          type: ["string", "null"]
+        address:
+          type: string
+        city:
+          type: ["string", "null"]
+        state:
+          type: ["string", "null"]
+        zip:
+          type: ["string", "null"]
+        lat:
+          type: ["number", "null"]
+        lng:
+          type: ["number", "null"]
+        geofenceLat:
+          type: ["number", "null"]
+        geofenceLng:
+          type: ["number", "null"]
+        geofenceRadius:
+          type: integer
+        notes:
+          type: ["string", "null"]
+        type:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    PropertyInput:
+      type: object
+      required: [customerId, address]
+      properties:
+        customerId:
+          type: integer
+        address:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        zip:
+          type: string
+        lat:
+          type: number
+        lng:
+          type: number
+        notes:
+          type: string
+        type:
+          type: string
+
+    PropertyUpdate:
+      type: object
+      properties:
+        address:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        zip:
+          type: string
+        lat:
+          type: number
+        lng:
+          type: number
+        notes:
+          type: string
+        type:
+          type: string
+
+    GeofencePinUpdate:
+      type: object
+      required: [lat, lng]
+      properties:
+        lat:
+          type: number
+        lng:
+          type: number
+        radius:
+          type: integer
+
+    Job:
+      type: object
+      required: [id, tenantId, title, status, scheduledAt, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [scheduled, in_progress, completed, cancelled, on_hold]
+        priority:
+          type: string
+          enum: [low, normal, high, urgent]
+        customerId:
+          type: ["integer", "null"]
+        customerName:
+          type: ["string", "null"]
+        propertyId:
+          type: ["integer", "null"]
+        propertyAddress:
+          type: ["string", "null"]
+        assigneeId:
+          type: ["integer", "null"]
+        assigneeName:
+          type: ["string", "null"]
+        scheduledAt:
+          type: string
+        estimatedDuration:
+          type: ["integer", "null"]
+        completedAt:
+          type: ["string", "null"]
+        totalAmount:
+          type: number
+        invoiceId:
+          type: ["integer", "null"]
+        blueprintId:
+          type: ["integer", "null"]
+        lineItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/JobLineItem"
+        createdAt:
+          type: string
+
+    JobLineItem:
+      type: object
+      required: [id, name, quantity, unitPrice, total]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        inventoryItemId:
+          type: ["integer", "null"]
+        quantity:
+          type: number
+        unitPrice:
+          type: number
+        total:
+          type: number
+
+    JobInput:
+      type: object
+      required: [title, scheduledAt]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [scheduled, in_progress, completed, cancelled, on_hold]
+        priority:
+          type: string
+          enum: [low, normal, high, urgent]
+        customerId:
+          type: integer
+        propertyId:
+          type: integer
+        assigneeId:
+          type: integer
+        scheduledAt:
+          type: string
+        estimatedDuration:
+          type: integer
+        blueprintId:
+          type: integer
+
+    JobUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [scheduled, in_progress, completed, cancelled, on_hold]
+        priority:
+          type: string
+          enum: [low, normal, high, urgent]
+        assigneeId:
+          type: integer
+        scheduledAt:
+          type: string
+        estimatedDuration:
+          type: integer
+
+    InventoryItem:
+      type: object
+      required: [id, tenantId, name, sku, unitPrice, quantity, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        name:
+          type: string
+        sku:
+          type: string
+        description:
+          type: ["string", "null"]
+        category:
+          type: ["string", "null"]
+        unitPrice:
+          type: number
+        markedUpPrice:
+          type: number
+        quantity:
+          type: integer
+        reorderPoint:
+          type: integer
+        unit:
+          type: string
+        isLowStock:
+          type: boolean
+        createdAt:
+          type: string
+
+    InventoryItemInput:
+      type: object
+      required: [name, sku, unitPrice, quantity]
+      properties:
+        name:
+          type: string
+        sku:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        unitPrice:
+          type: number
+        quantity:
+          type: integer
+        reorderPoint:
+          type: integer
+        unit:
+          type: string
+
+    InventoryItemUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        unitPrice:
+          type: number
+        quantity:
+          type: integer
+        reorderPoint:
+          type: integer
+        unit:
+          type: string
+
+    InventorySummary:
+      type: object
+      required: [totalItems, totalValue, lowStockCount, categories]
+      properties:
+        totalItems:
+          type: integer
+        totalValue:
+          type: number
+        lowStockCount:
+          type: integer
+        categories:
+          type: array
+          items:
+            $ref: "#/components/schemas/CategoryCount"
+
+    CategoryCount:
+      type: object
+      required: [category, count]
+      properties:
+        category:
+          type: string
+        count:
+          type: integer
+
+    Invoice:
+      type: object
+      required: [id, tenantId, invoiceNumber, customerId, status, subtotal, tax, total, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        invoiceNumber:
+          type: string
+        customerId:
+          type: integer
+        customerName:
+          type: ["string", "null"]
+        jobId:
+          type: ["integer", "null"]
+        status:
+          type: string
+          enum: [draft, sent, paid, overdue, cancelled]
+        subtotal:
+          type: number
+        tax:
+          type: number
+        total:
+          type: number
+        dueDate:
+          type: ["string", "null"]
+        paidAt:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        lineItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/InvoiceLineItem"
+        stripePaymentUrl:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    InvoiceLineItem:
+      type: object
+      required: [id, description, quantity, unitPrice, total]
+      properties:
+        id:
+          type: integer
+        description:
+          type: string
+        quantity:
+          type: number
+        unitPrice:
+          type: number
+        total:
+          type: number
+
+    InvoiceInput:
+      type: object
+      required: [customerId]
+      properties:
+        customerId:
+          type: integer
+        jobId:
+          type: integer
+        notes:
+          type: string
+        dueDate:
+          type: string
+        lineItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/InvoiceLineItemInput"
+
+    InvoiceLineItemInput:
+      type: object
+      required: [description, quantity, unitPrice]
+      properties:
+        description:
+          type: string
+        quantity:
+          type: number
+        unitPrice:
+          type: number
+
+    InvoiceUpdate:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [draft, sent, paid, overdue, cancelled]
+        notes:
+          type: string
+        dueDate:
+          type: string
+
+    FinancialsSummary:
+      type: object
+      required: [totalRevenue, totalOutstanding, totalOverdue, paidThisMonth, averageInvoiceValue]
+      properties:
+        totalRevenue:
+          type: number
+        totalOutstanding:
+          type: number
+        totalOverdue:
+          type: number
+        paidThisMonth:
+          type: number
+        averageInvoiceValue:
+          type: number
+
+    Routine:
+      type: object
+      required: [id, tenantId, name, frequency, isActive, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        frequency:
+          type: string
+          enum: [daily, weekly, monthly, as_needed]
+        assigneeId:
+          type: ["integer", "null"]
+        assigneeName:
+          type: ["string", "null"]
+        isActive:
+          type: boolean
+        estimatedMinutes:
+          type: ["integer", "null"]
+        lastCompletedAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    RoutineInput:
+      type: object
+      required: [name, frequency]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        frequency:
+          type: string
+          enum: [daily, weekly, monthly, as_needed]
+        assigneeId:
+          type: integer
+        estimatedMinutes:
+          type: integer
+
+    RoutineUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        frequency:
+          type: string
+          enum: [daily, weekly, monthly, as_needed]
+        assigneeId:
+          type: integer
+        estimatedMinutes:
+          type: integer
+        isActive:
+          type: boolean
+
+    MasterClockState:
+      type: object
+      required: [userId, isClockedIn]
+      properties:
+        userId:
+          type: integer
+        isClockedIn:
+          type: boolean
+        clockedInAt:
+          type: ["string", "null"]
+        totalMinutesToday:
+          type: integer
+        entryId:
+          type: ["integer", "null"]
+
+    SubTimer:
+      type: object
+      required: [id, userId, label, type, startedAt, isActive]
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        label:
+          type: string
+        type:
+          type: string
+          enum: [job, routine, other]
+        jobId:
+          type: ["integer", "null"]
+        routineId:
+          type: ["integer", "null"]
+        startedAt:
+          type: string
+        stoppedAt:
+          type: ["string", "null"]
+        elapsedSeconds:
+          type: integer
+        isActive:
+          type: boolean
+
+    SubTimerInput:
+      type: object
+      required: [label, type]
+      properties:
+        label:
+          type: string
+        type:
+          type: string
+          enum: [job, routine, other]
+        jobId:
+          type: integer
+        routineId:
+          type: integer
+
+    TimeEntry:
+      type: object
+      required: [id, userId, clockedInAt, totalMinutes]
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        userName:
+          type: ["string", "null"]
+        clockedInAt:
+          type: string
+        clockedOutAt:
+          type: ["string", "null"]
+        totalMinutes:
+          type: integer
+
+    Blueprint:
+      type: object
+      required: [id, tenantId, name, mode, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        name:
+          type: string
+        mode:
+          type: string
+          enum: [irrigation, concrete, landscape, general]
+        jobId:
+          type: ["integer", "null"]
+        propertyId:
+          type: ["integer", "null"]
+        canvasData:
+          type: object
+          additionalProperties: true
+        overageBufferPercent:
+          type: number
+        totalEstimate:
+          type: ["number", "null"]
+        createdAt:
+          type: string
+
+    BlueprintInput:
+      type: object
+      required: [name, mode]
+      properties:
+        name:
+          type: string
+        mode:
+          type: string
+          enum: [irrigation, concrete, landscape, general]
+        jobId:
+          type: integer
+        propertyId:
+          type: integer
+        overageBufferPercent:
+          type: number
+
+    BlueprintUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        canvasData:
+          type: object
+          additionalProperties: true
+        overageBufferPercent:
+          type: number
+
+    BlueprintEstimate:
+      type: object
+      required: [parts, subtotal, overageAmount, total]
+      properties:
+        parts:
+          type: array
+          items:
+            $ref: "#/components/schemas/EstimatedPart"
+        subtotal:
+          type: number
+        overageAmount:
+          type: number
+        total:
+          type: number
+        measurements:
+          type: object
+          additionalProperties: true
+
+    EstimatedPart:
+      type: object
+      required: [inventoryItemId, name, quantity, unitPrice, total]
+      properties:
+        inventoryItemId:
+          type: integer
+        name:
+          type: string
+        quantity:
+          type: number
+        unitPrice:
+          type: number
+        total:
+          type: number
+
+    TenantSettings:
+      type: object
+      required: [id, tenantId]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        companyName:
+          type: string
+        logoUrl:
+          type: ["string", "null"]
+        timezone:
+          type: string
+        workdayCutoffTime:
+          type: string
+        overageMaterialBuffer:
+          type: number
+        stripeEnabled:
+          type: boolean
+        quickbooksEnabled:
+          type: boolean
+        taxRate:
+          type: number
+        planTier:
+          type: string
+          enum: [starter, professional, enterprise]
+        customFields:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomField"
+
+    TenantSettingsUpdate:
+      type: object
+      properties:
+        companyName:
+          type: string
+        timezone:
+          type: string
+        workdayCutoffTime:
+          type: string
+        overageMaterialBuffer:
+          type: number
+        stripeEnabled:
+          type: boolean
+        quickbooksEnabled:
+          type: boolean
+        taxRate:
+          type: number
+        customFields:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomField"
+
+    CustomField:
+      type: object
+      required: [id, label, entityType, fieldType, isEnabled]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        entityType:
+          type: string
+          enum: [customer, property]
+        fieldType:
+          type: string
+          enum: [text, number, boolean, date, select]
+        isEnabled:
+          type: boolean
+        options:
+          type: array
+          items:
+            type: string
+
+    Plan:
+      type: object
+      required: [id, name, tier, price, features]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        tier:
+          type: string
+          enum: [starter, professional, enterprise]
+        price:
+          type: number
+        features:
+          type: array
+          items:
+            type: string
+        maxUsers:
+          type: ["integer", "null"]
+        maxProperties:
+          type: ["integer", "null"]

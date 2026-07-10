@@ -1,0 +1,31 @@
+PROJECT NAME: Divine Edge OS
+PHASE 1 ARCHITECTURE: Commercial SaaS Multi-Tenant Platform with Universal Industry Blueprint Engine
+
+Act as a principal software architect. Build a highly modern, clean web application for field service businesses. The design system must mimic the aesthetic of Stripe or Linear: pristine white backgrounds, soft gray cards, sharp typography, deep blue accent highlights, rounded corners, and generous spacing. It must be highly responsive across desktop, tablet, and mobile browsers.
+
+Architect this as a strictly isolated multi-tenant platform using PostgreSQL, ensuring that different companies can register later as distinct users. Absolutely no company data can leak across tenants.
+
+Build out the following interconnected modules for Phase 1:
+
+1. SUPER ADMIN TIER & GATEWAY FLEXIBILITY:
+- Create a Super Admin framework where software plans/tiers can be managed to restrict or grant access to features based on subscription level.
+- Build a Payment Settings panel for tenants allowing individual toggle switches to activate Stripe, QuickBooks Payments, or both simultaneously.
+- Build a Dynamic Form Builder system in settings allowing tenants to toggle on/off or create custom fields for Customer and Property profiles.
+
+2. UNIVERSAL BLUEPRINT & DRAWING CANVAS:
+- Build an interactive map canvas tool supporting a multi-industry asset mapping engine (e.g., Irrigation/Landscape, Concrete/Hardscaping, etc.).
+- The canvas must feature interactive drawing controls allowing users to: (A) ADD new asset nodes/lines to the map, (B) MOVE or drag existing nodes, and (C) DELETE components entirely.
+- In Concrete mode, calculate linear perimeters for forms and square footage/volume for pour areas. In Irrigation mode, plot sprinkler head arrays and pipe layouts.
+- Convert all final mapped canvas assets directly into a raw parts list pulled from the point-of-sale inventory table. Apply a tenant-configured "Overage Material Buffer Percentage" safety cushion, calculate step-up or flat pricing rules, and display the final precise job price.
+
+3. AUTHENTICATION, ROLES, & TIME TRACKING:
+- Implement roles: Super Admin, Company Owner, Office Manager, Employee, and Technician. Technicians only see routes/tasks; Owners see full financial reporting.
+- Properties must support a separate manual "Geofence Center Pin" allowing users to drag and drop the marker to override inaccurate coordinates, dynamically re-centering the 100-meter virtual geofence.
+- Implement a two-tiered time tracking system: a continuous background "Master Clock" for overall paid workdays, and nested "Sub-Timers" for active jobs and daily routines (e.g., "Clean Truck"). Support a custom tenant cutoff time for automatic end-of-day clock outs.
+
+4. OPEN API INFRASTRUCTURE & INVOICING MVP:
+- Build an open webhook/API gateway blueprint capable of receiving external phone metadata to automatically generate office tasks.
+- A beautiful drag-and-drop operational calendar.
+- One-click transformation of completed job records (including marked-up inventory parts, material overages, and custom blueprint estimates) into pristine, downloadable client invoices compatible with Stripe and QuickBooks ledger states.
+
+Provide a modular navigation sidebar layout linking: Dashboard, Customers, Daily Routines, Schedule, Inventory, Financials, and Settings. Generate clean, modular code. Populate a mock login page with 3 test profiles (representing different subscription tiers) so I can immediately begin end-to-end user flow testing.

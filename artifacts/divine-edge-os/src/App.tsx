@@ -1,0 +1,99 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Toaster } from '@/components/ui/toaster';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { Route, Switch, Router as WouterRouter } from 'wouter';
+import { AuthProvider } from '@/contexts/AuthContext';
+import { AppLayout } from '@/components/layout/AppLayout';
+
+import LoginPage from '@/pages/login';
+import DashboardPage from '@/pages/dashboard';
+import CustomersPage from '@/pages/customers';
+import CustomerDetailPage from '@/pages/customer-detail';
+import PropertiesPage from '@/pages/properties';
+import PropertyDetailPage from '@/pages/property-detail';
+import SchedulePage from '@/pages/schedule';
+import InventoryPage from '@/pages/inventory';
+import FinancialsPage from '@/pages/financials';
+import DailyRoutinesPage from '@/pages/daily-routines';
+import TimeTrackingPage from '@/pages/time-tracking';
+import BlueprintsPage from '@/pages/blueprints';
+import BlueprintCanvasPage from '@/pages/blueprint-canvas';
+import SettingsPage from '@/pages/settings';
+
+import NotFound from '@/pages/not-found';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
+
+function Router() {
+  return (
+    <Switch>
+      <Route path="/login" component={LoginPage} />
+      
+      <Route path="/">
+        <AppLayout>
+          <Switch>
+            <Route path="/dashboard" component={DashboardPage} />
+            <Route path="/customers" component={CustomersPage} />
+            <Route path="/customers/:id" component={CustomerDetailPage} />
+            <Route path="/properties" component={PropertiesPage} />
+            <Route path="/properties/:id" component={PropertyDetailPage} />
+            <Route path="/schedule" component={SchedulePage} />
+            <Route path="/inventory" component={InventoryPage} />
+            <Route path="/financials" component={FinancialsPage} />
+            <Route path="/daily-routines" component={DailyRoutinesPage} />
+            <Route path="/time-tracking" component={TimeTrackingPage} />
+            <Route path="/blueprints" component={BlueprintsPage} />
+            <Route path="/blueprints/:id" component={BlueprintCanvasPage} />
+            <Route path="/settings" component={SettingsPage} />
+            <Route component={NotFound} />
+          </Switch>
+        </AppLayout>
+      </Route>
+      
+      <Route path="/:rest*">
+        <AppLayout>
+          <Switch>
+            <Route path="/dashboard" component={DashboardPage} />
+            <Route path="/customers" component={CustomersPage} />
+            <Route path="/customers/:id" component={CustomerDetailPage} />
+            <Route path="/properties" component={PropertiesPage} />
+            <Route path="/properties/:id" component={PropertyDetailPage} />
+            <Route path="/schedule" component={SchedulePage} />
+            <Route path="/inventory" component={InventoryPage} />
+            <Route path="/financials" component={FinancialsPage} />
+            <Route path="/daily-routines" component={DailyRoutinesPage} />
+            <Route path="/time-tracking" component={TimeTrackingPage} />
+            <Route path="/blueprints" component={BlueprintsPage} />
+            <Route path="/blueprints/:id" component={BlueprintCanvasPage} />
+            <Route path="/settings" component={SettingsPage} />
+            <Route component={NotFound} />
+          </Switch>
+        </AppLayout>
+      </Route>
+    </Switch>
+  );
+}
+
+function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <AuthProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+            <Router />
+          </WouterRouter>
+          <Toaster />
+        </AuthProvider>
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+}
+
+export default App;

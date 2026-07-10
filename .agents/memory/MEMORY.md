@@ -1,0 +1,2 @@
+- [Drizzle update typing](drizzle-update-typing.md) — use `Partial<typeof table.$inferInsert>` for update payloads, never `Record<string, unknown>` cast
+- [Orval email format](orval-email-format.md) — `format: email` in OpenAPI generates `zod.email()` (Zod v4), which breaks typecheck on Zod v3 workspace; strip email format from spec

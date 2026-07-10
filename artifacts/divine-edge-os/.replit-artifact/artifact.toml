@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "Divine Edge OS"
+version = "1.0.0"
+id = "artifacts/divine-edge-os"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24942
+
+[services.development]
+run = "pnpm --filter @workspace/divine-edge-os run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/divine-edge-os", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/divine-edge-os/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24942"
+BASE_PATH = "/"

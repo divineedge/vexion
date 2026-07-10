@@ -19,6 +19,7 @@ import marketingRouter from "./marketing";
 import p4pRouter from "./p4p";
 import servicesRouter from "./services";
 import chemicalsRouter from "./chemicals";
+import equipmentRouter from "./equipment";
 
 const router: IRouter = Router();
 
@@ -42,5 +43,6 @@ router.use(marketingRouter);
 router.use(p4pRouter);
 router.use(servicesRouter);
 router.use(chemicalsRouter);
+router.use(equipmentRouter);
 
 export default router;

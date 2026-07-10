@@ -73,6 +73,10 @@ export default function SettingsPage() {
   const [autoInvoiceFrequency, setAutoInvoiceFrequency] = useState<'off' | 'daily' | 'weekly' | 'monthly'>('off');
   const [p4pMasterPct, setP4pMasterPct] = useState('0');
 
+  // Equipment thresholds
+  const [equipRepairPct, setEquipRepairPct] = useState('50');
+  const [equipResalePct, setEquipResalePct] = useState('20');
+
   // Team
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: 'technician' });
@@ -99,6 +103,8 @@ export default function SettingsPage() {
       setDurationUnit((settings.durationUnit as 'minutes' | 'hours') ?? 'minutes');
       setAutoInvoiceFrequency((settings.autoInvoiceFrequency as 'off' | 'daily' | 'weekly' | 'monthly') ?? 'off');
       setP4pMasterPct(String((settings as any).p4pMasterPercentage ?? 0));
+      setEquipRepairPct(String((settings as any).equipmentRepairThresholdPct ?? 50));
+      setEquipResalePct(String((settings as any).equipmentResaleThresholdPct ?? 20));
       setCustomerFields(getActiveCustomerFields(settings));
     }
   }, [settings]);
@@ -129,6 +135,16 @@ export default function SettingsPage() {
       {
         onSuccess: () => { toast.success('Operational settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
         onError: () => toast.error('Failed to save settings'),
+      },
+    );
+  };
+
+  const saveEquipmentThresholds = () => {
+    updateSettings.mutate(
+      { data: { equipmentRepairThresholdPct: parseFloat(equipRepairPct) || 50, equipmentResaleThresholdPct: parseFloat(equipResalePct) || 20 } as Parameters<typeof updateSettings.mutate>[0]['data'] },
+      {
+        onSuccess: () => { toast.success('Equipment thresholds saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
+        onError: () => toast.error('Failed to save equipment thresholds'),
       },
     );
   };
@@ -759,6 +775,54 @@ export default function SettingsPage() {
                   Save Job Settings
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Equipment Sell Thresholds */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">Equipment Sell Thresholds</CardTitle>
+              <CardDescription>
+                Configure when the system should recommend selling a piece of equipment.
+                A sell badge appears when either condition is met.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Repair Cost Threshold (%)</label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number" min={0} max={200} step={5}
+                      className="w-24 text-right"
+                      value={equipRepairPct}
+                      onChange={e => setEquipRepairPct(e.target.value)}
+                    />
+                    <span className="text-sm text-muted-foreground">% of purchase price</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Flag when total repair cost exceeds this % of the original purchase price.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Resale Value Threshold (%)</label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number" min={0} max={100} step={5}
+                      className="w-24 text-right"
+                      value={equipResalePct}
+                      onChange={e => setEquipResalePct(e.target.value)}
+                    />
+                    <span className="text-sm text-muted-foreground">% of purchase price</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Flag when estimated resale value (age-depreciated) falls below this %.
+                  </p>
+                </div>
+              </div>
+              <Button onClick={saveEquipmentThresholds} disabled={updateSettings.isPending} variant="outline">
+                Save Equipment Thresholds
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>

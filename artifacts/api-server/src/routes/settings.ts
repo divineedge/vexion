@@ -27,6 +27,8 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     rolePermissions: rolePerms ?? {},
     planTier: tenant.planTier as "starter" | "professional" | "enterprise",
     customerFields: (cfJson?.customerFields as unknown[]) ?? [],
+    equipmentRepairThresholdPct: tenant.equipmentRepairThresholdPct ?? 50,
+    equipmentResaleThresholdPct: tenant.equipmentResaleThresholdPct ?? 20,
   };
 }
 
@@ -45,6 +47,7 @@ router.patch("/settings", async (req, res): Promise<void> => {
     defaultMarkupPct, showCostPriceToTech,
     durationUnit, autoInvoiceFrequency, p4pMasterPercentage,
     rolePermissions, customerFields,
+    equipmentRepairThresholdPct, equipmentResaleThresholdPct,
   } = req.body;
 
   const updates: Partial<typeof tenantsTable.$inferInsert> = {};
@@ -66,6 +69,8 @@ router.patch("/settings", async (req, res): Promise<void> => {
     const prev = (existing?.customFields as Record<string, unknown>) ?? {};
     updates.rolePermissions = rolePermissions;
   }
+  if (equipmentRepairThresholdPct !== undefined) updates.equipmentRepairThresholdPct = parseFloat(equipmentRepairThresholdPct);
+  if (equipmentResaleThresholdPct !== undefined) updates.equipmentResaleThresholdPct = parseFloat(equipmentResaleThresholdPct);
   if (customerFields !== undefined) {
     const [existing] = await db.select({ customFields: tenantsTable.customFields }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
     const prev = (existing?.customFields as Record<string, unknown>) ?? {};

@@ -1729,7 +1729,9 @@ export const GetTenantSettingsResponse = zod.object({
   "visible": zod.boolean(),
   "required": zod.boolean(),
   "isBuiltIn": zod.boolean()
-})).optional()
+})).optional(),
+  "equipmentRepairThresholdPct": zod.number().optional().describe('Sell recommendation triggers when total repair cost exceeds this % of purchase price'),
+  "equipmentResaleThresholdPct": zod.number().optional().describe('Sell recommendation triggers when estimated resale value falls below this % of purchase price')
 })
 
 
@@ -1757,7 +1759,9 @@ export const UpdateTenantSettingsBody = zod.object({
   "visible": zod.boolean(),
   "required": zod.boolean(),
   "isBuiltIn": zod.boolean()
-})).optional()
+})).optional(),
+  "equipmentRepairThresholdPct": zod.number().optional(),
+  "equipmentResaleThresholdPct": zod.number().optional()
 })
 
 export const UpdateTenantSettingsResponse = zod.object({
@@ -1785,7 +1789,9 @@ export const UpdateTenantSettingsResponse = zod.object({
   "visible": zod.boolean(),
   "required": zod.boolean(),
   "isBuiltIn": zod.boolean()
-})).optional()
+})).optional(),
+  "equipmentRepairThresholdPct": zod.number().optional().describe('Sell recommendation triggers when total repair cost exceeds this % of purchase price'),
+  "equipmentResaleThresholdPct": zod.number().optional().describe('Sell recommendation triggers when estimated resale value falls below this % of purchase price')
 })
 
 
@@ -2247,5 +2253,283 @@ export const ListPlansResponseItem = zod.object({
   "maxProperties": zod.number().nullish()
 })
 export const ListPlansResponse = zod.array(ListPlansResponseItem)
+
+
+/**
+ * @summary List all equipment
+ */
+export const ListEquipmentResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "type": zod.string(),
+  "purchaseDate": zod.string().nullish(),
+  "purchasePrice": zod.number(),
+  "expectedLifespanYears": zod.number().nullish(),
+  "expectedLifespanHours": zod.number().nullish(),
+  "currentHours": zod.number(),
+  "currentMiles": zod.number().nullish(),
+  "totalRepairCost": zod.number(),
+  "totalFuelCost": zod.number(),
+  "isActive": zod.boolean(),
+  "notes": zod.string().nullish(),
+  "costPerHour": zod.number().nullish(),
+  "estimatedResaleValue": zod.number().nullish(),
+  "sellRecommended": zod.boolean().optional(),
+  "sellReason": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListEquipmentResponse = zod.array(ListEquipmentResponseItem)
+
+
+/**
+ * @summary Create equipment (admin/office only)
+ */
+export const CreateEquipmentBody = zod.object({
+  "name": zod.string(),
+  "type": zod.string().optional(),
+  "purchaseDate": zod.string().optional(),
+  "purchasePrice": zod.number().optional(),
+  "expectedLifespanYears": zod.number().optional(),
+  "expectedLifespanHours": zod.number().optional(),
+  "currentHours": zod.number().optional(),
+  "currentMiles": zod.number().optional(),
+  "isActive": zod.boolean().optional(),
+  "notes": zod.string().optional()
+})
+
+export const CreateEquipmentResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "type": zod.string(),
+  "purchaseDate": zod.string().nullish(),
+  "purchasePrice": zod.number(),
+  "expectedLifespanYears": zod.number().nullish(),
+  "expectedLifespanHours": zod.number().nullish(),
+  "currentHours": zod.number(),
+  "currentMiles": zod.number().nullish(),
+  "totalRepairCost": zod.number(),
+  "totalFuelCost": zod.number(),
+  "isActive": zod.boolean(),
+  "notes": zod.string().nullish(),
+  "costPerHour": zod.number().nullish(),
+  "estimatedResaleValue": zod.number().nullish(),
+  "sellRecommended": zod.boolean().optional(),
+  "sellReason": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Get equipment by id
+ */
+export const GetEquipmentParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetEquipmentResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "type": zod.string(),
+  "purchaseDate": zod.string().nullish(),
+  "purchasePrice": zod.number(),
+  "expectedLifespanYears": zod.number().nullish(),
+  "expectedLifespanHours": zod.number().nullish(),
+  "currentHours": zod.number(),
+  "currentMiles": zod.number().nullish(),
+  "totalRepairCost": zod.number(),
+  "totalFuelCost": zod.number(),
+  "isActive": zod.boolean(),
+  "notes": zod.string().nullish(),
+  "costPerHour": zod.number().nullish(),
+  "estimatedResaleValue": zod.number().nullish(),
+  "sellRecommended": zod.boolean().optional(),
+  "sellReason": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Update equipment (admin/office only)
+ */
+export const UpdateEquipmentParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateEquipmentBody = zod.object({
+  "name": zod.string(),
+  "type": zod.string().optional(),
+  "purchaseDate": zod.string().optional(),
+  "purchasePrice": zod.number().optional(),
+  "expectedLifespanYears": zod.number().optional(),
+  "expectedLifespanHours": zod.number().optional(),
+  "currentHours": zod.number().optional(),
+  "currentMiles": zod.number().optional(),
+  "isActive": zod.boolean().optional(),
+  "notes": zod.string().optional()
+})
+
+export const UpdateEquipmentResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "type": zod.string(),
+  "purchaseDate": zod.string().nullish(),
+  "purchasePrice": zod.number(),
+  "expectedLifespanYears": zod.number().nullish(),
+  "expectedLifespanHours": zod.number().nullish(),
+  "currentHours": zod.number(),
+  "currentMiles": zod.number().nullish(),
+  "totalRepairCost": zod.number(),
+  "totalFuelCost": zod.number(),
+  "isActive": zod.boolean(),
+  "notes": zod.string().nullish(),
+  "costPerHour": zod.number().nullish(),
+  "estimatedResaleValue": zod.number().nullish(),
+  "sellRecommended": zod.boolean().optional(),
+  "sellReason": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Delete equipment (admin/office only)
+ */
+export const DeleteEquipmentParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteEquipmentResponse = zod.void()
+
+
+/**
+ * @summary List maintenance records for an equipment item
+ */
+export const ListEquipmentMaintenanceParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListEquipmentMaintenanceResponseItem = zod.object({
+  "id": zod.number(),
+  "equipmentId": zod.number(),
+  "tenantId": zod.number(),
+  "date": zod.string(),
+  "description": zod.string(),
+  "cost": zod.number(),
+  "vendor": zod.string().nullish(),
+  "nextServiceDueDate": zod.string().nullish(),
+  "nextServiceDueHours": zod.number().nullish(),
+  "nextServiceDueMiles": zod.number().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListEquipmentMaintenanceResponse = zod.array(ListEquipmentMaintenanceResponseItem)
+
+
+/**
+ * @summary Log a maintenance/repair event (admin/office only)
+ */
+export const CreateEquipmentMaintenanceParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CreateEquipmentMaintenanceBody = zod.object({
+  "date": zod.string(),
+  "description": zod.string(),
+  "cost": zod.number().optional(),
+  "vendor": zod.string().optional(),
+  "nextServiceDueDate": zod.string().optional(),
+  "nextServiceDueHours": zod.number().optional(),
+  "nextServiceDueMiles": zod.number().optional()
+})
+
+export const CreateEquipmentMaintenanceResponse = zod.object({
+  "id": zod.number(),
+  "equipmentId": zod.number(),
+  "tenantId": zod.number(),
+  "date": zod.string(),
+  "description": zod.string(),
+  "cost": zod.number(),
+  "vendor": zod.string().nullish(),
+  "nextServiceDueDate": zod.string().nullish(),
+  "nextServiceDueHours": zod.number().nullish(),
+  "nextServiceDueMiles": zod.number().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a maintenance record (admin/office only)
+ */
+export const DeleteEquipmentMaintenanceParams = zod.object({
+  "equipmentId": zod.coerce.number(),
+  "id": zod.coerce.number()
+})
+
+export const DeleteEquipmentMaintenanceResponse = zod.void()
+
+
+/**
+ * @summary List fuel logs for an equipment item
+ */
+export const ListEquipmentFuelLogsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListEquipmentFuelLogsResponseItem = zod.object({
+  "id": zod.number(),
+  "equipmentId": zod.number(),
+  "tenantId": zod.number(),
+  "date": zod.string(),
+  "gallons": zod.number(),
+  "cost": zod.number(),
+  "odometerReading": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+export const ListEquipmentFuelLogsResponse = zod.array(ListEquipmentFuelLogsResponseItem)
+
+
+/**
+ * @summary Log a fuel fill (all roles)
+ */
+export const CreateEquipmentFuelLogParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CreateEquipmentFuelLogBody = zod.object({
+  "date": zod.string(),
+  "gallons": zod.number(),
+  "cost": zod.number().optional(),
+  "odometerReading": zod.number().optional()
+})
+
+export const CreateEquipmentFuelLogResponse = zod.object({
+  "id": zod.number(),
+  "equipmentId": zod.number(),
+  "tenantId": zod.number(),
+  "date": zod.string(),
+  "gallons": zod.number(),
+  "cost": zod.number(),
+  "odometerReading": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a fuel log (admin/office only)
+ */
+export const DeleteEquipmentFuelLogParams = zod.object({
+  "equipmentId": zod.coerce.number(),
+  "id": zod.coerce.number()
+})
+
+export const DeleteEquipmentFuelLogResponse = zod.void()
 
 

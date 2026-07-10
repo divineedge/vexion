@@ -43,6 +43,8 @@ tags:
     description: Marketing campaign ROAS tracking
   - name: chemicals
     description: Chemical products, mixtures, and application records
+  - name: equipment
+    description: Equipment management, maintenance logs, and fuel tracking
 
 paths:
   /healthz:
@@ -1622,6 +1624,224 @@ paths:
                 items:
                   $ref: "#/components/schemas/Plan"
 
+  # EQUIPMENT
+  /equipment:
+    get:
+      operationId: listEquipment
+      tags: [equipment]
+      summary: List all equipment
+      responses:
+        "200":
+          description: Equipment list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Equipment"
+    post:
+      operationId: createEquipment
+      tags: [equipment]
+      summary: Create equipment (admin/office only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EquipmentInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Equipment"
+
+  /equipment/{id}:
+    get:
+      operationId: getEquipment
+      tags: [equipment]
+      summary: Get equipment by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Equipment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Equipment"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateEquipment
+      tags: [equipment]
+      summary: Update equipment (admin/office only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EquipmentInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Equipment"
+    delete:
+      operationId: deleteEquipment
+      tags: [equipment]
+      summary: Delete equipment (admin/office only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /equipment/{id}/maintenance:
+    get:
+      operationId: listEquipmentMaintenance
+      tags: [equipment]
+      summary: List maintenance records for an equipment item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Maintenance records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EquipmentMaintenance"
+    post:
+      operationId: createEquipmentMaintenance
+      tags: [equipment]
+      summary: Log a maintenance/repair event (admin/office only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EquipmentMaintenanceInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EquipmentMaintenance"
+
+  /equipment/{equipmentId}/maintenance/{id}:
+    delete:
+      operationId: deleteEquipmentMaintenance
+      tags: [equipment]
+      summary: Delete a maintenance record (admin/office only)
+      parameters:
+        - name: equipmentId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /equipment/{id}/fuel-logs:
+    get:
+      operationId: listEquipmentFuelLogs
+      tags: [equipment]
+      summary: List fuel logs for an equipment item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Fuel logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EquipmentFuelLog"
+    post:
+      operationId: createEquipmentFuelLog
+      tags: [equipment]
+      summary: Log a fuel fill (all roles)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EquipmentFuelLogInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EquipmentFuelLog"
+
+  /equipment/{equipmentId}/fuel-logs/{id}:
+    delete:
+      operationId: deleteEquipmentFuelLog
+      tags: [equipment]
+      summary: Delete a fuel log (admin/office only)
+      parameters:
+        - name: equipmentId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
 components:
   schemas:
     HealthStatus:
@@ -2697,6 +2917,12 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CustomerFieldConfig"
+        equipmentRepairThresholdPct:
+          type: number
+          description: "Sell recommendation triggers when total repair cost exceeds this % of purchase price"
+        equipmentResaleThresholdPct:
+          type: number
+          description: "Sell recommendation triggers when estimated resale value falls below this % of purchase price"
 
     TenantSettingsUpdate:
       type: object
@@ -2735,6 +2961,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CustomerFieldConfig"
+        equipmentRepairThresholdPct:
+          type: number
+        equipmentResaleThresholdPct:
+          type: number
 
     CustomerFieldConfig:
       type: object
@@ -3039,3 +3269,155 @@ components:
           type: string
         notes:
           type: string
+
+    Equipment:
+      type: object
+      required: [id, tenantId, name, type, purchasePrice, currentHours, totalRepairCost, totalFuelCost, isActive, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+        purchaseDate:
+          type: ["string", "null"]
+        purchasePrice:
+          type: number
+        expectedLifespanYears:
+          type: ["number", "null"]
+        expectedLifespanHours:
+          type: ["number", "null"]
+        currentHours:
+          type: number
+        currentMiles:
+          type: ["number", "null"]
+        totalRepairCost:
+          type: number
+        totalFuelCost:
+          type: number
+        isActive:
+          type: boolean
+        notes:
+          type: ["string", "null"]
+        costPerHour:
+          type: ["number", "null"]
+        estimatedResaleValue:
+          type: ["number", "null"]
+        sellRecommended:
+          type: boolean
+        sellReason:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    EquipmentInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        purchaseDate:
+          type: string
+        purchasePrice:
+          type: number
+        expectedLifespanYears:
+          type: number
+        expectedLifespanHours:
+          type: number
+        currentHours:
+          type: number
+        currentMiles:
+          type: number
+        isActive:
+          type: boolean
+        notes:
+          type: string
+
+    EquipmentMaintenance:
+      type: object
+      required: [id, equipmentId, tenantId, date, description, cost, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        equipmentId:
+          type: integer
+        tenantId:
+          type: integer
+        date:
+          type: string
+        description:
+          type: string
+        cost:
+          type: number
+        vendor:
+          type: ["string", "null"]
+        nextServiceDueDate:
+          type: ["string", "null"]
+        nextServiceDueHours:
+          type: ["number", "null"]
+        nextServiceDueMiles:
+          type: ["number", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    EquipmentMaintenanceInput:
+      type: object
+      required: [date, description]
+      properties:
+        date:
+          type: string
+        description:
+          type: string
+        cost:
+          type: number
+        vendor:
+          type: string
+        nextServiceDueDate:
+          type: string
+        nextServiceDueHours:
+          type: number
+        nextServiceDueMiles:
+          type: number
+
+    EquipmentFuelLog:
+      type: object
+      required: [id, equipmentId, tenantId, date, gallons, cost, createdAt]
+      properties:
+        id:
+          type: integer
+        equipmentId:
+          type: integer
+        tenantId:
+          type: integer
+        date:
+          type: string
+        gallons:
+          type: number
+        cost:
+          type: number
+        odometerReading:
+          type: ["number", "null"]
+        createdAt:
+          type: string
+
+    EquipmentFuelLogInput:
+      type: object
+      required: [date, gallons]
+      properties:
+        date:
+          type: string
+        gallons:
+          type: number
+        cost:
+          type: number
+        odometerReading:
+          type: number

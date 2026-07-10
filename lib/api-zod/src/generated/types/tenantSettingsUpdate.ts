@@ -24,4 +24,6 @@ export interface TenantSettingsUpdate {
   autoInvoiceFrequency?: TenantSettingsUpdateAutoInvoiceFrequency;
   rolePermissions?: TenantSettingsUpdateRolePermissions;
   customerFields?: CustomerFieldConfig[];
+  equipmentRepairThresholdPct?: number;
+  equipmentResaleThresholdPct?: number;
 }

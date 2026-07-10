@@ -24,6 +24,10 @@ export const tenantsTable = pgTable("tenants", {
   rolePermissions: jsonb("role_permissions").default("{}"),
   logoUrl: text("logo_url"),
   customFields: jsonb("custom_fields").default("[]"),
+  /** Equipment sell recommendation: flag when total repair cost exceeds this % of purchase price (default 50) */
+  equipmentRepairThresholdPct: real("equipment_repair_threshold_pct").notNull().default(50),
+  /** Equipment sell recommendation: flag when estimated resale value falls below this % of purchase price (default 20) */
+  equipmentResaleThresholdPct: real("equipment_resale_threshold_pct").notNull().default(20),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

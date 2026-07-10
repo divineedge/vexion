@@ -2,7 +2,7 @@ import React from 'react';
 import { Link, useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Users, Building, CalendarDays, PackageSearch, DollarSign, CheckSquare, Clock, DraftingCompass, Settings, LogOut, UserCheck, Gauge, PhoneCall, Megaphone, Banknote, Briefcase, FlaskConical } from 'lucide-react';
+import { LayoutDashboard, Users, Building, CalendarDays, PackageSearch, DollarSign, CheckSquare, Clock, DraftingCompass, Settings, LogOut, UserCheck, Gauge, PhoneCall, Megaphone, Banknote, Briefcase, FlaskConical, Wrench } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 
@@ -34,6 +34,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { name: 'Callbacks', href: '/callbacks', icon: PhoneCall, hidden: isTechnician },
     { name: 'Marketing', href: '/marketing', icon: Megaphone, hidden: isTechnician },
     { name: 'Chemicals', href: '/chemicals', icon: FlaskConical, hidden: isTechnician },
+    { name: 'Equipment', href: '/equipment', icon: Wrench, hidden: isTechnician },
     { name: 'Blueprints', href: '/blueprints', icon: DraftingCompass, hidden: isTechnician },
     { name: 'Settings', href: '/settings', icon: Settings, hidden: isTechnician },
   ];

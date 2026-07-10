@@ -895,6 +895,10 @@ export interface TenantSettings {
   rolePermissions?: TenantSettingsRolePermissions;
   planTier?: TenantSettingsPlanTier;
   customerFields?: CustomerFieldConfig[];
+  /** Sell recommendation triggers when total repair cost exceeds this % of purchase price */
+  equipmentRepairThresholdPct?: number;
+  /** Sell recommendation triggers when estimated resale value falls below this % of purchase price */
+  equipmentResaleThresholdPct?: number;
 }
 
 export type TenantSettingsUpdateDurationUnit = typeof TenantSettingsUpdateDurationUnit[keyof typeof TenantSettingsUpdateDurationUnit];
@@ -931,6 +935,8 @@ export interface TenantSettingsUpdate {
   autoInvoiceFrequency?: TenantSettingsUpdateAutoInvoiceFrequency;
   rolePermissions?: TenantSettingsUpdateRolePermissions;
   customerFields?: CustomerFieldConfig[];
+  equipmentRepairThresholdPct?: number;
+  equipmentResaleThresholdPct?: number;
 }
 
 export interface PropertyOwnershipRecord {
@@ -1127,6 +1133,98 @@ export interface ChemicalApplicationInput {
   applicatorName?: string;
   applicatorLicenseNumber?: string;
   notes?: string;
+}
+
+export interface Equipment {
+  id: number;
+  tenantId: number;
+  name: string;
+  type: string;
+  /** @nullable */
+  purchaseDate?: string | null;
+  purchasePrice: number;
+  /** @nullable */
+  expectedLifespanYears?: number | null;
+  /** @nullable */
+  expectedLifespanHours?: number | null;
+  currentHours: number;
+  /** @nullable */
+  currentMiles?: number | null;
+  totalRepairCost: number;
+  totalFuelCost: number;
+  isActive: boolean;
+  /** @nullable */
+  notes?: string | null;
+  /** @nullable */
+  costPerHour?: number | null;
+  /** @nullable */
+  estimatedResaleValue?: number | null;
+  sellRecommended?: boolean;
+  /** @nullable */
+  sellReason?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EquipmentInput {
+  name: string;
+  type?: string;
+  purchaseDate?: string;
+  purchasePrice?: number;
+  expectedLifespanYears?: number;
+  expectedLifespanHours?: number;
+  currentHours?: number;
+  currentMiles?: number;
+  isActive?: boolean;
+  notes?: string;
+}
+
+export interface EquipmentMaintenance {
+  id: number;
+  equipmentId: number;
+  tenantId: number;
+  date: string;
+  description: string;
+  cost: number;
+  /** @nullable */
+  vendor?: string | null;
+  /** @nullable */
+  nextServiceDueDate?: string | null;
+  /** @nullable */
+  nextServiceDueHours?: number | null;
+  /** @nullable */
+  nextServiceDueMiles?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EquipmentMaintenanceInput {
+  date: string;
+  description: string;
+  cost?: number;
+  vendor?: string;
+  nextServiceDueDate?: string;
+  nextServiceDueHours?: number;
+  nextServiceDueMiles?: number;
+}
+
+export interface EquipmentFuelLog {
+  id: number;
+  equipmentId: number;
+  tenantId: number;
+  date: string;
+  gallons: number;
+  cost: number;
+  /** @nullable */
+  odometerReading?: number | null;
+  createdAt: string;
+}
+
+export interface EquipmentFuelLogInput {
+  date: string;
+  gallons: number;
+  cost?: number;
+  odometerReading?: number;
 }
 
 export type ListCustomersParams = {

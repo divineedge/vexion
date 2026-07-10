@@ -35,4 +35,8 @@ export interface TenantSettings {
   rolePermissions?: TenantSettingsRolePermissions;
   planTier?: TenantSettingsPlanTier;
   customerFields?: CustomerFieldConfig[];
+  /** Sell recommendation triggers when total repair cost exceeds this % of purchase price */
+  equipmentRepairThresholdPct?: number;
+  /** Sell recommendation triggers when estimated resale value falls below this % of purchase price */
+  equipmentResaleThresholdPct?: number;
 }

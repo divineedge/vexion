@@ -1,0 +1,23 @@
+kind = "mobile"
+previewPath = "/field-app/"
+title = "Field App"
+version = "1.0.0"
+id = "artifacts/field-app"
+router = "expo-domain"
+
+[[services]]
+name = "expo"
+ensurePreviewReachable = "/status"
+paths = [ "/field-app/" ]
+localPort = 24635
+
+[services.development]
+run = "pnpm --filter @workspace/field-app run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/field-app", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/field-app", "run", "serve" ]
+
+[services.env]
+PORT = "24635"
+BASE_PATH = "/field-app/"

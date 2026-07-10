@@ -15,6 +15,8 @@ export const blueprintsTable = pgTable("blueprints", {
   canvasData: jsonb("canvas_data").default("{}"),
   overageBufferPercent: real("overage_buffer_percent").notNull().default(10),
   totalEstimate: real("total_estimate"),
+  /** Service-level P4P payout %. null = use tenant p4pMasterPercentage. */
+  p4pPercentage: real("p4p_percentage"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

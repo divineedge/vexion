@@ -58,6 +58,7 @@ export default function SettingsPage() {
   // Operational
   const [durationUnit, setDurationUnit] = useState<'minutes' | 'hours'>('minutes');
   const [autoInvoiceFrequency, setAutoInvoiceFrequency] = useState<'off' | 'daily' | 'weekly' | 'monthly'>('off');
+  const [p4pMasterPct, setP4pMasterPct] = useState('0');
 
   // Team
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -73,6 +74,7 @@ export default function SettingsPage() {
       setShowCostToTech(settings.showCostPriceToTech ?? false);
       setDurationUnit((settings.durationUnit as 'minutes' | 'hours') ?? 'minutes');
       setAutoInvoiceFrequency((settings.autoInvoiceFrequency as 'off' | 'daily' | 'weekly' | 'monthly') ?? 'off');
+      setP4pMasterPct(String((settings as any).p4pMasterPercentage ?? 0));
       setCustomerFields(getActiveCustomerFields(settings));
     }
   }, [settings]);
@@ -99,7 +101,7 @@ export default function SettingsPage() {
 
   const saveOperational = () => {
     updateSettings.mutate(
-      { data: { durationUnit, autoInvoiceFrequency } as Parameters<typeof updateSettings.mutate>[0]['data'] },
+      { data: { durationUnit, autoInvoiceFrequency, p4pMasterPercentage: parseFloat(p4pMasterPct) || 0 } as Parameters<typeof updateSettings.mutate>[0]['data'] },
       {
         onSuccess: () => { toast.success('Operational settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
         onError: () => toast.error('Failed to save settings'),
@@ -697,6 +699,33 @@ export default function SettingsPage() {
                       <SelectItem value="monthly">Monthly</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+              </div>
+
+              {/* P4P Master Percentage */}
+              <div className="col-span-2 space-y-2 pt-2 border-t">
+                <label className="text-sm font-medium flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-primary" />
+                  Global P4P Master Payout Percentage
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Default Pay-for-Performance rate applied to all services. Individual service blueprints can override this with their own percentage.
+                  Set to 0 to disable P4P calculations.
+                </p>
+                <div className="flex items-center gap-2 w-fit">
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.5}
+                    className="w-24 text-right"
+                    value={p4pMasterPct}
+                    onChange={e => setP4pMasterPct(e.target.value)}
+                  />
+                  <span className="text-sm font-medium text-muted-foreground">%</span>
+                  <span className="text-xs text-muted-foreground ml-2">
+                    {parseFloat(p4pMasterPct) > 0 ? `= ${parseFloat(p4pMasterPct)} per $100 of net labor revenue` : 'P4P disabled'}
+                  </span>
                 </div>
               </div>
 

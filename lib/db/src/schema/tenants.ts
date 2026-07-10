@@ -18,6 +18,8 @@ export const tenantsTable = pgTable("tenants", {
   durationUnit: text("duration_unit").notNull().default("minutes"),
   /** auto-invoicing: 'off' | 'daily' | 'weekly' | 'monthly' */
   autoInvoiceFrequency: text("auto_invoice_frequency").notNull().default("off"),
+  /** Global master P4P payout percentage (0–100). Used when a service has no override. */
+  p4pMasterPercentage: real("p4p_master_percentage").notNull().default(0),
   /** JSONB map of role → permission booleans, e.g. { crew_manager: { canCreateJobs: true, ... } } */
   rolePermissions: jsonb("role_permissions").default("{}"),
   logoUrl: text("logo_url"),

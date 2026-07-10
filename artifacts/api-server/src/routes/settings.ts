@@ -23,6 +23,7 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     showCostPriceToTech: tenant.showCostPriceToTech,
     durationUnit: (tenant.durationUnit ?? "minutes") as "minutes" | "hours",
     autoInvoiceFrequency: (tenant.autoInvoiceFrequency ?? "off") as "off" | "daily" | "weekly" | "monthly",
+    p4pMasterPercentage: tenant.p4pMasterPercentage ?? 0,
     rolePermissions: rolePerms ?? {},
     planTier: tenant.planTier as "starter" | "professional" | "enterprise",
     customerFields: (cfJson?.customerFields as unknown[]) ?? [],
@@ -42,8 +43,8 @@ router.patch("/settings", async (req, res): Promise<void> => {
     companyName, timezone, workdayCutoffTime, overageMaterialBuffer,
     stripeEnabled, quickbooksEnabled, taxRate,
     defaultMarkupPct, showCostPriceToTech,
-    durationUnit, autoInvoiceFrequency, rolePermissions,
-    customerFields,
+    durationUnit, autoInvoiceFrequency, p4pMasterPercentage,
+    rolePermissions, customerFields,
   } = req.body;
 
   const updates: Partial<typeof tenantsTable.$inferInsert> = {};
@@ -58,6 +59,7 @@ router.patch("/settings", async (req, res): Promise<void> => {
   if (showCostPriceToTech !== undefined) updates.showCostPriceToTech = showCostPriceToTech;
   if (durationUnit !== undefined) updates.durationUnit = durationUnit;
   if (autoInvoiceFrequency !== undefined) updates.autoInvoiceFrequency = autoInvoiceFrequency;
+  if (p4pMasterPercentage !== undefined) updates.p4pMasterPercentage = parseFloat(p4pMasterPercentage);
   if (rolePermissions !== undefined) {
     // Merge role permissions into existing customFields-like JSONB
     const [existing] = await db.select({ customFields: tenantsTable.customFields }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));

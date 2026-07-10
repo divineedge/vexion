@@ -1,0 +1,23 @@
+UPDATE P4P MODULE: Service-Level Percentage Adjustments & Material Cost Stripping
+
+Act as our senior database architect. Update the Pay-for-Performance (P4P) calculation engine inside Divine Edge OS to handle service-specific percentages and strict material cost exclusions.
+
+Modify the system architecture to support these specific guidelines:
+
+1. SERVICE-LEVEL P4P SETTINGS:
+- Update the Centralized Service Catalog so that every individual service entry can hold its own unique "P4P Payout Percentage" (e.g., Mowing at 33%, Concrete Pours at 15%, Sprinkler Repairs at 22%).
+- If a service does not have a custom percentage defined, it must default to the company's global master P4P percentage rate.
+
+2. MATERIAL COST EXCLUSION LOGIC (STRIPPING SUPPLY FEES):
+- When calculating Track B (P4P Earnings) for any completed job, the engine must never pay a percentage on the physical materials used.
+- Update the formula so that the system identifies the total invoiced price, subtracts the marked-up cost of all inventory parts used (such as sprinkler heads, pipes, or concrete mix batches), and calculates the employee's payout solely against the remaining Net Labor Revenue.
+- Formula: Job P4P Earnings = (Total Job Revenue - Total Material/Supply Costs) x Specific Service P4P Percentage.
+
+3. MULTI-TECHNICIAN SPLIT LOGIC:
+- If multiple technicians are clocked into the same job sub-timer simultaneously, the calculated Net Labor Revenue P4P pool for that job must be divided equally among the active technicians based on their percentage of contribution to the total sub-timer minutes logged.
+
+4. LIVE TECH VIEW & PAYROLL LEDGER UPDATES:
+- Ensure the live Technician Mobile Dashboard and the administrative "Run P4P Payroll" screen process these service-level adjustments dynamically. 
+- Technicians must see a line-item breakdown on their daily summaries showing how much labor revenue they generated per job after material deductions.
+
+Ensure these math calculations are structurally locked within our multi-tenant PostgreSQL queries so no revenue data is miscalculated across companies. Update the mock test environment so I can log in as an owner, set a high-material sprinkler service, mark parts as used, and verify that the technician's live daily paycheck accumulation only calculates from the labor portion.

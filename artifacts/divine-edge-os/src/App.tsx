@@ -23,6 +23,7 @@ import CrewsPage from '@/pages/crews';
 import EfficiencyPage from '@/pages/efficiency';
 import CallbacksPage from '@/pages/callbacks';
 import MarketingPage from '@/pages/marketing';
+import PayrollPage from '@/pages/payroll';
 
 import NotFound from '@/pages/not-found';
 
@@ -56,6 +57,7 @@ function ProtectedRoutes() {
         <Route path="/efficiency" component={EfficiencyPage} />
         <Route path="/callbacks" component={CallbacksPage} />
         <Route path="/marketing" component={MarketingPage} />
+        <Route path="/payroll" component={PayrollPage} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

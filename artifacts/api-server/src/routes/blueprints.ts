@@ -51,11 +51,13 @@ router.patch("/blueprints/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const { name, canvasData, overageBufferPercent } = req.body;
+  const { name, canvasData, overageBufferPercent, p4pPercentage } = req.body;
   const updates: Partial<typeof blueprintsTable.$inferInsert> = {};
   if (name) updates.name = name;
   if (canvasData !== undefined) updates.canvasData = canvasData as typeof blueprintsTable.$inferInsert["canvasData"];
   if (overageBufferPercent !== undefined) updates.overageBufferPercent = overageBufferPercent;
+  // null explicitly clears the override (reverts to global); undefined = no change
+  if (p4pPercentage !== undefined) updates.p4pPercentage = p4pPercentage === null ? null : parseFloat(p4pPercentage);
 
   const [updated] = await db.update(blueprintsTable).set(updates).where(and(eq(blueprintsTable.id, id), eq(blueprintsTable.tenantId, tenantId))).returning();
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }

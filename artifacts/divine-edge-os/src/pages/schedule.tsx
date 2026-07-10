@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useLocation } from 'wouter';
 import {
   useListJobs, getListJobsQueryKey,
   useGetJob, getGetJobQueryKey,
@@ -17,6 +18,8 @@ import {
   useAddJobPart, useRemoveJobPart,
   useListInventoryItems, getListInventoryItemsQueryKey,
   useListJobMedia, getListJobMediaQueryKey,
+  useListEstimates, getListEstimatesQueryKey,
+  useListVisits, getListVisitsQueryKey,
 } from '@workspace/api-client-react';
 import MediaGallery from '@/components/media/MediaGallery';
 import { useAuth } from '@/contexts/AuthContext';
@@ -79,6 +82,7 @@ const EMPTY_JOB: NewJobForm = {
 
 export default function SchedulePage() {
   const { user, isTechnician, canManageJobs } = useAuth();
+  const [, setLocation] = useLocation();
   const qc = useQueryClient();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<'week' | 'month'>('week');
@@ -153,8 +157,22 @@ export default function SchedulePage() {
     { query: { enabled: addingPart, queryKey: getListInventoryItemsQueryKey({ q: debouncedPartsSearch || undefined }) } }
   );
 
+  // Estimates and visits for schedule calendar
+  const { data: estimates } = useListEstimates(
+    { startDate: start.toISOString(), endDate: end.toISOString() },
+    { query: { queryKey: getListEstimatesQueryKey({ startDate: start.toISOString(), endDate: end.toISOString() }) } },
+  );
+  const { data: visits } = useListVisits(
+    {},
+    { query: { queryKey: getListVisitsQueryKey({}) } },
+  );
+
   const days = eachDayOfInterval({ start, end });
   const getJobsForDay = (date: Date) => jobs?.filter(j => isSameDay(new Date(j.scheduledAt), date)) ?? [];
+  const getEstimatesForDay = (date: Date) =>
+    (estimates ?? []).filter(e => e.scheduledAt && isSameDay(new Date(e.scheduledAt), date));
+  const getVisitsForDay = (date: Date) =>
+    (visits ?? []).filter(v => v.scheduledAt && isSameDay(new Date(v.scheduledAt), date));
 
   const nextRange = () => setCurrentDate(p => view === 'week' ? addWeeks(p, 1) : addMonths(p, 1));
   const prevRange = () => setCurrentDate(p => view === 'week' ? subWeeks(p, 1) : subMonths(p, 1));
@@ -254,20 +272,24 @@ export default function SchedulePage() {
             <div className={`grid grid-cols-7 h-full ${view === 'month' ? 'auto-rows-[minmax(120px,1fr)]' : 'auto-rows-[minmax(300px,1fr)]'}`}>
               {days.map(day => {
                 const dayJobs = getJobsForDay(day);
+                const dayEstimates = getEstimatesForDay(day);
+                const dayVisits = getVisitsForDay(day);
                 const isToday = isSameDay(day, new Date());
                 const isOtherMonth = view === 'month' && day.getMonth() !== currentDate.getMonth();
+                const totalCount = dayJobs.length + dayEstimates.length + dayVisits.length;
                 return (
                   <div key={day.toISOString()} className={`border-r border-b p-2 flex flex-col ${isOtherMonth ? 'bg-muted/10' : ''}`}>
                     <div className="flex justify-between items-center mb-2">
                       <span className={`text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full ${isToday ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}>
                         {format(day, 'd')}
                       </span>
-                      {dayJobs.length > 0 && <span className="text-xs text-muted-foreground">{dayJobs.length} job{dayJobs.length !== 1 ? 's' : ''}</span>}
+                      {totalCount > 0 && <span className="text-xs text-muted-foreground">{totalCount}</span>}
                     </div>
                     <div className="flex-1 space-y-1.5 overflow-y-auto pr-1">
+                      {/* Jobs */}
                       {dayJobs.map(job => (
                         <div
-                          key={job.id}
+                          key={`job-${job.id}`}
                           onClick={() => setSelectedJobId(job.id)}
                           className={`p-2 rounded border text-xs cursor-pointer hover:shadow-md hover:brightness-95 transition-all ${STATUS_COLORS[job.status] ?? STATUS_COLORS.scheduled}`}
                         >
@@ -283,6 +305,45 @@ export default function SchedulePage() {
                             <span>{format(new Date(job.scheduledAt), 'h:mm a')}</span>
                           </div>
                           {job.customerName && <div className="mt-0.5 truncate opacity-80">{job.customerName}</div>}
+                        </div>
+                      ))}
+                      {/* Estimates */}
+                      {dayEstimates.map(est => (
+                        <div
+                          key={`est-${est.id}`}
+                          className="p-2 rounded border text-xs cursor-pointer hover:shadow-md transition-all bg-violet-100 text-violet-800 border-violet-200"
+                          onClick={() => setLocation('/estimates')}
+                        >
+                          <div className="font-semibold truncate flex items-center gap-1">
+                            <span className="text-[9px] uppercase tracking-wide font-bold opacity-60">EST</span>
+                            {est.customerName ?? `Estimate #${est.id}`}
+                          </div>
+                          {est.scheduledAt && (
+                            <div className="mt-1 flex items-center gap-1 opacity-80">
+                              <Clock className="w-3 h-3" />
+                              <span>{format(new Date(est.scheduledAt), 'h:mm a')}</span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      {/* Visits */}
+                      {dayVisits.map(visit => (
+                        <div
+                          key={`visit-${visit.id}`}
+                          className="p-2 rounded border text-xs cursor-pointer hover:shadow-md transition-all bg-teal-100 text-teal-800 border-teal-200"
+                          onClick={() => setLocation('/visits')}
+                        >
+                          <div className="font-semibold truncate flex items-center gap-1">
+                            <span className="text-[9px] uppercase tracking-wide font-bold opacity-60">VISIT</span>
+                            {visit.purpose}
+                          </div>
+                          {visit.scheduledAt && (
+                            <div className="mt-1 flex items-center gap-1 opacity-80">
+                              <Clock className="w-3 h-3" />
+                              <span>{format(new Date(visit.scheduledAt), 'h:mm a')}</span>
+                            </div>
+                          )}
+                          {visit.customerName && <div className="mt-0.5 truncate opacity-80">{visit.customerName}</div>}
                         </div>
                       ))}
                     </div>

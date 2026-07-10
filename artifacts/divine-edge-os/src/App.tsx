@@ -29,6 +29,9 @@ import ChemicalsPage from '@/pages/chemicals';
 import EquipmentPage from '@/pages/equipment';
 import QuotePublicPage from '@/pages/quote-public';
 import QuoteWidgetPage from '@/pages/quote-widget';
+import EstimatesPage from '@/pages/estimates';
+import VisitsPage from '@/pages/visits';
+import EstimatePublicPage from '@/pages/estimate-public';
 
 import NotFound from '@/pages/not-found';
 
@@ -66,6 +69,8 @@ function ProtectedRoutes() {
         <Route path="/services" component={ServicesPage} />
         <Route path="/chemicals" component={ChemicalsPage} />
         <Route path="/equipment" component={EquipmentPage} />
+        <Route path="/estimates" component={EstimatesPage} />
+        <Route path="/visits" component={VisitsPage} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>
@@ -78,6 +83,7 @@ function Router() {
       {/* Public routes — no auth required */}
       <Route path="/quote/:token" component={QuotePublicPage} />
       <Route path="/widget/quote" component={QuoteWidgetPage} />
+      <Route path="/estimate/:token" component={EstimatePublicPage} />
       <Route path="/login" component={LoginPage} />
       <Route component={ProtectedRoutes} />
     </Switch>

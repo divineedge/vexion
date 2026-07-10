@@ -4,7 +4,7 @@ import {
   PackageSearch, Briefcase, Wrench,
   DollarSign, Banknote as InvoiceIcon,
   Megaphone, FlaskConical,
-  Settings,
+  Settings, FileText, Footprints,
   LucideIcon,
 } from 'lucide-react';
 
@@ -41,6 +41,8 @@ export const adminNavSections: NavSection[] = [
       { name: 'Customers',      href: '/customers',      icon: Users },
       { name: 'Properties',     href: '/properties',     icon: Building },
       { name: 'Schedule',       href: '/schedule',       icon: CalendarDays },
+      { name: 'Estimates',      href: '/estimates',      icon: FileText },
+      { name: 'Visits',         href: '/visits',         icon: Footprints },
       { name: 'Blueprints',     href: '/blueprints',     icon: DraftingCompass },
       { name: 'Callbacks',      href: '/callbacks',      icon: PhoneCall },
     ],

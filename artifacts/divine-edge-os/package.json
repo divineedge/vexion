@@ -47,6 +47,7 @@
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "@types/uuid": "^11.0.0",
     "@vitejs/plugin-react": "catalog:",
     "@workspace/api-client-react": "workspace:*",
     "class-variance-authority": "catalog:",
@@ -82,6 +83,7 @@
     "@uppy/react": "^5.0.0",
     "@workspace/object-storage-web": "workspace:*",
     "leaflet": "^1.9.4",
-    "react-leaflet": "^5.0.0"
+    "react-leaflet": "^5.0.0",
+    "uuid": "^14.0.1"
   }
 }

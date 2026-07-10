@@ -5,6 +5,260 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+export interface EstimateLineItem {
+  id: string;
+  /** @nullable */
+  serviceId?: number | null;
+  description: string;
+  qty: number;
+  unitPrice: number;
+  markup: number;
+  discount: number;
+  isOptional: boolean;
+  /** @nullable */
+  optionalPitchLine?: string | null;
+  acceptedByCustomer: boolean;
+}
+
+export type EstimateStatus = typeof EstimateStatus[keyof typeof EstimateStatus];
+
+
+export const EstimateStatus = {
+  draft: 'draft',
+  sent: 'sent',
+  approved: 'approved',
+  declined: 'declined',
+  expired: 'expired',
+} as const;
+
+export type EstimateVisitMode = typeof EstimateVisitMode[keyof typeof EstimateVisitMode];
+
+
+export const EstimateVisitMode = {
+  scheduled: 'scheduled',
+  drop_by: 'drop_by',
+  drive_by: 'drive_by',
+} as const;
+
+export interface Estimate {
+  id: number;
+  tenantId: number;
+  /** @nullable */
+  customerId?: number | null;
+  /** @nullable */
+  propertyId?: number | null;
+  /** @nullable */
+  blueprintId?: number | null;
+  /** @nullable */
+  assigneeId?: number | null;
+  status: EstimateStatus;
+  visitMode: EstimateVisitMode;
+  /** @nullable */
+  scheduledAt?: string | null;
+  /** @nullable */
+  expiresAt?: string | null;
+  /** @nullable */
+  notes?: string | null;
+  lineItems?: EstimateLineItem[];
+  subtotal: number;
+  tax: number;
+  total: number;
+  /** @nullable */
+  approvalToken?: string | null;
+  /** @nullable */
+  sentAt?: string | null;
+  /** @nullable */
+  approvedAt?: string | null;
+  /** @nullable */
+  declinedAt?: string | null;
+  /** @nullable */
+  declineReason?: string | null;
+  /** @nullable */
+  convertedToJobId?: number | null;
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  assigneeName?: string | null;
+  /** @nullable */
+  propertyAddress?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PublicEstimate = Estimate & {
+  required?: EstimateLineItem[];
+  optional?: EstimateLineItem[];
+  expired?: boolean;
+};
+
+export interface EstimatePipeline {
+  pipelineValue: number;
+  upsellRevenue: number;
+}
+
+export type CreateEstimateInputVisitMode = typeof CreateEstimateInputVisitMode[keyof typeof CreateEstimateInputVisitMode];
+
+
+export const CreateEstimateInputVisitMode = {
+  scheduled: 'scheduled',
+  drop_by: 'drop_by',
+  drive_by: 'drive_by',
+} as const;
+
+export interface CreateEstimateInput {
+  customerId?: number;
+  propertyId?: number;
+  blueprintId?: number;
+  assigneeId?: number;
+  visitMode?: CreateEstimateInputVisitMode;
+  scheduledAt?: string;
+  expiresAt?: string;
+  notes?: string;
+  lineItems?: EstimateLineItem[];
+  templateId?: number;
+}
+
+export type UpdateEstimateInputVisitMode = typeof UpdateEstimateInputVisitMode[keyof typeof UpdateEstimateInputVisitMode];
+
+
+export const UpdateEstimateInputVisitMode = {
+  scheduled: 'scheduled',
+  drop_by: 'drop_by',
+  drive_by: 'drive_by',
+} as const;
+
+export type UpdateEstimateInputStatus = typeof UpdateEstimateInputStatus[keyof typeof UpdateEstimateInputStatus];
+
+
+export const UpdateEstimateInputStatus = {
+  draft: 'draft',
+  sent: 'sent',
+  approved: 'approved',
+  declined: 'declined',
+  expired: 'expired',
+} as const;
+
+export interface UpdateEstimateInput {
+  customerId?: number;
+  propertyId?: number;
+  assigneeId?: number;
+  visitMode?: UpdateEstimateInputVisitMode;
+  scheduledAt?: string;
+  expiresAt?: string;
+  notes?: string;
+  lineItems?: EstimateLineItem[];
+  status?: UpdateEstimateInputStatus;
+}
+
+export type EstimateRespondInputAction = typeof EstimateRespondInputAction[keyof typeof EstimateRespondInputAction];
+
+
+export const EstimateRespondInputAction = {
+  approve: 'approve',
+  decline: 'decline',
+} as const;
+
+export interface EstimateRespondInput {
+  action: EstimateRespondInputAction;
+  acceptedOptionalItemIds?: string[];
+  declineReason?: string;
+}
+
+export type VisitVisitMode = typeof VisitVisitMode[keyof typeof VisitVisitMode];
+
+
+export const VisitVisitMode = {
+  scheduled: 'scheduled',
+  drop_by: 'drop_by',
+  drive_by: 'drive_by',
+} as const;
+
+export interface Visit {
+  id: number;
+  tenantId: number;
+  /** @nullable */
+  customerId?: number | null;
+  /** @nullable */
+  propertyId?: number | null;
+  /** @nullable */
+  assigneeId?: number | null;
+  visitMode: VisitVisitMode;
+  purpose: string;
+  /** @nullable */
+  notes?: string | null;
+  /** @nullable */
+  scheduledAt?: string | null;
+  /** @nullable */
+  completedAt?: string | null;
+  /** @nullable */
+  outcomeNotes?: string | null;
+  /** @nullable */
+  convertedToEstimateId?: number | null;
+  /** @nullable */
+  convertedToJobId?: number | null;
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  assigneeName?: string | null;
+  /** @nullable */
+  propertyAddress?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CreateVisitInputVisitMode = typeof CreateVisitInputVisitMode[keyof typeof CreateVisitInputVisitMode];
+
+
+export const CreateVisitInputVisitMode = {
+  scheduled: 'scheduled',
+  drop_by: 'drop_by',
+  drive_by: 'drive_by',
+} as const;
+
+export interface CreateVisitInput {
+  customerId?: number;
+  propertyId?: number;
+  assigneeId?: number;
+  visitMode?: CreateVisitInputVisitMode;
+  purpose: string;
+  notes?: string;
+  scheduledAt?: string;
+}
+
+export type UpdateVisitInputVisitMode = typeof UpdateVisitInputVisitMode[keyof typeof UpdateVisitInputVisitMode];
+
+
+export const UpdateVisitInputVisitMode = {
+  scheduled: 'scheduled',
+  drop_by: 'drop_by',
+  drive_by: 'drive_by',
+} as const;
+
+export interface UpdateVisitInput {
+  assigneeId?: number;
+  visitMode?: UpdateVisitInputVisitMode;
+  purpose?: string;
+  notes?: string;
+  scheduledAt?: string;
+}
+
+export interface EstimateTemplate {
+  id: number;
+  tenantId: number;
+  name: string;
+  /** @nullable */
+  description?: string | null;
+  lineItems?: EstimateLineItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateEstimateTemplateInput {
+  name: string;
+  description?: string;
+  lineItems?: EstimateLineItem[];
+}
+
 export interface HealthStatus {
   status: string;
 }
@@ -1892,5 +2146,36 @@ export type SetPropertyProfilePhoto200 = {
 
 export type SetCustomerProfilePhoto200 = {
   profilePhotoUrl?: string;
+};
+
+export type ListEstimatesParams = {
+status?: string;
+assigneeId?: number;
+customerId?: number;
+startDate?: string;
+endDate?: string;
+};
+
+export type ConvertEstimateToJob201 = {
+  jobId?: number;
+  total?: number;
+};
+
+export type ListVisitsParams = {
+date?: string;
+assigneeId?: number;
+customerId?: number;
+};
+
+export type CompleteVisitBody = {
+  outcomeNotes?: string;
+};
+
+export type ConvertVisitToEstimate201 = {
+  estimateId?: number;
+};
+
+export type ConvertVisitToJob201 = {
+  jobId?: number;
 };
 

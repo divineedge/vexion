@@ -47,6 +47,10 @@ tags:
     description: Equipment management, maintenance logs, and fuel tracking
   - name: communications
     description: SMS, email, and communications log
+  - name: estimates
+    description: Estimates, approval workflow, and upsell add-ons
+  - name: visits
+    description: Standalone customer visits and follow-ups
 
 paths:
   # COMMUNICATIONS
@@ -2748,8 +2752,770 @@ paths:
                 items:
                   $ref: '#/components/schemas/MediaAttachment'
 
+  # ESTIMATES
+  /estimates:
+    get:
+      operationId: listEstimates
+      tags: [estimates]
+      summary: List estimates
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: assigneeId
+          in: query
+          schema:
+            type: integer
+        - name: customerId
+          in: query
+          schema:
+            type: integer
+        - name: startDate
+          in: query
+          schema:
+            type: string
+        - name: endDate
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of estimates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Estimate"
+    post:
+      operationId: createEstimate
+      tags: [estimates]
+      summary: Create a new estimate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEstimateInput"
+      responses:
+        "201":
+          description: Created estimate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Estimate"
+
+  /estimates/pipeline:
+    get:
+      operationId: getEstimatePipeline
+      tags: [estimates]
+      summary: Get pipeline value and upsell revenue totals
+      responses:
+        "200":
+          description: Pipeline stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EstimatePipeline"
+
+  /estimates/{id}:
+    get:
+      operationId: getEstimate
+      tags: [estimates]
+      summary: Get a single estimate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Estimate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Estimate"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateEstimate
+      tags: [estimates]
+      summary: Update an estimate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEstimateInput"
+      responses:
+        "200":
+          description: Updated estimate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Estimate"
+    delete:
+      operationId: deleteEstimate
+      tags: [estimates]
+      summary: Delete an estimate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /estimates/{id}/send:
+    post:
+      operationId: sendEstimate
+      tags: [estimates]
+      summary: Send estimate to customer (generates approval token)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Sent estimate with token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Estimate"
+
+  /estimates/{id}/convert:
+    post:
+      operationId: convertEstimateToJob
+      tags: [estimates]
+      summary: Convert approved estimate to a job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "201":
+          description: Created job reference
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId:
+                    type: integer
+                  total:
+                    type: number
+
+  /public/estimates/{token}:
+    get:
+      operationId: getPublicEstimate
+      tags: [estimates]
+      summary: Get public estimate by approval token (no auth)
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Public estimate view
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicEstimate"
+        "404":
+          description: Not found
+
+  /public/estimates/{token}/respond:
+    post:
+      operationId: respondToEstimate
+      tags: [estimates]
+      summary: Customer approves or declines an estimate (no auth)
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EstimateRespondInput"
+      responses:
+        "200":
+          description: Updated estimate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Estimate"
+
+  # VISITS
+  /visits:
+    get:
+      operationId: listVisits
+      tags: [visits]
+      summary: List visits
+      parameters:
+        - name: date
+          in: query
+          schema:
+            type: string
+        - name: assigneeId
+          in: query
+          schema:
+            type: integer
+        - name: customerId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of visits
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Visit"
+    post:
+      operationId: createVisit
+      tags: [visits]
+      summary: Create a visit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVisitInput"
+      responses:
+        "201":
+          description: Created visit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Visit"
+
+  /visits/{id}:
+    get:
+      operationId: getVisit
+      tags: [visits]
+      summary: Get a single visit
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Visit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Visit"
+    patch:
+      operationId: updateVisit
+      tags: [visits]
+      summary: Update a visit
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateVisitInput"
+      responses:
+        "200":
+          description: Updated visit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Visit"
+    delete:
+      operationId: deleteVisit
+      tags: [visits]
+      summary: Delete a visit
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /visits/{id}/complete:
+    post:
+      operationId: completeVisit
+      tags: [visits]
+      summary: Mark a visit complete with outcome notes
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                outcomeNotes:
+                  type: string
+      responses:
+        "200":
+          description: Updated visit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Visit"
+
+  /visits/{id}/convert-to-estimate:
+    post:
+      operationId: convertVisitToEstimate
+      tags: [visits]
+      summary: Convert a visit to a draft estimate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "201":
+          description: Created estimate reference
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  estimateId:
+                    type: integer
+
+  /visits/{id}/convert-to-job:
+    post:
+      operationId: convertVisitToJob
+      tags: [visits]
+      summary: Convert a visit directly to a job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "201":
+          description: Created job reference
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId:
+                    type: integer
+
+  # ESTIMATE TEMPLATES
+  /estimate-templates:
+    get:
+      operationId: listEstimateTemplates
+      tags: [estimates]
+      summary: List estimate templates
+      responses:
+        "200":
+          description: List of templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EstimateTemplate"
+    post:
+      operationId: createEstimateTemplate
+      tags: [estimates]
+      summary: Create an estimate template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEstimateTemplateInput"
+      responses:
+        "201":
+          description: Created template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EstimateTemplate"
+
+  /estimate-templates/{id}:
+    get:
+      operationId: getEstimateTemplate
+      tags: [estimates]
+      summary: Get a single estimate template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EstimateTemplate"
+    patch:
+      operationId: updateEstimateTemplate
+      tags: [estimates]
+      summary: Update an estimate template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEstimateTemplateInput"
+      responses:
+        "200":
+          description: Updated template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EstimateTemplate"
+    delete:
+      operationId: deleteEstimateTemplate
+      tags: [estimates]
+      summary: Delete an estimate template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
 components:
   schemas:
+
+    EstimateLineItem:
+      type: object
+      required: [id, description, qty, unitPrice, markup, discount, isOptional, acceptedByCustomer]
+      properties:
+        id:
+          type: string
+        serviceId:
+          type: ["integer", "null"]
+        description:
+          type: string
+        qty:
+          type: number
+        unitPrice:
+          type: number
+        markup:
+          type: number
+        discount:
+          type: number
+        isOptional:
+          type: boolean
+        optionalPitchLine:
+          type: ["string", "null"]
+        acceptedByCustomer:
+          type: boolean
+
+    Estimate:
+      type: object
+      required: [id, tenantId, status, visitMode, subtotal, tax, total, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        customerId:
+          type: ["integer", "null"]
+        propertyId:
+          type: ["integer", "null"]
+        blueprintId:
+          type: ["integer", "null"]
+        assigneeId:
+          type: ["integer", "null"]
+        status:
+          type: string
+          enum: [draft, sent, approved, declined, expired]
+        visitMode:
+          type: string
+          enum: [scheduled, drop_by, drive_by]
+        scheduledAt:
+          type: ["string", "null"]
+        expiresAt:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        lineItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/EstimateLineItem"
+        subtotal:
+          type: number
+        tax:
+          type: number
+        total:
+          type: number
+        approvalToken:
+          type: ["string", "null"]
+        sentAt:
+          type: ["string", "null"]
+        approvedAt:
+          type: ["string", "null"]
+        declinedAt:
+          type: ["string", "null"]
+        declineReason:
+          type: ["string", "null"]
+        convertedToJobId:
+          type: ["integer", "null"]
+        customerName:
+          type: ["string", "null"]
+        assigneeName:
+          type: ["string", "null"]
+        propertyAddress:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    PublicEstimate:
+      allOf:
+        - $ref: "#/components/schemas/Estimate"
+      properties:
+        required:
+          type: array
+          items:
+            $ref: "#/components/schemas/EstimateLineItem"
+        optional:
+          type: array
+          items:
+            $ref: "#/components/schemas/EstimateLineItem"
+        expired:
+          type: boolean
+
+    EstimatePipeline:
+      type: object
+      required: [pipelineValue, upsellRevenue]
+      properties:
+        pipelineValue:
+          type: number
+        upsellRevenue:
+          type: number
+
+    CreateEstimateInput:
+      type: object
+      properties:
+        customerId:
+          type: integer
+        propertyId:
+          type: integer
+        blueprintId:
+          type: integer
+        assigneeId:
+          type: integer
+        visitMode:
+          type: string
+          enum: [scheduled, drop_by, drive_by]
+        scheduledAt:
+          type: string
+        expiresAt:
+          type: string
+        notes:
+          type: string
+        lineItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/EstimateLineItem"
+        templateId:
+          type: integer
+
+    UpdateEstimateInput:
+      type: object
+      properties:
+        customerId:
+          type: integer
+        propertyId:
+          type: integer
+        assigneeId:
+          type: integer
+        visitMode:
+          type: string
+          enum: [scheduled, drop_by, drive_by]
+        scheduledAt:
+          type: string
+        expiresAt:
+          type: string
+        notes:
+          type: string
+        lineItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/EstimateLineItem"
+        status:
+          type: string
+          enum: [draft, sent, approved, declined, expired]
+
+    EstimateRespondInput:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [approve, decline]
+        acceptedOptionalItemIds:
+          type: array
+          items:
+            type: string
+        declineReason:
+          type: string
+
+    Visit:
+      type: object
+      required: [id, tenantId, visitMode, purpose, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        customerId:
+          type: ["integer", "null"]
+        propertyId:
+          type: ["integer", "null"]
+        assigneeId:
+          type: ["integer", "null"]
+        visitMode:
+          type: string
+          enum: [scheduled, drop_by, drive_by]
+        purpose:
+          type: string
+        notes:
+          type: ["string", "null"]
+        scheduledAt:
+          type: ["string", "null"]
+        completedAt:
+          type: ["string", "null"]
+        outcomeNotes:
+          type: ["string", "null"]
+        convertedToEstimateId:
+          type: ["integer", "null"]
+        convertedToJobId:
+          type: ["integer", "null"]
+        customerName:
+          type: ["string", "null"]
+        assigneeName:
+          type: ["string", "null"]
+        propertyAddress:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    CreateVisitInput:
+      type: object
+      required: [purpose]
+      properties:
+        customerId:
+          type: integer
+        propertyId:
+          type: integer
+        assigneeId:
+          type: integer
+        visitMode:
+          type: string
+          enum: [scheduled, drop_by, drive_by]
+        purpose:
+          type: string
+        notes:
+          type: string
+        scheduledAt:
+          type: string
+
+    UpdateVisitInput:
+      type: object
+      properties:
+        assigneeId:
+          type: integer
+        visitMode:
+          type: string
+          enum: [scheduled, drop_by, drive_by]
+        purpose:
+          type: string
+        notes:
+          type: string
+        scheduledAt:
+          type: string
+
+    EstimateTemplate:
+      type: object
+      required: [id, tenantId, name, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        lineItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/EstimateLineItem"
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    CreateEstimateTemplateInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        lineItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/EstimateLineItem"
+
     HealthStatus:
       type: object
       properties:

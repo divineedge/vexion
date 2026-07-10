@@ -27,6 +27,9 @@ import quotesRouter from "./quotes";
 import widgetRouter from "./widget";
 import portalRouter from "./portal";
 import communicationsRouter from "./communications";
+import estimatesRouter from "./estimates";
+import visitsRouter from "./visits";
+import estimateTemplatesRouter from "./estimateTemplates";
 
 const router: IRouter = Router();
 
@@ -58,5 +61,8 @@ router.use(quotesRouter);
 router.use(widgetRouter);
 router.use(portalRouter);
 router.use(communicationsRouter);
+router.use(estimatesRouter);
+router.use(visitsRouter);
+router.use(estimateTemplatesRouter);
 
 export default router;

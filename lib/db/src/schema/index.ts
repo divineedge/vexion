@@ -22,3 +22,6 @@ export * from "./customerOtpSessions";
 export * from "./customerAlerts";
 export * from "./communicationsLog";
 export * from "./mediaAttachments";
+export * from "./estimates";
+export * from "./visits";
+export * from "./estimateTemplates";

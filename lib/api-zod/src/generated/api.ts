@@ -3653,3 +3653,804 @@ export const PortalListPropertyMediaResponseItem = zod.object({
 export const PortalListPropertyMediaResponse = zod.array(PortalListPropertyMediaResponseItem)
 
 
+/**
+ * @summary List estimates
+ */
+export const ListEstimatesQueryParams = zod.object({
+  "status": zod.coerce.string().optional(),
+  "assigneeId": zod.coerce.number().optional(),
+  "customerId": zod.coerce.number().optional(),
+  "startDate": zod.coerce.string().optional(),
+  "endDate": zod.coerce.string().optional()
+})
+
+export const ListEstimatesResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "blueprintId": zod.number().nullish(),
+  "assigneeId": zod.number().nullish(),
+  "status": zod.enum(['draft', 'sent', 'approved', 'declined', 'expired']),
+  "visitMode": zod.enum(['scheduled', 'drop_by', 'drive_by']),
+  "scheduledAt": zod.string().nullish(),
+  "expiresAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "description": zod.string(),
+  "qty": zod.number(),
+  "unitPrice": zod.number(),
+  "markup": zod.number(),
+  "discount": zod.number(),
+  "isOptional": zod.boolean(),
+  "optionalPitchLine": zod.string().nullish(),
+  "acceptedByCustomer": zod.boolean()
+})).optional(),
+  "subtotal": zod.number(),
+  "tax": zod.number(),
+  "total": zod.number(),
+  "approvalToken": zod.string().nullish(),
+  "sentAt": zod.string().nullish(),
+  "approvedAt": zod.string().nullish(),
+  "declinedAt": zod.string().nullish(),
+  "declineReason": zod.string().nullish(),
+  "convertedToJobId": zod.number().nullish(),
+  "customerName": zod.string().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListEstimatesResponse = zod.array(ListEstimatesResponseItem)
+
+
+/**
+ * @summary Create a new estimate
+ */
+export const CreateEstimateBody = zod.object({
+  "customerId": zod.number().optional(),
+  "propertyId": zod.number().optional(),
+  "blueprintId": zod.number().optional(),
+  "assigneeId": zod.number().optional(),
+  "visitMode": zod.enum(['scheduled', 'drop_by', 'drive_by']).optional(),
+  "scheduledAt": zod.string().optional(),
+  "expiresAt": zod.string().optional(),
+  "notes": zod.string().optional(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "description": zod.string(),
+  "qty": zod.number(),
+  "unitPrice": zod.number(),
+  "markup": zod.number(),
+  "discount": zod.number(),
+  "isOptional": zod.boolean(),
+  "optionalPitchLine": zod.string().nullish(),
+  "acceptedByCustomer": zod.boolean()
+})).optional(),
+  "templateId": zod.number().optional()
+})
+
+export const CreateEstimateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "blueprintId": zod.number().nullish(),
+  "assigneeId": zod.number().nullish(),
+  "status": zod.enum(['draft', 'sent', 'approved', 'declined', 'expired']),
+  "visitMode": zod.enum(['scheduled', 'drop_by', 'drive_by']),
+  "scheduledAt": zod.string().nullish(),
+  "expiresAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "description": zod.string(),
+  "qty": zod.number(),
+  "unitPrice": zod.number(),
+  "markup": zod.number(),
+  "discount": zod.number(),
+  "isOptional": zod.boolean(),
+  "optionalPitchLine": zod.string().nullish(),
+  "acceptedByCustomer": zod.boolean()
+})).optional(),
+  "subtotal": zod.number(),
+  "tax": zod.number(),
+  "total": zod.number(),
+  "approvalToken": zod.string().nullish(),
+  "sentAt": zod.string().nullish(),
+  "approvedAt": zod.string().nullish(),
+  "declinedAt": zod.string().nullish(),
+  "declineReason": zod.string().nullish(),
+  "convertedToJobId": zod.number().nullish(),
+  "customerName": zod.string().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Get pipeline value and upsell revenue totals
+ */
+export const GetEstimatePipelineResponse = zod.object({
+  "pipelineValue": zod.number(),
+  "upsellRevenue": zod.number()
+})
+
+
+/**
+ * @summary Get a single estimate
+ */
+export const GetEstimateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetEstimateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "blueprintId": zod.number().nullish(),
+  "assigneeId": zod.number().nullish(),
+  "status": zod.enum(['draft', 'sent', 'approved', 'declined', 'expired']),
+  "visitMode": zod.enum(['scheduled', 'drop_by', 'drive_by']),
+  "scheduledAt": zod.string().nullish(),
+  "expiresAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "description": zod.string(),
+  "qty": zod.number(),
+  "unitPrice": zod.number(),
+  "markup": zod.number(),
+  "discount": zod.number(),
+  "isOptional": zod.boolean(),
+  "optionalPitchLine": zod.string().nullish(),
+  "acceptedByCustomer": zod.boolean()
+})).optional(),
+  "subtotal": zod.number(),
+  "tax": zod.number(),
+  "total": zod.number(),
+  "approvalToken": zod.string().nullish(),
+  "sentAt": zod.string().nullish(),
+  "approvedAt": zod.string().nullish(),
+  "declinedAt": zod.string().nullish(),
+  "declineReason": zod.string().nullish(),
+  "convertedToJobId": zod.number().nullish(),
+  "customerName": zod.string().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Update an estimate
+ */
+export const UpdateEstimateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateEstimateBody = zod.object({
+  "customerId": zod.number().optional(),
+  "propertyId": zod.number().optional(),
+  "assigneeId": zod.number().optional(),
+  "visitMode": zod.enum(['scheduled', 'drop_by', 'drive_by']).optional(),
+  "scheduledAt": zod.string().optional(),
+  "expiresAt": zod.string().optional(),
+  "notes": zod.string().optional(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "description": zod.string(),
+  "qty": zod.number(),
+  "unitPrice": zod.number(),
+  "markup": zod.number(),
+  "discount": zod.number(),
+  "isOptional": zod.boolean(),
+  "optionalPitchLine": zod.string().nullish(),
+  "acceptedByCustomer": zod.boolean()
+})).optional(),
+  "status": zod.enum(['draft', 'sent', 'approved', 'declined', 'expired']).optional()
+})
+
+export const UpdateEstimateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "blueprintId": zod.number().nullish(),
+  "assigneeId": zod.number().nullish(),
+  "status": zod.enum(['draft', 'sent', 'approved', 'declined', 'expired']),
+  "visitMode": zod.enum(['scheduled', 'drop_by', 'drive_by']),
+  "scheduledAt": zod.string().nullish(),
+  "expiresAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "description": zod.string(),
+  "qty": zod.number(),
+  "unitPrice": zod.number(),
+  "markup": zod.number(),
+  "discount": zod.number(),
+  "isOptional": zod.boolean(),
+  "optionalPitchLine": zod.string().nullish(),
+  "acceptedByCustomer": zod.boolean()
+})).optional(),
+  "subtotal": zod.number(),
+  "tax": zod.number(),
+  "total": zod.number(),
+  "approvalToken": zod.string().nullish(),
+  "sentAt": zod.string().nullish(),
+  "approvedAt": zod.string().nullish(),
+  "declinedAt": zod.string().nullish(),
+  "declineReason": zod.string().nullish(),
+  "convertedToJobId": zod.number().nullish(),
+  "customerName": zod.string().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Delete an estimate
+ */
+export const DeleteEstimateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteEstimateResponse = zod.void()
+
+
+/**
+ * @summary Send estimate to customer (generates approval token)
+ */
+export const SendEstimateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SendEstimateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "blueprintId": zod.number().nullish(),
+  "assigneeId": zod.number().nullish(),
+  "status": zod.enum(['draft', 'sent', 'approved', 'declined', 'expired']),
+  "visitMode": zod.enum(['scheduled', 'drop_by', 'drive_by']),
+  "scheduledAt": zod.string().nullish(),
+  "expiresAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "description": zod.string(),
+  "qty": zod.number(),
+  "unitPrice": zod.number(),
+  "markup": zod.number(),
+  "discount": zod.number(),
+  "isOptional": zod.boolean(),
+  "optionalPitchLine": zod.string().nullish(),
+  "acceptedByCustomer": zod.boolean()
+})).optional(),
+  "subtotal": zod.number(),
+  "tax": zod.number(),
+  "total": zod.number(),
+  "approvalToken": zod.string().nullish(),
+  "sentAt": zod.string().nullish(),
+  "approvedAt": zod.string().nullish(),
+  "declinedAt": zod.string().nullish(),
+  "declineReason": zod.string().nullish(),
+  "convertedToJobId": zod.number().nullish(),
+  "customerName": zod.string().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Convert approved estimate to a job
+ */
+export const ConvertEstimateToJobParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ConvertEstimateToJobResponse = zod.object({
+  "jobId": zod.number().optional(),
+  "total": zod.number().optional()
+})
+
+
+/**
+ * @summary Get public estimate by approval token (no auth)
+ */
+export const GetPublicEstimateParams = zod.object({
+  "token": zod.coerce.string()
+})
+
+export const GetPublicEstimateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "blueprintId": zod.number().nullish(),
+  "assigneeId": zod.number().nullish(),
+  "status": zod.enum(['draft', 'sent', 'approved', 'declined', 'expired']),
+  "visitMode": zod.enum(['scheduled', 'drop_by', 'drive_by']),
+  "scheduledAt": zod.string().nullish(),
+  "expiresAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "description": zod.string(),
+  "qty": zod.number(),
+  "unitPrice": zod.number(),
+  "markup": zod.number(),
+  "discount": zod.number(),
+  "isOptional": zod.boolean(),
+  "optionalPitchLine": zod.string().nullish(),
+  "acceptedByCustomer": zod.boolean()
+})).optional(),
+  "subtotal": zod.number(),
+  "tax": zod.number(),
+  "total": zod.number(),
+  "approvalToken": zod.string().nullish(),
+  "sentAt": zod.string().nullish(),
+  "approvedAt": zod.string().nullish(),
+  "declinedAt": zod.string().nullish(),
+  "declineReason": zod.string().nullish(),
+  "convertedToJobId": zod.number().nullish(),
+  "customerName": zod.string().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+}).and(zod.object({
+  "required": zod.array(zod.object({
+  "id": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "description": zod.string(),
+  "qty": zod.number(),
+  "unitPrice": zod.number(),
+  "markup": zod.number(),
+  "discount": zod.number(),
+  "isOptional": zod.boolean(),
+  "optionalPitchLine": zod.string().nullish(),
+  "acceptedByCustomer": zod.boolean()
+})).optional(),
+  "optional": zod.array(zod.object({
+  "id": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "description": zod.string(),
+  "qty": zod.number(),
+  "unitPrice": zod.number(),
+  "markup": zod.number(),
+  "discount": zod.number(),
+  "isOptional": zod.boolean(),
+  "optionalPitchLine": zod.string().nullish(),
+  "acceptedByCustomer": zod.boolean()
+})).optional(),
+  "expired": zod.boolean().optional()
+}))
+
+
+/**
+ * @summary Customer approves or declines an estimate (no auth)
+ */
+export const RespondToEstimateParams = zod.object({
+  "token": zod.coerce.string()
+})
+
+export const RespondToEstimateBody = zod.object({
+  "action": zod.enum(['approve', 'decline']),
+  "acceptedOptionalItemIds": zod.array(zod.string()).optional(),
+  "declineReason": zod.string().optional()
+})
+
+export const RespondToEstimateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "blueprintId": zod.number().nullish(),
+  "assigneeId": zod.number().nullish(),
+  "status": zod.enum(['draft', 'sent', 'approved', 'declined', 'expired']),
+  "visitMode": zod.enum(['scheduled', 'drop_by', 'drive_by']),
+  "scheduledAt": zod.string().nullish(),
+  "expiresAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "description": zod.string(),
+  "qty": zod.number(),
+  "unitPrice": zod.number(),
+  "markup": zod.number(),
+  "discount": zod.number(),
+  "isOptional": zod.boolean(),
+  "optionalPitchLine": zod.string().nullish(),
+  "acceptedByCustomer": zod.boolean()
+})).optional(),
+  "subtotal": zod.number(),
+  "tax": zod.number(),
+  "total": zod.number(),
+  "approvalToken": zod.string().nullish(),
+  "sentAt": zod.string().nullish(),
+  "approvedAt": zod.string().nullish(),
+  "declinedAt": zod.string().nullish(),
+  "declineReason": zod.string().nullish(),
+  "convertedToJobId": zod.number().nullish(),
+  "customerName": zod.string().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary List visits
+ */
+export const ListVisitsQueryParams = zod.object({
+  "date": zod.coerce.string().optional(),
+  "assigneeId": zod.coerce.number().optional(),
+  "customerId": zod.coerce.number().optional()
+})
+
+export const ListVisitsResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "assigneeId": zod.number().nullish(),
+  "visitMode": zod.enum(['scheduled', 'drop_by', 'drive_by']),
+  "purpose": zod.string(),
+  "notes": zod.string().nullish(),
+  "scheduledAt": zod.string().nullish(),
+  "completedAt": zod.string().nullish(),
+  "outcomeNotes": zod.string().nullish(),
+  "convertedToEstimateId": zod.number().nullish(),
+  "convertedToJobId": zod.number().nullish(),
+  "customerName": zod.string().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListVisitsResponse = zod.array(ListVisitsResponseItem)
+
+
+/**
+ * @summary Create a visit
+ */
+export const CreateVisitBody = zod.object({
+  "customerId": zod.number().optional(),
+  "propertyId": zod.number().optional(),
+  "assigneeId": zod.number().optional(),
+  "visitMode": zod.enum(['scheduled', 'drop_by', 'drive_by']).optional(),
+  "purpose": zod.string(),
+  "notes": zod.string().optional(),
+  "scheduledAt": zod.string().optional()
+})
+
+export const CreateVisitResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "assigneeId": zod.number().nullish(),
+  "visitMode": zod.enum(['scheduled', 'drop_by', 'drive_by']),
+  "purpose": zod.string(),
+  "notes": zod.string().nullish(),
+  "scheduledAt": zod.string().nullish(),
+  "completedAt": zod.string().nullish(),
+  "outcomeNotes": zod.string().nullish(),
+  "convertedToEstimateId": zod.number().nullish(),
+  "convertedToJobId": zod.number().nullish(),
+  "customerName": zod.string().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Get a single visit
+ */
+export const GetVisitParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetVisitResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "assigneeId": zod.number().nullish(),
+  "visitMode": zod.enum(['scheduled', 'drop_by', 'drive_by']),
+  "purpose": zod.string(),
+  "notes": zod.string().nullish(),
+  "scheduledAt": zod.string().nullish(),
+  "completedAt": zod.string().nullish(),
+  "outcomeNotes": zod.string().nullish(),
+  "convertedToEstimateId": zod.number().nullish(),
+  "convertedToJobId": zod.number().nullish(),
+  "customerName": zod.string().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Update a visit
+ */
+export const UpdateVisitParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateVisitBody = zod.object({
+  "assigneeId": zod.number().optional(),
+  "visitMode": zod.enum(['scheduled', 'drop_by', 'drive_by']).optional(),
+  "purpose": zod.string().optional(),
+  "notes": zod.string().optional(),
+  "scheduledAt": zod.string().optional()
+})
+
+export const UpdateVisitResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "assigneeId": zod.number().nullish(),
+  "visitMode": zod.enum(['scheduled', 'drop_by', 'drive_by']),
+  "purpose": zod.string(),
+  "notes": zod.string().nullish(),
+  "scheduledAt": zod.string().nullish(),
+  "completedAt": zod.string().nullish(),
+  "outcomeNotes": zod.string().nullish(),
+  "convertedToEstimateId": zod.number().nullish(),
+  "convertedToJobId": zod.number().nullish(),
+  "customerName": zod.string().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a visit
+ */
+export const DeleteVisitParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteVisitResponse = zod.void()
+
+
+/**
+ * @summary Mark a visit complete with outcome notes
+ */
+export const CompleteVisitParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CompleteVisitBody = zod.object({
+  "outcomeNotes": zod.string().optional()
+})
+
+export const CompleteVisitResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "assigneeId": zod.number().nullish(),
+  "visitMode": zod.enum(['scheduled', 'drop_by', 'drive_by']),
+  "purpose": zod.string(),
+  "notes": zod.string().nullish(),
+  "scheduledAt": zod.string().nullish(),
+  "completedAt": zod.string().nullish(),
+  "outcomeNotes": zod.string().nullish(),
+  "convertedToEstimateId": zod.number().nullish(),
+  "convertedToJobId": zod.number().nullish(),
+  "customerName": zod.string().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Convert a visit to a draft estimate
+ */
+export const ConvertVisitToEstimateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ConvertVisitToEstimateResponse = zod.object({
+  "estimateId": zod.number().optional()
+})
+
+
+/**
+ * @summary Convert a visit directly to a job
+ */
+export const ConvertVisitToJobParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ConvertVisitToJobResponse = zod.object({
+  "jobId": zod.number().optional()
+})
+
+
+/**
+ * @summary List estimate templates
+ */
+export const ListEstimateTemplatesResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "description": zod.string(),
+  "qty": zod.number(),
+  "unitPrice": zod.number(),
+  "markup": zod.number(),
+  "discount": zod.number(),
+  "isOptional": zod.boolean(),
+  "optionalPitchLine": zod.string().nullish(),
+  "acceptedByCustomer": zod.boolean()
+})).optional(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListEstimateTemplatesResponse = zod.array(ListEstimateTemplatesResponseItem)
+
+
+/**
+ * @summary Create an estimate template
+ */
+export const CreateEstimateTemplateBody = zod.object({
+  "name": zod.string(),
+  "description": zod.string().optional(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "description": zod.string(),
+  "qty": zod.number(),
+  "unitPrice": zod.number(),
+  "markup": zod.number(),
+  "discount": zod.number(),
+  "isOptional": zod.boolean(),
+  "optionalPitchLine": zod.string().nullish(),
+  "acceptedByCustomer": zod.boolean()
+})).optional()
+})
+
+export const CreateEstimateTemplateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "description": zod.string(),
+  "qty": zod.number(),
+  "unitPrice": zod.number(),
+  "markup": zod.number(),
+  "discount": zod.number(),
+  "isOptional": zod.boolean(),
+  "optionalPitchLine": zod.string().nullish(),
+  "acceptedByCustomer": zod.boolean()
+})).optional(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Get a single estimate template
+ */
+export const GetEstimateTemplateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetEstimateTemplateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "description": zod.string(),
+  "qty": zod.number(),
+  "unitPrice": zod.number(),
+  "markup": zod.number(),
+  "discount": zod.number(),
+  "isOptional": zod.boolean(),
+  "optionalPitchLine": zod.string().nullish(),
+  "acceptedByCustomer": zod.boolean()
+})).optional(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Update an estimate template
+ */
+export const UpdateEstimateTemplateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateEstimateTemplateBody = zod.object({
+  "name": zod.string(),
+  "description": zod.string().optional(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "description": zod.string(),
+  "qty": zod.number(),
+  "unitPrice": zod.number(),
+  "markup": zod.number(),
+  "discount": zod.number(),
+  "isOptional": zod.boolean(),
+  "optionalPitchLine": zod.string().nullish(),
+  "acceptedByCustomer": zod.boolean()
+})).optional()
+})
+
+export const UpdateEstimateTemplateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "description": zod.string(),
+  "qty": zod.number(),
+  "unitPrice": zod.number(),
+  "markup": zod.number(),
+  "discount": zod.number(),
+  "isOptional": zod.boolean(),
+  "optionalPitchLine": zod.string().nullish(),
+  "acceptedByCustomer": zod.boolean()
+})).optional(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Delete an estimate template
+ */
+export const DeleteEstimateTemplateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteEstimateTemplateResponse = zod.void()
+
+

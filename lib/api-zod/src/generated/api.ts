@@ -29,7 +29,7 @@ export const LoginResponse = zod.object({
   "id": zod.number(),
   "email": zod.string(),
   "name": zod.string(),
-  "role": zod.enum(['super_admin', 'company_owner', 'office_manager', 'employee', 'technician']),
+  "role": zod.enum(['super_admin', 'company_owner', 'office_manager', 'department_manager', 'crew_manager', 'technician']),
   "tenantId": zod.number(),
   "planTier": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
@@ -53,7 +53,7 @@ export const GetMeResponse = zod.object({
   "id": zod.number(),
   "email": zod.string(),
   "name": zod.string(),
-  "role": zod.enum(['super_admin', 'company_owner', 'office_manager', 'employee', 'technician']),
+  "role": zod.enum(['super_admin', 'company_owner', 'office_manager', 'department_manager', 'crew_manager', 'technician']),
   "tenantId": zod.number(),
   "planTier": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
@@ -140,6 +140,8 @@ export const ListCustomersResponse = zod.object({
   "customFieldValues": zod.record(zod.string(), zod.string()).optional(),
   "propertyCount": zod.number().optional(),
   "totalSpend": zod.number().optional(),
+  "thisYearSpend": zod.number().nullish().describe('Total paid invoices for the current calendar year'),
+  "lastYearSpend": zod.number().nullish().describe('Total paid invoices for the previous calendar year'),
   "createdAt": zod.string()
 })),
   "total": zod.number(),
@@ -187,6 +189,8 @@ export const CreateCustomerResponse = zod.object({
   "customFieldValues": zod.record(zod.string(), zod.string()).optional(),
   "propertyCount": zod.number().optional(),
   "totalSpend": zod.number().optional(),
+  "thisYearSpend": zod.number().nullish().describe('Total paid invoices for the current calendar year'),
+  "lastYearSpend": zod.number().nullish().describe('Total paid invoices for the previous calendar year'),
   "createdAt": zod.string()
 })
 
@@ -217,6 +221,8 @@ export const GetCustomerResponse = zod.object({
   "customFieldValues": zod.record(zod.string(), zod.string()).optional(),
   "propertyCount": zod.number().optional(),
   "totalSpend": zod.number().optional(),
+  "thisYearSpend": zod.number().nullish().describe('Total paid invoices for the current calendar year'),
+  "lastYearSpend": zod.number().nullish().describe('Total paid invoices for the previous calendar year'),
   "createdAt": zod.string()
 })
 
@@ -264,6 +270,8 @@ export const UpdateCustomerResponse = zod.object({
   "customFieldValues": zod.record(zod.string(), zod.string()).optional(),
   "propertyCount": zod.number().optional(),
   "totalSpend": zod.number().optional(),
+  "thisYearSpend": zod.number().nullish().describe('Total paid invoices for the current calendar year'),
+  "lastYearSpend": zod.number().nullish().describe('Total paid invoices for the previous calendar year'),
   "createdAt": zod.string()
 })
 
@@ -474,8 +482,10 @@ export const ListJobsResponseItem = zod.object({
   "propertyAddress": zod.string().nullish(),
   "assigneeId": zod.number().nullish(),
   "assigneeName": zod.string().nullish(),
+  "crewId": zod.number().nullish(),
+  "crewName": zod.string().nullish(),
   "scheduledAt": zod.string(),
-  "estimatedDuration": zod.number().nullish(),
+  "estimatedDuration": zod.number().nullish().describe('Duration stored in minutes; display as hours or minutes per tenant durationUnit setting'),
   "completedAt": zod.string().nullish(),
   "totalAmount": zod.number().optional(),
   "invoiceId": zod.number().nullish(),
@@ -488,6 +498,13 @@ export const ListJobsResponseItem = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional(),
+  "jobParts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional().describe('Parts used on this job from inventory'),
   "createdAt": zod.string()
 })
 export const ListJobsResponse = zod.array(ListJobsResponseItem)
@@ -504,6 +521,7 @@ export const CreateJobBody = zod.object({
   "customerId": zod.number().optional(),
   "propertyId": zod.number().optional(),
   "assigneeId": zod.number().optional(),
+  "crewId": zod.number().optional(),
   "scheduledAt": zod.string(),
   "estimatedDuration": zod.number().optional(),
   "blueprintId": zod.number().optional()
@@ -522,8 +540,10 @@ export const CreateJobResponse = zod.object({
   "propertyAddress": zod.string().nullish(),
   "assigneeId": zod.number().nullish(),
   "assigneeName": zod.string().nullish(),
+  "crewId": zod.number().nullish(),
+  "crewName": zod.string().nullish(),
   "scheduledAt": zod.string(),
-  "estimatedDuration": zod.number().nullish(),
+  "estimatedDuration": zod.number().nullish().describe('Duration stored in minutes; display as hours or minutes per tenant durationUnit setting'),
   "completedAt": zod.string().nullish(),
   "totalAmount": zod.number().optional(),
   "invoiceId": zod.number().nullish(),
@@ -536,6 +556,13 @@ export const CreateJobResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional(),
+  "jobParts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional().describe('Parts used on this job from inventory'),
   "createdAt": zod.string()
 })
 
@@ -560,8 +587,10 @@ export const GetJobResponse = zod.object({
   "propertyAddress": zod.string().nullish(),
   "assigneeId": zod.number().nullish(),
   "assigneeName": zod.string().nullish(),
+  "crewId": zod.number().nullish(),
+  "crewName": zod.string().nullish(),
   "scheduledAt": zod.string(),
-  "estimatedDuration": zod.number().nullish(),
+  "estimatedDuration": zod.number().nullish().describe('Duration stored in minutes; display as hours or minutes per tenant durationUnit setting'),
   "completedAt": zod.string().nullish(),
   "totalAmount": zod.number().optional(),
   "invoiceId": zod.number().nullish(),
@@ -574,6 +603,13 @@ export const GetJobResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional(),
+  "jobParts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional().describe('Parts used on this job from inventory'),
   "createdAt": zod.string()
 })
 
@@ -591,6 +627,7 @@ export const UpdateJobBody = zod.object({
   "status": zod.enum(['scheduled', 'in_progress', 'completed', 'cancelled', 'on_hold']).optional(),
   "priority": zod.enum(['low', 'normal', 'high', 'urgent']).optional(),
   "assigneeId": zod.number().optional(),
+  "crewId": zod.number().optional(),
   "scheduledAt": zod.string().optional(),
   "estimatedDuration": zod.number().optional()
 })
@@ -608,8 +645,10 @@ export const UpdateJobResponse = zod.object({
   "propertyAddress": zod.string().nullish(),
   "assigneeId": zod.number().nullish(),
   "assigneeName": zod.string().nullish(),
+  "crewId": zod.number().nullish(),
+  "crewName": zod.string().nullish(),
   "scheduledAt": zod.string(),
-  "estimatedDuration": zod.number().nullish(),
+  "estimatedDuration": zod.number().nullish().describe('Duration stored in minutes; display as hours or minutes per tenant durationUnit setting'),
   "completedAt": zod.string().nullish(),
   "totalAmount": zod.number().optional(),
   "invoiceId": zod.number().nullish(),
@@ -622,6 +661,13 @@ export const UpdateJobResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional(),
+  "jobParts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional().describe('Parts used on this job from inventory'),
   "createdAt": zod.string()
 })
 
@@ -656,8 +702,10 @@ export const CompleteJobResponse = zod.object({
   "propertyAddress": zod.string().nullish(),
   "assigneeId": zod.number().nullish(),
   "assigneeName": zod.string().nullish(),
+  "crewId": zod.number().nullish(),
+  "crewName": zod.string().nullish(),
   "scheduledAt": zod.string(),
-  "estimatedDuration": zod.number().nullish(),
+  "estimatedDuration": zod.number().nullish().describe('Duration stored in minutes; display as hours or minutes per tenant durationUnit setting'),
   "completedAt": zod.string().nullish(),
   "totalAmount": zod.number().optional(),
   "invoiceId": zod.number().nullish(),
@@ -670,8 +718,287 @@ export const CompleteJobResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional(),
+  "jobParts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional().describe('Parts used on this job from inventory'),
   "createdAt": zod.string()
 })
+
+
+/**
+ * @summary Get parts used on a job
+ */
+export const GetJobPartsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetJobPartsResponseItem = zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})
+export const GetJobPartsResponse = zod.array(GetJobPartsResponseItem)
+
+
+/**
+ * @summary Add or update a part on a job
+ */
+export const AddJobPartParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AddJobPartBody = zod.object({
+  "inventoryItemId": zod.number(),
+  "quantity": zod.number()
+})
+
+export const AddJobPartResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "status": zod.enum(['scheduled', 'in_progress', 'completed', 'cancelled', 'on_hold']),
+  "priority": zod.enum(['low', 'normal', 'high', 'urgent']).optional(),
+  "customerId": zod.number().nullish(),
+  "customerName": zod.string().nullish(),
+  "propertyId": zod.number().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "assigneeId": zod.number().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "crewId": zod.number().nullish(),
+  "crewName": zod.string().nullish(),
+  "scheduledAt": zod.string(),
+  "estimatedDuration": zod.number().nullish().describe('Duration stored in minutes; display as hours or minutes per tenant durationUnit setting'),
+  "completedAt": zod.string().nullish(),
+  "totalAmount": zod.number().optional(),
+  "invoiceId": zod.number().nullish(),
+  "blueprintId": zod.number().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "inventoryItemId": zod.number().nullish(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional(),
+  "jobParts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional().describe('Parts used on this job from inventory'),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Remove a part from a job
+ */
+export const RemoveJobPartParams = zod.object({
+  "id": zod.coerce.number(),
+  "inventoryItemId": zod.coerce.number()
+})
+
+export const RemoveJobPartResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "status": zod.enum(['scheduled', 'in_progress', 'completed', 'cancelled', 'on_hold']),
+  "priority": zod.enum(['low', 'normal', 'high', 'urgent']).optional(),
+  "customerId": zod.number().nullish(),
+  "customerName": zod.string().nullish(),
+  "propertyId": zod.number().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "assigneeId": zod.number().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "crewId": zod.number().nullish(),
+  "crewName": zod.string().nullish(),
+  "scheduledAt": zod.string(),
+  "estimatedDuration": zod.number().nullish().describe('Duration stored in minutes; display as hours or minutes per tenant durationUnit setting'),
+  "completedAt": zod.string().nullish(),
+  "totalAmount": zod.number().optional(),
+  "invoiceId": zod.number().nullish(),
+  "blueprintId": zod.number().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "inventoryItemId": zod.number().nullish(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional(),
+  "jobParts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional().describe('Parts used on this job from inventory'),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary List all crews
+ */
+export const ListCrewsResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "managerId": zod.number().nullish(),
+  "managerName": zod.string().nullish(),
+  "memberCount": zod.number().optional(),
+  "members": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "role": zod.string(),
+  "email": zod.string().optional()
+})).optional(),
+  "createdAt": zod.string()
+})
+export const ListCrewsResponse = zod.array(ListCrewsResponseItem)
+
+
+/**
+ * @summary Create a new crew
+ */
+export const CreateCrewBody = zod.object({
+  "name": zod.string(),
+  "description": zod.string().optional(),
+  "managerId": zod.number().optional()
+})
+
+export const CreateCrewResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "managerId": zod.number().nullish(),
+  "managerName": zod.string().nullish(),
+  "memberCount": zod.number().optional(),
+  "members": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "role": zod.string(),
+  "email": zod.string().optional()
+})).optional(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Get a crew with its members
+ */
+export const GetCrewParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetCrewResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "managerId": zod.number().nullish(),
+  "managerName": zod.string().nullish(),
+  "memberCount": zod.number().optional(),
+  "members": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "role": zod.string(),
+  "email": zod.string().optional()
+})).optional(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Update a crew
+ */
+export const UpdateCrewParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateCrewBody = zod.object({
+  "name": zod.string().optional(),
+  "description": zod.string().optional(),
+  "managerId": zod.number().optional()
+})
+
+export const UpdateCrewResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "managerId": zod.number().nullish(),
+  "managerName": zod.string().nullish(),
+  "memberCount": zod.number().optional(),
+  "members": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "role": zod.string(),
+  "email": zod.string().optional()
+})).optional(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a crew
+ */
+export const DeleteCrewParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteCrewResponse = zod.void()
+
+
+/**
+ * @summary Add a user to a crew
+ */
+export const AddCrewMemberParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AddCrewMemberBody = zod.object({
+  "userId": zod.number()
+})
+
+export const AddCrewMemberResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "managerId": zod.number().nullish(),
+  "managerName": zod.string().nullish(),
+  "memberCount": zod.number().optional(),
+  "members": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "role": zod.string(),
+  "email": zod.string().optional()
+})).optional(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Remove a user from a crew
+ */
+export const RemoveCrewMemberParams = zod.object({
+  "id": zod.coerce.number(),
+  "userId": zod.coerce.number()
+})
+
+export const RemoveCrewMemberResponse = zod.void()
 
 
 /**
@@ -808,6 +1135,37 @@ export const DeleteInventoryItemParams = zod.object({
 })
 
 export const DeleteInventoryItemResponse = zod.void()
+
+
+/**
+ * @summary Adjust the stock quantity of an inventory item
+ */
+export const AdjustInventoryStockParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AdjustInventoryStockBody = zod.object({
+  "delta": zod.number().describe('Positive to add stock, negative to remove stock'),
+  "reason": zod.string().optional()
+})
+
+export const AdjustInventoryStockResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "sku": zod.string(),
+  "description": zod.string().nullish(),
+  "category": zod.string().nullish(),
+  "costPrice": zod.number().nullish().describe('What we pay for the item. Only returned for admin\/manager roles (or when showCostPriceToTech is true).'),
+  "unitPrice": zod.number().describe('Sell price — what we charge customers.'),
+  "markupPct": zod.number().optional().describe('Markup percentage applied to cost price.'),
+  "markedUpPrice": zod.number().optional(),
+  "quantity": zod.number(),
+  "reorderPoint": zod.number().optional(),
+  "unit": zod.string().optional(),
+  "isLowStock": zod.boolean().optional(),
+  "createdAt": zod.string()
+})
 
 
 /**
@@ -1359,6 +1717,9 @@ export const GetTenantSettingsResponse = zod.object({
   "taxRate": zod.number().optional(),
   "defaultMarkupPct": zod.number().optional().describe('Default markup percentage applied to inventory cost prices.'),
   "showCostPriceToTech": zod.boolean().optional().describe('When true, technicians can see the cost\/buy price of inventory items.'),
+  "durationUnit": zod.enum(['minutes', 'hours']).optional().describe('Whether job duration is displayed\/entered in minutes or hours'),
+  "autoInvoiceFrequency": zod.enum(['off', 'daily', 'weekly', 'monthly']).optional().describe('How often to auto-generate invoices'),
+  "rolePermissions": zod.record(zod.string(), zod.record(zod.string(), zod.boolean())).optional().describe('Per-role permission overrides'),
   "planTier": zod.enum(['starter', 'professional', 'enterprise']).optional(),
   "customerFields": zod.array(zod.object({
   "key": zod.string(),
@@ -1385,6 +1746,9 @@ export const UpdateTenantSettingsBody = zod.object({
   "taxRate": zod.number().optional(),
   "defaultMarkupPct": zod.number().optional(),
   "showCostPriceToTech": zod.boolean().optional(),
+  "durationUnit": zod.enum(['minutes', 'hours']).optional(),
+  "autoInvoiceFrequency": zod.enum(['off', 'daily', 'weekly', 'monthly']).optional(),
+  "rolePermissions": zod.record(zod.string(), zod.record(zod.string(), zod.boolean())).optional(),
   "customerFields": zod.array(zod.object({
   "key": zod.string(),
   "label": zod.string(),
@@ -1409,6 +1773,9 @@ export const UpdateTenantSettingsResponse = zod.object({
   "taxRate": zod.number().optional(),
   "defaultMarkupPct": zod.number().optional().describe('Default markup percentage applied to inventory cost prices.'),
   "showCostPriceToTech": zod.boolean().optional().describe('When true, technicians can see the cost\/buy price of inventory items.'),
+  "durationUnit": zod.enum(['minutes', 'hours']).optional().describe('Whether job duration is displayed\/entered in minutes or hours'),
+  "autoInvoiceFrequency": zod.enum(['off', 'daily', 'weekly', 'monthly']).optional().describe('How often to auto-generate invoices'),
+  "rolePermissions": zod.record(zod.string(), zod.record(zod.string(), zod.boolean())).optional().describe('Per-role permission overrides'),
   "planTier": zod.enum(['starter', 'professional', 'enterprise']).optional(),
   "customerFields": zod.array(zod.object({
   "key": zod.string(),
@@ -1429,7 +1796,7 @@ export const ListUsersResponseItem = zod.object({
   "id": zod.number(),
   "email": zod.string(),
   "name": zod.string(),
-  "role": zod.enum(['super_admin', 'company_owner', 'office_manager', 'employee', 'technician']),
+  "role": zod.enum(['super_admin', 'company_owner', 'office_manager', 'department_manager', 'crew_manager', 'technician']),
   "tenantId": zod.number(),
   "planTier": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
@@ -1445,7 +1812,7 @@ export const ListUsersResponse = zod.array(ListUsersResponseItem)
 export const CreateUserBody = zod.object({
   "email": zod.string(),
   "name": zod.string(),
-  "role": zod.enum(['company_owner', 'office_manager', 'employee', 'technician']),
+  "role": zod.enum(['company_owner', 'office_manager', 'department_manager', 'crew_manager', 'technician']),
   "password": zod.string().optional()
 })
 
@@ -1453,7 +1820,7 @@ export const CreateUserResponse = zod.object({
   "id": zod.number(),
   "email": zod.string(),
   "name": zod.string(),
-  "role": zod.enum(['super_admin', 'company_owner', 'office_manager', 'employee', 'technician']),
+  "role": zod.enum(['super_admin', 'company_owner', 'office_manager', 'department_manager', 'crew_manager', 'technician']),
   "tenantId": zod.number(),
   "planTier": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
@@ -1471,7 +1838,7 @@ export const UpdateUserParams = zod.object({
 
 export const UpdateUserBody = zod.object({
   "name": zod.string().optional(),
-  "role": zod.enum(['company_owner', 'office_manager', 'employee', 'technician']).optional(),
+  "role": zod.enum(['company_owner', 'office_manager', 'department_manager', 'crew_manager', 'technician']).optional(),
   "isActive": zod.boolean().optional()
 })
 
@@ -1479,7 +1846,7 @@ export const UpdateUserResponse = zod.object({
   "id": zod.number(),
   "email": zod.string(),
   "name": zod.string(),
-  "role": zod.enum(['super_admin', 'company_owner', 'office_manager', 'employee', 'technician']),
+  "role": zod.enum(['super_admin', 'company_owner', 'office_manager', 'department_manager', 'crew_manager', 'technician']),
   "tenantId": zod.number(),
   "planTier": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),

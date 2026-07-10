@@ -14,6 +14,7 @@ export interface JobUpdate {
   status?: JobUpdateStatus;
   priority?: JobUpdatePriority;
   assigneeId?: number;
+  crewId?: number;
   scheduledAt?: string;
   estimatedDuration?: number;
 }

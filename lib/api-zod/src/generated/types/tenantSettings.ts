@@ -6,7 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CustomerFieldConfig } from './customerFieldConfig';
+import type { TenantSettingsAutoInvoiceFrequency } from './tenantSettingsAutoInvoiceFrequency';
+import type { TenantSettingsDurationUnit } from './tenantSettingsDurationUnit';
 import type { TenantSettingsPlanTier } from './tenantSettingsPlanTier';
+import type { TenantSettingsRolePermissions } from './tenantSettingsRolePermissions';
 
 export interface TenantSettings {
   id: number;
@@ -24,6 +27,12 @@ export interface TenantSettings {
   defaultMarkupPct?: number;
   /** When true, technicians can see the cost/buy price of inventory items. */
   showCostPriceToTech?: boolean;
+  /** Whether job duration is displayed/entered in minutes or hours */
+  durationUnit?: TenantSettingsDurationUnit;
+  /** How often to auto-generate invoices */
+  autoInvoiceFrequency?: TenantSettingsAutoInvoiceFrequency;
+  /** Per-role permission overrides */
+  rolePermissions?: TenantSettingsRolePermissions;
   planTier?: TenantSettingsPlanTier;
   customerFields?: CustomerFieldConfig[];
 }

@@ -14,6 +14,12 @@ export const tenantsTable = pgTable("tenants", {
   taxRate: real("tax_rate").notNull().default(8.5),
   defaultMarkupPct: real("default_markup_pct").notNull().default(20),
   showCostPriceToTech: boolean("show_cost_price_to_tech").notNull().default(false),
+  /** 'minutes' | 'hours' — controls how job duration is displayed/entered company-wide */
+  durationUnit: text("duration_unit").notNull().default("minutes"),
+  /** auto-invoicing: 'off' | 'daily' | 'weekly' | 'monthly' */
+  autoInvoiceFrequency: text("auto_invoice_frequency").notNull().default("off"),
+  /** JSONB map of role → permission booleans, e.g. { crew_manager: { canCreateJobs: true, ... } } */
+  rolePermissions: jsonb("role_permissions").default("{}"),
   logoUrl: text("logo_url"),
   customFields: jsonb("custom_fields").default("[]"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

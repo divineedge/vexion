@@ -21,8 +21,14 @@ interface AuthContextType {
   logout: () => void;
   isOwner: boolean;
   isManager: boolean;
+  isDepartmentManager: boolean;
+  isCrewManager: boolean;
   isTechnician: boolean;
   isSuperAdmin: boolean;
+  /** True for any role that can manage office-level tasks (owner, office_manager, department_manager) */
+  canManageOffice: boolean;
+  /** True for roles that can create/edit jobs (owner, manager, department_manager, crew_manager) */
+  canManageJobs: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -33,7 +39,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const stored = localStorage.getItem('divine_edge_user');
       if (!stored) return null;
       const u: MockUser = JSON.parse(stored);
-      // Apply headers immediately so the first queries after page load are authenticated
       applyUserHeaders(u);
       return u;
     } catch {
@@ -53,16 +58,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     applyUserHeaders(null);
   };
 
+  const role = user?.role;
+  const isOwner = role === 'company_owner';
+  const isManager = role === 'office_manager';
+  const isDepartmentManager = role === 'department_manager';
+  const isCrewManager = role === 'crew_manager';
+  const isTechnician = role === 'technician';
+  const canManageOffice = isOwner || isManager || isDepartmentManager;
+  const canManageJobs = isOwner || isManager || isDepartmentManager || isCrewManager;
+
   return (
     <AuthContext.Provider value={{
       user,
       isAuthenticated: !!user,
       login,
       logout,
-      isOwner: user?.role === 'company_owner',
-      isManager: user?.role === 'office_manager',
-      isTechnician: user?.role === 'technician',
+      isOwner,
+      isManager,
+      isDepartmentManager,
+      isCrewManager,
+      isTechnician,
       isSuperAdmin: false,
+      canManageOffice,
+      canManageJobs,
     }}>
       {children}
     </AuthContext.Provider>

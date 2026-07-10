@@ -4,6 +4,7 @@ export * from "./customers";
 export * from "./properties";
 export * from "./propertyHistory";
 export * from "./jobs";
+export * from "./crews";
 export * from "./inventory";
 export * from "./invoices";
 export * from "./routines";

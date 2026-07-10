@@ -13,6 +13,7 @@ export const UserRole = {
   super_admin: 'super_admin',
   company_owner: 'company_owner',
   office_manager: 'office_manager',
-  employee: 'employee',
+  department_manager: 'department_manager',
+  crew_manager: 'crew_manager',
   technician: 'technician',
 } as const;

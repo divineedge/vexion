@@ -32,7 +32,7 @@ async function getUserRole(tenantId: number, userId: number): Promise<string | n
 async function canSeeCostPrice(tenantId: number, userId: number): Promise<boolean> {
   const role = await getUserRole(tenantId, userId);
   if (!role) return false;
-  if (role !== "technician") return true; // owner, manager, employee all see cost
+  if (role !== "technician") return true;
   const [tenant] = await db
     .select({ showCostPriceToTech: tenantsTable.showCostPriceToTech })
     .from(tenantsTable)
@@ -42,7 +42,6 @@ async function canSeeCostPrice(tenantId: number, userId: number): Promise<boolea
 
 /**
  * Guard middleware: technicians may not mutate inventory.
- * Only owner, office_manager, and employee roles may create/update/delete.
  */
 async function requireInventoryMutate(req: Request, res: Response, next: NextFunction): Promise<void> {
   const tenantId = getTenantId(req);
@@ -56,14 +55,9 @@ async function requireInventoryMutate(req: Request, res: Response, next: NextFun
 }
 
 /**
- * Compute the stored markup from DB values. If costPrice is 0 we fall back to
- * the tenant default so we don't divide-by-zero or return Infinity.
+ * Compute the stored markup from DB values.
  */
-function storedMarkupPct(
-  costPrice: number,
-  sellPrice: number,
-  tenantDefault: number,
-): number {
+function storedMarkupPct(costPrice: number, sellPrice: number, tenantDefault: number): number {
   if (costPrice === 0) return tenantDefault;
   return Math.round(((sellPrice / costPrice) - 1) * 100 * 100) / 100;
 }
@@ -84,7 +78,7 @@ function formatItem(
     description: i.description,
     category: i.category,
     costPrice: includeCostPrice ? costPrice : null,
-    unitPrice: sellPrice,   // sell price exposed as unitPrice to clients
+    unitPrice: sellPrice,
     markupPct: markup,
     markedUpPrice: sellPrice,
     quantity: i.quantity,
@@ -214,7 +208,6 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
   const id = parseInt(rawId, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  // Validate incoming price fields before any DB work
   if (req.body.costPrice !== undefined) {
     const c = parseSafeFloat(req.body.costPrice, NaN);
     if (isNaN(c) || c < 0) { res.status(400).json({ error: "costPrice must be a non-negative number" }); return; }
@@ -229,17 +222,11 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
   if (name !== undefined) updates.name = String(name);
   if (description !== undefined) updates.description = description ? String(description) : null;
   if (category !== undefined) updates.category = category ? String(category) : null;
-  if (quantity !== undefined) {
-    const q = parseSafeInt(quantity, 0);
-    updates.quantity = q;
-  }
-  if (reorderPoint !== undefined) {
-    updates.reorderPoint = parseSafeInt(reorderPoint, 5);
-  }
+  if (quantity !== undefined) { updates.quantity = parseSafeInt(quantity, 0); }
+  if (reorderPoint !== undefined) { updates.reorderPoint = parseSafeInt(reorderPoint, 5); }
   if (unit !== undefined) updates.unit = String(unit) || "each";
 
   if (costPrice !== undefined || reqMarkupPct !== undefined) {
-    // Fetch existing item for values we're not changing
     const [existing] = await db
       .select()
       .from(inventoryItemsTable)
@@ -254,9 +241,7 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
     updates.markedUpPrice = costVal * (1 + effectiveMarkupPct / 100);
   }
 
-  // Update isLowStock if quantity or reorderPoint changed
   if (updates.quantity !== undefined || updates.reorderPoint !== undefined) {
-    // Fetch current values if needed to compute isLowStock
     if (updates.quantity === undefined || updates.reorderPoint === undefined) {
       const [existing] = await db
         .select({ quantity: inventoryItemsTable.quantity, reorderPoint: inventoryItemsTable.reorderPoint })
@@ -278,6 +263,44 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
     .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)))
     .returning();
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+
+  const [markupPct, showCost] = await Promise.all([
+    getTenantMarkupPct(tenantId),
+    canSeeCostPrice(tenantId, userId),
+  ]);
+  res.json(formatItem(updated, markupPct, showCost));
+});
+
+// ── Stock adjustment ──────────────────────────────────────────────────────────
+// POST /inventory/:id/adjust-stock  body: { delta: number, reason?: string }
+// delta > 0 = receiving stock; delta < 0 = consuming/removing stock
+router.post("/inventory/:id/adjust-stock", requireInventoryMutate, async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const delta = parseSafeInt(req.body.delta, NaN);
+  if (isNaN(delta) || delta === 0) {
+    res.status(400).json({ error: "delta must be a non-zero integer" });
+    return;
+  }
+
+  const [existing] = await db.select().from(inventoryItemsTable)
+    .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+
+  const newQty = existing.quantity + delta;
+  if (newQty < 0) {
+    res.status(400).json({ error: "Stock adjustment would result in negative quantity" });
+    return;
+  }
+
+  const [updated] = await db.update(inventoryItemsTable)
+    .set({ quantity: newQty, isLowStock: newQty <= existing.reorderPoint })
+    .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)))
+    .returning();
 
   const [markupPct, showCost] = await Promise.all([
     getTenantMarkupPct(tenantId),

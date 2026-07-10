@@ -2,12 +2,17 @@ import React, { useState } from 'react';
 import {
   useListJobs, getListJobsQueryKey,
   useGetJob, getGetJobQueryKey,
-  useUpdateJob,
+  useUpdateJob, useCreateJob,
+  useListCustomers, getListCustomersQueryKey,
+  useListUsers, getListUsersQueryKey,
+  useGetTenantSettings, getGetTenantSettingsQueryKey,
 } from '@workspace/api-client-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -15,7 +20,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronRight, Clock, MapPin, User, Calendar,
-  DollarSign, ClipboardList, ArrowLeft,
+  DollarSign, ClipboardList, Plus, Users,
 } from 'lucide-react';
 import {
   startOfWeek, endOfWeek, startOfMonth, endOfMonth,
@@ -37,12 +42,34 @@ const PRIORITY_COLORS: Record<string, string> = {
   urgent: 'bg-red-100 text-red-700 border-transparent',
 };
 
+type NewJobForm = {
+  title: string;
+  description: string;
+  scheduledAt: string;
+  estimatedDuration: string;
+  priority: string;
+  customerId: string;
+  assigneeId: string;
+};
+
+const EMPTY_JOB: NewJobForm = {
+  title: '',
+  description: '',
+  scheduledAt: '',
+  estimatedDuration: '',
+  priority: 'normal',
+  customerId: '',
+  assigneeId: '',
+};
+
 export default function SchedulePage() {
-  const { user, isTechnician } = useAuth();
+  const { user, isTechnician, canManageJobs } = useAuth();
   const qc = useQueryClient();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<'week' | 'month'>('week');
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newJob, setNewJob] = useState<NewJobForm>(EMPTY_JOB);
 
   const assigneeId = isTechnician && user ? user.id : undefined;
 
@@ -58,7 +85,19 @@ export default function SchedulePage() {
     query: { enabled: selectedJobId != null, queryKey: getGetJobQueryKey(selectedJobId!) },
   });
 
+  const { data: customers } = useListCustomers({}, {
+    query: { enabled: createOpen, queryKey: getListCustomersQueryKey({}) },
+  });
+
+  const { data: users } = useListUsers({
+    query: { enabled: createOpen, queryKey: getListUsersQueryKey() },
+  });
+
+  const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
+  const durationUnit = settings?.durationUnit ?? 'minutes';
+
   const updateJob = useUpdateJob();
+  const createJob = useCreateJob();
 
   const days = eachDayOfInterval({ start, end });
   const getJobsForDay = (date: Date) => jobs?.filter(j => isSameDay(new Date(j.scheduledAt), date)) ?? [];
@@ -81,6 +120,44 @@ export default function SchedulePage() {
     );
   };
 
+  const handleCreateJob = () => {
+    if (!newJob.title || !newJob.scheduledAt) {
+      toast.error('Title and scheduled date are required');
+      return;
+    }
+    const durationMins = newJob.estimatedDuration
+      ? durationUnit === 'hours'
+        ? Math.round(parseFloat(newJob.estimatedDuration) * 60)
+        : parseInt(newJob.estimatedDuration, 10)
+      : undefined;
+
+    createJob.mutate({
+      data: {
+        title: newJob.title,
+        description: newJob.description || undefined,
+        scheduledAt: new Date(newJob.scheduledAt).toISOString(),
+        estimatedDuration: durationMins,
+        priority: newJob.priority as 'low' | 'normal' | 'high' | 'urgent',
+        customerId: newJob.customerId ? parseInt(newJob.customerId, 10) : undefined,
+        assigneeId: newJob.assigneeId ? parseInt(newJob.assigneeId, 10) : undefined,
+      },
+    }, {
+      onSuccess: () => {
+        toast.success('Job created');
+        qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+        setCreateOpen(false);
+        setNewJob(EMPTY_JOB);
+      },
+      onError: () => toast.error('Failed to create job'),
+    });
+  };
+
+  const formatDuration = (mins: number | null | undefined) => {
+    if (!mins) return null;
+    if (durationUnit === 'hours') return `${(mins / 60).toFixed(1)} hr`;
+    return `${mins} min`;
+  };
+
   return (
     <div className="space-y-6 h-full flex flex-col animate-in fade-in duration-500">
       {/* Header */}
@@ -101,7 +178,11 @@ export default function SchedulePage() {
             </div>
             <Button variant="outline" size="icon" onClick={nextRange}><ChevronRight className="w-4 h-4" /></Button>
           </div>
-          {!isTechnician && <Button className="gap-2">New Job</Button>}
+          {canManageJobs && (
+            <Button className="gap-2" onClick={() => setCreateOpen(true)}>
+              <Plus className="w-4 h-4" /> New Job
+            </Button>
+          )}
         </div>
       </div>
 
@@ -137,10 +218,10 @@ export default function SchedulePage() {
                           className={`p-2 rounded border text-xs cursor-pointer hover:shadow-md hover:brightness-95 transition-all ${STATUS_COLORS[job.status] ?? STATUS_COLORS.scheduled}`}
                         >
                           <div className="font-semibold truncate">{job.title}</div>
-                          {!isTechnician && job.assigneeName && (
+                          {!isTechnician && (job.assigneeName || job.crewName) && (
                             <div className="mt-1 flex items-center gap-1 opacity-80">
-                              <div className="w-1.5 h-1.5 rounded-full bg-current" />
-                              <span className="truncate">{job.assigneeName}</span>
+                              {job.crewName ? <Users className="w-3 h-3" /> : <div className="w-1.5 h-1.5 rounded-full bg-current" />}
+                              <span className="truncate">{job.crewName ?? job.assigneeName}</span>
                             </div>
                           )}
                           <div className="mt-1 flex items-center gap-1 opacity-80">
@@ -158,6 +239,97 @@ export default function SchedulePage() {
           )}
         </div>
       </Card>
+
+      {/* Create Job Sheet */}
+      <Sheet open={createOpen} onOpenChange={open => { if (!open) { setCreateOpen(false); setNewJob(EMPTY_JOB); } }}>
+        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader className="pb-4">
+            <SheetTitle>New Job</SheetTitle>
+            <SheetDescription>Schedule a new job or work order.</SheetDescription>
+          </SheetHeader>
+          <div className="space-y-4 pb-6">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Title <span className="text-destructive">*</span></label>
+              <Input placeholder="e.g. Irrigation system repair" value={newJob.title} onChange={e => setNewJob(f => ({ ...f, title: e.target.value }))} />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Scheduled Date & Time <span className="text-destructive">*</span></label>
+              <Input type="datetime-local" value={newJob.scheduledAt} onChange={e => setNewJob(f => ({ ...f, scheduledAt: e.target.value }))} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Duration ({durationUnit})</label>
+                <Input
+                  type="number"
+                  min={0}
+                  step={durationUnit === 'hours' ? 0.5 : 15}
+                  placeholder={durationUnit === 'hours' ? '1.5' : '90'}
+                  value={newJob.estimatedDuration}
+                  onChange={e => setNewJob(f => ({ ...f, estimatedDuration: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Priority</label>
+                <Select value={newJob.priority} onValueChange={v => setNewJob(f => ({ ...f, priority: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="normal">Normal</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Customer</label>
+              <Select value={newJob.customerId} onValueChange={v => setNewJob(f => ({ ...f, customerId: v }))}>
+                <SelectTrigger><SelectValue placeholder="Select customer..." /></SelectTrigger>
+                <SelectContent>
+                  {(customers?.items ?? []).map(c => (
+                    <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Assign To</label>
+              <Select value={newJob.assigneeId} onValueChange={v => setNewJob(f => ({ ...f, assigneeId: v }))}>
+                <SelectTrigger><SelectValue placeholder="Select technician..." /></SelectTrigger>
+                <SelectContent>
+                  {(users ?? [])
+                    .filter(u => u.role === 'technician' || u.role === 'crew_manager')
+                    .map(u => (
+                      <SelectItem key={u.id} value={String(u.id)}>{u.name} ({u.role.replace(/_/g, ' ')})</SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Description</label>
+              <Textarea
+                placeholder="Job details, special instructions..."
+                rows={3}
+                value={newJob.description}
+                onChange={e => setNewJob(f => ({ ...f, description: e.target.value }))}
+              />
+            </div>
+
+            <Separator />
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" onClick={() => { setCreateOpen(false); setNewJob(EMPTY_JOB); }}>Cancel</Button>
+              <Button onClick={handleCreateJob} disabled={createJob.isPending}>
+                {createJob.isPending ? 'Creating...' : 'Create Job'}
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Job Detail Sheet */}
       <Sheet open={selectedJobId != null} onOpenChange={open => { if (!open) setSelectedJobId(null); }}>
@@ -180,7 +352,7 @@ export default function SchedulePage() {
 
               <div className="space-y-5">
                 {/* Status change (non-tech) */}
-                {!isTechnician && (
+                {canManageJobs && (
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium">Update Status</label>
                     <Select value={selectedJob.status} onValueChange={handleStatusChange}>
@@ -212,7 +384,7 @@ export default function SchedulePage() {
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Duration</p>
                       <div className="flex items-center gap-2">
                         <Clock className="w-4 h-4 text-muted-foreground" />
-                        <span>{selectedJob.estimatedDuration} min</span>
+                        <span>{formatDuration(selectedJob.estimatedDuration)}</span>
                       </div>
                     </div>
                   )}
@@ -231,6 +403,15 @@ export default function SchedulePage() {
                       <div className="flex items-center gap-2">
                         <User className="w-4 h-4 text-muted-foreground" />
                         <span>{selectedJob.assigneeName}</span>
+                      </div>
+                    </div>
+                  )}
+                  {selectedJob.crewName && (
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Crew</p>
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4 text-muted-foreground" />
+                        <span>{selectedJob.crewName}</span>
                       </div>
                     </div>
                   )}
@@ -268,6 +449,29 @@ export default function SchedulePage() {
                     <div className="space-y-1.5">
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Description</p>
                       <p className="text-sm">{selectedJob.description}</p>
+                    </div>
+                  </>
+                )}
+
+                {/* Parts used on job */}
+                {Array.isArray(selectedJob.jobParts) && selectedJob.jobParts.length > 0 && (
+                  <>
+                    <Separator />
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1.5">
+                        <ClipboardList className="w-3.5 h-3.5" /> Parts Used
+                      </p>
+                      <div className="rounded-lg border divide-y text-sm">
+                        {(selectedJob.jobParts as { name: string; quantity: number; unitPrice: number; total: number }[]).map((part, i) => (
+                          <div key={i} className="flex items-center justify-between px-3 py-2">
+                            <div className="flex-1 min-w-0">
+                              <span className="font-medium truncate block">{part.name}</span>
+                              <span className="text-xs text-muted-foreground">{part.quantity} × ${part.unitPrice.toFixed(2)}</span>
+                            </div>
+                            <span className="font-semibold ml-4">${part.total.toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </>
                 )}

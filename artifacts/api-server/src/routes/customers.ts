@@ -5,7 +5,10 @@ import { getTenantId, getUserId } from "../lib/tenantHelper";
 
 const router: IRouter = Router();
 
-function formatCustomer(c: typeof customersTable.$inferSelect, extras?: { propertyCount?: number }) {
+function formatCustomer(
+  c: typeof customersTable.$inferSelect,
+  extras?: { propertyCount?: number; thisYearSpend?: number; lastYearSpend?: number }
+) {
   return {
     id: c.id,
     tenantId: c.tenantId,
@@ -24,6 +27,8 @@ function formatCustomer(c: typeof customersTable.$inferSelect, extras?: { proper
     tags: c.tags ?? [],
     customFieldValues: (c.customFieldValues as Record<string, unknown>) ?? {},
     totalSpend: c.totalSpend,
+    thisYearSpend: extras?.thisYearSpend ?? null,
+    lastYearSpend: extras?.lastYearSpend ?? null,
     propertyCount: extras?.propertyCount ?? 0,
     createdAt: c.createdAt.toISOString(),
   };
@@ -108,9 +113,29 @@ router.get("/customers/:id", async (req, res): Promise<void> => {
   const [customer] = await db.select().from(customersTable).where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)));
   if (!customer) { res.status(404).json({ error: "Not found" }); return; }
 
-  const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(propertiesTable).where(and(eq(propertiesTable.customerId, id), eq(propertiesTable.tenantId, tenantId)));
+  const now = new Date();
+  const thisYearStart = new Date(now.getFullYear(), 0, 1).toISOString();
+  const lastYearStart = new Date(now.getFullYear() - 1, 0, 1).toISOString();
+  const lastYearEnd = new Date(now.getFullYear(), 0, 1).toISOString();
 
-  res.json(formatCustomer(customer, { propertyCount: count }));
+  const [
+    [{ count: propCount }],
+    [thisYear],
+    [lastYear],
+  ] = await Promise.all([
+    db.select({ count: sql<number>`count(*)::int` }).from(propertiesTable)
+      .where(and(eq(propertiesTable.customerId, id), eq(propertiesTable.tenantId, tenantId))),
+    db.select({ total: sql<number>`COALESCE(sum(total),0)::float` }).from(invoicesTable)
+      .where(and(eq(invoicesTable.tenantId, tenantId), eq(invoicesTable.customerId, id), eq(invoicesTable.status, "paid"), sql`created_at >= ${thisYearStart}::timestamptz`)),
+    db.select({ total: sql<number>`COALESCE(sum(total),0)::float` }).from(invoicesTable)
+      .where(and(eq(invoicesTable.tenantId, tenantId), eq(invoicesTable.customerId, id), eq(invoicesTable.status, "paid"), sql`created_at >= ${lastYearStart}::timestamptz AND created_at < ${lastYearEnd}::timestamptz`)),
+  ]);
+
+  res.json(formatCustomer(customer, {
+    propertyCount: propCount,
+    thisYearSpend: thisYear?.total ?? 0,
+    lastYearSpend: lastYear?.total ?? 0,
+  }));
 });
 
 router.patch("/customers/:id", async (req, res): Promise<void> => {
@@ -146,7 +171,8 @@ router.patch("/customers/:id", async (req, res): Promise<void> => {
 
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
 
-  const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(propertiesTable).where(and(eq(propertiesTable.customerId, id), eq(propertiesTable.tenantId, tenantId)));
+  const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(propertiesTable)
+    .where(and(eq(propertiesTable.customerId, id), eq(propertiesTable.tenantId, tenantId)));
   res.json(formatCustomer(updated, { propertyCount: count }));
 });
 

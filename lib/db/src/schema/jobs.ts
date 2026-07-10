@@ -16,13 +16,18 @@ export const jobsTable = pgTable("jobs", {
   customerId: integer("customer_id").references(() => customersTable.id),
   propertyId: integer("property_id").references(() => propertiesTable.id),
   assigneeId: integer("assignee_id").references(() => usersTable.id),
+  /** crew assigned to this job (alternative to individual assignee) */
+  crewId: integer("crew_id"),
   blueprintId: integer("blueprint_id"),
   invoiceId: integer("invoice_id"),
   scheduledAt: timestamp("scheduled_at", { withTimezone: true }).notNull(),
+  /** duration stored always in minutes; UI displays in hours or minutes per tenant setting */
   estimatedDuration: integer("estimated_duration"),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   totalAmount: real("total_amount").notNull().default(0),
   lineItems: jsonb("line_items").default("[]"),
+  /** parts used on this job: [{inventoryItemId, name, quantity, unitPrice, total}] */
+  jobParts: jsonb("job_parts").default("[]"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

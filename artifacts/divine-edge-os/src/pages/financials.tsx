@@ -4,6 +4,7 @@ import {
   useGetInvoice, getGetInvoiceQueryKey,
   useGetFinancialsSummary, getGetFinancialsSummaryQueryKey,
   useUpdateInvoice,
+  useGetJob, getGetJobQueryKey,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
@@ -14,7 +15,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Plus, ArrowUpRight, DollarSign, Clock, FileText, CheckCircle, Calendar, User } from 'lucide-react';
+import { Plus, ArrowUpRight, DollarSign, Clock, FileText, CheckCircle, Calendar, User, ChevronDown, Package } from 'lucide-react';
 import { format } from 'date-fns';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -28,6 +29,7 @@ const STATUS_COLORS: Record<string, string> = {
 export default function FinancialsPage() {
   const qc = useQueryClient();
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
+  const [partsExpanded, setPartsExpanded] = useState(false);
 
   const { data: summary } = useGetFinancialsSummary({ query: { queryKey: getGetFinancialsSummaryQueryKey() } });
   const { data: invoices, isLoading } = useListInvoices({}, { query: { queryKey: getListInvoicesQueryKey({}) } });
@@ -36,6 +38,14 @@ export default function FinancialsPage() {
   });
 
   const updateInvoice = useUpdateInvoice();
+
+  // Fetch job for parts breakdown when the invoice is linked to a job
+  const jobId = selectedInvoice?.jobId ?? null;
+  const { data: linkedJob } = useGetJob(jobId!, {
+    query: { enabled: jobId != null, queryKey: getGetJobQueryKey(jobId!) },
+  });
+  const jobParts = (linkedJob?.jobParts ?? []) as { name: string; quantity: number; unitPrice: number; total: number }[];
+  const partsTotal = jobParts.reduce((sum, p) => sum + p.total, 0);
 
   const handleStatusChange = (status: string) => {
     if (!selectedInvoiceId) return;
@@ -211,6 +221,41 @@ export default function FinancialsPage() {
                 )}
 
                 <Separator />
+
+                {/* Parts used (loaded from linked job) */}
+                {selectedInvoice.jobId && jobParts.length > 0 && (
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      className="w-full flex items-center justify-between text-left"
+                      onClick={() => setPartsExpanded(e => !e)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Package className="w-4 h-4 text-muted-foreground" />
+                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Parts Used</p>
+                        <span className="text-xs font-semibold text-foreground ml-1">${partsTotal.toFixed(2)}</span>
+                      </div>
+                      <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${partsExpanded ? 'rotate-180' : ''}`} />
+                    </button>
+                    {partsExpanded && (
+                      <div className="rounded-lg border divide-y text-sm">
+                        {jobParts.map((part, i) => (
+                          <div key={i} className="flex items-center justify-between px-3 py-2.5">
+                            <div className="flex-1 min-w-0">
+                              <span className="font-medium block truncate">{part.name}</span>
+                              <span className="text-xs text-muted-foreground">{part.quantity} × ${part.unitPrice.toFixed(2)}</span>
+                            </div>
+                            <span className="font-medium ml-4">${part.total.toFixed(2)}</span>
+                          </div>
+                        ))}
+                        <div className="flex items-center justify-between px-3 py-2.5 bg-muted/30 font-semibold">
+                          <span>Parts Total</span>
+                          <span>${partsTotal.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Line Items */}
                 <div className="space-y-2">

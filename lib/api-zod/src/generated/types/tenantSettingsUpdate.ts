@@ -6,6 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CustomerFieldConfig } from './customerFieldConfig';
+import type { TenantSettingsUpdateAutoInvoiceFrequency } from './tenantSettingsUpdateAutoInvoiceFrequency';
+import type { TenantSettingsUpdateDurationUnit } from './tenantSettingsUpdateDurationUnit';
+import type { TenantSettingsUpdateRolePermissions } from './tenantSettingsUpdateRolePermissions';
 
 export interface TenantSettingsUpdate {
   companyName?: string;
@@ -17,5 +20,8 @@ export interface TenantSettingsUpdate {
   taxRate?: number;
   defaultMarkupPct?: number;
   showCostPriceToTech?: boolean;
+  durationUnit?: TenantSettingsUpdateDurationUnit;
+  autoInvoiceFrequency?: TenantSettingsUpdateAutoInvoiceFrequency;
+  rolePermissions?: TenantSettingsUpdateRolePermissions;
   customerFields?: CustomerFieldConfig[];
 }

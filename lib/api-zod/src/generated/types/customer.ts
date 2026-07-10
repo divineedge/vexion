@@ -35,5 +35,15 @@ export interface Customer {
   customFieldValues?: CustomerCustomFieldValues;
   propertyCount?: number;
   totalSpend?: number;
+  /**
+     * Total paid invoices for the current calendar year
+     * @nullable
+     */
+  thisYearSpend?: number | null;
+  /**
+     * Total paid invoices for the previous calendar year
+     * @nullable
+     */
+  lastYearSpend?: number | null;
   createdAt: string;
 }

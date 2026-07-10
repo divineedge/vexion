@@ -166,9 +166,11 @@ export default function CustomerDetailPage() {
       </div>
 
       {/* KPI bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {[
-          { label: 'Total Spend', value: `$${(customer.totalSpend ?? 0).toLocaleString()}`, icon: DollarSign, color: 'text-emerald-600' },
+          { label: 'Lifetime Spend', value: `${(customer.totalSpend ?? 0).toLocaleString()}`, icon: DollarSign, color: 'text-emerald-600' },
+          { label: `${new Date().getFullYear()} Spend`, value: customer.thisYearSpend != null ? `${customer.thisYearSpend.toLocaleString()}` : '—', icon: DollarSign, color: 'text-teal-600' },
+          { label: `${new Date().getFullYear() - 1} Spend`, value: customer.lastYearSpend != null ? `${customer.lastYearSpend.toLocaleString()}` : '—', icon: DollarSign, color: 'text-cyan-600' },
           { label: 'Properties', value: String(properties?.length ?? 0), icon: Home, color: 'text-blue-600' },
           { label: 'Total Jobs', value: String(jobs?.length ?? 0), icon: Briefcase, color: 'text-violet-600' },
           { label: 'Completed', value: String(completedJobs), icon: Calendar, color: 'text-amber-600' },

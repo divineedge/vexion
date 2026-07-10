@@ -19,6 +19,8 @@ tags:
     description: Property management
   - name: jobs
     description: Job/work order management
+  - name: crews
+    description: Crew management
   - name: inventory
     description: Inventory and parts management
   - name: invoices
@@ -509,6 +511,211 @@ paths:
               schema:
                 $ref: "#/components/schemas/Job"
 
+  /jobs/{id}/parts:
+    get:
+      operationId: getJobParts
+      tags: [jobs]
+      summary: Get parts used on a job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Parts list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/JobPart"
+    post:
+      operationId: addJobPart
+      tags: [jobs]
+      summary: Add or update a part on a job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobPartInput"
+      responses:
+        "200":
+          description: Updated job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+
+  /jobs/{id}/parts/{inventoryItemId}:
+    delete:
+      operationId: removeJobPart
+      tags: [jobs]
+      summary: Remove a part from a job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: inventoryItemId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+
+  # CREWS
+  /crews:
+    get:
+      operationId: listCrews
+      tags: [crews]
+      summary: List all crews
+      responses:
+        "200":
+          description: List of crews
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Crew"
+    post:
+      operationId: createCrew
+      tags: [crews]
+      summary: Create a new crew
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrewInput"
+      responses:
+        "201":
+          description: Crew created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Crew"
+
+  /crews/{id}:
+    get:
+      operationId: getCrew
+      tags: [crews]
+      summary: Get a crew with its members
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Crew
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Crew"
+    patch:
+      operationId: updateCrew
+      tags: [crews]
+      summary: Update a crew
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrewUpdate"
+      responses:
+        "200":
+          description: Updated crew
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Crew"
+    delete:
+      operationId: deleteCrew
+      tags: [crews]
+      summary: Delete a crew
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /crews/{id}/members:
+    post:
+      operationId: addCrewMember
+      tags: [crews]
+      summary: Add a user to a crew
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId]
+              properties:
+                userId:
+                  type: integer
+      responses:
+        "201":
+          description: Member added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Crew"
+
+  /crews/{id}/members/{userId}:
+    delete:
+      operationId: removeCrewMember
+      tags: [crews]
+      summary: Remove a user from a crew
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Removed
+
   # INVENTORY
   /inventory:
     get:
@@ -609,6 +816,31 @@ paths:
       responses:
         "204":
           description: Deleted
+
+  /inventory/{id}/adjust-stock:
+    post:
+      operationId: adjustInventoryStock
+      tags: [inventory]
+      summary: Adjust the stock quantity of an inventory item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StockAdjustmentInput"
+      responses:
+        "200":
+          description: Updated item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryItem"
 
   /inventory/summary:
     get:
@@ -1187,7 +1419,7 @@ components:
           type: string
         role:
           type: string
-          enum: [super_admin, company_owner, office_manager, employee, technician]
+          enum: [super_admin, company_owner, office_manager, department_manager, crew_manager, technician]
         tenantId:
           type: integer
         planTier:
@@ -1205,12 +1437,11 @@ components:
       properties:
         email:
           type: string
-
         name:
           type: string
         role:
           type: string
-          enum: [company_owner, office_manager, employee, technician]
+          enum: [company_owner, office_manager, department_manager, crew_manager, technician]
         password:
           type: string
 
@@ -1221,7 +1452,7 @@ components:
           type: string
         role:
           type: string
-          enum: [company_owner, office_manager, employee, technician]
+          enum: [company_owner, office_manager, department_manager, crew_manager, technician]
         isActive:
           type: boolean
 
@@ -1326,6 +1557,12 @@ components:
           type: integer
         totalSpend:
           type: number
+        thisYearSpend:
+          type: ["number", "null"]
+          description: "Total paid invoices for the current calendar year"
+        lastYearSpend:
+          type: ["number", "null"]
+          description: "Total paid invoices for the previous calendar year"
         createdAt:
           type: string
 
@@ -1538,10 +1775,15 @@ components:
           type: ["integer", "null"]
         assigneeName:
           type: ["string", "null"]
+        crewId:
+          type: ["integer", "null"]
+        crewName:
+          type: ["string", "null"]
         scheduledAt:
           type: string
         estimatedDuration:
           type: ["integer", "null"]
+          description: "Duration stored in minutes; display as hours or minutes per tenant durationUnit setting"
         completedAt:
           type: ["string", "null"]
         totalAmount:
@@ -1554,6 +1796,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/JobLineItem"
+        jobParts:
+          type: array
+          description: "Parts used on this job from inventory"
+          items:
+            $ref: "#/components/schemas/JobPart"
         createdAt:
           type: string
 
@@ -1572,6 +1819,30 @@ components:
         unitPrice:
           type: number
         total:
+          type: number
+
+    JobPart:
+      type: object
+      required: [inventoryItemId, name, quantity, unitPrice, total]
+      properties:
+        inventoryItemId:
+          type: integer
+        name:
+          type: string
+        quantity:
+          type: number
+        unitPrice:
+          type: number
+        total:
+          type: number
+
+    JobPartInput:
+      type: object
+      required: [inventoryItemId, quantity]
+      properties:
+        inventoryItemId:
+          type: integer
+        quantity:
           type: number
 
     JobInput:
@@ -1593,6 +1864,8 @@ components:
         propertyId:
           type: integer
         assigneeId:
+          type: integer
+        crewId:
           type: integer
         scheduledAt:
           type: string
@@ -1616,10 +1889,81 @@ components:
           enum: [low, normal, high, urgent]
         assigneeId:
           type: integer
+        crewId:
+          type: integer
         scheduledAt:
           type: string
         estimatedDuration:
           type: integer
+
+    Crew:
+      type: object
+      required: [id, tenantId, name, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        managerId:
+          type: ["integer", "null"]
+        managerName:
+          type: ["string", "null"]
+        memberCount:
+          type: integer
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/CrewMember"
+        createdAt:
+          type: string
+
+    CrewMember:
+      type: object
+      required: [id, name, role]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        role:
+          type: string
+        email:
+          type: string
+
+    CrewInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        managerId:
+          type: integer
+
+    CrewUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        managerId:
+          type: integer
+
+    StockAdjustmentInput:
+      type: object
+      required: [delta]
+      properties:
+        delta:
+          type: integer
+          description: "Positive to add stock, negative to remove stock"
+        reason:
+          type: string
 
     InventoryItem:
       type: object
@@ -2087,6 +2431,21 @@ components:
         showCostPriceToTech:
           type: boolean
           description: "When true, technicians can see the cost/buy price of inventory items."
+        durationUnit:
+          type: string
+          enum: [minutes, hours]
+          description: "Whether job duration is displayed/entered in minutes or hours"
+        autoInvoiceFrequency:
+          type: string
+          enum: [off, daily, weekly, monthly]
+          description: "How often to auto-generate invoices"
+        rolePermissions:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties:
+              type: boolean
+          description: "Per-role permission overrides"
         planTier:
           type: string
           enum: [starter, professional, enterprise]
@@ -2116,6 +2475,18 @@ components:
           type: number
         showCostPriceToTech:
           type: boolean
+        durationUnit:
+          type: string
+          enum: [minutes, hours]
+        autoInvoiceFrequency:
+          type: string
+          enum: [off, daily, weekly, monthly]
+        rolePermissions:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties:
+              type: boolean
         customerFields:
           type: array
           items:

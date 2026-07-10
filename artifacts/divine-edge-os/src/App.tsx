@@ -19,6 +19,7 @@ import TimeTrackingPage from '@/pages/time-tracking';
 import BlueprintsPage from '@/pages/blueprints';
 import BlueprintCanvasPage from '@/pages/blueprint-canvas';
 import SettingsPage from '@/pages/settings';
+import CrewsPage from '@/pages/crews';
 
 import NotFound from '@/pages/not-found';
 
@@ -48,6 +49,7 @@ function ProtectedRoutes() {
         <Route path="/blueprints/:id" component={BlueprintCanvasPage} />
         <Route path="/blueprints" component={BlueprintsPage} />
         <Route path="/settings" component={SettingsPage} />
+        <Route path="/crews" component={CrewsPage} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

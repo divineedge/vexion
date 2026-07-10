@@ -16,6 +16,7 @@ export interface JobInput {
   customerId?: number;
   propertyId?: number;
   assigneeId?: number;
+  crewId?: number;
   scheduledAt: string;
   estimatedDuration?: number;
   blueprintId?: number;

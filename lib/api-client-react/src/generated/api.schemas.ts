@@ -21,7 +21,8 @@ export const UserRole = {
   super_admin: 'super_admin',
   company_owner: 'company_owner',
   office_manager: 'office_manager',
-  employee: 'employee',
+  department_manager: 'department_manager',
+  crew_manager: 'crew_manager',
   technician: 'technician',
 } as const;
 
@@ -50,7 +51,8 @@ export type UserInputRole = typeof UserInputRole[keyof typeof UserInputRole];
 export const UserInputRole = {
   company_owner: 'company_owner',
   office_manager: 'office_manager',
-  employee: 'employee',
+  department_manager: 'department_manager',
+  crew_manager: 'crew_manager',
   technician: 'technician',
 } as const;
 
@@ -67,7 +69,8 @@ export type UserUpdateRole = typeof UserUpdateRole[keyof typeof UserUpdateRole];
 export const UserUpdateRole = {
   company_owner: 'company_owner',
   office_manager: 'office_manager',
-  employee: 'employee',
+  department_manager: 'department_manager',
+  crew_manager: 'crew_manager',
   technician: 'technician',
 } as const;
 
@@ -152,6 +155,16 @@ export interface Customer {
   customFieldValues?: CustomerCustomFieldValues;
   propertyCount?: number;
   totalSpend?: number;
+  /**
+     * Total paid invoices for the current calendar year
+     * @nullable
+     */
+  thisYearSpend?: number | null;
+  /**
+     * Total paid invoices for the previous calendar year
+     * @nullable
+     */
+  lastYearSpend?: number | null;
   createdAt: string;
 }
 
@@ -289,6 +302,14 @@ export interface JobLineItem {
   total: number;
 }
 
+export interface JobPart {
+  inventoryItemId: number;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+}
+
 export interface Job {
   id: number;
   tenantId: number;
@@ -309,8 +330,15 @@ export interface Job {
   assigneeId?: number | null;
   /** @nullable */
   assigneeName?: string | null;
-  scheduledAt: string;
   /** @nullable */
+  crewId?: number | null;
+  /** @nullable */
+  crewName?: string | null;
+  scheduledAt: string;
+  /**
+     * Duration stored in minutes; display as hours or minutes per tenant durationUnit setting
+     * @nullable
+     */
   estimatedDuration?: number | null;
   /** @nullable */
   completedAt?: string | null;
@@ -320,7 +348,14 @@ export interface Job {
   /** @nullable */
   blueprintId?: number | null;
   lineItems?: JobLineItem[];
+  /** Parts used on this job from inventory */
+  jobParts?: JobPart[];
   createdAt: string;
+}
+
+export interface JobPartInput {
+  inventoryItemId: number;
+  quantity: number;
 }
 
 export type JobInputStatus = typeof JobInputStatus[keyof typeof JobInputStatus];
@@ -352,6 +387,7 @@ export interface JobInput {
   customerId?: number;
   propertyId?: number;
   assigneeId?: number;
+  crewId?: number;
   scheduledAt: string;
   estimatedDuration?: number;
   blueprintId?: number;
@@ -384,8 +420,49 @@ export interface JobUpdate {
   status?: JobUpdateStatus;
   priority?: JobUpdatePriority;
   assigneeId?: number;
+  crewId?: number;
   scheduledAt?: string;
   estimatedDuration?: number;
+}
+
+export interface CrewMember {
+  id: number;
+  name: string;
+  role: string;
+  email?: string;
+}
+
+export interface Crew {
+  id: number;
+  tenantId: number;
+  name: string;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  managerId?: number | null;
+  /** @nullable */
+  managerName?: string | null;
+  memberCount?: number;
+  members?: CrewMember[];
+  createdAt: string;
+}
+
+export interface CrewInput {
+  name: string;
+  description?: string;
+  managerId?: number;
+}
+
+export interface CrewUpdate {
+  name?: string;
+  description?: string;
+  managerId?: number;
+}
+
+export interface StockAdjustmentInput {
+  /** Positive to add stock, negative to remove stock */
+  delta: number;
+  reason?: string;
 }
 
 export interface InventoryItem {
@@ -734,6 +811,35 @@ export interface BlueprintEstimate {
   measurements?: BlueprintEstimateMeasurements;
 }
 
+/**
+ * Whether job duration is displayed/entered in minutes or hours
+ */
+export type TenantSettingsDurationUnit = typeof TenantSettingsDurationUnit[keyof typeof TenantSettingsDurationUnit];
+
+
+export const TenantSettingsDurationUnit = {
+  minutes: 'minutes',
+  hours: 'hours',
+} as const;
+
+/**
+ * How often to auto-generate invoices
+ */
+export type TenantSettingsAutoInvoiceFrequency = typeof TenantSettingsAutoInvoiceFrequency[keyof typeof TenantSettingsAutoInvoiceFrequency];
+
+
+export const TenantSettingsAutoInvoiceFrequency = {
+  off: 'off',
+  daily: 'daily',
+  weekly: 'weekly',
+  monthly: 'monthly',
+} as const;
+
+/**
+ * Per-role permission overrides
+ */
+export type TenantSettingsRolePermissions = {[key: string]: {[key: string]: boolean}};
+
 export type TenantSettingsPlanTier = typeof TenantSettingsPlanTier[keyof typeof TenantSettingsPlanTier];
 
 
@@ -781,9 +887,35 @@ export interface TenantSettings {
   defaultMarkupPct?: number;
   /** When true, technicians can see the cost/buy price of inventory items. */
   showCostPriceToTech?: boolean;
+  /** Whether job duration is displayed/entered in minutes or hours */
+  durationUnit?: TenantSettingsDurationUnit;
+  /** How often to auto-generate invoices */
+  autoInvoiceFrequency?: TenantSettingsAutoInvoiceFrequency;
+  /** Per-role permission overrides */
+  rolePermissions?: TenantSettingsRolePermissions;
   planTier?: TenantSettingsPlanTier;
   customerFields?: CustomerFieldConfig[];
 }
+
+export type TenantSettingsUpdateDurationUnit = typeof TenantSettingsUpdateDurationUnit[keyof typeof TenantSettingsUpdateDurationUnit];
+
+
+export const TenantSettingsUpdateDurationUnit = {
+  minutes: 'minutes',
+  hours: 'hours',
+} as const;
+
+export type TenantSettingsUpdateAutoInvoiceFrequency = typeof TenantSettingsUpdateAutoInvoiceFrequency[keyof typeof TenantSettingsUpdateAutoInvoiceFrequency];
+
+
+export const TenantSettingsUpdateAutoInvoiceFrequency = {
+  off: 'off',
+  daily: 'daily',
+  weekly: 'weekly',
+  monthly: 'monthly',
+} as const;
+
+export type TenantSettingsUpdateRolePermissions = {[key: string]: {[key: string]: boolean}};
 
 export interface TenantSettingsUpdate {
   companyName?: string;
@@ -795,6 +927,9 @@ export interface TenantSettingsUpdate {
   taxRate?: number;
   defaultMarkupPct?: number;
   showCostPriceToTech?: boolean;
+  durationUnit?: TenantSettingsUpdateDurationUnit;
+  autoInvoiceFrequency?: TenantSettingsUpdateAutoInvoiceFrequency;
+  rolePermissions?: TenantSettingsUpdateRolePermissions;
   customerFields?: CustomerFieldConfig[];
 }
 
@@ -860,6 +995,10 @@ assigneeId?: number;
 startDate?: string;
 endDate?: string;
 customerId?: number;
+};
+
+export type AddCrewMemberBody = {
+  userId: number;
 };
 
 export type ListInventoryItemsParams = {

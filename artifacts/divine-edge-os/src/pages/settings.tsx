@@ -55,9 +55,13 @@ export default function SettingsPage() {
   const [newField, setNewField] = useState<Partial<CustomerFieldConfig>>({ type: 'text', visible: true, required: false, isBuiltIn: false });
   const [newOptions, setNewOptions] = useState('');
 
+  // Operational
+  const [durationUnit, setDurationUnit] = useState<'minutes' | 'hours'>('minutes');
+  const [autoInvoiceFrequency, setAutoInvoiceFrequency] = useState<'off' | 'daily' | 'weekly' | 'monthly'>('off');
+
   // Team
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: 'employee' });
+  const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: 'technician' });
 
   useEffect(() => {
     if (settings) {
@@ -67,6 +71,8 @@ export default function SettingsPage() {
       setBuffer(String(settings.overageMaterialBuffer ?? 10));
       setMarkupPct(String(settings.defaultMarkupPct ?? 20));
       setShowCostToTech(settings.showCostPriceToTech ?? false);
+      setDurationUnit((settings.durationUnit as 'minutes' | 'hours') ?? 'minutes');
+      setAutoInvoiceFrequency((settings.autoInvoiceFrequency as 'off' | 'daily' | 'weekly' | 'monthly') ?? 'off');
       setCustomerFields(getActiveCustomerFields(settings));
     }
   }, [settings]);
@@ -87,6 +93,16 @@ export default function SettingsPage() {
       {
         onSuccess: () => { toast.success('Pricing settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
         onError: () => toast.error('Failed to save pricing settings'),
+      },
+    );
+  };
+
+  const saveOperational = () => {
+    updateSettings.mutate(
+      { data: { durationUnit, autoInvoiceFrequency } as Parameters<typeof updateSettings.mutate>[0]['data'] },
+      {
+        onSuccess: () => { toast.success('Operational settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
+        onError: () => toast.error('Failed to save settings'),
       },
     );
   };
@@ -143,7 +159,7 @@ export default function SettingsPage() {
           toast.success(`${inviteForm.name} added`);
           qc.invalidateQueries({ queryKey: getListUsersQueryKey() });
           setInviteOpen(false);
-          setInviteForm({ name: '', email: '', role: 'employee' });
+          setInviteForm({ name: '', email: '', role: 'technician' });
         },
         onError: () => toast.error('Failed to add user'),
       },
@@ -193,6 +209,7 @@ export default function SettingsPage() {
           <TabsTrigger value="payments"><CreditCard className="w-4 h-4 mr-2" />Integrations</TabsTrigger>
           <TabsTrigger value="users"><Users className="w-4 h-4 mr-2" />Team</TabsTrigger>
           {isSuperAdmin && <TabsTrigger value="plans"><Shield className="w-4 h-4 mr-2" />Plans</TabsTrigger>}
+          <TabsTrigger value="operational"><SettingsIcon className="w-4 h-4 mr-2" />Operational</TabsTrigger>
         </TabsList>
 
         {/* ── General ── */}
@@ -582,7 +599,8 @@ export default function SettingsPage() {
                     <SelectContent>
                       <SelectItem value="company_owner">Company Owner</SelectItem>
                       <SelectItem value="office_manager">Office Manager</SelectItem>
-                      <SelectItem value="employee">Employee</SelectItem>
+                      <SelectItem value="department_manager">Department Manager</SelectItem>
+                      <SelectItem value="crew_manager">Crew Manager</SelectItem>
                       <SelectItem value="technician">Technician</SelectItem>
                     </SelectContent>
                   </Select>
@@ -634,6 +652,62 @@ export default function SettingsPage() {
             </div>
           </TabsContent>
         )}
+
+        {/* ── Operational ── */}
+        <TabsContent value="operational" className="space-y-6 focus-visible:outline-none">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <SettingsIcon className="w-5 h-5" /> Job Settings
+              </CardTitle>
+              <CardDescription>Configure how job durations are entered and how invoices are generated.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Duration unit */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Duration Input Unit</label>
+                  <p className="text-xs text-muted-foreground">How field staff enter job durations. Stored internally in minutes.</p>
+                  <div className="flex items-center rounded-md border p-1 bg-muted/50 w-fit gap-1">
+                    <Button
+                      size="sm"
+                      variant={durationUnit === 'minutes' ? 'secondary' : 'ghost'}
+                      className="h-8 px-4 text-sm"
+                      onClick={() => setDurationUnit('minutes')}
+                    >Minutes</Button>
+                    <Button
+                      size="sm"
+                      variant={durationUnit === 'hours' ? 'secondary' : 'ghost'}
+                      className="h-8 px-4 text-sm"
+                      onClick={() => setDurationUnit('hours')}
+                    >Hours</Button>
+                  </div>
+                </div>
+
+                {/* Auto-invoice frequency */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Auto-Invoice Frequency</label>
+                  <p className="text-xs text-muted-foreground">Automatically generate invoices for completed jobs on a schedule.</p>
+                  <Select value={autoInvoiceFrequency} onValueChange={v => setAutoInvoiceFrequency(v as typeof autoInvoiceFrequency)}>
+                    <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="off">Off (manual only)</SelectItem>
+                      <SelectItem value="daily">Daily</SelectItem>
+                      <SelectItem value="weekly">Weekly</SelectItem>
+                      <SelectItem value="monthly">Monthly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2 border-t">
+                <Button onClick={saveOperational} disabled={updateSettings.isPending} variant="outline">
+                  Save Job Settings
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
     </div>
   );

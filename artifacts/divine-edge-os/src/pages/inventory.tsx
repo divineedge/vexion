@@ -4,6 +4,7 @@ import {
   useGetInventoryItem, getGetInventoryItemQueryKey,
   useGetInventorySummary, getGetInventorySummaryQueryKey,
   useCreateInventoryItem, useUpdateInventoryItem, useDeleteInventoryItem,
+  useAdjustInventoryStock,
   useGetTenantSettings, getGetTenantSettingsQueryKey,
 } from '@workspace/api-client-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,8 +19,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Search, Plus, AlertTriangle, Package, DollarSign, Edit, Trash2,
-  TrendingUp, ArrowRight, Eye, EyeOff,
+  TrendingUp, ArrowRight, Eye, EyeOff, PlusCircle, MinusCircle,
 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDebounce } from '@/hooks/use-debounce';
 
 type ItemForm = {
@@ -51,10 +53,43 @@ export default function InventoryPage() {
   const [form, setForm] = useState<ItemForm>(EMPTY_FORM);
   const [sellPreview, setSellPreview] = useState<number | null>(null);
 
+  // Stock adjustment dialog
+  const [adjustDialogOpen, setAdjustDialogOpen] = useState(false);
+  const [adjustItemId, setAdjustItemId] = useState<number | null>(null);
+  const [adjustItemName, setAdjustItemName] = useState('');
+  const [adjustDelta, setAdjustDelta] = useState('');
+  const [adjustReason, setAdjustReason] = useState('');
+
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
   const defaultMarkupPct = settings?.defaultMarkupPct ?? 20;
   const showCostPriceToTech = settings?.showCostPriceToTech ?? false;
   const canSeeCost = !isTechnician || showCostPriceToTech;
+
+  const adjustStock = useAdjustInventoryStock();
+
+  const openAdjustDialog = (id: number, name: string) => {
+    setAdjustItemId(id);
+    setAdjustItemName(name);
+    setAdjustDelta('');
+    setAdjustReason('');
+    setAdjustDialogOpen(true);
+  };
+
+  const handleAdjustStock = () => {
+    if (!adjustItemId || !adjustDelta) { toast.error('Enter a quantity change'); return; }
+    const delta = parseInt(adjustDelta, 10);
+    if (isNaN(delta) || delta === 0) { toast.error('Enter a non-zero quantity'); return; }
+    adjustStock.mutate({ id: adjustItemId, data: { delta, reason: adjustReason || undefined } }, {
+      onSuccess: () => {
+        toast.success(`Stock adjusted by ${delta > 0 ? '+' : ''}${delta}`);
+        qc.invalidateQueries({ queryKey: getListInventoryItemsQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetInventorySummaryQueryKey() });
+        if (selectedId === adjustItemId) qc.invalidateQueries({ queryKey: getGetInventoryItemQueryKey(adjustItemId) });
+        setAdjustDialogOpen(false);
+      },
+      onError: () => toast.error('Failed to adjust stock'),
+    });
+  };
 
   const { data: summary } = useGetInventorySummary({ query: { queryKey: getGetInventorySummaryQueryKey() } });
   const { data: items, isLoading } = useListInventoryItems(
@@ -368,6 +403,16 @@ export default function InventoryPage() {
                   )}
                 </div>
 
+                {canManage && (
+                  <Button
+                    variant="outline"
+                    className="w-full gap-2"
+                    onClick={() => openAdjustDialog(selectedItem.id, selectedItem.name)}
+                  >
+                    <PlusCircle className="w-4 h-4" /> Adjust Stock
+                  </Button>
+                )}
+
                 {selectedItem.description && (
                   <>
                     <Separator />
@@ -502,6 +547,65 @@ export default function InventoryPage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Stock Adjustment Dialog */}
+      <Dialog open={adjustDialogOpen} onOpenChange={open => { if (!open) setAdjustDialogOpen(false); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Adjust Stock</DialogTitle>
+            <DialogDescription>
+              Enter a positive number to receive stock, or a negative number to record consumption. Item: <strong>{adjustItemName}</strong>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Quantity Change <span className="text-destructive">*</span></label>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setAdjustDelta(d => String((parseInt(d || '0', 10) - 1)))}
+                >
+                  <MinusCircle className="w-4 h-4" />
+                </Button>
+                <Input
+                  type="number"
+                  className="text-center font-bold text-lg"
+                  value={adjustDelta}
+                  onChange={e => setAdjustDelta(e.target.value)}
+                  placeholder="0"
+                />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setAdjustDelta(d => String((parseInt(d || '0', 10) + 1)))}
+                >
+                  <PlusCircle className="w-4 h-4" />
+                </Button>
+              </div>
+              {adjustDelta && !isNaN(parseInt(adjustDelta, 10)) && (
+                <p className={`text-xs font-medium ${parseInt(adjustDelta, 10) > 0 ? 'text-emerald-600' : 'text-destructive'}`}>
+                  {parseInt(adjustDelta, 10) > 0 ? `+${adjustDelta} units will be added` : `${adjustDelta} units will be removed`}
+                </p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Reason (optional)</label>
+              <Input
+                placeholder="e.g. Restocked from supplier"
+                value={adjustReason}
+                onChange={e => setAdjustReason(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-3 justify-end pt-2">
+              <Button variant="outline" onClick={() => setAdjustDialogOpen(false)}>Cancel</Button>
+              <Button onClick={handleAdjustStock} disabled={adjustStock.isPending || !adjustDelta}>
+                {adjustStock.isPending ? 'Saving...' : 'Apply Adjustment'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

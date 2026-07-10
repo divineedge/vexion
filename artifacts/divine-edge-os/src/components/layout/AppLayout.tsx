@@ -2,7 +2,7 @@ import React from 'react';
 import { Link, useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Users, Building, CalendarDays, PackageSearch, DollarSign, CheckSquare, Clock, DraftingCompass, Settings, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, Building, CalendarDays, PackageSearch, DollarSign, CheckSquare, Clock, DraftingCompass, Settings, LogOut, UserCheck } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 
@@ -23,6 +23,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { name: 'Customers', href: '/customers', icon: Users, hidden: isTechnician },
     { name: 'Properties', href: '/properties', icon: Building, hidden: isTechnician },
     { name: 'Schedule', href: '/schedule', icon: CalendarDays },
+    { name: 'Crews', href: '/crews', icon: UserCheck, hidden: isTechnician },
     { name: 'Inventory', href: '/inventory', icon: PackageSearch, hidden: isTechnician },
     { name: 'Financials', href: '/financials', icon: DollarSign, hidden: isTechnician },
     { name: 'Daily Routines', href: '/daily-routines', icon: CheckSquare },

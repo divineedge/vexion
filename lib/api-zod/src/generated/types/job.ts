@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { JobLineItem } from './jobLineItem';
+import type { JobPart } from './jobPart';
 import type { JobPriority } from './jobPriority';
 import type { JobStatus } from './jobStatus';
 
@@ -29,8 +30,15 @@ export interface Job {
   assigneeId?: number | null;
   /** @nullable */
   assigneeName?: string | null;
-  scheduledAt: string;
   /** @nullable */
+  crewId?: number | null;
+  /** @nullable */
+  crewName?: string | null;
+  scheduledAt: string;
+  /**
+     * Duration stored in minutes; display as hours or minutes per tenant durationUnit setting
+     * @nullable
+     */
   estimatedDuration?: number | null;
   /** @nullable */
   completedAt?: string | null;
@@ -40,5 +48,7 @@ export interface Job {
   /** @nullable */
   blueprintId?: number | null;
   lineItems?: JobLineItem[];
+  /** Parts used on this job from inventory */
+  jobParts?: JobPart[];
   createdAt: string;
 }

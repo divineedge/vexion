@@ -1,0 +1,41 @@
+ADD NEW MODULE: Advanced Service Catalog, Automated Service Plans, Split-Billing Matrix, Communications, & Asset lifespans
+
+Act as our senior software architect. Add this comprehensive suite of interconnected field-service modules to Divine Edge OS. This script merges our custom service catalog pricing matrix, recurring annual/monthly service plans, automated communication engines, dynamic lead tracking, and equipment lifespan costing into our existing multi-tenant architecture.
+
+Build out the following feature sets:
+
+1. CENTRALIZED SERVICE CATALOG & DYNAMIC PRICE ROUTERS:
+- Create a "Services & Catalog" setup tab where businesses can list all offered services (e.g., Mowing, Fertilization, Sprinkler Winterization, Concrete Pour).
+- Each service must allow owners to choose its base pricing calculator archetype: (A) Static Flat Rate, (B) Dynamic Linear Rate ($ per sq ft calculated instantly from map tools), or (C) Step-Up Tiered Brackets. 
+- Ensure that when a service is selected during estimating, it automatically scrapes that property’s custom dimensions (e.g., Lawn Sq Ft vs. Concrete Sq Ft) and processes the correct cost matrix.
+
+2. SERVICE PLANS & AUTOMATED STEP RECURRING SCHEDULING (SPRAY PLANS):
+- Build a "Service Plans & Programs" engine designed specifically for recurring multi-step service tracks (e.g., a "5-Step Lawn Fertilization Program" or "Quarterly Pest Control").
+- Owners can define steps within a program. Each individual step specifies an internal service, a specific delivery application window (e.g., "Late Spring", "Early Fall"), and an auto-advance delay (e.g., "Schedule next step automatically 45 days after the previous step is marked completed by a technician").
+
+3. FLEXIBLE SPLIT-BILLING MATRIX (ANNUAL VS. MONTHLY PLAN BILLING):
+- Upgrade the contract billing ledger so that any Service Plan can support multiple payment methodologies configured by the client:
+  - (A) Pay Per Visit: Charges the customer or creates an invoice immediately upon job completion.
+  - (B) Monthly Installment Plan: Smooths out the total program cost into equal monthly billing cycles, regardless of how many visits occurred that month.
+  - (C) Pre-Paid Annual Flat Rate: Charges a single lump-sum upfront fee for the entire calendar year's program steps (often supporting a custom percentage discount trigger).
+- Ensure the invoice engine flags these configurations so that one single multi-step plan can support different payment selections across different clients without breaking.
+
+4. DUAL-CHANNEL SMS & EMAIL REMINDERS (CUSTOM DOMAINS & IDENTITIES):
+- In Company Settings, build a "Communications Center" supporting toggle switches to enable/disable automated SMS and Email.
+- Provide secure API credential fields for Twilio (SMS) and SMTP/SendGrid/Resend (Email) so individual tenants can route messages through their own phone numbers and custom email domains.
+- Create a service-specific template builder where owners can design custom text messages and HTML emails using dynamic merge variables (e.g., "[Customer Name]", "[Service Name]", "[Service Date]").
+- Add automation toggles for three triggers per service: (A) Schedule Reminders (X days out), (B) On-The-Way Alerts (sent when a tech starts a job sub-timer), and (C) Job Completed Notifications (attaching an invoice link).
+- Update the Customer Profile with communication channel preference checkboxes and a unified, chronological timeline log view (💬 for SMS, ✉️ for Email) showing historical messages and delivery statuses.
+
+5. CUSTOMIZABLE LEAD PIPELINE & DYNAMIC KPI DASHBOARD:
+- Create a visual sales Kanban drag-and-drop pipeline board. In settings, allow owners to fully customize, add, rename, or delete pipeline stages (e.g., "New Inquiries", "Estimate Needed", "Quote Sent"). 
+- Ensure lead forms inherit the tenant's dynamic custom field engine. When a lead is dragged to "Closed/Won", launch a wizard converting the lead profile into an active Customer, seamlessly porting all mapping vectors, data notes, and custom fields over without data loss.
+- Build a custom KPI dashboard with settings checkboxes allowing owners to toggle which widgets display. Standard options include: Close Rate %, Total Pipeline Value, Average Ticket Size, Revenue Per Man-Hour, and Equipment Cost-Per-Hour. Add a basic "Custom KPI Creator" allowing advanced users to build custom arithmetic ratios (e.g., [Total Chemical Cost] ÷ [Total Square Footage]).
+
+6. LIFETIME EQUIPMENT TRACKING & DAILY COMPLIANCE LOGS:
+- Add an "Equipment & Fleet Asset" tab displaying a comprehensive list of machines (Mowers, Sprinklers, Trucks, Trailers).
+- Inside each asset file, calculate and display the total lifetime operational cost using the formula: [Purchase Price] + [Lifetime Fuel Costs] + [Lifetime Maintenance/Parts Repair Bills] + [Downtime Costs].
+- In Tenant Settings, provide an option to enforce "Daily Equipment Pre-Start Logs" as a required routine task for technicians. 
+- When enabled, technicians must select their assigned equipment daily and input: Current Machine Engine Hours and Gallons of Gas/Diesel put into the tank. Fuel logs must instantly multiply by current fuel prices to update the asset's active operating cost ledger.
+
+Integrate this entire logic system cleanly into our multi-tenant PostgreSQL tables, keeping schema relationships tightly normalized. Update the mock user views so I can log in as a Company Owner, create a multi-step spray plan, test different billing models (annual vs monthly) on test accounts, and confirm that the subsequent jobs automatically place themselves onto the calendar schedule.

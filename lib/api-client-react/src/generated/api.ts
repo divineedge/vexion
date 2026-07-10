@@ -21,11 +21,15 @@ import type {
 
 import type {
   ActivityItem,
+  AddCrewMemberBody,
   AuthResponse,
   Blueprint,
   BlueprintEstimate,
   BlueprintInput,
   BlueprintUpdate,
+  Crew,
+  CrewInput,
+  CrewUpdate,
   Customer,
   CustomerInput,
   CustomerListResponse,
@@ -43,6 +47,8 @@ import type {
   InvoiceUpdate,
   Job,
   JobInput,
+  JobPart,
+  JobPartInput,
   JobUpdate,
   ListCustomersParams,
   ListInventoryItemsParams,
@@ -61,6 +67,7 @@ import type {
   RoutineInput,
   RoutineUpdate,
   StatusCount,
+  StockAdjustmentInput,
   SubTimer,
   SubTimerInput,
   TenantSettings,
@@ -1970,6 +1977,741 @@ export const useCompleteJob = <TError = ErrorType<unknown>,
       return useMutation(getCompleteJobMutationOptions(options));
     }
 
+export const getGetJobPartsUrl = (id: number,) => {
+
+
+
+
+  return `/api/jobs/${id}/parts`
+}
+
+/**
+ * @summary Get parts used on a job
+ */
+export const getJobParts = async (id: number, options?: RequestInit): Promise<JobPart[]> => {
+
+  return customFetch<JobPart[]>(getGetJobPartsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetJobPartsQueryKey = (id: number,) => {
+    return [
+    `/api/jobs/${id}/parts`
+    ] as const;
+    }
+
+
+export const getGetJobPartsQueryOptions = <TData = Awaited<ReturnType<typeof getJobParts>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getJobParts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetJobPartsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getJobParts>>> = ({ signal }) => getJobParts(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getJobParts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetJobPartsQueryResult = NonNullable<Awaited<ReturnType<typeof getJobParts>>>
+export type GetJobPartsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get parts used on a job
+ */
+
+export function useGetJobParts<TData = Awaited<ReturnType<typeof getJobParts>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getJobParts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetJobPartsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getAddJobPartUrl = (id: number,) => {
+
+
+
+
+  return `/api/jobs/${id}/parts`
+}
+
+/**
+ * @summary Add or update a part on a job
+ */
+export const addJobPart = async (id: number,
+    jobPartInput: JobPartInput, options?: RequestInit): Promise<Job> => {
+
+  return customFetch<Job>(getAddJobPartUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(jobPartInput)
+  }
+);}
+
+
+
+
+
+export const getAddJobPartMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addJobPart>>, TError,{id: number;data: BodyType<JobPartInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof addJobPart>>, TError,{id: number;data: BodyType<JobPartInput>}, TContext> => {
+
+const mutationKey = ['addJobPart'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addJobPart>>, {id: number;data: BodyType<JobPartInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  addJobPart(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AddJobPartMutationResult = NonNullable<Awaited<ReturnType<typeof addJobPart>>>
+    export type AddJobPartMutationBody = BodyType<JobPartInput>
+    export type AddJobPartMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Add or update a part on a job
+ */
+export const useAddJobPart = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addJobPart>>, TError,{id: number;data: BodyType<JobPartInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof addJobPart>>,
+        TError,
+        {id: number;data: BodyType<JobPartInput>},
+        TContext
+      > => {
+      return useMutation(getAddJobPartMutationOptions(options));
+    }
+
+export const getRemoveJobPartUrl = (id: number,
+    inventoryItemId: number,) => {
+
+
+
+
+  return `/api/jobs/${id}/parts/${inventoryItemId}`
+}
+
+/**
+ * @summary Remove a part from a job
+ */
+export const removeJobPart = async (id: number,
+    inventoryItemId: number, options?: RequestInit): Promise<Job> => {
+
+  return customFetch<Job>(getRemoveJobPartUrl(id,inventoryItemId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getRemoveJobPartMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeJobPart>>, TError,{id: number;inventoryItemId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof removeJobPart>>, TError,{id: number;inventoryItemId: number}, TContext> => {
+
+const mutationKey = ['removeJobPart'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof removeJobPart>>, {id: number;inventoryItemId: number}> = (props) => {
+          const {id,inventoryItemId} = props ?? {};
+
+          return  removeJobPart(id,inventoryItemId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RemoveJobPartMutationResult = NonNullable<Awaited<ReturnType<typeof removeJobPart>>>
+
+    export type RemoveJobPartMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Remove a part from a job
+ */
+export const useRemoveJobPart = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeJobPart>>, TError,{id: number;inventoryItemId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof removeJobPart>>,
+        TError,
+        {id: number;inventoryItemId: number},
+        TContext
+      > => {
+      return useMutation(getRemoveJobPartMutationOptions(options));
+    }
+
+export const getListCrewsUrl = () => {
+
+
+
+
+  return `/api/crews`
+}
+
+/**
+ * @summary List all crews
+ */
+export const listCrews = async ( options?: RequestInit): Promise<Crew[]> => {
+
+  return customFetch<Crew[]>(getListCrewsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListCrewsQueryKey = () => {
+    return [
+    `/api/crews`
+    ] as const;
+    }
+
+
+export const getListCrewsQueryOptions = <TData = Awaited<ReturnType<typeof listCrews>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCrews>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListCrewsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCrews>>> = ({ signal }) => listCrews({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCrews>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListCrewsQueryResult = NonNullable<Awaited<ReturnType<typeof listCrews>>>
+export type ListCrewsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all crews
+ */
+
+export function useListCrews<TData = Awaited<ReturnType<typeof listCrews>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCrews>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListCrewsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateCrewUrl = () => {
+
+
+
+
+  return `/api/crews`
+}
+
+/**
+ * @summary Create a new crew
+ */
+export const createCrew = async (crewInput: CrewInput, options?: RequestInit): Promise<Crew> => {
+
+  return customFetch<Crew>(getCreateCrewUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(crewInput)
+  }
+);}
+
+
+
+
+
+export const getCreateCrewMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCrew>>, TError,{data: BodyType<CrewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createCrew>>, TError,{data: BodyType<CrewInput>}, TContext> => {
+
+const mutationKey = ['createCrew'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCrew>>, {data: BodyType<CrewInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createCrew(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateCrewMutationResult = NonNullable<Awaited<ReturnType<typeof createCrew>>>
+    export type CreateCrewMutationBody = BodyType<CrewInput>
+    export type CreateCrewMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a new crew
+ */
+export const useCreateCrew = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCrew>>, TError,{data: BodyType<CrewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createCrew>>,
+        TError,
+        {data: BodyType<CrewInput>},
+        TContext
+      > => {
+      return useMutation(getCreateCrewMutationOptions(options));
+    }
+
+export const getGetCrewUrl = (id: number,) => {
+
+
+
+
+  return `/api/crews/${id}`
+}
+
+/**
+ * @summary Get a crew with its members
+ */
+export const getCrew = async (id: number, options?: RequestInit): Promise<Crew> => {
+
+  return customFetch<Crew>(getGetCrewUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCrewQueryKey = (id: number,) => {
+    return [
+    `/api/crews/${id}`
+    ] as const;
+    }
+
+
+export const getGetCrewQueryOptions = <TData = Awaited<ReturnType<typeof getCrew>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCrew>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCrewQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCrew>>> = ({ signal }) => getCrew(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCrew>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCrewQueryResult = NonNullable<Awaited<ReturnType<typeof getCrew>>>
+export type GetCrewQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get a crew with its members
+ */
+
+export function useGetCrew<TData = Awaited<ReturnType<typeof getCrew>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCrew>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCrewQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateCrewUrl = (id: number,) => {
+
+
+
+
+  return `/api/crews/${id}`
+}
+
+/**
+ * @summary Update a crew
+ */
+export const updateCrew = async (id: number,
+    crewUpdate: CrewUpdate, options?: RequestInit): Promise<Crew> => {
+
+  return customFetch<Crew>(getUpdateCrewUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(crewUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateCrewMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCrew>>, TError,{id: number;data: BodyType<CrewUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateCrew>>, TError,{id: number;data: BodyType<CrewUpdate>}, TContext> => {
+
+const mutationKey = ['updateCrew'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCrew>>, {id: number;data: BodyType<CrewUpdate>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateCrew(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateCrewMutationResult = NonNullable<Awaited<ReturnType<typeof updateCrew>>>
+    export type UpdateCrewMutationBody = BodyType<CrewUpdate>
+    export type UpdateCrewMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update a crew
+ */
+export const useUpdateCrew = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCrew>>, TError,{id: number;data: BodyType<CrewUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateCrew>>,
+        TError,
+        {id: number;data: BodyType<CrewUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateCrewMutationOptions(options));
+    }
+
+export const getDeleteCrewUrl = (id: number,) => {
+
+
+
+
+  return `/api/crews/${id}`
+}
+
+/**
+ * @summary Delete a crew
+ */
+export const deleteCrew = async (id: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteCrewUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteCrewMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCrew>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteCrew>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteCrew'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteCrew>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteCrew(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteCrewMutationResult = NonNullable<Awaited<ReturnType<typeof deleteCrew>>>
+
+    export type DeleteCrewMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a crew
+ */
+export const useDeleteCrew = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCrew>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteCrew>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteCrewMutationOptions(options));
+    }
+
+export const getAddCrewMemberUrl = (id: number,) => {
+
+
+
+
+  return `/api/crews/${id}/members`
+}
+
+/**
+ * @summary Add a user to a crew
+ */
+export const addCrewMember = async (id: number,
+    addCrewMemberBody: AddCrewMemberBody, options?: RequestInit): Promise<Crew> => {
+
+  return customFetch<Crew>(getAddCrewMemberUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(addCrewMemberBody)
+  }
+);}
+
+
+
+
+
+export const getAddCrewMemberMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addCrewMember>>, TError,{id: number;data: BodyType<AddCrewMemberBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof addCrewMember>>, TError,{id: number;data: BodyType<AddCrewMemberBody>}, TContext> => {
+
+const mutationKey = ['addCrewMember'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addCrewMember>>, {id: number;data: BodyType<AddCrewMemberBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  addCrewMember(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AddCrewMemberMutationResult = NonNullable<Awaited<ReturnType<typeof addCrewMember>>>
+    export type AddCrewMemberMutationBody = BodyType<AddCrewMemberBody>
+    export type AddCrewMemberMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Add a user to a crew
+ */
+export const useAddCrewMember = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addCrewMember>>, TError,{id: number;data: BodyType<AddCrewMemberBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof addCrewMember>>,
+        TError,
+        {id: number;data: BodyType<AddCrewMemberBody>},
+        TContext
+      > => {
+      return useMutation(getAddCrewMemberMutationOptions(options));
+    }
+
+export const getRemoveCrewMemberUrl = (id: number,
+    userId: number,) => {
+
+
+
+
+  return `/api/crews/${id}/members/${userId}`
+}
+
+/**
+ * @summary Remove a user from a crew
+ */
+export const removeCrewMember = async (id: number,
+    userId: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getRemoveCrewMemberUrl(id,userId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getRemoveCrewMemberMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeCrewMember>>, TError,{id: number;userId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof removeCrewMember>>, TError,{id: number;userId: number}, TContext> => {
+
+const mutationKey = ['removeCrewMember'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof removeCrewMember>>, {id: number;userId: number}> = (props) => {
+          const {id,userId} = props ?? {};
+
+          return  removeCrewMember(id,userId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RemoveCrewMemberMutationResult = NonNullable<Awaited<ReturnType<typeof removeCrewMember>>>
+
+    export type RemoveCrewMemberMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Remove a user from a crew
+ */
+export const useRemoveCrewMember = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeCrewMember>>, TError,{id: number;userId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof removeCrewMember>>,
+        TError,
+        {id: number;userId: number},
+        TContext
+      > => {
+      return useMutation(getRemoveCrewMemberMutationOptions(options));
+    }
+
 export const getListInventoryItemsUrl = (params?: ListInventoryItemsParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -2343,6 +3085,78 @@ export const useDeleteInventoryItem = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteInventoryItemMutationOptions(options));
+    }
+
+export const getAdjustInventoryStockUrl = (id: number,) => {
+
+
+
+
+  return `/api/inventory/${id}/adjust-stock`
+}
+
+/**
+ * @summary Adjust the stock quantity of an inventory item
+ */
+export const adjustInventoryStock = async (id: number,
+    stockAdjustmentInput: StockAdjustmentInput, options?: RequestInit): Promise<InventoryItem> => {
+
+  return customFetch<InventoryItem>(getAdjustInventoryStockUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(stockAdjustmentInput)
+  }
+);}
+
+
+
+
+
+export const getAdjustInventoryStockMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adjustInventoryStock>>, TError,{id: number;data: BodyType<StockAdjustmentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adjustInventoryStock>>, TError,{id: number;data: BodyType<StockAdjustmentInput>}, TContext> => {
+
+const mutationKey = ['adjustInventoryStock'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adjustInventoryStock>>, {id: number;data: BodyType<StockAdjustmentInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  adjustInventoryStock(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdjustInventoryStockMutationResult = NonNullable<Awaited<ReturnType<typeof adjustInventoryStock>>>
+    export type AdjustInventoryStockMutationBody = BodyType<StockAdjustmentInput>
+    export type AdjustInventoryStockMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Adjust the stock quantity of an inventory item
+ */
+export const useAdjustInventoryStock = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adjustInventoryStock>>, TError,{id: number;data: BodyType<StockAdjustmentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adjustInventoryStock>>,
+        TError,
+        {id: number;data: BodyType<StockAdjustmentInput>},
+        TContext
+      > => {
+      return useMutation(getAdjustInventoryStockMutationOptions(options));
     }
 
 export const getGetInventorySummaryUrl = () => {

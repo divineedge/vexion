@@ -5,14 +5,10 @@ import { getTenantId } from "../lib/tenantHelper";
 
 const router: IRouter = Router();
 
-router.get("/settings", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
-
-  const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
-  if (!tenant) { res.status(404).json({ error: "Tenant not found" }); return; }
-
+function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
   const cfJson = tenant.customFields as Record<string, unknown> | null;
-  res.json({
+  const rolePerms = tenant.rolePermissions as Record<string, Record<string, boolean>> | null;
+  return {
     id: tenant.id,
     tenantId: tenant.id,
     companyName: tenant.name,
@@ -25,14 +21,30 @@ router.get("/settings", async (req, res): Promise<void> => {
     taxRate: tenant.taxRate,
     defaultMarkupPct: tenant.defaultMarkupPct,
     showCostPriceToTech: tenant.showCostPriceToTech,
+    durationUnit: (tenant.durationUnit ?? "minutes") as "minutes" | "hours",
+    autoInvoiceFrequency: (tenant.autoInvoiceFrequency ?? "off") as "off" | "daily" | "weekly" | "monthly",
+    rolePermissions: rolePerms ?? {},
     planTier: tenant.planTier as "starter" | "professional" | "enterprise",
     customerFields: (cfJson?.customerFields as unknown[]) ?? [],
-  });
+  };
+}
+
+router.get("/settings", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  if (!tenant) { res.status(404).json({ error: "Tenant not found" }); return; }
+  res.json(formatTenant(tenant));
 });
 
 router.patch("/settings", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { companyName, timezone, workdayCutoffTime, overageMaterialBuffer, stripeEnabled, quickbooksEnabled, taxRate, defaultMarkupPct, showCostPriceToTech, customerFields } = req.body;
+  const {
+    companyName, timezone, workdayCutoffTime, overageMaterialBuffer,
+    stripeEnabled, quickbooksEnabled, taxRate,
+    defaultMarkupPct, showCostPriceToTech,
+    durationUnit, autoInvoiceFrequency, rolePermissions,
+    customerFields,
+  } = req.body;
 
   const updates: Partial<typeof tenantsTable.$inferInsert> = {};
   if (companyName) updates.name = companyName;
@@ -44,8 +56,15 @@ router.patch("/settings", async (req, res): Promise<void> => {
   if (taxRate !== undefined) updates.taxRate = taxRate;
   if (defaultMarkupPct !== undefined) updates.defaultMarkupPct = parseFloat(defaultMarkupPct);
   if (showCostPriceToTech !== undefined) updates.showCostPriceToTech = showCostPriceToTech;
+  if (durationUnit !== undefined) updates.durationUnit = durationUnit;
+  if (autoInvoiceFrequency !== undefined) updates.autoInvoiceFrequency = autoInvoiceFrequency;
+  if (rolePermissions !== undefined) {
+    // Merge role permissions into existing customFields-like JSONB
+    const [existing] = await db.select({ customFields: tenantsTable.customFields }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+    const prev = (existing?.customFields as Record<string, unknown>) ?? {};
+    updates.rolePermissions = rolePermissions;
+  }
   if (customerFields !== undefined) {
-    // Merge into the JSONB column so other keys (future extensions) are preserved
     const [existing] = await db.select({ customFields: tenantsTable.customFields }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
     const prev = (existing?.customFields as Record<string, unknown>) ?? {};
     updates.customFields = { ...prev, customerFields };
@@ -53,24 +72,7 @@ router.patch("/settings", async (req, res): Promise<void> => {
 
   const [updated] = await db.update(tenantsTable).set(updates).where(eq(tenantsTable.id, tenantId)).returning();
   if (!updated) { res.status(404).json({ error: "Tenant not found" }); return; }
-
-  const cfJson = updated.customFields as Record<string, unknown> | null;
-  res.json({
-    id: updated.id,
-    tenantId: updated.id,
-    companyName: updated.name,
-    logoUrl: updated.logoUrl ?? null,
-    timezone: updated.timezone,
-    workdayCutoffTime: updated.workdayCutoffTime,
-    overageMaterialBuffer: updated.overageMaterialBuffer,
-    stripeEnabled: updated.stripeEnabled,
-    quickbooksEnabled: updated.quickbooksEnabled,
-    taxRate: updated.taxRate,
-    defaultMarkupPct: updated.defaultMarkupPct,
-    showCostPriceToTech: updated.showCostPriceToTech,
-    planTier: updated.planTier as "starter" | "professional" | "enterprise",
-    customerFields: (cfJson?.customerFields as unknown[]) ?? [],
-  });
+  res.json(formatTenant(updated));
 });
 
 router.get("/settings/users", async (req, res): Promise<void> => {

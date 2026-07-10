@@ -1,0 +1,23 @@
+AUTO-GENERATING & RECURRING INVOICE ENGINE:
+- Build a background billing worker that automatically generates a finalized client invoice the moment a job sub-timer is marked "Completed" by a tech.
+- Create a "Recurring Invoice Templates" manager under Financials. Allow the office to save custom recurring templates that auto-generate flat monthly invoices on a customizable billing cycle day.
+- Support automated batch-emailing of these invoices directly to clients through the tenant's custom domain gateways.
+
+2. COMPREHENSIVE BUSINESS REPORTING SUITE:
+Build a "Reports Matrix" dashboard supporting the following downloadable, multi-tenant isolated reports:
+- (A) Job Profitability Report: Subtracts precise P4P labor costs, marked-up inventory parts, and asset fuel logs from job revenue to output net profit margins per ticket.
+- (B) Employee Revenue Report: Tallies total invoice billing numbers generated per individual technician.
+- (C) Financial Ledger Suite: Automatically aggregates data for live Profit & Loss (P&L) Statements, Expense Logs, and Sales Tax collection trackers.
+- (D) Aging Invoice Report: Lists outstanding balances broken down into 30, 60, and 90+ day late-payment buckets.
+
+3. MASS DISPATCH & VENDOR EXPENSES:
+- Add a "Bulk Messaging Engine" allowing the office to dispatch emergency or promotional broadcasts to selected customer lists simultaneously via Email or SMS.
+- Build a "Vendor & Expense Ledger" under Financials where owners can register supply partners, log corporate expenses, and link material invoices manually or via upload.
+
+4. EXTENSIBILITY PLUGINS (INTEGRATION PLACEHOLDERS):
+Add dedicated service endpoints and toggle settings placeholders for these third-party tools:
+- (A) Bank Transaction Sync: A data routing layout to link banking transactions.
+- (B) Mailchimp Sync: Triggers an automated update to marketing lists when a lead converts or a customer tags change.
+- (C) Lob Print & Mail Integration: Adds a physical "Print & Mail Invoice via Post" button on open invoices to simulate sending paper statements to an off-site fulfillment API.
+
+Ensure all financial data states, template architectures, and bulk queues are multi-tenant secured in the PostgreSQL layout. Update the test panel so I can simulate auto-generating a batch of monthly contract invoices and review a live Job Profitability report.

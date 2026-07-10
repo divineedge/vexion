@@ -13,6 +13,9 @@ import timeTrackingRouter from "./timeTracking";
 import blueprintsRouter from "./blueprints";
 import settingsRouter from "./settings";
 import plansRouter from "./plans";
+import efficiencyRouter from "./efficiency";
+import callbacksRouter from "./callbacks";
+import marketingRouter from "./marketing";
 
 const router: IRouter = Router();
 
@@ -30,5 +33,8 @@ router.use(timeTrackingRouter);
 router.use(blueprintsRouter);
 router.use(settingsRouter);
 router.use(plansRouter);
+router.use(efficiencyRouter);
+router.use(callbacksRouter);
+router.use(marketingRouter);
 
 export default router;

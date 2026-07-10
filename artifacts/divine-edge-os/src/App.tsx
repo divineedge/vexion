@@ -20,6 +20,9 @@ import BlueprintsPage from '@/pages/blueprints';
 import BlueprintCanvasPage from '@/pages/blueprint-canvas';
 import SettingsPage from '@/pages/settings';
 import CrewsPage from '@/pages/crews';
+import EfficiencyPage from '@/pages/efficiency';
+import CallbacksPage from '@/pages/callbacks';
+import MarketingPage from '@/pages/marketing';
 
 import NotFound from '@/pages/not-found';
 
@@ -50,6 +53,9 @@ function ProtectedRoutes() {
         <Route path="/blueprints" component={BlueprintsPage} />
         <Route path="/settings" component={SettingsPage} />
         <Route path="/crews" component={CrewsPage} />
+        <Route path="/efficiency" component={EfficiencyPage} />
+        <Route path="/callbacks" component={CallbacksPage} />
+        <Route path="/marketing" component={MarketingPage} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

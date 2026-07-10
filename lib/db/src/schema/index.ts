@@ -12,3 +12,5 @@ export * from "./timeTracking";
 export * from "./blueprints";
 export * from "./plans";
 export * from "./activityLog";
+export * from "./callbacks";
+export * from "./marketingCampaigns";

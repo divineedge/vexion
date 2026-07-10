@@ -3,17 +3,34 @@ import {
   useGetDashboardSummary, getGetDashboardSummaryQueryKey,
   useGetJobsByStatus, getGetJobsByStatusQueryKey,
   useGetRevenueTrend, getGetRevenueTrendQueryKey,
-  useGetRecentActivity, getGetRecentActivityQueryKey 
+  useGetRecentActivity, getGetRecentActivityQueryKey,
+  customFetch,
 } from '@workspace/api-client-react';
+import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Briefcase, FileText, DollarSign, Clock, CheckCircle } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Users, Briefcase, FileText, DollarSign, Clock, CheckCircle, Gauge, PhoneCall, Trophy, AlertTriangle } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+
+interface EfficiencyResponse { companyEfficiencyRate: number | null; companyCallbackRatio: number; technicians: { hasWarning: boolean }[] }
+interface RoasEntry { name: string; roas: number | null }
 
 export default function DashboardPage() {
   const { data: summary } = useGetDashboardSummary({ query: { queryKey: getGetDashboardSummaryQueryKey() }});
   const { data: jobsByStatus } = useGetJobsByStatus({ query: { queryKey: getGetJobsByStatusQueryKey() }});
   const { data: revenueTrend } = useGetRevenueTrend({ query: { queryKey: getGetRevenueTrendQueryKey() }});
   const { data: recentActivity } = useGetRecentActivity({ query: { queryKey: getGetRecentActivityQueryKey() }});
+  const { data: efficiency } = useQuery<EfficiencyResponse>({
+    queryKey: ['efficiency', 'today'],
+    queryFn: () => customFetch<EfficiencyResponse>('/api/efficiency?period=today'),
+  });
+  const { data: roasLeaderboard } = useQuery<RoasEntry[]>({
+    queryKey: ['marketing-roas'],
+    queryFn: () => customFetch<RoasEntry[]>('/api/marketing/roas'),
+  });
+
+  const topRoas = roasLeaderboard?.[0];
+  const qualityWarnings = efficiency?.technicians.filter(t => t.hasWarning).length ?? 0;
 
   const COLORS = ['#2563EB', '#10B981', '#F59E0B', '#F43F5E', '#6B7280'];
 
@@ -27,10 +44,35 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard title="Total Customers" value={summary?.totalCustomers} icon={Users} />
         <MetricCard title="Active Jobs" value={summary?.activeJobs} icon={Briefcase} />
-        <MetricCard title="Pending Invoices" value={`$${summary?.pendingInvoicesTotal?.toLocaleString() || 0}`} subtitle={`${summary?.pendingInvoicesCount || 0} invoices`} icon={FileText} />
-        <MetricCard title="Revenue (MTD)" value={`$${summary?.revenueThisMonth?.toLocaleString() || 0}`} icon={DollarSign} />
+        <MetricCard title="Pending Invoices" value={`${summary?.pendingInvoicesTotal?.toLocaleString() || 0}`} subtitle={`${summary?.pendingInvoicesCount || 0} invoices`} icon={FileText} />
+        <MetricCard title="Revenue (MTD)" value={`${summary?.revenueThisMonth?.toLocaleString() || 0}`} icon={DollarSign} />
         <MetricCard title="Completed Jobs (MTD)" value={summary?.completedJobsThisMonth} icon={CheckCircle} />
         <MetricCard title="Techs Clocked In" value={summary?.techniciansClockedIn} icon={Clock} />
+      </div>
+
+      {/* P4P & Quality row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <MetricCard
+          title="Crew Efficiency (Today)"
+          value={efficiency?.companyEfficiencyRate != null ? `${efficiency.companyEfficiencyRate}%` : '—'}
+          subtitle="Active job time ÷ total clock time"
+          icon={Gauge}
+          accent={efficiency?.companyEfficiencyRate != null ? (efficiency.companyEfficiencyRate >= 80 ? 'green' : efficiency.companyEfficiencyRate >= 60 ? 'amber' : 'red') : undefined}
+        />
+        <MetricCard
+          title="Company Callback Ratio"
+          value={efficiency?.companyCallbackRatio != null ? `${efficiency.companyCallbackRatio}%` : '—'}
+          subtitle={qualityWarnings > 0 ? `⚠ ${qualityWarnings} tech${qualityWarnings > 1 ? 's' : ''} above threshold` : '✓ All within threshold'}
+          icon={PhoneCall}
+          accent={qualityWarnings > 0 ? 'red' : 'green'}
+        />
+        <MetricCard
+          title="Top Campaign ROAS"
+          value={topRoas?.roas != null ? `${topRoas.roas.toFixed(1)}x` : '—'}
+          subtitle={topRoas?.name ?? 'No campaigns yet'}
+          icon={Trophy}
+          accent={topRoas?.roas != null ? (topRoas.roas >= 4 ? 'green' : topRoas.roas >= 2 ? 'amber' : 'red') : undefined}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -139,17 +181,24 @@ export default function DashboardPage() {
   );
 }
 
-function MetricCard({ title, value, subtitle, icon: Icon }: { title: string; value?: string | number; subtitle?: string; icon: any }) {
+const ACCENT_STYLES = {
+  green: { icon: 'bg-emerald-50 text-emerald-600', value: 'text-emerald-700' },
+  amber: { icon: 'bg-amber-50 text-amber-600', value: 'text-amber-700' },
+  red:   { icon: 'bg-red-50 text-red-600',     value: 'text-red-700' },
+};
+
+function MetricCard({ title, value, subtitle, icon: Icon, accent }: { title: string; value?: string | number; subtitle?: string; icon: any; accent?: 'green' | 'amber' | 'red' }) {
+  const accentStyle = accent ? ACCENT_STYLES[accent] : null;
   return (
     <Card>
       <CardContent className="p-6">
         <div className="flex justify-between items-start">
           <div className="space-y-2">
             <p className="text-sm font-medium text-muted-foreground">{title}</p>
-            <p className="text-3xl font-bold tracking-tight">{value !== undefined ? value : '-'}</p>
+            <p className={`text-3xl font-bold tracking-tight ${accentStyle?.value ?? ''}`}>{value !== undefined ? value : '-'}</p>
             {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
           </div>
-          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${accentStyle?.icon ?? 'bg-primary/10 text-primary'}`}>
             <Icon className="w-5 h-5" />
           </div>
         </div>

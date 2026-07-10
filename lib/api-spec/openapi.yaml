@@ -35,6 +35,12 @@ tags:
     description: Tenant settings
   - name: plans
     description: Subscription plan management
+  - name: efficiency
+    description: P4P labor efficiency metrics
+  - name: callbacks
+    description: Quality assurance callback tracking
+  - name: marketing
+    description: Marketing campaign ROAS tracking
 
 paths:
   /healthz:

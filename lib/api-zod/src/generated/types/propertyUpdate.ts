@@ -18,4 +18,8 @@ export interface PropertyUpdate {
   type?: string;
   measurementPolygons?: MeasurementZone[];
   serviceableAreaSqft?: number;
+  /** Property size for chemical rate calculations */
+  size?: number;
+  /** Unit of property size (sqft or acres) */
+  sizeUnit?: string;
 }

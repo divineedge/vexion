@@ -3092,6 +3092,12 @@ components:
             $ref: "#/components/schemas/MeasurementZone"
         serviceableAreaSqft:
           type: ["number", "null"]
+        size:
+          type: ["number", "null"]
+          description: Property size for chemical rate calculations
+        sizeUnit:
+          type: ["string", "null"]
+          description: Unit of property size (sqft or acres)
         createdAt:
           type: string
 
@@ -3143,6 +3149,12 @@ components:
             $ref: "#/components/schemas/MeasurementZone"
         serviceableAreaSqft:
           type: number
+        size:
+          type: number
+          description: Property size for chemical rate calculations
+        sizeUnit:
+          type: string
+          description: Unit of property size (sqft or acres)
 
     PropertyMeasurementUpdate:
       type: object

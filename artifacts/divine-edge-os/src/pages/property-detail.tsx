@@ -118,6 +118,8 @@ export default function PropertyDetailPage() {
         zip: property.zip ?? '',
         type: property.type ?? '',
         notes: property.notes ?? '',
+        size: property.size != null ? String(property.size) : '',
+        sizeUnit: property.sizeUnit ?? 'sqft',
       });
       if (property.geofenceLat) {
         setGeoInput({
@@ -143,8 +145,13 @@ export default function PropertyDetailPage() {
   };
 
   const handleSaveEdit = () => {
+    const sizeVal = form.size !== '' ? parseFloat(form.size) : undefined;
+    const payload = {
+      ...form,
+      size: sizeVal != null && !isNaN(sizeVal) ? sizeVal : undefined,
+    } as Parameters<typeof updateProperty.mutate>[0]['data'];
     updateProperty.mutate(
-      { id, data: form as Parameters<typeof updateProperty.mutate>[0]['data'] },
+      { id, data: payload },
       {
         onSuccess: () => {
           toast.success('Property updated');
@@ -427,6 +434,9 @@ export default function PropertyDetailPage() {
                 {property.lat && <Row label="Coordinates" value={`${property.lat?.toFixed(5)}, ${property.lng?.toFixed(5)}`} />}
                 {property.serviceableAreaSqft && (
                   <Row label="Serviceable Area" value={`${property.serviceableAreaSqft.toLocaleString(undefined, { maximumFractionDigits: 0 })} sqft`} />
+                )}
+                {property.size != null && (
+                  <Row label="Property Size" value={`${property.size.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${property.sizeUnit ?? 'sqft'}`} />
                 )}
                 {property.notes && (
                   <div>
@@ -724,6 +734,28 @@ export default function PropertyDetailPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Property Size</label>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={form.size}
+                  onChange={e => setForm(f => ({ ...f, size: e.target.value }))}
+                  placeholder="e.g. 5000"
+                  className="flex-1"
+                />
+                <Select value={form.sizeUnit || 'sqft'} onValueChange={v => setForm(f => ({ ...f, sizeUnit: v }))}>
+                  <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sqft">sqft</SelectItem>
+                    <SelectItem value="acres">acres</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-xs text-muted-foreground">Used to calculate chemical application rates per acre / per 1,000 sqft.</p>
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Notes</label>

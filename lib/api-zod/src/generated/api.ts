@@ -395,6 +395,8 @@ export const ListPropertiesResponseItem = zod.object({
   "color": zod.string()
 })).optional(),
   "serviceableAreaSqft": zod.number().nullish(),
+  "size": zod.number().nullish().describe('Property size for chemical rate calculations'),
+  "sizeUnit": zod.string().nullish().describe('Unit of property size (sqft or acres)'),
   "createdAt": zod.string()
 })
 export const ListPropertiesResponse = zod.array(ListPropertiesResponseItem)
@@ -440,6 +442,8 @@ export const CreatePropertyResponse = zod.object({
   "color": zod.string()
 })).optional(),
   "serviceableAreaSqft": zod.number().nullish(),
+  "size": zod.number().nullish().describe('Property size for chemical rate calculations'),
+  "sizeUnit": zod.string().nullish().describe('Unit of property size (sqft or acres)'),
   "createdAt": zod.string()
 })
 
@@ -476,6 +480,8 @@ export const GetPropertyResponse = zod.object({
   "color": zod.string()
 })).optional(),
   "serviceableAreaSqft": zod.number().nullish(),
+  "size": zod.number().nullish().describe('Property size for chemical rate calculations'),
+  "sizeUnit": zod.string().nullish().describe('Unit of property size (sqft or acres)'),
   "createdAt": zod.string()
 })
 
@@ -504,7 +510,9 @@ export const UpdatePropertyBody = zod.object({
   "enabled": zod.boolean(),
   "color": zod.string()
 })).optional(),
-  "serviceableAreaSqft": zod.number().optional()
+  "serviceableAreaSqft": zod.number().optional(),
+  "size": zod.number().optional().describe('Property size for chemical rate calculations'),
+  "sizeUnit": zod.string().optional().describe('Unit of property size (sqft or acres)')
 })
 
 export const UpdatePropertyResponse = zod.object({
@@ -532,6 +540,8 @@ export const UpdatePropertyResponse = zod.object({
   "color": zod.string()
 })).optional(),
   "serviceableAreaSqft": zod.number().nullish(),
+  "size": zod.number().nullish().describe('Property size for chemical rate calculations'),
+  "sizeUnit": zod.string().nullish().describe('Unit of property size (sqft or acres)'),
   "createdAt": zod.string()
 })
 
@@ -584,6 +594,8 @@ export const UpdateGeofencePinResponse = zod.object({
   "color": zod.string()
 })).optional(),
   "serviceableAreaSqft": zod.number().nullish(),
+  "size": zod.number().nullish().describe('Property size for chemical rate calculations'),
+  "sizeUnit": zod.string().nullish().describe('Unit of property size (sqft or acres)'),
   "createdAt": zod.string()
 })
 
@@ -632,6 +644,8 @@ export const UpdatePropertyMeasurementsResponse = zod.object({
   "color": zod.string()
 })).optional(),
   "serviceableAreaSqft": zod.number().nullish(),
+  "size": zod.number().nullish().describe('Property size for chemical rate calculations'),
+  "sizeUnit": zod.string().nullish().describe('Unit of property size (sqft or acres)'),
   "createdAt": zod.string()
 })
 

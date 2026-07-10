@@ -114,7 +114,7 @@ router.patch("/properties/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const { address, city, state, zip, lat, lng, notes, type, measurementPolygons, serviceableAreaSqft } = req.body;
+  const { address, city, state, zip, lat, lng, notes, type, measurementPolygons, serviceableAreaSqft, size, sizeUnit } = req.body;
   const [updated] = await db.update(propertiesTable)
     .set({
       ...(address && { address }),
@@ -127,6 +127,8 @@ router.patch("/properties/:id", async (req, res): Promise<void> => {
       ...(type !== undefined && { type }),
       ...(measurementPolygons !== undefined && { measurementPolygons }),
       ...(serviceableAreaSqft !== undefined && { serviceableAreaSqft }),
+      ...(size !== undefined && { size }),
+      ...(sizeUnit !== undefined && { sizeUnit }),
     })
     .where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId)))
     .returning();

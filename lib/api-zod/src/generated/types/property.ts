@@ -36,5 +36,15 @@ export interface Property {
   measurementPolygons?: MeasurementZone[];
   /** @nullable */
   serviceableAreaSqft?: number | null;
+  /**
+     * Property size for chemical rate calculations
+     * @nullable
+     */
+  size?: number | null;
+  /**
+     * Unit of property size (sqft or acres)
+     * @nullable
+     */
+  sizeUnit?: string | null;
   createdAt: string;
 }

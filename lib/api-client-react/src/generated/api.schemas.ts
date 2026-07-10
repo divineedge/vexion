@@ -262,6 +262,16 @@ export interface Property {
   measurementPolygons?: MeasurementZone[];
   /** @nullable */
   serviceableAreaSqft?: number | null;
+  /**
+     * Property size for chemical rate calculations
+     * @nullable
+     */
+  size?: number | null;
+  /**
+     * Unit of property size (sqft or acres)
+     * @nullable
+     */
+  sizeUnit?: string | null;
   createdAt: string;
 }
 
@@ -288,6 +298,10 @@ export interface PropertyUpdate {
   type?: string;
   measurementPolygons?: MeasurementZone[];
   serviceableAreaSqft?: number;
+  /** Property size for chemical rate calculations */
+  size?: number;
+  /** Unit of property size (sqft or acres) */
+  sizeUnit?: string;
 }
 
 export interface PropertyMeasurementUpdate {

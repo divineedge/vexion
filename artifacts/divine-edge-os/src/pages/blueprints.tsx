@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import {
   useListBlueprints, getListBlueprintsQueryKey,
   useUpdateBlueprint, getGetBlueprintQueryKey,
+  useGetBlueprintSuggestedParts, getGetBlueprintSuggestedPartsQueryKey,
+  useUpdateBlueprintSuggestedParts,
+  useListInventoryItems, getListInventoryItemsQueryKey,
   customFetch,
 } from '@workspace/api-client-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -10,7 +13,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Plus, DraftingCompass, Percent } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Plus, DraftingCompass, Percent, Package, AlertTriangle, Trash2 } from 'lucide-react';
 import { useLocation } from 'wouter';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -28,12 +34,52 @@ export default function BlueprintsPage() {
   const [p4pOpen, setP4pOpen] = useState<Record<number, boolean>>({});
   const updateBlueprint = useUpdateBlueprint();
 
+  // Suggested parts panel
+  const [suggestedPartsOpen, setSuggestedPartsOpen] = useState(false);
+  const [suggestedPartsBpId, setSuggestedPartsBpId] = useState<number | null>(null);
+  const [partItemId, setPartItemId] = useState('');
+  const [partQty, setPartQty] = useState('1');
+  const updateSuggestedParts = useUpdateBlueprintSuggestedParts();
+  const { data: suggestedParts, refetch: refetchSuggested } = useGetBlueprintSuggestedParts(
+    suggestedPartsBpId ?? 0,
+    { query: { enabled: suggestedPartsBpId != null, queryKey: getGetBlueprintSuggestedPartsQueryKey(suggestedPartsBpId ?? 0) } }
+  );
+  const { data: inventoryItems } = useListInventoryItems({}, { query: { enabled: suggestedPartsOpen, queryKey: getListInventoryItemsQueryKey({}) } });
+
   // Fetch global P4P rate for "using global" label
   const { data: settings } = useQuery<{ p4pMasterPercentage?: number }>({
     queryKey: ['settings-p4p'],
     queryFn: () => customFetch<{ p4pMasterPercentage?: number }>('/api/settings'),
   });
   const globalPct = (settings as any)?.p4pMasterPercentage ?? 0;
+
+  const handleAddSuggestedPart = () => {
+    if (!suggestedPartsBpId || !partItemId) { toast.error('Select an inventory item'); return; }
+    const qty = parseFloat(partQty) || 1;
+    const existing = (suggestedParts ?? []).filter(p => p.inventoryItemId !== parseInt(partItemId, 10));
+    const newParts = [...existing, { inventoryItemId: parseInt(partItemId, 10), estimatedQuantity: qty }];
+    updateSuggestedParts.mutate(
+      { id: suggestedPartsBpId, data: { parts: newParts } },
+      {
+        onSuccess: () => {
+          toast.success('Suggested part added');
+          refetchSuggested();
+          setPartItemId('');
+          setPartQty('1');
+        },
+        onError: () => toast.error('Failed to save'),
+      }
+    );
+  };
+
+  const handleRemoveSuggestedPart = (inventoryItemId: number) => {
+    if (!suggestedPartsBpId) return;
+    const newParts = (suggestedParts ?? []).filter(p => p.inventoryItemId !== inventoryItemId).map(p => ({ inventoryItemId: p.inventoryItemId, estimatedQuantity: p.estimatedQuantity }));
+    updateSuggestedParts.mutate(
+      { id: suggestedPartsBpId, data: { parts: newParts } },
+      { onSuccess: () => refetchSuggested(), onError: () => toast.error('Failed to remove') }
+    );
+  };
 
   const saveP4p = (bpId: number, val: string) => {
     const parsed = val.trim() === '' ? null : parseFloat(val);
@@ -95,6 +141,18 @@ export default function BlueprintsPage() {
 
                 {bp.totalEstimate !== undefined && bp.totalEstimate !== null && (
                   <p className="text-sm font-medium">Est: ${bp.totalEstimate.toLocaleString()}</p>
+                )}
+
+                {/* Suggested Parts button */}
+                {canManageOffice && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full gap-1.5 text-xs h-7 mt-1"
+                    onClick={e => { e.stopPropagation(); setSuggestedPartsBpId(bp.id); setSuggestedPartsOpen(true); }}
+                  >
+                    <Package className="w-3 h-3" /> Suggested Parts
+                  </Button>
                 )}
 
                 {/* P4P rate badge + popover editor */}
@@ -167,6 +225,99 @@ export default function BlueprintsPage() {
           </div>
         )}
       </div>
+
+      {/* Suggested Parts Sheet */}
+      <Sheet open={suggestedPartsOpen} onOpenChange={open => { if (!open) { setSuggestedPartsOpen(false); setSuggestedPartsBpId(null); } }}>
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+          <SheetHeader className="pb-4">
+            <SheetTitle className="flex items-center gap-2">
+              <Package className="w-5 h-5 text-primary" /> Suggested Parts
+            </SheetTitle>
+            <SheetDescription>
+              Tag parts that are typically needed for this blueprint type. Stock levels update in real time.
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="space-y-5">
+            {/* Add part form */}
+            {canManageOffice && (
+              <div className="rounded-lg border p-4 space-y-3 bg-muted/30">
+                <p className="text-sm font-medium">Add Suggested Part</p>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2 space-y-1">
+                    <label className="text-xs text-muted-foreground">Inventory Item</label>
+                    <Select value={partItemId} onValueChange={setPartItemId}>
+                      <SelectTrigger><SelectValue placeholder="Select item..." /></SelectTrigger>
+                      <SelectContent>
+                        {inventoryItems?.map(item => (
+                          <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Est. Qty</label>
+                    <Input type="number" min={0.1} step={0.5} value={partQty} onChange={e => setPartQty(e.target.value)} />
+                  </div>
+                </div>
+                <Button size="sm" onClick={handleAddSuggestedPart} disabled={updateSuggestedParts.isPending} className="gap-1.5">
+                  <Plus className="w-3.5 h-3.5" /> Add Part
+                </Button>
+              </div>
+            )}
+
+            {/* Suggested parts table */}
+            {suggestedParts && suggestedParts.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Part</TableHead>
+                    <TableHead className="text-right">Est. Qty</TableHead>
+                    <TableHead className="text-right">In Stock</TableHead>
+                    <TableHead className="text-right">Status</TableHead>
+                    {canManageOffice && <TableHead className="w-[40px]" />}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {suggestedParts.map(part => (
+                    <TableRow key={part.inventoryItemId}>
+                      <TableCell>
+                        <div className="font-medium text-sm">{part.name}</div>
+                        <div className="text-xs text-muted-foreground font-mono">{part.sku}</div>
+                      </TableCell>
+                      <TableCell className="text-right">{part.estimatedQuantity} {part.unit}</TableCell>
+                      <TableCell className="text-right">{part.warehouseStock} {part.unit}</TableCell>
+                      <TableCell className="text-right">
+                        {part.orderNeeded ? (
+                          <Badge variant="destructive" className="gap-1 text-[10px]">
+                            <AlertTriangle className="w-3 h-3" /> Order Needed
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-emerald-600 border-emerald-300 text-[10px]">In Stock</Badge>
+                        )}
+                      </TableCell>
+                      {canManageOffice && (
+                        <TableCell>
+                          <button
+                            className="text-muted-foreground/40 hover:text-destructive transition-colors"
+                            onClick={() => handleRemoveSuggestedPart(part.inventoryItemId)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                No suggested parts yet. Add parts above to help with pre-job planning.
+              </div>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

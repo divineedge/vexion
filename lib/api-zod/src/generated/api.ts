@@ -108,6 +108,7 @@ export const LoginResponse = zod.object({
   "planTier": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
   "isActive": zod.boolean().optional(),
+  "assignedLocationId": zod.number().nullish().describe('Assigned inventory location (e.g. their trailer)'),
   "createdAt": zod.string().optional()
 }),
   "token": zod.string()
@@ -132,6 +133,7 @@ export const GetMeResponse = zod.object({
   "planTier": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
   "isActive": zod.boolean().optional(),
+  "assignedLocationId": zod.number().nullish().describe('Assigned inventory location (e.g. their trailer)'),
   "createdAt": zod.string().optional()
 })
 
@@ -1521,6 +1523,251 @@ export const GetInventorySummaryResponse = zod.object({
 
 
 /**
+ * @summary List all inventory locations
+ */
+export const ListInventoryLocationsResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "type": zod.enum(['warehouse', 'trailer', 'other']),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})
+export const ListInventoryLocationsResponse = zod.array(ListInventoryLocationsResponseItem)
+
+
+/**
+ * @summary Create a new inventory location
+ */
+export const CreateInventoryLocationBody = zod.object({
+  "name": zod.string(),
+  "description": zod.string().optional(),
+  "type": zod.enum(['warehouse', 'trailer', 'other']).optional(),
+  "isActive": zod.boolean().optional()
+})
+
+export const CreateInventoryLocationResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "type": zod.enum(['warehouse', 'trailer', 'other']),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary Update an inventory location
+ */
+export const UpdateInventoryLocationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateInventoryLocationBody = zod.object({
+  "name": zod.string(),
+  "description": zod.string().optional(),
+  "type": zod.enum(['warehouse', 'trailer', 'other']).optional(),
+  "isActive": zod.boolean().optional()
+})
+
+export const UpdateInventoryLocationResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "type": zod.enum(['warehouse', 'trailer', 'other']),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary Delete an inventory location
+ */
+export const DeleteInventoryLocationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteInventoryLocationResponse = zod.void()
+
+
+/**
+ * @summary Get all stock at a location
+ */
+export const GetLocationStockParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetLocationStockResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number().optional(),
+  "inventoryItemId": zod.number(),
+  "itemName": zod.string().optional(),
+  "itemSku": zod.string().optional(),
+  "locationId": zod.number(),
+  "locationName": zod.string().optional(),
+  "quantity": zod.number(),
+  "reorderPoint": zod.number(),
+  "isLowStock": zod.boolean().optional(),
+  "unitPrice": zod.number().optional(),
+  "unit": zod.string().optional()
+})
+export const GetLocationStockResponse = zod.array(GetLocationStockResponseItem)
+
+
+/**
+ * @summary Set stock quantity for an item at a location
+ */
+export const SetLocationStockParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SetLocationStockBody = zod.object({
+  "inventoryItemId": zod.number(),
+  "quantity": zod.number(),
+  "reorderPoint": zod.number().optional()
+})
+
+export const SetLocationStockResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number().optional(),
+  "inventoryItemId": zod.number(),
+  "itemName": zod.string().optional(),
+  "itemSku": zod.string().optional(),
+  "locationId": zod.number(),
+  "locationName": zod.string().optional(),
+  "quantity": zod.number(),
+  "reorderPoint": zod.number(),
+  "isLowStock": zod.boolean().optional(),
+  "unitPrice": zod.number().optional(),
+  "unit": zod.string().optional()
+})
+
+
+/**
+ * @summary Transfer stock between locations
+ */
+export const TransferInventoryStockBody = zod.object({
+  "inventoryItemId": zod.number(),
+  "fromLocationId": zod.number().optional(),
+  "toLocationId": zod.number(),
+  "quantity": zod.number(),
+  "reason": zod.string().optional()
+})
+
+export const TransferInventoryStockResponse = zod.object({
+  "inventoryItemId": zod.number(),
+  "quantity": zod.number(),
+  "fromLocationId": zod.number().nullable(),
+  "toLocationId": zod.number(),
+  "from": zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number().optional(),
+  "inventoryItemId": zod.number(),
+  "itemName": zod.string().optional(),
+  "itemSku": zod.string().optional(),
+  "locationId": zod.number(),
+  "locationName": zod.string().optional(),
+  "quantity": zod.number(),
+  "reorderPoint": zod.number(),
+  "isLowStock": zod.boolean().optional(),
+  "unitPrice": zod.number().optional(),
+  "unit": zod.string().optional()
+}).optional(),
+  "to": zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number().optional(),
+  "inventoryItemId": zod.number(),
+  "itemName": zod.string().optional(),
+  "itemSku": zod.string().optional(),
+  "locationId": zod.number(),
+  "locationName": zod.string().optional(),
+  "quantity": zod.number(),
+  "reorderPoint": zod.number(),
+  "isLowStock": zod.boolean().optional(),
+  "unitPrice": zod.number().optional(),
+  "unit": zod.string().optional()
+}).optional()
+})
+
+
+/**
+ * @summary Get stock breakdown by location for an inventory item
+ */
+export const GetInventoryItemByLocationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetInventoryItemByLocationResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number().optional(),
+  "inventoryItemId": zod.number(),
+  "itemName": zod.string().optional(),
+  "itemSku": zod.string().optional(),
+  "locationId": zod.number(),
+  "locationName": zod.string().optional(),
+  "quantity": zod.number(),
+  "reorderPoint": zod.number(),
+  "isLowStock": zod.boolean().optional(),
+  "unitPrice": zod.number().optional(),
+  "unit": zod.string().optional()
+})
+export const GetInventoryItemByLocationResponse = zod.array(GetInventoryItemByLocationResponseItem)
+
+
+/**
+ * @summary Get suggested parts for a blueprint with live stock levels
+ */
+export const GetBlueprintSuggestedPartsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetBlueprintSuggestedPartsResponseItem = zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string().optional(),
+  "sku": zod.string().optional(),
+  "estimatedQuantity": zod.number(),
+  "warehouseStock": zod.number().optional(),
+  "unit": zod.string().optional(),
+  "unitPrice": zod.number().optional(),
+  "orderNeeded": zod.boolean().optional()
+})
+export const GetBlueprintSuggestedPartsResponse = zod.array(GetBlueprintSuggestedPartsResponseItem)
+
+
+/**
+ * @summary Set suggested parts for a blueprint
+ */
+export const UpdateBlueprintSuggestedPartsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateBlueprintSuggestedPartsBody = zod.object({
+  "parts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "estimatedQuantity": zod.number()
+}))
+})
+
+export const UpdateBlueprintSuggestedPartsResponseItem = zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string().optional(),
+  "sku": zod.string().optional(),
+  "estimatedQuantity": zod.number(),
+  "warehouseStock": zod.number().optional(),
+  "unit": zod.string().optional(),
+  "unitPrice": zod.number().optional(),
+  "orderNeeded": zod.boolean().optional()
+})
+export const UpdateBlueprintSuggestedPartsResponse = zod.array(UpdateBlueprintSuggestedPartsResponseItem)
+
+
+/**
  * @summary List all invoices
  */
 export const ListInvoicesQueryParams = zod.object({
@@ -2160,6 +2407,7 @@ export const ListUsersResponseItem = zod.object({
   "planTier": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
   "isActive": zod.boolean().optional(),
+  "assignedLocationId": zod.number().nullish().describe('Assigned inventory location (e.g. their trailer)'),
   "createdAt": zod.string().optional()
 })
 export const ListUsersResponse = zod.array(ListUsersResponseItem)
@@ -2184,6 +2432,7 @@ export const CreateUserResponse = zod.object({
   "planTier": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
   "isActive": zod.boolean().optional(),
+  "assignedLocationId": zod.number().nullish().describe('Assigned inventory location (e.g. their trailer)'),
   "createdAt": zod.string().optional()
 })
 
@@ -2198,7 +2447,8 @@ export const UpdateUserParams = zod.object({
 export const UpdateUserBody = zod.object({
   "name": zod.string().optional(),
   "role": zod.enum(['company_owner', 'office_manager', 'department_manager', 'crew_manager', 'technician']).optional(),
-  "isActive": zod.boolean().optional()
+  "isActive": zod.boolean().optional(),
+  "assignedLocationId": zod.number().nullish().describe('Assigned inventory location (e.g. their trailer)')
 })
 
 export const UpdateUserResponse = zod.object({
@@ -2210,6 +2460,7 @@ export const UpdateUserResponse = zod.object({
   "planTier": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
   "isActive": zod.boolean().optional(),
+  "assignedLocationId": zod.number().nullish().describe('Assigned inventory location (e.g. their trailer)'),
   "createdAt": zod.string().optional()
 })
 

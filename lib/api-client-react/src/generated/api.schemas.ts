@@ -37,6 +37,11 @@ export interface User {
   /** @nullable */
   avatarUrl?: string | null;
   isActive?: boolean;
+  /**
+     * Assigned inventory location (e.g. their trailer)
+     * @nullable
+     */
+  assignedLocationId?: number | null;
   createdAt?: string;
 }
 
@@ -78,6 +83,11 @@ export interface UserUpdate {
   name?: string;
   role?: UserUpdateRole;
   isActive?: boolean;
+  /**
+     * Assigned inventory location (e.g. their trailer)
+     * @nullable
+     */
+  assignedLocationId?: number | null;
 }
 
 export interface DashboardSummary {
@@ -865,6 +875,102 @@ export interface TimeEntry {
   /** @nullable */
   clockedOutAt?: string | null;
   totalMinutes: number;
+}
+
+export type InventoryLocationType = typeof InventoryLocationType[keyof typeof InventoryLocationType];
+
+
+export const InventoryLocationType = {
+  warehouse: 'warehouse',
+  trailer: 'trailer',
+  other: 'other',
+} as const;
+
+export interface InventoryLocation {
+  id: number;
+  tenantId: number;
+  name: string;
+  /** @nullable */
+  description?: string | null;
+  type: InventoryLocationType;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type InventoryLocationInputType = typeof InventoryLocationInputType[keyof typeof InventoryLocationInputType];
+
+
+export const InventoryLocationInputType = {
+  warehouse: 'warehouse',
+  trailer: 'trailer',
+  other: 'other',
+} as const;
+
+export interface InventoryLocationInput {
+  name: string;
+  description?: string;
+  type?: InventoryLocationInputType;
+  isActive?: boolean;
+}
+
+export interface LocationStockEntry {
+  id: number;
+  tenantId?: number;
+  inventoryItemId: number;
+  itemName?: string;
+  itemSku?: string;
+  locationId: number;
+  locationName?: string;
+  quantity: number;
+  reorderPoint: number;
+  isLowStock?: boolean;
+  unitPrice?: number;
+  unit?: string;
+}
+
+export interface SetLocationStockInput {
+  inventoryItemId: number;
+  quantity: number;
+  reorderPoint?: number;
+}
+
+export interface StockTransferInput {
+  inventoryItemId: number;
+  fromLocationId?: number;
+  toLocationId: number;
+  quantity: number;
+  reason?: string;
+}
+
+export interface StockTransferResult {
+  inventoryItemId: number;
+  quantity: number;
+  /** @nullable */
+  fromLocationId: number | null;
+  toLocationId: number;
+  from?: LocationStockEntry;
+  to?: LocationStockEntry;
+}
+
+export interface SuggestedPart {
+  inventoryItemId: number;
+  estimatedQuantity: number;
+}
+
+export interface SuggestedPartsInput {
+  parts: SuggestedPart[];
+}
+
+export interface SuggestedPartWithStock {
+  inventoryItemId: number;
+  name?: string;
+  sku?: string;
+  estimatedQuantity: number;
+  warehouseStock?: number;
+  unit?: string;
+  unitPrice?: number;
+  orderNeeded?: boolean;
 }
 
 export type BlueprintMode = typeof BlueprintMode[keyof typeof BlueprintMode];

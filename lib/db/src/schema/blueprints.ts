@@ -17,6 +17,8 @@ export const blueprintsTable = pgTable("blueprints", {
   totalEstimate: real("total_estimate"),
   /** Service-level P4P payout %. null = use tenant p4pMasterPercentage. */
   p4pPercentage: real("p4p_percentage"),
+  /** Suggested parts for this blueprint: [{inventoryItemId, name, estimatedQuantity}] */
+  suggestedParts: jsonb("suggested_parts").default("[]"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

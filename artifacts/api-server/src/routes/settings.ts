@@ -203,17 +203,18 @@ router.patch("/settings/users/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const { name, role, isActive } = req.body;
+  const { name, role, isActive, assignedLocationId } = req.body;
   const updates: Partial<typeof usersTable.$inferInsert> = {};
   if (name) updates.name = name;
   if (role) updates.role = role;
   if (isActive !== undefined) updates.isActive = isActive;
+  if (assignedLocationId !== undefined) updates.assignedLocationId = assignedLocationId ? parseInt(String(assignedLocationId), 10) : null;
 
   const [updated] = await db.update(usersTable).set(updates).where(and(eq(usersTable.id, id), eq(usersTable.tenantId, tenantId))).returning();
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
 
   const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
-  res.json({ id: updated.id, email: updated.email, name: updated.name, role: updated.role, tenantId: updated.tenantId, planTier: tenant?.planTier ?? "starter", avatarUrl: updated.avatarUrl ?? null, isActive: updated.isActive, createdAt: updated.createdAt.toISOString() });
+  res.json({ id: updated.id, email: updated.email, name: updated.name, role: updated.role, tenantId: updated.tenantId, planTier: tenant?.planTier ?? "starter", avatarUrl: updated.avatarUrl ?? null, isActive: updated.isActive, assignedLocationId: updated.assignedLocationId ?? null, createdAt: updated.createdAt.toISOString() });
 });
 
 router.delete("/settings/users/:id", async (req, res): Promise<void> => {

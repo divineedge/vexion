@@ -14,6 +14,8 @@ import {
   useListJobAlerts, getListJobAlertsQueryKey,
   useCreateJobAlert,
   useSendJobReminder,
+  useAddJobPart, useRemoveJobPart,
+  useListInventoryItems, getListInventoryItemsQueryKey,
 } from '@workspace/api-client-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card } from '@/components/ui/card';
@@ -29,8 +31,10 @@ import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronRight, Clock, MapPin, User, Calendar,
   DollarSign, ClipboardList, Plus, Users, FlaskConical, Trash2, AlertTriangle,
-  Bell, BellOff, Send,
+  Bell, BellOff, Send, Package, Search,
 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { useDebounce } from '@/hooks/use-debounce';
 import {
   startOfWeek, endOfWeek, startOfMonth, endOfMonth,
   eachDayOfInterval, format, isSameDay, addWeeks, subWeeks, addMonths, subMonths,
@@ -81,6 +85,12 @@ export default function SchedulePage() {
   const [newJob, setNewJob] = useState<NewJobForm>(EMPTY_JOB);
   const [alertPanelOpen, setAlertPanelOpen] = useState(false);
   const [alertForm, setAlertForm] = useState({ type: 'issue', message: '' });
+
+  // Parts panel state
+  const [partsSearch, setPartsSearch] = useState('');
+  const debouncedPartsSearch = useDebounce(partsSearch, 300);
+  const [addingPart, setAddingPart] = useState(false);
+  const [partQty, setPartQty] = useState('1');
   const [chemFormOpen, setChemFormOpen] = useState(false);
   const [chemForm, setChemForm] = useState({
     mixtureId: '', productId: '', volumeApplied: '', volumeUnit: 'gal',
@@ -129,6 +139,14 @@ export default function SchedulePage() {
   const { data: chemMixtures } = useListChemicalMixtures({ query: { queryKey: getListChemicalMixturesQueryKey() } });
   const createChemApp = useCreateJobChemicalApplication();
   const deleteChemApp = useDeleteChemicalApplication();
+
+  // Job parts hooks
+  const addJobPart = useAddJobPart();
+  const removeJobPart = useRemoveJobPart();
+  const { data: inventoryItems } = useListInventoryItems(
+    { q: debouncedPartsSearch || undefined },
+    { query: { enabled: addingPart, queryKey: getListInventoryItemsQueryKey({ q: debouncedPartsSearch || undefined }) } }
+  );
 
   const days = eachDayOfInterval({ start, end });
   const getJobsForDay = (date: Date) => jobs?.filter(j => isSameDay(new Date(j.scheduledAt), date)) ?? [];
@@ -485,27 +503,127 @@ export default function SchedulePage() {
                 )}
 
                 {/* Parts used on job */}
-                {Array.isArray(selectedJob.jobParts) && selectedJob.jobParts.length > 0 && (
-                  <>
-                    <Separator />
-                    <div className="space-y-2">
-                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1.5">
-                        <ClipboardList className="w-3.5 h-3.5" /> Parts Used
-                      </p>
-                      <div className="rounded-lg border divide-y text-sm">
-                        {(selectedJob.jobParts as { name: string; quantity: number; unitPrice: number; total: number }[]).map((part, i) => (
-                          <div key={i} className="flex items-center justify-between px-3 py-2">
-                            <div className="flex-1 min-w-0">
-                              <span className="font-medium truncate block">{part.name}</span>
-                              <span className="text-xs text-muted-foreground">{part.quantity} × ${part.unitPrice.toFixed(2)}</span>
+                <Separator />
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1.5">
+                      <ClipboardList className="w-3.5 h-3.5" /> Parts Used
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => { setAddingPart(true); setPartsSearch(''); setPartQty('1'); }}
+                    >
+                      <Plus className="w-3 h-3" /> Add Part
+                    </Button>
+                  </div>
+
+                  {/* Add part form */}
+                  {addingPart && (
+                    <div className="rounded-lg border p-3 space-y-2 bg-muted/30">
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                        <input
+                          className="w-full pl-8 pr-3 py-1.5 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          placeholder="Search inventory..."
+                          value={partsSearch}
+                          onChange={e => setPartsSearch(e.target.value)}
+                          autoFocus
+                        />
+                      </div>
+                      {inventoryItems && inventoryItems.length > 0 && (
+                        <div className="rounded-md border divide-y text-sm max-h-48 overflow-y-auto">
+                          {inventoryItems.slice(0, 8).map(item => (
+                            <div key={item.id} className="flex items-center gap-2 px-2 py-1.5 hover:bg-muted/50">
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium truncate">{item.name}</div>
+                                <div className="text-xs text-muted-foreground">${item.unitPrice.toFixed(2)}/{item.unit} · {item.quantity} in stock</div>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  min={1}
+                                  className="w-14 text-xs border rounded px-1.5 py-1 text-right"
+                                  value={partQty}
+                                  onChange={e => setPartQty(e.target.value)}
+                                  onClick={e => e.stopPropagation()}
+                                />
+                                <Button
+                                  size="sm"
+                                  className="h-6 px-2 text-xs"
+                                  disabled={addJobPart.isPending}
+                                  onClick={() => {
+                                    if (!selectedJobId) return;
+                                    const qty = parseInt(partQty, 10);
+                                    if (isNaN(qty) || qty <= 0) { toast.error('Enter a valid quantity'); return; }
+                                    addJobPart.mutate(
+                                      { id: selectedJobId, data: { inventoryItemId: item.id, quantity: qty } },
+                                      {
+                                        onSuccess: () => {
+                                          toast.success(`${item.name} added`);
+                                          qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId) });
+                                          setAddingPart(false);
+                                          setPartsSearch('');
+                                        },
+                                        onError: () => toast.error('Failed to add part'),
+                                      }
+                                    );
+                                  }}
+                                >Add</Button>
+                              </div>
                             </div>
-                            <span className="font-semibold ml-4">${part.total.toFixed(2)}</span>
+                          ))}
+                        </div>
+                      )}
+                      {partsSearch && inventoryItems?.length === 0 && (
+                        <p className="text-xs text-muted-foreground px-1">No items found for "{partsSearch}"</p>
+                      )}
+                      <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setAddingPart(false)}>Cancel</Button>
+                    </div>
+                  )}
+
+                  {/* Parts list */}
+                  {Array.isArray(selectedJob.jobParts) && selectedJob.jobParts.length > 0 ? (
+                    <div className="rounded-lg border divide-y text-sm">
+                      {(selectedJob.jobParts as { inventoryItemId: number; name: string; quantity: number; unitPrice: number; total: number }[]).map((part, i) => (
+                        <div key={i} className="flex items-center justify-between px-3 py-2">
+                          <div className="flex-1 min-w-0">
+                            <span className="font-medium truncate block">{part.name}</span>
+                            <span className="text-xs text-muted-foreground">{part.quantity} × ${part.unitPrice.toFixed(2)}</span>
                           </div>
-                        ))}
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold">${part.total.toFixed(2)}</span>
+                            <button
+                              className="text-muted-foreground/40 hover:text-destructive transition-colors"
+                              onClick={() => {
+                                if (!selectedJobId) return;
+                                removeJobPart.mutate(
+                                  { id: selectedJobId, inventoryItemId: part.inventoryItemId },
+                                  {
+                                    onSuccess: () => {
+                                      toast.success('Part removed');
+                                      qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId) });
+                                    },
+                                    onError: () => toast.error('Failed to remove part'),
+                                  }
+                                );
+                              }}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="flex justify-between px-3 py-2 bg-muted/30 text-sm font-semibold">
+                        <span>Parts Total</span>
+                        <span>${(selectedJob.jobParts as { total: number }[]).reduce((s, p) => s + p.total, 0).toFixed(2)}</span>
                       </div>
                     </div>
-                  </>
-                )}
+                  ) : !addingPart && (
+                    <p className="text-sm text-muted-foreground py-1">No parts logged yet.</p>
+                  )}
+                </div>
 
                 {/* Chemical Applications */}
                 <Separator />

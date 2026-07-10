@@ -64,6 +64,89 @@ router.patch("/blueprints/:id", async (req, res): Promise<void> => {
   res.json(formatBlueprint(updated));
 });
 
+// ─── Suggested Parts ──────────────────────────────────────────────────────────
+
+interface SuggestedPart {
+  inventoryItemId: number;
+  estimatedQuantity: number;
+}
+
+router.get("/blueprints/:id/suggested-parts", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+
+  const [bp] = await db.select().from(blueprintsTable).where(and(eq(blueprintsTable.id, id), eq(blueprintsTable.tenantId, tenantId)));
+  if (!bp) { res.status(404).json({ error: "Not found" }); return; }
+
+  const parts = (bp.suggestedParts as SuggestedPart[]) ?? [];
+  if (parts.length === 0) { res.json([]); return; }
+
+  // Fetch live inventory data for each suggested part
+  const itemIds = parts.map(p => p.inventoryItemId);
+  const items = await db.select().from(inventoryItemsTable).where(eq(inventoryItemsTable.tenantId, tenantId));
+  const itemMap = new Map(items.map(i => [i.id, i]));
+
+  const result = parts.map(part => {
+    const item = itemMap.get(part.inventoryItemId);
+    const warehouseStock = item?.quantity ?? 0;
+    return {
+      inventoryItemId: part.inventoryItemId,
+      name: item?.name ?? `Item #${part.inventoryItemId}`,
+      sku: item?.sku ?? "",
+      estimatedQuantity: part.estimatedQuantity,
+      warehouseStock,
+      unit: item?.unit ?? "each",
+      unitPrice: item?.markedUpPrice ?? 0,
+      orderNeeded: warehouseStock < part.estimatedQuantity,
+    };
+  });
+
+  res.json(result);
+});
+
+router.patch("/blueprints/:id/suggested-parts", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+
+  const { parts } = req.body as { parts?: SuggestedPart[] };
+  if (!Array.isArray(parts)) { res.status(400).json({ error: "parts array is required" }); return; }
+
+  const validated = parts.map(p => ({
+    inventoryItemId: parseInt(String(p.inventoryItemId), 10),
+    estimatedQuantity: parseFloat(String(p.estimatedQuantity)) || 1,
+  }));
+
+  const [updated] = await db.update(blueprintsTable)
+    .set({ suggestedParts: validated })
+    .where(and(eq(blueprintsTable.id, id), eq(blueprintsTable.tenantId, tenantId)))
+    .returning();
+  if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+
+  // Return with live stock info (same as GET)
+  const savedParts = (updated.suggestedParts as SuggestedPart[]) ?? [];
+  const items = await db.select().from(inventoryItemsTable).where(eq(inventoryItemsTable.tenantId, tenantId));
+  const itemMap = new Map(items.map(i => [i.id, i]));
+
+  const result = savedParts.map(part => {
+    const item = itemMap.get(part.inventoryItemId);
+    const warehouseStock = item?.quantity ?? 0;
+    return {
+      inventoryItemId: part.inventoryItemId,
+      name: item?.name ?? `Item #${part.inventoryItemId}`,
+      sku: item?.sku ?? "",
+      estimatedQuantity: part.estimatedQuantity,
+      warehouseStock,
+      unit: item?.unit ?? "each",
+      unitPrice: item?.markedUpPrice ?? 0,
+      orderNeeded: warehouseStock < part.estimatedQuantity,
+    };
+  });
+
+  res.json(result);
+});
+
 router.delete("/blueprints/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;

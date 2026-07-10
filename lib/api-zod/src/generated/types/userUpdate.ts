@@ -11,4 +11,9 @@ export interface UserUpdate {
   name?: string;
   role?: UserUpdateRole;
   isActive?: boolean;
+  /**
+     * Assigned inventory location (e.g. their trailer)
+     * @nullable
+     */
+  assignedLocationId?: number | null;
 }

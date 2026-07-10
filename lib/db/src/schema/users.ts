@@ -12,6 +12,8 @@ export const usersTable = pgTable("users", {
   passwordHash: text("password_hash").notNull().default("mock"),
   avatarUrl: text("avatar_url"),
   isActive: boolean("is_active").notNull().default(true),
+  /** Assigned inventory location (e.g., their trailer). Used for location-scoped inventory views. */
+  assignedLocationId: integer("assigned_location_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

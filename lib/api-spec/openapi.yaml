@@ -1076,6 +1076,208 @@ paths:
               schema:
                 $ref: "#/components/schemas/InventorySummary"
 
+  # INVENTORY LOCATIONS
+  /inventory/locations:
+    get:
+      operationId: listInventoryLocations
+      tags: [inventory]
+      summary: List all inventory locations
+      responses:
+        "200":
+          description: List of inventory locations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InventoryLocation"
+    post:
+      operationId: createInventoryLocation
+      tags: [inventory]
+      summary: Create a new inventory location
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryLocationInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryLocation"
+
+  /inventory/locations/{id}:
+    patch:
+      operationId: updateInventoryLocation
+      tags: [inventory]
+      summary: Update an inventory location
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryLocationInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryLocation"
+    delete:
+      operationId: deleteInventoryLocation
+      tags: [inventory]
+      summary: Delete an inventory location
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /inventory/locations/{id}/stock:
+    get:
+      operationId: getLocationStock
+      tags: [inventory]
+      summary: Get all stock at a location
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of location stock entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LocationStockEntry"
+    post:
+      operationId: setLocationStock
+      tags: [inventory]
+      summary: Set stock quantity for an item at a location
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetLocationStockInput"
+      responses:
+        "200":
+          description: Updated stock entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationStockEntry"
+
+  /inventory/transfer:
+    post:
+      operationId: transferInventoryStock
+      tags: [inventory]
+      summary: Transfer stock between locations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StockTransferInput"
+      responses:
+        "200":
+          description: Transfer result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockTransferResult"
+
+  /inventory/{id}/by-location:
+    get:
+      operationId: getInventoryItemByLocation
+      tags: [inventory]
+      summary: Get stock breakdown by location for an inventory item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Stock breakdown by location
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LocationStockEntry"
+
+  # BLUEPRINT SUGGESTED PARTS
+  /blueprints/{id}/suggested-parts:
+    get:
+      operationId: getBlueprintSuggestedParts
+      tags: [blueprints]
+      summary: Get suggested parts for a blueprint with live stock levels
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Suggested parts with stock info
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SuggestedPartWithStock"
+    patch:
+      operationId: updateBlueprintSuggestedParts
+      tags: [blueprints]
+      summary: Set suggested parts for a blueprint
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SuggestedPartsInput"
+      responses:
+        "200":
+          description: Updated suggested parts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SuggestedPartWithStock"
+
   # INVOICES
   /invoices:
     get:
@@ -2344,6 +2546,9 @@ components:
           type: ["string", "null"]
         isActive:
           type: boolean
+        assignedLocationId:
+          type: ["integer", "null"]
+          description: "Assigned inventory location (e.g. their trailer)"
         createdAt:
           type: string
 
@@ -2371,6 +2576,9 @@ components:
           enum: [company_owner, office_manager, department_manager, crew_manager, technician]
         isActive:
           type: boolean
+        assignedLocationId:
+          type: ["integer", "null"]
+          description: "Assigned inventory location (e.g. their trailer)"
 
     DashboardSummary:
       type: object
@@ -3403,6 +3611,153 @@ components:
           type: ["string", "null"]
         totalMinutes:
           type: integer
+
+    InventoryLocation:
+      type: object
+      required: [id, tenantId, name, type, isActive, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        type:
+          type: string
+          enum: [warehouse, trailer, other]
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    InventoryLocationInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        type:
+          type: string
+          enum: [warehouse, trailer, other]
+        isActive:
+          type: boolean
+
+    LocationStockEntry:
+      type: object
+      required: [id, inventoryItemId, locationId, quantity, reorderPoint]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        inventoryItemId:
+          type: integer
+        itemName:
+          type: string
+        itemSku:
+          type: string
+        locationId:
+          type: integer
+        locationName:
+          type: string
+        quantity:
+          type: integer
+        reorderPoint:
+          type: integer
+        isLowStock:
+          type: boolean
+        unitPrice:
+          type: number
+        unit:
+          type: string
+
+    SetLocationStockInput:
+      type: object
+      required: [inventoryItemId, quantity]
+      properties:
+        inventoryItemId:
+          type: integer
+        quantity:
+          type: integer
+        reorderPoint:
+          type: integer
+
+    StockTransferInput:
+      type: object
+      required: [inventoryItemId, quantity, toLocationId]
+      properties:
+        inventoryItemId:
+          type: integer
+        fromLocationId:
+          type: integer
+        toLocationId:
+          type: integer
+        quantity:
+          type: integer
+        reason:
+          type: string
+
+    StockTransferResult:
+      type: object
+      required: [inventoryItemId, quantity, fromLocationId, toLocationId]
+      properties:
+        inventoryItemId:
+          type: integer
+        quantity:
+          type: integer
+        fromLocationId:
+          type: ["integer", "null"]
+        toLocationId:
+          type: integer
+        from:
+          $ref: "#/components/schemas/LocationStockEntry"
+        to:
+          $ref: "#/components/schemas/LocationStockEntry"
+
+    SuggestedPart:
+      type: object
+      required: [inventoryItemId, estimatedQuantity]
+      properties:
+        inventoryItemId:
+          type: integer
+        estimatedQuantity:
+          type: number
+
+    SuggestedPartsInput:
+      type: object
+      required: [parts]
+      properties:
+        parts:
+          type: array
+          items:
+            $ref: "#/components/schemas/SuggestedPart"
+
+    SuggestedPartWithStock:
+      type: object
+      required: [inventoryItemId, estimatedQuantity]
+      properties:
+        inventoryItemId:
+          type: integer
+        name:
+          type: string
+        sku:
+          type: string
+        estimatedQuantity:
+          type: number
+        warehouseStock:
+          type: integer
+        unit:
+          type: string
+        unitPrice:
+          type: number
+        orderNeeded:
+          type: boolean
 
     Blueprint:
       type: object

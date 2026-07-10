@@ -6,7 +6,12 @@ import {
   useCreateInventoryItem, useUpdateInventoryItem, useDeleteInventoryItem,
   useAdjustInventoryStock,
   useGetTenantSettings, getGetTenantSettingsQueryKey,
+  useListInventoryLocations, getListInventoryLocationsQueryKey,
+  useCreateInventoryLocation, useUpdateInventoryLocation, useDeleteInventoryLocation,
+  useGetLocationStock, getGetLocationStockQueryKey,
+  useTransferInventoryStock,
 } from '@workspace/api-client-react';
+import type { InventoryLocation } from '@workspace/api-client-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -15,11 +20,13 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Search, Plus, AlertTriangle, Package, DollarSign, Edit, Trash2,
   TrendingUp, ArrowRight, Eye, EyeOff, PlusCircle, MinusCircle,
+  Warehouse, Truck, ArrowLeftRight, MapPin,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -53,6 +60,18 @@ export default function InventoryPage() {
   const [form, setForm] = useState<ItemForm>(EMPTY_FORM);
   const [sellPreview, setSellPreview] = useState<number | null>(null);
 
+  // Locations
+  const [activeTab, setActiveTab] = useState<'all' | 'by-location'>('all');
+  const [selectedLocationId, setSelectedLocationId] = useState<number | 'all'>('all');
+  const [locDialogOpen, setLocDialogOpen] = useState(false);
+  const [locForm, setLocForm] = useState({ name: '', description: '', type: 'warehouse' as 'warehouse' | 'trailer' | 'other' });
+  const [editingLocId, setEditingLocId] = useState<number | null>(null);
+
+  // Transfer dialog
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  // 'main_stock' is a UI sentinel for "from main warehouse" — mapped to undefined/null on submit
+  const [transferForm, setTransferForm] = useState({ inventoryItemId: '', fromLocationId: 'main_stock', toLocationId: '', quantity: '1', reason: '' });
+
   // Stock adjustment dialog
   const [adjustDialogOpen, setAdjustDialogOpen] = useState(false);
   const [adjustItemId, setAdjustItemId] = useState<number | null>(null);
@@ -66,6 +85,67 @@ export default function InventoryPage() {
   const canSeeCost = !isTechnician || showCostPriceToTech;
 
   const adjustStock = useAdjustInventoryStock();
+
+  // Location hooks
+  const { data: locations } = useListInventoryLocations({ query: { queryKey: getListInventoryLocationsQueryKey() } });
+  const createLocation = useCreateInventoryLocation();
+  const updateLocation = useUpdateInventoryLocation();
+  const deleteLocation = useDeleteInventoryLocation();
+  const transferStock = useTransferInventoryStock();
+  const { data: locationStock } = useGetLocationStock(
+    typeof selectedLocationId === 'number' ? selectedLocationId : 0,
+    { query: { enabled: typeof selectedLocationId === 'number', queryKey: getGetLocationStockQueryKey(typeof selectedLocationId === 'number' ? selectedLocationId : 0) } }
+  );
+
+  const handleSaveLocation = () => {
+    if (!locForm.name) { toast.error('Location name is required'); return; }
+    if (editingLocId) {
+      updateLocation.mutate({ id: editingLocId, data: locForm }, {
+        onSuccess: () => {
+          toast.success('Location updated');
+          qc.invalidateQueries({ queryKey: getListInventoryLocationsQueryKey() });
+          setLocDialogOpen(false);
+          setEditingLocId(null);
+        },
+        onError: () => toast.error('Failed to update location'),
+      });
+    } else {
+      createLocation.mutate({ data: locForm }, {
+        onSuccess: () => {
+          toast.success('Location created');
+          qc.invalidateQueries({ queryKey: getListInventoryLocationsQueryKey() });
+          setLocDialogOpen(false);
+        },
+        onError: () => toast.error('Failed to create location'),
+      });
+    }
+  };
+
+  const handleTransfer = () => {
+    if (!transferForm.inventoryItemId || !transferForm.toLocationId || !transferForm.quantity) {
+      toast.error('Fill in all required transfer fields');
+      return;
+    }
+    const fromLocId = transferForm.fromLocationId === 'main_stock' ? undefined : parseInt(transferForm.fromLocationId, 10);
+    transferStock.mutate({
+      data: {
+        inventoryItemId: parseInt(transferForm.inventoryItemId, 10),
+        fromLocationId: fromLocId,
+        toLocationId: parseInt(transferForm.toLocationId, 10),
+        quantity: parseInt(transferForm.quantity, 10),
+        reason: transferForm.reason || undefined,
+      }
+    }, {
+      onSuccess: () => {
+        toast.success('Stock transferred');
+        qc.invalidateQueries({ queryKey: getListInventoryLocationsQueryKey() });
+        qc.invalidateQueries({ queryKey: getListInventoryItemsQueryKey() });
+        setTransferDialogOpen(false);
+        setTransferForm({ inventoryItemId: '', fromLocationId: 'main_stock', toLocationId: '', quantity: '1', reason: '' });
+      },
+      onError: (e: any) => toast.error(e?.message ?? 'Transfer failed'),
+    });
+  };
 
   const openAdjustDialog = (id: number, name: string) => {
     setAdjustItemId(id);
@@ -205,9 +285,46 @@ export default function InventoryPage() {
           <h1 className="text-3xl font-bold tracking-tight">Inventory</h1>
           <p className="text-muted-foreground mt-1">Manage parts, tools, and materials.</p>
         </div>
+        <div className="flex items-center gap-2">
+          {canManage && (
+            <Button variant="outline" className="gap-2" onClick={() => { setTransferDialogOpen(true); }}>
+              <ArrowLeftRight className="w-4 h-4" /> Transfer
+            </Button>
+          )}
+          {canManage && (
+            <Button className="gap-2" onClick={openCreate}>
+              <Plus className="w-4 h-4" /> Add Item
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Location filter bar */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          onClick={() => { setActiveTab('all'); setSelectedLocationId('all'); }}
+          className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${activeTab === 'all' && selectedLocationId === 'all' ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-muted border-border'}`}
+        >
+          All Items
+        </button>
+        {locations?.map(loc => (
+          <button
+            key={loc.id}
+            onClick={() => { setActiveTab('by-location'); setSelectedLocationId(loc.id); }}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors flex items-center gap-1.5 ${typeof selectedLocationId === 'number' && selectedLocationId === loc.id ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-muted border-border'}`}
+          >
+            {loc.type === 'trailer' ? <Truck className="w-3 h-3" /> : loc.type === 'warehouse' ? <Warehouse className="w-3 h-3" /> : <MapPin className="w-3 h-3" />}
+            {loc.name}
+          </button>
+        ))}
         {canManage && (
-          <Button className="gap-2" onClick={openCreate}>
-            <Plus className="w-4 h-4" /> Add Item
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 px-2 text-xs text-muted-foreground gap-1"
+            onClick={() => { setEditingLocId(null); setLocForm({ name: '', description: '', type: 'warehouse' }); setLocDialogOpen(true); }}
+          >
+            <Plus className="w-3 h-3" /> Add Location
           </Button>
         )}
       </div>
@@ -249,8 +366,84 @@ export default function InventoryPage() {
         </Card>
       </div>
 
-      {/* Table */}
-      <Card>
+      {/* By-Location Stock View */}
+      {typeof selectedLocationId === 'number' && (
+        <Card>
+          <CardContent className="p-0">
+            <div className="p-4 border-b flex items-center justify-between">
+              <div className="flex items-center gap-2 font-semibold text-sm">
+                {locations?.find(l => l.id === selectedLocationId)?.type === 'trailer'
+                  ? <Truck className="w-4 h-4 text-muted-foreground" />
+                  : <Warehouse className="w-4 h-4 text-muted-foreground" />
+                }
+                Stock at: {locations?.find(l => l.id === selectedLocationId)?.name}
+              </div>
+              {canManage && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1 text-xs"
+                  onClick={() => {
+                    const loc = locations?.find(l => l.id === selectedLocationId);
+                    if (!loc) return;
+                    setEditingLocId(loc.id);
+                    setLocForm({ name: loc.name, description: loc.description ?? '', type: loc.type as typeof locForm.type });
+                    setLocDialogOpen(true);
+                  }}
+                >
+                  <Edit className="w-3 h-3" /> Edit Location
+                </Button>
+              )}
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Item</TableHead>
+                  <TableHead>SKU</TableHead>
+                  <TableHead className="text-right">Qty at Location</TableHead>
+                  <TableHead className="text-right">Reorder At</TableHead>
+                  <TableHead className="text-right">Sell Price</TableHead>
+                  <TableHead className="w-[80px]" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {!locationStock || locationStock.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                      No stock assigned to this location. Use the Transfer button to move items here.
+                    </TableCell>
+                  </TableRow>
+                ) : locationStock.map(entry => (
+                  <TableRow
+                    key={entry.id}
+                    className={entry.isLowStock ? 'bg-destructive/5' : ''}
+                  >
+                    <TableCell className="font-medium flex items-center gap-1.5">
+                      {entry.isLowStock && <AlertTriangle className="w-3.5 h-3.5 text-destructive" />}
+                      {entry.itemName}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{entry.itemSku}</TableCell>
+                    <TableCell className="text-right">
+                      <span className={`font-bold ${entry.isLowStock ? 'text-destructive' : ''}`}>{entry.quantity}</span>
+                      {entry.isLowStock && <Badge variant="destructive" className="ml-2 text-[10px]">Low</Badge>}
+                    </TableCell>
+                    <TableCell className="text-right text-muted-foreground">{entry.reorderPoint}</TableCell>
+                    <TableCell className="text-right">${(entry.unitPrice ?? 0).toFixed(2)}</TableCell>
+                    <TableCell className="text-right">
+                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => openView(entry.inventoryItemId)}>
+                        View
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* All Items Table */}
+      {selectedLocationId === 'all' && <Card>
         <CardContent className="p-0">
           <div className="p-4 border-b flex items-center gap-4">
             <div className="relative flex-1 max-w-md">
@@ -327,7 +520,7 @@ export default function InventoryPage() {
             </TableBody>
           </Table>
         </CardContent>
-      </Card>
+      </Card>}
 
       {/* View Detail Sheet */}
       <Sheet open={sheetMode === 'view'} onOpenChange={open => { if (!open) setSheetMode(null); }}>
@@ -548,6 +741,105 @@ export default function InventoryPage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Location Management Dialog */}
+      <Dialog open={locDialogOpen} onOpenChange={open => { if (!open) setLocDialogOpen(false); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{editingLocId ? 'Edit Location' : 'New Inventory Location'}</DialogTitle>
+            <DialogDescription>Create a named location such as a warehouse or crew trailer.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 pt-1">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Name <span className="text-destructive">*</span></label>
+              <Input placeholder="e.g. Main Warehouse" value={locForm.name} onChange={e => setLocForm(f => ({ ...f, name: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Type</label>
+              <Select value={locForm.type} onValueChange={v => setLocForm(f => ({ ...f, type: v as typeof locForm.type }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="warehouse">Warehouse</SelectItem>
+                  <SelectItem value="trailer">Trailer</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Description</label>
+              <Input placeholder="Optional description" value={locForm.description} onChange={e => setLocForm(f => ({ ...f, description: e.target.value }))} />
+            </div>
+            <div className="flex gap-2 justify-end pt-2">
+              <Button variant="outline" onClick={() => setLocDialogOpen(false)}>Cancel</Button>
+              <Button onClick={handleSaveLocation} disabled={createLocation.isPending || updateLocation.isPending}>
+                {createLocation.isPending || updateLocation.isPending ? 'Saving...' : editingLocId ? 'Update' : 'Create'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transfer Dialog */}
+      <Dialog open={transferDialogOpen} onOpenChange={open => { if (!open) setTransferDialogOpen(false); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Transfer Stock</DialogTitle>
+            <DialogDescription>Move inventory from one location to another.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 pt-1">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Item <span className="text-destructive">*</span></label>
+              <Select value={transferForm.inventoryItemId} onValueChange={v => setTransferForm(f => ({ ...f, inventoryItemId: v }))}>
+                <SelectTrigger><SelectValue placeholder="Select item..." /></SelectTrigger>
+                <SelectContent>
+                  {items?.map(item => (
+                    <SelectItem key={item.id} value={String(item.id)}>{item.name} (stock: {item.quantity})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">From Location</label>
+                <Select value={transferForm.fromLocationId} onValueChange={v => setTransferForm(f => ({ ...f, fromLocationId: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="main_stock">Main Warehouse Stock</SelectItem>
+                    {locations?.map(loc => (
+                      <SelectItem key={loc.id} value={String(loc.id)}>{loc.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">To Location <span className="text-destructive">*</span></label>
+                <Select value={transferForm.toLocationId} onValueChange={v => setTransferForm(f => ({ ...f, toLocationId: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
+                  <SelectContent>
+                    {locations?.map(loc => (
+                      <SelectItem key={loc.id} value={String(loc.id)}>{loc.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Quantity <span className="text-destructive">*</span></label>
+              <Input type="number" min={1} value={transferForm.quantity} onChange={e => setTransferForm(f => ({ ...f, quantity: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Reason</label>
+              <Input placeholder="e.g. Stocking trailer for week" value={transferForm.reason} onChange={e => setTransferForm(f => ({ ...f, reason: e.target.value }))} />
+            </div>
+            <div className="flex gap-2 justify-end pt-2">
+              <Button variant="outline" onClick={() => setTransferDialogOpen(false)}>Cancel</Button>
+              <Button onClick={handleTransfer} disabled={transferStock.isPending}>
+                {transferStock.isPending ? 'Transferring...' : 'Transfer'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Stock Adjustment Dialog */}
       <Dialog open={adjustDialogOpen} onOpenChange={open => { if (!open) setAdjustDialogOpen(false); }}>

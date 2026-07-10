@@ -18,5 +18,10 @@ export interface User {
   /** @nullable */
   avatarUrl?: string | null;
   isActive?: boolean;
+  /**
+     * Assigned inventory location (e.g. their trailer)
+     * @nullable
+     */
+  assignedLocationId?: number | null;
   createdAt?: string;
 }

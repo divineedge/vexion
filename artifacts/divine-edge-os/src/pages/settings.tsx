@@ -1281,12 +1281,15 @@ export default function SettingsPage() {
                   <label className="text-sm font-medium">Auto-Invoice Frequency</label>
                   <p className="text-xs text-muted-foreground">Automatically generate invoices for completed jobs on a schedule.</p>
                   <Select value={autoInvoiceFrequency} onValueChange={v => setAutoInvoiceFrequency(v as typeof autoInvoiceFrequency)}>
-                    <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="w-64"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="off">Off (manual only)</SelectItem>
                       <SelectItem value="daily">Daily</SelectItem>
-                      <SelectItem value="weekly">Weekly</SelectItem>
-                      <SelectItem value="monthly">Monthly</SelectItem>
+                      <SelectItem value="weekly">Weekly (every Monday)</SelectItem>
+                      <SelectItem value="monthly">Monthly (1st of month)</SelectItem>
+                      <SelectItem value="biweekly">Bi-weekly (every 2 weeks)</SelectItem>
+                      <SelectItem value="weekly_friday">Weekly (every Friday)</SelectItem>
+                      <SelectItem value="monthly_15">Monthly (15th of month)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

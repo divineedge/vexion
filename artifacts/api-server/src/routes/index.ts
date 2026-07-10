@@ -18,6 +18,7 @@ import callbacksRouter from "./callbacks";
 import marketingRouter from "./marketing";
 import p4pRouter from "./p4p";
 import servicesRouter from "./services";
+import chemicalsRouter from "./chemicals";
 
 const router: IRouter = Router();
 
@@ -40,5 +41,6 @@ router.use(callbacksRouter);
 router.use(marketingRouter);
 router.use(p4pRouter);
 router.use(servicesRouter);
+router.use(chemicalsRouter);
 
 export default router;

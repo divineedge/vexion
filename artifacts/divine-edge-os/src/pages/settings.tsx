@@ -5,7 +5,12 @@ import {
   useListUsers, getListUsersQueryKey,
   useCreateUser, useUpdateUser, useDeleteUser,
   useListPlans, getListPlansQueryKey,
+  useListChemicalProducts, getListChemicalProductsQueryKey,
+  useCreateChemicalProduct, useUpdateChemicalProduct, useDeleteChemicalProduct,
+  useListChemicalMixtures, getListChemicalMixturesQueryKey,
+  useCreateChemicalMixture, useUpdateChemicalMixture, useDeleteChemicalMixture,
 } from '@workspace/api-client-react';
+import type { ChemicalProduct, ChemicalMixture, ChemicalMixtureItem } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -21,7 +26,7 @@ import { Separator } from '@/components/ui/separator';
 import {
   Building, CreditCard, Users, Shield, CheckCircle2, Plus, Trash2,
   GripVertical, EyeOff, Eye, Star, Settings as SettingsIcon, TrendingUp,
-  ArrowRight,
+  ArrowRight, FlaskConical, Pencil, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BUILT_IN_CUSTOMER_FIELDS, getActiveCustomerFields, type CustomerFieldConfig } from '@/lib/fieldConfig';
@@ -33,11 +38,19 @@ export default function SettingsPage() {
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
   const { data: users } = useListUsers({ query: { queryKey: getListUsersQueryKey() } });
   const { data: plans } = useListPlans({ query: { enabled: isSuperAdmin, queryKey: getListPlansQueryKey() } });
+  const { data: chemProducts } = useListChemicalProducts({ query: { queryKey: getListChemicalProductsQueryKey() } });
+  const { data: chemMixtures } = useListChemicalMixtures({ query: { queryKey: getListChemicalMixturesQueryKey() } });
 
   const updateSettings = useUpdateTenantSettings();
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();
   const deleteUser = useDeleteUser();
+  const createChemProduct = useCreateChemicalProduct();
+  const updateChemProduct = useUpdateChemicalProduct();
+  const deleteChemProduct = useDeleteChemicalProduct();
+  const createChemMixture = useCreateChemicalMixture();
+  const updateChemMixture = useUpdateChemicalMixture();
+  const deleteChemMixture = useDeleteChemicalMixture();
 
   // General
   const [companyName, setCompanyName] = useState('');
@@ -63,6 +76,17 @@ export default function SettingsPage() {
   // Team
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: 'technician' });
+
+  // Chemicals – Product form
+  const [prodFormOpen, setProdFormOpen] = useState(false);
+  const [editingProd, setEditingProd] = useState<ChemicalProduct | null>(null);
+  const [prodForm, setProdForm] = useState({ name: '', epaRegNumber: '', activeIngredients: '', signalWord: '', rei: '', phi: '', labelSdsUrl: '', unit: 'oz' });
+
+  // Chemicals – Mixture form
+  const [mixFormOpen, setMixFormOpen] = useState(false);
+  const [editingMix, setEditingMix] = useState<ChemicalMixture | null>(null);
+  const [mixForm, setMixForm] = useState({ name: '', description: '' });
+  const [mixItems, setMixItems] = useState<Array<{ productId: string; ratioAmount: string; ratioUnit: string }>>([]);
 
   useEffect(() => {
     if (settings) {
@@ -212,6 +236,7 @@ export default function SettingsPage() {
           <TabsTrigger value="users"><Users className="w-4 h-4 mr-2" />Team</TabsTrigger>
           {isSuperAdmin && <TabsTrigger value="plans"><Shield className="w-4 h-4 mr-2" />Plans</TabsTrigger>}
           <TabsTrigger value="operational"><SettingsIcon className="w-4 h-4 mr-2" />Operational</TabsTrigger>
+          <TabsTrigger value="chemicals"><FlaskConical className="w-4 h-4 mr-2" />Chemicals</TabsTrigger>
         </TabsList>
 
         {/* ── General ── */}
@@ -736,6 +761,320 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+        {/* ── Chemicals ── */}
+        <TabsContent value="chemicals" className="space-y-6 focus-visible:outline-none">
+          {/* Products Library */}
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between pb-2">
+              <div>
+                <CardTitle className="flex items-center gap-2"><FlaskConical className="w-5 h-5" /> Chemical Products</CardTitle>
+                <CardDescription>Pesticides, herbicides, and fertilizers with EPA registration and safety data.</CardDescription>
+              </div>
+              <Button size="sm" className="gap-2 ml-4 shrink-0" onClick={() => { setEditingProd(null); setProdForm({ name: '', epaRegNumber: '', activeIngredients: '', signalWord: '', rei: '', phi: '', labelSdsUrl: '', unit: 'oz' }); setProdFormOpen(true); }}>
+                <Plus className="w-4 h-4" /> Add Product
+              </Button>
+            </CardHeader>
+            <CardContent className="p-0">
+              {(chemProducts ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground px-6 py-4">No chemical products yet. Add your first product to build your library.</p>
+              ) : (
+                <div className="divide-y">
+                  {(chemProducts ?? []).map(p => (
+                    <div key={p.id} className={`flex items-start gap-4 px-6 py-3 ${!p.isActive ? 'opacity-50' : ''}`}>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-sm">{p.name}</span>
+                          {p.signalWord && (
+                            <Badge variant="outline" className={`text-[10px] px-1.5 ${p.signalWord === 'DANGER' ? 'bg-red-50 text-red-700 border-red-200' : p.signalWord === 'WARNING' ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>
+                              {p.signalWord}
+                            </Badge>
+                          )}
+                          {!p.isActive && <Badge variant="outline" className="text-[10px] px-1.5">Inactive</Badge>}
+                        </div>
+                        {p.epaRegNumber && <p className="text-xs text-muted-foreground mt-0.5">EPA #{p.epaRegNumber}</p>}
+                        {p.activeIngredients && <p className="text-xs text-muted-foreground">{p.activeIngredients}</p>}
+                        <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
+                          <span>Unit: {p.unit}</span>
+                          {p.rei != null && <span>REI: {p.rei}h</span>}
+                          {p.phi != null && <span>PHI: {p.phi}d</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => {
+                          setEditingProd(p);
+                          setProdForm({ name: p.name, epaRegNumber: p.epaRegNumber ?? '', activeIngredients: p.activeIngredients ?? '', signalWord: p.signalWord ?? '', rei: p.rei != null ? String(p.rei) : '', phi: p.phi != null ? String(p.phi) : '', labelSdsUrl: p.labelSdsUrl ?? '', unit: p.unit });
+                          setProdFormOpen(true);
+                        }}>
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground hover:text-destructive" onClick={() => {
+                          if (!window.confirm(`Delete ${p.name}?`)) return;
+                          deleteChemProduct.mutate({ id: p.id }, {
+                            onSuccess: () => { toast.success('Product deleted'); qc.invalidateQueries({ queryKey: getListChemicalProductsQueryKey() }); },
+                            onError: () => toast.error('Failed to delete'),
+                          });
+                        }}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Mixtures Library */}
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between pb-2">
+              <div>
+                <CardTitle>Tank Mixtures</CardTitle>
+                <CardDescription>Named mixes (e.g. "Broadleaf Control Mix") that auto-expand to per-product breakdown when applied.</CardDescription>
+              </div>
+              <Button size="sm" className="gap-2 ml-4 shrink-0" onClick={() => { setEditingMix(null); setMixForm({ name: '', description: '' }); setMixItems([]); setMixFormOpen(true); }}>
+                <Plus className="w-4 h-4" /> Add Mixture
+              </Button>
+            </CardHeader>
+            <CardContent className="p-0">
+              {(chemMixtures ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground px-6 py-4">No mixtures yet. Create a mixture to let field staff log complex applications as a single entry.</p>
+              ) : (
+                <div className="divide-y">
+                  {(chemMixtures ?? []).map(m => (
+                    <div key={m.id} className={`px-6 py-3 ${!m.isActive ? 'opacity-50' : ''}`}>
+                      <div className="flex items-start gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm">{m.name}</span>
+                            {!m.isActive && <Badge variant="outline" className="text-[10px] px-1.5">Inactive</Badge>}
+                          </div>
+                          {m.description && <p className="text-xs text-muted-foreground mt-0.5">{m.description}</p>}
+                          {m.items.length > 0 && (
+                            <div className="mt-1.5 space-y-0.5">
+                              {m.items.map((item: ChemicalMixtureItem) => (
+                                <p key={item.id} className="text-xs text-muted-foreground">
+                                  {item.productName ?? `Product #${item.productId}`}: {item.ratioAmount} {item.ratioUnit} per gal
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => {
+                            setEditingMix(m);
+                            setMixForm({ name: m.name, description: m.description ?? '' });
+                            setMixItems(m.items.map((i: ChemicalMixtureItem) => ({ productId: String(i.productId), ratioAmount: String(i.ratioAmount), ratioUnit: i.ratioUnit })));
+                            setMixFormOpen(true);
+                          }}>
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground hover:text-destructive" onClick={() => {
+                            if (!window.confirm(`Delete ${m.name}?`)) return;
+                            deleteChemMixture.mutate({ id: m.id }, {
+                              onSuccess: () => { toast.success('Mixture deleted'); qc.invalidateQueries({ queryKey: getListChemicalMixturesQueryKey() }); },
+                              onError: () => toast.error('Failed to delete'),
+                            });
+                          }}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Product Form Sheet */}
+          <Sheet open={prodFormOpen} onOpenChange={open => { if (!open) { setProdFormOpen(false); setEditingProd(null); } }}>
+            <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+              <SheetHeader className="pb-4">
+                <SheetTitle>{editingProd ? 'Edit Product' : 'Add Chemical Product'}</SheetTitle>
+                <SheetDescription>Fill in the product details for your chemical library.</SheetDescription>
+              </SheetHeader>
+              <div className="space-y-4 pb-6">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Product Name <span className="text-destructive">*</span></label>
+                  <Input placeholder="e.g. RoundUp Pro Concentrate" value={prodForm.name} onChange={e => setProdForm(f => ({ ...f, name: e.target.value }))} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">EPA Reg #</label>
+                    <Input placeholder="524-343" value={prodForm.epaRegNumber} onChange={e => setProdForm(f => ({ ...f, epaRegNumber: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Signal Word</label>
+                    <Select value={prodForm.signalWord} onValueChange={v => setProdForm(f => ({ ...f, signalWord: v }))}>
+                      <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        <SelectItem value="CAUTION">CAUTION</SelectItem>
+                        <SelectItem value="WARNING">WARNING</SelectItem>
+                        <SelectItem value="DANGER">DANGER</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Active Ingredients</label>
+                  <Input placeholder="e.g. Glyphosate 41%" value={prodForm.activeIngredients} onChange={e => setProdForm(f => ({ ...f, activeIngredients: e.target.value }))} />
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Unit</label>
+                    <Select value={prodForm.unit} onValueChange={v => setProdForm(f => ({ ...f, unit: v }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="oz">oz</SelectItem>
+                        <SelectItem value="fl oz">fl oz</SelectItem>
+                        <SelectItem value="lb">lb</SelectItem>
+                        <SelectItem value="gal">gal</SelectItem>
+                        <SelectItem value="l">L</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">REI (hrs)</label>
+                    <Input type="number" min={0} placeholder="4" value={prodForm.rei} onChange={e => setProdForm(f => ({ ...f, rei: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">PHI (days)</label>
+                    <Input type="number" min={0} placeholder="0" value={prodForm.phi} onChange={e => setProdForm(f => ({ ...f, phi: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Label / SDS URL</label>
+                  <Input placeholder="https://…" value={prodForm.labelSdsUrl} onChange={e => setProdForm(f => ({ ...f, labelSdsUrl: e.target.value }))} />
+                </div>
+                <Separator />
+                <div className="flex gap-3 justify-end">
+                  <Button variant="outline" onClick={() => setProdFormOpen(false)}>Cancel</Button>
+                  <Button onClick={() => {
+                    if (!prodForm.name) { toast.error('Name is required'); return; }
+                    const data = {
+                      name: prodForm.name,
+                      epaRegNumber: prodForm.epaRegNumber || undefined,
+                      activeIngredients: prodForm.activeIngredients || undefined,
+                      signalWord: (prodForm.signalWord && prodForm.signalWord !== 'none') ? prodForm.signalWord as 'CAUTION' | 'WARNING' | 'DANGER' : undefined,
+                      rei: prodForm.rei ? parseInt(prodForm.rei, 10) : undefined,
+                      phi: prodForm.phi ? parseInt(prodForm.phi, 10) : undefined,
+                      labelSdsUrl: prodForm.labelSdsUrl || undefined,
+                      unit: prodForm.unit,
+                    };
+                    if (editingProd) {
+                      updateChemProduct.mutate({ id: editingProd.id, data }, {
+                        onSuccess: () => { toast.success('Product updated'); qc.invalidateQueries({ queryKey: getListChemicalProductsQueryKey() }); setProdFormOpen(false); },
+                        onError: () => toast.error('Failed to update'),
+                      });
+                    } else {
+                      createChemProduct.mutate({ data }, {
+                        onSuccess: () => { toast.success('Product added'); qc.invalidateQueries({ queryKey: getListChemicalProductsQueryKey() }); setProdFormOpen(false); },
+                        onError: () => toast.error('Failed to add product'),
+                      });
+                    }
+                  }} disabled={createChemProduct.isPending || updateChemProduct.isPending}>
+                    {editingProd ? 'Save Changes' : 'Add Product'}
+                  </Button>
+                </div>
+              </div>
+            </SheetContent>
+          </Sheet>
+
+          {/* Mixture Form Sheet */}
+          <Sheet open={mixFormOpen} onOpenChange={open => { if (!open) { setMixFormOpen(false); setEditingMix(null); } }}>
+            <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+              <SheetHeader className="pb-4">
+                <SheetTitle>{editingMix ? 'Edit Mixture' : 'Add Tank Mixture'}</SheetTitle>
+                <SheetDescription>Define a named mix by specifying how much of each product goes into a gallon of solution.</SheetDescription>
+              </SheetHeader>
+              <div className="space-y-4 pb-6">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Mixture Name <span className="text-destructive">*</span></label>
+                  <Input placeholder="e.g. Broadleaf Control Mix" value={mixForm.name} onChange={e => setMixForm(f => ({ ...f, name: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Description</label>
+                  <Input placeholder="What is this mixture used for?" value={mixForm.description} onChange={e => setMixForm(f => ({ ...f, description: e.target.value }))} />
+                </div>
+
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Products in this mixture</p>
+                  <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setMixItems(items => [...items, { productId: '', ratioAmount: '', ratioUnit: 'oz' }])}>
+                    <Plus className="w-3 h-3" /> Add Product
+                  </Button>
+                </div>
+                {mixItems.length === 0 && <p className="text-sm text-muted-foreground">Add at least one product to define the mixture ratio.</p>}
+                <div className="space-y-3">
+                  {mixItems.map((item, i) => (
+                    <div key={i} className="flex gap-2 items-end">
+                      <div className="flex-1 space-y-1">
+                        <label className="text-xs text-muted-foreground">Product</label>
+                        <Select value={item.productId} onValueChange={v => setMixItems(items => items.map((x, j) => j === i ? { ...x, productId: v } : x))}>
+                          <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select…" /></SelectTrigger>
+                          <SelectContent>
+                            {(chemProducts ?? []).filter(p => p.isActive).map(p => (
+                              <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="w-20 space-y-1">
+                        <label className="text-xs text-muted-foreground">Amount</label>
+                        <Input className="h-8 text-sm" type="number" min={0} step={0.1} placeholder="2" value={item.ratioAmount} onChange={e => setMixItems(items => items.map((x, j) => j === i ? { ...x, ratioAmount: e.target.value } : x))} />
+                      </div>
+                      <div className="w-24 space-y-1">
+                        <label className="text-xs text-muted-foreground">Unit/gal</label>
+                        <Select value={item.ratioUnit} onValueChange={v => setMixItems(items => items.map((x, j) => j === i ? { ...x, ratioUnit: v } : x))}>
+                          <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="oz">oz</SelectItem>
+                            <SelectItem value="fl oz">fl oz</SelectItem>
+                            <SelectItem value="lb">lb</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive mb-0.5" onClick={() => setMixItems(items => items.filter((_, j) => j !== i))}>
+                        <X className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+
+                <Separator />
+                <div className="flex gap-3 justify-end">
+                  <Button variant="outline" onClick={() => setMixFormOpen(false)}>Cancel</Button>
+                  <Button onClick={() => {
+                    if (!mixForm.name) { toast.error('Name is required'); return; }
+                    const data = {
+                      name: mixForm.name,
+                      description: mixForm.description || undefined,
+                      items: mixItems.filter(i => i.productId && i.ratioAmount).map(i => ({
+                        productId: parseInt(i.productId, 10),
+                        ratioAmount: parseFloat(i.ratioAmount),
+                        ratioUnit: i.ratioUnit,
+                      })),
+                    };
+                    if (editingMix) {
+                      updateChemMixture.mutate({ id: editingMix.id, data }, {
+                        onSuccess: () => { toast.success('Mixture updated'); qc.invalidateQueries({ queryKey: getListChemicalMixturesQueryKey() }); setMixFormOpen(false); },
+                        onError: () => toast.error('Failed to update'),
+                      });
+                    } else {
+                      createChemMixture.mutate({ data }, {
+                        onSuccess: () => { toast.success('Mixture created'); qc.invalidateQueries({ queryKey: getListChemicalMixturesQueryKey() }); setMixFormOpen(false); },
+                        onError: () => toast.error('Failed to create'),
+                      });
+                    }
+                  }} disabled={createChemMixture.isPending || updateChemMixture.isPending}>
+                    {editingMix ? 'Save Changes' : 'Create Mixture'}
+                  </Button>
+                </div>
+              </div>
+            </SheetContent>
+          </Sheet>
         </TabsContent>
       </Tabs>
     </div>

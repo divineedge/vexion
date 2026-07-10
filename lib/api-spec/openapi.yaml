@@ -41,6 +41,8 @@ tags:
     description: Quality assurance callback tracking
   - name: marketing
     description: Marketing campaign ROAS tracking
+  - name: chemicals
+    description: Chemical products, mixtures, and application records
 
 paths:
   /healthz:
@@ -1368,6 +1370,242 @@ paths:
         "204":
           description: Deleted
 
+  # CHEMICALS
+  /chemical-products:
+    get:
+      operationId: listChemicalProducts
+      tags: [chemicals]
+      summary: List chemical products library
+      responses:
+        "200":
+          description: Chemical products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChemicalProduct"
+    post:
+      operationId: createChemicalProduct
+      tags: [chemicals]
+      summary: Create a chemical product
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChemicalProductInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChemicalProduct"
+
+  /chemical-products/{id}:
+    patch:
+      operationId: updateChemicalProduct
+      tags: [chemicals]
+      summary: Update a chemical product
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChemicalProductInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChemicalProduct"
+    delete:
+      operationId: deleteChemicalProduct
+      tags: [chemicals]
+      summary: Delete a chemical product
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /chemical-mixtures:
+    get:
+      operationId: listChemicalMixtures
+      tags: [chemicals]
+      summary: List chemical mixtures (tank mixes)
+      responses:
+        "200":
+          description: Mixtures
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChemicalMixture"
+    post:
+      operationId: createChemicalMixture
+      tags: [chemicals]
+      summary: Create a chemical mixture
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChemicalMixtureInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChemicalMixture"
+
+  /chemical-mixtures/{id}:
+    patch:
+      operationId: updateChemicalMixture
+      tags: [chemicals]
+      summary: Update a chemical mixture
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChemicalMixtureInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChemicalMixture"
+    delete:
+      operationId: deleteChemicalMixture
+      tags: [chemicals]
+      summary: Delete a chemical mixture
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /chemical-applications:
+    get:
+      operationId: listChemicalApplications
+      tags: [chemicals]
+      summary: List chemical applications with filters
+      parameters:
+        - in: query
+          name: startDate
+          schema:
+            type: string
+        - in: query
+          name: endDate
+          schema:
+            type: string
+        - in: query
+          name: propertyId
+          schema:
+            type: integer
+        - in: query
+          name: applicatorId
+          schema:
+            type: integer
+        - in: query
+          name: jobId
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Applications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChemicalApplication"
+
+  /jobs/{id}/chemical-applications:
+    get:
+      operationId: listJobChemicalApplications
+      tags: [chemicals]
+      summary: List chemical applications on a job
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Applications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChemicalApplication"
+    post:
+      operationId: createJobChemicalApplication
+      tags: [chemicals]
+      summary: Log a chemical application on a job
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChemicalApplicationInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChemicalApplication"
+
+  /chemical-applications/{id}:
+    delete:
+      operationId: deleteChemicalApplication
+      tags: [chemicals]
+      summary: Delete a chemical application record
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
   # PLANS (Super Admin)
   /plans:
     get:
@@ -2571,3 +2809,233 @@ components:
           type: ["integer", "null"]
         maxProperties:
           type: ["integer", "null"]
+
+    ChemicalProduct:
+      type: object
+      required: [id, tenantId, name, unit, isActive, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        name:
+          type: string
+        epaRegNumber:
+          type: ["string", "null"]
+        activeIngredients:
+          type: ["string", "null"]
+        signalWord:
+          type: ["string", "null"]
+        rei:
+          type: ["integer", "null"]
+        phi:
+          type: ["integer", "null"]
+        labelSdsUrl:
+          type: ["string", "null"]
+        unit:
+          type: string
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    ChemicalProductInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        epaRegNumber:
+          type: string
+        activeIngredients:
+          type: string
+        signalWord:
+          type: string
+          enum: [CAUTION, WARNING, DANGER]
+        rei:
+          type: integer
+        phi:
+          type: integer
+        labelSdsUrl:
+          type: string
+        unit:
+          type: string
+        isActive:
+          type: boolean
+
+    ChemicalMixtureItem:
+      type: object
+      required: [id, mixtureId, productId, ratioAmount, ratioUnit]
+      properties:
+        id:
+          type: integer
+        mixtureId:
+          type: integer
+        productId:
+          type: integer
+        productName:
+          type: ["string", "null"]
+        activeIngredients:
+          type: ["string", "null"]
+        ratioAmount:
+          type: number
+        ratioUnit:
+          type: string
+
+    ChemicalMixture:
+      type: object
+      required: [id, tenantId, name, isActive, createdAt, updatedAt, items]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChemicalMixtureItem"
+
+    ChemicalMixtureItemInput:
+      type: object
+      required: [productId, ratioAmount]
+      properties:
+        productId:
+          type: integer
+        ratioAmount:
+          type: number
+        ratioUnit:
+          type: string
+
+    ChemicalMixtureInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        isActive:
+          type: boolean
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChemicalMixtureItemInput"
+
+    ChemicalApplicationBreakdownItem:
+      type: object
+      required: [productId, amountApplied, unit]
+      properties:
+        productId:
+          type: integer
+        productName:
+          type: ["string", "null"]
+        activeIngredients:
+          type: ["string", "null"]
+        epaRegNumber:
+          type: ["string", "null"]
+        amountApplied:
+          type: number
+        unit:
+          type: string
+        ratePerAcre:
+          type: ["number", "null"]
+        ratePer1000Sqft:
+          type: ["number", "null"]
+
+    ChemicalApplication:
+      type: object
+      required: [id, tenantId, jobId, volumeApplied, volumeUnit, appliedAt, createdAt, updatedAt, breakdown]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        jobId:
+          type: integer
+        applicatorId:
+          type: ["integer", "null"]
+        applicatorName:
+          type: ["string", "null"]
+        applicatorLicenseNumber:
+          type: ["string", "null"]
+        mixtureId:
+          type: ["integer", "null"]
+        productId:
+          type: ["integer", "null"]
+        mixtureName:
+          type: ["string", "null"]
+        productName:
+          type: ["string", "null"]
+        volumeApplied:
+          type: number
+        volumeUnit:
+          type: string
+        targetPest:
+          type: ["string", "null"]
+        applicationMethod:
+          type: ["string", "null"]
+        windSpeed:
+          type: ["number", "null"]
+        windDirection:
+          type: ["string", "null"]
+        temperature:
+          type: ["number", "null"]
+        appliedAt:
+          type: string
+        breakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChemicalApplicationBreakdownItem"
+        notes:
+          type: ["string", "null"]
+        jobTitle:
+          type: ["string", "null"]
+        propertyAddress:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    ChemicalApplicationInput:
+      type: object
+      required: [volumeApplied]
+      properties:
+        mixtureId:
+          type: integer
+        productId:
+          type: integer
+        volumeApplied:
+          type: number
+        volumeUnit:
+          type: string
+        targetPest:
+          type: string
+        applicationMethod:
+          type: string
+        windSpeed:
+          type: number
+        windDirection:
+          type: string
+        temperature:
+          type: number
+        appliedAt:
+          type: string
+        applicatorName:
+          type: string
+        applicatorLicenseNumber:
+          type: string
+        notes:
+          type: string

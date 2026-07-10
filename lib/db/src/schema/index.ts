@@ -15,3 +15,4 @@ export * from "./activityLog";
 export * from "./callbacks";
 export * from "./marketingCampaigns";
 export * from "./services";
+export * from "./chemicals";

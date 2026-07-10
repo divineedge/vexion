@@ -6,6 +6,11 @@ import {
   useListCustomers, getListCustomersQueryKey,
   useListUsers, getListUsersQueryKey,
   useGetTenantSettings, getGetTenantSettingsQueryKey,
+  useListJobChemicalApplications, getListJobChemicalApplicationsQueryKey,
+  useCreateJobChemicalApplication,
+  useListChemicalProducts, getListChemicalProductsQueryKey,
+  useListChemicalMixtures, getListChemicalMixturesQueryKey,
+  useDeleteChemicalApplication,
 } from '@workspace/api-client-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card } from '@/components/ui/card';
@@ -20,7 +25,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronRight, Clock, MapPin, User, Calendar,
-  DollarSign, ClipboardList, Plus, Users,
+  DollarSign, ClipboardList, Plus, Users, FlaskConical, Trash2,
 } from 'lucide-react';
 import {
   startOfWeek, endOfWeek, startOfMonth, endOfMonth,
@@ -70,6 +75,12 @@ export default function SchedulePage() {
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [newJob, setNewJob] = useState<NewJobForm>(EMPTY_JOB);
+  const [chemFormOpen, setChemFormOpen] = useState(false);
+  const [chemForm, setChemForm] = useState({
+    mixtureId: '', productId: '', volumeApplied: '', volumeUnit: 'gal',
+    targetPest: '', applicationMethod: '', windSpeed: '', windDirection: '',
+    temperature: '', applicatorLicenseNumber: '', notes: '', appliedAt: '',
+  });
 
   const assigneeId = isTechnician && user ? user.id : undefined;
 
@@ -98,6 +109,14 @@ export default function SchedulePage() {
 
   const updateJob = useUpdateJob();
   const createJob = useCreateJob();
+
+  const { data: chemApps, refetch: refetchChemApps } = useListJobChemicalApplications(selectedJobId!, {
+    query: { enabled: selectedJobId != null, queryKey: getListJobChemicalApplicationsQueryKey(selectedJobId ?? 0) },
+  });
+  const { data: chemProducts } = useListChemicalProducts({ query: { queryKey: getListChemicalProductsQueryKey() } });
+  const { data: chemMixtures } = useListChemicalMixtures({ query: { queryKey: getListChemicalMixturesQueryKey() } });
+  const createChemApp = useCreateJobChemicalApplication();
+  const deleteChemApp = useDeleteChemicalApplication();
 
   const days = eachDayOfInterval({ start, end });
   const getJobsForDay = (date: Date) => jobs?.filter(j => isSameDay(new Date(j.scheduledAt), date)) ?? [];
@@ -476,6 +495,58 @@ export default function SchedulePage() {
                   </>
                 )}
 
+                {/* Chemical Applications */}
+                <Separator />
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1.5">
+                      <FlaskConical className="w-3.5 h-3.5" /> Chemical Applications
+                    </p>
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setChemFormOpen(true)}>
+                      <Plus className="w-3 h-3" /> Log Application
+                    </Button>
+                  </div>
+                  {chemApps && chemApps.length > 0 ? (
+                    <div className="rounded-lg border divide-y text-sm">
+                      {chemApps.map(app => (
+                        <div key={app.id} className="px-3 py-2.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <span className="font-medium">{app.mixtureName ?? app.productName ?? 'Unknown'}</span>
+                              <span className="text-xs text-muted-foreground ml-2">{app.volumeApplied} {app.volumeUnit}</span>
+                            </div>
+                            {canManageJobs && (
+                              <button onClick={() => {
+                                deleteChemApp.mutate({ id: app.id }, {
+                                  onSuccess: () => { refetchChemApps(); toast.success('Application removed'); },
+                                });
+                              }} className="text-muted-foreground/40 hover:text-destructive transition-colors">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                          {(app.breakdown as unknown[]).length > 0 && (
+                            <div className="mt-1.5 space-y-0.5">
+                              {(app.breakdown as Array<{ productName?: string | null; amountApplied: number; unit: string; activeIngredients?: string | null }>).map((b, i) => (
+                                <p key={i} className="text-xs text-muted-foreground">
+                                  {b.productName}: {b.amountApplied?.toFixed(2)} {b.unit}
+                                  {b.activeIngredients ? ` · ${b.activeIngredients}` : ''}
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {format(new Date(app.appliedAt), 'MMM d · h:mm a')}
+                            {app.applicatorName ? ` · ${app.applicatorName}` : ''}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground py-2">No applications logged yet.</p>
+                  )}
+                </div>
+
                 {/* Line Items */}
                 {selectedJob.lineItems && selectedJob.lineItems.length > 0 && (
                   <>
@@ -507,6 +578,165 @@ export default function SchedulePage() {
           ) : (
             <div className="flex h-full items-center justify-center text-muted-foreground text-sm">Loading...</div>
           )}
+        </SheetContent>
+      </Sheet>
+
+      {/* Chemical Application Log Sheet */}
+      <Sheet open={chemFormOpen} onOpenChange={open => { if (!open) { setChemFormOpen(false); setChemForm({ mixtureId: '', productId: '', volumeApplied: '', volumeUnit: 'gal', targetPest: '', applicationMethod: '', windSpeed: '', windDirection: '', temperature: '', applicatorLicenseNumber: '', notes: '', appliedAt: '' }); } }}>
+        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader className="pb-4">
+            <SheetTitle>Log Chemical Application</SheetTitle>
+            <SheetDescription>Record a pesticide or fertilizer application for compliance.</SheetDescription>
+          </SheetHeader>
+          <div className="space-y-4 pb-6">
+            {/* Mixture or Product */}
+            {(chemMixtures?.length ?? 0) > 0 && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Tank Mix (Mixture)</label>
+                <Select value={chemForm.mixtureId} onValueChange={v => setChemForm(f => ({ ...f, mixtureId: v, productId: '' }))}>
+                  <SelectTrigger><SelectValue placeholder="Select mixture…" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">— None —</SelectItem>
+                    {(chemMixtures ?? []).filter(m => m.isActive).map(m => (
+                      <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {!chemForm.mixtureId || chemForm.mixtureId === 'none' ? (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Raw Product</label>
+                <Select value={chemForm.productId} onValueChange={v => setChemForm(f => ({ ...f, productId: v, mixtureId: '' }))}>
+                  <SelectTrigger><SelectValue placeholder="Select product…" /></SelectTrigger>
+                  <SelectContent>
+                    {(chemProducts ?? []).filter(p => p.isActive).map(p => (
+                      <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Volume Applied <span className="text-destructive">*</span></label>
+                <Input type="number" min={0} step={0.01} placeholder="e.g. 2.5" value={chemForm.volumeApplied} onChange={e => setChemForm(f => ({ ...f, volumeApplied: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Unit</label>
+                <Select value={chemForm.volumeUnit} onValueChange={v => setChemForm(f => ({ ...f, volumeUnit: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="gal">Gallons</SelectItem>
+                    <SelectItem value="oz">Oz</SelectItem>
+                    <SelectItem value="fl oz">Fl Oz</SelectItem>
+                    <SelectItem value="lb">Lbs</SelectItem>
+                    <SelectItem value="l">Liters</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Applied At</label>
+              <Input type="datetime-local" value={chemForm.appliedAt} onChange={e => setChemForm(f => ({ ...f, appliedAt: e.target.value }))} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Target Pest</label>
+                <Input placeholder="e.g. Broadleaf weeds" value={chemForm.targetPest} onChange={e => setChemForm(f => ({ ...f, targetPest: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Method</label>
+                <Select value={chemForm.applicationMethod} onValueChange={v => setChemForm(f => ({ ...f, applicationMethod: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="spray">Spray</SelectItem>
+                    <SelectItem value="granular">Granular</SelectItem>
+                    <SelectItem value="drench">Drench</SelectItem>
+                    <SelectItem value="inject">Inject</SelectItem>
+                    <SelectItem value="bait">Bait</SelectItem>
+                    <SelectItem value="fumigation">Fumigation</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Wind (mph)</label>
+                <Input type="number" min={0} step={0.5} placeholder="5" value={chemForm.windSpeed} onChange={e => setChemForm(f => ({ ...f, windSpeed: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Direction</label>
+                <Select value={chemForm.windDirection} onValueChange={v => setChemForm(f => ({ ...f, windDirection: v }))}>
+                  <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent>
+                    {['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'].map(d => (
+                      <SelectItem key={d} value={d}>{d}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Temp (°F)</label>
+                <Input type="number" placeholder="72" value={chemForm.temperature} onChange={e => setChemForm(f => ({ ...f, temperature: e.target.value }))} />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Applicator License #</label>
+              <Input placeholder="License number" value={chemForm.applicatorLicenseNumber} onChange={e => setChemForm(f => ({ ...f, applicatorLicenseNumber: e.target.value }))} />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Notes</label>
+              <Textarea placeholder="Additional notes…" rows={2} value={chemForm.notes} onChange={e => setChemForm(f => ({ ...f, notes: e.target.value }))} />
+            </div>
+
+            <Separator />
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" onClick={() => setChemFormOpen(false)}>Cancel</Button>
+              <Button
+                onClick={() => {
+                  if (!chemForm.volumeApplied || (!chemForm.mixtureId && !chemForm.productId) || chemForm.mixtureId === 'none' && !chemForm.productId) {
+                    toast.error('Volume and a mixture or product are required');
+                    return;
+                  }
+                  createChemApp.mutate({
+                    id: selectedJobId!,
+                    data: {
+                      mixtureId: chemForm.mixtureId && chemForm.mixtureId !== 'none' ? parseInt(chemForm.mixtureId, 10) : undefined,
+                      productId: chemForm.productId ? parseInt(chemForm.productId, 10) : undefined,
+                      volumeApplied: parseFloat(chemForm.volumeApplied),
+                      volumeUnit: chemForm.volumeUnit,
+                      targetPest: chemForm.targetPest || undefined,
+                      applicationMethod: chemForm.applicationMethod || undefined,
+                      windSpeed: chemForm.windSpeed ? parseFloat(chemForm.windSpeed) : undefined,
+                      windDirection: chemForm.windDirection || undefined,
+                      temperature: chemForm.temperature ? parseFloat(chemForm.temperature) : undefined,
+                      appliedAt: chemForm.appliedAt ? new Date(chemForm.appliedAt).toISOString() : undefined,
+                      applicatorLicenseNumber: chemForm.applicatorLicenseNumber || undefined,
+                      notes: chemForm.notes || undefined,
+                    },
+                  }, {
+                    onSuccess: () => {
+                      toast.success('Application logged');
+                      setChemFormOpen(false);
+                      setChemForm({ mixtureId: '', productId: '', volumeApplied: '', volumeUnit: 'gal', targetPest: '', applicationMethod: '', windSpeed: '', windDirection: '', temperature: '', applicatorLicenseNumber: '', notes: '', appliedAt: '' });
+                      qc.invalidateQueries({ queryKey: getListJobChemicalApplicationsQueryKey(selectedJobId!) });
+                    },
+                    onError: () => toast.error('Failed to log application'),
+                  });
+                }}
+                disabled={createChemApp.isPending}
+              >
+                {createChemApp.isPending ? 'Saving…' : 'Log Application'}
+              </Button>
+            </div>
+          </div>
         </SheetContent>
       </Sheet>
     </div>

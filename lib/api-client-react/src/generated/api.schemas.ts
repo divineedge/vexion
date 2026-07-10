@@ -975,6 +975,160 @@ export interface Plan {
   maxProperties?: number | null;
 }
 
+export interface ChemicalProduct {
+  id: number;
+  tenantId: number;
+  name: string;
+  /** @nullable */
+  epaRegNumber?: string | null;
+  /** @nullable */
+  activeIngredients?: string | null;
+  /** @nullable */
+  signalWord?: string | null;
+  /** @nullable */
+  rei?: number | null;
+  /** @nullable */
+  phi?: number | null;
+  /** @nullable */
+  labelSdsUrl?: string | null;
+  unit: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ChemicalProductInputSignalWord = typeof ChemicalProductInputSignalWord[keyof typeof ChemicalProductInputSignalWord];
+
+
+export const ChemicalProductInputSignalWord = {
+  CAUTION: 'CAUTION',
+  WARNING: 'WARNING',
+  DANGER: 'DANGER',
+} as const;
+
+export interface ChemicalProductInput {
+  name: string;
+  epaRegNumber?: string;
+  activeIngredients?: string;
+  signalWord?: ChemicalProductInputSignalWord;
+  rei?: number;
+  phi?: number;
+  labelSdsUrl?: string;
+  unit?: string;
+  isActive?: boolean;
+}
+
+export interface ChemicalMixtureItem {
+  id: number;
+  mixtureId: number;
+  productId: number;
+  /** @nullable */
+  productName?: string | null;
+  /** @nullable */
+  activeIngredients?: string | null;
+  ratioAmount: number;
+  ratioUnit: string;
+}
+
+export interface ChemicalMixture {
+  id: number;
+  tenantId: number;
+  name: string;
+  /** @nullable */
+  description?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  items: ChemicalMixtureItem[];
+}
+
+export interface ChemicalMixtureItemInput {
+  productId: number;
+  ratioAmount: number;
+  ratioUnit?: string;
+}
+
+export interface ChemicalMixtureInput {
+  name: string;
+  description?: string;
+  isActive?: boolean;
+  items?: ChemicalMixtureItemInput[];
+}
+
+export interface ChemicalApplicationBreakdownItem {
+  productId: number;
+  /** @nullable */
+  productName?: string | null;
+  /** @nullable */
+  activeIngredients?: string | null;
+  /** @nullable */
+  epaRegNumber?: string | null;
+  amountApplied: number;
+  unit: string;
+  /** @nullable */
+  ratePerAcre?: number | null;
+  /** @nullable */
+  ratePer1000Sqft?: number | null;
+}
+
+export interface ChemicalApplication {
+  id: number;
+  tenantId: number;
+  jobId: number;
+  /** @nullable */
+  applicatorId?: number | null;
+  /** @nullable */
+  applicatorName?: string | null;
+  /** @nullable */
+  applicatorLicenseNumber?: string | null;
+  /** @nullable */
+  mixtureId?: number | null;
+  /** @nullable */
+  productId?: number | null;
+  /** @nullable */
+  mixtureName?: string | null;
+  /** @nullable */
+  productName?: string | null;
+  volumeApplied: number;
+  volumeUnit: string;
+  /** @nullable */
+  targetPest?: string | null;
+  /** @nullable */
+  applicationMethod?: string | null;
+  /** @nullable */
+  windSpeed?: number | null;
+  /** @nullable */
+  windDirection?: string | null;
+  /** @nullable */
+  temperature?: number | null;
+  appliedAt: string;
+  breakdown: ChemicalApplicationBreakdownItem[];
+  /** @nullable */
+  notes?: string | null;
+  /** @nullable */
+  jobTitle?: string | null;
+  /** @nullable */
+  propertyAddress?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChemicalApplicationInput {
+  mixtureId?: number;
+  productId?: number;
+  volumeApplied: number;
+  volumeUnit?: string;
+  targetPest?: string;
+  applicationMethod?: string;
+  windSpeed?: number;
+  windDirection?: string;
+  temperature?: number;
+  appliedAt?: string;
+  applicatorName?: string;
+  applicatorLicenseNumber?: string;
+  notes?: string;
+}
+
 export type ListCustomersParams = {
 /**
  * Search query
@@ -1014,5 +1168,13 @@ customerId?: number;
 
 export type ListTimeEntriesParams = {
 date?: string;
+};
+
+export type ListChemicalApplicationsParams = {
+startDate?: string;
+endDate?: string;
+propertyId?: number;
+applicatorId?: number;
+jobId?: number;
 };
 

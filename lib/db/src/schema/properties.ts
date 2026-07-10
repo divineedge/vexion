@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, real } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -19,6 +19,9 @@ export const propertiesTable = pgTable("properties", {
   geofenceRadius: integer("geofence_radius").notNull().default(100),
   notes: text("notes"),
   type: text("type"),
+  /** Property size for chemical rate calculations */
+  size: real("size"),
+  sizeUnit: text("size_unit").default("sqft"), // sqft | acres
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

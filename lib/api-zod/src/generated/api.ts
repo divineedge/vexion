@@ -1866,6 +1866,375 @@ export const DeleteUserResponse = zod.void()
 
 
 /**
+ * @summary List chemical products library
+ */
+export const ListChemicalProductsResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "epaRegNumber": zod.string().nullish(),
+  "activeIngredients": zod.string().nullish(),
+  "signalWord": zod.string().nullish(),
+  "rei": zod.number().nullish(),
+  "phi": zod.number().nullish(),
+  "labelSdsUrl": zod.string().nullish(),
+  "unit": zod.string(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListChemicalProductsResponse = zod.array(ListChemicalProductsResponseItem)
+
+
+/**
+ * @summary Create a chemical product
+ */
+export const CreateChemicalProductBody = zod.object({
+  "name": zod.string(),
+  "epaRegNumber": zod.string().optional(),
+  "activeIngredients": zod.string().optional(),
+  "signalWord": zod.enum(['CAUTION', 'WARNING', 'DANGER']).optional(),
+  "rei": zod.number().optional(),
+  "phi": zod.number().optional(),
+  "labelSdsUrl": zod.string().optional(),
+  "unit": zod.string().optional(),
+  "isActive": zod.boolean().optional()
+})
+
+export const CreateChemicalProductResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "epaRegNumber": zod.string().nullish(),
+  "activeIngredients": zod.string().nullish(),
+  "signalWord": zod.string().nullish(),
+  "rei": zod.number().nullish(),
+  "phi": zod.number().nullish(),
+  "labelSdsUrl": zod.string().nullish(),
+  "unit": zod.string(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Update a chemical product
+ */
+export const UpdateChemicalProductParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateChemicalProductBody = zod.object({
+  "name": zod.string(),
+  "epaRegNumber": zod.string().optional(),
+  "activeIngredients": zod.string().optional(),
+  "signalWord": zod.enum(['CAUTION', 'WARNING', 'DANGER']).optional(),
+  "rei": zod.number().optional(),
+  "phi": zod.number().optional(),
+  "labelSdsUrl": zod.string().optional(),
+  "unit": zod.string().optional(),
+  "isActive": zod.boolean().optional()
+})
+
+export const UpdateChemicalProductResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "epaRegNumber": zod.string().nullish(),
+  "activeIngredients": zod.string().nullish(),
+  "signalWord": zod.string().nullish(),
+  "rei": zod.number().nullish(),
+  "phi": zod.number().nullish(),
+  "labelSdsUrl": zod.string().nullish(),
+  "unit": zod.string(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a chemical product
+ */
+export const DeleteChemicalProductParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteChemicalProductResponse = zod.void()
+
+
+/**
+ * @summary List chemical mixtures (tank mixes)
+ */
+export const ListChemicalMixturesResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string(),
+  "items": zod.array(zod.object({
+  "id": zod.number(),
+  "mixtureId": zod.number(),
+  "productId": zod.number(),
+  "productName": zod.string().nullish(),
+  "activeIngredients": zod.string().nullish(),
+  "ratioAmount": zod.number(),
+  "ratioUnit": zod.string()
+}))
+})
+export const ListChemicalMixturesResponse = zod.array(ListChemicalMixturesResponseItem)
+
+
+/**
+ * @summary Create a chemical mixture
+ */
+export const CreateChemicalMixtureBody = zod.object({
+  "name": zod.string(),
+  "description": zod.string().optional(),
+  "isActive": zod.boolean().optional(),
+  "items": zod.array(zod.object({
+  "productId": zod.number(),
+  "ratioAmount": zod.number(),
+  "ratioUnit": zod.string().optional()
+})).optional()
+})
+
+export const CreateChemicalMixtureResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string(),
+  "items": zod.array(zod.object({
+  "id": zod.number(),
+  "mixtureId": zod.number(),
+  "productId": zod.number(),
+  "productName": zod.string().nullish(),
+  "activeIngredients": zod.string().nullish(),
+  "ratioAmount": zod.number(),
+  "ratioUnit": zod.string()
+}))
+})
+
+
+/**
+ * @summary Update a chemical mixture
+ */
+export const UpdateChemicalMixtureParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateChemicalMixtureBody = zod.object({
+  "name": zod.string(),
+  "description": zod.string().optional(),
+  "isActive": zod.boolean().optional(),
+  "items": zod.array(zod.object({
+  "productId": zod.number(),
+  "ratioAmount": zod.number(),
+  "ratioUnit": zod.string().optional()
+})).optional()
+})
+
+export const UpdateChemicalMixtureResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string(),
+  "items": zod.array(zod.object({
+  "id": zod.number(),
+  "mixtureId": zod.number(),
+  "productId": zod.number(),
+  "productName": zod.string().nullish(),
+  "activeIngredients": zod.string().nullish(),
+  "ratioAmount": zod.number(),
+  "ratioUnit": zod.string()
+}))
+})
+
+
+/**
+ * @summary Delete a chemical mixture
+ */
+export const DeleteChemicalMixtureParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteChemicalMixtureResponse = zod.void()
+
+
+/**
+ * @summary List chemical applications with filters
+ */
+export const ListChemicalApplicationsQueryParams = zod.object({
+  "startDate": zod.coerce.string().optional(),
+  "endDate": zod.coerce.string().optional(),
+  "propertyId": zod.coerce.number().optional(),
+  "applicatorId": zod.coerce.number().optional(),
+  "jobId": zod.coerce.number().optional()
+})
+
+export const ListChemicalApplicationsResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "jobId": zod.number(),
+  "applicatorId": zod.number().nullish(),
+  "applicatorName": zod.string().nullish(),
+  "applicatorLicenseNumber": zod.string().nullish(),
+  "mixtureId": zod.number().nullish(),
+  "productId": zod.number().nullish(),
+  "mixtureName": zod.string().nullish(),
+  "productName": zod.string().nullish(),
+  "volumeApplied": zod.number(),
+  "volumeUnit": zod.string(),
+  "targetPest": zod.string().nullish(),
+  "applicationMethod": zod.string().nullish(),
+  "windSpeed": zod.number().nullish(),
+  "windDirection": zod.string().nullish(),
+  "temperature": zod.number().nullish(),
+  "appliedAt": zod.string(),
+  "breakdown": zod.array(zod.object({
+  "productId": zod.number(),
+  "productName": zod.string().nullish(),
+  "activeIngredients": zod.string().nullish(),
+  "epaRegNumber": zod.string().nullish(),
+  "amountApplied": zod.number(),
+  "unit": zod.string(),
+  "ratePerAcre": zod.number().nullish(),
+  "ratePer1000Sqft": zod.number().nullish()
+})),
+  "notes": zod.string().nullish(),
+  "jobTitle": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListChemicalApplicationsResponse = zod.array(ListChemicalApplicationsResponseItem)
+
+
+/**
+ * @summary List chemical applications on a job
+ */
+export const ListJobChemicalApplicationsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListJobChemicalApplicationsResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "jobId": zod.number(),
+  "applicatorId": zod.number().nullish(),
+  "applicatorName": zod.string().nullish(),
+  "applicatorLicenseNumber": zod.string().nullish(),
+  "mixtureId": zod.number().nullish(),
+  "productId": zod.number().nullish(),
+  "mixtureName": zod.string().nullish(),
+  "productName": zod.string().nullish(),
+  "volumeApplied": zod.number(),
+  "volumeUnit": zod.string(),
+  "targetPest": zod.string().nullish(),
+  "applicationMethod": zod.string().nullish(),
+  "windSpeed": zod.number().nullish(),
+  "windDirection": zod.string().nullish(),
+  "temperature": zod.number().nullish(),
+  "appliedAt": zod.string(),
+  "breakdown": zod.array(zod.object({
+  "productId": zod.number(),
+  "productName": zod.string().nullish(),
+  "activeIngredients": zod.string().nullish(),
+  "epaRegNumber": zod.string().nullish(),
+  "amountApplied": zod.number(),
+  "unit": zod.string(),
+  "ratePerAcre": zod.number().nullish(),
+  "ratePer1000Sqft": zod.number().nullish()
+})),
+  "notes": zod.string().nullish(),
+  "jobTitle": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListJobChemicalApplicationsResponse = zod.array(ListJobChemicalApplicationsResponseItem)
+
+
+/**
+ * @summary Log a chemical application on a job
+ */
+export const CreateJobChemicalApplicationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CreateJobChemicalApplicationBody = zod.object({
+  "mixtureId": zod.number().optional(),
+  "productId": zod.number().optional(),
+  "volumeApplied": zod.number(),
+  "volumeUnit": zod.string().optional(),
+  "targetPest": zod.string().optional(),
+  "applicationMethod": zod.string().optional(),
+  "windSpeed": zod.number().optional(),
+  "windDirection": zod.string().optional(),
+  "temperature": zod.number().optional(),
+  "appliedAt": zod.string().optional(),
+  "applicatorName": zod.string().optional(),
+  "applicatorLicenseNumber": zod.string().optional(),
+  "notes": zod.string().optional()
+})
+
+export const CreateJobChemicalApplicationResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "jobId": zod.number(),
+  "applicatorId": zod.number().nullish(),
+  "applicatorName": zod.string().nullish(),
+  "applicatorLicenseNumber": zod.string().nullish(),
+  "mixtureId": zod.number().nullish(),
+  "productId": zod.number().nullish(),
+  "mixtureName": zod.string().nullish(),
+  "productName": zod.string().nullish(),
+  "volumeApplied": zod.number(),
+  "volumeUnit": zod.string(),
+  "targetPest": zod.string().nullish(),
+  "applicationMethod": zod.string().nullish(),
+  "windSpeed": zod.number().nullish(),
+  "windDirection": zod.string().nullish(),
+  "temperature": zod.number().nullish(),
+  "appliedAt": zod.string(),
+  "breakdown": zod.array(zod.object({
+  "productId": zod.number(),
+  "productName": zod.string().nullish(),
+  "activeIngredients": zod.string().nullish(),
+  "epaRegNumber": zod.string().nullish(),
+  "amountApplied": zod.number(),
+  "unit": zod.string(),
+  "ratePerAcre": zod.number().nullish(),
+  "ratePer1000Sqft": zod.number().nullish()
+})),
+  "notes": zod.string().nullish(),
+  "jobTitle": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a chemical application record
+ */
+export const DeleteChemicalApplicationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteChemicalApplicationResponse = zod.void()
+
+
+/**
  * @summary List all subscription plans
  */
 export const ListPlansResponseItem = zod.object({

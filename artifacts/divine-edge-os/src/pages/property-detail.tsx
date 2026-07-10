@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import {
   useGetProperty, getGetPropertyQueryKey,
   useUpdateProperty,
@@ -6,8 +6,12 @@ import {
   useListJobs, getListJobsQueryKey,
   useListCustomers, getListCustomersQueryKey,
   useTransferProperty,
+  useUpdatePropertyMeasurements,
+  useListPropertyQuotes, getListPropertyQuotesQueryKey,
+  useGetTenantSettings,
   customFetch,
 } from '@workspace/api-client-react';
+import type { MeasurementZone, Quote } from '@workspace/api-client-react';
 import { useParams, useLocation } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -24,10 +28,14 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   ArrowLeft, Edit, MapPin, Navigation, Calendar, Save, GitMerge,
-  AlertTriangle, Clock, ChevronDown, Check, ArrowRight,
+  AlertTriangle, Clock, ChevronDown, Check, ArrowRight, Satellite,
+  Calculator, ExternalLink, Copy, Ruler,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+
+const PropertySatelliteMap = lazy(() => import('@/components/map/PropertySatelliteMap'));
+const QuickQuotePanel = lazy(() => import('@/components/property/QuickQuotePanel'));
 
 const STATUS_COLORS: Record<string, string> = {
   completed: 'bg-emerald-500/10 text-emerald-700 border-transparent',
@@ -35,6 +43,12 @@ const STATUS_COLORS: Record<string, string> = {
   scheduled: 'bg-amber-500/10 text-amber-700 border-transparent',
   on_hold: 'bg-gray-200 text-gray-600 border-transparent',
   cancelled: 'bg-red-500/10 text-red-600 border-transparent',
+};
+
+const QUOTE_STATUS_COLORS: Record<string, string> = {
+  pending: 'bg-amber-500/10 text-amber-700 border-transparent',
+  approved: 'bg-emerald-500/10 text-emerald-700 border-transparent',
+  declined: 'bg-red-500/10 text-red-600 border-transparent',
 };
 
 interface OwnershipRecord {
@@ -61,6 +75,7 @@ export default function PropertyDetailPage() {
   const [geoInput, setGeoInput] = useState({ lat: '', lng: '', radius: '50' });
   const [transferForm, setTransferForm] = useState({ newCustomerId: '', notes: '', customerSearch: '' });
   const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
+  const [savingMeasurements, setSavingMeasurements] = useState(false);
 
   const { data: property, isLoading } = useGetProperty(id, {
     query: { enabled: !!id, queryKey: getGetPropertyQueryKey(id) },
@@ -73,10 +88,21 @@ export default function PropertyDetailPage() {
     { limit: 200 },
     { query: { queryKey: getListCustomersQueryKey({ limit: 200 }) } },
   );
+  const { data: quotes } = useListPropertyQuotes(id, {
+    query: { enabled: !!id, queryKey: getListPropertyQuotesQueryKey(id) },
+  });
+  const { data: tenantSettings } = useGetTenantSettings();
+
+  const preferredAreaUnit = (tenantSettings?.preferredAreaUnit as 'sqft' | 'acres') ?? 'sqft';
+  const defaultZoneLabels: string[] = (tenantSettings?.measurementZoneLabels as string[]) ?? [
+    'Front Lawn', 'Back Yard', 'Bed Areas', 'Side Yard', 'Common Area',
+  ];
+  const defaultGeofenceRadius = tenantSettings?.defaultGeofenceRadius ?? 100;
 
   const updateProperty = useUpdateProperty();
   const updateGeofence = useUpdateGeofencePin();
   const transferProperty = useTransferProperty();
+  const updateMeasurements = useUpdatePropertyMeasurements();
 
   React.useEffect(() => {
     if (property) {
@@ -98,7 +124,6 @@ export default function PropertyDetailPage() {
     }
   }, [property]);
 
-  // Load ownership history
   const loadOwnershipHistory = async () => {
     if (ownershipHistory.length > 0) return;
     setOwnershipLoading(true);
@@ -106,7 +131,7 @@ export default function PropertyDetailPage() {
       const data = await customFetch<OwnershipRecord[]>(`/api/properties/${id}/ownership-history`);
       setOwnershipHistory(data);
     } catch {
-      // silently fail — history tab shows empty state
+      // silently fail
     } finally {
       setOwnershipLoading(false);
     }
@@ -148,7 +173,7 @@ export default function PropertyDetailPage() {
         onSuccess: (updated) => {
           toast.success(`Property transferred to ${updated.customerName}`);
           qc.invalidateQueries({ queryKey: getGetPropertyQueryKey(id) });
-          setOwnershipHistory([]); // reset so it reloads
+          setOwnershipHistory([]);
           setTransferOpen(false);
           setTransferForm({ newCustomerId: '', notes: '', customerSearch: '' });
         },
@@ -157,12 +182,84 @@ export default function PropertyDetailPage() {
     );
   };
 
+  const handleMeasurementsChange = (zones: MeasurementZone[], totalSqft: number) => {
+    setSavingMeasurements(true);
+    updateMeasurements.mutate(
+      {
+        id,
+        data: {
+          measurementPolygons: zones,
+          serviceableAreaSqft: totalSqft || undefined,
+        },
+      },
+      {
+        onSuccess: () => {
+          qc.invalidateQueries({ queryKey: getGetPropertyQueryKey(id) });
+          setSavingMeasurements(false);
+        },
+        onError: () => {
+          toast.error('Failed to save measurements');
+          setSavingMeasurements(false);
+        },
+      },
+    );
+  };
+
+  const handlePinChange = (lat: number, lng: number) => {
+    updateProperty.mutate(
+      { id, data: { lat, lng } },
+      {
+        onSuccess: () => qc.invalidateQueries({ queryKey: getGetPropertyQueryKey(id) }),
+      },
+    );
+  };
+
+  const handleGeofenceChange = (lat: number, lng: number, radius: number) => {
+    updateGeofence.mutate(
+      { id, data: { lat, lng, radius } },
+      {
+        onSuccess: () => {
+          toast.success('Geofence saved');
+          qc.invalidateQueries({ queryKey: getGetPropertyQueryKey(id) });
+        },
+        onError: () => toast.error('Failed to save geofence'),
+      },
+    );
+  };
+
+  const handleAutoMeasure = async () => {
+    try {
+      const result = await customFetch<{ lat: number; lng: number; boundaryPolygon?: [number, number][] | null }>(
+        `/api/properties/${id}/geocode`
+      );
+      if (result.lat && result.lng) {
+        await updateProperty.mutateAsync({ id, data: { lat: result.lat, lng: result.lng } });
+        qc.invalidateQueries({ queryKey: getGetPropertyQueryKey(id) });
+        toast.success('Location detected! Adjust the pin if needed.');
+      }
+    } catch {
+      toast.error('Could not detect location automatically');
+    }
+  };
+
+  const copyQuoteLink = (token: string) => {
+    const url = `${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}/quote/${token}`;
+    navigator.clipboard.writeText(url).then(() => toast.success('Quote link copied!'));
+  };
+
+  const openQuoteLink = (token: string) => {
+    const url = `${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}/quote/${token}`;
+    window.open(url, '_blank');
+  };
+
   const selectedCustomer = allCustomers?.items.find(c => String(c.id) === transferForm.newCustomerId);
   const filteredCustomers = (allCustomers?.items ?? []).filter(c =>
     String(c.id) !== String(property?.customerId) &&
     (c.name.toLowerCase().includes(transferForm.customerSearch.toLowerCase()) ||
       (c.company ?? '').toLowerCase().includes(transferForm.customerSearch.toLowerCase()))
   );
+
+  const currentZones = (property?.measurementPolygons ?? []) as MeasurementZone[];
 
   if (isLoading) return <div className="p-8 text-center text-muted-foreground">Loading...</div>;
   if (!property) return <div className="p-8 text-center text-muted-foreground">Property not found.</div>;
@@ -182,6 +279,12 @@ export default function PropertyDetailPage() {
           <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground flex-wrap">
             <span>{[property.city, property.state, property.zip].filter(Boolean).join(', ')}</span>
             {property.type && <Badge variant="secondary" className="capitalize">{property.type}</Badge>}
+            {property.serviceableAreaSqft && (
+              <span className="flex items-center gap-1">
+                <Ruler className="w-3.5 h-3.5" />
+                {property.serviceableAreaSqft.toLocaleString(undefined, { maximumFractionDigits: 0 })} sqft
+              </span>
+            )}
             <span>
               Owner:{' '}
               <button
@@ -193,7 +296,7 @@ export default function PropertyDetailPage() {
             </span>
           </div>
         </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex gap-2 shrink-0 flex-wrap">
           <Button variant="outline" onClick={() => setTransferOpen(true)} className="gap-2">
             <GitMerge className="w-4 h-4" /> Transfer
           </Button>
@@ -203,17 +306,108 @@ export default function PropertyDetailPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="details" className="w-full" onValueChange={v => { if (v === 'history') loadOwnershipHistory(); }}>
-        <TabsList className="mb-4">
+      <Tabs defaultValue="satellite" className="w-full" onValueChange={v => { if (v === 'history') loadOwnershipHistory(); }}>
+        <TabsList className="mb-4 flex flex-wrap h-auto gap-1">
+          <TabsTrigger value="satellite" className="gap-1.5">
+            <Satellite className="w-4 h-4" /> Satellite Map
+          </TabsTrigger>
+          <TabsTrigger value="quote" className="gap-1.5">
+            <Calculator className="w-4 h-4" /> Quick Quote
+          </TabsTrigger>
           <TabsTrigger value="details">Details & Geofence</TabsTrigger>
-          <TabsTrigger value="jobs">Job History ({jobs?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="jobs">Jobs ({jobs?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="quotes">Quotes ({quotes?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="history">Ownership History</TabsTrigger>
         </TabsList>
 
-        {/* Details tab */}
+        {/* ── Satellite Map tab ── */}
+        <TabsContent value="satellite" className="focus-visible:outline-none space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Satellite className="w-5 h-5 text-primary" /> Satellite View & Measurements
+                  </CardTitle>
+                  <CardDescription>
+                    Draw labeled zones on the satellite map to measure serviceable areas. Drag the pin to set the property location.
+                    {savingMeasurements && <span className="ml-2 text-primary animate-pulse">Saving...</span>}
+                  </CardDescription>
+                </div>
+                {(!property.lat || !property.lng) && (
+                  <Button size="sm" variant="outline" onClick={handleAutoMeasure} className="gap-2 shrink-0">
+                    <MapPin className="w-4 h-4" /> Auto-Detect Location
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Suspense fallback={<div className="h-80 flex items-center justify-center text-muted-foreground">Loading map...</div>}>
+                <PropertySatelliteMap
+                  lat={property.lat}
+                  lng={property.lng}
+                  address={property.address}
+                  measurementPolygons={currentZones}
+                  geofenceRadius={property.geofenceRadius ?? defaultGeofenceRadius}
+                  geofenceLat={property.geofenceLat}
+                  geofenceLng={property.geofenceLng}
+                  preferredAreaUnit={preferredAreaUnit}
+                  defaultZoneLabels={defaultZoneLabels}
+                  onPinChange={handlePinChange}
+                  onMeasurementsChange={handleMeasurementsChange}
+                  onGeofenceChange={handleGeofenceChange}
+                />
+              </Suspense>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Quick Quote tab ── */}
+        <TabsContent value="quote" className="focus-visible:outline-none space-y-4">
+          {currentZones.length === 0 && (
+            <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground">
+              <Ruler className="w-8 h-8 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">No measurement zones yet. Go to the <strong>Satellite Map</strong> tab to draw zones first.</p>
+            </div>
+          )}
+          <Suspense fallback={<div className="h-40 flex items-center justify-center text-muted-foreground">Loading...</div>}>
+            <QuickQuotePanel
+              propertyId={id}
+              zones={currentZones}
+              preferredAreaUnit={preferredAreaUnit}
+            />
+          </Suspense>
+
+          {/* Embed widget info */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Website Embed Widget</CardTitle>
+              <CardDescription>
+                Drop this snippet into your website so prospects can get an instant quote without calling in.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-md bg-muted/50 border p-3 font-mono text-xs overflow-x-auto whitespace-nowrap">
+                {`<iframe src="${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}/widget/quote?address=${encodeURIComponent(property.address)}" width="420" height="600" frameborder="0" style="border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.12)"></iframe>`}
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-3 gap-2 text-xs"
+                onClick={() => {
+                  const snippet = `<iframe src="${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}/widget/quote?address=${encodeURIComponent(property.address)}" width="420" height="600" frameborder="0" style="border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.12)"></iframe>`;
+                  navigator.clipboard.writeText(snippet).then(() => toast.success('Embed code copied!'));
+                }}
+              >
+                <Copy className="w-3 h-3" /> Copy Embed Code
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Details tab ── */}
         <TabsContent value="details" className="focus-visible:outline-none space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Info card */}
             <Card>
               <CardHeader><CardTitle>Property Information</CardTitle></CardHeader>
               <CardContent className="space-y-3 text-sm">
@@ -223,6 +417,9 @@ export default function PropertyDetailPage() {
                 <Row label="ZIP" value={property.zip} />
                 <Row label="Type" value={property.type} />
                 {property.lat && <Row label="Coordinates" value={`${property.lat?.toFixed(5)}, ${property.lng?.toFixed(5)}`} />}
+                {property.serviceableAreaSqft && (
+                  <Row label="Serviceable Area" value={`${property.serviceableAreaSqft.toLocaleString(undefined, { maximumFractionDigits: 0 })} sqft`} />
+                )}
                 {property.notes && (
                   <div>
                     <p className="text-muted-foreground mb-1">Notes</p>
@@ -232,7 +429,6 @@ export default function PropertyDetailPage() {
               </CardContent>
             </Card>
 
-            {/* Geofence card */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -241,7 +437,6 @@ export default function PropertyDetailPage() {
                 <CardDescription>Set coordinates and radius to detect technician arrivals.</CardDescription>
               </CardHeader>
               <CardContent>
-                {/* Visual geofence preview */}
                 <div className="w-full h-40 bg-muted/50 rounded-md border border-dashed flex items-center justify-center relative mb-4 overflow-hidden">
                   <svg width="100%" height="100%" className="absolute inset-0 opacity-10 pointer-events-none">
                     <defs>
@@ -289,7 +484,7 @@ export default function PropertyDetailPage() {
           </div>
         </TabsContent>
 
-        {/* Jobs tab */}
+        {/* ── Jobs tab ── */}
         <TabsContent value="jobs" className="focus-visible:outline-none">
           <Card>
             <CardHeader><CardTitle>Job History at This Property</CardTitle></CardHeader>
@@ -334,7 +529,70 @@ export default function PropertyDetailPage() {
           </Card>
         </TabsContent>
 
-        {/* Ownership History tab */}
+        {/* ── Quotes tab ── */}
+        <TabsContent value="quotes" className="focus-visible:outline-none">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Calculator className="w-5 h-5" /> Instant Quotes
+              </CardTitle>
+              <CardDescription>All generated quotes for this property. Click a link to share with the customer.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Service</TableHead>
+                    <TableHead>Area</TableHead>
+                    <TableHead>Price</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead className="text-right">Link</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(quotes ?? []).map((q: Quote) => (
+                    <TableRow key={q.id}>
+                      <TableCell className="font-medium">{q.serviceName}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {q.totalAreaSqft ? `${q.totalAreaSqft.toLocaleString(undefined, { maximumFractionDigits: 0 })} sqft` : '—'}
+                      </TableCell>
+                      <TableCell className="font-medium">${q.calculatedPrice.toFixed(2)}</TableCell>
+                      <TableCell>
+                        <Badge className={`capitalize ${QUOTE_STATUS_COLORS[q.status] ?? ''}`}>
+                          {q.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {new Date(q.createdAt).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center gap-1 justify-end">
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => copyQuoteLink(q.token)}>
+                            <Copy className="w-3 h-3" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openQuoteLink(q.token)}>
+                            <ExternalLink className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {!quotes?.length && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                        <Calculator className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                        No quotes generated yet. Use the Quick Quote tab to create one.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Ownership History tab ── */}
         <TabsContent value="history" className="focus-visible:outline-none">
           <Card>
             <CardHeader>
@@ -342,7 +600,7 @@ export default function PropertyDetailPage() {
                 <Clock className="w-5 h-5" /> Ownership History
               </CardTitle>
               <CardDescription>
-                Full record of every customer who has owned this property. Job history is preserved across transfers.
+                Full record of every customer who has owned this property.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -359,7 +617,6 @@ export default function PropertyDetailPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {/* Current owner */}
                   <div className="flex items-center gap-4 p-4 rounded-lg border border-primary/20 bg-primary/5">
                     <div className="w-2.5 h-2.5 rounded-full bg-primary shrink-0" />
                     <div className="flex-1">
@@ -372,7 +629,6 @@ export default function PropertyDetailPage() {
                     </div>
                     <Badge variant="secondary">Current</Badge>
                   </div>
-                  {/* Transfer history */}
                   {ownershipHistory.map(h => (
                     <div key={h.id} className="flex items-start gap-4 p-4 rounded-lg border bg-muted/30">
                       <ArrowRight className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
@@ -461,11 +717,10 @@ export default function PropertyDetailPage() {
               <GitMerge className="w-5 h-5" /> Transfer Property
             </SheetTitle>
             <SheetDescription>
-              Move this property to a different customer. All job history will be preserved on the property record. The previous owner's timeline will show that they once owned this property.
+              Move this property to a different customer. All job history will be preserved on the property record.
             </SheetDescription>
           </SheetHeader>
           <div className="space-y-5 pb-6">
-            {/* Current owner */}
             <div className="rounded-lg border p-4 bg-muted/30 space-y-1">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Current Owner</p>
               <p className="font-semibold">{property.customerName}</p>
@@ -477,7 +732,6 @@ export default function PropertyDetailPage() {
               <div className="flex-1 border-t" />
             </div>
 
-            {/* New owner picker */}
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Transfer To <span className="text-destructive">*</span></label>
               <Popover open={customerPickerOpen} onOpenChange={setCustomerPickerOpen}>
@@ -535,11 +789,10 @@ export default function PropertyDetailPage() {
               />
             </div>
 
-            {/* Warning */}
             <div className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 p-3">
               <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <p className="text-xs text-amber-700 dark:text-amber-400">
-                This action will reassign the property to the new customer. All existing jobs and history remain linked to this property and will be visible in the new owner's property view.
+                This action will reassign the property to the new customer. All existing jobs and history remain linked to this property.
               </p>
             </div>
 

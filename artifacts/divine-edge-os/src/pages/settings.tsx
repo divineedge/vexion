@@ -26,7 +26,7 @@ import { Separator } from '@/components/ui/separator';
 import {
   Building, CreditCard, Users, Shield, CheckCircle2, Plus, Trash2,
   GripVertical, EyeOff, Eye, Star, Settings as SettingsIcon, TrendingUp,
-  ArrowRight, FlaskConical, Pencil, X,
+  ArrowRight, FlaskConical, Pencil, X, MapPin, Ruler, Navigation,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BUILT_IN_CUSTOMER_FIELDS, getActiveCustomerFields, type CustomerFieldConfig } from '@/lib/fieldConfig';
@@ -77,6 +77,13 @@ export default function SettingsPage() {
   const [equipRepairPct, setEquipRepairPct] = useState('50');
   const [equipResalePct, setEquipResalePct] = useState('20');
 
+  // Maps & measurement
+  const [defaultGeofenceRadius, setDefaultGeofenceRadius] = useState('100');
+  const [defaultGeofenceUnit, setDefaultGeofenceUnit] = useState<'m' | 'ft'>('m');
+  const [autoCreateGeofence, setAutoCreateGeofence] = useState(false);
+  const [preferredAreaUnit, setPreferredAreaUnit] = useState<'sqft' | 'acres'>('sqft');
+  const [zoneLabelsRaw, setZoneLabelsRaw] = useState('Front Lawn, Back Yard, Bed Areas, Side Yard, Common Area');
+
   // Team
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: 'technician' });
@@ -105,6 +112,12 @@ export default function SettingsPage() {
       setP4pMasterPct(String((settings as any).p4pMasterPercentage ?? 0));
       setEquipRepairPct(String((settings as any).equipmentRepairThresholdPct ?? 50));
       setEquipResalePct(String((settings as any).equipmentResaleThresholdPct ?? 20));
+      setDefaultGeofenceRadius(String((settings as any).defaultGeofenceRadius ?? 100));
+      setDefaultGeofenceUnit(((settings as any).defaultGeofenceUnit as 'm' | 'ft') ?? 'm');
+      setAutoCreateGeofence((settings as any).autoCreateGeofence ?? false);
+      setPreferredAreaUnit(((settings as any).preferredAreaUnit as 'sqft' | 'acres') ?? 'sqft');
+      const labels: string[] = (settings as any).measurementZoneLabels ?? ['Front Lawn', 'Back Yard', 'Bed Areas', 'Side Yard', 'Common Area'];
+      setZoneLabelsRaw(labels.join(', '));
       setCustomerFields(getActiveCustomerFields(settings));
     }
   }, [settings]);
@@ -252,6 +265,7 @@ export default function SettingsPage() {
           <TabsTrigger value="users"><Users className="w-4 h-4 mr-2" />Team</TabsTrigger>
           {isSuperAdmin && <TabsTrigger value="plans"><Shield className="w-4 h-4 mr-2" />Plans</TabsTrigger>}
           <TabsTrigger value="operational"><SettingsIcon className="w-4 h-4 mr-2" />Operational</TabsTrigger>
+          <TabsTrigger value="measurements"><MapPin className="w-4 h-4 mr-2" />Maps & Quotes</TabsTrigger>
           <TabsTrigger value="chemicals"><FlaskConical className="w-4 h-4 mr-2" />Chemicals</TabsTrigger>
         </TabsList>
 
@@ -485,6 +499,147 @@ export default function SettingsPage() {
               </div>
             </SheetContent>
           </Sheet>
+        </TabsContent>
+
+        {/* ── Maps & Quotes ── */}
+        <TabsContent value="measurements" className="space-y-6 focus-visible:outline-none">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Navigation className="w-5 h-5 text-primary" /> Geofence Defaults
+              </CardTitle>
+              <CardDescription>
+                Default geofence settings applied when a new property is added.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Default Radius</label>
+                  <Input
+                    type="number"
+                    min={10}
+                    value={defaultGeofenceRadius}
+                    onChange={e => setDefaultGeofenceRadius(e.target.value)}
+                    placeholder="100"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Unit</label>
+                  <Select value={defaultGeofenceUnit} onValueChange={v => setDefaultGeofenceUnit(v as 'm' | 'ft')}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="m">Meters (m)</SelectItem>
+                      <SelectItem value="ft">Feet (ft)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div>
+                  <p className="text-sm font-medium">Auto-create geofence on new property</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Automatically creates a geofence using the property's geocoded location when a property is added.
+                  </p>
+                </div>
+                <Switch checked={autoCreateGeofence} onCheckedChange={setAutoCreateGeofence} />
+              </div>
+              <Button
+                onClick={() => updateSettings.mutate(
+                  { data: { defaultGeofenceRadius: parseInt(defaultGeofenceRadius, 10) || 100, defaultGeofenceUnit, autoCreateGeofence } as Parameters<typeof updateSettings.mutate>[0]['data'] },
+                  { onSuccess: () => toast.success('Geofence defaults saved'), onError: () => toast.error('Failed to save') }
+                )}
+                disabled={updateSettings.isPending}
+                variant="outline"
+              >
+                Save Geofence Defaults
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Ruler className="w-5 h-5 text-primary" /> Measurement Settings
+              </CardTitle>
+              <CardDescription>
+                Control how measurements and satellite map zones work across all properties.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Preferred Area Unit</label>
+                <Select value={preferredAreaUnit} onValueChange={v => setPreferredAreaUnit(v as 'sqft' | 'acres')}>
+                  <SelectTrigger className="max-w-[200px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sqft">Square Feet (sqft)</SelectItem>
+                    <SelectItem value="acres">Acres</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Default Zone Labels</label>
+                <Input
+                  value={zoneLabelsRaw}
+                  onChange={e => setZoneLabelsRaw(e.target.value)}
+                  placeholder="Front Lawn, Back Yard, Bed Areas, Side Yard, Common Area"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Comma-separated list of label presets shown in the polygon drawing tool.
+                </p>
+              </div>
+              <Button
+                onClick={() => {
+                  const labels = zoneLabelsRaw.split(',').map(s => s.trim()).filter(Boolean);
+                  updateSettings.mutate(
+                    { data: { preferredAreaUnit, measurementZoneLabels: labels } as Parameters<typeof updateSettings.mutate>[0]['data'] },
+                    { onSuccess: () => toast.success('Measurement settings saved'), onError: () => toast.error('Failed to save') }
+                  );
+                }}
+                disabled={updateSettings.isPending}
+                variant="outline"
+              >
+                Save Measurement Settings
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-primary" /> Website Widget
+              </CardTitle>
+              <CardDescription>
+                Embed an instant-quote widget on your company website. Prospects enter an address, pick a service, and submit a quote request — all without calling in.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-md bg-muted/50 border p-3 font-mono text-xs overflow-x-auto whitespace-nowrap">
+                {`<iframe src="${window.location.origin}${import.meta.env.BASE_URL?.replace(/\/$/, '') ?? ''}/widget/quote" width="420" height="600" frameborder="0" style="border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.12)"></iframe>`}
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-2 text-xs"
+                  onClick={() => {
+                    const snippet = `<iframe src="${window.location.origin}${import.meta.env.BASE_URL?.replace(/\/$/, '') ?? ''}/widget/quote" width="420" height="600" frameborder="0" style="border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.12)"></iframe>`;
+                    navigator.clipboard.writeText(snippet).then(() => toast.success('Widget code copied!'));
+                  }}
+                >
+                  Copy Widget Code
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-2 text-xs"
+                  onClick={() => window.open(`${import.meta.env.BASE_URL?.replace(/\/$/, '') ?? ''}/widget/quote`, '_blank')}
+                >
+                  Preview Widget
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* ── Integrations ── */}

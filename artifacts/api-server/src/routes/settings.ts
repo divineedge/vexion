@@ -8,6 +8,7 @@ const router: IRouter = Router();
 function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
   const cfJson = tenant.customFields as Record<string, unknown> | null;
   const rolePerms = tenant.rolePermissions as Record<string, Record<string, boolean>> | null;
+  const defaultZoneLabels = (tenant.measurementZoneLabels as string[] | null) ?? ["Front Lawn", "Back Yard", "Bed Areas", "Side Yard", "Common Area"];
   return {
     id: tenant.id,
     tenantId: tenant.id,
@@ -29,6 +30,12 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     customerFields: (cfJson?.customerFields as unknown[]) ?? [],
     equipmentRepairThresholdPct: tenant.equipmentRepairThresholdPct ?? 50,
     equipmentResaleThresholdPct: tenant.equipmentResaleThresholdPct ?? 20,
+    // Geofence & measurement defaults
+    defaultGeofenceRadius: tenant.defaultGeofenceRadius ?? 100,
+    defaultGeofenceUnit: (tenant.defaultGeofenceUnit ?? "m") as "m" | "ft",
+    autoCreateGeofence: tenant.autoCreateGeofence ?? false,
+    measurementZoneLabels: defaultZoneLabels,
+    preferredAreaUnit: (tenant.preferredAreaUnit ?? "sqft") as "sqft" | "acres",
   };
 }
 
@@ -48,6 +55,8 @@ router.patch("/settings", async (req, res): Promise<void> => {
     durationUnit, autoInvoiceFrequency, p4pMasterPercentage,
     rolePermissions, customerFields,
     equipmentRepairThresholdPct, equipmentResaleThresholdPct,
+    defaultGeofenceRadius, defaultGeofenceUnit, autoCreateGeofence,
+    measurementZoneLabels, preferredAreaUnit,
   } = req.body;
 
   const updates: Partial<typeof tenantsTable.$inferInsert> = {};
@@ -64,9 +73,6 @@ router.patch("/settings", async (req, res): Promise<void> => {
   if (autoInvoiceFrequency !== undefined) updates.autoInvoiceFrequency = autoInvoiceFrequency;
   if (p4pMasterPercentage !== undefined) updates.p4pMasterPercentage = parseFloat(p4pMasterPercentage);
   if (rolePermissions !== undefined) {
-    // Merge role permissions into existing customFields-like JSONB
-    const [existing] = await db.select({ customFields: tenantsTable.customFields }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
-    const prev = (existing?.customFields as Record<string, unknown>) ?? {};
     updates.rolePermissions = rolePermissions;
   }
   if (equipmentRepairThresholdPct !== undefined) updates.equipmentRepairThresholdPct = parseFloat(equipmentRepairThresholdPct);
@@ -76,6 +82,11 @@ router.patch("/settings", async (req, res): Promise<void> => {
     const prev = (existing?.customFields as Record<string, unknown>) ?? {};
     updates.customFields = { ...prev, customerFields };
   }
+  if (defaultGeofenceRadius !== undefined) updates.defaultGeofenceRadius = parseInt(defaultGeofenceRadius, 10);
+  if (defaultGeofenceUnit !== undefined) updates.defaultGeofenceUnit = defaultGeofenceUnit;
+  if (autoCreateGeofence !== undefined) updates.autoCreateGeofence = autoCreateGeofence;
+  if (measurementZoneLabels !== undefined) updates.measurementZoneLabels = measurementZoneLabels;
+  if (preferredAreaUnit !== undefined) updates.preferredAreaUnit = preferredAreaUnit;
 
   const [updated] = await db.update(tenantsTable).set(updates).where(eq(tenantsTable.id, tenantId)).returning();
   if (!updated) { res.status(404).json({ error: "Tenant not found" }); return; }

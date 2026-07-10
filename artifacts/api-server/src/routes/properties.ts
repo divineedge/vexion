@@ -8,6 +8,8 @@ const router: IRouter = Router();
 function formatProperty(p: typeof propertiesTable.$inferSelect, customerName?: string | null) {
   return {
     ...p,
+    measurementPolygons: (p.measurementPolygons as unknown[]) ?? [],
+    serviceableAreaSqft: p.serviceableAreaSqft ?? null,
     customerName: customerName ?? null,
     createdAt: p.createdAt.toISOString(),
   };
@@ -112,9 +114,20 @@ router.patch("/properties/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const { address, city, state, zip, lat, lng, notes, type } = req.body;
+  const { address, city, state, zip, lat, lng, notes, type, measurementPolygons, serviceableAreaSqft } = req.body;
   const [updated] = await db.update(propertiesTable)
-    .set({ ...(address && { address }), ...(city !== undefined && { city }), ...(state !== undefined && { state }), ...(zip !== undefined && { zip }), ...(lat !== undefined && { lat }), ...(lng !== undefined && { lng }), ...(notes !== undefined && { notes }), ...(type !== undefined && { type }) })
+    .set({
+      ...(address && { address }),
+      ...(city !== undefined && { city }),
+      ...(state !== undefined && { state }),
+      ...(zip !== undefined && { zip }),
+      ...(lat !== undefined && { lat }),
+      ...(lng !== undefined && { lng }),
+      ...(notes !== undefined && { notes }),
+      ...(type !== undefined && { type }),
+      ...(measurementPolygons !== undefined && { measurementPolygons }),
+      ...(serviceableAreaSqft !== undefined && { serviceableAreaSqft }),
+    })
     .where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId)))
     .returning();
 
@@ -122,6 +135,76 @@ router.patch("/properties/:id", async (req, res): Promise<void> => {
 
   const [row] = await db.select({ customerName: customersTable.name }).from(customersTable).where(eq(customersTable.id, updated.customerId));
   res.json(formatProperty(updated, row?.customerName));
+});
+
+// PATCH /properties/:id/measurements — save measurement polygons
+router.patch("/properties/:id/measurements", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+
+  const { measurementPolygons, serviceableAreaSqft } = req.body;
+  const [updated] = await db.update(propertiesTable)
+    .set({
+      ...(measurementPolygons !== undefined && { measurementPolygons }),
+      ...(serviceableAreaSqft !== undefined && { serviceableAreaSqft }),
+    })
+    .where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId)))
+    .returning();
+
+  if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  const [row] = await db.select({ customerName: customersTable.name }).from(customersTable).where(eq(customersTable.id, updated.customerId));
+  res.json(formatProperty(updated, row?.customerName));
+});
+
+// GET /properties/:id/geocode — geocode address using Nominatim and return lat/lng
+router.get("/properties/:id/geocode", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+
+  const [property] = await db.select().from(propertiesTable)
+    .where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId)));
+  if (!property) { res.status(404).json({ error: "Not found" }); return; }
+
+  const fullAddress = [property.address, property.city, property.state, property.zip].filter(Boolean).join(", ");
+
+  try {
+    const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(fullAddress)}`;
+    const response = await fetch(nominatimUrl, {
+      headers: { "User-Agent": "DivineEdgeOS/1.0" },
+    });
+    const results = await response.json() as Array<{ lat: string; lon: string; boundingbox: string[] }>;
+
+    if (!results || results.length === 0) {
+      res.status(404).json({ error: "Address not found" });
+      return;
+    }
+
+    const result = results[0];
+    const lat = parseFloat(result.lat);
+    const lng = parseFloat(result.lon);
+    const bb = result.boundingbox; // [minLat, maxLat, minLon, maxLon]
+
+    // Build a rough parcel boundary polygon from the bounding box as a starting point
+    let boundaryPolygon = null;
+    if (bb && bb.length === 4) {
+      const minLat = parseFloat(bb[0]);
+      const maxLat = parseFloat(bb[1]);
+      const minLng = parseFloat(bb[2]);
+      const maxLng = parseFloat(bb[3]);
+      boundaryPolygon = [
+        [minLat, minLng],
+        [minLat, maxLng],
+        [maxLat, maxLng],
+        [maxLat, minLng],
+      ];
+    }
+
+    res.json({ lat, lng, boundaryPolygon });
+  } catch (err) {
+    res.status(502).json({ error: "Geocoding service unavailable" });
+  }
 });
 
 router.delete("/properties/:id", async (req, res): Promise<void> => {

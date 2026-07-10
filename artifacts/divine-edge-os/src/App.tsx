@@ -27,6 +27,8 @@ import PayrollPage from '@/pages/payroll';
 import ServicesPage from '@/pages/services';
 import ChemicalsPage from '@/pages/chemicals';
 import EquipmentPage from '@/pages/equipment';
+import QuotePublicPage from '@/pages/quote-public';
+import QuoteWidgetPage from '@/pages/quote-widget';
 
 import NotFound from '@/pages/not-found';
 
@@ -73,6 +75,9 @@ function ProtectedRoutes() {
 function Router() {
   return (
     <Switch>
+      {/* Public routes — no auth required */}
+      <Route path="/quote/:token" component={QuotePublicPage} />
+      <Route path="/widget/quote" component={QuoteWidgetPage} />
       <Route path="/login" component={LoginPage} />
       <Route component={ProtectedRoutes} />
     </Switch>

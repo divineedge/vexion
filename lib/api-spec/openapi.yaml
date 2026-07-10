@@ -389,6 +389,138 @@ paths:
               schema:
                 $ref: "#/components/schemas/Property"
 
+  /properties/{id}/measurements:
+    patch:
+      operationId: updatePropertyMeasurements
+      tags: [properties]
+      summary: Save measurement polygons and total serviceable area for a property
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PropertyMeasurementUpdate"
+      responses:
+        "200":
+          description: Updated property
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Property"
+
+  /properties/{id}/geocode:
+    get:
+      operationId: geocodeProperty
+      tags: [properties]
+      summary: Geocode property address and return lat/lng with optional parcel boundary
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Geocode result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeocodeResult"
+
+  /properties/{id}/quotes:
+    get:
+      operationId: listPropertyQuotes
+      tags: [properties]
+      summary: List instant quotes for a property
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of quotes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Quote"
+    post:
+      operationId: createPropertyQuote
+      tags: [properties]
+      summary: Create an instant quote for a property
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuoteInput"
+      responses:
+        "201":
+          description: Quote created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Quote"
+
+  /quotes/{token}:
+    get:
+      operationId: getQuoteByToken
+      tags: [properties]
+      summary: Public endpoint — get quote details by token (no auth required)
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Quote with property details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuoteWithProperty"
+
+  /quotes/{token}/respond:
+    post:
+      operationId: respondToQuote
+      tags: [properties]
+      summary: Public endpoint — customer approves or declines a quote
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuoteRespondInput"
+      responses:
+        "200":
+          description: Updated quote
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Quote"
+
   # JOBS (Schedule)
   /jobs:
     get:
@@ -2118,6 +2250,28 @@ components:
         limit:
           type: integer
 
+    MeasurementZone:
+      type: object
+      required: [id, label, vertices, areaSqft, enabled, color]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        vertices:
+          type: array
+          description: "Array of [lat, lng] coordinate pairs"
+          items:
+            type: array
+            items:
+              type: number
+        areaSqft:
+          type: number
+        enabled:
+          type: boolean
+        color:
+          type: string
+
     Property:
       type: object
       required: [id, tenantId, customerId, address, createdAt]
@@ -2152,6 +2306,12 @@ components:
           type: ["string", "null"]
         type:
           type: ["string", "null"]
+        measurementPolygons:
+          type: array
+          items:
+            $ref: "#/components/schemas/MeasurementZone"
+        serviceableAreaSqft:
+          type: ["number", "null"]
         createdAt:
           type: string
 
@@ -2196,6 +2356,145 @@ components:
         notes:
           type: string
         type:
+          type: string
+        measurementPolygons:
+          type: array
+          items:
+            $ref: "#/components/schemas/MeasurementZone"
+        serviceableAreaSqft:
+          type: number
+
+    PropertyMeasurementUpdate:
+      type: object
+      properties:
+        measurementPolygons:
+          type: array
+          items:
+            $ref: "#/components/schemas/MeasurementZone"
+        serviceableAreaSqft:
+          type: number
+
+    GeocodeResult:
+      type: object
+      required: [lat, lng]
+      properties:
+        lat:
+          type: number
+        lng:
+          type: number
+        boundaryPolygon:
+          type: array
+          nullable: true
+          items:
+            type: array
+            items:
+              type: number
+
+    Quote:
+      type: object
+      required: [id, tenantId, propertyId, token, serviceName, calculatedPrice, status, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        propertyId:
+          type: integer
+        token:
+          type: string
+        serviceId:
+          type: ["integer", "null"]
+        serviceName:
+          type: string
+        serviceDescription:
+          type: ["string", "null"]
+        selectedZoneLabels:
+          type: array
+          items:
+            type: string
+        totalAreaSqft:
+          type: ["number", "null"]
+        calculatedPrice:
+          type: number
+        priceType:
+          type: string
+          enum: [flat, per_sqft]
+        status:
+          type: string
+          enum: [pending, approved, declined]
+        expiresAt:
+          type: ["string", "null"]
+        respondedAt:
+          type: ["string", "null"]
+        customerNote:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    QuoteWithProperty:
+      allOf:
+        - $ref: "#/components/schemas/Quote"
+      type: object
+      properties:
+        property:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: integer
+            address:
+              type: string
+            city:
+              type: ["string", "null"]
+            state:
+              type: ["string", "null"]
+            zip:
+              type: ["string", "null"]
+            lat:
+              type: ["number", "null"]
+            lng:
+              type: ["number", "null"]
+            measurementPolygons:
+              type: array
+              items:
+                $ref: "#/components/schemas/MeasurementZone"
+            serviceableAreaSqft:
+              type: ["number", "null"]
+            customerName:
+              type: ["string", "null"]
+        expired:
+          type: boolean
+
+    QuoteInput:
+      type: object
+      required: [serviceName]
+      properties:
+        serviceId:
+          type: integer
+        serviceName:
+          type: string
+        selectedZoneLabels:
+          type: array
+          items:
+            type: string
+        totalAreaSqft:
+          type: number
+        calculatedPrice:
+          type: number
+        priceType:
+          type: string
+          enum: [flat, per_sqft]
+
+    QuoteRespondInput:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [approved, declined]
+        customerNote:
           type: string
 
     GeofencePinUpdate:
@@ -2923,6 +3222,25 @@ components:
         equipmentResaleThresholdPct:
           type: number
           description: "Sell recommendation triggers when estimated resale value falls below this % of purchase price"
+        defaultGeofenceRadius:
+          type: integer
+          description: "Default geofence radius applied when auto-creating a geofence"
+        defaultGeofenceUnit:
+          type: string
+          enum: [m, ft]
+          description: "Unit for geofence radius"
+        autoCreateGeofence:
+          type: boolean
+          description: "Auto-create geofence when a property is added"
+        measurementZoneLabels:
+          type: array
+          items:
+            type: string
+          description: "Default zone label presets shown in the polygon tool"
+        preferredAreaUnit:
+          type: string
+          enum: [sqft, acres]
+          description: "Preferred area unit for property measurements"
 
     TenantSettingsUpdate:
       type: object
@@ -2965,6 +3283,20 @@ components:
           type: number
         equipmentResaleThresholdPct:
           type: number
+        defaultGeofenceRadius:
+          type: integer
+        defaultGeofenceUnit:
+          type: string
+          enum: [m, ft]
+        autoCreateGeofence:
+          type: boolean
+        measurementZoneLabels:
+          type: array
+          items:
+            type: string
+        preferredAreaUnit:
+          type: string
+          enum: [sqft, acres]
 
     CustomerFieldConfig:
       type: object

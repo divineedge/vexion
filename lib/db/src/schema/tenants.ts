@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, boolean, real, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, boolean, real, jsonb, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -28,6 +28,16 @@ export const tenantsTable = pgTable("tenants", {
   equipmentRepairThresholdPct: real("equipment_repair_threshold_pct").notNull().default(50),
   /** Equipment sell recommendation: flag when estimated resale value falls below this % of purchase price (default 20) */
   equipmentResaleThresholdPct: real("equipment_resale_threshold_pct").notNull().default(20),
+  /** Geofence Defaults: radius in meters/feet applied when auto-creating a geofence on property add */
+  defaultGeofenceRadius: integer("default_geofence_radius").notNull().default(100),
+  /** Geofence unit: 'm' | 'ft' */
+  defaultGeofenceUnit: text("default_geofence_unit").notNull().default("m"),
+  /** Whether to auto-create a geofence when a property is added */
+  autoCreateGeofence: boolean("auto_create_geofence").notNull().default(false),
+  /** Default zone label presets shown in the measurement polygon tool */
+  measurementZoneLabels: jsonb("measurement_zone_labels").default('["Front Lawn","Back Yard","Bed Areas","Side Yard","Common Area"]'),
+  /** Preferred area unit for measurements: 'sqft' | 'acres' */
+  preferredAreaUnit: text("preferred_area_unit").notNull().default("sqft"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -17,3 +17,4 @@ export * from "./marketingCampaigns";
 export * from "./services";
 export * from "./chemicals";
 export * from "./equipment";
+export * from "./quotes";

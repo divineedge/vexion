@@ -20,6 +20,8 @@ import p4pRouter from "./p4p";
 import servicesRouter from "./services";
 import chemicalsRouter from "./chemicals";
 import equipmentRouter from "./equipment";
+import quotesRouter from "./quotes";
+import widgetRouter from "./widget";
 
 const router: IRouter = Router();
 
@@ -44,5 +46,7 @@ router.use(p4pRouter);
 router.use(servicesRouter);
 router.use(chemicalsRouter);
 router.use(equipmentRouter);
+router.use(quotesRouter);
+router.use(widgetRouter);
 
 export default router;

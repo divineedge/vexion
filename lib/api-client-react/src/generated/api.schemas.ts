@@ -213,6 +213,85 @@ export interface CustomerListResponse {
   limit: number;
 }
 
+export interface MeasurementZone {
+  id: string;
+  label: string;
+  /** Array of [lat, lng] coordinate pairs */
+  vertices: [number, number][];
+  areaSqft: number;
+  enabled: boolean;
+  color: string;
+}
+
+export type QuoteStatus = typeof QuoteStatus[keyof typeof QuoteStatus];
+export const QuoteStatus = {
+  pending: 'pending',
+  approved: 'approved',
+  declined: 'declined',
+} as const;
+
+export type QuotePriceType = typeof QuotePriceType[keyof typeof QuotePriceType];
+export const QuotePriceType = {
+  flat: 'flat',
+  per_sqft: 'per_sqft',
+} as const;
+
+export interface Quote {
+  id: number;
+  tenantId: number;
+  propertyId: number;
+  token: string;
+  serviceId?: number | null;
+  serviceName: string;
+  serviceDescription?: string | null;
+  selectedZoneLabels?: string[];
+  totalAreaSqft?: number | null;
+  calculatedPrice: number;
+  priceType?: QuotePriceType;
+  status: QuoteStatus;
+  expiresAt?: string | null;
+  respondedAt?: string | null;
+  customerNote?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface QuoteWithProperty extends Quote {
+  property?: {
+    id: number;
+    address: string;
+    city?: string | null;
+    state?: string | null;
+    zip?: string | null;
+    lat?: number | null;
+    lng?: number | null;
+    measurementPolygons?: MeasurementZone[];
+    serviceableAreaSqft?: number | null;
+    customerName?: string | null;
+  } | null;
+  expired?: boolean;
+}
+
+export interface QuoteInput {
+  serviceId?: number;
+  serviceName: string;
+  selectedZoneLabels?: string[];
+  totalAreaSqft?: number;
+  calculatedPrice?: number;
+  priceType?: QuotePriceType;
+}
+
+export interface QuoteRespondInput {
+  action: 'approved' | 'declined';
+  customerNote?: string;
+}
+
+export interface GeocodeResult {
+  lat: number;
+  lng: number;
+  boundaryPolygon?: [number, number][] | null;
+}
+
 export interface Property {
   id: number;
   tenantId: number;
@@ -239,6 +318,8 @@ export interface Property {
   notes?: string | null;
   /** @nullable */
   type?: string | null;
+  measurementPolygons?: MeasurementZone[];
+  serviceableAreaSqft?: number | null;
   createdAt: string;
 }
 
@@ -263,6 +344,13 @@ export interface PropertyUpdate {
   lng?: number;
   notes?: string;
   type?: string;
+  measurementPolygons?: MeasurementZone[];
+  serviceableAreaSqft?: number;
+}
+
+export interface PropertyMeasurementUpdate {
+  measurementPolygons?: MeasurementZone[];
+  serviceableAreaSqft?: number;
 }
 
 export interface GeofencePinUpdate {
@@ -899,6 +987,16 @@ export interface TenantSettings {
   equipmentRepairThresholdPct?: number;
   /** Sell recommendation triggers when estimated resale value falls below this % of purchase price */
   equipmentResaleThresholdPct?: number;
+  /** Default geofence radius applied when auto-creating a geofence */
+  defaultGeofenceRadius?: number;
+  /** Unit for geofence radius */
+  defaultGeofenceUnit?: 'm' | 'ft';
+  /** Auto-create geofence when a property is added */
+  autoCreateGeofence?: boolean;
+  /** Default zone label presets shown in the polygon tool */
+  measurementZoneLabels?: string[];
+  /** Preferred area unit for property measurements */
+  preferredAreaUnit?: 'sqft' | 'acres';
 }
 
 export type TenantSettingsUpdateDurationUnit = typeof TenantSettingsUpdateDurationUnit[keyof typeof TenantSettingsUpdateDurationUnit];
@@ -937,6 +1035,11 @@ export interface TenantSettingsUpdate {
   customerFields?: CustomerFieldConfig[];
   equipmentRepairThresholdPct?: number;
   equipmentResaleThresholdPct?: number;
+  defaultGeofenceRadius?: number;
+  defaultGeofenceUnit?: 'm' | 'ft';
+  autoCreateGeofence?: boolean;
+  measurementZoneLabels?: string[];
+  preferredAreaUnit?: 'sqft' | 'acres';
 }
 
 export interface PropertyOwnershipRecord {

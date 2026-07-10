@@ -122,6 +122,8 @@ export interface RevenueTrendItem {
   revenue: number;
 }
 
+export type CustomerCustomFieldValues = {[key: string]: string};
+
 export interface Customer {
   id: number;
   tenantId: number;
@@ -129,31 +131,66 @@ export interface Customer {
   email: string;
   phone: string;
   /** @nullable */
+  secondaryPhone?: string | null;
+  /** @nullable */
   company?: string | null;
+  /** @nullable */
+  customerType?: string | null;
+  /** @nullable */
+  referralSource?: string | null;
+  /** @nullable */
+  billingAddress?: string | null;
+  /** @nullable */
+  billingCity?: string | null;
+  /** @nullable */
+  billingState?: string | null;
+  /** @nullable */
+  billingZip?: string | null;
   /** @nullable */
   notes?: string | null;
   tags?: string[];
+  customFieldValues?: CustomerCustomFieldValues;
   propertyCount?: number;
   totalSpend?: number;
   createdAt: string;
 }
 
+export type CustomerInputCustomFieldValues = {[key: string]: string};
+
 export interface CustomerInput {
   name: string;
   email: string;
   phone: string;
+  secondaryPhone?: string;
   company?: string;
+  customerType?: string;
+  referralSource?: string;
+  billingAddress?: string;
+  billingCity?: string;
+  billingState?: string;
+  billingZip?: string;
   notes?: string;
   tags?: string[];
+  customFieldValues?: CustomerInputCustomFieldValues;
 }
+
+export type CustomerUpdateCustomFieldValues = {[key: string]: string};
 
 export interface CustomerUpdate {
   name?: string;
   email?: string;
   phone?: string;
+  secondaryPhone?: string;
   company?: string;
+  customerType?: string;
+  referralSource?: string;
+  billingAddress?: string;
+  billingCity?: string;
+  billingState?: string;
+  billingZip?: string;
   notes?: string;
   tags?: string[];
+  customFieldValues?: CustomerUpdateCustomFieldValues;
 }
 
 export interface CustomerListResponse {
@@ -694,32 +731,26 @@ export const TenantSettingsPlanTier = {
   enterprise: 'enterprise',
 } as const;
 
-export type CustomFieldEntityType = typeof CustomFieldEntityType[keyof typeof CustomFieldEntityType];
+export type CustomerFieldConfigType = typeof CustomerFieldConfigType[keyof typeof CustomerFieldConfigType];
 
 
-export const CustomFieldEntityType = {
-  customer: 'customer',
-  property: 'property',
-} as const;
-
-export type CustomFieldFieldType = typeof CustomFieldFieldType[keyof typeof CustomFieldFieldType];
-
-
-export const CustomFieldFieldType = {
+export const CustomerFieldConfigType = {
   text: 'text',
   number: 'number',
-  boolean: 'boolean',
   date: 'date',
   select: 'select',
+  textarea: 'textarea',
+  boolean: 'boolean',
 } as const;
 
-export interface CustomField {
-  id: string;
+export interface CustomerFieldConfig {
+  key: string;
   label: string;
-  entityType: CustomFieldEntityType;
-  fieldType: CustomFieldFieldType;
-  isEnabled: boolean;
+  type: CustomerFieldConfigType;
   options?: string[];
+  visible: boolean;
+  required: boolean;
+  isBuiltIn: boolean;
 }
 
 export interface TenantSettings {
@@ -735,7 +766,7 @@ export interface TenantSettings {
   quickbooksEnabled?: boolean;
   taxRate?: number;
   planTier?: TenantSettingsPlanTier;
-  customFields?: CustomField[];
+  customerFields?: CustomerFieldConfig[];
 }
 
 export interface TenantSettingsUpdate {
@@ -746,7 +777,28 @@ export interface TenantSettingsUpdate {
   stripeEnabled?: boolean;
   quickbooksEnabled?: boolean;
   taxRate?: number;
-  customFields?: CustomField[];
+  customerFields?: CustomerFieldConfig[];
+}
+
+export interface PropertyOwnershipRecord {
+  id: number;
+  propertyId: number;
+  /** @nullable */
+  previousCustomerId?: number | null;
+  /** @nullable */
+  previousCustomerName?: string | null;
+  /** @nullable */
+  newCustomerId?: number | null;
+  /** @nullable */
+  newCustomerName?: string | null;
+  /** @nullable */
+  notes?: string | null;
+  transferredAt: string;
+}
+
+export interface PropertyTransferInput {
+  newCustomerId: number;
+  notes?: string;
 }
 
 export type PlanTier = typeof PlanTier[keyof typeof PlanTier];

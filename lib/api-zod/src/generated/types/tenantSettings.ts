@@ -5,7 +5,7 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
-import type { CustomField } from './customField';
+import type { CustomerFieldConfig } from './customerFieldConfig';
 import type { TenantSettingsPlanTier } from './tenantSettingsPlanTier';
 
 export interface TenantSettings {
@@ -21,5 +21,5 @@ export interface TenantSettings {
   quickbooksEnabled?: boolean;
   taxRate?: number;
   planTier?: TenantSettingsPlanTier;
-  customFields?: CustomField[];
+  customerFields?: CustomerFieldConfig[];
 }

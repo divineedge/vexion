@@ -1,10 +1,12 @@
-import React from 'react';
-import { 
-  useGetTenantSettings, getGetTenantSettingsQueryKey, 
+import React, { useState, useEffect } from 'react';
+import {
+  useGetTenantSettings, getGetTenantSettingsQueryKey,
   useUpdateTenantSettings,
   useListUsers, getListUsersQueryKey,
-  useListPlans, getListPlansQueryKey
+  useCreateUser,
+  useListPlans, getListPlansQueryKey,
 } from '@workspace/api-client-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,24 +14,120 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Building, CreditCard, Users, Settings as SettingsIcon, Shield, CheckCircle2 } from 'lucide-react';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Separator } from '@/components/ui/separator';
+import {
+  Building, CreditCard, Users, Shield, CheckCircle2, Plus, Trash2,
+  GripVertical, EyeOff, Eye, Star, Settings as SettingsIcon,
+} from 'lucide-react';
+import { toast } from 'sonner';
+import { BUILT_IN_CUSTOMER_FIELDS, getActiveCustomerFields, type CustomerFieldConfig } from '@/lib/fieldConfig';
 
 export default function SettingsPage() {
   const { isSuperAdmin } = useAuth();
-  
-  const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() }});
-  const { data: users } = useListUsers({ query: { queryKey: getListUsersQueryKey() }});
-  const { data: plans } = useListPlans({ query: { enabled: isSuperAdmin, queryKey: getListPlansQueryKey() }});
-  
-  const updateSettings = useUpdateTenantSettings();
+  const qc = useQueryClient();
 
-  const handleToggleStripe = (checked: boolean) => {
-    updateSettings.mutate({ data: { stripeEnabled: checked }});
+  const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
+  const { data: users } = useListUsers({ query: { queryKey: getListUsersQueryKey() } });
+  const { data: plans } = useListPlans({ query: { enabled: isSuperAdmin, queryKey: getListPlansQueryKey() } });
+
+  const updateSettings = useUpdateTenantSettings();
+  const createUser = useCreateUser();
+
+  const [companyName, setCompanyName] = useState('');
+  const [timezone, setTimezone] = useState('');
+  const [taxRate, setTaxRate] = useState('');
+  const [buffer, setBuffer] = useState('');
+
+  const [customerFields, setCustomerFields] = useState<CustomerFieldConfig[]>([]);
+  const [addFieldOpen, setAddFieldOpen] = useState(false);
+  const [newField, setNewField] = useState<Partial<CustomerFieldConfig>>({ type: 'text', visible: true, required: false, isBuiltIn: false });
+  const [newOptions, setNewOptions] = useState('');
+
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: 'employee' });
+
+  useEffect(() => {
+    if (settings) {
+      setCompanyName(settings.companyName ?? '');
+      setTimezone(settings.timezone ?? 'America/Los_Angeles');
+      setTaxRate(String(settings.taxRate ?? 8.5));
+      setBuffer(String(settings.overageMaterialBuffer ?? 10));
+      setCustomerFields(getActiveCustomerFields(settings));
+    }
+  }, [settings]);
+
+  const saveGeneral = () => {
+    updateSettings.mutate(
+      { data: { companyName, timezone, taxRate: parseFloat(taxRate), overageMaterialBuffer: parseFloat(buffer) } },
+      {
+        onSuccess: () => { toast.success('Settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
+        onError: () => toast.error('Failed to save settings'),
+      },
+    );
   };
 
-  const handleToggleQb = (checked: boolean) => {
-    updateSettings.mutate({ data: { quickbooksEnabled: checked }});
+  const saveCustomerFields = (fields: CustomerFieldConfig[]) => {
+    updateSettings.mutate(
+      { data: { customerFields: fields } },
+      {
+        onSuccess: () => { toast.success('Customer fields updated'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
+        onError: () => toast.error('Failed to save customer fields'),
+      },
+    );
+  };
+
+  const toggleFieldProp = (key: string, prop: 'visible' | 'required') => {
+    const next = customerFields.map(f =>
+      f.key === key ? { ...f, [prop]: !f[prop] } : f
+    );
+    setCustomerFields(next);
+    saveCustomerFields(next);
+  };
+
+  const removeCustomField = (key: string) => {
+    const next = customerFields.filter(f => f.key !== key);
+    setCustomerFields(next);
+    saveCustomerFields(next);
+  };
+
+  const addCustomField = () => {
+    if (!newField.label || !newField.key) { toast.error('Label and key are required'); return; }
+    const options = newField.type === 'select' ? newOptions.split(',').map(s => s.trim()).filter(Boolean) : undefined;
+    const field: CustomerFieldConfig = {
+      key: newField.key!.replace(/\s+/g, '_').toLowerCase(),
+      label: newField.label!,
+      type: newField.type as CustomerFieldConfig['type'] ?? 'text',
+      options,
+      visible: true,
+      required: newField.required ?? false,
+      isBuiltIn: false,
+    };
+    if (customerFields.some(f => f.key === field.key)) { toast.error('A field with this key already exists'); return; }
+    const next = [...customerFields, field];
+    setCustomerFields(next);
+    saveCustomerFields(next);
+    setAddFieldOpen(false);
+    setNewField({ type: 'text', visible: true, required: false, isBuiltIn: false });
+    setNewOptions('');
+  };
+
+  const handleInvite = () => {
+    if (!inviteForm.name || !inviteForm.email) { toast.error('Name and email are required'); return; }
+    createUser.mutate(
+      { data: inviteForm as Parameters<typeof createUser.mutate>[0]['data'] },
+      {
+        onSuccess: () => {
+          toast.success(`${inviteForm.name} invited`);
+          qc.invalidateQueries({ queryKey: getListUsersQueryKey() });
+          setInviteOpen(false);
+          setInviteForm({ name: '', email: '', role: 'employee' });
+        },
+        onError: () => toast.error('Failed to invite user'),
+      },
+    );
   };
 
   return (
@@ -40,13 +138,15 @@ export default function SettingsPage() {
       </div>
 
       <Tabs defaultValue="general" className="w-full">
-        <TabsList className="grid grid-cols-4 md:w-[600px] mb-6">
-          <TabsTrigger value="general"><Building className="w-4 h-4 mr-2" /> General</TabsTrigger>
-          <TabsTrigger value="payments"><CreditCard className="w-4 h-4 mr-2" /> Integrations</TabsTrigger>
-          <TabsTrigger value="users"><Users className="w-4 h-4 mr-2" /> Team</TabsTrigger>
-          {isSuperAdmin && <TabsTrigger value="plans"><Shield className="w-4 h-4 mr-2" /> Plans</TabsTrigger>}
+        <TabsList className="flex flex-wrap gap-1 h-auto mb-6">
+          <TabsTrigger value="general"><Building className="w-4 h-4 mr-2" />General</TabsTrigger>
+          <TabsTrigger value="customer-fields"><SettingsIcon className="w-4 h-4 mr-2" />Customer Fields</TabsTrigger>
+          <TabsTrigger value="payments"><CreditCard className="w-4 h-4 mr-2" />Integrations</TabsTrigger>
+          <TabsTrigger value="users"><Users className="w-4 h-4 mr-2" />Team</TabsTrigger>
+          {isSuperAdmin && <TabsTrigger value="plans"><Shield className="w-4 h-4 mr-2" />Plans</TabsTrigger>}
         </TabsList>
-        
+
+        {/* General */}
         <TabsContent value="general" className="space-y-6 focus-visible:outline-none">
           <Card>
             <CardHeader>
@@ -55,38 +155,199 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <label className="text-sm font-medium">Company Name</label>
-                  <Input defaultValue={settings?.companyName || ''} />
+                  <Input value={companyName} onChange={e => setCompanyName(e.target.value)} />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <label className="text-sm font-medium">Timezone</label>
-                  <Input defaultValue={settings?.timezone || 'America/Los_Angeles'} />
+                  <Input value={timezone} onChange={e => setTimezone(e.target.value)} />
                 </div>
               </div>
-              <Button className="mt-2">Save Changes</Button>
+              <Button onClick={saveGeneral} disabled={updateSettings.isPending}>
+                {updateSettings.isPending ? 'Saving...' : 'Save Changes'}
+              </Button>
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Operational Defaults</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle>Operational Defaults</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <label className="text-sm font-medium">Default Tax Rate (%)</label>
-                  <Input type="number" defaultValue={settings?.taxRate || 0} />
+                  <Input type="number" value={taxRate} onChange={e => setTaxRate(e.target.value)} />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <label className="text-sm font-medium">Default Material Buffer (%)</label>
-                  <Input type="number" defaultValue={settings?.overageMaterialBuffer || 15} />
+                  <Input type="number" value={buffer} onChange={e => setBuffer(e.target.value)} />
                 </div>
               </div>
+              <Button onClick={saveGeneral} disabled={updateSettings.isPending} variant="outline">Save Defaults</Button>
             </CardContent>
           </Card>
         </TabsContent>
 
+        {/* Customer Fields */}
+        <TabsContent value="customer-fields" className="space-y-6 focus-visible:outline-none">
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between pb-2">
+              <div>
+                <CardTitle>Customer Form Fields</CardTitle>
+                <CardDescription>
+                  Control which fields appear on customer forms. Toggle visibility and required status for each field.
+                  Core fields (Name, Email, Phone) are always required.
+                </CardDescription>
+              </div>
+              <Button size="sm" onClick={() => setAddFieldOpen(true)} className="gap-2 shrink-0 ml-4">
+                <Plus className="w-4 h-4" /> Add Custom Field
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {/* Legend */}
+              <div className="flex items-center gap-6 text-xs text-muted-foreground py-2 border-b mb-3">
+                <div className="flex items-center gap-1.5"><Eye className="w-3 h-3" /> Visible on form</div>
+                <div className="flex items-center gap-1.5"><Star className="w-3 h-3" /> Required to submit</div>
+                <div className="flex items-center gap-1.5"><Badge variant="outline" className="text-[10px] px-1">Built-in</Badge> Cannot be deleted</div>
+              </div>
+
+              {/* Built-in fields */}
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-2 py-1">Core Fields (always active)</p>
+                {['name', 'email', 'phone'].map(key => (
+                  <div key={key} className="flex items-center gap-4 px-3 py-2.5 rounded-lg bg-muted/30 border">
+                    <div className="flex-1">
+                      <span className="font-medium text-sm capitalize">{key === 'name' ? 'Full Name' : key}</span>
+                      <Badge variant="outline" className="ml-2 text-[10px] px-1">Built-in</Badge>
+                    </div>
+                    <Switch checked disabled title="Always visible" />
+                    <Switch checked disabled title="Always required" />
+                    <div className="w-8" />
+                  </div>
+                ))}
+              </div>
+
+              <div className="space-y-1 pt-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-2 py-1">Configurable Fields</p>
+                {customerFields.map(field => (
+                  <div
+                    key={field.key}
+                    className={`flex items-center gap-4 px-3 py-2.5 rounded-lg border transition-colors ${field.visible ? 'bg-background' : 'bg-muted/20 opacity-60'}`}
+                  >
+                    <GripVertical className="w-4 h-4 text-muted-foreground/40 cursor-grab shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-sm">{field.label}</span>
+                        {field.isBuiltIn && <Badge variant="outline" className="text-[10px] px-1">Built-in</Badge>}
+                        <span className="text-xs text-muted-foreground capitalize">{field.type}</span>
+                      </div>
+                    </div>
+                    {/* Visible toggle */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {field.visible ? <Eye className="w-3.5 h-3.5 text-muted-foreground" /> : <EyeOff className="w-3.5 h-3.5 text-muted-foreground/40" />}
+                      <Switch
+                        checked={field.visible}
+                        onCheckedChange={() => toggleFieldProp(field.key, 'visible')}
+                        title="Toggle visibility"
+                      />
+                    </div>
+                    {/* Required toggle */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Star className={`w-3.5 h-3.5 ${field.required ? 'text-amber-500' : 'text-muted-foreground/40'}`} />
+                      <Switch
+                        checked={field.required}
+                        disabled={!field.visible}
+                        onCheckedChange={() => toggleFieldProp(field.key, 'required')}
+                        title="Toggle required"
+                      />
+                    </div>
+                    {/* Delete (custom only) */}
+                    {!field.isBuiltIn ? (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="w-8 h-8 text-muted-foreground hover:text-destructive"
+                        onClick={() => removeCustomField(field.key)}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    ) : (
+                      <div className="w-8" />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Add custom field sheet */}
+          <Sheet open={addFieldOpen} onOpenChange={setAddFieldOpen}>
+            <SheetContent className="w-full sm:max-w-md">
+              <SheetHeader className="pb-4">
+                <SheetTitle>Add Custom Field</SheetTitle>
+                <SheetDescription>This field will appear on all customer forms for your team.</SheetDescription>
+              </SheetHeader>
+              <div className="space-y-4 pb-6">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Field Label <span className="text-destructive">*</span></label>
+                  <Input
+                    placeholder="e.g. License Number"
+                    value={newField.label ?? ''}
+                    onChange={e => setNewField(f => ({ ...f, label: e.target.value, key: e.target.value.replace(/\s+/g, '_').toLowerCase() }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Field Key <span className="text-destructive">*</span></label>
+                  <Input
+                    placeholder="license_number"
+                    value={newField.key ?? ''}
+                    onChange={e => setNewField(f => ({ ...f, key: e.target.value }))}
+                    className="font-mono text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">Unique identifier. Lowercase, underscores only.</p>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Field Type</label>
+                  <Select value={newField.type} onValueChange={v => setNewField(f => ({ ...f, type: v as CustomerFieldConfig['type'] }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="text">Text</SelectItem>
+                      <SelectItem value="number">Number</SelectItem>
+                      <SelectItem value="date">Date</SelectItem>
+                      <SelectItem value="textarea">Long Text</SelectItem>
+                      <SelectItem value="select">Dropdown</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {newField.type === 'select' && (
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Options <span className="text-destructive">*</span></label>
+                    <Input
+                      placeholder="Option 1, Option 2, Option 3"
+                      value={newOptions}
+                      onChange={e => setNewOptions(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">Comma-separated list of dropdown options.</p>
+                  </div>
+                )}
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <p className="text-sm font-medium">Required field</p>
+                    <p className="text-xs text-muted-foreground">Team must fill this in to save a customer</p>
+                  </div>
+                  <Switch checked={newField.required ?? false} onCheckedChange={v => setNewField(f => ({ ...f, required: v }))} />
+                </div>
+                <Separator />
+                <div className="flex gap-3 justify-end">
+                  <Button variant="outline" onClick={() => setAddFieldOpen(false)}>Cancel</Button>
+                  <Button onClick={addCustomField}>Add Field</Button>
+                </div>
+              </div>
+            </SheetContent>
+          </Sheet>
+        </TabsContent>
+
+        {/* Integrations */}
         <TabsContent value="payments" className="space-y-6 focus-visible:outline-none">
           <Card>
             <CardHeader>
@@ -104,14 +365,11 @@ export default function SettingsPage() {
                     <p className="text-sm text-muted-foreground">Accept credit cards and ACH</p>
                   </div>
                 </div>
-                <Switch 
-                  checked={settings?.stripeEnabled} 
-                  onCheckedChange={handleToggleStripe}
-                />
+                <Switch checked={settings?.stripeEnabled} onCheckedChange={v => updateSettings.mutate({ data: { stripeEnabled: v } })} />
               </div>
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardHeader>
               <CardTitle>Accounting</CardTitle>
@@ -128,15 +386,13 @@ export default function SettingsPage() {
                     <p className="text-sm text-muted-foreground">Two-way sync for financials</p>
                   </div>
                 </div>
-                <Switch 
-                  checked={settings?.quickbooksEnabled} 
-                  onCheckedChange={handleToggleQb}
-                />
+                <Switch checked={settings?.quickbooksEnabled} onCheckedChange={v => updateSettings.mutate({ data: { quickbooksEnabled: v } })} />
               </div>
             </CardContent>
           </Card>
         </TabsContent>
 
+        {/* Team */}
         <TabsContent value="users" className="focus-visible:outline-none">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -144,7 +400,9 @@ export default function SettingsPage() {
                 <CardTitle>Team Members</CardTitle>
                 <CardDescription>Manage access and roles for your team.</CardDescription>
               </div>
-              <Button size="sm">Invite Member</Button>
+              <Button size="sm" onClick={() => setInviteOpen(true)} className="gap-2">
+                <Plus className="w-4 h-4" /> Invite Member
+              </Button>
             </CardHeader>
             <CardContent>
               <Table>
@@ -157,14 +415,12 @@ export default function SettingsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {users?.map((u) => (
+                  {(users ?? []).map(u => (
                     <TableRow key={u.id}>
                       <TableCell className="font-medium">{u.name}</TableCell>
                       <TableCell className="text-muted-foreground">{u.email}</TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className="capitalize">
-                          {u.role.replace('_', ' ')}
-                        </Badge>
+                        <Badge variant="secondary" className="capitalize">{u.role.replace(/_/g, ' ')}</Badge>
                       </TableCell>
                       <TableCell>
                         {u.isActive !== false ? (
@@ -179,33 +435,75 @@ export default function SettingsPage() {
               </Table>
             </CardContent>
           </Card>
+
+          {/* Invite Sheet */}
+          <Sheet open={inviteOpen} onOpenChange={setInviteOpen}>
+            <SheetContent className="w-full sm:max-w-md">
+              <SheetHeader className="pb-4">
+                <SheetTitle>Invite Team Member</SheetTitle>
+                <SheetDescription>Add a new user to your team. They'll receive access immediately.</SheetDescription>
+              </SheetHeader>
+              <div className="space-y-4 pb-6">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Full Name <span className="text-destructive">*</span></label>
+                  <Input value={inviteForm.name} onChange={e => setInviteForm(f => ({ ...f, name: e.target.value }))} placeholder="Jane Smith" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Email <span className="text-destructive">*</span></label>
+                  <Input type="email" value={inviteForm.email} onChange={e => setInviteForm(f => ({ ...f, email: e.target.value }))} placeholder="jane@company.com" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Role</label>
+                  <Select value={inviteForm.role} onValueChange={v => setInviteForm(f => ({ ...f, role: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="company_owner">Company Owner</SelectItem>
+                      <SelectItem value="office_manager">Office Manager</SelectItem>
+                      <SelectItem value="employee">Employee</SelectItem>
+                      <SelectItem value="technician">Technician</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Separator />
+                <div className="flex gap-3 justify-end">
+                  <Button variant="outline" onClick={() => setInviteOpen(false)}>Cancel</Button>
+                  <Button onClick={handleInvite} disabled={createUser.isPending}>
+                    {createUser.isPending ? 'Inviting...' : 'Send Invite'}
+                  </Button>
+                </div>
+              </div>
+            </SheetContent>
+          </Sheet>
         </TabsContent>
 
+        {/* Plans */}
         {isSuperAdmin && (
           <TabsContent value="plans" className="focus-visible:outline-none">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {plans?.map((plan) => (
-                <Card key={plan.id} className={settings?.planTier === plan.tier ? "border-primary shadow-md relative" : ""}>
+              {(plans ?? []).map(plan => (
+                <Card key={plan.id} className={settings?.planTier === plan.tier ? 'border-primary shadow-md relative' : ''}>
                   {settings?.planTier === plan.tier && (
-                    <div className="absolute top-0 right-0 transform translate-x-2 -translate-y-2">
+                    <div className="absolute -top-2 -right-2">
                       <Badge className="bg-primary text-primary-foreground">Current</Badge>
                     </div>
                   )}
                   <CardHeader>
                     <CardTitle className="text-xl capitalize">{plan.name}</CardTitle>
-                    <div className="text-3xl font-bold tracking-tight mt-2">${plan.price}<span className="text-sm font-normal text-muted-foreground">/mo</span></div>
+                    <div className="text-3xl font-bold tracking-tight mt-2">
+                      ${plan.price}<span className="text-sm font-normal text-muted-foreground">/mo</span>
+                    </div>
                   </CardHeader>
                   <CardContent>
-                    <ul className="space-y-3 mb-6 text-sm">
-                      {plan.features.map((feature, i) => (
+                    <ul className="space-y-2 mb-6 text-sm">
+                      {(plan.features ?? []).map((feature, i) => (
                         <li key={i} className="flex items-start gap-2">
                           <CheckCircle2 className="w-4 h-4 text-primary shrink-0 mt-0.5" />
                           <span>{feature}</span>
                         </li>
                       ))}
                     </ul>
-                    <Button variant={settings?.planTier === plan.tier ? "outline" : "default"} className="w-full">
-                      {settings?.planTier === plan.tier ? "Manage Plan" : "Upgrade"}
+                    <Button variant={settings?.planTier === plan.tier ? 'outline' : 'default'} className="w-full">
+                      {settings?.planTier === plan.tier ? 'Manage Plan' : 'Upgrade'}
                     </Button>
                   </CardContent>
                 </Card>

@@ -5,12 +5,21 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { CustomerInputCustomFieldValues } from './customerInputCustomFieldValues';
 
 export interface CustomerInput {
   name: string;
   email: string;
   phone: string;
+  secondaryPhone?: string;
   company?: string;
+  customerType?: string;
+  referralSource?: string;
+  billingAddress?: string;
+  billingCity?: string;
+  billingState?: string;
+  billingZip?: string;
   notes?: string;
   tags?: string[];
+  customFieldValues?: CustomerInputCustomFieldValues;
 }

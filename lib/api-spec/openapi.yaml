@@ -1296,13 +1296,31 @@ components:
           type: string
         phone:
           type: string
+        secondaryPhone:
+          type: ["string", "null"]
         company:
+          type: ["string", "null"]
+        customerType:
+          type: ["string", "null"]
+        referralSource:
+          type: ["string", "null"]
+        billingAddress:
+          type: ["string", "null"]
+        billingCity:
+          type: ["string", "null"]
+        billingState:
+          type: ["string", "null"]
+        billingZip:
           type: ["string", "null"]
         notes:
           type: ["string", "null"]
         tags:
           type: array
           items:
+            type: string
+        customFieldValues:
+          type: object
+          additionalProperties:
             type: string
         propertyCount:
           type: integer
@@ -1321,13 +1339,31 @@ components:
           type: string
         phone:
           type: string
+        secondaryPhone:
+          type: string
         company:
+          type: string
+        customerType:
+          type: string
+        referralSource:
+          type: string
+        billingAddress:
+          type: string
+        billingCity:
+          type: string
+        billingState:
+          type: string
+        billingZip:
           type: string
         notes:
           type: string
         tags:
           type: array
           items:
+            type: string
+        customFieldValues:
+          type: object
+          additionalProperties:
             type: string
 
     CustomerUpdate:
@@ -1339,13 +1375,31 @@ components:
           type: string
         phone:
           type: string
+        secondaryPhone:
+          type: string
         company:
+          type: string
+        customerType:
+          type: string
+        referralSource:
+          type: string
+        billingAddress:
+          type: string
+        billingCity:
+          type: string
+        billingState:
+          type: string
+        billingZip:
           type: string
         notes:
           type: string
         tags:
           type: array
           items:
+            type: string
+        customFieldValues:
+          type: object
+          additionalProperties:
             type: string
 
     CustomerListResponse:
@@ -2017,10 +2071,10 @@ components:
         planTier:
           type: string
           enum: [starter, professional, enterprise]
-        customFields:
+        customerFields:
           type: array
           items:
-            $ref: "#/components/schemas/CustomField"
+            $ref: "#/components/schemas/CustomerFieldConfig"
 
     TenantSettingsUpdate:
       type: object
@@ -2039,31 +2093,62 @@ components:
           type: boolean
         taxRate:
           type: number
-        customFields:
+        customerFields:
           type: array
           items:
-            $ref: "#/components/schemas/CustomField"
+            $ref: "#/components/schemas/CustomerFieldConfig"
 
-    CustomField:
+    CustomerFieldConfig:
       type: object
-      required: [id, label, entityType, fieldType, isEnabled]
+      required: [key, label, type, visible, required, isBuiltIn]
       properties:
-        id:
+        key:
           type: string
         label:
           type: string
-        entityType:
+        type:
           type: string
-          enum: [customer, property]
-        fieldType:
-          type: string
-          enum: [text, number, boolean, date, select]
-        isEnabled:
-          type: boolean
+          enum: [text, number, date, select, textarea, boolean]
         options:
           type: array
           items:
             type: string
+        visible:
+          type: boolean
+        required:
+          type: boolean
+        isBuiltIn:
+          type: boolean
+
+    PropertyOwnershipRecord:
+      type: object
+      required: [id, propertyId, transferredAt]
+      properties:
+        id:
+          type: integer
+        propertyId:
+          type: integer
+        previousCustomerId:
+          type: ["integer", "null"]
+        previousCustomerName:
+          type: ["string", "null"]
+        newCustomerId:
+          type: ["integer", "null"]
+        newCustomerName:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        transferredAt:
+          type: string
+
+    PropertyTransferInput:
+      type: object
+      required: [newCustomerId]
+      properties:
+        newCustomerId:
+          type: integer
+        notes:
+          type: string
 
     Plan:
       type: object

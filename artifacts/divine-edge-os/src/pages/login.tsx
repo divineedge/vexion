@@ -1,6 +1,7 @@
 import React from 'react';
 import { useLocation } from 'wouter';
-import { useAuth, MOCK_USERS } from '@/contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { MOCK_USERS } from '@/contexts/mockUsers';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';

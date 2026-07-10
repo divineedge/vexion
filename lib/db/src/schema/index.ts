@@ -2,6 +2,7 @@ export * from "./tenants";
 export * from "./users";
 export * from "./customers";
 export * from "./properties";
+export * from "./propertyHistory";
 export * from "./jobs";
 export * from "./inventory";
 export * from "./invoices";

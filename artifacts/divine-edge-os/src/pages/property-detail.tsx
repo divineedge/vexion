@@ -1,166 +1,573 @@
 import React, { useState } from 'react';
-import { useGetProperty, getGetPropertyQueryKey, useListJobs, getListJobsQueryKey, useUpdateGeofencePin } from '@workspace/api-client-react';
+import {
+  useGetProperty, getGetPropertyQueryKey,
+  useUpdateProperty,
+  useUpdateGeofencePin,
+  useListJobs, getListJobsQueryKey,
+  useListCustomers, getListCustomersQueryKey,
+  useTransferProperty,
+  customFetch,
+} from '@workspace/api-client-react';
 import { useParams, useLocation } from 'wouter';
+import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Edit, MapPin, Navigation, Calendar } from 'lucide-react';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Separator } from '@/components/ui/separator';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  ArrowLeft, Edit, MapPin, Navigation, Calendar, Save, GitMerge,
+  AlertTriangle, Clock, ChevronDown, Check, ArrowRight,
+} from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+
+const STATUS_COLORS: Record<string, string> = {
+  completed: 'bg-emerald-500/10 text-emerald-700 border-transparent',
+  in_progress: 'bg-blue-500/10 text-blue-700 border-transparent',
+  scheduled: 'bg-amber-500/10 text-amber-700 border-transparent',
+  on_hold: 'bg-gray-200 text-gray-600 border-transparent',
+  cancelled: 'bg-red-500/10 text-red-600 border-transparent',
+};
+
+interface OwnershipRecord {
+  id: number;
+  previousCustomerId: number | null;
+  previousCustomerName: string | null;
+  newCustomerId: number | null;
+  newCustomerName: string | null;
+  notes: string | null;
+  transferredAt: string;
+}
 
 export default function PropertyDetailPage() {
   const params = useParams();
   const id = Number(params.id);
   const [, setLocation] = useLocation();
+  const qc = useQueryClient();
 
-  const { data: property, isLoading } = useGetProperty(id, { query: { enabled: !!id, queryKey: getGetPropertyQueryKey(id) } });
-  const { data: jobs } = useListJobs({ propertyId: id }, { query: { enabled: !!id, queryKey: getListJobsQueryKey({ propertyId: id }) } });
-  const updateGeofence = useUpdateGeofencePin();
-
+  const [editing, setEditing] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [ownershipHistory, setOwnershipHistory] = useState<OwnershipRecord[]>([]);
+  const [ownershipLoading, setOwnershipLoading] = useState(false);
+  const [form, setForm] = useState<Record<string, string>>({});
   const [geoInput, setGeoInput] = useState({ lat: '', lng: '', radius: '50' });
+  const [transferForm, setTransferForm] = useState({ newCustomerId: '', notes: '', customerSearch: '' });
+  const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
+
+  const { data: property, isLoading } = useGetProperty(id, {
+    query: { enabled: !!id, queryKey: getGetPropertyQueryKey(id) },
+  });
+  const { data: jobs } = useListJobs(
+    { propertyId: id } as Parameters<typeof useListJobs>[0],
+    { query: { enabled: !!id, queryKey: getListJobsQueryKey({ propertyId: id } as Parameters<typeof useListJobs>[0]) } },
+  );
+  const { data: allCustomers } = useListCustomers(
+    { limit: 200 },
+    { query: { queryKey: getListCustomersQueryKey({ limit: 200 }) } },
+  );
+
+  const updateProperty = useUpdateProperty();
+  const updateGeofence = useUpdateGeofencePin();
+  const transferProperty = useTransferProperty();
 
   React.useEffect(() => {
-    if (property && property.geofenceLat) {
-      setGeoInput({
-        lat: property.geofenceLat.toString(),
-        lng: property.geofenceLng?.toString() || '',
-        radius: (property.geofenceRadius || 50).toString()
+    if (property) {
+      setForm({
+        address: property.address ?? '',
+        city: property.city ?? '',
+        state: property.state ?? '',
+        zip: property.zip ?? '',
+        type: property.type ?? '',
+        notes: property.notes ?? '',
       });
+      if (property.geofenceLat) {
+        setGeoInput({
+          lat: property.geofenceLat.toString(),
+          lng: (property.geofenceLng ?? '').toString(),
+          radius: (property.geofenceRadius ?? 50).toString(),
+        });
+      }
     }
   }, [property]);
+
+  // Load ownership history
+  const loadOwnershipHistory = async () => {
+    if (ownershipHistory.length > 0) return;
+    setOwnershipLoading(true);
+    try {
+      const data = await customFetch<OwnershipRecord[]>(`/api/properties/${id}/ownership-history`);
+      setOwnershipHistory(data);
+    } catch {
+      // silently fail — history tab shows empty state
+    } finally {
+      setOwnershipLoading(false);
+    }
+  };
+
+  const handleSaveEdit = () => {
+    updateProperty.mutate(
+      { id, data: form as Parameters<typeof updateProperty.mutate>[0]['data'] },
+      {
+        onSuccess: () => {
+          toast.success('Property updated');
+          qc.invalidateQueries({ queryKey: getGetPropertyQueryKey(id) });
+          setEditing(false);
+        },
+        onError: () => toast.error('Failed to update property'),
+      },
+    );
+  };
 
   const handleSaveGeofence = () => {
     const lat = parseFloat(geoInput.lat);
     const lng = parseFloat(geoInput.lng);
     const radius = parseFloat(geoInput.radius);
-
-    if (isNaN(lat) || isNaN(lng)) {
-      toast.error('Invalid coordinates');
-      return;
-    }
-
-    updateGeofence.mutate({ id, data: { lat, lng, radius } }, {
-      onSuccess: () => {
-        toast.success('Geofence updated successfully');
-      }
-    });
+    if (isNaN(lat) || isNaN(lng)) { toast.error('Invalid coordinates'); return; }
+    updateGeofence.mutate(
+      { id, data: { lat, lng, radius } },
+      {
+        onSuccess: () => { toast.success('Geofence updated'); qc.invalidateQueries({ queryKey: getGetPropertyQueryKey(id) }); },
+        onError: () => toast.error('Failed to update geofence'),
+      },
+    );
   };
 
+  const handleTransfer = () => {
+    if (!transferForm.newCustomerId) { toast.error('Please select a customer'); return; }
+    transferProperty.mutate(
+      { id, data: { newCustomerId: Number(transferForm.newCustomerId), notes: transferForm.notes || undefined } as Parameters<typeof transferProperty.mutate>[0]['data'] },
+      {
+        onSuccess: (updated) => {
+          toast.success(`Property transferred to ${updated.customerName}`);
+          qc.invalidateQueries({ queryKey: getGetPropertyQueryKey(id) });
+          setOwnershipHistory([]); // reset so it reloads
+          setTransferOpen(false);
+          setTransferForm({ newCustomerId: '', notes: '', customerSearch: '' });
+        },
+        onError: () => toast.error('Transfer failed'),
+      },
+    );
+  };
+
+  const selectedCustomer = allCustomers?.items.find(c => String(c.id) === transferForm.newCustomerId);
+  const filteredCustomers = (allCustomers?.items ?? []).filter(c =>
+    String(c.id) !== String(property?.customerId) &&
+    (c.name.toLowerCase().includes(transferForm.customerSearch.toLowerCase()) ||
+      (c.company ?? '').toLowerCase().includes(transferForm.customerSearch.toLowerCase()))
+  );
+
   if (isLoading) return <div className="p-8 text-center text-muted-foreground">Loading...</div>;
-  if (!property && !isLoading) return <div className="p-8 text-center text-muted-foreground">Property not found.</div>;
+  if (!property) return <div className="p-8 text-center text-muted-foreground">Property not found.</div>;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex items-center gap-4">
+      {/* Header */}
+      <div className="flex items-start gap-4">
         <Button variant="ghost" size="icon" onClick={() => setLocation('/properties')}>
           <ArrowLeft className="w-5 h-5" />
         </Button>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold tracking-tight">{property?.address}</h1>
-          <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
-            <span>{property?.city}, {property?.state} {property?.zip}</span>
-            <span>•</span>
-            <span>Customer: <button onClick={() => setLocation(`/customers/${property?.customerId}`)} className="text-primary hover:underline">{property?.customerName}</button></span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-3">
+            <MapPin className="w-6 h-6 text-primary shrink-0" />
+            <h1 className="text-3xl font-bold tracking-tight truncate">{property.address}</h1>
+          </div>
+          <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground flex-wrap">
+            <span>{[property.city, property.state, property.zip].filter(Boolean).join(', ')}</span>
+            {property.type && <Badge variant="secondary" className="capitalize">{property.type}</Badge>}
+            <span>
+              Owner:{' '}
+              <button
+                className="text-primary hover:underline font-medium"
+                onClick={() => setLocation(`/customers/${property.customerId}`)}
+              >
+                {property.customerName}
+              </button>
+            </span>
           </div>
         </div>
-        <Button variant="outline" className="gap-2">
-          <Edit className="w-4 h-4" /> Edit
-        </Button>
+        <div className="flex gap-2 shrink-0">
+          <Button variant="outline" onClick={() => setTransferOpen(true)} className="gap-2">
+            <GitMerge className="w-4 h-4" /> Transfer
+          </Button>
+          <Button onClick={() => setEditing(true)} className="gap-2">
+            <Edit className="w-4 h-4" /> Edit
+          </Button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Navigation className="w-5 h-5 text-primary" /> Geofence Configuration</CardTitle>
-            <CardDescription>Set the coordinates and radius to automatically detect technician arrivals.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {/* Visual representation using SVG instead of real map */}
-            <div className="w-full h-48 bg-muted/50 rounded-md border border-dashed flex items-center justify-center relative mb-6 overflow-hidden">
-              <svg width="100%" height="100%" className="absolute inset-0 pointer-events-none opacity-20">
-                <defs>
-                  <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-                    <path d="M 20 0 L 0 0 0 20" fill="none" stroke="currentColor" strokeWidth="1"/>
-                  </pattern>
-                </defs>
-                <rect width="100%" height="100%" fill="url(#grid)" />
-              </svg>
-              {property?.geofenceLat ? (
-                <div className="flex flex-col items-center z-10 animate-in zoom-in">
-                  <div className="w-24 h-24 rounded-full bg-primary/20 border border-primary/50 absolute flex items-center justify-center">
-                    <div className="w-2 h-2 bg-primary rounded-full" />
+      <Tabs defaultValue="details" className="w-full" onValueChange={v => { if (v === 'history') loadOwnershipHistory(); }}>
+        <TabsList className="mb-4">
+          <TabsTrigger value="details">Details & Geofence</TabsTrigger>
+          <TabsTrigger value="jobs">Job History ({jobs?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="history">Ownership History</TabsTrigger>
+        </TabsList>
+
+        {/* Details tab */}
+        <TabsContent value="details" className="focus-visible:outline-none space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Info card */}
+            <Card>
+              <CardHeader><CardTitle>Property Information</CardTitle></CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <Row label="Address" value={property.address} />
+                <Row label="City" value={property.city} />
+                <Row label="State" value={property.state} />
+                <Row label="ZIP" value={property.zip} />
+                <Row label="Type" value={property.type} />
+                {property.lat && <Row label="Coordinates" value={`${property.lat?.toFixed(5)}, ${property.lng?.toFixed(5)}`} />}
+                {property.notes && (
+                  <div>
+                    <p className="text-muted-foreground mb-1">Notes</p>
+                    <p className="whitespace-pre-wrap">{property.notes}</p>
                   </div>
-                  <MapPin className="w-8 h-8 text-primary -mt-8" />
-                  <span className="mt-6 font-mono text-xs text-muted-foreground bg-background px-2 py-1 rounded border shadow-sm">
-                    {property.geofenceLat.toFixed(4)}, {property.geofenceLng?.toFixed(4)}
-                  </span>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Geofence card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Navigation className="w-5 h-5 text-primary" /> Geofence
+                </CardTitle>
+                <CardDescription>Set coordinates and radius to detect technician arrivals.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {/* Visual geofence preview */}
+                <div className="w-full h-40 bg-muted/50 rounded-md border border-dashed flex items-center justify-center relative mb-4 overflow-hidden">
+                  <svg width="100%" height="100%" className="absolute inset-0 opacity-10 pointer-events-none">
+                    <defs>
+                      <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                        <path d="M 20 0 L 0 0 0 20" fill="none" stroke="currentColor" strokeWidth="1" />
+                      </pattern>
+                    </defs>
+                    <rect width="100%" height="100%" fill="url(#grid)" />
+                  </svg>
+                  {property.geofenceLat ? (
+                    <div className="flex flex-col items-center z-10">
+                      <div className="w-20 h-20 rounded-full bg-primary/20 border-2 border-primary/40 flex items-center justify-center">
+                        <div className="w-3 h-3 bg-primary rounded-full" />
+                      </div>
+                      <span className="mt-2 font-mono text-xs text-muted-foreground bg-background px-2 py-0.5 rounded border shadow-sm">
+                        {property.geofenceLat.toFixed(4)}, {property.geofenceLng?.toFixed(4)} · {property.geofenceRadius}m
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center text-muted-foreground z-10">
+                      <MapPin className="w-8 h-8 mb-1 opacity-40" />
+                      <span className="text-sm">No pin set</span>
+                    </div>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-3 mb-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium">Latitude</label>
+                    <Input placeholder="34.0522" value={geoInput.lat} onChange={e => setGeoInput(g => ({ ...g, lat: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium">Longitude</label>
+                    <Input placeholder="-118.2437" value={geoInput.lng} onChange={e => setGeoInput(g => ({ ...g, lng: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium">Radius (m)</label>
+                    <Input type="number" placeholder="50" value={geoInput.radius} onChange={e => setGeoInput(g => ({ ...g, radius: e.target.value }))} />
+                  </div>
+                </div>
+                <Button onClick={handleSaveGeofence} disabled={updateGeofence.isPending} className="w-full">
+                  {updateGeofence.isPending ? 'Saving...' : 'Set Geofence Pin'}
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* Jobs tab */}
+        <TabsContent value="jobs" className="focus-visible:outline-none">
+          <Card>
+            <CardHeader><CardTitle>Job History at This Property</CardTitle></CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Title</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Scheduled</TableHead>
+                    <TableHead>Assignee</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(jobs ?? []).map(job => (
+                    <TableRow key={job.id} className="hover:bg-muted/50">
+                      <TableCell className="font-medium">{job.title}</TableCell>
+                      <TableCell>
+                        <Badge className={`capitalize ${STATUS_COLORS[job.status] ?? ''}`}>
+                          {job.status.replace(/_/g, ' ')}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {new Date(job.scheduledAt).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="text-sm">{job.assigneeName ?? '-'}</TableCell>
+                      <TableCell className="text-right font-medium">${(job.totalAmount ?? 0).toLocaleString()}</TableCell>
+                    </TableRow>
+                  ))}
+                  {!jobs?.length && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
+                        <Calendar className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                        No jobs recorded at this property.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Ownership History tab */}
+        <TabsContent value="history" className="focus-visible:outline-none">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="w-5 h-5" /> Ownership History
+              </CardTitle>
+              <CardDescription>
+                Full record of every customer who has owned this property. Job history is preserved across transfers.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {ownershipLoading ? (
+                <div className="text-center py-8 text-muted-foreground">Loading history...</div>
+              ) : ownershipHistory.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Clock className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                  <p>No transfer history. This property has always been owned by{' '}
+                    <button className="text-primary hover:underline" onClick={() => setLocation(`/customers/${property.customerId}`)}>
+                      {property.customerName}
+                    </button>.
+                  </p>
                 </div>
               ) : (
-                <div className="flex flex-col items-center text-muted-foreground z-10">
-                  <MapPin className="w-8 h-8 mb-2 opacity-50" />
-                  <span>No pin set</span>
+                <div className="space-y-3">
+                  {/* Current owner */}
+                  <div className="flex items-center gap-4 p-4 rounded-lg border border-primary/20 bg-primary/5">
+                    <div className="w-2.5 h-2.5 rounded-full bg-primary shrink-0" />
+                    <div className="flex-1">
+                      <p className="font-medium">
+                        <button className="text-primary hover:underline" onClick={() => setLocation(`/customers/${property.customerId}`)}>
+                          {property.customerName}
+                        </button>
+                      </p>
+                      <p className="text-xs text-muted-foreground">Current owner</p>
+                    </div>
+                    <Badge variant="secondary">Current</Badge>
+                  </div>
+                  {/* Transfer history */}
+                  {ownershipHistory.map(h => (
+                    <div key={h.id} className="flex items-start gap-4 p-4 rounded-lg border bg-muted/30">
+                      <ArrowRight className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center gap-2 text-sm">
+                          <button className="font-medium hover:text-primary hover:underline" onClick={() => setLocation(`/customers/${h.previousCustomerId}`)}>
+                            {h.previousCustomerName ?? 'Unknown'}
+                          </button>
+                          <ArrowRight className="w-3 h-3 text-muted-foreground" />
+                          <button className="font-medium hover:text-primary hover:underline" onClick={() => setLocation(`/customers/${h.newCustomerId}`)}>
+                            {h.newCustomerName ?? 'Unknown'}
+                          </button>
+                        </div>
+                        {h.notes && <p className="text-xs text-muted-foreground">{h.notes}</p>}
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(h.transferredAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Edit Property Sheet */}
+      <Sheet open={editing} onOpenChange={setEditing}>
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+          <SheetHeader className="pb-4">
+            <SheetTitle>Edit Property</SheetTitle>
+            <SheetDescription>Update property details and address information.</SheetDescription>
+          </SheetHeader>
+          <div className="space-y-4 pb-6">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Street Address <span className="text-destructive">*</span></label>
+              <Input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} placeholder="123 Main St" />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-1 space-y-1.5">
+                <label className="text-sm font-medium">City</label>
+                <Input value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} placeholder="Los Angeles" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">State</label>
+                <Input value={form.state} onChange={e => setForm(f => ({ ...f, state: e.target.value }))} placeholder="CA" maxLength={2} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">ZIP</label>
+                <Input value={form.zip} onChange={e => setForm(f => ({ ...f, zip: e.target.value }))} placeholder="90210" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Property Type</label>
+              <Select value={form.type} onValueChange={v => setForm(f => ({ ...f, type: v }))}>
+                <SelectTrigger><SelectValue placeholder="Select type..." /></SelectTrigger>
+                <SelectContent>
+                  {['residential', 'commercial', 'hoa', 'industrial', 'other'].map(t => (
+                    <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Notes</label>
+              <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Gate code, access instructions, special notes..." className="min-h-[100px]" />
+            </div>
+            <Separator />
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" onClick={() => setEditing(false)}>Cancel</Button>
+              <Button onClick={handleSaveEdit} disabled={updateProperty.isPending} className="gap-2">
+                <Save className="w-4 h-4" />
+                {updateProperty.isPending ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Transfer Property Sheet */}
+      <Sheet open={transferOpen} onOpenChange={setTransferOpen}>
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+          <SheetHeader className="pb-4">
+            <SheetTitle className="flex items-center gap-2">
+              <GitMerge className="w-5 h-5" /> Transfer Property
+            </SheetTitle>
+            <SheetDescription>
+              Move this property to a different customer. All job history will be preserved on the property record. The previous owner's timeline will show that they once owned this property.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="space-y-5 pb-6">
+            {/* Current owner */}
+            <div className="rounded-lg border p-4 bg-muted/30 space-y-1">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Current Owner</p>
+              <p className="font-semibold">{property.customerName}</p>
             </div>
 
-            <div className="grid grid-cols-3 gap-4 mb-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Latitude</label>
-                <Input placeholder="e.g. 34.0522" value={geoInput.lat} onChange={(e) => setGeoInput({ ...geoInput, lat: e.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Longitude</label>
-                <Input placeholder="e.g. -118.2437" value={geoInput.lng} onChange={(e) => setGeoInput({ ...geoInput, lng: e.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Radius (m)</label>
-                <Input type="number" placeholder="50" value={geoInput.radius} onChange={(e) => setGeoInput({ ...geoInput, radius: e.target.value })} />
-              </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="flex-1 border-t" />
+              <ArrowRight className="w-4 h-4 shrink-0" />
+              <div className="flex-1 border-t" />
             </div>
-            <Button onClick={handleSaveGeofence} disabled={updateGeofence.isPending} className="w-full">
-              {updateGeofence.isPending ? "Saving..." : "Set Geofence Pin"}
-            </Button>
-          </CardContent>
-        </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Job History at Property</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Date</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {jobs?.map((job) => (
-                  <TableRow key={job.id}>
-                    <TableCell className="font-medium">{job.title}</TableCell>
-                    <TableCell>
-                      <Badge variant={job.status === 'completed' ? 'default' : 'secondary'} className="capitalize">
-                        {job.status.replace('_', ' ')}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground flex items-center gap-2">
-                      <Calendar className="w-3 h-3" /> {new Date(job.scheduledAt).toLocaleDateString()}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {!jobs?.length && (
-                  <TableRow>
-                    <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">No jobs recorded for this property.</TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      </div>
+            {/* New owner picker */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Transfer To <span className="text-destructive">*</span></label>
+              <Popover open={customerPickerOpen} onOpenChange={setCustomerPickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" role="combobox" className="w-full justify-between font-normal">
+                    {selectedCustomer ? (
+                      <span>
+                        {selectedCustomer.name}
+                        {selectedCustomer.company && <span className="text-muted-foreground ml-2">· {selectedCustomer.company}</span>}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">Search for a customer...</span>
+                    )}
+                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-full p-0" align="start">
+                  <Command>
+                    <CommandInput
+                      placeholder="Search customers..."
+                      value={transferForm.customerSearch}
+                      onValueChange={v => setTransferForm(f => ({ ...f, customerSearch: v }))}
+                    />
+                    <CommandEmpty>No customers found.</CommandEmpty>
+                    <CommandGroup className="max-h-60 overflow-y-auto">
+                      {filteredCustomers.slice(0, 50).map(c => (
+                        <CommandItem
+                          key={c.id}
+                          value={String(c.id)}
+                          onSelect={() => {
+                            setTransferForm(f => ({ ...f, newCustomerId: String(c.id), customerSearch: '' }));
+                            setCustomerPickerOpen(false);
+                          }}
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", transferForm.newCustomerId === String(c.id) ? 'opacity-100' : 'opacity-0')} />
+                          <div>
+                            <div className="font-medium">{c.name}</div>
+                            {c.company && <div className="text-xs text-muted-foreground">{c.company}</div>}
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Transfer Notes</label>
+              <Textarea
+                value={transferForm.notes}
+                onChange={e => setTransferForm(f => ({ ...f, notes: e.target.value }))}
+                placeholder="Reason for transfer, sale details, etc..."
+                className="min-h-[80px]"
+              />
+            </div>
+
+            {/* Warning */}
+            <div className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 p-3">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                This action will reassign the property to the new customer. All existing jobs and history remain linked to this property and will be visible in the new owner's property view.
+              </p>
+            </div>
+
+            <Separator />
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" onClick={() => setTransferOpen(false)}>Cancel</Button>
+              <Button
+                onClick={handleTransfer}
+                disabled={!transferForm.newCustomerId || transferProperty.isPending}
+                className="gap-2"
+              >
+                <GitMerge className="w-4 h-4" />
+                {transferProperty.isPending ? 'Transferring...' : 'Confirm Transfer'}
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </div>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string | null | undefined }) {
+  if (!value) return null;
+  return (
+    <div className="flex gap-2">
+      <span className="text-muted-foreground min-w-[100px] shrink-0">{label}</span>
+      <span className="font-medium">{value}</span>
     </div>
   );
 }

@@ -6,13 +6,14 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type CustomFieldFieldType = typeof CustomFieldFieldType[keyof typeof CustomFieldFieldType];
+export type CustomerFieldConfigType = typeof CustomerFieldConfigType[keyof typeof CustomerFieldConfigType];
 
 
-export const CustomFieldFieldType = {
+export const CustomerFieldConfigType = {
   text: 'text',
   number: 'number',
-  boolean: 'boolean',
   date: 'date',
   select: 'select',
+  textarea: 'textarea',
+  boolean: 'boolean',
 } as const;

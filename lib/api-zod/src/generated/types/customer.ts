@@ -5,6 +5,7 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { CustomerCustomFieldValues } from './customerCustomFieldValues';
 
 export interface Customer {
   id: number;
@@ -13,10 +14,25 @@ export interface Customer {
   email: string;
   phone: string;
   /** @nullable */
+  secondaryPhone?: string | null;
+  /** @nullable */
   company?: string | null;
+  /** @nullable */
+  customerType?: string | null;
+  /** @nullable */
+  referralSource?: string | null;
+  /** @nullable */
+  billingAddress?: string | null;
+  /** @nullable */
+  billingCity?: string | null;
+  /** @nullable */
+  billingState?: string | null;
+  /** @nullable */
+  billingZip?: string | null;
   /** @nullable */
   notes?: string | null;
   tags?: string[];
+  customFieldValues?: CustomerCustomFieldValues;
   propertyCount?: number;
   totalSpend?: number;
   createdAt: string;

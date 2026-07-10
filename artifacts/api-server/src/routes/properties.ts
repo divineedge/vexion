@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
-import { db, propertiesTable, customersTable } from "@workspace/db";
-import { eq, and, ilike, sql } from "drizzle-orm";
-import { getTenantId } from "../lib/tenantHelper";
+import { db, propertiesTable, customersTable, propertyOwnershipHistoryTable, activityLogTable } from "@workspace/db";
+import { eq, and, ilike, sql, desc } from "drizzle-orm";
+import { getTenantId, getUserId } from "../lib/tenantHelper";
 
 const router: IRouter = Router();
 
@@ -118,6 +118,81 @@ router.patch("/properties/:id/geofence", async (req, res): Promise<void> => {
 
   const [row] = await db.select({ customerName: customersTable.name }).from(customersTable).where(eq(customersTable.id, updated.customerId));
   res.json(formatProperty(updated, row?.customerName));
+});
+
+// Transfer property to a new customer
+router.post("/properties/:id/transfer", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+
+  const { newCustomerId, notes } = req.body;
+  if (!newCustomerId) { res.status(400).json({ error: "newCustomerId is required" }); return; }
+
+  const [property] = await db.select().from(propertiesTable).where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId)));
+  if (!property) { res.status(404).json({ error: "Property not found" }); return; }
+
+  const newCustId = parseInt(newCustomerId, 10);
+  const [newCustomer] = await db.select().from(customersTable).where(and(eq(customersTable.id, newCustId), eq(customersTable.tenantId, tenantId)));
+  if (!newCustomer) { res.status(404).json({ error: "New customer not found" }); return; }
+
+  // All three writes are atomic in one transaction
+  const result = await db.transaction(async (tx) => {
+    await tx.insert(propertyOwnershipHistoryTable).values({
+      tenantId,
+      propertyId: id,
+      previousCustomerId: property.customerId,
+      newCustomerId: newCustId,
+      transferredByUserId: userId,
+      notes: notes ?? null,
+    });
+
+    const [updated] = await tx.update(propertiesTable)
+      .set({ customerId: newCustId })
+      .where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId)))
+      .returning();
+
+    await tx.insert(activityLogTable).values({
+      tenantId, userId,
+      type: "property_transferred",
+      message: `Property "${updated.address}" transferred to ${newCustomer.name}`,
+      entityId: id,
+    });
+
+    return updated;
+  });
+
+  res.json(formatProperty(result, newCustomer.name));
+});
+
+// Ownership history for a property
+router.get("/properties/:id/ownership-history", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+
+  const rows = await db
+    .select({
+      history: propertyOwnershipHistoryTable,
+      prevName: sql<string | null>`prev_cust.name`,
+      newName: sql<string | null>`new_cust.name`,
+    })
+    .from(propertyOwnershipHistoryTable)
+    .leftJoin(sql`customers prev_cust`, sql`prev_cust.id = ${propertyOwnershipHistoryTable.previousCustomerId}`)
+    .leftJoin(sql`customers new_cust`, sql`new_cust.id = ${propertyOwnershipHistoryTable.newCustomerId}`)
+    .where(and(eq(propertyOwnershipHistoryTable.tenantId, tenantId), eq(propertyOwnershipHistoryTable.propertyId, id)))
+    .orderBy(desc(propertyOwnershipHistoryTable.transferredAt));
+
+  res.json(rows.map(r => ({
+    id: r.history.id,
+    previousCustomerId: r.history.previousCustomerId,
+    previousCustomerName: r.prevName ?? null,
+    newCustomerId: r.history.newCustomerId,
+    newCustomerName: r.newName ?? null,
+    notes: r.history.notes,
+    transferredAt: r.history.transferredAt.toISOString(),
+  })));
 });
 
 export default router;

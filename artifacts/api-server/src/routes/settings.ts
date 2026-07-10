@@ -11,6 +11,7 @@ router.get("/settings", async (req, res): Promise<void> => {
   const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
   if (!tenant) { res.status(404).json({ error: "Tenant not found" }); return; }
 
+  const cfJson = tenant.customFields as Record<string, unknown> | null;
   res.json({
     id: tenant.id,
     tenantId: tenant.id,
@@ -23,13 +24,13 @@ router.get("/settings", async (req, res): Promise<void> => {
     quickbooksEnabled: tenant.quickbooksEnabled,
     taxRate: tenant.taxRate,
     planTier: tenant.planTier as "starter" | "professional" | "enterprise",
-    customFields: (tenant.customFields as unknown[]) ?? [],
+    customerFields: (cfJson?.customerFields as unknown[]) ?? [],
   });
 });
 
 router.patch("/settings", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { companyName, timezone, workdayCutoffTime, overageMaterialBuffer, stripeEnabled, quickbooksEnabled, taxRate, customFields } = req.body;
+  const { companyName, timezone, workdayCutoffTime, overageMaterialBuffer, stripeEnabled, quickbooksEnabled, taxRate, customerFields } = req.body;
 
   const updates: Partial<typeof tenantsTable.$inferInsert> = {};
   if (companyName) updates.name = companyName;
@@ -39,11 +40,17 @@ router.patch("/settings", async (req, res): Promise<void> => {
   if (stripeEnabled !== undefined) updates.stripeEnabled = stripeEnabled;
   if (quickbooksEnabled !== undefined) updates.quickbooksEnabled = quickbooksEnabled;
   if (taxRate !== undefined) updates.taxRate = taxRate;
-  if (customFields !== undefined) updates.customFields = customFields;
+  if (customerFields !== undefined) {
+    // Merge into the JSONB column so other keys (future extensions) are preserved
+    const [existing] = await db.select({ customFields: tenantsTable.customFields }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+    const prev = (existing?.customFields as Record<string, unknown>) ?? {};
+    updates.customFields = { ...prev, customerFields };
+  }
 
   const [updated] = await db.update(tenantsTable).set(updates).where(eq(tenantsTable.id, tenantId)).returning();
   if (!updated) { res.status(404).json({ error: "Tenant not found" }); return; }
 
+  const cfJson = updated.customFields as Record<string, unknown> | null;
   res.json({
     id: updated.id,
     tenantId: updated.id,
@@ -56,7 +63,7 @@ router.patch("/settings", async (req, res): Promise<void> => {
     quickbooksEnabled: updated.quickbooksEnabled,
     taxRate: updated.taxRate,
     planTier: updated.planTier as "starter" | "professional" | "enterprise",
-    customFields: (updated.customFields as unknown[]) ?? [],
+    customerFields: (cfJson?.customerFields as unknown[]) ?? [],
   });
 });
 

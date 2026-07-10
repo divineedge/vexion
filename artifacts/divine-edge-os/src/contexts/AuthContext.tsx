@@ -1,20 +1,18 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode } from 'react';
+import { setDefaultHeaders } from '@workspace/api-client-react';
+import type { MockUser } from './mockUsers';
 
-export type MockUser = {
-  id: number;
-  name: string;
-  email: string;
-  role: 'company_owner' | 'office_manager' | 'technician';
-  planTier: 'enterprise' | 'professional' | 'starter';
-  tenantId: number;
-  avatarUrl?: string;
-};
 
-export const MOCK_USERS: MockUser[] = [
-  { id: 1, name: 'Mike Torres', email: 'mike@divineedge.com', role: 'company_owner', planTier: 'enterprise', tenantId: 100 },
-  { id: 2, name: 'Sarah Chen', email: 'sarah@divineedge.com', role: 'office_manager', planTier: 'professional', tenantId: 100 },
-  { id: 3, name: 'Jake Rivera', email: 'jake@divineedge.com', role: 'technician', planTier: 'starter', tenantId: 100 },
-];
+function applyUserHeaders(u: MockUser | null) {
+  if (u) {
+    setDefaultHeaders({
+      'x-tenant-id': String(u.tenantId),
+      'x-user-id': String(u.id),
+    });
+  } else {
+    setDefaultHeaders({});
+  }
+}
 
 interface AuthContextType {
   user: MockUser | null;
@@ -31,20 +29,28 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<MockUser | null>(() => {
-    const stored = localStorage.getItem('divine_edge_user');
-    return stored ? JSON.parse(stored) : null;
+    try {
+      const stored = localStorage.getItem('divine_edge_user');
+      if (!stored) return null;
+      const u: MockUser = JSON.parse(stored);
+      // Apply headers immediately so the first queries after page load are authenticated
+      applyUserHeaders(u);
+      return u;
+    } catch {
+      return null;
+    }
   });
 
   const login = (u: MockUser) => {
     setUser(u);
     localStorage.setItem('divine_edge_user', JSON.stringify(u));
-    // Provide a way to inject these globally if possible, but customFetch might not support it cleanly
-    // For now we'll set it in localStorage which interceptors might read, or just rely on the mock.
+    applyUserHeaders(u);
   };
 
   const logout = () => {
     setUser(null);
     localStorage.removeItem('divine_edge_user');
+    applyUserHeaders(null);
   };
 
   return (

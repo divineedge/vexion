@@ -53,6 +53,7 @@ export default function TimeTrackingPage() {
       return () => clearInterval(interval);
     } else {
       setLiveMasterSeconds(0);
+      return undefined;
     }
   }, [masterClock]);
 

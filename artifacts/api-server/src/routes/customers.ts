@@ -1,9 +1,33 @@
 import { Router, type IRouter } from "express";
-import { db, customersTable, propertiesTable, jobsTable } from "@workspace/db";
-import { eq, and, ilike, sql } from "drizzle-orm";
-import { getTenantId } from "../lib/tenantHelper";
+import { db, customersTable, propertiesTable, jobsTable, invoicesTable, activityLogTable, propertyOwnershipHistoryTable } from "@workspace/db";
+import { eq, and, ilike, sql, desc } from "drizzle-orm";
+import { getTenantId, getUserId } from "../lib/tenantHelper";
 
 const router: IRouter = Router();
+
+function formatCustomer(c: typeof customersTable.$inferSelect, extras?: { propertyCount?: number }) {
+  return {
+    id: c.id,
+    tenantId: c.tenantId,
+    name: c.name,
+    email: c.email,
+    phone: c.phone,
+    secondaryPhone: c.secondaryPhone ?? null,
+    company: c.company ?? null,
+    customerType: c.customerType ?? null,
+    referralSource: c.referralSource ?? null,
+    billingAddress: c.billingAddress ?? null,
+    billingCity: c.billingCity ?? null,
+    billingState: c.billingState ?? null,
+    billingZip: c.billingZip ?? null,
+    notes: c.notes ?? null,
+    tags: c.tags ?? [],
+    customFieldValues: (c.customFieldValues as Record<string, unknown>) ?? {},
+    totalSpend: c.totalSpend,
+    propertyCount: extras?.propertyCount ?? 0,
+    createdAt: c.createdAt.toISOString(),
+  };
+}
 
 router.get("/customers", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
@@ -28,7 +52,6 @@ router.get("/customers", async (req, res): Promise<void> => {
     .limit(limitNum)
     .offset(offset);
 
-  // Get property counts
   const propCounts = await db
     .select({ customerId: propertiesTable.customerId, count: sql<number>`count(*)::int` })
     .from(propertiesTable)
@@ -38,14 +61,7 @@ router.get("/customers", async (req, res): Promise<void> => {
   const propMap = Object.fromEntries(propCounts.map(p => [p.customerId, p.count]));
 
   res.json({
-    items: rows.map(c => ({
-      ...c,
-      tags: c.tags ?? [],
-      propertyCount: propMap[c.id] ?? 0,
-      totalSpend: c.totalSpend,
-      createdAt: c.createdAt.toISOString(),
-      updatedAt: undefined,
-    })),
+    items: rows.map(c => formatCustomer(c, { propertyCount: propMap[c.id] ?? 0 })),
     total: count,
     page: pageNum,
     limit: limitNum,
@@ -54,23 +70,34 @@ router.get("/customers", async (req, res): Promise<void> => {
 
 router.post("/customers", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { name, email, phone, company, notes, tags } = req.body;
+  const userId = getUserId(req);
+  const {
+    name, email, phone, secondaryPhone, company, customerType, referralSource,
+    billingAddress, billingCity, billingState, billingZip, notes, tags, customFieldValues,
+  } = req.body;
   if (!name || !email || !phone) {
     res.status(400).json({ error: "name, email, phone are required" });
     return;
   }
 
   const [customer] = await db.insert(customersTable).values({
-    tenantId,
-    name,
-    email,
-    phone,
+    tenantId, name, email, phone,
+    secondaryPhone: secondaryPhone ?? null,
     company: company ?? null,
+    customerType: customerType ?? null,
+    referralSource: referralSource ?? null,
+    billingAddress: billingAddress ?? null,
+    billingCity: billingCity ?? null,
+    billingState: billingState ?? null,
+    billingZip: billingZip ?? null,
     notes: notes ?? null,
     tags: tags ?? [],
+    customFieldValues: customFieldValues ?? {},
   }).returning();
 
-  res.status(201).json({ ...customer, propertyCount: 0, tags: customer.tags ?? [], createdAt: customer.createdAt.toISOString() });
+  await db.insert(activityLogTable).values({ tenantId, userId, type: "customer_added", message: `New customer "${name}" added`, entityId: customer.id });
+
+  res.status(201).json(formatCustomer(customer, { propertyCount: 0 }));
 });
 
 router.get("/customers/:id", async (req, res): Promise<void> => {
@@ -83,7 +110,7 @@ router.get("/customers/:id", async (req, res): Promise<void> => {
 
   const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(propertiesTable).where(and(eq(propertiesTable.customerId, id), eq(propertiesTable.tenantId, tenantId)));
 
-  res.json({ ...customer, tags: customer.tags ?? [], propertyCount: count, createdAt: customer.createdAt.toISOString() });
+  res.json(formatCustomer(customer, { propertyCount: count }));
 });
 
 router.patch("/customers/:id", async (req, res): Promise<void> => {
@@ -91,26 +118,103 @@ router.patch("/customers/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const { name, email, phone, company, notes, tags } = req.body;
+  const {
+    name, email, phone, secondaryPhone, company, customerType, referralSource,
+    billingAddress, billingCity, billingState, billingZip, notes, tags, customFieldValues,
+  } = req.body;
+
+  const updates: Partial<typeof customersTable.$inferInsert> = {};
+  if (name) updates.name = name;
+  if (email) updates.email = email;
+  if (phone) updates.phone = phone;
+  if (secondaryPhone !== undefined) updates.secondaryPhone = secondaryPhone;
+  if (company !== undefined) updates.company = company;
+  if (customerType !== undefined) updates.customerType = customerType;
+  if (referralSource !== undefined) updates.referralSource = referralSource;
+  if (billingAddress !== undefined) updates.billingAddress = billingAddress;
+  if (billingCity !== undefined) updates.billingCity = billingCity;
+  if (billingState !== undefined) updates.billingState = billingState;
+  if (billingZip !== undefined) updates.billingZip = billingZip;
+  if (notes !== undefined) updates.notes = notes;
+  if (tags !== undefined) updates.tags = tags;
+  if (customFieldValues !== undefined) updates.customFieldValues = customFieldValues;
 
   const [updated] = await db.update(customersTable)
-    .set({ ...(name && { name }), ...(email && { email }), ...(phone && { phone }), ...(company !== undefined && { company }), ...(notes !== undefined && { notes }), ...(tags !== undefined && { tags }) })
+    .set(updates)
     .where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)))
     .returning();
 
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
 
   const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(propertiesTable).where(and(eq(propertiesTable.customerId, id), eq(propertiesTable.tenantId, tenantId)));
-  res.json({ ...updated, tags: updated.tags ?? [], propertyCount: count, createdAt: updated.createdAt.toISOString() });
+  res.json(formatCustomer(updated, { propertyCount: count }));
 });
 
 router.delete("/customers/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
-
   await db.delete(customersTable).where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)));
   res.sendStatus(204);
+});
+
+// Property history — properties this customer previously owned
+router.get("/customers/:id/property-history", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+
+  const rows = await db
+    .select({
+      history: propertyOwnershipHistoryTable,
+      propertyAddress: propertiesTable.address,
+      propertyCity: propertiesTable.city,
+      propertyState: propertiesTable.state,
+      newCustomerName: customersTable.name,
+    })
+    .from(propertyOwnershipHistoryTable)
+    .leftJoin(propertiesTable, eq(propertyOwnershipHistoryTable.propertyId, propertiesTable.id))
+    .leftJoin(customersTable, eq(propertyOwnershipHistoryTable.newCustomerId, customersTable.id))
+    .where(and(
+      eq(propertyOwnershipHistoryTable.tenantId, tenantId),
+      eq(propertyOwnershipHistoryTable.previousCustomerId, id)
+    ))
+    .orderBy(desc(propertyOwnershipHistoryTable.transferredAt));
+
+  res.json(rows.map(r => ({
+    id: r.history.id,
+    propertyId: r.history.propertyId,
+    propertyAddress: r.propertyAddress,
+    propertyCity: r.propertyCity,
+    propertyState: r.propertyState,
+    newCustomerId: r.history.newCustomerId,
+    newCustomerName: r.newCustomerName,
+    notes: r.history.notes,
+    transferredAt: r.history.transferredAt.toISOString(),
+  })));
+});
+
+// Invoice history for customer
+router.get("/customers/:id/invoices", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+
+  const rows = await db
+    .select()
+    .from(invoicesTable)
+    .where(and(eq(invoicesTable.tenantId, tenantId), eq(invoicesTable.customerId, id)))
+    .orderBy(desc(invoicesTable.createdAt));
+
+  res.json(rows.map(i => ({
+    id: i.id,
+    invoiceNumber: i.invoiceNumber,
+    status: i.status,
+    total: i.total,
+    dueDate: i.dueDate?.toISOString() ?? null,
+    paidAt: i.paidAt?.toISOString() ?? null,
+    createdAt: i.createdAt.toISOString(),
+  })));
 });
 
 export default router;

@@ -31,52 +31,34 @@ const queryClient = new QueryClient({
   },
 });
 
+function ProtectedRoutes() {
+  return (
+    <AppLayout>
+      <Switch>
+        <Route path="/dashboard" component={DashboardPage} />
+        <Route path="/customers/:id" component={CustomerDetailPage} />
+        <Route path="/customers" component={CustomersPage} />
+        <Route path="/properties/:id" component={PropertyDetailPage} />
+        <Route path="/properties" component={PropertiesPage} />
+        <Route path="/schedule" component={SchedulePage} />
+        <Route path="/inventory" component={InventoryPage} />
+        <Route path="/financials" component={FinancialsPage} />
+        <Route path="/daily-routines" component={DailyRoutinesPage} />
+        <Route path="/time-tracking" component={TimeTrackingPage} />
+        <Route path="/blueprints/:id" component={BlueprintCanvasPage} />
+        <Route path="/blueprints" component={BlueprintsPage} />
+        <Route path="/settings" component={SettingsPage} />
+        <Route component={NotFound} />
+      </Switch>
+    </AppLayout>
+  );
+}
+
 function Router() {
   return (
     <Switch>
       <Route path="/login" component={LoginPage} />
-      
-      <Route path="/">
-        <AppLayout>
-          <Switch>
-            <Route path="/dashboard" component={DashboardPage} />
-            <Route path="/customers" component={CustomersPage} />
-            <Route path="/customers/:id" component={CustomerDetailPage} />
-            <Route path="/properties" component={PropertiesPage} />
-            <Route path="/properties/:id" component={PropertyDetailPage} />
-            <Route path="/schedule" component={SchedulePage} />
-            <Route path="/inventory" component={InventoryPage} />
-            <Route path="/financials" component={FinancialsPage} />
-            <Route path="/daily-routines" component={DailyRoutinesPage} />
-            <Route path="/time-tracking" component={TimeTrackingPage} />
-            <Route path="/blueprints" component={BlueprintsPage} />
-            <Route path="/blueprints/:id" component={BlueprintCanvasPage} />
-            <Route path="/settings" component={SettingsPage} />
-            <Route component={NotFound} />
-          </Switch>
-        </AppLayout>
-      </Route>
-      
-      <Route path="/:rest*">
-        <AppLayout>
-          <Switch>
-            <Route path="/dashboard" component={DashboardPage} />
-            <Route path="/customers" component={CustomersPage} />
-            <Route path="/customers/:id" component={CustomerDetailPage} />
-            <Route path="/properties" component={PropertiesPage} />
-            <Route path="/properties/:id" component={PropertyDetailPage} />
-            <Route path="/schedule" component={SchedulePage} />
-            <Route path="/inventory" component={InventoryPage} />
-            <Route path="/financials" component={FinancialsPage} />
-            <Route path="/daily-routines" component={DailyRoutinesPage} />
-            <Route path="/time-tracking" component={TimeTrackingPage} />
-            <Route path="/blueprints" component={BlueprintsPage} />
-            <Route path="/blueprints/:id" component={BlueprintCanvasPage} />
-            <Route path="/settings" component={SettingsPage} />
-            <Route component={NotFound} />
-          </Switch>
-        </AppLayout>
-      </Route>
+      <Route component={ProtectedRoutes} />
     </Switch>
   );
 }

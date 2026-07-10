@@ -127,9 +127,17 @@ export const ListCustomersResponse = zod.object({
   "name": zod.string(),
   "email": zod.string(),
   "phone": zod.string(),
+  "secondaryPhone": zod.string().nullish(),
   "company": zod.string().nullish(),
+  "customerType": zod.string().nullish(),
+  "referralSource": zod.string().nullish(),
+  "billingAddress": zod.string().nullish(),
+  "billingCity": zod.string().nullish(),
+  "billingState": zod.string().nullish(),
+  "billingZip": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()).optional(),
+  "customFieldValues": zod.record(zod.string(), zod.string()).optional(),
   "propertyCount": zod.number().optional(),
   "totalSpend": zod.number().optional(),
   "createdAt": zod.string()
@@ -147,9 +155,17 @@ export const CreateCustomerBody = zod.object({
   "name": zod.string(),
   "email": zod.string(),
   "phone": zod.string(),
+  "secondaryPhone": zod.string().optional(),
   "company": zod.string().optional(),
+  "customerType": zod.string().optional(),
+  "referralSource": zod.string().optional(),
+  "billingAddress": zod.string().optional(),
+  "billingCity": zod.string().optional(),
+  "billingState": zod.string().optional(),
+  "billingZip": zod.string().optional(),
   "notes": zod.string().optional(),
-  "tags": zod.array(zod.string()).optional()
+  "tags": zod.array(zod.string()).optional(),
+  "customFieldValues": zod.record(zod.string(), zod.string()).optional()
 })
 
 export const CreateCustomerResponse = zod.object({
@@ -158,9 +174,17 @@ export const CreateCustomerResponse = zod.object({
   "name": zod.string(),
   "email": zod.string(),
   "phone": zod.string(),
+  "secondaryPhone": zod.string().nullish(),
   "company": zod.string().nullish(),
+  "customerType": zod.string().nullish(),
+  "referralSource": zod.string().nullish(),
+  "billingAddress": zod.string().nullish(),
+  "billingCity": zod.string().nullish(),
+  "billingState": zod.string().nullish(),
+  "billingZip": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()).optional(),
+  "customFieldValues": zod.record(zod.string(), zod.string()).optional(),
   "propertyCount": zod.number().optional(),
   "totalSpend": zod.number().optional(),
   "createdAt": zod.string()
@@ -180,9 +204,17 @@ export const GetCustomerResponse = zod.object({
   "name": zod.string(),
   "email": zod.string(),
   "phone": zod.string(),
+  "secondaryPhone": zod.string().nullish(),
   "company": zod.string().nullish(),
+  "customerType": zod.string().nullish(),
+  "referralSource": zod.string().nullish(),
+  "billingAddress": zod.string().nullish(),
+  "billingCity": zod.string().nullish(),
+  "billingState": zod.string().nullish(),
+  "billingZip": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()).optional(),
+  "customFieldValues": zod.record(zod.string(), zod.string()).optional(),
   "propertyCount": zod.number().optional(),
   "totalSpend": zod.number().optional(),
   "createdAt": zod.string()
@@ -200,9 +232,17 @@ export const UpdateCustomerBody = zod.object({
   "name": zod.string().optional(),
   "email": zod.string().optional(),
   "phone": zod.string().optional(),
+  "secondaryPhone": zod.string().optional(),
   "company": zod.string().optional(),
+  "customerType": zod.string().optional(),
+  "referralSource": zod.string().optional(),
+  "billingAddress": zod.string().optional(),
+  "billingCity": zod.string().optional(),
+  "billingState": zod.string().optional(),
+  "billingZip": zod.string().optional(),
   "notes": zod.string().optional(),
-  "tags": zod.array(zod.string()).optional()
+  "tags": zod.array(zod.string()).optional(),
+  "customFieldValues": zod.record(zod.string(), zod.string()).optional()
 })
 
 export const UpdateCustomerResponse = zod.object({
@@ -211,9 +251,17 @@ export const UpdateCustomerResponse = zod.object({
   "name": zod.string(),
   "email": zod.string(),
   "phone": zod.string(),
+  "secondaryPhone": zod.string().nullish(),
   "company": zod.string().nullish(),
+  "customerType": zod.string().nullish(),
+  "referralSource": zod.string().nullish(),
+  "billingAddress": zod.string().nullish(),
+  "billingCity": zod.string().nullish(),
+  "billingState": zod.string().nullish(),
+  "billingZip": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()).optional(),
+  "customFieldValues": zod.record(zod.string(), zod.string()).optional(),
   "propertyCount": zod.number().optional(),
   "totalSpend": zod.number().optional(),
   "createdAt": zod.string()
@@ -1300,13 +1348,14 @@ export const GetTenantSettingsResponse = zod.object({
   "quickbooksEnabled": zod.boolean().optional(),
   "taxRate": zod.number().optional(),
   "planTier": zod.enum(['starter', 'professional', 'enterprise']).optional(),
-  "customFields": zod.array(zod.object({
-  "id": zod.string(),
+  "customerFields": zod.array(zod.object({
+  "key": zod.string(),
   "label": zod.string(),
-  "entityType": zod.enum(['customer', 'property']),
-  "fieldType": zod.enum(['text', 'number', 'boolean', 'date', 'select']),
-  "isEnabled": zod.boolean(),
-  "options": zod.array(zod.string()).optional()
+  "type": zod.enum(['text', 'number', 'date', 'select', 'textarea', 'boolean']),
+  "options": zod.array(zod.string()).optional(),
+  "visible": zod.boolean(),
+  "required": zod.boolean(),
+  "isBuiltIn": zod.boolean()
 })).optional()
 })
 
@@ -1322,13 +1371,14 @@ export const UpdateTenantSettingsBody = zod.object({
   "stripeEnabled": zod.boolean().optional(),
   "quickbooksEnabled": zod.boolean().optional(),
   "taxRate": zod.number().optional(),
-  "customFields": zod.array(zod.object({
-  "id": zod.string(),
+  "customerFields": zod.array(zod.object({
+  "key": zod.string(),
   "label": zod.string(),
-  "entityType": zod.enum(['customer', 'property']),
-  "fieldType": zod.enum(['text', 'number', 'boolean', 'date', 'select']),
-  "isEnabled": zod.boolean(),
-  "options": zod.array(zod.string()).optional()
+  "type": zod.enum(['text', 'number', 'date', 'select', 'textarea', 'boolean']),
+  "options": zod.array(zod.string()).optional(),
+  "visible": zod.boolean(),
+  "required": zod.boolean(),
+  "isBuiltIn": zod.boolean()
 })).optional()
 })
 
@@ -1344,13 +1394,14 @@ export const UpdateTenantSettingsResponse = zod.object({
   "quickbooksEnabled": zod.boolean().optional(),
   "taxRate": zod.number().optional(),
   "planTier": zod.enum(['starter', 'professional', 'enterprise']).optional(),
-  "customFields": zod.array(zod.object({
-  "id": zod.string(),
+  "customerFields": zod.array(zod.object({
+  "key": zod.string(),
   "label": zod.string(),
-  "entityType": zod.enum(['customer', 'property']),
-  "fieldType": zod.enum(['text', 'number', 'boolean', 'date', 'select']),
-  "isEnabled": zod.boolean(),
-  "options": zod.array(zod.string()).optional()
+  "type": zod.enum(['text', 'number', 'date', 'select', 'textarea', 'boolean']),
+  "options": zod.array(zod.string()).optional(),
+  "visible": zod.boolean(),
+  "required": zod.boolean(),
+  "isBuiltIn": zod.boolean()
 })).optional()
 })
 

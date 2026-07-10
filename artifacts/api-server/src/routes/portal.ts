@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable } from "@workspace/db";
-import { eq, and, gt, desc, lte } from "drizzle-orm";
+import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable, mediaAttachmentsTable } from "@workspace/db";
+import { eq, and, gt, desc, lte, isNotNull } from "drizzle-orm";
+import { objectStorageService } from "./storage";
 import crypto from "crypto";
 import { getTenantId } from "../lib/tenantHelper";
 
@@ -440,6 +441,53 @@ router.post("/portal/service-requests", requirePortalAuth, async (req: any, res)
 
   const [prop] = await db.select({ address: propertiesTable.address }).from(propertiesTable).where(eq(propertiesTable.id, propertyId)).limit(1);
   res.status(201).json(formatPortalJob(job, prop?.address ?? null));
+});
+
+// ---------------------------------------------------------------------------
+// GET /portal/property/:id/media
+// ---------------------------------------------------------------------------
+router.get("/portal/property/:id/media", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals;
+  const propertyId = Number(req.params.id);
+
+  // Verify property belongs to this customer
+  const [property] = await db
+    .select({ id: propertiesTable.id })
+    .from(propertiesTable)
+    .where(and(
+      eq(propertiesTable.id, propertyId),
+      eq(propertiesTable.tenantId, portalTenantId),
+      eq(propertiesTable.customerId, portalCustomerId),
+    ))
+    .limit(1);
+
+  if (!property) {
+    res.status(404).json({ error: "Property not found" });
+    return;
+  }
+
+  const media = await db
+    .select()
+    .from(mediaAttachmentsTable)
+    .where(and(
+      eq(mediaAttachmentsTable.tenantId, portalTenantId),
+      eq(mediaAttachmentsTable.entityType, "property"),
+      eq(mediaAttachmentsTable.entityId, propertyId),
+    ))
+    .orderBy(mediaAttachmentsTable.createdAt);
+
+  // Include signed read URLs so portal <img> elements can display without custom headers
+  const mediaWithUrls = await Promise.all(
+    media.map(async (row) => {
+      let signedUrl: string | null = null;
+      try {
+        signedUrl = await objectStorageService.generateSignedReadUrl(row.fileKey);
+      } catch { /* non-fatal in local dev */ }
+      return { ...row, signedUrl };
+    }),
+  );
+
+  res.json(mediaWithUrls);
 });
 
 // ---------------------------------------------------------------------------

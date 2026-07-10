@@ -3419,3 +3419,223 @@ export const GetCustomerPortalLinkResponse = zod.object({
 })
 
 
+/**
+ * @summary Request a presigned URL for file upload
+ */
+
+
+
+
+
+export const RequestUploadUrlBody = zod.object({
+  "name": zod.string().min(1),
+  "size": zod.number().min(1),
+  "contentType": zod.string().min(1)
+})
+
+export const RequestUploadUrlResponse = zod.object({
+  "uploadURL": zod.string(),
+  "objectPath": zod.string()
+})
+
+
+/**
+ * @summary Serve an object entity from PRIVATE_OBJECT_DIR
+ */
+export const GetStorageObjectParams = zod.object({
+  "objectPath": zod.coerce.string()
+})
+
+export const GetStorageObjectResponse = zod.unknown()
+
+
+/**
+ * @summary List media attachments for a property
+ */
+export const ListPropertyMediaParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListPropertyMediaResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "entityType": zod.string(),
+  "entityId": zod.number(),
+  "fileKey": zod.string(),
+  "fileUrl": zod.string(),
+  "mimeType": zod.string(),
+  "sizeBytes": zod.number(),
+  "caption": zod.string().nullish(),
+  "isCover": zod.boolean(),
+  "createdBy": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+export const ListPropertyMediaResponse = zod.array(ListPropertyMediaResponseItem)
+
+
+/**
+ * @summary Add a media attachment to a property
+ */
+export const AddPropertyMediaParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AddPropertyMediaBody = zod.object({
+  "fileKey": zod.string(),
+  "fileUrl": zod.string(),
+  "mimeType": zod.string(),
+  "sizeBytes": zod.number(),
+  "caption": zod.string().optional(),
+  "isCover": zod.boolean().optional()
+})
+
+export const AddPropertyMediaResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "entityType": zod.string(),
+  "entityId": zod.number(),
+  "fileKey": zod.string(),
+  "fileUrl": zod.string(),
+  "mimeType": zod.string(),
+  "sizeBytes": zod.number(),
+  "caption": zod.string().nullish(),
+  "isCover": zod.boolean(),
+  "createdBy": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a media attachment from a property
+ */
+export const DeletePropertyMediaParams = zod.object({
+  "id": zod.coerce.number(),
+  "mediaId": zod.coerce.number()
+})
+
+export const DeletePropertyMediaResponse = zod.void()
+
+
+/**
+ * @summary Set the cover/profile photo for a property
+ */
+export const SetPropertyProfilePhotoParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SetPropertyProfilePhotoBody = zod.object({
+  "fileUrl": zod.string()
+})
+
+export const SetPropertyProfilePhotoResponse = zod.object({
+  "profilePhotoUrl": zod.string().optional()
+})
+
+
+/**
+ * @summary List media attachments for a job
+ */
+export const ListJobMediaParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListJobMediaResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "entityType": zod.string(),
+  "entityId": zod.number(),
+  "fileKey": zod.string(),
+  "fileUrl": zod.string(),
+  "mimeType": zod.string(),
+  "sizeBytes": zod.number(),
+  "caption": zod.string().nullish(),
+  "isCover": zod.boolean(),
+  "createdBy": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+export const ListJobMediaResponse = zod.array(ListJobMediaResponseItem)
+
+
+/**
+ * @summary Add a media attachment to a job
+ */
+export const AddJobMediaParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AddJobMediaBody = zod.object({
+  "fileKey": zod.string(),
+  "fileUrl": zod.string(),
+  "mimeType": zod.string(),
+  "sizeBytes": zod.number(),
+  "caption": zod.string().optional(),
+  "isCover": zod.boolean().optional()
+})
+
+export const AddJobMediaResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "entityType": zod.string(),
+  "entityId": zod.number(),
+  "fileKey": zod.string(),
+  "fileUrl": zod.string(),
+  "mimeType": zod.string(),
+  "sizeBytes": zod.number(),
+  "caption": zod.string().nullish(),
+  "isCover": zod.boolean(),
+  "createdBy": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a media attachment from a job
+ */
+export const DeleteJobMediaParams = zod.object({
+  "id": zod.coerce.number(),
+  "mediaId": zod.coerce.number()
+})
+
+export const DeleteJobMediaResponse = zod.void()
+
+
+/**
+ * @summary Set the profile photo for a customer
+ */
+export const SetCustomerProfilePhotoParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SetCustomerProfilePhotoBody = zod.object({
+  "fileUrl": zod.string()
+})
+
+export const SetCustomerProfilePhotoResponse = zod.object({
+  "profilePhotoUrl": zod.string().optional()
+})
+
+
+/**
+ * @summary List media attachments for a property (portal)
+ */
+export const PortalListPropertyMediaParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const PortalListPropertyMediaResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "entityType": zod.string(),
+  "entityId": zod.number(),
+  "fileKey": zod.string(),
+  "fileUrl": zod.string(),
+  "mimeType": zod.string(),
+  "sizeBytes": zod.number(),
+  "caption": zod.string().nullish(),
+  "isCover": zod.boolean(),
+  "createdBy": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+export const PortalListPropertyMediaResponse = zod.array(PortalListPropertyMediaResponseItem)
+
+

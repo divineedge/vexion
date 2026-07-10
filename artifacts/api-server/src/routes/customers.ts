@@ -30,6 +30,7 @@ function formatCustomer(
     acquiredFromCampaignId: c.acquiredFromCampaignId ?? null,
     smsOptOut: c.smsOptOut ?? false,
     emailOptOut: c.emailOptOut ?? false,
+    profilePhotoUrl: c.profilePhotoUrl ?? null,
     thisYearSpend: extras?.thisYearSpend ?? null,
     lastYearSpend: extras?.lastYearSpend ?? null,
     propertyCount: extras?.propertyCount ?? 0,

@@ -21,3 +21,4 @@ export * from "./quotes";
 export * from "./customerOtpSessions";
 export * from "./customerAlerts";
 export * from "./communicationsLog";
+export * from "./mediaAttachments";

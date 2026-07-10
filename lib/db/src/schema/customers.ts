@@ -26,6 +26,8 @@ export const customersTable = pgTable("customers", {
   smsOptOut: boolean("sms_opt_out").notNull().default(false),
   /** Customer opted out of email communications */
   emailOptOut: boolean("email_opt_out").notNull().default(false),
+  /** Profile photo URL (stored objectPath) */
+  profilePhotoUrl: text("profile_photo_url"),
   totalSpend: real("total_spend").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

@@ -26,6 +26,8 @@ export const propertiesTable = pgTable("properties", {
   measurementPolygons: jsonb("measurement_polygons").default("[]"),
   /** Total serviceable area in sqft (sum of all active measurement zones) */
   serviceableAreaSqft: real("serviceable_area_sqft"),
+  /** Cover photo URL (stored objectPath) */
+  profilePhotoUrl: text("profile_photo_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

@@ -9,6 +9,7 @@ import {
   useUpdatePropertyMeasurements,
   useListPropertyQuotes, getListPropertyQuotesQueryKey,
   useGetTenantSettings,
+  useListPropertyMedia, getListPropertyMediaQueryKey,
   customFetch,
 } from '@workspace/api-client-react';
 import type { MeasurementZone, Quote } from '@workspace/api-client-react';
@@ -29,8 +30,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import {
   ArrowLeft, Edit, MapPin, Navigation, Calendar, Save, GitMerge,
   AlertTriangle, Clock, ChevronDown, Check, ArrowRight, Satellite,
-  Calculator, ExternalLink, Copy, Ruler,
+  Calculator, ExternalLink, Copy, Ruler, Images,
 } from 'lucide-react';
+import MediaGallery from '@/components/media/MediaGallery';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -90,6 +92,9 @@ export default function PropertyDetailPage() {
   );
   const { data: quotes } = useListPropertyQuotes(id, {
     query: { enabled: !!id, queryKey: getListPropertyQuotesQueryKey(id) },
+  });
+  const { data: propertyMedia, refetch: refetchPropertyMedia } = useListPropertyMedia(id, {
+    query: { enabled: !!id, queryKey: getListPropertyMediaQueryKey(id) },
   });
   const { data: tenantSettings } = useGetTenantSettings();
 
@@ -317,6 +322,9 @@ export default function PropertyDetailPage() {
           <TabsTrigger value="details">Details & Geofence</TabsTrigger>
           <TabsTrigger value="jobs">Jobs ({jobs?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="quotes">Quotes ({quotes?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="media" className="gap-1.5">
+            <Images className="w-4 h-4" /> Media ({propertyMedia?.length ?? 0})
+          </TabsTrigger>
           <TabsTrigger value="history">Ownership History</TabsTrigger>
         </TabsList>
 
@@ -588,6 +596,30 @@ export default function PropertyDetailPage() {
                   )}
                 </TableBody>
               </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Media tab ── */}
+        <TabsContent value="media" className="focus-visible:outline-none">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Images className="w-5 h-5 text-primary" /> Property Photos & Videos
+              </CardTitle>
+              <CardDescription>
+                Upload before/after photos, damage documentation, and seasonal images. Star a photo to set it as the cover image.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <MediaGallery
+                entityType="property"
+                entityId={id}
+                media={propertyMedia ?? []}
+                onMediaAdded={() => refetchPropertyMedia()}
+                onMediaDeleted={() => refetchPropertyMedia()}
+                allowCover={true}
+              />
             </CardContent>
           </Card>
         </TabsContent>

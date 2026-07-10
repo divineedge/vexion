@@ -1778,6 +1778,50 @@ export interface SendReminderInput {
   channel?: SendReminderInputChannel;
 }
 
+export interface UploadUrlRequest {
+  /** @minLength 1 */
+  name: string;
+  /** @minimum 1 */
+  size: number;
+  /** @minLength 1 */
+  contentType: string;
+}
+
+export interface UploadUrlResponse {
+  uploadURL: string;
+  objectPath: string;
+}
+
+export interface MediaAttachment {
+  id: number;
+  tenantId: number;
+  entityType: string;
+  entityId: number;
+  fileKey: string;
+  fileUrl: string;
+  mimeType: string;
+  sizeBytes: number;
+  /** @nullable */
+  caption?: string | null;
+  isCover: boolean;
+  /** @nullable */
+  createdBy?: number | null;
+  createdAt: string;
+}
+
+export interface AddMediaInput {
+  fileKey: string;
+  fileUrl: string;
+  mimeType: string;
+  sizeBytes: number;
+  caption?: string;
+  isCover?: boolean;
+}
+
+export interface SetProfilePhotoInput {
+  fileUrl: string;
+}
+
 export type SendJobReminder200 = {
   sent?: string[];
   jobId?: number;
@@ -1826,5 +1870,13 @@ endDate?: string;
 propertyId?: number;
 applicatorId?: number;
 jobId?: number;
+};
+
+export type SetPropertyProfilePhoto200 = {
+  profilePhotoUrl?: string;
+};
+
+export type SetCustomerProfilePhoto200 = {
+  profilePhotoUrl?: string;
 };
 

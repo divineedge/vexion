@@ -29,6 +29,7 @@ import {
   Save, X, User, FileText, Tag, DollarSign, Home, Briefcase, Megaphone, AlertTriangle, Link,
   MessageSquare, Send, PhoneOff, MailMinus, ChevronRight,
 } from 'lucide-react';
+import CustomerAvatar from '@/components/media/CustomerAvatar';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import type { CustomerFieldConfig, TenantSettings } from '@/lib/fieldConfig';
@@ -260,6 +261,13 @@ export default function CustomerDetailPage() {
         <Button variant="ghost" size="icon" onClick={() => setLocation('/customers')}>
           <ArrowLeft className="w-5 h-5" />
         </Button>
+        <CustomerAvatar
+          customerId={id}
+          name={customer.name}
+          profilePhotoUrl={(customer as any).profilePhotoUrl}
+          size="lg"
+          onUpdated={() => { /* react-query cache is updated via customFetch */ }}
+        />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-3xl font-bold tracking-tight">{customer.name}</h1>

@@ -76,6 +76,11 @@
   },
   "dependencies": {
     "@types/leaflet": "^1.9.21",
+    "@uppy/aws-s3": "^5.0.0",
+    "@uppy/core": "^5.0.0",
+    "@uppy/dashboard": "^5.0.0",
+    "@uppy/react": "^5.0.0",
+    "@workspace/object-storage-web": "workspace:*",
     "leaflet": "^1.9.4",
     "react-leaflet": "^5.0.0"
   }

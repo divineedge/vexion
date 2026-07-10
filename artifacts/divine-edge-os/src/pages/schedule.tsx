@@ -16,7 +16,9 @@ import {
   useSendJobReminder,
   useAddJobPart, useRemoveJobPart,
   useListInventoryItems, getListInventoryItemsQueryKey,
+  useListJobMedia, getListJobMediaQueryKey,
 } from '@workspace/api-client-react';
+import MediaGallery from '@/components/media/MediaGallery';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -31,7 +33,7 @@ import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronRight, Clock, MapPin, User, Calendar,
   DollarSign, ClipboardList, Plus, Users, FlaskConical, Trash2, AlertTriangle,
-  Bell, BellOff, Send, Package, Search,
+  Bell, BellOff, Send, Package, Search, Images,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -132,6 +134,9 @@ export default function SchedulePage() {
 
   const { data: jobAlerts, refetch: refetchAlerts } = useListJobAlerts(selectedJobId!, {
     query: { enabled: selectedJobId != null, queryKey: getListJobAlertsQueryKey(selectedJobId ?? 0) },
+  });
+  const { data: jobMedia, refetch: refetchJobMedia } = useListJobMedia(selectedJobId!, {
+    query: { enabled: selectedJobId != null, queryKey: getListJobMediaQueryKey(selectedJobId ?? 0) },
   });
   const createAlert = useCreateJobAlert();
   const sendReminder = useSendJobReminder();
@@ -842,6 +847,20 @@ export default function SchedulePage() {
                     </div>
                   </>
                 )}
+                {/* Job Media */}
+                <Separator />
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1.5">
+                    <Images className="w-3.5 h-3.5" /> Photos & Videos
+                  </p>
+                  <MediaGallery
+                    entityType="job"
+                    entityId={selectedJobId!}
+                    media={jobMedia ?? []}
+                    onMediaAdded={() => refetchJobMedia()}
+                    onMediaDeleted={() => refetchJobMedia()}
+                  />
+                </div>
               </div>
             </>
           ) : (

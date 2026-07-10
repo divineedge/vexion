@@ -2496,6 +2496,258 @@ paths:
               schema:
                 $ref: "#/components/schemas/PortalLinkResult"
 
+  # STORAGE
+  /storage/uploads/request-url:
+    post:
+      tags: [storage]
+      operationId: requestUploadUrl
+      summary: Request a presigned URL for file upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadUrlRequest'
+      responses:
+        '200':
+          description: Presigned upload URL generated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadUrlResponse'
+        '400':
+          description: Missing or invalid required fields.
+        '500':
+          description: Failed to generate upload URL.
+
+  /storage/objects/{objectPath}:
+    get:
+      tags: [storage]
+      operationId: getStorageObject
+      summary: Serve an object entity from PRIVATE_OBJECT_DIR
+      parameters:
+        - name: objectPath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Object content streamed.
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Object not found.
+
+  # MEDIA ATTACHMENTS
+  /properties/{id}/media:
+    get:
+      tags: [properties]
+      operationId: listPropertyMedia
+      summary: List media attachments for a property
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of media attachments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MediaAttachment'
+    post:
+      tags: [properties]
+      operationId: addPropertyMedia
+      summary: Add a media attachment to a property
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddMediaInput'
+      responses:
+        '201':
+          description: Media attachment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaAttachment'
+
+  /properties/{id}/media/{mediaId}:
+    delete:
+      tags: [properties]
+      operationId: deletePropertyMedia
+      summary: Delete a media attachment from a property
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: mediaId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Deleted
+
+  /properties/{id}/profile-photo:
+    patch:
+      tags: [properties]
+      operationId: setPropertyProfilePhoto
+      summary: Set the cover/profile photo for a property
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetProfilePhotoInput'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profilePhotoUrl:
+                    type: string
+
+  /jobs/{id}/media:
+    get:
+      tags: [jobs]
+      operationId: listJobMedia
+      summary: List media attachments for a job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of media attachments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MediaAttachment'
+    post:
+      tags: [jobs]
+      operationId: addJobMedia
+      summary: Add a media attachment to a job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddMediaInput'
+      responses:
+        '201':
+          description: Media attachment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaAttachment'
+
+  /jobs/{id}/media/{mediaId}:
+    delete:
+      tags: [jobs]
+      operationId: deleteJobMedia
+      summary: Delete a media attachment from a job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: mediaId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Deleted
+
+  /customers/{id}/profile-photo:
+    patch:
+      tags: [customers]
+      operationId: setCustomerProfilePhoto
+      summary: Set the profile photo for a customer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetProfilePhotoInput'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profilePhotoUrl:
+                    type: string
+
+  /portal/property/{id}/media:
+    get:
+      tags: [portal]
+      operationId: portalListPropertyMedia
+      summary: List media attachments for a property (portal)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of media attachments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MediaAttachment'
+
 components:
   schemas:
     HealthStatus:
@@ -4726,3 +4978,79 @@ components:
         channel:
           type: string
           enum: [sms, email, both]
+
+    UploadUrlRequest:
+      type: object
+      required: [name, size, contentType]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        size:
+          type: integer
+          minimum: 1
+        contentType:
+          type: string
+          minLength: 1
+
+    UploadUrlResponse:
+      type: object
+      required: [uploadURL, objectPath]
+      properties:
+        uploadURL:
+          type: string
+        objectPath:
+          type: string
+
+    MediaAttachment:
+      type: object
+      required: [id, tenantId, entityType, entityId, fileKey, fileUrl, mimeType, sizeBytes, isCover, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        entityType:
+          type: string
+        entityId:
+          type: integer
+        fileKey:
+          type: string
+        fileUrl:
+          type: string
+        mimeType:
+          type: string
+        sizeBytes:
+          type: integer
+        caption:
+          type: ["string", "null"]
+        isCover:
+          type: boolean
+        createdBy:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+
+    AddMediaInput:
+      type: object
+      required: [fileKey, fileUrl, mimeType, sizeBytes]
+      properties:
+        fileKey:
+          type: string
+        fileUrl:
+          type: string
+        mimeType:
+          type: string
+        sizeBytes:
+          type: integer
+        caption:
+          type: string
+        isCover:
+          type: boolean
+
+    SetProfilePhotoInput:
+      type: object
+      required: [fileUrl]
+      properties:
+        fileUrl:
+          type: string

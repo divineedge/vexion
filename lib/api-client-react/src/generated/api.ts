@@ -22,6 +22,7 @@ import type {
 import type {
   ActivityItem,
   AddCrewMemberInput,
+  AddMediaInput,
   AuthResponse,
   Blueprint,
   BlueprintEstimate,
@@ -78,6 +79,7 @@ import type {
   LocationStockEntry,
   LoginInput,
   MasterClockState,
+  MediaAttachment,
   Plan,
   PortalAlert,
   PortalAlertResponse,
@@ -107,7 +109,10 @@ import type {
   SendJobReminder200,
   SendMessageInput,
   SendReminderInput,
+  SetCustomerProfilePhoto200,
   SetLocationStockInput,
+  SetProfilePhotoInput,
+  SetPropertyProfilePhoto200,
   StatusCount,
   StockAdjustmentInput,
   StockTransferInput,
@@ -119,6 +124,8 @@ import type {
   TenantSettings,
   TenantSettingsUpdate,
   TimeEntry,
+  UploadUrlRequest,
+  UploadUrlResponse,
   User,
   UserInput,
   UserUpdate
@@ -9636,6 +9643,819 @@ export function useGetCustomerPortalLink<TData = Awaited<ReturnType<typeof getCu
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetCustomerPortalLinkQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRequestUploadUrlUrl = () => {
+
+
+
+
+  return `/api/storage/uploads/request-url`
+}
+
+/**
+ * @summary Request a presigned URL for file upload
+ */
+export const requestUploadUrl = async (uploadUrlRequest: UploadUrlRequest, options?: RequestInit): Promise<UploadUrlResponse> => {
+
+  return customFetch<UploadUrlResponse>(getRequestUploadUrlUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(uploadUrlRequest)
+  }
+);}
+
+
+
+
+
+export const getRequestUploadUrlMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestUploadUrl>>, TError,{data: BodyType<UploadUrlRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestUploadUrl>>, TError,{data: BodyType<UploadUrlRequest>}, TContext> => {
+
+const mutationKey = ['requestUploadUrl'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestUploadUrl>>, {data: BodyType<UploadUrlRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  requestUploadUrl(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestUploadUrlMutationResult = NonNullable<Awaited<ReturnType<typeof requestUploadUrl>>>
+    export type RequestUploadUrlMutationBody = BodyType<UploadUrlRequest>
+    export type RequestUploadUrlMutationError = ErrorType<void>
+
+    /**
+ * @summary Request a presigned URL for file upload
+ */
+export const useRequestUploadUrl = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestUploadUrl>>, TError,{data: BodyType<UploadUrlRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof requestUploadUrl>>,
+        TError,
+        {data: BodyType<UploadUrlRequest>},
+        TContext
+      > => {
+      return useMutation(getRequestUploadUrlMutationOptions(options));
+    }
+
+export const getGetStorageObjectUrl = (objectPath: string,) => {
+
+
+
+
+  return `/api/storage/objects/${objectPath}`
+}
+
+/**
+ * @summary Serve an object entity from PRIVATE_OBJECT_DIR
+ */
+export const getStorageObject = async (objectPath: string, options?: RequestInit): Promise<Blob> => {
+
+  return customFetch<Blob>(getGetStorageObjectUrl(objectPath),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStorageObjectQueryKey = (objectPath: string,) => {
+    return [
+    `/api/storage/objects/${objectPath}`
+    ] as const;
+    }
+
+
+export const getGetStorageObjectQueryOptions = <TData = Awaited<ReturnType<typeof getStorageObject>>, TError = ErrorType<void>>(objectPath: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStorageObject>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStorageObjectQueryKey(objectPath);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStorageObject>>> = ({ signal }) => getStorageObject(objectPath, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: objectPath !== null && objectPath !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStorageObject>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStorageObjectQueryResult = NonNullable<Awaited<ReturnType<typeof getStorageObject>>>
+export type GetStorageObjectQueryError = ErrorType<void>
+
+
+/**
+ * @summary Serve an object entity from PRIVATE_OBJECT_DIR
+ */
+
+export function useGetStorageObject<TData = Awaited<ReturnType<typeof getStorageObject>>, TError = ErrorType<void>>(
+ objectPath: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStorageObject>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStorageObjectQueryOptions(objectPath,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListPropertyMediaUrl = (id: number,) => {
+
+
+
+
+  return `/api/properties/${id}/media`
+}
+
+/**
+ * @summary List media attachments for a property
+ */
+export const listPropertyMedia = async (id: number, options?: RequestInit): Promise<MediaAttachment[]> => {
+
+  return customFetch<MediaAttachment[]>(getListPropertyMediaUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPropertyMediaQueryKey = (id: number,) => {
+    return [
+    `/api/properties/${id}/media`
+    ] as const;
+    }
+
+
+export const getListPropertyMediaQueryOptions = <TData = Awaited<ReturnType<typeof listPropertyMedia>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPropertyMedia>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPropertyMediaQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPropertyMedia>>> = ({ signal }) => listPropertyMedia(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPropertyMedia>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPropertyMediaQueryResult = NonNullable<Awaited<ReturnType<typeof listPropertyMedia>>>
+export type ListPropertyMediaQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List media attachments for a property
+ */
+
+export function useListPropertyMedia<TData = Awaited<ReturnType<typeof listPropertyMedia>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPropertyMedia>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPropertyMediaQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getAddPropertyMediaUrl = (id: number,) => {
+
+
+
+
+  return `/api/properties/${id}/media`
+}
+
+/**
+ * @summary Add a media attachment to a property
+ */
+export const addPropertyMedia = async (id: number,
+    addMediaInput: AddMediaInput, options?: RequestInit): Promise<MediaAttachment> => {
+
+  return customFetch<MediaAttachment>(getAddPropertyMediaUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(addMediaInput)
+  }
+);}
+
+
+
+
+
+export const getAddPropertyMediaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addPropertyMedia>>, TError,{id: number;data: BodyType<AddMediaInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof addPropertyMedia>>, TError,{id: number;data: BodyType<AddMediaInput>}, TContext> => {
+
+const mutationKey = ['addPropertyMedia'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addPropertyMedia>>, {id: number;data: BodyType<AddMediaInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  addPropertyMedia(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AddPropertyMediaMutationResult = NonNullable<Awaited<ReturnType<typeof addPropertyMedia>>>
+    export type AddPropertyMediaMutationBody = BodyType<AddMediaInput>
+    export type AddPropertyMediaMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Add a media attachment to a property
+ */
+export const useAddPropertyMedia = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addPropertyMedia>>, TError,{id: number;data: BodyType<AddMediaInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof addPropertyMedia>>,
+        TError,
+        {id: number;data: BodyType<AddMediaInput>},
+        TContext
+      > => {
+      return useMutation(getAddPropertyMediaMutationOptions(options));
+    }
+
+export const getDeletePropertyMediaUrl = (id: number,
+    mediaId: number,) => {
+
+
+
+
+  return `/api/properties/${id}/media/${mediaId}`
+}
+
+/**
+ * @summary Delete a media attachment from a property
+ */
+export const deletePropertyMedia = async (id: number,
+    mediaId: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeletePropertyMediaUrl(id,mediaId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeletePropertyMediaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePropertyMedia>>, TError,{id: number;mediaId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deletePropertyMedia>>, TError,{id: number;mediaId: number}, TContext> => {
+
+const mutationKey = ['deletePropertyMedia'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deletePropertyMedia>>, {id: number;mediaId: number}> = (props) => {
+          const {id,mediaId} = props ?? {};
+
+          return  deletePropertyMedia(id,mediaId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeletePropertyMediaMutationResult = NonNullable<Awaited<ReturnType<typeof deletePropertyMedia>>>
+
+    export type DeletePropertyMediaMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a media attachment from a property
+ */
+export const useDeletePropertyMedia = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePropertyMedia>>, TError,{id: number;mediaId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deletePropertyMedia>>,
+        TError,
+        {id: number;mediaId: number},
+        TContext
+      > => {
+      return useMutation(getDeletePropertyMediaMutationOptions(options));
+    }
+
+export const getSetPropertyProfilePhotoUrl = (id: number,) => {
+
+
+
+
+  return `/api/properties/${id}/profile-photo`
+}
+
+/**
+ * @summary Set the cover/profile photo for a property
+ */
+export const setPropertyProfilePhoto = async (id: number,
+    setProfilePhotoInput: SetProfilePhotoInput, options?: RequestInit): Promise<SetPropertyProfilePhoto200> => {
+
+  return customFetch<SetPropertyProfilePhoto200>(getSetPropertyProfilePhotoUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(setProfilePhotoInput)
+  }
+);}
+
+
+
+
+
+export const getSetPropertyProfilePhotoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setPropertyProfilePhoto>>, TError,{id: number;data: BodyType<SetProfilePhotoInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setPropertyProfilePhoto>>, TError,{id: number;data: BodyType<SetProfilePhotoInput>}, TContext> => {
+
+const mutationKey = ['setPropertyProfilePhoto'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setPropertyProfilePhoto>>, {id: number;data: BodyType<SetProfilePhotoInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  setPropertyProfilePhoto(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetPropertyProfilePhotoMutationResult = NonNullable<Awaited<ReturnType<typeof setPropertyProfilePhoto>>>
+    export type SetPropertyProfilePhotoMutationBody = BodyType<SetProfilePhotoInput>
+    export type SetPropertyProfilePhotoMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Set the cover/profile photo for a property
+ */
+export const useSetPropertyProfilePhoto = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setPropertyProfilePhoto>>, TError,{id: number;data: BodyType<SetProfilePhotoInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setPropertyProfilePhoto>>,
+        TError,
+        {id: number;data: BodyType<SetProfilePhotoInput>},
+        TContext
+      > => {
+      return useMutation(getSetPropertyProfilePhotoMutationOptions(options));
+    }
+
+export const getListJobMediaUrl = (id: number,) => {
+
+
+
+
+  return `/api/jobs/${id}/media`
+}
+
+/**
+ * @summary List media attachments for a job
+ */
+export const listJobMedia = async (id: number, options?: RequestInit): Promise<MediaAttachment[]> => {
+
+  return customFetch<MediaAttachment[]>(getListJobMediaUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListJobMediaQueryKey = (id: number,) => {
+    return [
+    `/api/jobs/${id}/media`
+    ] as const;
+    }
+
+
+export const getListJobMediaQueryOptions = <TData = Awaited<ReturnType<typeof listJobMedia>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listJobMedia>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListJobMediaQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listJobMedia>>> = ({ signal }) => listJobMedia(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listJobMedia>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListJobMediaQueryResult = NonNullable<Awaited<ReturnType<typeof listJobMedia>>>
+export type ListJobMediaQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List media attachments for a job
+ */
+
+export function useListJobMedia<TData = Awaited<ReturnType<typeof listJobMedia>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listJobMedia>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListJobMediaQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getAddJobMediaUrl = (id: number,) => {
+
+
+
+
+  return `/api/jobs/${id}/media`
+}
+
+/**
+ * @summary Add a media attachment to a job
+ */
+export const addJobMedia = async (id: number,
+    addMediaInput: AddMediaInput, options?: RequestInit): Promise<MediaAttachment> => {
+
+  return customFetch<MediaAttachment>(getAddJobMediaUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(addMediaInput)
+  }
+);}
+
+
+
+
+
+export const getAddJobMediaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addJobMedia>>, TError,{id: number;data: BodyType<AddMediaInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof addJobMedia>>, TError,{id: number;data: BodyType<AddMediaInput>}, TContext> => {
+
+const mutationKey = ['addJobMedia'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addJobMedia>>, {id: number;data: BodyType<AddMediaInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  addJobMedia(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AddJobMediaMutationResult = NonNullable<Awaited<ReturnType<typeof addJobMedia>>>
+    export type AddJobMediaMutationBody = BodyType<AddMediaInput>
+    export type AddJobMediaMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Add a media attachment to a job
+ */
+export const useAddJobMedia = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addJobMedia>>, TError,{id: number;data: BodyType<AddMediaInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof addJobMedia>>,
+        TError,
+        {id: number;data: BodyType<AddMediaInput>},
+        TContext
+      > => {
+      return useMutation(getAddJobMediaMutationOptions(options));
+    }
+
+export const getDeleteJobMediaUrl = (id: number,
+    mediaId: number,) => {
+
+
+
+
+  return `/api/jobs/${id}/media/${mediaId}`
+}
+
+/**
+ * @summary Delete a media attachment from a job
+ */
+export const deleteJobMedia = async (id: number,
+    mediaId: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteJobMediaUrl(id,mediaId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteJobMediaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteJobMedia>>, TError,{id: number;mediaId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteJobMedia>>, TError,{id: number;mediaId: number}, TContext> => {
+
+const mutationKey = ['deleteJobMedia'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteJobMedia>>, {id: number;mediaId: number}> = (props) => {
+          const {id,mediaId} = props ?? {};
+
+          return  deleteJobMedia(id,mediaId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteJobMediaMutationResult = NonNullable<Awaited<ReturnType<typeof deleteJobMedia>>>
+
+    export type DeleteJobMediaMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a media attachment from a job
+ */
+export const useDeleteJobMedia = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteJobMedia>>, TError,{id: number;mediaId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteJobMedia>>,
+        TError,
+        {id: number;mediaId: number},
+        TContext
+      > => {
+      return useMutation(getDeleteJobMediaMutationOptions(options));
+    }
+
+export const getSetCustomerProfilePhotoUrl = (id: number,) => {
+
+
+
+
+  return `/api/customers/${id}/profile-photo`
+}
+
+/**
+ * @summary Set the profile photo for a customer
+ */
+export const setCustomerProfilePhoto = async (id: number,
+    setProfilePhotoInput: SetProfilePhotoInput, options?: RequestInit): Promise<SetCustomerProfilePhoto200> => {
+
+  return customFetch<SetCustomerProfilePhoto200>(getSetCustomerProfilePhotoUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(setProfilePhotoInput)
+  }
+);}
+
+
+
+
+
+export const getSetCustomerProfilePhotoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setCustomerProfilePhoto>>, TError,{id: number;data: BodyType<SetProfilePhotoInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setCustomerProfilePhoto>>, TError,{id: number;data: BodyType<SetProfilePhotoInput>}, TContext> => {
+
+const mutationKey = ['setCustomerProfilePhoto'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setCustomerProfilePhoto>>, {id: number;data: BodyType<SetProfilePhotoInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  setCustomerProfilePhoto(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetCustomerProfilePhotoMutationResult = NonNullable<Awaited<ReturnType<typeof setCustomerProfilePhoto>>>
+    export type SetCustomerProfilePhotoMutationBody = BodyType<SetProfilePhotoInput>
+    export type SetCustomerProfilePhotoMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Set the profile photo for a customer
+ */
+export const useSetCustomerProfilePhoto = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setCustomerProfilePhoto>>, TError,{id: number;data: BodyType<SetProfilePhotoInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setCustomerProfilePhoto>>,
+        TError,
+        {id: number;data: BodyType<SetProfilePhotoInput>},
+        TContext
+      > => {
+      return useMutation(getSetCustomerProfilePhotoMutationOptions(options));
+    }
+
+export const getPortalListPropertyMediaUrl = (id: number,) => {
+
+
+
+
+  return `/api/portal/property/${id}/media`
+}
+
+/**
+ * @summary List media attachments for a property (portal)
+ */
+export const portalListPropertyMedia = async (id: number, options?: RequestInit): Promise<MediaAttachment[]> => {
+
+  return customFetch<MediaAttachment[]>(getPortalListPropertyMediaUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getPortalListPropertyMediaQueryKey = (id: number,) => {
+    return [
+    `/api/portal/property/${id}/media`
+    ] as const;
+    }
+
+
+export const getPortalListPropertyMediaQueryOptions = <TData = Awaited<ReturnType<typeof portalListPropertyMedia>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof portalListPropertyMedia>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getPortalListPropertyMediaQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof portalListPropertyMedia>>> = ({ signal }) => portalListPropertyMedia(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof portalListPropertyMedia>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type PortalListPropertyMediaQueryResult = NonNullable<Awaited<ReturnType<typeof portalListPropertyMedia>>>
+export type PortalListPropertyMediaQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List media attachments for a property (portal)
+ */
+
+export function usePortalListPropertyMedia<TData = Awaited<ReturnType<typeof portalListPropertyMedia>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof portalListPropertyMedia>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getPortalListPropertyMediaQueryOptions(id,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

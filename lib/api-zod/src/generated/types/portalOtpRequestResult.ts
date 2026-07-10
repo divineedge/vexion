@@ -6,6 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type AddCrewMemberBody = {
-  userId: number;
-};
+export interface PortalOtpRequestResult {
+  message: string;
+  /** @nullable */
+  previewOtp?: string | null;
+}

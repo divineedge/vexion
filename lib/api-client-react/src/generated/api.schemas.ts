@@ -217,79 +217,10 @@ export interface MeasurementZone {
   id: string;
   label: string;
   /** Array of [lat, lng] coordinate pairs */
-  vertices: [number, number][];
+  vertices: number[][];
   areaSqft: number;
   enabled: boolean;
   color: string;
-}
-
-export type QuoteStatus = typeof QuoteStatus[keyof typeof QuoteStatus];
-export const QuoteStatus = {
-  pending: 'pending',
-  approved: 'approved',
-  declined: 'declined',
-} as const;
-
-export type QuotePriceType = typeof QuotePriceType[keyof typeof QuotePriceType];
-export const QuotePriceType = {
-  flat: 'flat',
-  per_sqft: 'per_sqft',
-} as const;
-
-export interface Quote {
-  id: number;
-  tenantId: number;
-  propertyId: number;
-  token: string;
-  serviceId?: number | null;
-  serviceName: string;
-  serviceDescription?: string | null;
-  selectedZoneLabels?: string[];
-  totalAreaSqft?: number | null;
-  calculatedPrice: number;
-  priceType?: QuotePriceType;
-  status: QuoteStatus;
-  expiresAt?: string | null;
-  respondedAt?: string | null;
-  customerNote?: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface QuoteWithProperty extends Quote {
-  property?: {
-    id: number;
-    address: string;
-    city?: string | null;
-    state?: string | null;
-    zip?: string | null;
-    lat?: number | null;
-    lng?: number | null;
-    measurementPolygons?: MeasurementZone[];
-    serviceableAreaSqft?: number | null;
-    customerName?: string | null;
-  } | null;
-  expired?: boolean;
-}
-
-export interface QuoteInput {
-  serviceId?: number;
-  serviceName: string;
-  selectedZoneLabels?: string[];
-  totalAreaSqft?: number;
-  calculatedPrice?: number;
-  priceType?: QuotePriceType;
-}
-
-export interface QuoteRespondInput {
-  action: 'approved' | 'declined';
-  customerNote?: string;
-}
-
-export interface GeocodeResult {
-  lat: number;
-  lng: number;
-  boundaryPolygon?: [number, number][] | null;
 }
 
 export interface Property {
@@ -319,6 +250,7 @@ export interface Property {
   /** @nullable */
   type?: string | null;
   measurementPolygons?: MeasurementZone[];
+  /** @nullable */
   serviceableAreaSqft?: number | null;
   createdAt: string;
 }
@@ -351,6 +283,110 @@ export interface PropertyUpdate {
 export interface PropertyMeasurementUpdate {
   measurementPolygons?: MeasurementZone[];
   serviceableAreaSqft?: number;
+}
+
+export interface GeocodeResult {
+  lat: number;
+  lng: number;
+  boundaryPolygon?: number[][] | null;
+}
+
+export type QuotePriceType = typeof QuotePriceType[keyof typeof QuotePriceType];
+
+
+export const QuotePriceType = {
+  flat: 'flat',
+  per_sqft: 'per_sqft',
+} as const;
+
+export type QuoteStatus = typeof QuoteStatus[keyof typeof QuoteStatus];
+
+
+export const QuoteStatus = {
+  pending: 'pending',
+  approved: 'approved',
+  declined: 'declined',
+} as const;
+
+export interface Quote {
+  id: number;
+  tenantId: number;
+  propertyId: number;
+  token: string;
+  /** @nullable */
+  serviceId?: number | null;
+  serviceName: string;
+  /** @nullable */
+  serviceDescription?: string | null;
+  selectedZoneLabels?: string[];
+  /** @nullable */
+  totalAreaSqft?: number | null;
+  calculatedPrice: number;
+  priceType?: QuotePriceType;
+  status: QuoteStatus;
+  /** @nullable */
+  expiresAt?: string | null;
+  /** @nullable */
+  respondedAt?: string | null;
+  /** @nullable */
+  customerNote?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type QuoteWithPropertyProperty = {
+  id?: number;
+  address?: string;
+  /** @nullable */
+  city?: string | null;
+  /** @nullable */
+  state?: string | null;
+  /** @nullable */
+  zip?: string | null;
+  /** @nullable */
+  lat?: number | null;
+  /** @nullable */
+  lng?: number | null;
+  measurementPolygons?: MeasurementZone[];
+  /** @nullable */
+  serviceableAreaSqft?: number | null;
+  /** @nullable */
+  customerName?: string | null;
+} | null;
+
+export type QuoteWithProperty = Quote & {
+  property?: QuoteWithPropertyProperty;
+  expired?: boolean;
+};
+
+export type QuoteInputPriceType = typeof QuoteInputPriceType[keyof typeof QuoteInputPriceType];
+
+
+export const QuoteInputPriceType = {
+  flat: 'flat',
+  per_sqft: 'per_sqft',
+} as const;
+
+export interface QuoteInput {
+  serviceId?: number;
+  serviceName: string;
+  selectedZoneLabels?: string[];
+  totalAreaSqft?: number;
+  calculatedPrice?: number;
+  priceType?: QuoteInputPriceType;
+}
+
+export type QuoteRespondInputAction = typeof QuoteRespondInputAction[keyof typeof QuoteRespondInputAction];
+
+
+export const QuoteRespondInputAction = {
+  approved: 'approved',
+  declined: 'declined',
+} as const;
+
+export interface QuoteRespondInput {
+  action: QuoteRespondInputAction;
+  customerNote?: string;
 }
 
 export interface GeofencePinUpdate {
@@ -533,6 +569,10 @@ export interface Crew {
   memberCount?: number;
   members?: CrewMember[];
   createdAt: string;
+}
+
+export interface AddCrewMemberInput {
+  userId: number;
 }
 
 export interface CrewInput {
@@ -937,6 +977,28 @@ export const TenantSettingsPlanTier = {
   enterprise: 'enterprise',
 } as const;
 
+/**
+ * Unit for geofence radius
+ */
+export type TenantSettingsDefaultGeofenceUnit = typeof TenantSettingsDefaultGeofenceUnit[keyof typeof TenantSettingsDefaultGeofenceUnit];
+
+
+export const TenantSettingsDefaultGeofenceUnit = {
+  m: 'm',
+  ft: 'ft',
+} as const;
+
+/**
+ * Preferred area unit for property measurements
+ */
+export type TenantSettingsPreferredAreaUnit = typeof TenantSettingsPreferredAreaUnit[keyof typeof TenantSettingsPreferredAreaUnit];
+
+
+export const TenantSettingsPreferredAreaUnit = {
+  sqft: 'sqft',
+  acres: 'acres',
+} as const;
+
 export type CustomerFieldConfigType = typeof CustomerFieldConfigType[keyof typeof CustomerFieldConfigType];
 
 
@@ -990,13 +1052,13 @@ export interface TenantSettings {
   /** Default geofence radius applied when auto-creating a geofence */
   defaultGeofenceRadius?: number;
   /** Unit for geofence radius */
-  defaultGeofenceUnit?: 'm' | 'ft';
+  defaultGeofenceUnit?: TenantSettingsDefaultGeofenceUnit;
   /** Auto-create geofence when a property is added */
   autoCreateGeofence?: boolean;
   /** Default zone label presets shown in the polygon tool */
   measurementZoneLabels?: string[];
   /** Preferred area unit for property measurements */
-  preferredAreaUnit?: 'sqft' | 'acres';
+  preferredAreaUnit?: TenantSettingsPreferredAreaUnit;
 }
 
 export type TenantSettingsUpdateDurationUnit = typeof TenantSettingsUpdateDurationUnit[keyof typeof TenantSettingsUpdateDurationUnit];
@@ -1019,6 +1081,22 @@ export const TenantSettingsUpdateAutoInvoiceFrequency = {
 
 export type TenantSettingsUpdateRolePermissions = {[key: string]: {[key: string]: boolean}};
 
+export type TenantSettingsUpdateDefaultGeofenceUnit = typeof TenantSettingsUpdateDefaultGeofenceUnit[keyof typeof TenantSettingsUpdateDefaultGeofenceUnit];
+
+
+export const TenantSettingsUpdateDefaultGeofenceUnit = {
+  m: 'm',
+  ft: 'ft',
+} as const;
+
+export type TenantSettingsUpdatePreferredAreaUnit = typeof TenantSettingsUpdatePreferredAreaUnit[keyof typeof TenantSettingsUpdatePreferredAreaUnit];
+
+
+export const TenantSettingsUpdatePreferredAreaUnit = {
+  sqft: 'sqft',
+  acres: 'acres',
+} as const;
+
 export interface TenantSettingsUpdate {
   companyName?: string;
   timezone?: string;
@@ -1036,10 +1114,10 @@ export interface TenantSettingsUpdate {
   equipmentRepairThresholdPct?: number;
   equipmentResaleThresholdPct?: number;
   defaultGeofenceRadius?: number;
-  defaultGeofenceUnit?: 'm' | 'ft';
+  defaultGeofenceUnit?: TenantSettingsUpdateDefaultGeofenceUnit;
   autoCreateGeofence?: boolean;
   measurementZoneLabels?: string[];
-  preferredAreaUnit?: 'sqft' | 'acres';
+  preferredAreaUnit?: TenantSettingsUpdatePreferredAreaUnit;
 }
 
 export interface PropertyOwnershipRecord {
@@ -1330,6 +1408,194 @@ export interface EquipmentFuelLogInput {
   odometerReading?: number;
 }
 
+export interface PortalOtpRequest {
+  email: string;
+}
+
+export interface PortalOtpRequestResult {
+  message: string;
+  /** @nullable */
+  previewOtp?: string | null;
+}
+
+export interface PortalOtpVerify {
+  email: string;
+  otp: string;
+}
+
+export interface PortalCustomer {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  /** @nullable */
+  company?: string | null;
+  /** @nullable */
+  profilePhotoUrl?: string | null;
+}
+
+export interface PortalAuthResponse {
+  token: string;
+  customer: PortalCustomer;
+}
+
+export interface PortalJob {
+  id: number;
+  title: string;
+  /** @nullable */
+  description?: string | null;
+  status: string;
+  scheduledAt: string;
+  /** @nullable */
+  completedAt?: string | null;
+  /** @nullable */
+  propertyAddress?: string | null;
+  totalAmount?: number;
+}
+
+export interface PortalInvoice {
+  id: number;
+  invoiceNumber: string;
+  status: string;
+  subtotal?: number;
+  tax?: number;
+  total: number;
+  /** @nullable */
+  dueDate?: string | null;
+  /** @nullable */
+  paidAt?: string | null;
+  lineItems?: JobLineItem[];
+  jobParts?: JobPart[];
+  createdAt: string;
+}
+
+export interface PortalSummary {
+  upcomingJobs: PortalJob[];
+  recentInvoices: PortalInvoice[];
+  unreadAlertCount: number;
+}
+
+export interface PortalProperty {
+  id: number;
+  address: string;
+  /** @nullable */
+  city?: string | null;
+  /** @nullable */
+  state?: string | null;
+  /** @nullable */
+  zip?: string | null;
+  /** @nullable */
+  type?: string | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export type PortalAlertType = typeof PortalAlertType[keyof typeof PortalAlertType];
+
+
+export const PortalAlertType = {
+  issue: 'issue',
+  upsell: 'upsell',
+} as const;
+
+export type PortalAlertStatus = typeof PortalAlertStatus[keyof typeof PortalAlertStatus];
+
+
+export const PortalAlertStatus = {
+  pending: 'pending',
+  accepted: 'accepted',
+  declined: 'declined',
+} as const;
+
+export interface PortalAlert {
+  id: number;
+  /** @nullable */
+  jobId?: number | null;
+  /** @nullable */
+  jobTitle?: string | null;
+  type: PortalAlertType;
+  message: string;
+  status: PortalAlertStatus;
+  /** @nullable */
+  customerResponse?: string | null;
+  /** @nullable */
+  photoUrl?: string | null;
+  createdAt: string;
+}
+
+export type PortalAlertResponseAction = typeof PortalAlertResponseAction[keyof typeof PortalAlertResponseAction];
+
+
+export const PortalAlertResponseAction = {
+  accept: 'accept',
+  decline: 'decline',
+} as const;
+
+export interface PortalAlertResponse {
+  action: PortalAlertResponseAction;
+  customerResponse?: string;
+}
+
+export interface PortalServiceRequestInput {
+  propertyId: number;
+  description: string;
+  preferredDateStart?: string;
+  preferredDateEnd?: string;
+}
+
+export type CustomerAlertType = typeof CustomerAlertType[keyof typeof CustomerAlertType];
+
+
+export const CustomerAlertType = {
+  issue: 'issue',
+  upsell: 'upsell',
+} as const;
+
+export type CustomerAlertStatus = typeof CustomerAlertStatus[keyof typeof CustomerAlertStatus];
+
+
+export const CustomerAlertStatus = {
+  pending: 'pending',
+  accepted: 'accepted',
+  declined: 'declined',
+} as const;
+
+export interface CustomerAlert {
+  id: number;
+  jobId: number;
+  tenantId: number;
+  /** @nullable */
+  customerId?: number | null;
+  type: CustomerAlertType;
+  message: string;
+  status: CustomerAlertStatus;
+  /** @nullable */
+  customerResponse?: string | null;
+  /** @nullable */
+  photoUrl?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type CustomerAlertInputType = typeof CustomerAlertInputType[keyof typeof CustomerAlertInputType];
+
+
+export const CustomerAlertInputType = {
+  issue: 'issue',
+  upsell: 'upsell',
+} as const;
+
+export interface CustomerAlertInput {
+  type: CustomerAlertInputType;
+  message: string;
+  photoUrl?: string;
+}
+
+export interface PortalLinkResult {
+  url: string;
+  expiresAt: string;
+}
+
 export type ListCustomersParams = {
 /**
  * Search query
@@ -1350,10 +1616,6 @@ assigneeId?: number;
 startDate?: string;
 endDate?: string;
 customerId?: number;
-};
-
-export type AddCrewMemberBody = {
-  userId: number;
 };
 
 export type ListInventoryItemsParams = {

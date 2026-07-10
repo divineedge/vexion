@@ -6,3 +6,4 @@
 - [Crew routes auth pattern](crew-routes-auth.md) — frontend must use generated hooks (useListCrews, useCreateCrew, etc.) not raw window.fetch; raw fetch with hardcoded tenant/user headers breaks multi-tenant auth
 - [Jobs crew join](jobs-crew-join.md) — GET /jobs and GET /jobs/:id must leftJoin crewsTable to populate crewName in responses; import crewsTable from @workspace/db
 - [OpenAPI paths placement](openapi-paths-placement.md) — new paths must go inside the paths: block (before components:); appending to end of file puts them after components: and orval silently ignores them
+- [Orval barrel append](orval-barrel-append.md) — orval v8 split mode appends duplicate exports to index.ts every run; overwrite both lib barrel files after each codegen call

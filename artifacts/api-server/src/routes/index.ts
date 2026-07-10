@@ -22,6 +22,7 @@ import chemicalsRouter from "./chemicals";
 import equipmentRouter from "./equipment";
 import quotesRouter from "./quotes";
 import widgetRouter from "./widget";
+import portalRouter from "./portal";
 
 const router: IRouter = Router();
 
@@ -48,5 +49,6 @@ router.use(chemicalsRouter);
 router.use(equipmentRouter);
 router.use(quotesRouter);
 router.use(widgetRouter);
+router.use(portalRouter);
 
 export default router;

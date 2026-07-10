@@ -5,6 +5,7 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { MeasurementZone } from './measurementZone';
 
 export interface PropertyUpdate {
   address?: string;
@@ -15,4 +16,6 @@ export interface PropertyUpdate {
   lng?: number;
   notes?: string;
   type?: string;
+  measurementPolygons?: MeasurementZone[];
+  serviceableAreaSqft?: number;
 }

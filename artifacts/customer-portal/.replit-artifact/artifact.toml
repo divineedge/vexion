@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/portal/"
+title = "Customer Portal"
+version = "1.0.0"
+id = "artifacts/customer-portal"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/portal/" ]
+localPort = 23434
+
+[services.development]
+run = "pnpm --filter @workspace/customer-portal run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/customer-portal", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/customer-portal/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23434"
+BASE_PATH = "/portal/"

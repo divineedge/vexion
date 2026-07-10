@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable } from "@workspace/db";
+import { eq, and, sql, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 
 const router: IRouter = Router();
@@ -237,6 +237,82 @@ router.delete("/jobs/:id/parts/:inventoryItemId", async (req, res): Promise<void
     .returning();
 
   res.json(formatJob(updated));
+});
+
+// ---------------------------------------------------------------------------
+// GET /jobs/:id/alerts — list customer alerts on a job
+// ---------------------------------------------------------------------------
+router.get("/jobs/:id/alerts", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const id = parseInt(req.params.id, 10);
+
+  const rows = await db
+    .select()
+    .from(customerAlertsTable)
+    .where(and(eq(customerAlertsTable.jobId, id), eq(customerAlertsTable.tenantId, tenantId)))
+    .orderBy(desc(customerAlertsTable.createdAt));
+
+  res.json(rows.map(a => ({
+    id: a.id,
+    jobId: a.jobId,
+    tenantId: a.tenantId,
+    customerId: a.customerId ?? null,
+    type: a.type,
+    message: a.message,
+    status: a.status,
+    customerResponse: a.customerResponse ?? null,
+    photoUrl: a.photoUrl ?? null,
+    createdAt: a.createdAt.toISOString(),
+    updatedAt: a.updatedAt.toISOString(),
+  })));
+});
+
+// ---------------------------------------------------------------------------
+// POST /jobs/:id/alerts — log a customer alert on a job
+// ---------------------------------------------------------------------------
+router.post("/jobs/:id/alerts", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const id = parseInt(req.params.id, 10);
+  const { type, message, photoUrl } = req.body as { type?: string; message?: string; photoUrl?: string };
+
+  if (!type || !message) {
+    res.status(400).json({ error: "type and message required" });
+    return;
+  }
+  if (!["issue", "upsell"].includes(type)) {
+    res.status(400).json({ error: "type must be issue or upsell" });
+    return;
+  }
+
+  const [job] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId))).limit(1);
+  if (!job) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+
+  const [alert] = await db.insert(customerAlertsTable).values({
+    tenantId,
+    jobId: id,
+    customerId: job.customerId ?? null,
+    type,
+    message,
+    status: "pending",
+    photoUrl: photoUrl ?? null,
+  }).returning();
+
+  res.status(201).json({
+    id: alert.id,
+    jobId: alert.jobId,
+    tenantId: alert.tenantId,
+    customerId: alert.customerId ?? null,
+    type: alert.type,
+    message: alert.message,
+    status: alert.status,
+    customerResponse: alert.customerResponse ?? null,
+    photoUrl: alert.photoUrl ?? null,
+    createdAt: alert.createdAt.toISOString(),
+    updatedAt: alert.updatedAt.toISOString(),
+  });
 });
 
 export default router;

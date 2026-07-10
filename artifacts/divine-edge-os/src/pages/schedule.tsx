@@ -11,6 +11,8 @@ import {
   useListChemicalProducts, getListChemicalProductsQueryKey,
   useListChemicalMixtures, getListChemicalMixturesQueryKey,
   useDeleteChemicalApplication,
+  useListJobAlerts, getListJobAlertsQueryKey,
+  useCreateJobAlert,
 } from '@workspace/api-client-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card } from '@/components/ui/card';
@@ -25,7 +27,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronRight, Clock, MapPin, User, Calendar,
-  DollarSign, ClipboardList, Plus, Users, FlaskConical, Trash2,
+  DollarSign, ClipboardList, Plus, Users, FlaskConical, Trash2, AlertTriangle,
 } from 'lucide-react';
 import {
   startOfWeek, endOfWeek, startOfMonth, endOfMonth,
@@ -75,6 +77,8 @@ export default function SchedulePage() {
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [newJob, setNewJob] = useState<NewJobForm>(EMPTY_JOB);
+  const [alertPanelOpen, setAlertPanelOpen] = useState(false);
+  const [alertForm, setAlertForm] = useState({ type: 'issue', message: '' });
   const [chemFormOpen, setChemFormOpen] = useState(false);
   const [chemForm, setChemForm] = useState({
     mixtureId: '', productId: '', volumeApplied: '', volumeUnit: 'gal',
@@ -113,6 +117,11 @@ export default function SchedulePage() {
   const { data: chemApps, refetch: refetchChemApps } = useListJobChemicalApplications(selectedJobId!, {
     query: { enabled: selectedJobId != null, queryKey: getListJobChemicalApplicationsQueryKey(selectedJobId ?? 0) },
   });
+
+  const { data: jobAlerts, refetch: refetchAlerts } = useListJobAlerts(selectedJobId!, {
+    query: { enabled: selectedJobId != null, queryKey: getListJobAlertsQueryKey(selectedJobId ?? 0) },
+  });
+  const createAlert = useCreateJobAlert();
   const { data: chemProducts } = useListChemicalProducts({ query: { queryKey: getListChemicalProductsQueryKey() } });
   const { data: chemMixtures } = useListChemicalMixtures({ query: { queryKey: getListChemicalMixturesQueryKey() } });
   const createChemApp = useCreateJobChemicalApplication();
@@ -544,6 +553,77 @@ export default function SchedulePage() {
                     </div>
                   ) : (
                     <p className="text-sm text-muted-foreground py-2">No applications logged yet.</p>
+                  )}
+                </div>
+
+                {/* Customer Alerts */}
+                <Separator />
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5" /> Customer Alerts
+                    </p>
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setAlertPanelOpen(v => !v)}>
+                      <Plus className="w-3 h-3" /> Log Alert
+                    </Button>
+                  </div>
+                  {alertPanelOpen && (
+                    <div className="rounded-lg border p-3 space-y-2 bg-muted/30">
+                      <Select value={alertForm.type} onValueChange={v => setAlertForm(f => ({ ...f, type: v }))}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="issue">Issue found on site</SelectItem>
+                          <SelectItem value="upsell">Recommended service</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Textarea
+                        rows={2}
+                        className="text-sm resize-none"
+                        placeholder="Describe the issue or recommendation..."
+                        value={alertForm.message}
+                        onChange={e => setAlertForm(f => ({ ...f, message: e.target.value }))}
+                      />
+                      <div className="flex gap-2 justify-end">
+                        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setAlertPanelOpen(false)}>Cancel</Button>
+                        <Button size="sm" className="h-7 text-xs" disabled={!alertForm.message.trim() || createAlert.isPending} onClick={() => {
+                          if (!selectedJobId || !alertForm.message.trim()) return;
+                          createAlert.mutate(
+                            { id: selectedJobId, data: { type: alertForm.type as 'issue' | 'upsell', message: alertForm.message } },
+                            {
+                              onSuccess: () => {
+                                toast.success('Alert logged');
+                                refetchAlerts();
+                                setAlertPanelOpen(false);
+                                setAlertForm({ type: 'issue', message: '' });
+                              },
+                              onError: () => toast.error('Failed to log alert'),
+                            },
+                          );
+                        }}>Log Alert</Button>
+                      </div>
+                    </div>
+                  )}
+                  {jobAlerts && jobAlerts.length > 0 ? (
+                    <div className="rounded-lg border divide-y text-sm">
+                      {jobAlerts.map(alert => (
+                        <div key={alert.id} className="px-3 py-2.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${alert.type === 'issue' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
+                              {alert.type === 'issue' ? 'Issue' : 'Upsell'}
+                            </span>
+                            <span className={`text-xs ${alert.status === 'accepted' ? 'text-emerald-600' : alert.status === 'declined' ? 'text-red-500' : 'text-muted-foreground'}`}>
+                              {alert.status}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-sm">{alert.message}</p>
+                          {alert.customerResponse && (
+                            <p className="mt-0.5 text-xs text-muted-foreground italic">"{alert.customerResponse}"</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground py-1">No alerts logged yet.</p>
                   )}
                 </div>
 

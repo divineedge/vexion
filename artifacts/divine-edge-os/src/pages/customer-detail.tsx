@@ -5,6 +5,7 @@ import {
   useListProperties, getListPropertiesQueryKey,
   useListJobs, getListJobsQueryKey,
   useGetTenantSettings, getGetTenantSettingsQueryKey,
+  useGetCustomerPortalLink, getGetCustomerPortalLinkQueryKey,
 } from '@workspace/api-client-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
@@ -22,7 +23,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Separator } from '@/components/ui/separator';
 import {
   ArrowLeft, Building, Phone, Mail, Edit, Plus, Calendar, MapPin,
-  Save, X, User, FileText, Tag, DollarSign, Home, Briefcase, Megaphone, AlertTriangle,
+  Save, X, User, FileText, Tag, DollarSign, Home, Briefcase, Megaphone, AlertTriangle, Link,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -120,6 +121,9 @@ export default function CustomerDetailPage() {
 
   const updateCustomer = useUpdateCustomer();
   const activeFields = getActiveCustomerFields(settings as TenantSettings | undefined);
+  const { data: portalLink } = useGetCustomerPortalLink(id, {
+    query: { enabled: !!id, queryKey: getGetCustomerPortalLinkQueryKey(id) },
+  });
 
   const openEdit = () => {
     if (!customer) return;
@@ -260,9 +264,23 @@ export default function CustomerDetailPage() {
             <span className="flex items-center gap-1"><Mail className="w-4 h-4" />{customer.email}</span>
           </div>
         </div>
-        <Button onClick={openEdit} className="gap-2 shrink-0">
-          <Edit className="w-4 h-4" /> Edit Customer
-        </Button>
+        <div className="flex gap-2 shrink-0">
+          {portalLink && (
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => {
+                navigator.clipboard.writeText(portalLink.url);
+                toast.success('Portal link copied to clipboard');
+              }}
+            >
+              <Link className="w-4 h-4" /> Copy Portal Link
+            </Button>
+          )}
+          <Button onClick={openEdit} className="gap-2">
+            <Edit className="w-4 h-4" /> Edit Customer
+          </Button>
+        </div>
       </div>
 
       {/* KPI bar */}

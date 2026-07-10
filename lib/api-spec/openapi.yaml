@@ -825,11 +825,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [userId]
-              properties:
-                userId:
-                  type: integer
+              $ref: "#/components/schemas/AddCrewMemberInput"
       responses:
         "201":
           description: Member added
@@ -1974,6 +1970,247 @@ paths:
         "204":
           description: Deleted
 
+  # PORTAL AUTH (public — no staff auth required)
+  /portal/auth/request-otp:
+    post:
+      operationId: portalRequestOtp
+      tags: [portal]
+      summary: Request a 6-digit OTP for portal login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalOtpRequest"
+      responses:
+        "200":
+          description: OTP sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalOtpRequestResult"
+        "404":
+          description: Email not found
+
+  /portal/auth/verify-otp:
+    post:
+      operationId: portalVerifyOtp
+      tags: [portal]
+      summary: Verify OTP and receive a portal session token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalOtpVerify"
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalAuthResponse"
+        "401":
+          description: Invalid or expired OTP
+
+  # PORTAL DATA (portal session token required)
+  /portal/me:
+    get:
+      operationId: portalGetMe
+      tags: [portal]
+      summary: Get current portal customer profile
+      responses:
+        "200":
+          description: Portal customer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalCustomer"
+        "401":
+          description: Unauthorized
+
+  /portal/summary:
+    get:
+      operationId: portalGetSummary
+      tags: [portal]
+      summary: Get portal home summary — upcoming jobs, recent invoices, unread alert count
+      responses:
+        "200":
+          description: Portal summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalSummary"
+
+  /portal/jobs:
+    get:
+      operationId: portalListJobs
+      tags: [portal]
+      summary: List all jobs for the portal customer
+      responses:
+        "200":
+          description: Jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PortalJob"
+
+  /portal/invoices:
+    get:
+      operationId: portalListInvoices
+      tags: [portal]
+      summary: List all invoices for the portal customer
+      responses:
+        "200":
+          description: Invoices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PortalInvoice"
+
+  /portal/properties:
+    get:
+      operationId: portalListProperties
+      tags: [portal]
+      summary: List all properties for the portal customer
+      responses:
+        "200":
+          description: Properties
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PortalProperty"
+
+  /portal/alerts:
+    get:
+      operationId: portalListAlerts
+      tags: [portal]
+      summary: List customer alerts (technician issues and upsells)
+      responses:
+        "200":
+          description: Alerts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PortalAlert"
+
+  /portal/alerts/{id}/respond:
+    patch:
+      operationId: portalRespondToAlert
+      tags: [portal]
+      summary: Respond to a customer alert (accept/decline)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalAlertResponse"
+      responses:
+        "200":
+          description: Updated alert
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalAlert"
+
+  /portal/service-requests:
+    post:
+      operationId: portalCreateServiceRequest
+      tags: [portal]
+      summary: Submit a service request from the customer portal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalServiceRequestInput"
+      responses:
+        "201":
+          description: Service request created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalJob"
+
+  # STAFF — Job alerts panel
+  /jobs/{id}/alerts:
+    get:
+      operationId: listJobAlerts
+      tags: [jobs]
+      summary: List customer alerts logged on a job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Alerts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CustomerAlert"
+    post:
+      operationId: createJobAlert
+      tags: [jobs]
+      summary: Log a customer alert (issue or upsell) on a job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerAlertInput"
+      responses:
+        "201":
+          description: Alert created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerAlert"
+
+  # STAFF — Customer portal link
+  /customers/{id}/portal-link:
+    get:
+      operationId: getCustomerPortalLink
+      tags: [customers]
+      summary: Generate a pre-auth deep link for the customer portal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Portal link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalLinkResult"
+
 components:
   schemas:
     HealthStatus:
@@ -2696,6 +2933,13 @@ components:
           type: string
         email:
           type: string
+
+    AddCrewMemberInput:
+      type: object
+      required: [userId]
+      properties:
+        userId:
+          type: integer
 
     CrewInput:
       type: object
@@ -3753,3 +3997,239 @@ components:
           type: number
         odometerReading:
           type: number
+
+    # PORTAL SCHEMAS
+    PortalOtpRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+
+    PortalOtpRequestResult:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+        previewOtp:
+          type: ["string", "null"]
+
+    PortalOtpVerify:
+      type: object
+      required: [email, otp]
+      properties:
+        email:
+          type: string
+        otp:
+          type: string
+
+    PortalAuthResponse:
+      type: object
+      required: [token, customer]
+      properties:
+        token:
+          type: string
+        customer:
+          $ref: "#/components/schemas/PortalCustomer"
+
+    PortalCustomer:
+      type: object
+      required: [id, name, email, phone]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        company:
+          type: ["string", "null"]
+        profilePhotoUrl:
+          type: ["string", "null"]
+
+    PortalSummary:
+      type: object
+      required: [upcomingJobs, recentInvoices, unreadAlertCount]
+      properties:
+        upcomingJobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalJob"
+        recentInvoices:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortalInvoice"
+        unreadAlertCount:
+          type: integer
+
+    PortalJob:
+      type: object
+      required: [id, title, status, scheduledAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        status:
+          type: string
+        scheduledAt:
+          type: string
+        completedAt:
+          type: ["string", "null"]
+        propertyAddress:
+          type: ["string", "null"]
+        totalAmount:
+          type: number
+
+    PortalInvoice:
+      type: object
+      required: [id, invoiceNumber, status, total, createdAt]
+      properties:
+        id:
+          type: integer
+        invoiceNumber:
+          type: string
+        status:
+          type: string
+        subtotal:
+          type: number
+        tax:
+          type: number
+        total:
+          type: number
+        dueDate:
+          type: ["string", "null"]
+        paidAt:
+          type: ["string", "null"]
+        lineItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/JobLineItem"
+        jobParts:
+          type: array
+          items:
+            $ref: "#/components/schemas/JobPart"
+        createdAt:
+          type: string
+
+    PortalProperty:
+      type: object
+      required: [id, address]
+      properties:
+        id:
+          type: integer
+        address:
+          type: string
+        city:
+          type: ["string", "null"]
+        state:
+          type: ["string", "null"]
+        zip:
+          type: ["string", "null"]
+        type:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+
+    PortalAlert:
+      type: object
+      required: [id, type, message, status, createdAt]
+      properties:
+        id:
+          type: integer
+        jobId:
+          type: ["integer", "null"]
+        jobTitle:
+          type: ["string", "null"]
+        type:
+          type: string
+          enum: [issue, upsell]
+        message:
+          type: string
+        status:
+          type: string
+          enum: [pending, accepted, declined]
+        customerResponse:
+          type: ["string", "null"]
+        photoUrl:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    PortalAlertResponse:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [accept, decline]
+        customerResponse:
+          type: string
+
+    PortalServiceRequestInput:
+      type: object
+      required: [propertyId, description]
+      properties:
+        propertyId:
+          type: integer
+        description:
+          type: string
+        preferredDateStart:
+          type: string
+        preferredDateEnd:
+          type: string
+
+    CustomerAlert:
+      type: object
+      required: [id, jobId, tenantId, type, message, status, createdAt]
+      properties:
+        id:
+          type: integer
+        jobId:
+          type: integer
+        tenantId:
+          type: integer
+        customerId:
+          type: ["integer", "null"]
+        type:
+          type: string
+          enum: [issue, upsell]
+        message:
+          type: string
+        status:
+          type: string
+          enum: [pending, accepted, declined]
+        customerResponse:
+          type: ["string", "null"]
+        photoUrl:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    CustomerAlertInput:
+      type: object
+      required: [type, message]
+      properties:
+        type:
+          type: string
+          enum: [issue, upsell]
+        message:
+          type: string
+        photoUrl:
+          type: string
+
+    PortalLinkResult:
+      type: object
+      required: [url, expiresAt]
+      properties:
+        url:
+          type: string
+        expiresAt:
+          type: string

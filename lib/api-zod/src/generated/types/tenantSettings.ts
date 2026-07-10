@@ -7,8 +7,10 @@
  */
 import type { CustomerFieldConfig } from './customerFieldConfig';
 import type { TenantSettingsAutoInvoiceFrequency } from './tenantSettingsAutoInvoiceFrequency';
+import type { TenantSettingsDefaultGeofenceUnit } from './tenantSettingsDefaultGeofenceUnit';
 import type { TenantSettingsDurationUnit } from './tenantSettingsDurationUnit';
 import type { TenantSettingsPlanTier } from './tenantSettingsPlanTier';
+import type { TenantSettingsPreferredAreaUnit } from './tenantSettingsPreferredAreaUnit';
 import type { TenantSettingsRolePermissions } from './tenantSettingsRolePermissions';
 
 export interface TenantSettings {
@@ -39,4 +41,14 @@ export interface TenantSettings {
   equipmentRepairThresholdPct?: number;
   /** Sell recommendation triggers when estimated resale value falls below this % of purchase price */
   equipmentResaleThresholdPct?: number;
+  /** Default geofence radius applied when auto-creating a geofence */
+  defaultGeofenceRadius?: number;
+  /** Unit for geofence radius */
+  defaultGeofenceUnit?: TenantSettingsDefaultGeofenceUnit;
+  /** Auto-create geofence when a property is added */
+  autoCreateGeofence?: boolean;
+  /** Default zone label presets shown in the polygon tool */
+  measurementZoneLabels?: string[];
+  /** Preferred area unit for property measurements */
+  preferredAreaUnit?: TenantSettingsPreferredAreaUnit;
 }

@@ -7,7 +7,9 @@
  */
 import type { CustomerFieldConfig } from './customerFieldConfig';
 import type { TenantSettingsUpdateAutoInvoiceFrequency } from './tenantSettingsUpdateAutoInvoiceFrequency';
+import type { TenantSettingsUpdateDefaultGeofenceUnit } from './tenantSettingsUpdateDefaultGeofenceUnit';
 import type { TenantSettingsUpdateDurationUnit } from './tenantSettingsUpdateDurationUnit';
+import type { TenantSettingsUpdatePreferredAreaUnit } from './tenantSettingsUpdatePreferredAreaUnit';
 import type { TenantSettingsUpdateRolePermissions } from './tenantSettingsUpdateRolePermissions';
 
 export interface TenantSettingsUpdate {
@@ -26,4 +28,9 @@ export interface TenantSettingsUpdate {
   customerFields?: CustomerFieldConfig[];
   equipmentRepairThresholdPct?: number;
   equipmentResaleThresholdPct?: number;
+  defaultGeofenceRadius?: number;
+  defaultGeofenceUnit?: TenantSettingsUpdateDefaultGeofenceUnit;
+  autoCreateGeofence?: boolean;
+  measurementZoneLabels?: string[];
+  preferredAreaUnit?: TenantSettingsUpdatePreferredAreaUnit;
 }

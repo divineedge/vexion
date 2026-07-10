@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, customersTable, propertiesTable, jobsTable, invoicesTable, activityLogTable, propertyOwnershipHistoryTable } from "@workspace/db";
+import { db, customersTable, propertiesTable, jobsTable, invoicesTable, activityLogTable, propertyOwnershipHistoryTable, customerOtpSessionsTable } from "@workspace/db";
 import { eq, and, ilike, sql, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 
@@ -248,6 +248,36 @@ router.get("/customers/:id/invoices", async (req, res): Promise<void> => {
     paidAt: i.paidAt?.toISOString() ?? null,
     createdAt: i.createdAt.toISOString(),
   })));
+});
+
+// ---------------------------------------------------------------------------
+// GET /customers/:id/portal-link — generate a magic-link URL for the portal
+// ---------------------------------------------------------------------------
+router.get("/customers/:id/portal-link", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const id = parseInt(req.params.id, 10);
+
+  const [customer] = await db
+    .select()
+    .from(customersTable)
+    .where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)))
+    .limit(1);
+
+  if (!customer) {
+    res.status(404).json({ error: "Customer not found" });
+    return;
+  }
+
+  // The portal link opens the portal login page pre-filled with the customer's email.
+  // The tenant is encoded as a query param so the portal knows which OTP to request.
+  const baseUrl = process.env.REPLIT_DEV_DOMAIN
+    ? `https://${process.env.REPLIT_DEV_DOMAIN}/portal`
+    : "/portal";
+
+  const url = `${baseUrl}?email=${encodeURIComponent(customer.email)}&tenant=${tenantId}`;
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  res.json({ url, expiresAt });
 });
 
 export default router;

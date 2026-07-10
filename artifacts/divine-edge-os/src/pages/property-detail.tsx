@@ -347,7 +347,7 @@ export default function PropertyDetailPage() {
                   lat={property.lat}
                   lng={property.lng}
                   address={property.address}
-                  measurementPolygons={currentZones}
+                  measurementPolygons={currentZones as import('@/components/map/PropertySatelliteMap').MeasurementZone[]}
                   geofenceRadius={property.geofenceRadius ?? defaultGeofenceRadius}
                   geofenceLat={property.geofenceLat}
                   geofenceLng={property.geofenceLng}

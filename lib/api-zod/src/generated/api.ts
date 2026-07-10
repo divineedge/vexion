@@ -310,6 +310,15 @@ export const ListPropertiesResponseItem = zod.object({
   "geofenceRadius": zod.number().optional(),
   "notes": zod.string().nullish(),
   "type": zod.string().nullish(),
+  "measurementPolygons": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "vertices": zod.array(zod.array(zod.number())).describe('Array of [lat, lng] coordinate pairs'),
+  "areaSqft": zod.number(),
+  "enabled": zod.boolean(),
+  "color": zod.string()
+})).optional(),
+  "serviceableAreaSqft": zod.number().nullish(),
   "createdAt": zod.string()
 })
 export const ListPropertiesResponse = zod.array(ListPropertiesResponseItem)
@@ -346,6 +355,15 @@ export const CreatePropertyResponse = zod.object({
   "geofenceRadius": zod.number().optional(),
   "notes": zod.string().nullish(),
   "type": zod.string().nullish(),
+  "measurementPolygons": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "vertices": zod.array(zod.array(zod.number())).describe('Array of [lat, lng] coordinate pairs'),
+  "areaSqft": zod.number(),
+  "enabled": zod.boolean(),
+  "color": zod.string()
+})).optional(),
+  "serviceableAreaSqft": zod.number().nullish(),
   "createdAt": zod.string()
 })
 
@@ -373,6 +391,15 @@ export const GetPropertyResponse = zod.object({
   "geofenceRadius": zod.number().optional(),
   "notes": zod.string().nullish(),
   "type": zod.string().nullish(),
+  "measurementPolygons": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "vertices": zod.array(zod.array(zod.number())).describe('Array of [lat, lng] coordinate pairs'),
+  "areaSqft": zod.number(),
+  "enabled": zod.boolean(),
+  "color": zod.string()
+})).optional(),
+  "serviceableAreaSqft": zod.number().nullish(),
   "createdAt": zod.string()
 })
 
@@ -392,7 +419,16 @@ export const UpdatePropertyBody = zod.object({
   "lat": zod.number().optional(),
   "lng": zod.number().optional(),
   "notes": zod.string().optional(),
-  "type": zod.string().optional()
+  "type": zod.string().optional(),
+  "measurementPolygons": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "vertices": zod.array(zod.array(zod.number())).describe('Array of [lat, lng] coordinate pairs'),
+  "areaSqft": zod.number(),
+  "enabled": zod.boolean(),
+  "color": zod.string()
+})).optional(),
+  "serviceableAreaSqft": zod.number().optional()
 })
 
 export const UpdatePropertyResponse = zod.object({
@@ -411,6 +447,15 @@ export const UpdatePropertyResponse = zod.object({
   "geofenceRadius": zod.number().optional(),
   "notes": zod.string().nullish(),
   "type": zod.string().nullish(),
+  "measurementPolygons": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "vertices": zod.array(zod.array(zod.number())).describe('Array of [lat, lng] coordinate pairs'),
+  "areaSqft": zod.number(),
+  "enabled": zod.boolean(),
+  "color": zod.string()
+})).optional(),
+  "serviceableAreaSqft": zod.number().nullish(),
   "createdAt": zod.string()
 })
 
@@ -454,7 +499,226 @@ export const UpdateGeofencePinResponse = zod.object({
   "geofenceRadius": zod.number().optional(),
   "notes": zod.string().nullish(),
   "type": zod.string().nullish(),
+  "measurementPolygons": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "vertices": zod.array(zod.array(zod.number())).describe('Array of [lat, lng] coordinate pairs'),
+  "areaSqft": zod.number(),
+  "enabled": zod.boolean(),
+  "color": zod.string()
+})).optional(),
+  "serviceableAreaSqft": zod.number().nullish(),
   "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Save measurement polygons and total serviceable area for a property
+ */
+export const UpdatePropertyMeasurementsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdatePropertyMeasurementsBody = zod.object({
+  "measurementPolygons": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "vertices": zod.array(zod.array(zod.number())).describe('Array of [lat, lng] coordinate pairs'),
+  "areaSqft": zod.number(),
+  "enabled": zod.boolean(),
+  "color": zod.string()
+})).optional(),
+  "serviceableAreaSqft": zod.number().optional()
+})
+
+export const UpdatePropertyMeasurementsResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "customerName": zod.string().nullish(),
+  "address": zod.string(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "zip": zod.string().nullish(),
+  "lat": zod.number().nullish(),
+  "lng": zod.number().nullish(),
+  "geofenceLat": zod.number().nullish(),
+  "geofenceLng": zod.number().nullish(),
+  "geofenceRadius": zod.number().optional(),
+  "notes": zod.string().nullish(),
+  "type": zod.string().nullish(),
+  "measurementPolygons": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "vertices": zod.array(zod.array(zod.number())).describe('Array of [lat, lng] coordinate pairs'),
+  "areaSqft": zod.number(),
+  "enabled": zod.boolean(),
+  "color": zod.string()
+})).optional(),
+  "serviceableAreaSqft": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Geocode property address and return lat/lng with optional parcel boundary
+ */
+export const GeocodePropertyParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GeocodePropertyResponse = zod.object({
+  "lat": zod.number(),
+  "lng": zod.number(),
+  "boundaryPolygon": zod.array(zod.array(zod.number())).nullish()
+})
+
+
+/**
+ * @summary List instant quotes for a property
+ */
+export const ListPropertyQuotesParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListPropertyQuotesResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "propertyId": zod.number(),
+  "token": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string(),
+  "serviceDescription": zod.string().nullish(),
+  "selectedZoneLabels": zod.array(zod.string()).optional(),
+  "totalAreaSqft": zod.number().nullish(),
+  "calculatedPrice": zod.number(),
+  "priceType": zod.enum(['flat', 'per_sqft']).optional(),
+  "status": zod.enum(['pending', 'approved', 'declined']),
+  "expiresAt": zod.string().nullish(),
+  "respondedAt": zod.string().nullish(),
+  "customerNote": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})
+export const ListPropertyQuotesResponse = zod.array(ListPropertyQuotesResponseItem)
+
+
+/**
+ * @summary Create an instant quote for a property
+ */
+export const CreatePropertyQuoteParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CreatePropertyQuoteBody = zod.object({
+  "serviceId": zod.number().optional(),
+  "serviceName": zod.string(),
+  "selectedZoneLabels": zod.array(zod.string()).optional(),
+  "totalAreaSqft": zod.number().optional(),
+  "calculatedPrice": zod.number().optional(),
+  "priceType": zod.enum(['flat', 'per_sqft']).optional()
+})
+
+export const CreatePropertyQuoteResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "propertyId": zod.number(),
+  "token": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string(),
+  "serviceDescription": zod.string().nullish(),
+  "selectedZoneLabels": zod.array(zod.string()).optional(),
+  "totalAreaSqft": zod.number().nullish(),
+  "calculatedPrice": zod.number(),
+  "priceType": zod.enum(['flat', 'per_sqft']).optional(),
+  "status": zod.enum(['pending', 'approved', 'declined']),
+  "expiresAt": zod.string().nullish(),
+  "respondedAt": zod.string().nullish(),
+  "customerNote": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary Public endpoint — get quote details by token (no auth required)
+ */
+export const GetQuoteByTokenParams = zod.object({
+  "token": zod.coerce.string()
+})
+
+export const GetQuoteByTokenResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "propertyId": zod.number(),
+  "token": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string(),
+  "serviceDescription": zod.string().nullish(),
+  "selectedZoneLabels": zod.array(zod.string()).optional(),
+  "totalAreaSqft": zod.number().nullish(),
+  "calculatedPrice": zod.number(),
+  "priceType": zod.enum(['flat', 'per_sqft']).optional(),
+  "status": zod.enum(['pending', 'approved', 'declined']),
+  "expiresAt": zod.string().nullish(),
+  "respondedAt": zod.string().nullish(),
+  "customerNote": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+}).and(zod.object({
+  "property": zod.object({
+  "id": zod.number().optional(),
+  "address": zod.string().optional(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "zip": zod.string().nullish(),
+  "lat": zod.number().nullish(),
+  "lng": zod.number().nullish(),
+  "measurementPolygons": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "vertices": zod.array(zod.array(zod.number())).describe('Array of [lat, lng] coordinate pairs'),
+  "areaSqft": zod.number(),
+  "enabled": zod.boolean(),
+  "color": zod.string()
+})).optional(),
+  "serviceableAreaSqft": zod.number().nullish(),
+  "customerName": zod.string().nullish()
+}).nullish(),
+  "expired": zod.boolean().optional()
+}))
+
+
+/**
+ * @summary Public endpoint — customer approves or declines a quote
+ */
+export const RespondToQuoteParams = zod.object({
+  "token": zod.coerce.string()
+})
+
+export const RespondToQuoteBody = zod.object({
+  "action": zod.enum(['approved', 'declined']),
+  "customerNote": zod.string().optional()
+})
+
+export const RespondToQuoteResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "propertyId": zod.number(),
+  "token": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string(),
+  "serviceDescription": zod.string().nullish(),
+  "selectedZoneLabels": zod.array(zod.string()).optional(),
+  "totalAreaSqft": zod.number().nullish(),
+  "calculatedPrice": zod.number(),
+  "priceType": zod.enum(['flat', 'per_sqft']).optional(),
+  "status": zod.enum(['pending', 'approved', 'declined']),
+  "expiresAt": zod.string().nullish(),
+  "respondedAt": zod.string().nullish(),
+  "customerNote": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
 })
 
 
@@ -1731,7 +1995,12 @@ export const GetTenantSettingsResponse = zod.object({
   "isBuiltIn": zod.boolean()
 })).optional(),
   "equipmentRepairThresholdPct": zod.number().optional().describe('Sell recommendation triggers when total repair cost exceeds this % of purchase price'),
-  "equipmentResaleThresholdPct": zod.number().optional().describe('Sell recommendation triggers when estimated resale value falls below this % of purchase price')
+  "equipmentResaleThresholdPct": zod.number().optional().describe('Sell recommendation triggers when estimated resale value falls below this % of purchase price'),
+  "defaultGeofenceRadius": zod.number().optional().describe('Default geofence radius applied when auto-creating a geofence'),
+  "defaultGeofenceUnit": zod.enum(['m', 'ft']).optional().describe('Unit for geofence radius'),
+  "autoCreateGeofence": zod.boolean().optional().describe('Auto-create geofence when a property is added'),
+  "measurementZoneLabels": zod.array(zod.string()).optional().describe('Default zone label presets shown in the polygon tool'),
+  "preferredAreaUnit": zod.enum(['sqft', 'acres']).optional().describe('Preferred area unit for property measurements')
 })
 
 
@@ -1761,7 +2030,12 @@ export const UpdateTenantSettingsBody = zod.object({
   "isBuiltIn": zod.boolean()
 })).optional(),
   "equipmentRepairThresholdPct": zod.number().optional(),
-  "equipmentResaleThresholdPct": zod.number().optional()
+  "equipmentResaleThresholdPct": zod.number().optional(),
+  "defaultGeofenceRadius": zod.number().optional(),
+  "defaultGeofenceUnit": zod.enum(['m', 'ft']).optional(),
+  "autoCreateGeofence": zod.boolean().optional(),
+  "measurementZoneLabels": zod.array(zod.string()).optional(),
+  "preferredAreaUnit": zod.enum(['sqft', 'acres']).optional()
 })
 
 export const UpdateTenantSettingsResponse = zod.object({
@@ -1791,7 +2065,12 @@ export const UpdateTenantSettingsResponse = zod.object({
   "isBuiltIn": zod.boolean()
 })).optional(),
   "equipmentRepairThresholdPct": zod.number().optional().describe('Sell recommendation triggers when total repair cost exceeds this % of purchase price'),
-  "equipmentResaleThresholdPct": zod.number().optional().describe('Sell recommendation triggers when estimated resale value falls below this % of purchase price')
+  "equipmentResaleThresholdPct": zod.number().optional().describe('Sell recommendation triggers when estimated resale value falls below this % of purchase price'),
+  "defaultGeofenceRadius": zod.number().optional().describe('Default geofence radius applied when auto-creating a geofence'),
+  "defaultGeofenceUnit": zod.enum(['m', 'ft']).optional().describe('Unit for geofence radius'),
+  "autoCreateGeofence": zod.boolean().optional().describe('Auto-create geofence when a property is added'),
+  "measurementZoneLabels": zod.array(zod.string()).optional().describe('Default zone label presets shown in the polygon tool'),
+  "preferredAreaUnit": zod.enum(['sqft', 'acres']).optional().describe('Preferred area unit for property measurements')
 })
 
 
@@ -2531,5 +2810,287 @@ export const DeleteEquipmentFuelLogParams = zod.object({
 })
 
 export const DeleteEquipmentFuelLogResponse = zod.void()
+
+
+/**
+ * @summary Request a 6-digit OTP for portal login
+ */
+export const PortalRequestOtpBody = zod.object({
+  "email": zod.string()
+})
+
+export const PortalRequestOtpResponse = zod.object({
+  "message": zod.string(),
+  "previewOtp": zod.string().nullish()
+})
+
+
+/**
+ * @summary Verify OTP and receive a portal session token
+ */
+export const PortalVerifyOtpBody = zod.object({
+  "email": zod.string(),
+  "otp": zod.string()
+})
+
+export const PortalVerifyOtpResponse = zod.object({
+  "token": zod.string(),
+  "customer": zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "phone": zod.string(),
+  "company": zod.string().nullish(),
+  "profilePhotoUrl": zod.string().nullish()
+})
+})
+
+
+/**
+ * @summary Get current portal customer profile
+ */
+export const PortalGetMeResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "phone": zod.string(),
+  "company": zod.string().nullish(),
+  "profilePhotoUrl": zod.string().nullish()
+})
+
+
+/**
+ * @summary Get portal home summary — upcoming jobs, recent invoices, unread alert count
+ */
+export const PortalGetSummaryResponse = zod.object({
+  "upcomingJobs": zod.array(zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "status": zod.string(),
+  "scheduledAt": zod.string(),
+  "completedAt": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "totalAmount": zod.number().optional()
+})),
+  "recentInvoices": zod.array(zod.object({
+  "id": zod.number(),
+  "invoiceNumber": zod.string(),
+  "status": zod.string(),
+  "subtotal": zod.number().optional(),
+  "tax": zod.number().optional(),
+  "total": zod.number(),
+  "dueDate": zod.string().nullish(),
+  "paidAt": zod.string().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "inventoryItemId": zod.number().nullish(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional(),
+  "jobParts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional(),
+  "createdAt": zod.string()
+})),
+  "unreadAlertCount": zod.number()
+})
+
+
+/**
+ * @summary List all jobs for the portal customer
+ */
+export const PortalListJobsResponseItem = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "status": zod.string(),
+  "scheduledAt": zod.string(),
+  "completedAt": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "totalAmount": zod.number().optional()
+})
+export const PortalListJobsResponse = zod.array(PortalListJobsResponseItem)
+
+
+/**
+ * @summary List all invoices for the portal customer
+ */
+export const PortalListInvoicesResponseItem = zod.object({
+  "id": zod.number(),
+  "invoiceNumber": zod.string(),
+  "status": zod.string(),
+  "subtotal": zod.number().optional(),
+  "tax": zod.number().optional(),
+  "total": zod.number(),
+  "dueDate": zod.string().nullish(),
+  "paidAt": zod.string().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "inventoryItemId": zod.number().nullish(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional(),
+  "jobParts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional(),
+  "createdAt": zod.string()
+})
+export const PortalListInvoicesResponse = zod.array(PortalListInvoicesResponseItem)
+
+
+/**
+ * @summary List all properties for the portal customer
+ */
+export const PortalListPropertiesResponseItem = zod.object({
+  "id": zod.number(),
+  "address": zod.string(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "zip": zod.string().nullish(),
+  "type": zod.string().nullish(),
+  "notes": zod.string().nullish()
+})
+export const PortalListPropertiesResponse = zod.array(PortalListPropertiesResponseItem)
+
+
+/**
+ * @summary List customer alerts (technician issues and upsells)
+ */
+export const PortalListAlertsResponseItem = zod.object({
+  "id": zod.number(),
+  "jobId": zod.number().nullish(),
+  "jobTitle": zod.string().nullish(),
+  "type": zod.enum(['issue', 'upsell']),
+  "message": zod.string(),
+  "status": zod.enum(['pending', 'accepted', 'declined']),
+  "customerResponse": zod.string().nullish(),
+  "photoUrl": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+export const PortalListAlertsResponse = zod.array(PortalListAlertsResponseItem)
+
+
+/**
+ * @summary Respond to a customer alert (accept/decline)
+ */
+export const PortalRespondToAlertParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const PortalRespondToAlertBody = zod.object({
+  "action": zod.enum(['accept', 'decline']),
+  "customerResponse": zod.string().optional()
+})
+
+export const PortalRespondToAlertResponse = zod.object({
+  "id": zod.number(),
+  "jobId": zod.number().nullish(),
+  "jobTitle": zod.string().nullish(),
+  "type": zod.enum(['issue', 'upsell']),
+  "message": zod.string(),
+  "status": zod.enum(['pending', 'accepted', 'declined']),
+  "customerResponse": zod.string().nullish(),
+  "photoUrl": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Submit a service request from the customer portal
+ */
+export const PortalCreateServiceRequestBody = zod.object({
+  "propertyId": zod.number(),
+  "description": zod.string(),
+  "preferredDateStart": zod.string().optional(),
+  "preferredDateEnd": zod.string().optional()
+})
+
+export const PortalCreateServiceRequestResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "status": zod.string(),
+  "scheduledAt": zod.string(),
+  "completedAt": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "totalAmount": zod.number().optional()
+})
+
+
+/**
+ * @summary List customer alerts logged on a job
+ */
+export const ListJobAlertsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListJobAlertsResponseItem = zod.object({
+  "id": zod.number(),
+  "jobId": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number().nullish(),
+  "type": zod.enum(['issue', 'upsell']),
+  "message": zod.string(),
+  "status": zod.enum(['pending', 'accepted', 'declined']),
+  "customerResponse": zod.string().nullish(),
+  "photoUrl": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})
+export const ListJobAlertsResponse = zod.array(ListJobAlertsResponseItem)
+
+
+/**
+ * @summary Log a customer alert (issue or upsell) on a job
+ */
+export const CreateJobAlertParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CreateJobAlertBody = zod.object({
+  "type": zod.enum(['issue', 'upsell']),
+  "message": zod.string(),
+  "photoUrl": zod.string().optional()
+})
+
+export const CreateJobAlertResponse = zod.object({
+  "id": zod.number(),
+  "jobId": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number().nullish(),
+  "type": zod.enum(['issue', 'upsell']),
+  "message": zod.string(),
+  "status": zod.enum(['pending', 'accepted', 'declined']),
+  "customerResponse": zod.string().nullish(),
+  "photoUrl": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string().optional()
+})
+
+
+/**
+ * @summary Generate a pre-auth deep link for the customer portal
+ */
+export const GetCustomerPortalLinkParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetCustomerPortalLinkResponse = zod.object({
+  "url": zod.string(),
+  "expiresAt": zod.string()
+})
 
 

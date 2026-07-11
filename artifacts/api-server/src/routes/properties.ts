@@ -10,6 +10,7 @@ import {
   requireString,
   optionalString,
   optionalNumber,
+  registerImportExportConfig,
   type ImportExportEntityConfig,
 } from "../lib/importExport";
 
@@ -117,13 +118,24 @@ const propertiesImportExportConfig: ImportExportEntityConfig = {
     return existing?.id ?? null;
   },
   insert: async (tenantId, values) => {
-    await db.insert(propertiesTable).values({ tenantId, ...values } as typeof propertiesTable.$inferInsert);
+    const [row] = await db.insert(propertiesTable).values({ tenantId, ...values } as typeof propertiesTable.$inferInsert).returning({ id: propertiesTable.id });
+    return row.id;
   },
   update: async (tenantId, id, values) => {
     await db.update(propertiesTable).set(values as Partial<typeof propertiesTable.$inferInsert>)
       .where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId)));
   },
+  getById: async (tenantId, id) => {
+    const [row] = await db.select().from(propertiesTable).where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId))).limit(1);
+    if (!row) return null;
+    const { id: _id, tenantId: _t, createdAt: _c, ...rest } = row;
+    return rest;
+  },
+  deleteById: async (tenantId, id) => {
+    await db.delete(propertiesTable).where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId)));
+  },
 };
+registerImportExportConfig(propertiesImportExportConfig);
 
 router.get("/properties/export", async (req, res): Promise<void> => {
   await handleExportRequest(req, res, getTenantId(req), propertiesImportExportConfig);

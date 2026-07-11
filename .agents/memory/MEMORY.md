@@ -16,3 +16,4 @@
 - [Equipment ledger cumulative readings](equipment-ledger-cumulative-readings.md) — ledger runtime cost needs ≥2 hour-meter/mileage readings in range to show non-zero; $0 with 1 reading is correct, not a bug
 - [Divine Edge OS toaster mismatch](divine-edge-toaster-mismatch.md) — App.tsx must mount sonner's Toaster; app code calls `toast` from 'sonner' everywhere
 - [Bulk import/export pattern](bulk-import-export-pattern.md) — transient file uploads use multer + manual-hooks, not presigned-URL storage or orval codegen; shared engine in importExport.ts
+- [Import batch rollback](import-batch-rollback.md) — undo tracks per-row created/updated ids + prior values in jsonb; revive ISO date strings before replaying them into `update()`

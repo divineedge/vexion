@@ -14,6 +14,7 @@ import {
   optionalString,
   optionalNumber,
   optionalDate,
+  registerImportExportConfig,
   type ImportExportEntityConfig,
 } from "../lib/importExport";
 
@@ -147,14 +148,25 @@ const estimatesImportExportConfig: ImportExportEntityConfig = {
   },
   insert: async (tenantId, values) => {
     const { id: _ignoredId, ...rest } = values;
-    await db.insert(estimatesTable).values({ tenantId, ...rest } as typeof estimatesTable.$inferInsert);
+    const [row] = await db.insert(estimatesTable).values({ tenantId, ...rest } as typeof estimatesTable.$inferInsert).returning({ id: estimatesTable.id });
+    return row.id;
   },
   update: async (tenantId, id, values) => {
     const { id: _ignoredId, ...rest } = values;
     await db.update(estimatesTable).set(rest as Partial<typeof estimatesTable.$inferInsert>)
       .where(and(eq(estimatesTable.id, id), eq(estimatesTable.tenantId, tenantId)));
   },
+  getById: async (tenantId, id) => {
+    const [row] = await db.select().from(estimatesTable).where(and(eq(estimatesTable.id, id), eq(estimatesTable.tenantId, tenantId))).limit(1);
+    if (!row) return null;
+    const { id: _id, tenantId: _t, createdAt: _c, ...rest } = row;
+    return rest;
+  },
+  deleteById: async (tenantId, id) => {
+    await db.delete(estimatesTable).where(and(eq(estimatesTable.id, id), eq(estimatesTable.tenantId, tenantId)));
+  },
 };
+registerImportExportConfig(estimatesImportExportConfig);
 
 router.get("/estimates/export", async (req, res): Promise<void> => {
   await handleExportRequest(req, res, getTenantId(req), estimatesImportExportConfig);

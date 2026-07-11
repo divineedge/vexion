@@ -12,6 +12,7 @@ import {
   optionalString,
   optionalNumber,
   optionalBoolean,
+  registerImportExportConfig,
   type ImportExportEntityConfig,
 } from "../lib/importExport";
 
@@ -104,23 +105,34 @@ const equipmentImportExportConfig: ImportExportEntityConfig = {
     return existing?.id ?? null;
   },
   insert: async (tenantId, values) => {
-    await db.insert(equipmentTable).values({ tenantId, ...values } as typeof equipmentTable.$inferInsert);
+    const [row] = await db.insert(equipmentTable).values({ tenantId, ...values } as typeof equipmentTable.$inferInsert).returning({ id: equipmentTable.id });
+    return row.id;
   },
   update: async (tenantId, id, values) => {
     await db.update(equipmentTable).set(values as Partial<typeof equipmentTable.$inferInsert>)
       .where(and(eq(equipmentTable.id, id), eq(equipmentTable.tenantId, tenantId)));
   },
+  getById: async (tenantId, id) => {
+    const [row] = await db.select().from(equipmentTable).where(and(eq(equipmentTable.id, id), eq(equipmentTable.tenantId, tenantId))).limit(1);
+    if (!row) return null;
+    const { id: _id, tenantId: _t, createdAt: _c, ...rest } = row;
+    return rest;
+  },
+  deleteById: async (tenantId, id) => {
+    await db.delete(equipmentTable).where(and(eq(equipmentTable.id, id), eq(equipmentTable.tenantId, tenantId)));
+  },
 };
+registerImportExportConfig(equipmentImportExportConfig);
 
 router.get("/equipment/export", async (req, res): Promise<void> => {
   await handleExportRequest(req, res, getTenantId(req), equipmentImportExportConfig);
 });
 
-router.post("/equipment/import/preview", importUpload.single("file"), async (req, res): Promise<void> => {
+router.post("/equipment/import/preview", requireOfficeRole, importUpload.single("file"), async (req, res): Promise<void> => {
   await handleImportPreview(req, res, getTenantId(req), equipmentImportExportConfig);
 });
 
-router.post("/equipment/import/commit", importUpload.single("file"), async (req, res): Promise<void> => {
+router.post("/equipment/import/commit", requireOfficeRole, importUpload.single("file"), async (req, res): Promise<void> => {
   await handleImportCommit(req, res, getTenantId(req), equipmentImportExportConfig);
 });
 

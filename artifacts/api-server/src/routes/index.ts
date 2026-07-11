@@ -44,6 +44,7 @@ import internalTasksRouter from "./internalTasks";
 import routingRouter from "./routing";
 import taskBundlesRouter from "./taskBundles";
 import followupQueueRouter from "./followupQueue";
+import importBatchesRouter from "./importBatches";
 
 const router: IRouter = Router();
 
@@ -92,5 +93,6 @@ router.use(internalTasksRouter);
 router.use(routingRouter);
 router.use(taskBundlesRouter);
 router.use(followupQueueRouter);
+router.use(importBatchesRouter);
 
 export default router;

@@ -141,6 +141,8 @@ export interface ImportCommitResult {
   skipped: number;
   failed: number;
   errors: ImportRowError[];
+  /** Id of the import batch tracking this commit — pass to rollbackImportBatch to undo it. */
+  batchId: number;
 }
 
 /**
@@ -238,6 +240,76 @@ export const useCommitEntityImport = <
   const { mutation: mutationOptions } = options ?? {};
   return useMutation({
     mutationFn: ({ entity, file, mapping }) => commitEntityImport(entity, file, mapping),
+    ...mutationOptions,
+  });
+};
+
+// ---------------------------------------------------------------------------
+// Import batch history / rollback ("undo an accidental bulk import")
+// ---------------------------------------------------------------------------
+
+export interface ImportBatchSummary {
+  id: number;
+  entityKey: ImportExportEntity;
+  fileName: string | null;
+  status: "committed" | "rolled_back";
+  totalRows: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  createdByName: string | null;
+  createdAt: string;
+  rolledBackAt: string | null;
+}
+
+export interface ImportBatchRollbackResult {
+  deletedCount: number;
+  revertedCount: number;
+  failedCount: number;
+  errors: string[];
+}
+
+export const listImportBatches = async (
+  entity?: ImportExportEntity,
+  options?: RequestInit,
+): Promise<ImportBatchSummary[]> => {
+  const params = entity ? `?entity=${entity}` : "";
+  return customFetch<ImportBatchSummary[]>(`/api/import-batches${params}`, options);
+};
+
+export const rollbackImportBatch = async (
+  batchId: number,
+  options?: RequestInit,
+): Promise<ImportBatchRollbackResult> => {
+  return customFetch<ImportBatchRollbackResult>(`/api/import-batches/${batchId}/rollback`, {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const useListImportBatches = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<Awaited<ReturnType<typeof listImportBatches>>, TError, ImportExportEntity | undefined, TContext>;
+}): UseMutationResult<Awaited<ReturnType<typeof listImportBatches>>, TError, ImportExportEntity | undefined, TContext> => {
+  const { mutation: mutationOptions } = options ?? {};
+  return useMutation({
+    mutationFn: (entity) => listImportBatches(entity),
+    ...mutationOptions,
+  });
+};
+
+export const useRollbackImportBatch = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<Awaited<ReturnType<typeof rollbackImportBatch>>, TError, number, TContext>;
+}): UseMutationResult<Awaited<ReturnType<typeof rollbackImportBatch>>, TError, number, TContext> => {
+  const { mutation: mutationOptions } = options ?? {};
+  return useMutation({
+    mutationFn: (batchId) => rollbackImportBatch(batchId),
     ...mutationOptions,
   });
 };

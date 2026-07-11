@@ -13,6 +13,7 @@ import {
   optionalString,
   optionalNumber,
   optionalDate,
+  registerImportExportConfig,
   type ImportExportEntityConfig,
 } from "../lib/importExport";
 
@@ -153,14 +154,25 @@ const jobsImportExportConfig: ImportExportEntityConfig = {
   },
   insert: async (tenantId, values) => {
     const { id: _ignoredId, ...rest } = values;
-    await db.insert(jobsTable).values({ tenantId, ...rest } as typeof jobsTable.$inferInsert);
+    const [row] = await db.insert(jobsTable).values({ tenantId, ...rest } as typeof jobsTable.$inferInsert).returning({ id: jobsTable.id });
+    return row.id;
   },
   update: async (tenantId, id, values) => {
     const { id: _ignoredId, ...rest } = values;
     await db.update(jobsTable).set(rest as Partial<typeof jobsTable.$inferInsert>)
       .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
   },
+  getById: async (tenantId, id) => {
+    const [row] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId))).limit(1);
+    if (!row) return null;
+    const { id: _id, tenantId: _t, createdAt: _c, ...rest } = row;
+    return rest;
+  },
+  deleteById: async (tenantId, id) => {
+    await db.delete(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
+  },
 };
+registerImportExportConfig(jobsImportExportConfig);
 
 router.get("/jobs/export", async (req, res): Promise<void> => {
   await handleExportRequest(req, res, getTenantId(req), jobsImportExportConfig);

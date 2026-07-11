@@ -25,8 +25,9 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Download, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
+import { Download, Upload, FileSpreadsheet, AlertTriangle, CheckCircle2, Loader2, History } from 'lucide-react';
 import { toast } from 'sonner';
+import { ImportHistoryDialog } from './ImportHistoryDialog';
 
 interface ImportExportControlsProps {
   entity: ImportExportEntity;
@@ -46,6 +47,7 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
   const [preview, setPreview] = useState<ImportPreviewResult | null>(null);
   const [mapping, setMapping] = useState<Record<string, string | null>>({});
   const [result, setResult] = useState<ImportCommitResult | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const previewImport = usePreviewEntityImport();
@@ -129,6 +131,18 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
       <Button variant="outline" className="gap-2" onClick={openWizard}>
         <Upload className="w-4 h-4" /> Import
       </Button>
+
+      <Button variant="outline" className="gap-2" onClick={() => setHistoryOpen(true)}>
+        <History className="w-4 h-4" /> Import History
+      </Button>
+
+      <ImportHistoryDialog
+        entity={entity}
+        entityLabel={entityLabel}
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        onRolledBack={onImportComplete}
+      />
 
       <Dialog open={wizardOpen} onOpenChange={setWizardOpen}>
         <DialogContent className="sm:max-w-2xl">
@@ -262,6 +276,13 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
                   <div className="text-xs text-muted-foreground">Failed</div>
                 </div>
               </div>
+
+              <p className="text-xs text-muted-foreground">
+                Import #{result.batchId} — made a mistake? Undo it anytime from{' '}
+                <button type="button" className="underline underline-offset-2" onClick={() => { setWizardOpen(false); setHistoryOpen(true); }}>
+                  Import History
+                </button>.
+              </p>
 
               {result.failed === 0 ? (
                 <p className="text-sm text-emerald-600 flex items-center gap-2">

@@ -11,6 +11,7 @@ import {
   requireString,
   optionalString,
   optionalNumber,
+  registerImportExportConfig,
   type ImportExportEntityConfig,
 } from "../lib/importExport";
 
@@ -97,23 +98,34 @@ const inventoryImportExportConfig: ImportExportEntityConfig = {
     return existing?.id ?? null;
   },
   insert: async (tenantId, values) => {
-    await db.insert(inventoryItemsTable).values({ tenantId, ...values } as typeof inventoryItemsTable.$inferInsert);
+    const [row] = await db.insert(inventoryItemsTable).values({ tenantId, ...values } as typeof inventoryItemsTable.$inferInsert).returning({ id: inventoryItemsTable.id });
+    return row.id;
   },
   update: async (tenantId, id, values) => {
     await db.update(inventoryItemsTable).set(values as Partial<typeof inventoryItemsTable.$inferInsert>)
       .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)));
   },
+  getById: async (tenantId, id) => {
+    const [row] = await db.select().from(inventoryItemsTable).where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId))).limit(1);
+    if (!row) return null;
+    const { id: _id, tenantId: _t, createdAt: _c, ...rest } = row;
+    return rest;
+  },
+  deleteById: async (tenantId, id) => {
+    await db.delete(inventoryItemsTable).where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)));
+  },
 };
+registerImportExportConfig(inventoryImportExportConfig);
 
 router.get("/inventory/export", async (req, res): Promise<void> => {
   await handleExportRequest(req, res, getTenantId(req), inventoryImportExportConfig);
 });
 
-router.post("/inventory/import/preview", importUpload.single("file"), async (req, res): Promise<void> => {
+router.post("/inventory/import/preview", requireInventoryMutate, importUpload.single("file"), async (req, res): Promise<void> => {
   await handleImportPreview(req, res, getTenantId(req), inventoryImportExportConfig);
 });
 
-router.post("/inventory/import/commit", importUpload.single("file"), async (req, res): Promise<void> => {
+router.post("/inventory/import/commit", requireInventoryMutate, importUpload.single("file"), async (req, res): Promise<void> => {
   await handleImportCommit(req, res, getTenantId(req), inventoryImportExportConfig);
 });
 

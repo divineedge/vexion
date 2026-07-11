@@ -1,6 +1,9 @@
 import ExcelJS from "exceljs";
 import multer from "multer";
 import type { Request, Response } from "express";
+import { db, importBatchesTable, usersTable } from "@workspace/db";
+import { eq, and, desc } from "drizzle-orm";
+import { getUserId } from "./tenantHelper";
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -56,12 +59,32 @@ export interface ImportExportEntityConfig {
     tenantId: number,
     values: Record<string, unknown>,
   ) => Promise<number | null>;
-  insert: (tenantId: number, values: Record<string, unknown>) => Promise<void>;
+  /** Inserts the row and returns the new record's id, so it can be undone later. */
+  insert: (tenantId: number, values: Record<string, unknown>) => Promise<number>;
   update: (
     tenantId: number,
     id: number,
     values: Record<string, unknown>,
   ) => Promise<void>;
+  /** Loads the current values of an existing record, used to snapshot state before an update so it can be reverted. */
+  getById: (tenantId: number, id: number) => Promise<Record<string, unknown> | null>;
+  /** Hard-deletes a record, used to undo a row this import created. */
+  deleteById: (tenantId: number, id: number) => Promise<void>;
+}
+
+// ---------------------------------------------------------------------------
+// Import batch registry — lets the shared rollback/history endpoints look up
+// the right entity config by entityKey without a circular import.
+// ---------------------------------------------------------------------------
+
+const importExportConfigRegistry = new Map<string, ImportExportEntityConfig>();
+
+export function registerImportExportConfig(config: ImportExportEntityConfig): void {
+  importExportConfigRegistry.set(config.entityKey, config);
+}
+
+export function getImportExportConfig(entityKey: string): ImportExportEntityConfig | undefined {
+  return importExportConfigRegistry.get(entityKey);
 }
 
 // ---------------------------------------------------------------------------
@@ -306,6 +329,16 @@ export interface ImportCommitResponse {
   skipped: number;
   failed: number;
   errors: ImportRowError[];
+  /** Id of the import_batches record tracking this commit, usable to roll it back. */
+  batchId: number;
+}
+
+export interface ImportRowAction {
+  row: number;
+  action: "created" | "updated";
+  recordId: number;
+  /** Only set for "updated" rows — the values that were in place before this import overwrote them. */
+  priorValues?: Record<string, unknown>;
 }
 
 const MAX_REPORTED_ERRORS = 100;
@@ -339,7 +372,9 @@ export async function handleImportCommit(
     skipped: 0,
     failed: 0,
     errors: [],
+    batchId: 0,
   };
+  const rowActions: ImportRowAction[] = [];
 
   for (let i = 0; i < rows.length; i++) {
     const rowNumber = i + 2; // 1-based, plus header row
@@ -369,11 +404,19 @@ export async function handleImportCommit(
 
       const existingId = await config.findExisting(tenantId, parsed.values);
       if (existingId != null) {
+        const priorValues = await config.getById(tenantId, existingId);
         await config.update(tenantId, existingId, parsed.values);
         result.updated++;
+        rowActions.push({
+          row: rowNumber,
+          action: "updated",
+          recordId: existingId,
+          priorValues: priorValues ?? undefined,
+        });
       } else {
-        await config.insert(tenantId, parsed.values);
+        const newId = await config.insert(tenantId, parsed.values);
         result.created++;
+        rowActions.push({ row: rowNumber, action: "created", recordId: newId });
       }
     } catch (err) {
       result.failed++;
@@ -386,7 +429,155 @@ export async function handleImportCommit(
     }
   }
 
+  const userId = getUserId(req);
+  const [batch] = await db
+    .insert(importBatchesTable)
+    .values({
+      tenantId,
+      userId,
+      entityKey: config.entityKey,
+      fileName: file.originalname,
+      status: "committed",
+      totalRows: result.total,
+      createdCount: result.created,
+      updatedCount: result.updated,
+      skippedCount: result.skipped,
+      failedCount: result.failed,
+      rowActions,
+    })
+    .returning({ id: importBatchesTable.id });
+  result.batchId = batch.id;
+
   res.json(result);
+}
+
+// ---------------------------------------------------------------------------
+// Import batch history + rollback
+// ---------------------------------------------------------------------------
+
+export interface ImportBatchSummary {
+  id: number;
+  entityKey: string;
+  fileName: string | null;
+  status: string;
+  totalRows: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  createdByName: string | null;
+  createdAt: string;
+  rolledBackAt: string | null;
+}
+
+export async function handleListImportBatches(req: Request, res: Response, tenantId: number): Promise<void> {
+  const entityKey = typeof req.query.entity === "string" ? req.query.entity : undefined;
+  const where = entityKey
+    ? and(eq(importBatchesTable.tenantId, tenantId), eq(importBatchesTable.entityKey, entityKey))
+    : eq(importBatchesTable.tenantId, tenantId);
+
+  const rows = await db
+    .select({ batch: importBatchesTable, userName: usersTable.name })
+    .from(importBatchesTable)
+    .leftJoin(usersTable, eq(importBatchesTable.userId, usersTable.id))
+    .where(where)
+    .orderBy(desc(importBatchesTable.createdAt))
+    .limit(50);
+
+  const summaries: ImportBatchSummary[] = rows.map((r) => ({
+    id: r.batch.id,
+    entityKey: r.batch.entityKey,
+    fileName: r.batch.fileName,
+    status: r.batch.status,
+    totalRows: r.batch.totalRows,
+    created: r.batch.createdCount,
+    updated: r.batch.updatedCount,
+    skipped: r.batch.skippedCount,
+    failed: r.batch.failedCount,
+    createdByName: r.userName ?? null,
+    createdAt: r.batch.createdAt.toISOString(),
+    rolledBackAt: r.batch.rolledBackAt?.toISOString() ?? null,
+  }));
+  res.json(summaries);
+}
+
+// Prior-row snapshots are stored in a jsonb column, so any Date values
+// captured via getById round-trip through JSON as ISO strings. Revive them
+// before handing them back to `update`, which expects real Date instances
+// for timestamp columns.
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+function reviveDates(values: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(values)) {
+    result[key] = typeof value === "string" && ISO_DATE_RE.test(value) ? new Date(value) : value;
+  }
+  return result;
+}
+
+export interface ImportBatchRollbackResponse {
+  deletedCount: number;
+  revertedCount: number;
+  failedCount: number;
+  errors: string[];
+}
+
+export async function handleRollbackImportBatch(req: Request, res: Response, tenantId: number, userId: number): Promise<void> {
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const batchId = parseInt(rawId, 10);
+  if (Number.isNaN(batchId)) {
+    res.status(400).json({ error: "Invalid batch id" });
+    return;
+  }
+
+  const [batch] = await db
+    .select()
+    .from(importBatchesTable)
+    .where(and(eq(importBatchesTable.id, batchId), eq(importBatchesTable.tenantId, tenantId)))
+    .limit(1);
+  if (!batch) {
+    res.status(404).json({ error: "Import batch not found" });
+    return;
+  }
+  if (batch.status === "rolled_back") {
+    res.status(400).json({ error: "This import has already been rolled back" });
+    return;
+  }
+
+  const config = getImportExportConfig(batch.entityKey);
+  if (!config) {
+    res.status(500).json({ error: `No import handler registered for entity "${batch.entityKey}"` });
+    return;
+  }
+
+  const actions = (batch.rowActions as ImportRowAction[]) ?? [];
+  const response: ImportBatchRollbackResponse = { deletedCount: 0, revertedCount: 0, failedCount: 0, errors: [] };
+
+  // Undo in reverse order in case later rows in the same file depended on earlier ones.
+  for (const action of [...actions].reverse()) {
+    try {
+      if (action.action === "created") {
+        await config.deleteById(tenantId, action.recordId);
+        response.deletedCount++;
+      } else if (action.action === "updated") {
+        if (action.priorValues) {
+          await config.update(tenantId, action.recordId, reviveDates(action.priorValues));
+          response.revertedCount++;
+        }
+      }
+    } catch (err) {
+      response.failedCount++;
+      response.errors.push(
+        `Row ${action.row} (record ${action.recordId}): ${err instanceof Error ? err.message : "Unknown error"}`,
+      );
+    }
+  }
+
+  await db
+    .update(importBatchesTable)
+    .set({ status: "rolled_back", rolledBackAt: new Date(), rolledBackBy: userId })
+    .where(eq(importBatchesTable.id, batchId));
+
+  res.json(response);
 }
 
 // ---------------------------------------------------------------------------

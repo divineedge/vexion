@@ -16,6 +16,7 @@ import {
   optionalString,
   optionalNumber,
   optionalDate,
+  registerImportExportConfig,
   type ImportExportEntityConfig,
 } from "../lib/importExport";
 
@@ -120,13 +121,24 @@ const invoicesImportExportConfig: ImportExportEntityConfig = {
     return existing?.id ?? null;
   },
   insert: async (tenantId, values) => {
-    await db.insert(invoicesTable).values({ tenantId, ...values } as typeof invoicesTable.$inferInsert);
+    const [row] = await db.insert(invoicesTable).values({ tenantId, ...values } as typeof invoicesTable.$inferInsert).returning({ id: invoicesTable.id });
+    return row.id;
   },
   update: async (tenantId, id, values) => {
     await db.update(invoicesTable).set(values as Partial<typeof invoicesTable.$inferInsert>)
       .where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId)));
   },
+  getById: async (tenantId, id) => {
+    const [row] = await db.select().from(invoicesTable).where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId))).limit(1);
+    if (!row) return null;
+    const { id: _id, tenantId: _t, createdAt: _c, ...rest } = row;
+    return rest;
+  },
+  deleteById: async (tenantId, id) => {
+    await db.delete(invoicesTable).where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId)));
+  },
 };
+registerImportExportConfig(invoicesImportExportConfig);
 
 router.get("/invoices/export", async (req, res): Promise<void> => {
   await handleExportRequest(req, res, getTenantId(req), invoicesImportExportConfig);

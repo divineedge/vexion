@@ -38,6 +38,12 @@ export default function AppLayout() {
       <Stack.Screen name="jobs" options={{ title: 'My Jobs', headerShown: true }} />
       <Stack.Screen name="job/[id]" options={{ title: 'Job Detail', headerShown: true }} />
       <Stack.Screen name="log/[jobId]" options={{ title: 'Log Application', headerShown: true }} />
+      <Stack.Screen name="equipment" options={{ title: 'Equipment', headerShown: true }} />
+      <Stack.Screen name="equipment/[id]" options={{ title: 'Equipment', headerShown: true }} />
+      <Stack.Screen
+        name="equipment-fuel/[id]"
+        options={{ title: 'Log Fuel Fill', headerShown: true }}
+      />
     </Stack>
   );
 }

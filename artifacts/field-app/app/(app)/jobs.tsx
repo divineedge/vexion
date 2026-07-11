@@ -125,6 +125,11 @@ export default function JobsScreen() {
     router.replace('/');
   }, [signOut]);
 
+  const handleEquipmentPress = useCallback(async () => {
+    await Haptics.selectionAsync();
+    router.push('/(app)/equipment');
+  }, []);
+
   const bottomPad = insets.bottom + (Platform.OS === 'web' ? 34 : 0) + 16;
 
   return (
@@ -139,9 +144,18 @@ export default function JobsScreen() {
             {user?.role ?? 'technician'} · {jobs?.length ?? 0} jobs
           </Text>
         </View>
-        <TouchableOpacity onPress={handleSignOut} style={styles.signOutBtn} testID="sign-out-button">
-          <Ionicons name="log-out-outline" size={22} color={colors.mutedForeground} />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            onPress={handleEquipmentPress}
+            style={styles.headerBtn}
+            testID="equipment-nav-button"
+          >
+            <Ionicons name="construct-outline" size={22} color={colors.mutedForeground} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleSignOut} style={styles.headerBtn} testID="sign-out-button">
+            <Ionicons name="log-out-outline" size={22} color={colors.mutedForeground} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {isLoading ? (
@@ -212,7 +226,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
     textTransform: 'capitalize',
   },
-  signOutBtn: { padding: 6 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  headerBtn: { padding: 6 },
   centered: {
     flex: 1,
     alignItems: 'center',

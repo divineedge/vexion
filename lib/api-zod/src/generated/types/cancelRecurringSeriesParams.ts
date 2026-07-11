@@ -5,11 +5,11 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
-import type { CancelRecurringSeriesScope } from './cancelRecurringSeriesScope';
+import type { CancelSeriesScope } from './cancelSeriesScope';
 
 export type CancelRecurringSeriesParams = {
 /**
  * forward=cancel from next onwards; all=cancel entire series
  */
-scope?: CancelRecurringSeriesScope;
+scope?: CancelSeriesScope;
 };

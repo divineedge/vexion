@@ -1,7 +1,9 @@
 import { Router, type IRouter } from "express";
-import { db, estimatesTable, visitsTable, jobsTable, customersTable, propertiesTable, usersTable } from "@workspace/db";
+import { db, estimatesTable, visitsTable, jobsTable, customersTable, propertiesTable, usersTable, tenantsTable } from "@workspace/db";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
+import { sendReviewRequest } from "../lib/reviewService";
+import { logger } from "../lib/logger";
 import crypto from "crypto";
 
 const router: IRouter = Router();
@@ -332,6 +334,8 @@ router.get("/public/estimates/:token", async (req, res): Promise<void> => {
 
   if (!row) { res.status(404).json({ error: "Estimate not found" }); return; }
 
+  const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, row.estimate.tenantId));
+
   const now = new Date();
   const expired = row.estimate.expiresAt && row.estimate.expiresAt < now;
 
@@ -345,6 +349,15 @@ router.get("/public/estimates/:token", async (req, res): Promise<void> => {
     required,
     optional,
     expired: !!expired,
+    businessProfile: {
+      companyName: tenant?.name ?? null,
+      logoUrl: tenant?.logoUrl ?? null,
+      tagline: tenant?.businessTagline ?? null,
+      phone: tenant?.businessPhone ?? null,
+      email: tenant?.businessEmail ?? null,
+      website: tenant?.businessWebsite ?? null,
+      address: tenant?.businessAddress ?? null,
+    },
   });
 });
 
@@ -397,6 +410,17 @@ router.post("/public/estimates/:token/respond", async (req, res): Promise<void> 
     })
     .where(eq(estimatesTable.approvalToken, token))
     .returning();
+
+  if (isApproved && updated.customerId) {
+    const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, updated.tenantId));
+    if (tenant?.reviewRequestOnEstimateApproved) {
+      const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, updated.customerId));
+      if (customer) {
+        sendReviewRequest({ tenant, customer, estimateId: updated.id })
+          .catch(err => logger.error({ err, estimateId: updated.id }, "Failed to send review request on estimate approved"));
+      }
+    }
+  }
 
   res.json(formatEstimate(updated));
 });

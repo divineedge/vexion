@@ -6,7 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type ImportBankTransactionBody = {
-  vendorId?: number;
-  category?: string;
-};
+export interface SubmitReviewFeedbackInput {
+  checklistSelections?: string[];
+  feedbackText?: string;
+  improvementText?: string;
+}

@@ -7,9 +7,11 @@
  */
 import type { Estimate } from './estimate';
 import type { EstimateLineItem } from './estimateLineItem';
+import type { PublicEstimateBusinessProfile } from './publicEstimateBusinessProfile';
 
 export type PublicEstimate = Estimate & {
   required?: EstimateLineItem[];
   optional?: EstimateLineItem[];
   expired?: boolean;
+  businessProfile?: PublicEstimateBusinessProfile;
 };

@@ -60,6 +60,35 @@ export const tenantsTable = pgTable("tenants", {
    * in plaintext from the API — only masked placeholders are served to the client.
    */
   integrationsConfig: jsonb("integrations_config").default("{}"),
+  // ── Business Profile (shown on estimates/invoices & pre-fills "From" comms) ─
+  businessPhone: text("business_phone"),
+  businessEmail: text("business_email"),
+  businessWebsite: text("business_website"),
+  businessAddress: text("business_address"),
+  businessLicenseNumber: text("business_license_number"),
+  businessTagline: text("business_tagline"),
+  /** Shown at the bottom of every estimate/invoice, e.g. "Payment due within 30 days." */
+  invoiceFooterText: text("invoice_footer_text"),
+  // ── Payment Reminders & Stop-Service Rule ────────────────────────────────
+  paymentRemindersEnabled: boolean("payment_reminders_enabled").notNull().default(false),
+  /** Array of { offsetDays: number, label: string }. Negative = before due date, positive = overdue. */
+  paymentReminderSchedule: jsonb("payment_reminder_schedule").default(
+    '[{"offsetDays":-3,"label":"3 days before due"},{"offsetDays":0,"label":"On due date"},{"offsetDays":7,"label":"7 days overdue"},{"offsetDays":14,"label":"14 days overdue"}]',
+  ),
+  /** Array of 'sms' | 'email' */
+  paymentReminderChannels: jsonb("payment_reminder_channels").default('["email"]'),
+  /** Off by default — flags recurring customers for office review instead of auto-pausing */
+  stopServiceRuleEnabled: boolean("stop_service_rule_enabled").notNull().default(false),
+  stopServiceThresholdDays: integer("stop_service_threshold_days").notNull().default(30),
+  // ── Review Collection ─────────────────────────────────────────────────────
+  reviewRequestOnInvoicePaid: boolean("review_request_on_invoice_paid").notNull().default(true),
+  reviewRequestOnEstimateApproved: boolean("review_request_on_estimate_approved").notNull().default(false),
+  reviewGoogleUrl: text("review_google_url"),
+  reviewFacebookUrl: text("review_facebook_url"),
+  reviewCustomLink1Label: text("review_custom_link1_label"),
+  reviewCustomLink1Url: text("review_custom_link1_url"),
+  reviewCustomLink2Label: text("review_custom_link2_label"),
+  reviewCustomLink2Url: text("review_custom_link2_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

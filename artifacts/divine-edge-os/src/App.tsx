@@ -33,6 +33,8 @@ import QuoteWidgetPage from '@/pages/quote-widget';
 import EstimatesPage from '@/pages/estimates';
 import VisitsPage from '@/pages/visits';
 import EstimatePublicPage from '@/pages/estimate-public';
+import ReviewsPage from '@/pages/reviews';
+import ReviewPublicPage from '@/pages/review-public';
 
 import NotFound from '@/pages/not-found';
 
@@ -73,6 +75,7 @@ function ProtectedRoutes() {
         <Route path="/equipment" component={EquipmentPage} />
         <Route path="/estimates" component={EstimatesPage} />
         <Route path="/visits" component={VisitsPage} />
+        <Route path="/reviews" component={ReviewsPage} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>
@@ -86,6 +89,7 @@ function Router() {
       <Route path="/quote/:token" component={QuotePublicPage} />
       <Route path="/widget/quote" component={QuoteWidgetPage} />
       <Route path="/estimate/:token" component={EstimatePublicPage} />
+      <Route path="/review/:token" component={ReviewPublicPage} />
       <Route path="/login" component={LoginPage} />
       <Route component={ProtectedRoutes} />
     </Switch>

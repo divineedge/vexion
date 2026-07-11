@@ -85,10 +85,28 @@ export interface Estimate {
   updatedAt: string;
 }
 
+export interface PublicEstimateBusinessProfile {
+  /** @nullable */
+  companyName?: string | null;
+  /** @nullable */
+  logoUrl?: string | null;
+  /** @nullable */
+  tagline?: string | null;
+  /** @nullable */
+  phone?: string | null;
+  /** @nullable */
+  email?: string | null;
+  /** @nullable */
+  website?: string | null;
+  /** @nullable */
+  address?: string | null;
+}
+
 export type PublicEstimate = Estimate & {
   required?: EstimateLineItem[];
   optional?: EstimateLineItem[];
   expired?: boolean;
+  businessProfile?: PublicEstimateBusinessProfile;
 };
 
 export interface EstimatePipeline {
@@ -391,6 +409,33 @@ export interface RevenueTrendItem {
 
 export type CustomerCustomFieldValues = {[key: string]: string};
 
+/**
+ * current = no overdue invoices; reminded = a reminder was sent; overdue = past due but under stop-service threshold; flagged = a stop-service flag is pending office approval; paused = recurring service has been paused
+ */
+export type PaymentStandingStatus = typeof PaymentStandingStatus[keyof typeof PaymentStandingStatus];
+
+
+export const PaymentStandingStatus = {
+  current: 'current',
+  reminded: 'reminded',
+  overdue: 'overdue',
+  flagged: 'flagged',
+  paused: 'paused',
+} as const;
+
+export interface PaymentStanding {
+  /** current = no overdue invoices; reminded = a reminder was sent; overdue = past due but under stop-service threshold; flagged = a stop-service flag is pending office approval; paused = recurring service has been paused */
+  status: PaymentStandingStatus;
+  /** @nullable */
+  oldestOverdueInvoiceId?: number | null;
+  /** @nullable */
+  daysOverdue?: number | null;
+  overdueAmount?: number;
+  /** @nullable */
+  pendingFlagId?: number | null;
+  isServicePaused?: boolean;
+}
+
 export interface Customer {
   id: number;
   tenantId: number;
@@ -438,6 +483,7 @@ export interface Customer {
      */
   lastYearSpend?: number | null;
   createdAt: string;
+  paymentStanding?: PaymentStanding;
 }
 
 export type CustomerInputCustomFieldValues = {[key: string]: string};
@@ -1727,6 +1773,14 @@ export const TenantSettingsPreferredAreaUnit = {
   acres: 'acres',
 } as const;
 
+export type TenantSettingsPaymentReminderChannelsItem = typeof TenantSettingsPaymentReminderChannelsItem[keyof typeof TenantSettingsPaymentReminderChannelsItem];
+
+
+export const TenantSettingsPaymentReminderChannelsItem = {
+  sms: 'sms',
+  email: 'email',
+} as const;
+
 export type CustomerFieldConfigType = typeof CustomerFieldConfigType[keyof typeof CustomerFieldConfigType];
 
 
@@ -1747,6 +1801,12 @@ export interface CustomerFieldConfig {
   visible: boolean;
   required: boolean;
   isBuiltIn: boolean;
+}
+
+export interface PaymentReminderRule {
+  /** Negative = days before due date, positive = days overdue */
+  offsetDays: number;
+  label: string;
 }
 
 export interface TenantSettings {
@@ -1787,7 +1847,61 @@ export interface TenantSettings {
   measurementZoneLabels?: string[];
   /** Preferred area unit for property measurements */
   preferredAreaUnit?: TenantSettingsPreferredAreaUnit;
+  /** @nullable */
+  businessPhone?: string | null;
+  /** @nullable */
+  businessEmail?: string | null;
+  /** @nullable */
+  businessWebsite?: string | null;
+  /** @nullable */
+  businessAddress?: string | null;
+  /** @nullable */
+  businessLicenseNumber?: string | null;
+  /** @nullable */
+  businessTagline?: string | null;
+  /** @nullable */
+  invoiceFooterText?: string | null;
+  paymentRemindersEnabled?: boolean;
+  paymentReminderSchedule?: PaymentReminderRule[];
+  paymentReminderChannels?: TenantSettingsPaymentReminderChannelsItem[];
+  stopServiceRuleEnabled?: boolean;
+  stopServiceThresholdDays?: number;
+  reviewRequestOnInvoicePaid?: boolean;
+  reviewRequestOnEstimateApproved?: boolean;
+  /** @nullable */
+  reviewGoogleUrl?: string | null;
+  /** @nullable */
+  reviewFacebookUrl?: string | null;
+  /** @nullable */
+  reviewCustomLink1Label?: string | null;
+  /** @nullable */
+  reviewCustomLink1Url?: string | null;
+  /** @nullable */
+  reviewCustomLink2Label?: string | null;
+  /** @nullable */
+  reviewCustomLink2Url?: string | null;
 }
+
+export interface PauseSeriesInput {
+  paused: boolean;
+}
+
+export interface CompleteVisitInput {
+  outcomeNotes?: string;
+}
+
+export interface ImportBankTransactionInput {
+  vendorId?: number;
+  category?: string;
+}
+
+export type CancelSeriesScope = typeof CancelSeriesScope[keyof typeof CancelSeriesScope];
+
+
+export const CancelSeriesScope = {
+  forward: 'forward',
+  all: 'all',
+} as const;
 
 export type TenantSettingsUpdateDurationUnit = typeof TenantSettingsUpdateDurationUnit[keyof typeof TenantSettingsUpdateDurationUnit];
 
@@ -1825,6 +1939,14 @@ export const TenantSettingsUpdatePreferredAreaUnit = {
   acres: 'acres',
 } as const;
 
+export type TenantSettingsUpdatePaymentReminderChannelsItem = typeof TenantSettingsUpdatePaymentReminderChannelsItem[keyof typeof TenantSettingsUpdatePaymentReminderChannelsItem];
+
+
+export const TenantSettingsUpdatePaymentReminderChannelsItem = {
+  sms: 'sms',
+  email: 'email',
+} as const;
+
 export interface TenantSettingsUpdate {
   companyName?: string;
   timezone?: string;
@@ -1846,6 +1968,197 @@ export interface TenantSettingsUpdate {
   autoCreateGeofence?: boolean;
   measurementZoneLabels?: string[];
   preferredAreaUnit?: TenantSettingsUpdatePreferredAreaUnit;
+  businessPhone?: string;
+  businessEmail?: string;
+  businessWebsite?: string;
+  businessAddress?: string;
+  businessLicenseNumber?: string;
+  businessTagline?: string;
+  invoiceFooterText?: string;
+  /** @nullable */
+  logoUrl?: string | null;
+  paymentRemindersEnabled?: boolean;
+  paymentReminderSchedule?: PaymentReminderRule[];
+  paymentReminderChannels?: TenantSettingsUpdatePaymentReminderChannelsItem[];
+  stopServiceRuleEnabled?: boolean;
+  stopServiceThresholdDays?: number;
+  reviewRequestOnInvoicePaid?: boolean;
+  reviewRequestOnEstimateApproved?: boolean;
+  reviewGoogleUrl?: string;
+  reviewFacebookUrl?: string;
+  reviewCustomLink1Label?: string;
+  reviewCustomLink1Url?: string;
+  reviewCustomLink2Label?: string;
+  reviewCustomLink2Url?: string;
+}
+
+export type ReviewRequestChannel = typeof ReviewRequestChannel[keyof typeof ReviewRequestChannel];
+
+
+export const ReviewRequestChannel = {
+  sms: 'sms',
+  email: 'email',
+  both: 'both',
+} as const;
+
+export type ReviewRequestReviewStatus = typeof ReviewRequestReviewStatus[keyof typeof ReviewRequestReviewStatus];
+
+
+export const ReviewRequestReviewStatus = {
+  new: 'new',
+  reviewed: 'reviewed',
+  action_taken: 'action_taken',
+  resolved: 'resolved',
+} as const;
+
+export interface ReviewRequest {
+  id: number;
+  tenantId: number;
+  customerId: number;
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  jobId?: number | null;
+  /** @nullable */
+  invoiceId?: number | null;
+  /** @nullable */
+  estimateId?: number | null;
+  channel: ReviewRequestChannel;
+  sentAt: string;
+  /** @nullable */
+  rating?: number | null;
+  /** @nullable */
+  checklistSelections?: string[] | null;
+  /** @nullable */
+  feedbackText?: string | null;
+  /** @nullable */
+  improvementText?: string | null;
+  publicRedirected?: boolean;
+  /** @nullable */
+  respondedAt?: string | null;
+  reviewStatus?: ReviewRequestReviewStatus;
+  /** @nullable */
+  reviewNote?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ReviewRequestUpdateReviewStatus = typeof ReviewRequestUpdateReviewStatus[keyof typeof ReviewRequestUpdateReviewStatus];
+
+
+export const ReviewRequestUpdateReviewStatus = {
+  new: 'new',
+  reviewed: 'reviewed',
+  action_taken: 'action_taken',
+  resolved: 'resolved',
+} as const;
+
+export interface ReviewRequestUpdate {
+  reviewStatus?: ReviewRequestUpdateReviewStatus;
+  reviewNote?: string;
+}
+
+export interface SendReviewRequestInput {
+  customerId: number;
+  invoiceId?: number;
+  estimateId?: number;
+  jobId?: number;
+}
+
+/**
+ * Keys '1'-'5' mapped to counts
+ */
+export type ReviewsSummaryDistribution = {[key: string]: number};
+
+export type ReviewsSummaryTopChecklistIssuesItem = {
+  label: string;
+  count: number;
+};
+
+export type ReviewsSummaryTrendItem = {
+  period: string;
+  averageRating: number;
+  responseCount: number;
+};
+
+export interface ReviewsSummary {
+  averageRating: number;
+  totalResponses: number;
+  /** Keys '1'-'5' mapped to counts */
+  distribution: ReviewsSummaryDistribution;
+  topChecklistIssues?: ReviewsSummaryTopChecklistIssuesItem[];
+  trend: ReviewsSummaryTrendItem[];
+}
+
+export type PublicReviewRequestStatus = typeof PublicReviewRequestStatus[keyof typeof PublicReviewRequestStatus];
+
+
+export const PublicReviewRequestStatus = {
+  pending: 'pending',
+  rated: 'rated',
+} as const;
+
+export interface PublicReviewRequest {
+  token: string;
+  tenantId: number;
+  companyName: string;
+  status: PublicReviewRequestStatus;
+  /** @nullable */
+  rating?: number | null;
+  /** @nullable */
+  googleUrl?: string | null;
+  /** @nullable */
+  facebookUrl?: string | null;
+  /** @nullable */
+  customLink1Label?: string | null;
+  /** @nullable */
+  customLink1Url?: string | null;
+  /** @nullable */
+  customLink2Label?: string | null;
+  /** @nullable */
+  customLink2Url?: string | null;
+}
+
+export interface SubmitReviewRatingInput {
+  /**
+     * @minimum 1
+     * @maximum 5
+     */
+  rating: number;
+}
+
+export interface SubmitReviewFeedbackInput {
+  checklistSelections?: string[];
+  feedbackText?: string;
+  improvementText?: string;
+}
+
+export type StopServiceFlagStatus = typeof StopServiceFlagStatus[keyof typeof StopServiceFlagStatus];
+
+
+export const StopServiceFlagStatus = {
+  pending: 'pending',
+  approved: 'approved',
+  dismissed: 'dismissed',
+} as const;
+
+export interface StopServiceFlag {
+  id: number;
+  tenantId: number;
+  customerId: number;
+  /** @nullable */
+  customerName?: string | null;
+  invoiceId: number;
+  /** @nullable */
+  invoiceNumber?: string | null;
+  daysOverdue: number;
+  message: string;
+  status: StopServiceFlagStatus;
+  /** @nullable */
+  resolvedBy?: number | null;
+  /** @nullable */
+  resolvedAt?: string | null;
+  createdAt: string;
 }
 
 export interface PropertyOwnershipRecord {
@@ -2785,24 +3098,12 @@ endDate?: string;
 customerId?: number;
 };
 
-export type PauseRecurringSeriesBody = {
-  paused: boolean;
-};
-
 export type CancelRecurringSeriesParams = {
 /**
  * forward=cancel from next onwards; all=cancel entire series
  */
-scope?: CancelRecurringSeriesScope;
+scope?: CancelSeriesScope;
 };
-
-export type CancelRecurringSeriesScope = typeof CancelRecurringSeriesScope[keyof typeof CancelRecurringSeriesScope];
-
-
-export const CancelRecurringSeriesScope = {
-  forward: 'forward',
-  all: 'all',
-} as const;
 
 export type ListInventoryItemsParams = {
 q?: string;
@@ -2813,6 +3114,15 @@ lowStock?: boolean;
 export type ListInvoicesParams = {
 status?: string;
 customerId?: number;
+};
+
+export type ListReviewRequestsParams = {
+status?: string;
+rating?: number;
+};
+
+export type ListStopServiceFlagsParams = {
+status?: string;
 };
 
 export type ListTimeEntriesParams = {
@@ -2854,10 +3164,6 @@ assigneeId?: number;
 customerId?: number;
 };
 
-export type CompleteVisitBody = {
-  outcomeNotes?: string;
-};
-
 export type ConvertVisitToEstimate201 = {
   estimateId?: number;
 };
@@ -2882,11 +3188,6 @@ export type GetQuickBooksAuthorizeUrl200 = {
 
 export type ListBankTransactionsParams = {
 status?: string;
-};
-
-export type ImportBankTransactionBody = {
-  vendorId?: number;
-  category?: string;
 };
 
 export type GetDevToolsEnvironment200 = {

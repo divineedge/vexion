@@ -6,9 +6,11 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CustomerFieldConfig } from './customerFieldConfig';
+import type { PaymentReminderRule } from './paymentReminderRule';
 import type { TenantSettingsUpdateAutoInvoiceFrequency } from './tenantSettingsUpdateAutoInvoiceFrequency';
 import type { TenantSettingsUpdateDefaultGeofenceUnit } from './tenantSettingsUpdateDefaultGeofenceUnit';
 import type { TenantSettingsUpdateDurationUnit } from './tenantSettingsUpdateDurationUnit';
+import type { TenantSettingsUpdatePaymentReminderChannelsItem } from './tenantSettingsUpdatePaymentReminderChannelsItem';
 import type { TenantSettingsUpdatePreferredAreaUnit } from './tenantSettingsUpdatePreferredAreaUnit';
 import type { TenantSettingsUpdateRolePermissions } from './tenantSettingsUpdateRolePermissions';
 
@@ -33,4 +35,26 @@ export interface TenantSettingsUpdate {
   autoCreateGeofence?: boolean;
   measurementZoneLabels?: string[];
   preferredAreaUnit?: TenantSettingsUpdatePreferredAreaUnit;
+  businessPhone?: string;
+  businessEmail?: string;
+  businessWebsite?: string;
+  businessAddress?: string;
+  businessLicenseNumber?: string;
+  businessTagline?: string;
+  invoiceFooterText?: string;
+  /** @nullable */
+  logoUrl?: string | null;
+  paymentRemindersEnabled?: boolean;
+  paymentReminderSchedule?: PaymentReminderRule[];
+  paymentReminderChannels?: TenantSettingsUpdatePaymentReminderChannelsItem[];
+  stopServiceRuleEnabled?: boolean;
+  stopServiceThresholdDays?: number;
+  reviewRequestOnInvoicePaid?: boolean;
+  reviewRequestOnEstimateApproved?: boolean;
+  reviewGoogleUrl?: string;
+  reviewFacebookUrl?: string;
+  reviewCustomLink1Label?: string;
+  reviewCustomLink1Url?: string;
+  reviewCustomLink2Label?: string;
+  reviewCustomLink2Url?: string;
 }

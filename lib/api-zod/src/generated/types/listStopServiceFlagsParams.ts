@@ -6,6 +6,6 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type PauseRecurringSeriesBody = {
-  paused: boolean;
+export type ListStopServiceFlagsParams = {
+status?: string;
 };

@@ -223,7 +223,15 @@ export const ListCustomersResponse = zod.object({
   "acquiredFromCampaignId": zod.number().nullish(),
   "thisYearSpend": zod.number().nullish().describe('Total paid invoices for the current calendar year'),
   "lastYearSpend": zod.number().nullish().describe('Total paid invoices for the previous calendar year'),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "paymentStanding": zod.object({
+  "status": zod.enum(['current', 'reminded', 'overdue', 'flagged', 'paused']).describe('current = no overdue invoices; reminded = a reminder was sent; overdue = past due but under stop-service threshold; flagged = a stop-service flag is pending office approval; paused = recurring service has been paused'),
+  "oldestOverdueInvoiceId": zod.number().nullish(),
+  "daysOverdue": zod.number().nullish(),
+  "overdueAmount": zod.number().optional(),
+  "pendingFlagId": zod.number().nullish(),
+  "isServicePaused": zod.boolean().optional()
+}).optional()
 })),
   "total": zod.number(),
   "page": zod.number(),
@@ -277,7 +285,15 @@ export const CreateCustomerResponse = zod.object({
   "acquiredFromCampaignId": zod.number().nullish(),
   "thisYearSpend": zod.number().nullish().describe('Total paid invoices for the current calendar year'),
   "lastYearSpend": zod.number().nullish().describe('Total paid invoices for the previous calendar year'),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "paymentStanding": zod.object({
+  "status": zod.enum(['current', 'reminded', 'overdue', 'flagged', 'paused']).describe('current = no overdue invoices; reminded = a reminder was sent; overdue = past due but under stop-service threshold; flagged = a stop-service flag is pending office approval; paused = recurring service has been paused'),
+  "oldestOverdueInvoiceId": zod.number().nullish(),
+  "daysOverdue": zod.number().nullish(),
+  "overdueAmount": zod.number().optional(),
+  "pendingFlagId": zod.number().nullish(),
+  "isServicePaused": zod.boolean().optional()
+}).optional()
 })
 
 
@@ -314,7 +330,15 @@ export const GetCustomerResponse = zod.object({
   "acquiredFromCampaignId": zod.number().nullish(),
   "thisYearSpend": zod.number().nullish().describe('Total paid invoices for the current calendar year'),
   "lastYearSpend": zod.number().nullish().describe('Total paid invoices for the previous calendar year'),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "paymentStanding": zod.object({
+  "status": zod.enum(['current', 'reminded', 'overdue', 'flagged', 'paused']).describe('current = no overdue invoices; reminded = a reminder was sent; overdue = past due but under stop-service threshold; flagged = a stop-service flag is pending office approval; paused = recurring service has been paused'),
+  "oldestOverdueInvoiceId": zod.number().nullish(),
+  "daysOverdue": zod.number().nullish(),
+  "overdueAmount": zod.number().optional(),
+  "pendingFlagId": zod.number().nullish(),
+  "isServicePaused": zod.boolean().optional()
+}).optional()
 })
 
 
@@ -371,7 +395,15 @@ export const UpdateCustomerResponse = zod.object({
   "acquiredFromCampaignId": zod.number().nullish(),
   "thisYearSpend": zod.number().nullish().describe('Total paid invoices for the current calendar year'),
   "lastYearSpend": zod.number().nullish().describe('Total paid invoices for the previous calendar year'),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "paymentStanding": zod.object({
+  "status": zod.enum(['current', 'reminded', 'overdue', 'flagged', 'paused']).describe('current = no overdue invoices; reminded = a reminder was sent; overdue = past due but under stop-service threshold; flagged = a stop-service flag is pending office approval; paused = recurring service has been paused'),
+  "oldestOverdueInvoiceId": zod.number().nullish(),
+  "daysOverdue": zod.number().nullish(),
+  "overdueAmount": zod.number().optional(),
+  "pendingFlagId": zod.number().nullish(),
+  "isServicePaused": zod.boolean().optional()
+}).optional()
 })
 
 
@@ -2316,6 +2348,297 @@ export const GetFinancialsSummaryResponse = zod.object({
 
 
 /**
+ * @summary List review requests (staff)
+ */
+export const ListReviewRequestsQueryParams = zod.object({
+  "status": zod.coerce.string().optional(),
+  "rating": zod.coerce.number().optional()
+})
+
+export const ListReviewRequestsResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "customerName": zod.string().nullish(),
+  "jobId": zod.number().nullish(),
+  "invoiceId": zod.number().nullish(),
+  "estimateId": zod.number().nullish(),
+  "channel": zod.enum(['sms', 'email', 'both']),
+  "sentAt": zod.string(),
+  "rating": zod.number().nullish(),
+  "checklistSelections": zod.array(zod.string()).nullish(),
+  "feedbackText": zod.string().nullish(),
+  "improvementText": zod.string().nullish(),
+  "publicRedirected": zod.boolean().optional(),
+  "respondedAt": zod.string().nullish(),
+  "reviewStatus": zod.enum(['new', 'reviewed', 'action_taken', 'resolved']).optional(),
+  "reviewNote": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListReviewRequestsResponse = zod.array(ListReviewRequestsResponseItem)
+
+
+/**
+ * @summary Manually send a review request to a customer
+ */
+export const SendReviewRequestBody = zod.object({
+  "customerId": zod.number(),
+  "invoiceId": zod.number().optional(),
+  "estimateId": zod.number().optional(),
+  "jobId": zod.number().optional()
+})
+
+export const SendReviewRequestResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "customerName": zod.string().nullish(),
+  "jobId": zod.number().nullish(),
+  "invoiceId": zod.number().nullish(),
+  "estimateId": zod.number().nullish(),
+  "channel": zod.enum(['sms', 'email', 'both']),
+  "sentAt": zod.string(),
+  "rating": zod.number().nullish(),
+  "checklistSelections": zod.array(zod.string()).nullish(),
+  "feedbackText": zod.string().nullish(),
+  "improvementText": zod.string().nullish(),
+  "publicRedirected": zod.boolean().optional(),
+  "respondedAt": zod.string().nullish(),
+  "reviewStatus": zod.enum(['new', 'reviewed', 'action_taken', 'resolved']).optional(),
+  "reviewNote": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Average rating, distribution, common issues, and trend
+ */
+export const GetReviewsSummaryResponse = zod.object({
+  "averageRating": zod.number(),
+  "totalResponses": zod.number(),
+  "distribution": zod.record(zod.string(), zod.number()).describe('Keys \'1\'-\'5\' mapped to counts'),
+  "topChecklistIssues": zod.array(zod.object({
+  "label": zod.string(),
+  "count": zod.number()
+})).optional(),
+  "trend": zod.array(zod.object({
+  "period": zod.string(),
+  "averageRating": zod.number(),
+  "responseCount": zod.number()
+}))
+})
+
+
+/**
+ * @summary Update a review's staff workflow status/note
+ */
+export const UpdateReviewRequestParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateReviewRequestBody = zod.object({
+  "reviewStatus": zod.enum(['new', 'reviewed', 'action_taken', 'resolved']).optional(),
+  "reviewNote": zod.string().optional()
+})
+
+export const UpdateReviewRequestResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "customerName": zod.string().nullish(),
+  "jobId": zod.number().nullish(),
+  "invoiceId": zod.number().nullish(),
+  "estimateId": zod.number().nullish(),
+  "channel": zod.enum(['sms', 'email', 'both']),
+  "sentAt": zod.string(),
+  "rating": zod.number().nullish(),
+  "checklistSelections": zod.array(zod.string()).nullish(),
+  "feedbackText": zod.string().nullish(),
+  "improvementText": zod.string().nullish(),
+  "publicRedirected": zod.boolean().optional(),
+  "respondedAt": zod.string().nullish(),
+  "reviewStatus": zod.enum(['new', 'reviewed', 'action_taken', 'resolved']).optional(),
+  "reviewNote": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Get the hosted, no-login review page data for a token
+ */
+export const GetPublicReviewParams = zod.object({
+  "token": zod.coerce.string()
+})
+
+export const GetPublicReviewResponse = zod.object({
+  "token": zod.string(),
+  "tenantId": zod.number(),
+  "companyName": zod.string(),
+  "status": zod.enum(['pending', 'rated']),
+  "rating": zod.number().nullish(),
+  "googleUrl": zod.string().nullish(),
+  "facebookUrl": zod.string().nullish(),
+  "customLink1Label": zod.string().nullish(),
+  "customLink1Url": zod.string().nullish(),
+  "customLink2Label": zod.string().nullish(),
+  "customLink2Url": zod.string().nullish()
+})
+
+
+/**
+ * @summary Submit the star rating for a review request
+ */
+export const SubmitReviewRatingParams = zod.object({
+  "token": zod.coerce.string()
+})
+
+export const submitReviewRatingBodyRatingMax = 5;
+
+
+
+export const SubmitReviewRatingBody = zod.object({
+  "rating": zod.number().min(1).max(submitReviewRatingBodyRatingMax)
+})
+
+export const SubmitReviewRatingResponse = zod.object({
+  "token": zod.string(),
+  "tenantId": zod.number(),
+  "companyName": zod.string(),
+  "status": zod.enum(['pending', 'rated']),
+  "rating": zod.number().nullish(),
+  "googleUrl": zod.string().nullish(),
+  "facebookUrl": zod.string().nullish(),
+  "customLink1Label": zod.string().nullish(),
+  "customLink1Url": zod.string().nullish(),
+  "customLink2Label": zod.string().nullish(),
+  "customLink2Url": zod.string().nullish()
+})
+
+
+/**
+ * @summary Submit structured feedback for a 1-4 star review
+ */
+export const SubmitReviewFeedbackParams = zod.object({
+  "token": zod.coerce.string()
+})
+
+export const SubmitReviewFeedbackBody = zod.object({
+  "checklistSelections": zod.array(zod.string()).optional(),
+  "feedbackText": zod.string().optional(),
+  "improvementText": zod.string().optional()
+})
+
+export const SubmitReviewFeedbackResponse = zod.object({
+  "token": zod.string(),
+  "tenantId": zod.number(),
+  "companyName": zod.string(),
+  "status": zod.enum(['pending', 'rated']),
+  "rating": zod.number().nullish(),
+  "googleUrl": zod.string().nullish(),
+  "facebookUrl": zod.string().nullish(),
+  "customLink1Label": zod.string().nullish(),
+  "customLink1Url": zod.string().nullish(),
+  "customLink2Label": zod.string().nullish(),
+  "customLink2Url": zod.string().nullish()
+})
+
+
+/**
+ * @summary Mark that a 5-star customer was shown the public review site redirect
+ */
+export const MarkReviewRedirectedParams = zod.object({
+  "token": zod.coerce.string()
+})
+
+export const MarkReviewRedirectedResponse = zod.object({
+  "token": zod.string(),
+  "tenantId": zod.number(),
+  "companyName": zod.string(),
+  "status": zod.enum(['pending', 'rated']),
+  "rating": zod.number().nullish(),
+  "googleUrl": zod.string().nullish(),
+  "facebookUrl": zod.string().nullish(),
+  "customLink1Label": zod.string().nullish(),
+  "customLink1Url": zod.string().nullish(),
+  "customLink2Label": zod.string().nullish(),
+  "customLink2Url": zod.string().nullish()
+})
+
+
+/**
+ * @summary List stop-service flags awaiting office review
+ */
+export const ListStopServiceFlagsQueryParams = zod.object({
+  "status": zod.coerce.string().optional()
+})
+
+export const ListStopServiceFlagsResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "customerName": zod.string().nullish(),
+  "invoiceId": zod.number(),
+  "invoiceNumber": zod.string().nullish(),
+  "daysOverdue": zod.number(),
+  "message": zod.string(),
+  "status": zod.enum(['pending', 'approved', 'dismissed']),
+  "resolvedBy": zod.number().nullish(),
+  "resolvedAt": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+export const ListStopServiceFlagsResponse = zod.array(ListStopServiceFlagsResponseItem)
+
+
+/**
+ * @summary Approve a stop-service flag — pauses the customer's recurring series
+ */
+export const ApproveStopServiceFlagParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ApproveStopServiceFlagResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "customerName": zod.string().nullish(),
+  "invoiceId": zod.number(),
+  "invoiceNumber": zod.string().nullish(),
+  "daysOverdue": zod.number(),
+  "message": zod.string(),
+  "status": zod.enum(['pending', 'approved', 'dismissed']),
+  "resolvedBy": zod.number().nullish(),
+  "resolvedAt": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Dismiss a stop-service flag — keep billing/service as-is
+ */
+export const DismissStopServiceFlagParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DismissStopServiceFlagResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "customerName": zod.string().nullish(),
+  "invoiceId": zod.number(),
+  "invoiceNumber": zod.string().nullish(),
+  "daysOverdue": zod.number(),
+  "message": zod.string(),
+  "status": zod.enum(['pending', 'approved', 'dismissed']),
+  "resolvedBy": zod.number().nullish(),
+  "resolvedAt": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
  * @summary List all daily routines
  */
 export const ListRoutinesResponseItem = zod.object({
@@ -2676,7 +2999,30 @@ export const GetTenantSettingsResponse = zod.object({
   "defaultGeofenceUnit": zod.enum(['m', 'ft']).optional().describe('Unit for geofence radius'),
   "autoCreateGeofence": zod.boolean().optional().describe('Auto-create geofence when a property is added'),
   "measurementZoneLabels": zod.array(zod.string()).optional().describe('Default zone label presets shown in the polygon tool'),
-  "preferredAreaUnit": zod.enum(['sqft', 'acres']).optional().describe('Preferred area unit for property measurements')
+  "preferredAreaUnit": zod.enum(['sqft', 'acres']).optional().describe('Preferred area unit for property measurements'),
+  "businessPhone": zod.string().nullish(),
+  "businessEmail": zod.string().nullish(),
+  "businessWebsite": zod.string().nullish(),
+  "businessAddress": zod.string().nullish(),
+  "businessLicenseNumber": zod.string().nullish(),
+  "businessTagline": zod.string().nullish(),
+  "invoiceFooterText": zod.string().nullish(),
+  "paymentRemindersEnabled": zod.boolean().optional(),
+  "paymentReminderSchedule": zod.array(zod.object({
+  "offsetDays": zod.number().describe('Negative = days before due date, positive = days overdue'),
+  "label": zod.string()
+})).optional(),
+  "paymentReminderChannels": zod.array(zod.enum(['sms', 'email'])).optional(),
+  "stopServiceRuleEnabled": zod.boolean().optional(),
+  "stopServiceThresholdDays": zod.number().optional(),
+  "reviewRequestOnInvoicePaid": zod.boolean().optional(),
+  "reviewRequestOnEstimateApproved": zod.boolean().optional(),
+  "reviewGoogleUrl": zod.string().nullish(),
+  "reviewFacebookUrl": zod.string().nullish(),
+  "reviewCustomLink1Label": zod.string().nullish(),
+  "reviewCustomLink1Url": zod.string().nullish(),
+  "reviewCustomLink2Label": zod.string().nullish(),
+  "reviewCustomLink2Url": zod.string().nullish()
 })
 
 
@@ -2711,7 +3057,31 @@ export const UpdateTenantSettingsBody = zod.object({
   "defaultGeofenceUnit": zod.enum(['m', 'ft']).optional(),
   "autoCreateGeofence": zod.boolean().optional(),
   "measurementZoneLabels": zod.array(zod.string()).optional(),
-  "preferredAreaUnit": zod.enum(['sqft', 'acres']).optional()
+  "preferredAreaUnit": zod.enum(['sqft', 'acres']).optional(),
+  "businessPhone": zod.string().optional(),
+  "businessEmail": zod.string().optional(),
+  "businessWebsite": zod.string().optional(),
+  "businessAddress": zod.string().optional(),
+  "businessLicenseNumber": zod.string().optional(),
+  "businessTagline": zod.string().optional(),
+  "invoiceFooterText": zod.string().optional(),
+  "logoUrl": zod.string().nullish(),
+  "paymentRemindersEnabled": zod.boolean().optional(),
+  "paymentReminderSchedule": zod.array(zod.object({
+  "offsetDays": zod.number().describe('Negative = days before due date, positive = days overdue'),
+  "label": zod.string()
+})).optional(),
+  "paymentReminderChannels": zod.array(zod.enum(['sms', 'email'])).optional(),
+  "stopServiceRuleEnabled": zod.boolean().optional(),
+  "stopServiceThresholdDays": zod.number().optional(),
+  "reviewRequestOnInvoicePaid": zod.boolean().optional(),
+  "reviewRequestOnEstimateApproved": zod.boolean().optional(),
+  "reviewGoogleUrl": zod.string().optional(),
+  "reviewFacebookUrl": zod.string().optional(),
+  "reviewCustomLink1Label": zod.string().optional(),
+  "reviewCustomLink1Url": zod.string().optional(),
+  "reviewCustomLink2Label": zod.string().optional(),
+  "reviewCustomLink2Url": zod.string().optional()
 })
 
 export const UpdateTenantSettingsResponse = zod.object({
@@ -2746,7 +3116,30 @@ export const UpdateTenantSettingsResponse = zod.object({
   "defaultGeofenceUnit": zod.enum(['m', 'ft']).optional().describe('Unit for geofence radius'),
   "autoCreateGeofence": zod.boolean().optional().describe('Auto-create geofence when a property is added'),
   "measurementZoneLabels": zod.array(zod.string()).optional().describe('Default zone label presets shown in the polygon tool'),
-  "preferredAreaUnit": zod.enum(['sqft', 'acres']).optional().describe('Preferred area unit for property measurements')
+  "preferredAreaUnit": zod.enum(['sqft', 'acres']).optional().describe('Preferred area unit for property measurements'),
+  "businessPhone": zod.string().nullish(),
+  "businessEmail": zod.string().nullish(),
+  "businessWebsite": zod.string().nullish(),
+  "businessAddress": zod.string().nullish(),
+  "businessLicenseNumber": zod.string().nullish(),
+  "businessTagline": zod.string().nullish(),
+  "invoiceFooterText": zod.string().nullish(),
+  "paymentRemindersEnabled": zod.boolean().optional(),
+  "paymentReminderSchedule": zod.array(zod.object({
+  "offsetDays": zod.number().describe('Negative = days before due date, positive = days overdue'),
+  "label": zod.string()
+})).optional(),
+  "paymentReminderChannels": zod.array(zod.enum(['sms', 'email'])).optional(),
+  "stopServiceRuleEnabled": zod.boolean().optional(),
+  "stopServiceThresholdDays": zod.number().optional(),
+  "reviewRequestOnInvoicePaid": zod.boolean().optional(),
+  "reviewRequestOnEstimateApproved": zod.boolean().optional(),
+  "reviewGoogleUrl": zod.string().nullish(),
+  "reviewFacebookUrl": zod.string().nullish(),
+  "reviewCustomLink1Label": zod.string().nullish(),
+  "reviewCustomLink1Url": zod.string().nullish(),
+  "reviewCustomLink2Label": zod.string().nullish(),
+  "reviewCustomLink2Url": zod.string().nullish()
 })
 
 
@@ -3775,6 +4168,51 @@ export const GetCustomerPortalLinkResponse = zod.object({
 
 
 /**
+ * @summary Office-approved resume of a paused recurring series for this customer
+ */
+export const ResumeCustomerServiceParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ResumeCustomerServiceResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "phone": zod.string(),
+  "secondaryPhone": zod.string().nullish(),
+  "company": zod.string().nullish(),
+  "customerType": zod.string().nullish(),
+  "referralSource": zod.string().nullish(),
+  "billingAddress": zod.string().nullish(),
+  "billingCity": zod.string().nullish(),
+  "billingState": zod.string().nullish(),
+  "billingZip": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "tags": zod.array(zod.string()).optional(),
+  "customFieldValues": zod.record(zod.string(), zod.string()).optional(),
+  "propertyCount": zod.number().optional(),
+  "totalSpend": zod.number().optional(),
+  "smsOptOut": zod.boolean().optional(),
+  "emailOptOut": zod.boolean().optional(),
+  "autoInvoiceOnCompletion": zod.boolean().optional().describe('Automatically create and email an invoice when a job for this customer is marked complete'),
+  "profilePhotoUrl": zod.string().nullish(),
+  "acquiredFromCampaignId": zod.number().nullish(),
+  "thisYearSpend": zod.number().nullish().describe('Total paid invoices for the current calendar year'),
+  "lastYearSpend": zod.number().nullish().describe('Total paid invoices for the previous calendar year'),
+  "createdAt": zod.string(),
+  "paymentStanding": zod.object({
+  "status": zod.enum(['current', 'reminded', 'overdue', 'flagged', 'paused']).describe('current = no overdue invoices; reminded = a reminder was sent; overdue = past due but under stop-service threshold; flagged = a stop-service flag is pending office approval; paused = recurring service has been paused'),
+  "oldestOverdueInvoiceId": zod.number().nullish(),
+  "daysOverdue": zod.number().nullish(),
+  "overdueAmount": zod.number().optional(),
+  "pendingFlagId": zod.number().nullish(),
+  "isServicePaused": zod.boolean().optional()
+}).optional()
+})
+
+
+/**
  * @summary Request a presigned URL for file upload
  */
 
@@ -4384,7 +4822,16 @@ export const GetPublicEstimateResponse = zod.object({
   "optionalPitchLine": zod.string().nullish(),
   "acceptedByCustomer": zod.boolean()
 })).optional(),
-  "expired": zod.boolean().optional()
+  "expired": zod.boolean().optional(),
+  "businessProfile": zod.object({
+  "companyName": zod.string().nullish(),
+  "logoUrl": zod.string().nullish(),
+  "tagline": zod.string().nullish(),
+  "phone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "address": zod.string().nullish()
+}).optional()
 }))
 
 

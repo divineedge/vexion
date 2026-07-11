@@ -1,14 +1,68 @@
 import { Router, type IRouter } from "express";
-import { db, customersTable, propertiesTable, jobsTable, invoicesTable, activityLogTable, propertyOwnershipHistoryTable, customerOtpSessionsTable } from "@workspace/db";
-import { eq, and, ilike, sql, desc } from "drizzle-orm";
+import { db, customersTable, propertiesTable, jobsTable, invoicesTable, activityLogTable, propertyOwnershipHistoryTable, customerOtpSessionsTable, stopServiceFlagsTable } from "@workspace/db";
+import { eq, and, ilike, sql, desc, isNull, ne } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { syncCustomerToMailchimp } from "../lib/mailchimpSync";
+import { isAdminRole } from "../lib/roles";
 
 const router: IRouter = Router();
 
+type PaymentStanding = {
+  status: "current" | "reminded" | "overdue" | "flagged" | "paused";
+  oldestOverdueInvoiceId: number | null;
+  daysOverdue: number | null;
+  overdueAmount: number;
+  pendingFlagId: number | null;
+  isServicePaused: boolean;
+};
+
+/** Computes a customer's payment standing from existing invoice/flag/job data — nothing is duplicated in storage. */
+async function computePaymentStanding(tenantId: number, customerId: number): Promise<PaymentStanding> {
+  const now = new Date();
+
+  const [overdueInvoices, [pendingFlag], [pausedJob]] = await Promise.all([
+    db.select().from(invoicesTable).where(and(
+      eq(invoicesTable.tenantId, tenantId),
+      eq(invoicesTable.customerId, customerId),
+      ne(invoicesTable.status, "paid"),
+      sql`${invoicesTable.dueDate} IS NOT NULL AND ${invoicesTable.dueDate} < ${now.toISOString()}::timestamptz`,
+    )).orderBy(invoicesTable.dueDate),
+    db.select().from(stopServiceFlagsTable).where(and(
+      eq(stopServiceFlagsTable.tenantId, tenantId),
+      eq(stopServiceFlagsTable.customerId, customerId),
+      eq(stopServiceFlagsTable.status, "pending"),
+    )).limit(1),
+    db.select().from(jobsTable).where(and(
+      eq(jobsTable.tenantId, tenantId),
+      eq(jobsTable.customerId, customerId),
+      isNull(jobsTable.recurrenceParentId),
+      eq(jobsTable.isRecurrencePaused, true),
+    )).limit(1),
+  ]);
+
+  const overdueAmount = overdueInvoices.reduce((sum, i) => sum + i.total, 0);
+  const oldest = overdueInvoices[0] ?? null;
+  const daysOverdue = oldest?.dueDate ? Math.floor((now.getTime() - oldest.dueDate.getTime()) / (1000 * 60 * 60 * 24)) : null;
+  const remindersSent = (oldest?.paymentRemindersSent as number[] | null) ?? [];
+
+  let status: PaymentStanding["status"] = "current";
+  if (pausedJob) status = "paused";
+  else if (pendingFlag) status = "flagged";
+  else if (oldest) status = remindersSent.length > 0 ? "reminded" : "overdue";
+
+  return {
+    status,
+    oldestOverdueInvoiceId: oldest?.id ?? null,
+    daysOverdue,
+    overdueAmount,
+    pendingFlagId: pendingFlag?.id ?? null,
+    isServicePaused: !!pausedJob,
+  };
+}
+
 function formatCustomer(
   c: typeof customersTable.$inferSelect,
-  extras?: { propertyCount?: number; thisYearSpend?: number; lastYearSpend?: number }
+  extras?: { propertyCount?: number; thisYearSpend?: number; lastYearSpend?: number; paymentStanding?: PaymentStanding }
 ) {
   return {
     id: c.id,
@@ -36,6 +90,7 @@ function formatCustomer(
     thisYearSpend: extras?.thisYearSpend ?? null,
     lastYearSpend: extras?.lastYearSpend ?? null,
     propertyCount: extras?.propertyCount ?? 0,
+    paymentStanding: extras?.paymentStanding ?? null,
     createdAt: c.createdAt.toISOString(),
   };
 }
@@ -131,6 +186,7 @@ router.get("/customers/:id", async (req, res): Promise<void> => {
     [{ count: propCount }],
     [thisYear],
     [lastYear],
+    paymentStanding,
   ] = await Promise.all([
     db.select({ count: sql<number>`count(*)::int` }).from(propertiesTable)
       .where(and(eq(propertiesTable.customerId, id), eq(propertiesTable.tenantId, tenantId))),
@@ -138,12 +194,14 @@ router.get("/customers/:id", async (req, res): Promise<void> => {
       .where(and(eq(invoicesTable.tenantId, tenantId), eq(invoicesTable.customerId, id), eq(invoicesTable.status, "paid"), sql`created_at >= ${thisYearStart}::timestamptz`)),
     db.select({ total: sql<number>`COALESCE(sum(total),0)::float` }).from(invoicesTable)
       .where(and(eq(invoicesTable.tenantId, tenantId), eq(invoicesTable.customerId, id), eq(invoicesTable.status, "paid"), sql`created_at >= ${lastYearStart}::timestamptz AND created_at < ${lastYearEnd}::timestamptz`)),
+    computePaymentStanding(tenantId, id),
   ]);
 
   res.json(formatCustomer(customer, {
     propertyCount: propCount,
     thisYearSpend: thisYear?.total ?? 0,
     lastYearSpend: lastYear?.total ?? 0,
+    paymentStanding,
   }));
 });
 
@@ -289,6 +347,36 @@ router.get("/customers/:id/portal-link", async (req, res): Promise<void> => {
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
   res.json({ url, expiresAt });
+});
+
+// ---------------------------------------------------------------------------
+// POST /customers/:id/resume-service — office-approved resume of a paused
+// recurring series. Mirrors the pause half of PATCH /jobs/:id/pause-series.
+// ---------------------------------------------------------------------------
+router.post("/customers/:id/resume-service", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  if (!(await isAdminRole(tenantId, userId))) { res.status(403).json({ error: "Restricted to owner/office roles" }); return; }
+
+  const id = parseInt(req.params.id, 10);
+  const [customer] = await db.select().from(customersTable).where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)));
+  if (!customer) { res.status(404).json({ error: "Not found" }); return; }
+
+  await db.update(jobsTable)
+    .set({ isRecurrencePaused: false })
+    .where(and(
+      eq(jobsTable.tenantId, tenantId),
+      eq(jobsTable.customerId, id),
+      isNull(jobsTable.recurrenceParentId),
+      eq(jobsTable.isRecurrencePaused, true),
+    ));
+
+  await db.insert(activityLogTable).values({ tenantId, userId, type: "service_resumed", message: `Recurring service resumed for ${customer.name}`, entityId: id });
+
+  const [{ count: propCount }] = await db.select({ count: sql<number>`count(*)::int` }).from(propertiesTable)
+    .where(and(eq(propertiesTable.customerId, id), eq(propertiesTable.tenantId, tenantId)));
+  const paymentStanding = await computePaymentStanding(tenantId, id);
+  res.json(formatCustomer(customer, { propertyCount: propCount, paymentStanding }));
 });
 
 export default router;

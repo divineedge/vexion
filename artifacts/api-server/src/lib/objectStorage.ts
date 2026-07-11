@@ -210,6 +210,11 @@ export class ObjectStorageService {
     });
   }
 
+  async getObjectEntityAclOwner(objectFile: File): Promise<string | null> {
+    const aclPolicy = await getObjectAclPolicy(objectFile);
+    return aclPolicy?.owner ?? null;
+  }
+
   /**
    * Generate a short-lived signed read URL for a private object.
    * @param objectPath e.g. "/objects/uploads/uuid"

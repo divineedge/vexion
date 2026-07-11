@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CustomerCustomFieldValues } from './customerCustomFieldValues';
+import type { PaymentStanding } from './paymentStanding';
 
 export interface Customer {
   id: number;
@@ -54,4 +55,5 @@ export interface Customer {
      */
   lastYearSpend?: number | null;
   createdAt: string;
+  paymentStanding?: PaymentStanding;
 }

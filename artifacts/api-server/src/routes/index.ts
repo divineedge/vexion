@@ -37,6 +37,8 @@ import expensesRouter from "./expenses";
 import broadcastsRouter from "./broadcasts";
 import integrationsRouter from "./integrations";
 import devToolsRouter from "./devTools";
+import reviewsRouter from "./reviews";
+import stopServiceFlagsRouter from "./stopServiceFlags";
 
 const router: IRouter = Router();
 
@@ -78,5 +80,7 @@ router.use(expensesRouter);
 router.use(broadcastsRouter);
 router.use(integrationsRouter);
 router.use(devToolsRouter);
+router.use(reviewsRouter);
+router.use(stopServiceFlagsRouter);
 
 export default router;

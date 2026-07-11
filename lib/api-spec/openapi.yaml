@@ -775,11 +775,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [paused]
-              properties:
-                paused:
-                  type: boolean
+              $ref: "#/components/schemas/PauseSeriesInput"
       responses:
         "200":
           description: Updated series root job
@@ -804,8 +800,7 @@ paths:
         - name: scope
           in: query
           schema:
-            type: string
-            enum: [forward, all]
+            $ref: "#/components/schemas/CancelSeriesScope"
           description: "forward=cancel from next onwards; all=cancel entire series"
       responses:
         "204":
@@ -1487,6 +1482,235 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FinancialsSummary"
+
+  # REVIEWS
+  /reviews:
+    get:
+      operationId: listReviewRequests
+      tags: [reviews]
+      summary: List review requests (staff)
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: rating
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of review requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReviewRequest"
+    post:
+      operationId: sendReviewRequest
+      tags: [reviews]
+      summary: Manually send a review request to a customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendReviewRequestInput"
+      responses:
+        "201":
+          description: Review request sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewRequest"
+
+  /reviews/summary:
+    get:
+      operationId: getReviewsSummary
+      tags: [reviews]
+      summary: Average rating, distribution, common issues, and trend
+      responses:
+        "200":
+          description: Reviews summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewsSummary"
+
+  /reviews/{id}:
+    patch:
+      operationId: updateReviewRequest
+      tags: [reviews]
+      summary: Update a review's staff workflow status/note
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewRequestUpdate"
+      responses:
+        "200":
+          description: Updated review request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewRequest"
+
+  /public/reviews/{token}:
+    get:
+      operationId: getPublicReview
+      tags: [reviews]
+      summary: Get the hosted, no-login review page data for a token
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Public review data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicReviewRequest"
+        "404":
+          description: Not found
+
+  /public/reviews/{token}/rating:
+    post:
+      operationId: submitReviewRating
+      tags: [reviews]
+      summary: Submit the star rating for a review request
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitReviewRatingInput"
+      responses:
+        "200":
+          description: Rating recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicReviewRequest"
+
+  /public/reviews/{token}/feedback:
+    post:
+      operationId: submitReviewFeedback
+      tags: [reviews]
+      summary: Submit structured feedback for a 1-4 star review
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitReviewFeedbackInput"
+      responses:
+        "200":
+          description: Feedback recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicReviewRequest"
+
+  /public/reviews/{token}/redirect:
+    post:
+      operationId: markReviewRedirected
+      tags: [reviews]
+      summary: Mark that a 5-star customer was shown the public review site redirect
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Marked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicReviewRequest"
+
+  # STOP-SERVICE FLAGS (office approval queue)
+  /stop-service-flags:
+    get:
+      operationId: listStopServiceFlags
+      tags: [stopServiceFlags]
+      summary: List stop-service flags awaiting office review
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of flags
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StopServiceFlag"
+
+  /stop-service-flags/{id}/approve:
+    post:
+      operationId: approveStopServiceFlag
+      tags: [stopServiceFlags]
+      summary: Approve a stop-service flag — pauses the customer's recurring series
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Approved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StopServiceFlag"
+
+  /stop-service-flags/{id}/dismiss:
+    post:
+      operationId: dismissStopServiceFlag
+      tags: [stopServiceFlags]
+      summary: Dismiss a stop-service flag — keep billing/service as-is
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Dismissed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StopServiceFlag"
 
   # DAILY ROUTINES
   /routines:
@@ -2590,6 +2814,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/PortalLinkResult"
 
+  /customers/{id}/resume-service:
+    post:
+      operationId: resumeCustomerService
+      tags: [customers]
+      summary: Office-approved resume of a paused recurring series for this customer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated customer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+
   # STORAGE
   /storage/uploads/request-url:
     post:
@@ -3171,10 +3414,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                outcomeNotes:
-                  type: string
+              $ref: "#/components/schemas/CompleteVisitInput"
       responses:
         "200":
           description: Updated visit
@@ -3713,12 +3953,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                vendorId:
-                  type: integer
-                category:
-                  type: string
+              $ref: "#/components/schemas/ImportBankTransactionInput"
       responses:
         "200":
           description: Imported
@@ -4202,6 +4437,24 @@ components:
         updatedAt:
           type: string
 
+    PublicEstimateBusinessProfile:
+      type: object
+      properties:
+        companyName:
+          type: ["string", "null"]
+        logoUrl:
+          type: ["string", "null"]
+        tagline:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        website:
+          type: ["string", "null"]
+        address:
+          type: ["string", "null"]
+
     PublicEstimate:
       allOf:
         - $ref: "#/components/schemas/Estimate"
@@ -4216,6 +4469,8 @@ components:
             $ref: "#/components/schemas/EstimateLineItem"
         expired:
           type: boolean
+        businessProfile:
+          $ref: "#/components/schemas/PublicEstimateBusinessProfile"
 
     EstimatePipeline:
       type: object
@@ -4606,6 +4861,27 @@ components:
           description: "Total paid invoices for the previous calendar year"
         createdAt:
           type: string
+        paymentStanding:
+          $ref: "#/components/schemas/PaymentStanding"
+
+    PaymentStanding:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [current, reminded, overdue, flagged, paused]
+          description: "current = no overdue invoices; reminded = a reminder was sent; overdue = past due but under stop-service threshold; flagged = a stop-service flag is pending office approval; paused = recurring service has been paused"
+        oldestOverdueInvoiceId:
+          type: ["integer", "null"]
+        daysOverdue:
+          type: ["integer", "null"]
+        overdueAmount:
+          type: number
+        pendingFlagId:
+          type: ["integer", "null"]
+        isServicePaused:
+          type: boolean
 
     CustomerInput:
       type: object
@@ -6255,6 +6531,89 @@ components:
           type: string
           enum: [sqft, acres]
           description: "Preferred area unit for property measurements"
+        # ── Business Profile ─────────────────────────────────────────────
+        businessPhone:
+          type: ["string", "null"]
+        businessEmail:
+          type: ["string", "null"]
+        businessWebsite:
+          type: ["string", "null"]
+        businessAddress:
+          type: ["string", "null"]
+        businessLicenseNumber:
+          type: ["string", "null"]
+        businessTagline:
+          type: ["string", "null"]
+        invoiceFooterText:
+          type: ["string", "null"]
+        # ── Payment Reminders & Stop-Service Rule ───────────────────────
+        paymentRemindersEnabled:
+          type: boolean
+        paymentReminderSchedule:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentReminderRule"
+        paymentReminderChannels:
+          type: array
+          items:
+            type: string
+            enum: [sms, email]
+        stopServiceRuleEnabled:
+          type: boolean
+        stopServiceThresholdDays:
+          type: integer
+        # ── Review Collection ────────────────────────────────────────────
+        reviewRequestOnInvoicePaid:
+          type: boolean
+        reviewRequestOnEstimateApproved:
+          type: boolean
+        reviewGoogleUrl:
+          type: ["string", "null"]
+        reviewFacebookUrl:
+          type: ["string", "null"]
+        reviewCustomLink1Label:
+          type: ["string", "null"]
+        reviewCustomLink1Url:
+          type: ["string", "null"]
+        reviewCustomLink2Label:
+          type: ["string", "null"]
+        reviewCustomLink2Url:
+          type: ["string", "null"]
+
+    PauseSeriesInput:
+      type: object
+      required: [paused]
+      properties:
+        paused:
+          type: boolean
+
+    CompleteVisitInput:
+      type: object
+      properties:
+        outcomeNotes:
+          type: string
+
+    ImportBankTransactionInput:
+      type: object
+      properties:
+        vendorId:
+          type: integer
+        category:
+          type: string
+
+    CancelSeriesScope:
+      type: string
+      enum: [forward, all]
+
+    PaymentReminderRule:
+      type: object
+      required: [offsetDays, label]
+      properties:
+        offsetDays:
+          type: integer
+          description: "Negative = days before due date, positive = days overdue"
+        label:
+          type: string
 
     TenantSettingsUpdate:
       type: object
@@ -6311,6 +6670,53 @@ components:
         preferredAreaUnit:
           type: string
           enum: [sqft, acres]
+        businessPhone:
+          type: string
+        businessEmail:
+          type: string
+        businessWebsite:
+          type: string
+        businessAddress:
+          type: string
+        businessLicenseNumber:
+          type: string
+        businessTagline:
+          type: string
+        invoiceFooterText:
+          type: string
+        logoUrl:
+          type: ["string", "null"]
+        paymentRemindersEnabled:
+          type: boolean
+        paymentReminderSchedule:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentReminderRule"
+        paymentReminderChannels:
+          type: array
+          items:
+            type: string
+            enum: [sms, email]
+        stopServiceRuleEnabled:
+          type: boolean
+        stopServiceThresholdDays:
+          type: integer
+        reviewRequestOnInvoicePaid:
+          type: boolean
+        reviewRequestOnEstimateApproved:
+          type: boolean
+        reviewGoogleUrl:
+          type: string
+        reviewFacebookUrl:
+          type: string
+        reviewCustomLink1Label:
+          type: string
+        reviewCustomLink1Url:
+          type: string
+        reviewCustomLink2Label:
+          type: string
+        reviewCustomLink2Url:
+          type: string
 
     CustomerFieldConfig:
       type: object
@@ -6333,6 +6739,190 @@ components:
           type: boolean
         isBuiltIn:
           type: boolean
+
+    ReviewRequest:
+      type: object
+      required: [id, tenantId, customerId, channel, sentAt, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        customerId:
+          type: integer
+        customerName:
+          type: ["string", "null"]
+        jobId:
+          type: ["integer", "null"]
+        invoiceId:
+          type: ["integer", "null"]
+        estimateId:
+          type: ["integer", "null"]
+        channel:
+          type: string
+          enum: [sms, email, both]
+        sentAt:
+          type: string
+        rating:
+          type: ["integer", "null"]
+        checklistSelections:
+          type: ["array", "null"]
+          items:
+            type: string
+        feedbackText:
+          type: ["string", "null"]
+        improvementText:
+          type: ["string", "null"]
+        publicRedirected:
+          type: boolean
+        respondedAt:
+          type: ["string", "null"]
+        reviewStatus:
+          type: string
+          enum: [new, reviewed, action_taken, resolved]
+        reviewNote:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    ReviewRequestUpdate:
+      type: object
+      properties:
+        reviewStatus:
+          type: string
+          enum: [new, reviewed, action_taken, resolved]
+        reviewNote:
+          type: string
+
+    SendReviewRequestInput:
+      type: object
+      required: [customerId]
+      properties:
+        customerId:
+          type: integer
+        invoiceId:
+          type: integer
+        estimateId:
+          type: integer
+        jobId:
+          type: integer
+
+    ReviewsSummary:
+      type: object
+      required: [averageRating, totalResponses, distribution, trend]
+      properties:
+        averageRating:
+          type: number
+        totalResponses:
+          type: integer
+        distribution:
+          type: object
+          additionalProperties:
+            type: integer
+          description: "Keys '1'-'5' mapped to counts"
+        topChecklistIssues:
+          type: array
+          items:
+            type: object
+            required: [label, count]
+            properties:
+              label:
+                type: string
+              count:
+                type: integer
+        trend:
+          type: array
+          items:
+            type: object
+            required: [period, averageRating, responseCount]
+            properties:
+              period:
+                type: string
+              averageRating:
+                type: number
+              responseCount:
+                type: integer
+
+    PublicReviewRequest:
+      type: object
+      required: [token, tenantId, companyName, status]
+      properties:
+        token:
+          type: string
+        tenantId:
+          type: integer
+        companyName:
+          type: string
+        status:
+          type: string
+          enum: [pending, rated]
+        rating:
+          type: ["integer", "null"]
+        googleUrl:
+          type: ["string", "null"]
+        facebookUrl:
+          type: ["string", "null"]
+        customLink1Label:
+          type: ["string", "null"]
+        customLink1Url:
+          type: ["string", "null"]
+        customLink2Label:
+          type: ["string", "null"]
+        customLink2Url:
+          type: ["string", "null"]
+
+    SubmitReviewRatingInput:
+      type: object
+      required: [rating]
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+
+    SubmitReviewFeedbackInput:
+      type: object
+      properties:
+        checklistSelections:
+          type: array
+          items:
+            type: string
+        feedbackText:
+          type: string
+        improvementText:
+          type: string
+
+    StopServiceFlag:
+      type: object
+      required: [id, tenantId, customerId, invoiceId, daysOverdue, message, status, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        customerId:
+          type: integer
+        customerName:
+          type: ["string", "null"]
+        invoiceId:
+          type: integer
+        invoiceNumber:
+          type: ["string", "null"]
+        daysOverdue:
+          type: integer
+        message:
+          type: string
+        status:
+          type: string
+          enum: [pending, approved, dismissed]
+        resolvedBy:
+          type: ["integer", "null"]
+        resolvedAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
 
     PropertyOwnershipRecord:
       type: object

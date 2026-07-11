@@ -6,10 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type CancelRecurringSeriesScope = typeof CancelRecurringSeriesScope[keyof typeof CancelRecurringSeriesScope];
+export type CancelSeriesScope = typeof CancelSeriesScope[keyof typeof CancelSeriesScope];
 
 
-export const CancelRecurringSeriesScope = {
+export const CancelSeriesScope = {
   forward: 'forward',
   all: 'all',
 } as const;

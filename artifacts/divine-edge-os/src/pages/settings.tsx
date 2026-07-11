@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   useGetTenantSettings, getGetTenantSettingsQueryKey,
   useUpdateTenantSettings,
@@ -9,8 +9,9 @@ import {
   useCreateChemicalProduct, useUpdateChemicalProduct, useDeleteChemicalProduct,
   useListChemicalMixtures, getListChemicalMixturesQueryKey,
   useCreateChemicalMixture, useUpdateChemicalMixture, useDeleteChemicalMixture,
+  customFetch,
 } from '@workspace/api-client-react';
-import type { ChemicalProduct, ChemicalMixture, ChemicalMixtureItem } from '@workspace/api-client-react';
+import type { ChemicalProduct, ChemicalMixture, ChemicalMixtureItem, PaymentReminderRule } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -28,7 +29,11 @@ import {
   GripVertical, EyeOff, Eye, Star, Settings as SettingsIcon, TrendingUp,
   ArrowRight, FlaskConical, Pencil, X, MapPin, Ruler, Navigation, MessageSquare,
   Phone, Mail, Send, Wifi, WifiOff, CheckCircle, AlertCircle,
+  ImageIcon, Bell, Star as StarIcon, Link, Camera, Loader2,
 } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { BUILT_IN_CUSTOMER_FIELDS, getActiveCustomerFields, type CustomerFieldConfig } from '@/lib/fieldConfig';
 import IntegrationsGrid from '@/components/settings/IntegrationsGrid';
@@ -113,6 +118,35 @@ export default function SettingsPage() {
   const [editingProd, setEditingProd] = useState<ChemicalProduct | null>(null);
   const [prodForm, setProdForm] = useState({ name: '', epaRegNumber: '', activeIngredients: '', signalWord: '', rei: '', phi: '', labelSdsUrl: '', unit: 'oz' });
 
+  // Branding
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const logoFileRef = useRef<HTMLInputElement>(null);
+  const [businessPhone, setBusinessPhone] = useState('');
+  const [businessEmail, setBusinessEmail] = useState('');
+  const [businessWebsite, setBusinessWebsite] = useState('');
+  const [businessAddress, setBusinessAddress] = useState('');
+  const [businessLicenseNumber, setBusinessLicenseNumber] = useState('');
+  const [businessTagline, setBusinessTagline] = useState('');
+  const [invoiceFooterText, setInvoiceFooterText] = useState('');
+
+  // Payment Reminders
+  const [paymentRemindersEnabled, setPaymentRemindersEnabled] = useState(false);
+  const [paymentReminderSchedule, setPaymentReminderSchedule] = useState<PaymentReminderRule[]>([]);
+  const [paymentReminderChannels, setPaymentReminderChannels] = useState<Array<'email' | 'sms'>>([]);
+  const [stopServiceRuleEnabled, setStopServiceRuleEnabled] = useState(false);
+  const [stopServiceThresholdDays, setStopServiceThresholdDays] = useState('30');
+
+  // Reviews
+  const [reviewRequestOnInvoicePaid, setReviewRequestOnInvoicePaid] = useState(false);
+  const [reviewRequestOnEstimateApproved, setReviewRequestOnEstimateApproved] = useState(false);
+  const [reviewGoogleUrl, setReviewGoogleUrl] = useState('');
+  const [reviewFacebookUrl, setReviewFacebookUrl] = useState('');
+  const [reviewCustomLink1Label, setReviewCustomLink1Label] = useState('');
+  const [reviewCustomLink1Url, setReviewCustomLink1Url] = useState('');
+  const [reviewCustomLink2Label, setReviewCustomLink2Label] = useState('');
+  const [reviewCustomLink2Url, setReviewCustomLink2Url] = useState('');
+
   // Chemicals – Mixture form
   const [mixFormOpen, setMixFormOpen] = useState(false);
   const [editingMix, setEditingMix] = useState<ChemicalMixture | null>(null);
@@ -139,6 +173,33 @@ export default function SettingsPage() {
       const labels: string[] = (settings as any).measurementZoneLabels ?? ['Front Lawn', 'Back Yard', 'Bed Areas', 'Side Yard', 'Common Area'];
       setZoneLabelsRaw(labels.join(', '));
       setCustomerFields(getActiveCustomerFields(settings));
+      // Branding
+      setLogoUrl(settings.logoUrl ?? null);
+      setBusinessPhone((settings as any).businessPhone ?? '');
+      setBusinessEmail((settings as any).businessEmail ?? '');
+      setBusinessWebsite((settings as any).businessWebsite ?? '');
+      setBusinessAddress((settings as any).businessAddress ?? '');
+      setBusinessLicenseNumber((settings as any).businessLicenseNumber ?? '');
+      setBusinessTagline((settings as any).businessTagline ?? '');
+      setInvoiceFooterText((settings as any).invoiceFooterText ?? '');
+
+      // Payment Reminders
+      setPaymentRemindersEnabled((settings as any).paymentRemindersEnabled ?? false);
+      setPaymentReminderSchedule((settings as any).paymentReminderSchedule ?? []);
+      setPaymentReminderChannels(((settings as any).paymentReminderChannels ?? []) as Array<'email' | 'sms'>);
+      setStopServiceRuleEnabled((settings as any).stopServiceRuleEnabled ?? false);
+      setStopServiceThresholdDays(String((settings as any).stopServiceThresholdDays ?? 30));
+
+      // Reviews
+      setReviewRequestOnInvoicePaid((settings as any).reviewRequestOnInvoicePaid ?? false);
+      setReviewRequestOnEstimateApproved((settings as any).reviewRequestOnEstimateApproved ?? false);
+      setReviewGoogleUrl((settings as any).reviewGoogleUrl ?? '');
+      setReviewFacebookUrl((settings as any).reviewFacebookUrl ?? '');
+      setReviewCustomLink1Label((settings as any).reviewCustomLink1Label ?? '');
+      setReviewCustomLink1Url((settings as any).reviewCustomLink1Url ?? '');
+      setReviewCustomLink2Label((settings as any).reviewCustomLink2Label ?? '');
+      setReviewCustomLink2Url((settings as any).reviewCustomLink2Url ?? '');
+
       // Communications
       const s = settings as any;
       setMainPhoneNumber(s.mainPhoneNumber ?? '');
@@ -157,6 +218,65 @@ export default function SettingsPage() {
       setSmtpPass(s.emailProviderConfig?.smtpPass ?? '');
     }
   }, [settings]);
+
+  // ── Branding handlers ──
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Only images are allowed'); return; }
+    if (file.size > 10 * 1024 * 1024) { toast.error('Image must be under 10 MB'); return; }
+    setLogoUploading(true);
+    try {
+      const { uploadURL, objectPath } = await customFetch<{ uploadURL: string; objectPath: string }>(
+        '/api/storage/uploads/request-url',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }) },
+      );
+      const uploadRes = await fetch(uploadURL, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+      if (!uploadRes.ok) throw new Error('Upload failed');
+      await new Promise<void>((resolve, reject) => {
+        updateSettings.mutate(
+          { data: { logoUrl: objectPath } },
+          { onSuccess: () => { setLogoUrl(objectPath); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); resolve(); }, onError: () => reject(new Error('Save failed')) },
+        );
+      });
+      toast.success('Logo updated');
+    } catch {
+      toast.error('Failed to upload logo');
+    } finally {
+      setLogoUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const saveBranding = () => {
+    updateSettings.mutate(
+      { data: { businessPhone: businessPhone || undefined, businessEmail: businessEmail || undefined, businessWebsite: businessWebsite || undefined, businessAddress: businessAddress || undefined, businessLicenseNumber: businessLicenseNumber || undefined, businessTagline: businessTagline || undefined, invoiceFooterText: invoiceFooterText || undefined } as Parameters<typeof updateSettings.mutate>[0]['data'] },
+      {
+        onSuccess: () => { toast.success('Branding saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
+        onError: () => toast.error('Failed to save branding'),
+      },
+    );
+  };
+
+  const savePaymentReminders = () => {
+    updateSettings.mutate(
+      { data: { paymentRemindersEnabled, paymentReminderSchedule, paymentReminderChannels, stopServiceRuleEnabled, stopServiceThresholdDays: parseInt(stopServiceThresholdDays, 10) || 30 } as Parameters<typeof updateSettings.mutate>[0]['data'] },
+      {
+        onSuccess: () => { toast.success('Payment reminder settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
+        onError: () => toast.error('Failed to save'),
+      },
+    );
+  };
+
+  const saveReviews = () => {
+    updateSettings.mutate(
+      { data: { reviewRequestOnInvoicePaid, reviewRequestOnEstimateApproved, reviewGoogleUrl: reviewGoogleUrl || undefined, reviewFacebookUrl: reviewFacebookUrl || undefined, reviewCustomLink1Label: reviewCustomLink1Label || undefined, reviewCustomLink1Url: reviewCustomLink1Url || undefined, reviewCustomLink2Label: reviewCustomLink2Label || undefined, reviewCustomLink2Url: reviewCustomLink2Url || undefined } as Parameters<typeof updateSettings.mutate>[0]['data'] },
+      {
+        onSuccess: () => { toast.success('Review settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
+        onError: () => toast.error('Failed to save'),
+      },
+    );
+  };
 
   const saveGeneral = () => {
     updateSettings.mutate(
@@ -304,6 +424,9 @@ export default function SettingsPage() {
           <TabsTrigger value="operational"><SettingsIcon className="w-4 h-4 mr-2" />Operational</TabsTrigger>
           <TabsTrigger value="measurements"><MapPin className="w-4 h-4 mr-2" />Maps & Quotes</TabsTrigger>
           <TabsTrigger value="chemicals"><FlaskConical className="w-4 h-4 mr-2" />Chemicals</TabsTrigger>
+          <TabsTrigger value="branding"><ImageIcon className="w-4 h-4 mr-2" />Branding</TabsTrigger>
+          <TabsTrigger value="payment-reminders"><Bell className="w-4 h-4 mr-2" />Payment Reminders</TabsTrigger>
+          <TabsTrigger value="reviews"><StarIcon className="w-4 h-4 mr-2" />Reviews</TabsTrigger>
           {isOwner && <TabsTrigger value="advanced"><Shield className="w-4 h-4 mr-2" />Advanced</TabsTrigger>}
         </TabsList>
 
@@ -1702,6 +1825,481 @@ export default function SettingsPage() {
               </div>
             </SheetContent>
           </Sheet>
+        </TabsContent>
+
+        {/* ── Branding ── */}
+        <TabsContent value="branding" className="space-y-6 focus-visible:outline-none">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><ImageIcon className="w-5 h-5" /> Business Logo</CardTitle>
+              <CardDescription>
+                Upload your company logo. It appears on invoices, estimates, and review pages sent to customers.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-start gap-6">
+                <div className="flex-shrink-0">
+                  <div className="w-28 h-28 rounded-xl border-2 border-dashed border-border bg-muted/30 flex items-center justify-center overflow-hidden">
+                    {logoUrl ? (
+                      <img
+                        src={`${import.meta.env.BASE_URL}api/public/tenants/${settings?.tenantId}/logo`}
+                        alt="Business logo"
+                        className="w-full h-full object-contain p-1"
+                        onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                      />
+                    ) : (
+                      <ImageIcon className="w-10 h-10 text-muted-foreground/30" />
+                    )}
+                  </div>
+                </div>
+                <div className="flex-1 space-y-3">
+                  <div>
+                    <p className="text-sm font-medium">Company Logo</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Used on invoices, estimates, and review pages sent to your customers. PNG, JPG, or SVG recommended. Max 10 MB.
+                    </p>
+                  </div>
+                  <input
+                    ref={logoFileRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleLogoUpload}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => logoFileRef.current?.click()}
+                      disabled={logoUploading}
+                    >
+                      {logoUploading ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Camera className="w-4 h-4" />
+                      )}
+                      {logoUploading ? 'Uploading…' : logoUrl ? 'Replace Logo' : 'Upload Logo'}
+                    </Button>
+                    {logoUrl && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-muted-foreground hover:text-destructive"
+                        disabled={updateSettings.isPending}
+                        onClick={() => {
+                          updateSettings.mutate(
+                            { data: { logoUrl: null } },
+                            {
+                              onSuccess: () => { setLogoUrl(null); toast.success('Logo removed'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
+                              onError: () => toast.error('Failed to remove logo'),
+                            },
+                          );
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" /> Remove
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><Building className="w-5 h-5" /> Business Profile</CardTitle>
+              <CardDescription>
+                Contact and legal information displayed on customer-facing documents.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="bp-phone">Business Phone</Label>
+                  <Input
+                    id="bp-phone"
+                    placeholder="+1 (555) 000-0000"
+                    value={businessPhone}
+                    onChange={e => setBusinessPhone(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="bp-email">Business Email</Label>
+                  <Input
+                    id="bp-email"
+                    type="email"
+                    placeholder="contact@yourcompany.com"
+                    value={businessEmail}
+                    onChange={e => setBusinessEmail(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="bp-website">Website</Label>
+                  <Input
+                    id="bp-website"
+                    type="url"
+                    placeholder="https://yourcompany.com"
+                    value={businessWebsite}
+                    onChange={e => setBusinessWebsite(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="bp-license">License Number</Label>
+                  <Input
+                    id="bp-license"
+                    placeholder="LIC-123456"
+                    value={businessLicenseNumber}
+                    onChange={e => setBusinessLicenseNumber(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="bp-address">Business Address</Label>
+                <Input
+                  id="bp-address"
+                  placeholder="123 Main St, City, State 00000"
+                  value={businessAddress}
+                  onChange={e => setBusinessAddress(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="bp-tagline">Tagline</Label>
+                <Input
+                  id="bp-tagline"
+                  placeholder="Your trusted local lawn care experts"
+                  value={businessTagline}
+                  onChange={e => setBusinessTagline(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">A short slogan shown below your company name on documents.</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="bp-footer">Invoice Footer Text</Label>
+                <Textarea
+                  id="bp-footer"
+                  rows={3}
+                  placeholder="Thank you for your business! Payment is due within 30 days."
+                  value={invoiceFooterText}
+                  onChange={e => setInvoiceFooterText(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">Appears at the bottom of every invoice. Good place for payment terms or a thank-you note.</p>
+              </div>
+              <Button onClick={saveBranding} disabled={updateSettings.isPending} variant="outline">
+                {updateSettings.isPending ? 'Saving…' : 'Save Business Profile'}
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Payment Reminders ── */}
+        <TabsContent value="payment-reminders" className="space-y-6 focus-visible:outline-none">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><Bell className="w-5 h-5" /> Payment Reminders</CardTitle>
+              <CardDescription>
+                Automatically notify customers about upcoming or overdue invoices on your chosen schedule.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {/* Master toggle */}
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div>
+                  <p className="text-sm font-medium">Enable Payment Reminders</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    When on, the system sends reminders to customers according to the schedule below.
+                  </p>
+                </div>
+                <Switch checked={paymentRemindersEnabled} onCheckedChange={setPaymentRemindersEnabled} />
+              </div>
+
+              {/* Channels */}
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Reminder Channels</p>
+                <p className="text-xs text-muted-foreground">Choose how reminders are sent to customers.</p>
+                <div className="flex items-center gap-6 mt-2">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="channel-email"
+                      checked={paymentReminderChannels.includes('email')}
+                      onCheckedChange={v => setPaymentReminderChannels(prev =>
+                        v ? [...prev.filter(c => c !== 'email'), 'email'] : prev.filter(c => c !== 'email')
+                      )}
+                    />
+                    <label htmlFor="channel-email" className="text-sm cursor-pointer flex items-center gap-1.5">
+                      <Mail className="w-3.5 h-3.5" /> Email
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="channel-sms"
+                      checked={paymentReminderChannels.includes('sms')}
+                      onCheckedChange={v => setPaymentReminderChannels(prev =>
+                        v ? [...prev.filter(c => c !== 'sms'), 'sms'] : prev.filter(c => c !== 'sms')
+                      )}
+                    />
+                    <label htmlFor="channel-sms" className="text-sm cursor-pointer flex items-center gap-1.5">
+                      <MessageSquare className="w-3.5 h-3.5" /> SMS
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Schedule builder */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">Reminder Schedule</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      <span className="font-medium">Negative</span> days = before due date &nbsp;·&nbsp; <span className="font-medium">Positive</span> days = days overdue (after due date)
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 h-8 text-xs"
+                    onClick={() => setPaymentReminderSchedule(prev => [...prev, { offsetDays: 3, label: 'Reminder' }])}
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add Rule
+                  </Button>
+                </div>
+
+                {paymentReminderSchedule.length === 0 && (
+                  <div className="rounded-lg border border-dashed p-4 text-center">
+                    <p className="text-sm text-muted-foreground">No reminder rules yet. Add one above.</p>
+                    <p className="text-xs text-muted-foreground mt-1">Example: −3 days = "3 days before due date", +7 days = "7 days overdue"</p>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  {paymentReminderSchedule.map((rule, idx) => (
+                    <div key={idx} className="flex items-center gap-3 rounded-lg border p-3 bg-muted/20">
+                      <div className="space-y-0.5 w-36">
+                        <label className="text-xs text-muted-foreground">Days offset</label>
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number"
+                            className="h-8 text-sm w-24"
+                            value={rule.offsetDays}
+                            onChange={e => setPaymentReminderSchedule(prev =>
+                              prev.map((r, i) => i === idx ? { ...r, offsetDays: parseInt(e.target.value, 10) || 0 } : r)
+                            )}
+                          />
+                          <span className="text-xs text-muted-foreground">d</span>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">
+                          {rule.offsetDays < 0 ? `${Math.abs(rule.offsetDays)}d before due` : rule.offsetDays > 0 ? `${rule.offsetDays}d overdue` : 'On due date'}
+                        </p>
+                      </div>
+                      <div className="flex-1 space-y-0.5">
+                        <label className="text-xs text-muted-foreground">Label</label>
+                        <Input
+                          className="h-8 text-sm"
+                          placeholder="e.g. 3 days before due"
+                          value={rule.label}
+                          onChange={e => setPaymentReminderSchedule(prev =>
+                            prev.map((r, i) => i === idx ? { ...r, label: e.target.value } : r)
+                          )}
+                        />
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="w-8 h-8 text-muted-foreground hover:text-destructive mt-4"
+                        onClick={() => setPaymentReminderSchedule(prev => prev.filter((_, i) => i !== idx))}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <Button onClick={savePaymentReminders} disabled={updateSettings.isPending} variant="outline">
+                {updateSettings.isPending ? 'Saving…' : 'Save Reminder Settings'}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Stop-Service Rule */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><AlertCircle className="w-5 h-5" /> Stop-Service Rule</CardTitle>
+              <CardDescription>
+                Flag accounts for office review when invoices go unpaid past a threshold. <strong>This never automatically pauses service</strong> — it only creates a flag for office staff to manually approve or dismiss.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div>
+                  <p className="text-sm font-medium">Enable Stop-Service Flagging</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    When on, accounts with unpaid invoices past the threshold are flagged for office review. Pending flags appear in the Financials page.
+                  </p>
+                </div>
+                <Switch checked={stopServiceRuleEnabled} onCheckedChange={setStopServiceRuleEnabled} />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="ss-threshold">Threshold (days overdue)</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="ss-threshold"
+                    type="number"
+                    min={1}
+                    step={1}
+                    className="w-24"
+                    value={stopServiceThresholdDays}
+                    onChange={e => setStopServiceThresholdDays(e.target.value)}
+                  />
+                  <span className="text-sm text-muted-foreground">days overdue</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Flag is raised when an invoice is this many days past its due date and still unpaid. A manager must manually approve or dismiss each flag — service is never paused automatically.
+                </p>
+              </div>
+
+              <Button onClick={savePaymentReminders} disabled={updateSettings.isPending} variant="outline">
+                {updateSettings.isPending ? 'Saving…' : 'Save Stop-Service Rule'}
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Reviews ── */}
+        <TabsContent value="reviews" className="space-y-6 focus-visible:outline-none">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><StarIcon className="w-5 h-5" /> Review Request Triggers</CardTitle>
+              <CardDescription>
+                The backend automatically sends a review request to the customer when these events occur. Customers who rate 5 stars are redirected to the links you configure below.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div>
+                  <p className="text-sm font-medium">Send review request when invoice is paid</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Automatically sends a review request when a customer's invoice is marked as paid.
+                  </p>
+                </div>
+                <Switch checked={reviewRequestOnInvoicePaid} onCheckedChange={setReviewRequestOnInvoicePaid} />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div>
+                  <p className="text-sm font-medium">Send review request when estimate is approved</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Automatically sends a review request when a customer approves an estimate.
+                  </p>
+                </div>
+                <Switch checked={reviewRequestOnEstimateApproved} onCheckedChange={setReviewRequestOnEstimateApproved} />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><Link className="w-5 h-5" /> Review Destination Links</CardTitle>
+              <CardDescription>
+                Customers who give a 5-star rating are directed to these links to leave a public review. Add at least one link to enable review collection.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {/* Google */}
+              <div className="space-y-1.5">
+                <Label htmlFor="rev-google" className="flex items-center gap-1.5">
+                  <div className="w-4 h-4 rounded-sm bg-red-500/10 flex items-center justify-center">
+                    <span className="text-[9px] font-bold text-red-600">G</span>
+                  </div>
+                  Google Review URL
+                </Label>
+                <Input
+                  id="rev-google"
+                  type="url"
+                  placeholder="https://g.page/r/YOUR_PLACE_ID/review"
+                  value={reviewGoogleUrl}
+                  onChange={e => setReviewGoogleUrl(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">Find this in Google Business Profile → Get more reviews → Share review form.</p>
+              </div>
+
+              {/* Facebook */}
+              <div className="space-y-1.5">
+                <Label htmlFor="rev-facebook" className="flex items-center gap-1.5">
+                  <div className="w-4 h-4 rounded-sm bg-blue-500/10 flex items-center justify-center">
+                    <span className="text-[9px] font-bold text-blue-700">f</span>
+                  </div>
+                  Facebook Review URL
+                </Label>
+                <Input
+                  id="rev-facebook"
+                  type="url"
+                  placeholder="https://www.facebook.com/your-page/reviews"
+                  value={reviewFacebookUrl}
+                  onChange={e => setReviewFacebookUrl(e.target.value)}
+                />
+              </div>
+
+              <Separator />
+
+              {/* Custom link 1 */}
+              <div>
+                <p className="text-sm font-medium mb-3">Custom Link 1</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rev-cl1-label">Button Label</Label>
+                    <Input
+                      id="rev-cl1-label"
+                      placeholder="e.g. Yelp, Angi, Nextdoor"
+                      value={reviewCustomLink1Label}
+                      onChange={e => setReviewCustomLink1Label(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rev-cl1-url">URL</Label>
+                    <Input
+                      id="rev-cl1-url"
+                      type="url"
+                      placeholder="https://…"
+                      value={reviewCustomLink1Url}
+                      onChange={e => setReviewCustomLink1Url(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Custom link 2 */}
+              <div>
+                <p className="text-sm font-medium mb-3">Custom Link 2</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rev-cl2-label">Button Label</Label>
+                    <Input
+                      id="rev-cl2-label"
+                      placeholder="e.g. HomeAdvisor, Thumbtack"
+                      value={reviewCustomLink2Label}
+                      onChange={e => setReviewCustomLink2Label(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rev-cl2-url">URL</Label>
+                    <Input
+                      id="rev-cl2-url"
+                      type="url"
+                      placeholder="https://…"
+                      value={reviewCustomLink2Url}
+                      onChange={e => setReviewCustomLink2Url(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <Button onClick={saveReviews} disabled={updateSettings.isPending} variant="outline">
+                {updateSettings.isPending ? 'Saving…' : 'Save Review Settings'}
+              </Button>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

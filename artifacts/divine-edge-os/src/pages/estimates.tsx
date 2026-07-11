@@ -24,11 +24,12 @@ import {
   useListUsers, getListUsersQueryKey,
   useListProperties, getListPropertiesQueryKey,
   useListEstimateTemplates, getListEstimateTemplatesQueryKey,
+  useGetTenantSettings, getGetTenantSettingsQueryKey,
 } from '@workspace/api-client-react';
 import { format } from 'date-fns';
 import {
   Plus, FileText, DollarSign, TrendingUp, Send, Briefcase, Trash2,
-  ChevronRight, Eye, Clock, User, MapPin, CheckCircle2, XCircle, 
+  ChevronRight, Eye, Clock, User, MapPin, CheckCircle2, XCircle, Phone, Mail, Globe, Building2,
 } from 'lucide-react';
 import { Link } from 'wouter';
 const STATUS_COLORS: Record<string, string> = {
@@ -101,6 +102,7 @@ export default function EstimatesPage() {
   const { data: users } = useListUsers({ query: { enabled: createOpen, queryKey: getListUsersQueryKey() } });
   const { data: properties } = useListProperties({}, { query: { enabled: createOpen, queryKey: getListPropertiesQueryKey({}) } });
   const { data: templates } = useListEstimateTemplates({ query: { enabled: createOpen, queryKey: getListEstimateTemplatesQueryKey() } });
+  const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
 
   const createEstimate = useCreateEstimate();
   const updateEstimate = useUpdateEstimate();
@@ -452,6 +454,28 @@ export default function EstimatesPage() {
                   {VISIT_MODE_LABELS[selectedEstimate.visitMode] ?? selectedEstimate.visitMode}
                 </SheetDescription>
               </SheetHeader>
+
+              {/* Business branding */}
+              {settings && (settings.companyName || settings.logoUrl || settings.businessTagline || settings.businessPhone || settings.businessEmail || settings.businessWebsite || settings.businessAddress) && (
+                <div className="mb-4 p-3 rounded-lg bg-muted/40 border border-border/60 text-center space-y-2">
+                  {settings.logoUrl && (
+                    <img
+                      src={`${import.meta.env.BASE_URL}api/public/tenants/${settings.tenantId}/logo`}
+                      alt="Company logo"
+                      className="h-10 w-auto mx-auto object-contain"
+                      onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                    />
+                  )}
+                  {settings.companyName && <p className="font-semibold text-sm">{settings.companyName}</p>}
+                  {settings.businessTagline && <p className="text-xs text-muted-foreground italic">{settings.businessTagline}</p>}
+                  <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                    {settings.businessPhone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{settings.businessPhone}</span>}
+                    {settings.businessEmail && <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{settings.businessEmail}</span>}
+                    {settings.businessWebsite && <span className="flex items-center gap-1"><Globe className="w-3 h-3" />{settings.businessWebsite}</span>}
+                    {settings.businessAddress && <span className="flex items-center gap-1"><Building2 className="w-3 h-3" />{settings.businessAddress}</span>}
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-5">
                 {/* Actions */}

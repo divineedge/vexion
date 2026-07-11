@@ -5,6 +5,8 @@ import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { decryptSecretConfig } from "../lib/secretsCrypto";
 import { sendLobLetter, type LobConfig } from "../lib/lobProvider";
+import { sendReviewRequest } from "../lib/reviewService";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -153,6 +155,16 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
 
   if (status === "paid") {
     await db.insert(activityLogTable).values({ tenantId, userId, type: "payment_received", message: `Invoice ${updated.invoiceNumber} marked as paid`, entityId: id });
+
+    // Auto-send a review request, if the tenant has this trigger enabled.
+    const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+    if (tenant?.reviewRequestOnInvoicePaid) {
+      const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, updated.customerId));
+      if (customer) {
+        sendReviewRequest({ tenant, customer, jobId: updated.jobId, invoiceId: updated.id })
+          .catch(err => logger.error({ err, invoiceId: updated.id }, "Failed to send review request on invoice paid"));
+      }
+    }
   }
 
   res.json(formatInvoice(updated));

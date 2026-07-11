@@ -8,3 +8,4 @@
 - [OpenAPI paths placement](openapi-paths-placement.md) — new paths must go inside the paths: block (before components:); appending to end of file puts them after components: and orval silently ignores them
 - [Orval barrel append](orval-barrel-append.md) — orval v8 split mode appends duplicate exports to index.ts every run; overwrite both lib barrel files after each codegen call
 - [OpenAPI looseObject](openapi-loose-object.md) — bare `type: object` (no properties) in OpenAPI spec generates `zod.looseObject` (Zod v4); api-zod is bundled into api-server and crashes at startup; always define properties or use a named $ref schema
+- [Orval path-param type collision](orval-path-param-type-collision.md) — one operation shape emits a same-named zod const + TS type causing TS2308; delete the specific generated/types/index.ts line after each codegen run

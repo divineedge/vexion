@@ -6,6 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type CompleteVisitBody = {
-  outcomeNotes?: string;
-};
+export interface SubmitReviewRatingInput {
+  /**
+     * @minimum 1
+     * @maximum 5
+     */
+  rating: number;
+}

@@ -14,8 +14,12 @@ import {
   useRetryBillingEmail,
   useListCustomers, getListCustomersQueryKey,
   usePrintMailInvoice,
+  useListStopServiceFlags, getListStopServiceFlagsQueryKey,
+  useApproveStopServiceFlag,
+  useDismissStopServiceFlag,
+  useGetTenantSettings, getGetTenantSettingsQueryKey,
 } from '@workspace/api-client-react';
-import type { RecurringInvoiceTemplate, BillingLineItem } from '@workspace/api-client-react';
+import type { RecurringInvoiceTemplate, BillingLineItem, StopServiceFlag } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,6 +27,7 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -31,7 +36,7 @@ import { toast } from 'sonner';
 import {
   Plus, ArrowUpRight, DollarSign, Clock, FileText, CheckCircle, Calendar,
   User, ChevronDown, Package, RefreshCw, Play, Pause, Mail, MailCheck, MailX, Trash2, Pencil,
-  Building2,
+  Building2, ShieldAlert, Check, X, Phone, Globe,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAuth } from '@/contexts/AuthContext';
@@ -293,6 +298,7 @@ export default function FinancialsPage() {
   const [partsExpanded, setPartsExpanded] = useState(false);
   const [templateSheetOpen, setTemplateSheetOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<RecurringInvoiceTemplate | null>(null);
+  const [approvingFlag, setApprovingFlag] = useState<StopServiceFlag | null>(null);
 
   const { data: summary } = useGetFinancialsSummary({ query: { queryKey: getGetFinancialsSummaryQueryKey() } });
   const { data: invoices, isLoading } = useListInvoices({}, { query: { queryKey: getListInvoicesQueryKey({}) } });
@@ -306,6 +312,42 @@ export default function FinancialsPage() {
     query: { queryKey: getGetBillingAutomationStatusQueryKey() },
   });
   const { data: customers } = useListCustomers({}, { query: { queryKey: getListCustomersQueryKey({}) } });
+  const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
+
+  const { data: stopServiceFlags, isLoading: flagsLoading } = useListStopServiceFlags(
+    { status: 'pending' },
+    { query: { queryKey: getListStopServiceFlagsQueryKey({ status: 'pending' }) } },
+  );
+
+  const approveFlag = useApproveStopServiceFlag();
+  const dismissFlag = useDismissStopServiceFlag();
+
+  const handleApproveFlag = (flag: StopServiceFlag) => {
+    approveFlag.mutate(
+      { id: flag.id },
+      {
+        onSuccess: () => {
+          toast.success(`Service paused for ${flag.customerName ?? 'customer'}`);
+          qc.invalidateQueries({ queryKey: getListStopServiceFlagsQueryKey({ status: 'pending' }) });
+          setApprovingFlag(null);
+        },
+        onError: () => toast.error('Failed to approve flag'),
+      },
+    );
+  };
+
+  const handleDismissFlag = (flag: StopServiceFlag) => {
+    dismissFlag.mutate(
+      { id: flag.id },
+      {
+        onSuccess: () => {
+          toast.success('Flag dismissed');
+          qc.invalidateQueries({ queryKey: getListStopServiceFlagsQueryKey({ status: 'pending' }) });
+        },
+        onError: () => toast.error('Failed to dismiss flag'),
+      },
+    );
+  };
 
   const updateInvoice = useUpdateInvoice();
   const deleteTemplate = useDeleteRecurringTemplate();
@@ -435,6 +477,14 @@ export default function FinancialsPage() {
             {(queueStats.pending > 0 || queueStats.failed > 0) && (
               <Badge className="ml-2 h-4 px-1 text-[10px] bg-amber-500 text-white border-transparent">
                 {queueStats.pending + queueStats.failed}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="approvals">
+            <ShieldAlert className="w-4 h-4 mr-2" />Stop-Service Approvals
+            {(stopServiceFlags?.length ?? 0) > 0 && (
+              <Badge className="ml-2 h-4 px-1 text-[10px] bg-red-500 text-white border-transparent">
+                {stopServiceFlags!.length}
               </Badge>
             )}
           </TabsTrigger>
@@ -711,11 +761,108 @@ export default function FinancialsPage() {
           </div>
         </TabsContent>
 
+        {/* ── Stop-Service Approvals ── */}
+        <TabsContent value="approvals" className="space-y-4">
+          <div>
+            <h3 className="font-semibold">Stop-Service Approvals</h3>
+            <p className="text-sm text-muted-foreground">Review overdue accounts flagged for service pause. Approving will halt the customer's recurring billing series.</p>
+          </div>
+          {flagsLoading ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">Loading...</p>
+          ) : (stopServiceFlags ?? []).length === 0 ? (
+            <p className="text-sm text-muted-foreground py-2">No pending approvals.</p>
+          ) : (
+            <Card>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Invoice</TableHead>
+                      <TableHead>Days Overdue</TableHead>
+                      <TableHead>Message</TableHead>
+                      <TableHead>Flagged</TableHead>
+                      <TableHead />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(stopServiceFlags ?? []).map(flag => (
+                      <TableRow key={flag.id}>
+                        <TableCell className="font-medium">{flag.customerName ?? '—'}</TableCell>
+                        <TableCell className="font-mono text-sm">{flag.invoiceNumber ?? `#${flag.invoiceId}`}</TableCell>
+                        <TableCell>
+                          <Badge className="bg-red-100 text-red-800 border-transparent" variant="outline">
+                            {flag.daysOverdue}d
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{flag.message}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {format(new Date(flag.createdAt), 'MMM d, yyyy')}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {canManageOffice && (
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs gap-1 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                                onClick={() => setApprovingFlag(flag)}
+                                disabled={approveFlag.isPending}
+                              >
+                                <Check className="w-3 h-3" /> Approve
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs gap-1 text-muted-foreground hover:text-destructive"
+                                onClick={() => handleDismissFlag(flag)}
+                                disabled={dismissFlag.isPending}
+                              >
+                                <X className="w-3 h-3" /> Dismiss
+                              </Button>
+                            </div>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
         {/* ── Vendors & Expenses ── */}
         <TabsContent value="vendors">
           <VendorExpenseLedger canEdit={canManageOffice} />
         </TabsContent>
       </Tabs>
+
+      {/* Approve Stop-Service Flag Dialog */}
+      <Dialog open={!!approvingFlag} onOpenChange={open => { if (!open) setApprovingFlag(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Pause Recurring Service?</DialogTitle>
+            <DialogDescription>
+              This will pause the recurring billing series for{' '}
+              <strong>{approvingFlag?.customerName ?? 'this customer'}</strong>. No further invoices will be generated
+              until service is manually resumed. The overdue invoice{' '}
+              <strong>{approvingFlag?.invoiceNumber}</strong> ({approvingFlag?.daysOverdue} days overdue) will remain
+              outstanding.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setApprovingFlag(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={approveFlag.isPending}
+              onClick={() => approvingFlag && handleApproveFlag(approvingFlag)}
+            >
+              {approveFlag.isPending ? 'Pausing...' : 'Approve & Pause Service'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Invoice Detail Sheet */}
       <Sheet open={selectedInvoiceId != null} onOpenChange={open => { if (!open) setSelectedInvoiceId(null); }}>
@@ -735,6 +882,28 @@ export default function FinancialsPage() {
                   </Badge>
                 </div>
               </SheetHeader>
+
+              {/* Business branding */}
+              {settings && (settings.companyName || settings.logoUrl || settings.businessTagline || settings.businessPhone || settings.businessEmail || settings.businessWebsite || settings.businessAddress) && (
+                <div className="mb-4 p-3 rounded-lg bg-muted/40 border border-border/60 text-center space-y-2">
+                  {settings.logoUrl && (
+                    <img
+                      src={`${import.meta.env.BASE_URL}api/public/tenants/${settings.tenantId}/logo`}
+                      alt="Company logo"
+                      className="h-10 w-auto mx-auto object-contain"
+                      onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                    />
+                  )}
+                  {settings.companyName && <p className="font-semibold text-sm">{settings.companyName}</p>}
+                  {settings.businessTagline && <p className="text-xs text-muted-foreground italic">{settings.businessTagline}</p>}
+                  <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                    {settings.businessPhone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{settings.businessPhone}</span>}
+                    {settings.businessEmail && <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{settings.businessEmail}</span>}
+                    {settings.businessWebsite && <span className="flex items-center gap-1"><Globe className="w-3 h-3" />{settings.businessWebsite}</span>}
+                    {settings.businessAddress && <span className="flex items-center gap-1"><Building2 className="w-3 h-3" />{settings.businessAddress}</span>}
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-5">
                 {/* Update Status */}
@@ -876,6 +1045,11 @@ export default function FinancialsPage() {
                     <span>${selectedInvoice.total.toFixed(2)}</span>
                   </div>
                 </div>
+
+                {/* Invoice footer text */}
+                {settings?.invoiceFooterText && (
+                  <p className="text-xs text-muted-foreground text-center pt-1">{settings.invoiceFooterText}</p>
+                )}
               </div>
             </>
           ) : (

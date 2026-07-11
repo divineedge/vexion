@@ -8,6 +8,7 @@ import {
   useGetCustomerPortalLink, getGetCustomerPortalLinkQueryKey,
   useListCustomerMessages, getListCustomerMessagesQueryKey,
   useSendMessage,
+  useResumeCustomerService,
 } from '@workspace/api-client-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
@@ -27,7 +28,7 @@ import { Switch } from '@/components/ui/switch';
 import {
   ArrowLeft, Building, Phone, Mail, Edit, Plus, Calendar, MapPin,
   Save, X, User, FileText, Tag, DollarSign, Home, Briefcase, Megaphone, AlertTriangle, Link,
-  MessageSquare, Send, PhoneOff, MailMinus, ChevronRight,
+  MessageSquare, Send, PhoneOff, MailMinus, ChevronRight, PlayCircle,
 } from 'lucide-react';
 import CustomerAvatar from '@/components/media/CustomerAvatar';
 import { toast } from 'sonner';
@@ -75,7 +76,7 @@ export default function CustomerDetailPage() {
   const params = useParams();
   const id = Number(params.id);
   const [, setLocation] = useLocation();
-  const { user } = useAuth();
+  const { user, canManageOffice } = useAuth();
   const qc = useQueryClient();
 
   // Edit customer state
@@ -131,6 +132,7 @@ export default function CustomerDetailPage() {
   const externalDuplicates = (duplicateCheck ?? []).filter(d => d.customerId !== id);
 
   const updateCustomer = useUpdateCustomer();
+  const resumeService = useResumeCustomerService();
   const activeFields = getActiveCustomerFields(settings as TenantSettings | undefined);
   const { data: portalLink } = useGetCustomerPortalLink(id, {
     query: { enabled: !!id, queryKey: getGetCustomerPortalLinkQueryKey(id) },
@@ -279,11 +281,35 @@ export default function CustomerDetailPage() {
                 <Megaphone className="w-3 h-3" /> {linkedCampaign.name}
               </Badge>
             )}
+            {customer.paymentStanding && (() => {
+              const ps = customer.paymentStanding;
+              const label =
+                ps.status === 'current'  ? 'Current' :
+                ps.status === 'reminded' ? 'Reminder sent' :
+                ps.status === 'overdue'  ? `Overdue — ${ps.daysOverdue ?? 0}d, ${(ps.overdueAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}` :
+                ps.status === 'flagged'  ? 'Flagged for stop-service' :
+                ps.status === 'paused'   ? 'Service paused' : '';
+              const cls =
+                ps.status === 'current'  ? 'bg-emerald-100 text-emerald-800 border-transparent' :
+                ps.status === 'reminded' ? 'bg-amber-100 text-amber-800 border-transparent' :
+                ps.status === 'overdue'  ? 'bg-orange-100 text-orange-800 border-transparent' :
+                ps.status === 'flagged'  ? 'bg-red-100 text-red-800 border-transparent' :
+                ps.status === 'paused'   ? 'bg-red-100 text-red-700 border-transparent' : '';
+              return (
+                <Badge variant="outline" className={cls}>{label}</Badge>
+              );
+            })()}
           </div>
           <div className="flex flex-wrap gap-4 mt-2 text-sm text-muted-foreground">
             {customer.company && <span className="flex items-center gap-1"><Building className="w-4 h-4" />{customer.company}</span>}
             <span className="flex items-center gap-1"><Phone className="w-4 h-4" />{customer.phone}</span>
             <span className="flex items-center gap-1"><Mail className="w-4 h-4" />{customer.email}</span>
+            {customer.paymentStanding && (customer.paymentStanding.overdueAmount ?? 0) > 0 && customer.paymentStanding.status !== 'overdue' && (
+              <span className="flex items-center gap-1 text-orange-600">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                {customer.paymentStanding.daysOverdue ?? 0}d overdue · ${(customer.paymentStanding.overdueAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex gap-2 shrink-0">
@@ -297,6 +323,28 @@ export default function CustomerDetailPage() {
               }}
             >
               <Link className="w-4 h-4" /> Copy Portal Link
+            </Button>
+          )}
+          {canManageOffice && customer.paymentStanding?.isServicePaused && (
+            <Button
+              variant="outline"
+              className="gap-2 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+              disabled={resumeService.isPending}
+              onClick={() => {
+                resumeService.mutate(
+                  { id },
+                  {
+                    onSuccess: () => {
+                      toast.success('Service resumed');
+                      qc.invalidateQueries({ queryKey: getGetCustomerQueryKey(id) });
+                    },
+                    onError: () => toast.error('Failed to resume service'),
+                  },
+                );
+              }}
+            >
+              <PlayCircle className="w-4 h-4" />
+              {resumeService.isPending ? 'Resuming...' : 'Resume Service'}
             </Button>
           )}
           <Button onClick={openEdit} className="gap-2">

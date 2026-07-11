@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { CheckCircle2, XCircle, MapPin, Clock, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, XCircle, MapPin, Clock, AlertTriangle, Phone, Mail, Globe, Building2 } from 'lucide-react';
 
 interface LineItem {
   id: string;
@@ -189,12 +189,52 @@ export default function EstimatePublicPage() {
     );
   }
 
+  // Derive base URL for the public logo endpoint (same pattern as useApiBase)
+  const apiBase = (() => {
+    const base = import.meta.env.BASE_URL ?? '/';
+    const clean = base.endsWith('/') ? base.slice(0, -1) : base;
+    return `${clean}/api`;
+  })();
+  const logoUrl = `${apiBase}/public/tenants/${estimate.tenantId}/logo`;
+  const biz = estimate.businessProfile;
+
   return (
     <div className="min-h-screen bg-muted/30 py-8 px-4">
       <div className="max-w-2xl mx-auto space-y-6">
-        {/* Header */}
+        {/* Business branding header */}
+        <div className="text-center space-y-3">
+          <img
+            src={logoUrl}
+            alt="Company logo"
+            className="h-16 w-auto mx-auto object-contain"
+            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+          />
+          {biz?.companyName && (
+            <h1 className="text-2xl font-bold">{biz.companyName}</h1>
+          )}
+          {biz?.tagline && (
+            <p className="text-sm text-muted-foreground italic">{biz.tagline}</p>
+          )}
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+            {biz?.phone && (
+              <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" />{biz.phone}</span>
+            )}
+            {biz?.email && (
+              <span className="flex items-center gap-1"><Mail className="w-3.5 h-3.5" />{biz.email}</span>
+            )}
+            {biz?.website && (
+              <span className="flex items-center gap-1"><Globe className="w-3.5 h-3.5" />{biz.website}</span>
+            )}
+            {biz?.address && (
+              <span className="flex items-center gap-1"><Building2 className="w-3.5 h-3.5" />{biz.address}</span>
+            )}
+          </div>
+          <Separator />
+        </div>
+
+        {/* Estimate identity */}
         <div className="text-center space-y-1">
-          <h1 className="text-3xl font-bold">Your Estimate</h1>
+          <h2 className="text-3xl font-bold">Your Estimate</h2>
           {estimate.expiresAt && (
             <p className="text-sm text-muted-foreground flex items-center justify-center gap-1">
               <Clock className="w-3.5 h-3.5" /> Expires {format(new Date(estimate.expiresAt), 'MMMM d, yyyy')}

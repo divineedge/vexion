@@ -2,6 +2,9 @@ import { Router, type IRouter } from "express";
 import { db, tenantsTable, usersTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { getTenantId } from "../lib/tenantHelper";
+import { ObjectStorageService } from "../lib/objectStorage";
+
+const objectStorageService = new ObjectStorageService();
 
 const router: IRouter = Router();
 
@@ -60,6 +63,29 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
       smtpUser: emailProviderConfig["smtpUser"] ?? "",
       smtpPass: emailProviderConfig["smtpPass"] ? "••••••••" : "",
     },
+    // Business Profile
+    businessPhone: tenant.businessPhone ?? null,
+    businessEmail: tenant.businessEmail ?? null,
+    businessWebsite: tenant.businessWebsite ?? null,
+    businessAddress: tenant.businessAddress ?? null,
+    businessLicenseNumber: tenant.businessLicenseNumber ?? null,
+    businessTagline: tenant.businessTagline ?? null,
+    invoiceFooterText: tenant.invoiceFooterText ?? null,
+    // Payment Reminders & Stop-Service
+    paymentRemindersEnabled: tenant.paymentRemindersEnabled ?? false,
+    paymentReminderSchedule: (tenant.paymentReminderSchedule as { offsetDays: number; label: string }[]) ?? [],
+    paymentReminderChannels: (tenant.paymentReminderChannels as string[]) ?? ["email"],
+    stopServiceRuleEnabled: tenant.stopServiceRuleEnabled ?? false,
+    stopServiceThresholdDays: tenant.stopServiceThresholdDays ?? 30,
+    // Review Collection
+    reviewRequestOnInvoicePaid: tenant.reviewRequestOnInvoicePaid ?? true,
+    reviewRequestOnEstimateApproved: tenant.reviewRequestOnEstimateApproved ?? false,
+    reviewGoogleUrl: tenant.reviewGoogleUrl ?? null,
+    reviewFacebookUrl: tenant.reviewFacebookUrl ?? null,
+    reviewCustomLink1Label: tenant.reviewCustomLink1Label ?? null,
+    reviewCustomLink1Url: tenant.reviewCustomLink1Url ?? null,
+    reviewCustomLink2Label: tenant.reviewCustomLink2Label ?? null,
+    reviewCustomLink2Url: tenant.reviewCustomLink2Url ?? null,
   };
 }
 
@@ -85,6 +111,17 @@ router.patch("/settings", async (req, res): Promise<void> => {
     mainPhoneNumber, marketingPhoneNumber,
     phonePlatform, phonePlatformConfig,
     emailProvider, emailProviderConfig,
+    // Business Profile
+    logoUrl, businessPhone, businessEmail, businessWebsite, businessAddress,
+    businessLicenseNumber, businessTagline, invoiceFooterText,
+    // Payment Reminders & Stop-Service
+    paymentRemindersEnabled, paymentReminderSchedule, paymentReminderChannels,
+    stopServiceRuleEnabled, stopServiceThresholdDays,
+    // Review Collection
+    reviewRequestOnInvoicePaid, reviewRequestOnEstimateApproved,
+    reviewGoogleUrl, reviewFacebookUrl,
+    reviewCustomLink1Label, reviewCustomLink1Url,
+    reviewCustomLink2Label, reviewCustomLink2Url,
   } = req.body;
 
   const updates: Partial<typeof tenantsTable.$inferInsert> = {};
@@ -132,6 +169,64 @@ router.patch("/settings", async (req, res): Promise<void> => {
     updates.phonePlatformConfig = merged;
   }
   if (emailProvider !== undefined) updates.emailProvider = emailProvider || null;
+  // Business Profile
+  if (logoUrl !== undefined) {
+    const nextLogoUrl: string | null = logoUrl || null;
+    if (nextLogoUrl) {
+      // Security: logos are served publicly and unauthenticated (branding on
+      // customer-facing pages), so we must not just trust whatever object
+      // path a tenant sends here — a guessed/enumerated path could otherwise
+      // expose another tenant's private object. Explicitly stamp the object's
+      // ACL policy as owner=this tenant + visibility=public at the moment the
+      // tenant designates it as their logo; GET /public/tenants/:id/logo only
+      // serves objects whose ACL policy is actually public.
+      if (!nextLogoUrl.startsWith("/objects/")) {
+        res.status(400).json({ error: "Invalid logoUrl: must be an uploaded object path" });
+        return;
+      }
+      try {
+        const objectFile = await objectStorageService.getObjectEntityFile(nextLogoUrl);
+        // Ownership was stamped at upload-mint time (POST /storage/uploads/request-url),
+        // when the requester was the only party who could know this fresh objectPath.
+        // Only the tenant that actually uploaded this object may publish it as their logo.
+        const owner = await objectStorageService.getObjectEntityAclOwner(objectFile);
+        if (owner !== String(tenantId)) {
+          res.status(403).json({ error: "Forbidden: object was not uploaded by this tenant" });
+          return;
+        }
+        await objectStorageService.trySetObjectEntityAclPolicy(nextLogoUrl, {
+          owner: String(tenantId),
+          visibility: "public",
+        });
+      } catch {
+        res.status(400).json({ error: "Invalid logoUrl: object not found" });
+        return;
+      }
+    }
+    updates.logoUrl = nextLogoUrl;
+  }
+  if (businessPhone !== undefined) updates.businessPhone = businessPhone || null;
+  if (businessEmail !== undefined) updates.businessEmail = businessEmail || null;
+  if (businessWebsite !== undefined) updates.businessWebsite = businessWebsite || null;
+  if (businessAddress !== undefined) updates.businessAddress = businessAddress || null;
+  if (businessLicenseNumber !== undefined) updates.businessLicenseNumber = businessLicenseNumber || null;
+  if (businessTagline !== undefined) updates.businessTagline = businessTagline || null;
+  if (invoiceFooterText !== undefined) updates.invoiceFooterText = invoiceFooterText || null;
+  // Payment Reminders & Stop-Service
+  if (paymentRemindersEnabled !== undefined) updates.paymentRemindersEnabled = paymentRemindersEnabled;
+  if (paymentReminderSchedule !== undefined) updates.paymentReminderSchedule = paymentReminderSchedule;
+  if (paymentReminderChannels !== undefined) updates.paymentReminderChannels = paymentReminderChannels;
+  if (stopServiceRuleEnabled !== undefined) updates.stopServiceRuleEnabled = stopServiceRuleEnabled;
+  if (stopServiceThresholdDays !== undefined) updates.stopServiceThresholdDays = parseInt(stopServiceThresholdDays, 10);
+  // Review Collection
+  if (reviewRequestOnInvoicePaid !== undefined) updates.reviewRequestOnInvoicePaid = reviewRequestOnInvoicePaid;
+  if (reviewRequestOnEstimateApproved !== undefined) updates.reviewRequestOnEstimateApproved = reviewRequestOnEstimateApproved;
+  if (reviewGoogleUrl !== undefined) updates.reviewGoogleUrl = reviewGoogleUrl || null;
+  if (reviewFacebookUrl !== undefined) updates.reviewFacebookUrl = reviewFacebookUrl || null;
+  if (reviewCustomLink1Label !== undefined) updates.reviewCustomLink1Label = reviewCustomLink1Label || null;
+  if (reviewCustomLink1Url !== undefined) updates.reviewCustomLink1Url = reviewCustomLink1Url || null;
+  if (reviewCustomLink2Label !== undefined) updates.reviewCustomLink2Label = reviewCustomLink2Label || null;
+  if (reviewCustomLink2Url !== undefined) updates.reviewCustomLink2Url = reviewCustomLink2Url || null;
   if (emailProviderConfig !== undefined) {
     const [existing] = await db.select({ emailProviderConfig: tenantsTable.emailProviderConfig }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
     const prev = (existing?.emailProviderConfig as Record<string, string>) ?? {};

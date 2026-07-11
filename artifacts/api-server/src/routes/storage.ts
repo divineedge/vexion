@@ -6,11 +6,13 @@ import {
 import { Router, type IRouter, type Request, type Response } from 'express';
 
 import { ObjectPermission } from '../lib/objectAcl';
+// Note: objectStorageService.canAccessObjectEntity is used below to verify
+// an object's ACL policy is explicitly public before serving it unauthenticated.
 import {
   ObjectNotFoundError,
   ObjectStorageService,
 } from '../lib/objectStorage';
-import { db, mediaAttachmentsTable, customerOtpSessionsTable } from '@workspace/db';
+import { db, mediaAttachmentsTable, customerOtpSessionsTable, tenantsTable } from '@workspace/db';
 import { eq, and, isNotNull, gt } from 'drizzle-orm';
 import { createHash } from 'crypto';
 
@@ -23,6 +25,13 @@ function hasAuthenticatedSession(req: Request): boolean {
   const val = Array.isArray(userId) ? userId[0] : userId;
   const id = parseInt(val ?? '', 10);
   return !isNaN(id) && id > 0;
+}
+
+function getRequestTenantId(req: Request): number | null {
+  const xTenantId = req.headers['x-tenant-id'];
+  const val = Array.isArray(xTenantId) ? xTenantId[0] : xTenantId;
+  const id = parseInt(val ?? '', 10);
+  return !isNaN(id) && id > 0 ? id : null;
 }
 
 /**
@@ -42,6 +51,12 @@ router.post(
       return;
     }
 
+    const tenantId = getRequestTenantId(req);
+    if (!tenantId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
     const parsed = RequestUploadUrlBody.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'Missing or invalid required fields' });
@@ -54,6 +69,16 @@ router.post(
       const uploadURL = await objectStorageService.getObjectEntityUploadURL();
       const objectPath =
         objectStorageService.normalizeObjectEntityPath(uploadURL);
+
+      // Stamp ownership at mint time, while the requester is still the only
+      // party who could possibly know this freshly-minted objectPath. This is
+      // the sole source of truth for "which tenant owns this object" — later
+      // requests (e.g. PATCH /settings publishing it as a public logo) must
+      // verify this owner stamp before granting any additional visibility.
+      await objectStorageService.trySetObjectEntityAclPolicy(objectPath, {
+        owner: String(tenantId),
+        visibility: 'private',
+      });
 
       res.json(
         RequestUploadUrlResponse.parse({
@@ -280,6 +305,59 @@ router.get('/storage/objects/*path', async (req: Request, res: Response) => {
     }
     req.log.error({ err: error }, 'Error serving object');
     res.status(500).json({ error: 'Failed to serve object' });
+  }
+});
+
+/**
+ * GET /public/tenants/:id/logo
+ *
+ * Streams a tenant's business logo with no auth/ACL check — logos are
+ * intentionally public branding shown on public estimate/invoice/review pages.
+ * Uses the tenant's stored logoUrl (a private-storage object path) as the
+ * source of truth, so the same upload flow as other private uploads applies.
+ */
+router.get('/public/tenants/:id/logo', async (req: Request, res: Response) => {
+  try {
+    const rawId = req.params.id;
+    const tenantId = parseInt(Array.isArray(rawId) ? rawId[0] : rawId, 10);
+    if (isNaN(tenantId)) { res.status(400).json({ error: 'Invalid tenant id' }); return; }
+
+    const [tenant] = await db.select({ logoUrl: tenantsTable.logoUrl }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+    if (!tenant?.logoUrl) { res.status(404).json({ error: 'No logo set' }); return; }
+
+    const objectFile = await objectStorageService.getObjectEntityFile(tenant.logoUrl);
+
+    // Security: only serve objects (a) whose ACL policy was explicitly stamped
+    // public by PATCH /settings when the tenant designated it as their logo,
+    // AND (b) whose ACL owner is this same tenant (owner was stamped at
+    // upload-mint time, before PATCH /settings could ever touch it). Both
+    // checks together prevent serving an arbitrary/guessed private object
+    // path that happens to end up in tenants.logoUrl through some other bug.
+    const [isPublic, owner] = await Promise.all([
+      objectStorageService.canAccessObjectEntity({ objectFile, requestedPermission: ObjectPermission.READ }),
+      objectStorageService.getObjectEntityAclOwner(objectFile),
+    ]);
+    if (!isPublic || owner !== String(tenantId)) { res.status(403).json({ error: 'Logo object is not public' }); return; }
+
+    const response = await objectStorageService.downloadObject(objectFile);
+
+    res.status(response.status);
+    response.headers.forEach((value, key) => res.setHeader(key, value));
+    res.setHeader('Cache-Control', 'public, max-age=300');
+
+    if (response.body) {
+      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      nodeStream.pipe(res);
+    } else {
+      res.end();
+    }
+  } catch (error) {
+    if (error instanceof ObjectNotFoundError) {
+      res.status(404).json({ error: 'Logo not found' });
+      return;
+    }
+    req.log.error({ err: error }, 'Error serving tenant logo');
+    res.status(500).json({ error: 'Failed to serve logo' });
   }
 });
 

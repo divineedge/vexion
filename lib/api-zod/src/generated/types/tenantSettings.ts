@@ -6,9 +6,11 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CustomerFieldConfig } from './customerFieldConfig';
+import type { PaymentReminderRule } from './paymentReminderRule';
 import type { TenantSettingsAutoInvoiceFrequency } from './tenantSettingsAutoInvoiceFrequency';
 import type { TenantSettingsDefaultGeofenceUnit } from './tenantSettingsDefaultGeofenceUnit';
 import type { TenantSettingsDurationUnit } from './tenantSettingsDurationUnit';
+import type { TenantSettingsPaymentReminderChannelsItem } from './tenantSettingsPaymentReminderChannelsItem';
 import type { TenantSettingsPlanTier } from './tenantSettingsPlanTier';
 import type { TenantSettingsPreferredAreaUnit } from './tenantSettingsPreferredAreaUnit';
 import type { TenantSettingsRolePermissions } from './tenantSettingsRolePermissions';
@@ -51,4 +53,37 @@ export interface TenantSettings {
   measurementZoneLabels?: string[];
   /** Preferred area unit for property measurements */
   preferredAreaUnit?: TenantSettingsPreferredAreaUnit;
+  /** @nullable */
+  businessPhone?: string | null;
+  /** @nullable */
+  businessEmail?: string | null;
+  /** @nullable */
+  businessWebsite?: string | null;
+  /** @nullable */
+  businessAddress?: string | null;
+  /** @nullable */
+  businessLicenseNumber?: string | null;
+  /** @nullable */
+  businessTagline?: string | null;
+  /** @nullable */
+  invoiceFooterText?: string | null;
+  paymentRemindersEnabled?: boolean;
+  paymentReminderSchedule?: PaymentReminderRule[];
+  paymentReminderChannels?: TenantSettingsPaymentReminderChannelsItem[];
+  stopServiceRuleEnabled?: boolean;
+  stopServiceThresholdDays?: number;
+  reviewRequestOnInvoicePaid?: boolean;
+  reviewRequestOnEstimateApproved?: boolean;
+  /** @nullable */
+  reviewGoogleUrl?: string | null;
+  /** @nullable */
+  reviewFacebookUrl?: string | null;
+  /** @nullable */
+  reviewCustomLink1Label?: string | null;
+  /** @nullable */
+  reviewCustomLink1Url?: string | null;
+  /** @nullable */
+  reviewCustomLink2Label?: string | null;
+  /** @nullable */
+  reviewCustomLink2Url?: string | null;
 }

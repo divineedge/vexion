@@ -37,3 +37,5 @@ export * from "./planTemplates";
 export * from "./customerPlans";
 export * from "./internalTasks";
 export * from "./routing";
+export * from "./taskBundles";
+export * from "./shrinkageReports";

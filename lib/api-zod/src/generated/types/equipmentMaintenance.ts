@@ -13,6 +13,9 @@ export interface EquipmentMaintenance {
   date: string;
   description: string;
   cost: number;
+  partsCost: number;
+  laborCost: number;
+  downtimeHours: number;
   /** @nullable */
   vendor?: string | null;
   /** @nullable */

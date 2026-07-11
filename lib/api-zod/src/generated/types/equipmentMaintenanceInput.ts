@@ -10,6 +10,9 @@ export interface EquipmentMaintenanceInput {
   date: string;
   description: string;
   cost?: number;
+  partsCost?: number;
+  laborCost?: number;
+  downtimeHours?: number;
   vendor?: string;
   nextServiceDueDate?: string;
   nextServiceDueHours?: number;

@@ -5,7 +5,7 @@ import {
   DollarSign, Banknote as InvoiceIcon,
   Megaphone, FlaskConical,
   Settings, FileText, Footprints, BarChart3, Star, Repeat, ListTodo,
-  Map,
+  Map, ClipboardList,
   LucideIcon,
 } from 'lucide-react';
 
@@ -31,6 +31,7 @@ export const techNavItems: NavItem[] = [
   { name: 'Tasks',     href: '/tasks',     icon: ListTodo },
   { name: 'Callbacks', href: '/callbacks', icon: PhoneCall },
   { name: 'Daily Routines', href: '/daily-routines', icon: CheckSquare },
+  { name: 'Daily Tasks', href: '/daily-tasks', icon: ClipboardList },
 ];
 
 /** Sectioned nav for admin / office / crew-manager roles */
@@ -48,6 +49,7 @@ export const adminNavSections: NavSection[] = [
       { name: 'Blueprints',     href: '/blueprints',     icon: DraftingCompass },
       { name: 'Callbacks',      href: '/callbacks',      icon: PhoneCall },
       { name: 'Tasks',          href: '/tasks',          icon: ListTodo },
+      { name: 'Daily Tasks',    href: '/daily-tasks',    icon: ClipboardList },
     ],
   },
   {

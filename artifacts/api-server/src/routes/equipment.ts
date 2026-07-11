@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, equipmentTable, equipmentMaintenanceTable, equipmentFuelLogsTable, tenantsTable, usersTable } from "@workspace/db";
-import { eq, and, desc, sum, isNull } from "drizzle-orm";
+import { db, equipmentTable, equipmentMaintenanceTable, equipmentFuelLogsTable, equipmentReadingLogsTable, tenantsTable, usersTable } from "@workspace/db";
+import { eq, and, desc, sum, isNull, gte, lte } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isOwnerRole } from "../lib/roles";
 
@@ -234,6 +234,7 @@ router.delete("/equipment/:id/hard-delete", requireOwnerRole, async (req, res): 
   // Delete child rows first to satisfy FK constraints, then delete the parent
   await db.delete(equipmentFuelLogsTable).where(and(eq(equipmentFuelLogsTable.equipmentId, id), eq(equipmentFuelLogsTable.tenantId, tenantId)));
   await db.delete(equipmentMaintenanceTable).where(and(eq(equipmentMaintenanceTable.equipmentId, id), eq(equipmentMaintenanceTable.tenantId, tenantId)));
+  await db.delete(equipmentReadingLogsTable).where(and(eq(equipmentReadingLogsTable.equipmentId, id), eq(equipmentReadingLogsTable.tenantId, tenantId)));
   await db.delete(equipmentTable).where(and(eq(equipmentTable.id, id), eq(equipmentTable.tenantId, tenantId)));
 
   res.sendStatus(204);
@@ -267,10 +268,14 @@ router.post("/equipment/:id/maintenance", requireOfficeRole, async (req, res): P
   const owned = await requireEquipmentOwnership(equipmentId, tenantId, res);
   if (!owned) return;
 
-  const { date, description, cost, vendor, nextServiceDueDate, nextServiceDueHours, nextServiceDueMiles } = req.body;
+  const { date, description, cost, vendor, nextServiceDueDate, nextServiceDueHours, nextServiceDueMiles, partsCost, laborCost, downtimeHours } = req.body;
   if (!date || !description) { res.status(400).json({ error: "date and description are required" }); return; }
 
-  const parsedCost = cost != null ? parseFloat(cost) : 0;
+  const parsedParts = partsCost != null ? parseFloat(partsCost) : 0;
+  const parsedLabor = laborCost != null ? parseFloat(laborCost) : 0;
+  // Legacy callers may only send `cost` (no parts/labor split) — treat it all as labor so
+  // the Maintenance & Repair ledger still totals correctly.
+  const parsedCost = cost != null ? parseFloat(cost) : parsedParts + parsedLabor;
 
   const [row] = await db.insert(equipmentMaintenanceTable).values({
     equipmentId,
@@ -278,6 +283,9 @@ router.post("/equipment/:id/maintenance", requireOfficeRole, async (req, res): P
     date,
     description,
     cost: parsedCost,
+    partsCost: parsedParts,
+    laborCost: cost != null && !laborCost ? parsedCost - parsedParts : parsedLabor,
+    downtimeHours: downtimeHours != null ? parseFloat(downtimeHours) : 0,
     vendor: vendor ?? null,
     nextServiceDueDate: nextServiceDueDate ?? null,
     nextServiceDueHours: nextServiceDueHours != null ? parseFloat(nextServiceDueHours) : null,
@@ -432,6 +440,77 @@ router.delete("/equipment/:equipmentId/fuel-logs/:id", requireOfficeRole, async 
     .where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId)));
 
   res.sendStatus(204);
+});
+
+// ─── Cost Ledger: Operating vs. Maintenance & Repair ────────────────────────────
+// Two independent running-total views over the same asset's history, filterable
+// by date range. Operating = fuel spend + a runtime-hours cost factor (from
+// hour-meter readings logged via Daily Tasks). Maintenance & Repair = parts +
+// labor + the value of downtime, from equipment_maintenance records.
+
+router.get("/equipment/:id/ledger", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const equipmentId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+  const owned = await requireEquipmentOwnership(equipmentId, tenantId, res);
+  if (!owned) return;
+
+  const { from, to } = req.query as Record<string, string | undefined>;
+  const dateConditions = [];
+  if (from) dateConditions.push(gte(equipmentFuelLogsTable.date, from));
+  if (to) dateConditions.push(lte(equipmentFuelLogsTable.date, to));
+
+  const [tenant] = await db.select({ runtimeRate: tenantsTable.equipmentRuntimeHourlyRate, downtimeRate: tenantsTable.equipmentDowntimeHourlyRate })
+    .from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  const runtimeRate = tenant?.runtimeRate ?? 0;
+  const downtimeRate = tenant?.downtimeRate ?? 0;
+
+  const fuelLogs = await db.select().from(equipmentFuelLogsTable)
+    .where(and(eq(equipmentFuelLogsTable.equipmentId, equipmentId), eq(equipmentFuelLogsTable.tenantId, tenantId), ...dateConditions))
+    .orderBy(desc(equipmentFuelLogsTable.date));
+
+  const hourConditions = [eq(equipmentReadingLogsTable.equipmentId, equipmentId), eq(equipmentReadingLogsTable.tenantId, tenantId), eq(equipmentReadingLogsTable.readingType, "hours")];
+  if (from) hourConditions.push(gte(equipmentReadingLogsTable.date, from));
+  if (to) hourConditions.push(lte(equipmentReadingLogsTable.date, to));
+  const hourReadings = await db.select().from(equipmentReadingLogsTable).where(and(...hourConditions)).orderBy(equipmentReadingLogsTable.date);
+
+  // Runtime hours run within the window = last reading - first reading (readings are cumulative hour-meter values)
+  let runtimeHoursInWindow = 0;
+  if (hourReadings.length >= 2) {
+    runtimeHoursInWindow = Math.max(0, hourReadings[hourReadings.length - 1].value - hourReadings[0].value);
+  }
+  const runtimeCost = runtimeHoursInWindow * runtimeRate;
+  const fuelCost = fuelLogs.reduce((s, f) => s + f.cost, 0);
+
+  const maintConditions = [eq(equipmentMaintenanceTable.equipmentId, equipmentId), eq(equipmentMaintenanceTable.tenantId, tenantId)];
+  if (from) maintConditions.push(gte(equipmentMaintenanceTable.date, from));
+  if (to) maintConditions.push(lte(equipmentMaintenanceTable.date, to));
+  const maintRecords = await db.select().from(equipmentMaintenanceTable).where(and(...maintConditions)).orderBy(desc(equipmentMaintenanceTable.date));
+
+  // Legacy rows predate the parts/labor split and only populated `cost`; treat those as all-labor
+  // so historical maintenance spend isn't silently dropped from the ledger.
+  const isLegacyUnsplit = (m: typeof maintRecords[number]) => m.partsCost === 0 && m.laborCost === 0 && m.cost !== 0;
+  const partsTotal = maintRecords.reduce((s, m) => s + m.partsCost, 0);
+  const laborTotal = maintRecords.reduce((s, m) => s + (isLegacyUnsplit(m) ? m.cost : m.laborCost), 0);
+  const downtimeHoursTotal = maintRecords.reduce((s, m) => s + m.downtimeHours, 0);
+  const downtimeValueTotal = downtimeHoursTotal * downtimeRate;
+
+  res.json({
+    operating: {
+      fuelCost,
+      runtimeHours: runtimeHoursInWindow,
+      runtimeCost,
+      total: fuelCost + runtimeCost,
+      fuelLogs: fuelLogs.map(f => ({ ...f, createdAt: f.createdAt.toISOString() })),
+    },
+    maintenance: {
+      partsCost: partsTotal,
+      laborCost: laborTotal,
+      downtimeHours: downtimeHoursTotal,
+      downtimeValue: downtimeValueTotal,
+      total: partsTotal + laborTotal + downtimeValueTotal,
+      records: maintRecords.map(m => ({ ...m, createdAt: m.createdAt.toISOString(), updatedAt: m.updatedAt.toISOString() })),
+    },
+  });
 });
 
 export default router;

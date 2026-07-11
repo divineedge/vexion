@@ -92,6 +92,13 @@ export const tenantsTable = pgTable("tenants", {
   // ── Routing ───────────────────────────────────────────────────────────────
   /** Trip charge auto-appended to a job's invoice when it uses a one-time reschedule */
   routeExceptionFee: real("route_exception_fee").notNull().default(0),
+  // ── Equipment Cost Ledger ─────────────────────────────────────────────────
+  /** $/gallon used to price Fuel Log task items that only capture gallons (no dollar amount) */
+  fuelPricePerGallon: real("fuel_price_per_gallon").notNull().default(4.0),
+  /** $/hour cost factor applied to runtime hours logged against an asset (Operating ledger) */
+  equipmentRuntimeHourlyRate: real("equipment_runtime_hourly_rate").notNull().default(0),
+  /** $/hour cost of an asset being out of service for repair (Maintenance & Repair ledger) */
+  equipmentDowntimeHourlyRate: real("equipment_downtime_hourly_rate").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

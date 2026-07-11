@@ -88,6 +88,10 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     reviewCustomLink2Url: tenant.reviewCustomLink2Url ?? null,
     // Routing
     routeExceptionFee: tenant.routeExceptionFee ?? 0,
+    // Equipment Cost Ledger
+    fuelPricePerGallon: tenant.fuelPricePerGallon ?? 4.0,
+    equipmentRuntimeHourlyRate: tenant.equipmentRuntimeHourlyRate ?? 0,
+    equipmentDowntimeHourlyRate: tenant.equipmentDowntimeHourlyRate ?? 0,
   };
 }
 
@@ -126,6 +130,8 @@ router.patch("/settings", async (req, res): Promise<void> => {
     reviewCustomLink2Label, reviewCustomLink2Url,
     // Routing
     routeExceptionFee,
+    // Equipment Cost Ledger
+    fuelPricePerGallon, equipmentRuntimeHourlyRate, equipmentDowntimeHourlyRate,
   } = req.body;
 
   const updates: Partial<typeof tenantsTable.$inferInsert> = {};
@@ -246,6 +252,9 @@ router.patch("/settings", async (req, res): Promise<void> => {
     updates.emailProviderConfig = merged;
   }
   if (routeExceptionFee !== undefined) updates.routeExceptionFee = parseFloat(routeExceptionFee);
+  if (fuelPricePerGallon !== undefined) updates.fuelPricePerGallon = parseFloat(fuelPricePerGallon);
+  if (equipmentRuntimeHourlyRate !== undefined) updates.equipmentRuntimeHourlyRate = parseFloat(equipmentRuntimeHourlyRate);
+  if (equipmentDowntimeHourlyRate !== undefined) updates.equipmentDowntimeHourlyRate = parseFloat(equipmentDowntimeHourlyRate);
 
   const [updated] = await db.update(tenantsTable).set(updates).where(eq(tenantsTable.id, tenantId)).returning();
   if (!updated) { res.status(404).json({ error: "Tenant not found" }); return; }

@@ -17,8 +17,11 @@ import {
   useCreateEquipmentFuelLog,
   useDeleteEquipmentFuelLog,
   useListEquipmentTasks, getListEquipmentTasksQueryKey,
+  useGetEquipmentLedger, getGetEquipmentLedgerQueryKey,
+  useListTasks, getListTasksQueryKey,
 } from '@workspace/api-client-react';
 import type { Equipment, EquipmentMaintenance, EquipmentFuelLog } from '@workspace/api-client-react';
+import { Link } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { TaskFormDrawer } from '@/components/tasks/TaskFormDrawer';
@@ -37,6 +40,7 @@ import MediaGallery from '@/components/media/MediaGallery';
 import {
   Wrench, Plus, Trash2, AlertTriangle, TrendingUp, Fuel, Clock, DollarSign,
   ChevronRight, ChevronDown, X, CheckCircle2, BarChart3, Archive, Paperclip,
+  Eye, Gauge,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -174,6 +178,85 @@ function MaintenanceRecordItem({
             readOnly={isTechnician}
             documentsOnly
           />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Equipment Ledger Panel (Operating vs Maintenance & Repair, side by side) ────
+
+function EquipmentLedgerPanel({ equipmentId }: { equipmentId: number }) {
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const params = { ...(from ? { from } : {}), ...(to ? { to } : {}) };
+  const { data: ledger, isLoading } = useGetEquipmentLedger(equipmentId, params, {
+    query: { queryKey: getGetEquipmentLedgerQueryKey(equipmentId, params) },
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <label className="text-xs font-medium">From</label>
+          <Input type="date" value={from} onChange={e => setFrom(e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium">To</label>
+          <Input type="date" value={to} onChange={e => setTo(e.target.value)} />
+        </div>
+      </div>
+
+      {isLoading && <p className="text-sm text-muted-foreground text-center py-6">Loading ledger…</p>}
+
+      {ledger && (
+        <div className="grid grid-cols-2 gap-3">
+          {/* Operating / Run Cost */}
+          <div className="rounded-lg border p-3 space-y-3">
+            <div className="flex items-center gap-1.5 text-sm font-semibold">
+              <Gauge className="w-4 h-4 text-primary" /> Operating / Run Cost
+            </div>
+            <div className="space-y-1.5 text-xs">
+              <div className="flex justify-between"><span className="text-muted-foreground">Fuel</span><span className="font-mono">{fmt$(ledger.operating.fuelCost)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Runtime ({ledger.operating.runtimeHours.toLocaleString(undefined, { maximumFractionDigits: 1 })} hrs)</span><span className="font-mono">{fmt$(ledger.operating.runtimeCost)}</span></div>
+              <Separator />
+              <div className="flex justify-between font-semibold"><span>Running Total</span><span className="font-mono">{fmt$(ledger.operating.total)}</span></div>
+            </div>
+            {ledger.operating.fuelLogs.length > 0 && (
+              <div className="pt-2 border-t space-y-1 max-h-40 overflow-y-auto">
+                {ledger.operating.fuelLogs.map(f => (
+                  <div key={f.id} className="flex justify-between text-[11px] text-muted-foreground">
+                    <span>{f.date} · {f.gallons} gal</span>
+                    <span className="font-mono">{fmt$(f.cost)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Maintenance & Repair Cost */}
+          <div className="rounded-lg border p-3 space-y-3">
+            <div className="flex items-center gap-1.5 text-sm font-semibold">
+              <Wrench className="w-4 h-4 text-amber-500" /> Maintenance & Repair Cost
+            </div>
+            <div className="space-y-1.5 text-xs">
+              <div className="flex justify-between"><span className="text-muted-foreground">Parts</span><span className="font-mono">{fmt$(ledger.maintenance.partsCost)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Labor</span><span className="font-mono">{fmt$(ledger.maintenance.laborCost)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">Downtime ({ledger.maintenance.downtimeHours.toLocaleString(undefined, { maximumFractionDigits: 1 })} hrs)</span><span className="font-mono">{fmt$(ledger.maintenance.downtimeValue)}</span></div>
+              <Separator />
+              <div className="flex justify-between font-semibold"><span>Running Total</span><span className="font-mono">{fmt$(ledger.maintenance.total)}</span></div>
+            </div>
+            {ledger.maintenance.records.length > 0 && (
+              <div className="pt-2 border-t space-y-1 max-h-40 overflow-y-auto">
+                {ledger.maintenance.records.map(m => (
+                  <div key={m.id} className="flex justify-between text-[11px] text-muted-foreground">
+                    <span className="truncate max-w-[140px]">{m.date} · {m.description}</span>
+                    <span className="font-mono shrink-0">{fmt$(m.partsCost + m.laborCost)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -392,6 +475,9 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
             <TabsTrigger value="tasks" className="flex-1 flex items-center gap-1.5">
               <CheckCircle2 className="w-3.5 h-3.5" /> Tasks ({equipmentTasks?.length ?? 0})
             </TabsTrigger>
+            <TabsTrigger value="ledger" className="flex-1 flex items-center gap-1.5">
+              <Gauge className="w-3.5 h-3.5" /> Ledger
+            </TabsTrigger>
           </TabsList>
 
           {/* Maintenance tab */}
@@ -543,6 +629,11 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
               <p className="text-sm text-muted-foreground text-center py-6">No open maintenance tasks for this equipment.</p>
             )}
           </TabsContent>
+
+          {/* Ledger tab — Operating vs Maintenance & Repair cost, side by side */}
+          <TabsContent value="ledger" className="mt-4">
+            <EquipmentLedgerPanel equipmentId={equipment.id} />
+          </TabsContent>
         </Tabs>
       </div>
 
@@ -575,6 +666,11 @@ export default function EquipmentPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Equipment | null>(null);
   const [form, setForm] = useState<EquipmentFormState>(EMPTY_EQ_FORM);
+
+  // Procurement alerts raised by a "Concern-Watch" checklist result during a Daily Task
+  const concernParams = { scope: 'all' as const, contextType: 'equipment', status: 'open' };
+  const { data: concernTasksRaw } = useListTasks(concernParams, { query: { queryKey: getListTasksQueryKey(concernParams) } });
+  const concernTasks = concernTasksRaw?.filter(t => t.taskType === 'equipment_concern');
 
   const selectedEquipment = equipment?.find(e => e.id === selectedId) ?? null;
 
@@ -683,6 +779,26 @@ export default function EquipmentPage() {
           <p className="text-sm font-medium">
             {sellCount} piece{sellCount > 1 ? 's' : ''} of equipment flagged for sell recommendation. Review the details below.
           </p>
+        </div>
+      )}
+
+      {/* Concern-Watch alerts — distinct from Fail: equipment stays active, but flagged for procurement/mechanic follow-up */}
+      {concernTasks && concernTasks.length > 0 && (
+        <div className="flex items-start gap-3 p-4 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400">
+          <Eye className="w-5 h-5 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold">
+              {concernTasks.length} equipment concern{concernTasks.length > 1 ? 's' : ''} flagged for procurement — Watch status, not failed
+            </p>
+            <div className="mt-2 space-y-1">
+              {concernTasks.map(t => (
+                <div key={t.id} className="text-xs flex items-center justify-between gap-2">
+                  <span className="truncate">{t.title}</span>
+                  <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-700 dark:text-amber-400 shrink-0">Concern</Badge>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 

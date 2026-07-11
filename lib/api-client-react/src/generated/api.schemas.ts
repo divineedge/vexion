@@ -2825,6 +2825,9 @@ export interface EquipmentMaintenance {
   date: string;
   description: string;
   cost: number;
+  partsCost: number;
+  laborCost: number;
+  downtimeHours: number;
   /** @nullable */
   vendor?: string | null;
   /** @nullable */
@@ -2841,6 +2844,9 @@ export interface EquipmentMaintenanceInput {
   date: string;
   description: string;
   cost?: number;
+  partsCost?: number;
+  laborCost?: number;
+  downtimeHours?: number;
   vendor?: string;
   nextServiceDueDate?: string;
   nextServiceDueHours?: number;
@@ -2864,6 +2870,160 @@ export interface EquipmentFuelLogInput {
   gallons: number;
   cost?: number;
   odometerReading?: number;
+}
+
+export type EquipmentLedgerOperating = {
+  fuelCost: number;
+  runtimeHours: number;
+  runtimeCost: number;
+  total: number;
+  fuelLogs: EquipmentFuelLog[];
+};
+
+export type EquipmentLedgerMaintenance = {
+  partsCost: number;
+  laborCost: number;
+  downtimeHours: number;
+  downtimeValue: number;
+  total: number;
+  records: EquipmentMaintenance[];
+};
+
+export interface EquipmentLedger {
+  operating: EquipmentLedgerOperating;
+  maintenance: EquipmentLedgerMaintenance;
+}
+
+export interface TaskBundle {
+  id: number;
+  tenantId: number;
+  name: string;
+  /** @nullable */
+  description?: string | null;
+  frequency: string;
+  /** @nullable */
+  assignedToUserId?: number | null;
+  /** @nullable */
+  assignedToName?: string | null;
+  /** @nullable */
+  assignedToRole?: string | null;
+  isActive: boolean;
+  itemCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TaskBundleItem {
+  id: number;
+  tenantId: number;
+  bundleId: number;
+  type: string;
+  label: string;
+  order: number;
+  /** @nullable */
+  linkedEquipmentId?: number | null;
+  /** @nullable */
+  linkedInventoryItemId?: number | null;
+  config?: unknown;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type TaskBundleDetail = TaskBundle & {
+  items: TaskBundleItem[];
+};
+
+export interface TaskBundleItemInput {
+  type?: string;
+  label?: string;
+  order?: number;
+  linkedEquipmentId?: number;
+  linkedInventoryItemId?: number;
+  config?: unknown;
+}
+
+export interface TaskBundleInput {
+  name: string;
+  description?: string;
+  frequency?: string;
+  assignedToUserId?: number;
+  assignedToRole?: string;
+  items?: TaskBundleItemInput[];
+}
+
+export interface TaskBundleUpdateInput {
+  name?: string;
+  description?: string;
+  frequency?: string;
+  /** @nullable */
+  assignedToUserId?: number | null;
+  /** @nullable */
+  assignedToRole?: string | null;
+  isActive?: boolean;
+}
+
+export type TaskBundleItemResultInputCountsItem = {
+  inventoryItemId: number;
+  actualCount: number;
+};
+
+export interface TaskBundleItemResultInput {
+  itemId: number;
+  type: string;
+  label: string;
+  /** @nullable */
+  value?: string | number | null;
+  /** @nullable */
+  status?: string | null;
+  /** @nullable */
+  note?: string | null;
+  counts?: TaskBundleItemResultInputCountsItem[];
+}
+
+export interface CompleteTaskBundleInput {
+  itemResults: TaskBundleItemResultInput[];
+}
+
+export interface TaskBundleCompletion {
+  id: number;
+  tenantId: number;
+  bundleId: number;
+  /** @nullable */
+  bundleName?: string | null;
+  userId: number;
+  /** @nullable */
+  userName?: string | null;
+  status: string;
+  startedAt: string;
+  /** @nullable */
+  completedAt?: string | null;
+  /** @nullable */
+  durationSeconds?: number | null;
+  itemResults?: TaskBundleItemResultInput[];
+  hasFlags: boolean;
+  createdAt: string;
+}
+
+export interface ShrinkageReportLine {
+  id: number;
+  tenantId: number;
+  countEventId: string;
+  /** @nullable */
+  taskBundleCompletionId?: number | null;
+  inventoryItemId: number;
+  itemName: string;
+  sku: string;
+  expectedStock: number;
+  actualCount: number;
+  variance: number;
+  unitCost: number;
+  totalLoss: number;
+  createdAt: string;
+}
+
+export interface ShrinkageReportLedger {
+  totalLoss: number;
+  lines: ShrinkageReportLine[];
 }
 
 export interface PortalOtpRequest {
@@ -3633,6 +3793,28 @@ export type ListEquipmentParams = {
  * When true, includes archived (soft-deleted) equipment in the results.
  */
 includeArchived?: boolean;
+};
+
+export type GetEquipmentLedgerParams = {
+from?: string;
+to?: string;
+};
+
+export type ListTaskBundlesParams = {
+scope?: string;
+};
+
+export type ListTaskBundleCompletionsParams = {
+bundleId?: number;
+userId?: number;
+dateFrom?: string;
+dateTo?: string;
+};
+
+export type ListShrinkageReportsParams = {
+countEventId?: string;
+dateFrom?: string;
+dateTo?: string;
 };
 
 export type ListTasksParams = {

@@ -46,6 +46,7 @@ import type {
   ChemicalProductInput,
   CommunicationsLogEntry,
   CompletableJob,
+  CompleteTaskBundleInput,
   CompleteVisitInput,
   ConvertEstimateToJob201,
   ConvertVisitToEstimate201,
@@ -79,6 +80,7 @@ import type {
   EquipmentFuelLog,
   EquipmentFuelLogInput,
   EquipmentInput,
+  EquipmentLedger,
   EquipmentMaintenance,
   EquipmentMaintenanceInput,
   Estimate,
@@ -91,6 +93,7 @@ import type {
   GeofencePinUpdate,
   GetDevToolsEnvironment200,
   GetEmployeeRevenueReportParams,
+  GetEquipmentLedgerParams,
   GetJobProfitabilityReportParams,
   GetPlStatementReportParams,
   GetQuickBooksAuthorizeUrl200,
@@ -134,7 +137,10 @@ import type {
   ListPropertiesParams,
   ListReviewRequestsParams,
   ListRouteTemplatesParams,
+  ListShrinkageReportsParams,
   ListStopServiceFlagsParams,
+  ListTaskBundleCompletionsParams,
+  ListTaskBundlesParams,
   ListTasksParams,
   ListTimeEntriesParams,
   ListVisitsParams,
@@ -199,6 +205,7 @@ import type {
   SetLocationStockInput,
   SetProfilePhotoInput,
   SetPropertyProfilePhoto200,
+  ShrinkageReportLedger,
   SimulationResult,
   SimulationRunInput,
   StatusCount,
@@ -213,6 +220,13 @@ import type {
   SuggestedPartWithStock,
   SuggestedPartsInput,
   SyncBankTransactions200,
+  TaskBundle,
+  TaskBundleCompletion,
+  TaskBundleDetail,
+  TaskBundleInput,
+  TaskBundleItem,
+  TaskBundleItemInput,
+  TaskBundleUpdateInput,
   TaskNotification,
   TenantSettings,
   TenantSettingsUpdate,
@@ -9982,6 +9996,996 @@ export const useDeleteEquipmentFuelLog = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getDeleteEquipmentFuelLogMutationOptions(options));
     }
+
+export const getGetEquipmentLedgerUrl = (id: number,
+    params?: GetEquipmentLedgerParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/equipment/${id}/ledger?${stringifiedParams}` : `/api/equipment/${id}/ledger`
+}
+
+/**
+ * @summary Operating vs. Maintenance & Repair cost ledgers for an asset, with running totals over an optional date range
+ */
+export const getEquipmentLedger = async (id: number,
+    params?: GetEquipmentLedgerParams, options?: RequestInit): Promise<EquipmentLedger> => {
+
+  return customFetch<EquipmentLedger>(getGetEquipmentLedgerUrl(id,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetEquipmentLedgerQueryKey = (id: number,
+    params?: GetEquipmentLedgerParams,) => {
+    return [
+    `/api/equipment/${id}/ledger`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetEquipmentLedgerQueryOptions = <TData = Awaited<ReturnType<typeof getEquipmentLedger>>, TError = ErrorType<unknown>>(id: number,
+    params?: GetEquipmentLedgerParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEquipmentLedger>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetEquipmentLedgerQueryKey(id,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getEquipmentLedger>>> = ({ signal }) => getEquipmentLedger(id,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getEquipmentLedger>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetEquipmentLedgerQueryResult = NonNullable<Awaited<ReturnType<typeof getEquipmentLedger>>>
+export type GetEquipmentLedgerQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Operating vs. Maintenance & Repair cost ledgers for an asset, with running totals over an optional date range
+ */
+
+export function useGetEquipmentLedger<TData = Awaited<ReturnType<typeof getEquipmentLedger>>, TError = ErrorType<unknown>>(
+ id: number,
+    params?: GetEquipmentLedgerParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEquipmentLedger>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetEquipmentLedgerQueryOptions(id,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListTaskBundlesUrl = (params?: ListTaskBundlesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/task-bundles?${stringifiedParams}` : `/api/task-bundles`
+}
+
+/**
+ * @summary List active task bundles; pass scope=mine to filter to the caller's assigned bundles
+ */
+export const listTaskBundles = async (params?: ListTaskBundlesParams, options?: RequestInit): Promise<TaskBundle[]> => {
+
+  return customFetch<TaskBundle[]>(getListTaskBundlesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListTaskBundlesQueryKey = (params?: ListTaskBundlesParams,) => {
+    return [
+    `/api/task-bundles`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListTaskBundlesQueryOptions = <TData = Awaited<ReturnType<typeof listTaskBundles>>, TError = ErrorType<unknown>>(params?: ListTaskBundlesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTaskBundles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListTaskBundlesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listTaskBundles>>> = ({ signal }) => listTaskBundles(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listTaskBundles>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListTaskBundlesQueryResult = NonNullable<Awaited<ReturnType<typeof listTaskBundles>>>
+export type ListTaskBundlesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List active task bundles; pass scope=mine to filter to the caller's assigned bundles
+ */
+
+export function useListTaskBundles<TData = Awaited<ReturnType<typeof listTaskBundles>>, TError = ErrorType<unknown>>(
+ params?: ListTaskBundlesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTaskBundles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListTaskBundlesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateTaskBundleUrl = () => {
+
+
+
+
+  return `/api/task-bundles`
+}
+
+/**
+ * @summary Create a task bundle, optionally with its items (admin/office only)
+ */
+export const createTaskBundle = async (taskBundleInput: TaskBundleInput, options?: RequestInit): Promise<TaskBundleDetail> => {
+
+  return customFetch<TaskBundleDetail>(getCreateTaskBundleUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(taskBundleInput)
+  }
+);}
+
+
+
+
+
+export const getCreateTaskBundleMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTaskBundle>>, TError,{data: BodyType<TaskBundleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createTaskBundle>>, TError,{data: BodyType<TaskBundleInput>}, TContext> => {
+
+const mutationKey = ['createTaskBundle'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createTaskBundle>>, {data: BodyType<TaskBundleInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createTaskBundle(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateTaskBundleMutationResult = NonNullable<Awaited<ReturnType<typeof createTaskBundle>>>
+    export type CreateTaskBundleMutationBody = BodyType<TaskBundleInput>
+    export type CreateTaskBundleMutationError = ErrorType<void>
+
+    /**
+ * @summary Create a task bundle, optionally with its items (admin/office only)
+ */
+export const useCreateTaskBundle = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTaskBundle>>, TError,{data: BodyType<TaskBundleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createTaskBundle>>,
+        TError,
+        {data: BodyType<TaskBundleInput>},
+        TContext
+      > => {
+      return useMutation(getCreateTaskBundleMutationOptions(options));
+    }
+
+export const getGetTaskBundleUrl = (id: number,) => {
+
+
+
+
+  return `/api/task-bundles/${id}`
+}
+
+/**
+ * @summary Get a task bundle with its items
+ */
+export const getTaskBundle = async (id: number, options?: RequestInit): Promise<TaskBundleDetail> => {
+
+  return customFetch<TaskBundleDetail>(getGetTaskBundleUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTaskBundleQueryKey = (id: number,) => {
+    return [
+    `/api/task-bundles/${id}`
+    ] as const;
+    }
+
+
+export const getGetTaskBundleQueryOptions = <TData = Awaited<ReturnType<typeof getTaskBundle>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTaskBundle>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTaskBundleQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTaskBundle>>> = ({ signal }) => getTaskBundle(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTaskBundle>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTaskBundleQueryResult = NonNullable<Awaited<ReturnType<typeof getTaskBundle>>>
+export type GetTaskBundleQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a task bundle with its items
+ */
+
+export function useGetTaskBundle<TData = Awaited<ReturnType<typeof getTaskBundle>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTaskBundle>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTaskBundleQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateTaskBundleUrl = (id: number,) => {
+
+
+
+
+  return `/api/task-bundles/${id}`
+}
+
+/**
+ * @summary Update a task bundle's name, frequency, assignment, or active state (admin/office only)
+ */
+export const updateTaskBundle = async (id: number,
+    taskBundleUpdateInput: TaskBundleUpdateInput, options?: RequestInit): Promise<TaskBundleDetail> => {
+
+  return customFetch<TaskBundleDetail>(getUpdateTaskBundleUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(taskBundleUpdateInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateTaskBundleMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTaskBundle>>, TError,{id: number;data: BodyType<TaskBundleUpdateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateTaskBundle>>, TError,{id: number;data: BodyType<TaskBundleUpdateInput>}, TContext> => {
+
+const mutationKey = ['updateTaskBundle'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateTaskBundle>>, {id: number;data: BodyType<TaskBundleUpdateInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateTaskBundle(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateTaskBundleMutationResult = NonNullable<Awaited<ReturnType<typeof updateTaskBundle>>>
+    export type UpdateTaskBundleMutationBody = BodyType<TaskBundleUpdateInput>
+    export type UpdateTaskBundleMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update a task bundle's name, frequency, assignment, or active state (admin/office only)
+ */
+export const useUpdateTaskBundle = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTaskBundle>>, TError,{id: number;data: BodyType<TaskBundleUpdateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateTaskBundle>>,
+        TError,
+        {id: number;data: BodyType<TaskBundleUpdateInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateTaskBundleMutationOptions(options));
+    }
+
+export const getDeleteTaskBundleUrl = (id: number,) => {
+
+
+
+
+  return `/api/task-bundles/${id}`
+}
+
+/**
+ * @summary Delete a task bundle (admin/office only; blocked once it has completion history)
+ */
+export const deleteTaskBundle = async (id: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteTaskBundleUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteTaskBundleMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteTaskBundle>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteTaskBundle>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteTaskBundle'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteTaskBundle>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteTaskBundle(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteTaskBundleMutationResult = NonNullable<Awaited<ReturnType<typeof deleteTaskBundle>>>
+
+    export type DeleteTaskBundleMutationError = ErrorType<void>
+
+    /**
+ * @summary Delete a task bundle (admin/office only; blocked once it has completion history)
+ */
+export const useDeleteTaskBundle = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteTaskBundle>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteTaskBundle>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteTaskBundleMutationOptions(options));
+    }
+
+export const getCreateTaskBundleItemUrl = (id: number,) => {
+
+
+
+
+  return `/api/task-bundles/${id}/items`
+}
+
+/**
+ * @summary Add an item to a task bundle (admin/office only)
+ */
+export const createTaskBundleItem = async (id: number,
+    taskBundleItemInput: TaskBundleItemInput, options?: RequestInit): Promise<TaskBundleItem> => {
+
+  return customFetch<TaskBundleItem>(getCreateTaskBundleItemUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(taskBundleItemInput)
+  }
+);}
+
+
+
+
+
+export const getCreateTaskBundleItemMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTaskBundleItem>>, TError,{id: number;data: BodyType<TaskBundleItemInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createTaskBundleItem>>, TError,{id: number;data: BodyType<TaskBundleItemInput>}, TContext> => {
+
+const mutationKey = ['createTaskBundleItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createTaskBundleItem>>, {id: number;data: BodyType<TaskBundleItemInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  createTaskBundleItem(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateTaskBundleItemMutationResult = NonNullable<Awaited<ReturnType<typeof createTaskBundleItem>>>
+    export type CreateTaskBundleItemMutationBody = BodyType<TaskBundleItemInput>
+    export type CreateTaskBundleItemMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Add an item to a task bundle (admin/office only)
+ */
+export const useCreateTaskBundleItem = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTaskBundleItem>>, TError,{id: number;data: BodyType<TaskBundleItemInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createTaskBundleItem>>,
+        TError,
+        {id: number;data: BodyType<TaskBundleItemInput>},
+        TContext
+      > => {
+      return useMutation(getCreateTaskBundleItemMutationOptions(options));
+    }
+
+export const getUpdateTaskBundleItemUrl = (id: number,) => {
+
+
+
+
+  return `/api/task-bundle-items/${id}`
+}
+
+/**
+ * @summary Update a task bundle item (admin/office only)
+ */
+export const updateTaskBundleItem = async (id: number,
+    taskBundleItemInput: TaskBundleItemInput, options?: RequestInit): Promise<TaskBundleItem> => {
+
+  return customFetch<TaskBundleItem>(getUpdateTaskBundleItemUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(taskBundleItemInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateTaskBundleItemMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTaskBundleItem>>, TError,{id: number;data: BodyType<TaskBundleItemInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateTaskBundleItem>>, TError,{id: number;data: BodyType<TaskBundleItemInput>}, TContext> => {
+
+const mutationKey = ['updateTaskBundleItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateTaskBundleItem>>, {id: number;data: BodyType<TaskBundleItemInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateTaskBundleItem(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateTaskBundleItemMutationResult = NonNullable<Awaited<ReturnType<typeof updateTaskBundleItem>>>
+    export type UpdateTaskBundleItemMutationBody = BodyType<TaskBundleItemInput>
+    export type UpdateTaskBundleItemMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update a task bundle item (admin/office only)
+ */
+export const useUpdateTaskBundleItem = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTaskBundleItem>>, TError,{id: number;data: BodyType<TaskBundleItemInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateTaskBundleItem>>,
+        TError,
+        {id: number;data: BodyType<TaskBundleItemInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateTaskBundleItemMutationOptions(options));
+    }
+
+export const getDeleteTaskBundleItemUrl = (id: number,) => {
+
+
+
+
+  return `/api/task-bundle-items/${id}`
+}
+
+/**
+ * @summary Remove an item from a task bundle (admin/office only)
+ */
+export const deleteTaskBundleItem = async (id: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteTaskBundleItemUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteTaskBundleItemMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteTaskBundleItem>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteTaskBundleItem>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteTaskBundleItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteTaskBundleItem>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteTaskBundleItem(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteTaskBundleItemMutationResult = NonNullable<Awaited<ReturnType<typeof deleteTaskBundleItem>>>
+
+    export type DeleteTaskBundleItemMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Remove an item from a task bundle (admin/office only)
+ */
+export const useDeleteTaskBundleItem = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteTaskBundleItem>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteTaskBundleItem>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteTaskBundleItemMutationOptions(options));
+    }
+
+export const getStartTaskBundleUrl = (id: number,) => {
+
+
+
+
+  return `/api/task-bundles/${id}/start`
+}
+
+/**
+ * @summary Start a run of a bundle (starts the completion timer)
+ */
+export const startTaskBundle = async (id: number, options?: RequestInit): Promise<TaskBundleCompletion> => {
+
+  return customFetch<TaskBundleCompletion>(getStartTaskBundleUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getStartTaskBundleMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startTaskBundle>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startTaskBundle>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['startTaskBundle'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startTaskBundle>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  startTaskBundle(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartTaskBundleMutationResult = NonNullable<Awaited<ReturnType<typeof startTaskBundle>>>
+
+    export type StartTaskBundleMutationError = ErrorType<void>
+
+    /**
+ * @summary Start a run of a bundle (starts the completion timer)
+ */
+export const useStartTaskBundle = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startTaskBundle>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startTaskBundle>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getStartTaskBundleMutationOptions(options));
+    }
+
+export const getCompleteTaskBundleCompletionUrl = (id: number,) => {
+
+
+
+
+  return `/api/task-bundle-completions/${id}/complete`
+}
+
+/**
+ * @summary Submit a bundle run — stops the timer, records item results, and applies their side effects (equipment readings, concern alerts, shrinkage rows)
+ */
+export const completeTaskBundleCompletion = async (id: number,
+    completeTaskBundleInput: CompleteTaskBundleInput, options?: RequestInit): Promise<TaskBundleCompletion> => {
+
+  return customFetch<TaskBundleCompletion>(getCompleteTaskBundleCompletionUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(completeTaskBundleInput)
+  }
+);}
+
+
+
+
+
+export const getCompleteTaskBundleCompletionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeTaskBundleCompletion>>, TError,{id: number;data: BodyType<CompleteTaskBundleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof completeTaskBundleCompletion>>, TError,{id: number;data: BodyType<CompleteTaskBundleInput>}, TContext> => {
+
+const mutationKey = ['completeTaskBundleCompletion'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof completeTaskBundleCompletion>>, {id: number;data: BodyType<CompleteTaskBundleInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  completeTaskBundleCompletion(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CompleteTaskBundleCompletionMutationResult = NonNullable<Awaited<ReturnType<typeof completeTaskBundleCompletion>>>
+    export type CompleteTaskBundleCompletionMutationBody = BodyType<CompleteTaskBundleInput>
+    export type CompleteTaskBundleCompletionMutationError = ErrorType<void>
+
+    /**
+ * @summary Submit a bundle run — stops the timer, records item results, and applies their side effects (equipment readings, concern alerts, shrinkage rows)
+ */
+export const useCompleteTaskBundleCompletion = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeTaskBundleCompletion>>, TError,{id: number;data: BodyType<CompleteTaskBundleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof completeTaskBundleCompletion>>,
+        TError,
+        {id: number;data: BodyType<CompleteTaskBundleInput>},
+        TContext
+      > => {
+      return useMutation(getCompleteTaskBundleCompletionMutationOptions(options));
+    }
+
+export const getListTaskBundleCompletionsUrl = (params?: ListTaskBundleCompletionsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/task-bundle-completions?${stringifiedParams}` : `/api/task-bundle-completions`
+}
+
+/**
+ * @summary List/filter the completion log
+ */
+export const listTaskBundleCompletions = async (params?: ListTaskBundleCompletionsParams, options?: RequestInit): Promise<TaskBundleCompletion[]> => {
+
+  return customFetch<TaskBundleCompletion[]>(getListTaskBundleCompletionsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListTaskBundleCompletionsQueryKey = (params?: ListTaskBundleCompletionsParams,) => {
+    return [
+    `/api/task-bundle-completions`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListTaskBundleCompletionsQueryOptions = <TData = Awaited<ReturnType<typeof listTaskBundleCompletions>>, TError = ErrorType<unknown>>(params?: ListTaskBundleCompletionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTaskBundleCompletions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListTaskBundleCompletionsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listTaskBundleCompletions>>> = ({ signal }) => listTaskBundleCompletions(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listTaskBundleCompletions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListTaskBundleCompletionsQueryResult = NonNullable<Awaited<ReturnType<typeof listTaskBundleCompletions>>>
+export type ListTaskBundleCompletionsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List/filter the completion log
+ */
+
+export function useListTaskBundleCompletions<TData = Awaited<ReturnType<typeof listTaskBundleCompletions>>, TError = ErrorType<unknown>>(
+ params?: ListTaskBundleCompletionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTaskBundleCompletions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListTaskBundleCompletionsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListShrinkageReportsUrl = (params?: ListShrinkageReportsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/shrinkage-reports?${stringifiedParams}` : `/api/shrinkage-reports`
+}
+
+/**
+ * @summary Cumulative shrinkage report ledger, optionally filtered to a single count event or date range
+ */
+export const listShrinkageReports = async (params?: ListShrinkageReportsParams, options?: RequestInit): Promise<ShrinkageReportLedger> => {
+
+  return customFetch<ShrinkageReportLedger>(getListShrinkageReportsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListShrinkageReportsQueryKey = (params?: ListShrinkageReportsParams,) => {
+    return [
+    `/api/shrinkage-reports`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListShrinkageReportsQueryOptions = <TData = Awaited<ReturnType<typeof listShrinkageReports>>, TError = ErrorType<unknown>>(params?: ListShrinkageReportsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listShrinkageReports>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListShrinkageReportsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listShrinkageReports>>> = ({ signal }) => listShrinkageReports(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listShrinkageReports>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListShrinkageReportsQueryResult = NonNullable<Awaited<ReturnType<typeof listShrinkageReports>>>
+export type ListShrinkageReportsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Cumulative shrinkage report ledger, optionally filtered to a single count event or date range
+ */
+
+export function useListShrinkageReports<TData = Awaited<ReturnType<typeof listShrinkageReports>>, TError = ErrorType<unknown>>(
+ params?: ListShrinkageReportsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listShrinkageReports>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListShrinkageReportsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getListTasksUrl = (params?: ListTasksParams,) => {
   const normalizedParams = new URLSearchParams();

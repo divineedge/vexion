@@ -3831,6 +3831,9 @@ export const ListEquipmentMaintenanceResponseItem = zod.object({
   "date": zod.string(),
   "description": zod.string(),
   "cost": zod.number(),
+  "partsCost": zod.number(),
+  "laborCost": zod.number(),
+  "downtimeHours": zod.number(),
   "vendor": zod.string().nullish(),
   "nextServiceDueDate": zod.string().nullish(),
   "nextServiceDueHours": zod.number().nullish(),
@@ -3852,6 +3855,9 @@ export const CreateEquipmentMaintenanceBody = zod.object({
   "date": zod.string(),
   "description": zod.string(),
   "cost": zod.number().optional(),
+  "partsCost": zod.number().optional(),
+  "laborCost": zod.number().optional(),
+  "downtimeHours": zod.number().optional(),
   "vendor": zod.string().optional(),
   "nextServiceDueDate": zod.string().optional(),
   "nextServiceDueHours": zod.number().optional(),
@@ -3865,6 +3871,9 @@ export const CreateEquipmentMaintenanceResponse = zod.object({
   "date": zod.string(),
   "description": zod.string(),
   "cost": zod.number(),
+  "partsCost": zod.number(),
+  "laborCost": zod.number(),
+  "downtimeHours": zod.number(),
   "vendor": zod.string().nullish(),
   "nextServiceDueDate": zod.string().nullish(),
   "nextServiceDueHours": zod.number().nullish(),
@@ -3940,6 +3949,453 @@ export const DeleteEquipmentFuelLogParams = zod.object({
 })
 
 export const DeleteEquipmentFuelLogResponse = zod.void()
+
+
+/**
+ * @summary Operating vs. Maintenance & Repair cost ledgers for an asset, with running totals over an optional date range
+ */
+export const GetEquipmentLedgerParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetEquipmentLedgerQueryParams = zod.object({
+  "from": zod.coerce.string().optional(),
+  "to": zod.coerce.string().optional()
+})
+
+export const GetEquipmentLedgerResponse = zod.object({
+  "operating": zod.object({
+  "fuelCost": zod.number(),
+  "runtimeHours": zod.number(),
+  "runtimeCost": zod.number(),
+  "total": zod.number(),
+  "fuelLogs": zod.array(zod.object({
+  "id": zod.number(),
+  "equipmentId": zod.number(),
+  "tenantId": zod.number(),
+  "date": zod.string(),
+  "gallons": zod.number(),
+  "cost": zod.number(),
+  "odometerReading": zod.number().nullish(),
+  "createdAt": zod.string()
+}))
+}),
+  "maintenance": zod.object({
+  "partsCost": zod.number(),
+  "laborCost": zod.number(),
+  "downtimeHours": zod.number(),
+  "downtimeValue": zod.number(),
+  "total": zod.number(),
+  "records": zod.array(zod.object({
+  "id": zod.number(),
+  "equipmentId": zod.number(),
+  "tenantId": zod.number(),
+  "date": zod.string(),
+  "description": zod.string(),
+  "cost": zod.number(),
+  "partsCost": zod.number(),
+  "laborCost": zod.number(),
+  "downtimeHours": zod.number(),
+  "vendor": zod.string().nullish(),
+  "nextServiceDueDate": zod.string().nullish(),
+  "nextServiceDueHours": zod.number().nullish(),
+  "nextServiceDueMiles": zod.number().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+}))
+})
+})
+
+
+/**
+ * @summary List active task bundles; pass scope=mine to filter to the caller's assigned bundles
+ */
+export const ListTaskBundlesQueryParams = zod.object({
+  "scope": zod.coerce.string().optional()
+})
+
+export const ListTaskBundlesResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "frequency": zod.string(),
+  "assignedToUserId": zod.number().nullish(),
+  "assignedToName": zod.string().nullish(),
+  "assignedToRole": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "itemCount": zod.number(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListTaskBundlesResponse = zod.array(ListTaskBundlesResponseItem)
+
+
+/**
+ * @summary Create a task bundle, optionally with its items (admin/office only)
+ */
+export const CreateTaskBundleBody = zod.object({
+  "name": zod.string(),
+  "description": zod.string().optional(),
+  "frequency": zod.string().optional(),
+  "assignedToUserId": zod.number().optional(),
+  "assignedToRole": zod.string().optional(),
+  "items": zod.array(zod.object({
+  "type": zod.string().optional(),
+  "label": zod.string().optional(),
+  "order": zod.number().optional(),
+  "linkedEquipmentId": zod.number().optional(),
+  "linkedInventoryItemId": zod.number().optional(),
+  "config": zod.unknown().optional()
+})).optional()
+})
+
+export const CreateTaskBundleResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "frequency": zod.string(),
+  "assignedToUserId": zod.number().nullish(),
+  "assignedToName": zod.string().nullish(),
+  "assignedToRole": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "itemCount": zod.number(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "bundleId": zod.number(),
+  "type": zod.string(),
+  "label": zod.string(),
+  "order": zod.number(),
+  "linkedEquipmentId": zod.number().nullish(),
+  "linkedInventoryItemId": zod.number().nullish(),
+  "config": zod.unknown().optional(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+}))
+}))
+
+
+/**
+ * @summary Get a task bundle with its items
+ */
+export const GetTaskBundleParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetTaskBundleResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "frequency": zod.string(),
+  "assignedToUserId": zod.number().nullish(),
+  "assignedToName": zod.string().nullish(),
+  "assignedToRole": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "itemCount": zod.number(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "bundleId": zod.number(),
+  "type": zod.string(),
+  "label": zod.string(),
+  "order": zod.number(),
+  "linkedEquipmentId": zod.number().nullish(),
+  "linkedInventoryItemId": zod.number().nullish(),
+  "config": zod.unknown().optional(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+}))
+}))
+
+
+/**
+ * @summary Update a task bundle's name, frequency, assignment, or active state (admin/office only)
+ */
+export const UpdateTaskBundleParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateTaskBundleBody = zod.object({
+  "name": zod.string().optional(),
+  "description": zod.string().optional(),
+  "frequency": zod.string().optional(),
+  "assignedToUserId": zod.number().nullish(),
+  "assignedToRole": zod.string().nullish(),
+  "isActive": zod.boolean().optional()
+})
+
+export const UpdateTaskBundleResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "frequency": zod.string(),
+  "assignedToUserId": zod.number().nullish(),
+  "assignedToName": zod.string().nullish(),
+  "assignedToRole": zod.string().nullish(),
+  "isActive": zod.boolean(),
+  "itemCount": zod.number(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+}).and(zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "bundleId": zod.number(),
+  "type": zod.string(),
+  "label": zod.string(),
+  "order": zod.number(),
+  "linkedEquipmentId": zod.number().nullish(),
+  "linkedInventoryItemId": zod.number().nullish(),
+  "config": zod.unknown().optional(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+}))
+}))
+
+
+/**
+ * @summary Delete a task bundle (admin/office only; blocked once it has completion history)
+ */
+export const DeleteTaskBundleParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteTaskBundleResponse = zod.void()
+
+
+/**
+ * @summary Add an item to a task bundle (admin/office only)
+ */
+export const CreateTaskBundleItemParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CreateTaskBundleItemBody = zod.object({
+  "type": zod.string().optional(),
+  "label": zod.string().optional(),
+  "order": zod.number().optional(),
+  "linkedEquipmentId": zod.number().optional(),
+  "linkedInventoryItemId": zod.number().optional(),
+  "config": zod.unknown().optional()
+})
+
+export const CreateTaskBundleItemResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "bundleId": zod.number(),
+  "type": zod.string(),
+  "label": zod.string(),
+  "order": zod.number(),
+  "linkedEquipmentId": zod.number().nullish(),
+  "linkedInventoryItemId": zod.number().nullish(),
+  "config": zod.unknown().optional(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Update a task bundle item (admin/office only)
+ */
+export const UpdateTaskBundleItemParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateTaskBundleItemBody = zod.object({
+  "type": zod.string().optional(),
+  "label": zod.string().optional(),
+  "order": zod.number().optional(),
+  "linkedEquipmentId": zod.number().optional(),
+  "linkedInventoryItemId": zod.number().optional(),
+  "config": zod.unknown().optional()
+})
+
+export const UpdateTaskBundleItemResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "bundleId": zod.number(),
+  "type": zod.string(),
+  "label": zod.string(),
+  "order": zod.number(),
+  "linkedEquipmentId": zod.number().nullish(),
+  "linkedInventoryItemId": zod.number().nullish(),
+  "config": zod.unknown().optional(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Remove an item from a task bundle (admin/office only)
+ */
+export const DeleteTaskBundleItemParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteTaskBundleItemResponse = zod.void()
+
+
+/**
+ * @summary Start a run of a bundle (starts the completion timer)
+ */
+export const StartTaskBundleParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const StartTaskBundleResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "bundleId": zod.number(),
+  "bundleName": zod.string().nullish(),
+  "userId": zod.number(),
+  "userName": zod.string().nullish(),
+  "status": zod.string(),
+  "startedAt": zod.string(),
+  "completedAt": zod.string().nullish(),
+  "durationSeconds": zod.number().nullish(),
+  "itemResults": zod.array(zod.object({
+  "itemId": zod.number(),
+  "type": zod.string(),
+  "label": zod.string(),
+  "value": zod.union([zod.string(),zod.number()]).nullish(),
+  "status": zod.string().nullish(),
+  "note": zod.string().nullish(),
+  "counts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "actualCount": zod.number()
+})).optional()
+})).optional(),
+  "hasFlags": zod.boolean(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Submit a bundle run — stops the timer, records item results, and applies their side effects (equipment readings, concern alerts, shrinkage rows)
+ */
+export const CompleteTaskBundleCompletionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CompleteTaskBundleCompletionBody = zod.object({
+  "itemResults": zod.array(zod.object({
+  "itemId": zod.number(),
+  "type": zod.string(),
+  "label": zod.string(),
+  "value": zod.union([zod.string(),zod.number()]).nullish(),
+  "status": zod.string().nullish(),
+  "note": zod.string().nullish(),
+  "counts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "actualCount": zod.number()
+})).optional()
+}))
+})
+
+export const CompleteTaskBundleCompletionResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "bundleId": zod.number(),
+  "bundleName": zod.string().nullish(),
+  "userId": zod.number(),
+  "userName": zod.string().nullish(),
+  "status": zod.string(),
+  "startedAt": zod.string(),
+  "completedAt": zod.string().nullish(),
+  "durationSeconds": zod.number().nullish(),
+  "itemResults": zod.array(zod.object({
+  "itemId": zod.number(),
+  "type": zod.string(),
+  "label": zod.string(),
+  "value": zod.union([zod.string(),zod.number()]).nullish(),
+  "status": zod.string().nullish(),
+  "note": zod.string().nullish(),
+  "counts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "actualCount": zod.number()
+})).optional()
+})).optional(),
+  "hasFlags": zod.boolean(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary List/filter the completion log
+ */
+export const ListTaskBundleCompletionsQueryParams = zod.object({
+  "bundleId": zod.coerce.number().optional(),
+  "userId": zod.coerce.number().optional(),
+  "dateFrom": zod.coerce.string().optional(),
+  "dateTo": zod.coerce.string().optional()
+})
+
+export const ListTaskBundleCompletionsResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "bundleId": zod.number(),
+  "bundleName": zod.string().nullish(),
+  "userId": zod.number(),
+  "userName": zod.string().nullish(),
+  "status": zod.string(),
+  "startedAt": zod.string(),
+  "completedAt": zod.string().nullish(),
+  "durationSeconds": zod.number().nullish(),
+  "itemResults": zod.array(zod.object({
+  "itemId": zod.number(),
+  "type": zod.string(),
+  "label": zod.string(),
+  "value": zod.union([zod.string(),zod.number()]).nullish(),
+  "status": zod.string().nullish(),
+  "note": zod.string().nullish(),
+  "counts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "actualCount": zod.number()
+})).optional()
+})).optional(),
+  "hasFlags": zod.boolean(),
+  "createdAt": zod.string()
+})
+export const ListTaskBundleCompletionsResponse = zod.array(ListTaskBundleCompletionsResponseItem)
+
+
+/**
+ * @summary Cumulative shrinkage report ledger, optionally filtered to a single count event or date range
+ */
+export const ListShrinkageReportsQueryParams = zod.object({
+  "countEventId": zod.coerce.string().optional(),
+  "dateFrom": zod.coerce.string().optional(),
+  "dateTo": zod.coerce.string().optional()
+})
+
+export const ListShrinkageReportsResponse = zod.object({
+  "totalLoss": zod.number(),
+  "lines": zod.array(zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "countEventId": zod.string(),
+  "taskBundleCompletionId": zod.number().nullish(),
+  "inventoryItemId": zod.number(),
+  "itemName": zod.string(),
+  "sku": zod.string(),
+  "expectedStock": zod.number(),
+  "actualCount": zod.number(),
+  "variance": zod.number(),
+  "unitCost": zod.number(),
+  "totalLoss": zod.number(),
+  "createdAt": zod.string()
+}))
+})
 
 
 /**

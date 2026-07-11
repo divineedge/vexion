@@ -53,6 +53,15 @@ export const equipmentMaintenanceTable = pgTable("equipment_maintenance", {
   nextServiceDueHours: real("next_service_due_hours"),
   /** Next service due in miles */
   nextServiceDueMiles: real("next_service_due_miles"),
+  /**
+   * Split of `cost` into parts vs. labor, used by the Maintenance & Repair ledger.
+   * Legacy records (from before this split existed) have both at 0 — the ledger
+   * query falls back to treating the full `cost` as labor for those rows.
+   */
+  partsCost: real("parts_cost").notNull().default(0),
+  laborCost: real("labor_cost").notNull().default(0),
+  /** Hours the asset was out of service for this repair — feeds the downtime-value cost factor */
+  downtimeHours: real("downtime_hours").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
@@ -80,3 +89,26 @@ export const equipmentFuelLogsTable = pgTable("equipment_fuel_logs", {
 export const insertEquipmentFuelLogSchema = createInsertSchema(equipmentFuelLogsTable).omit({ id: true, createdAt: true });
 export type InsertEquipmentFuelLog = z.infer<typeof insertEquipmentFuelLogSchema>;
 export type EquipmentFuelLog = typeof equipmentFuelLogsTable.$inferSelect;
+
+// ── Equipment Reading Logs (hour-meter / mileage history) ────────────────────
+// Historical ledger of hour-meter and mileage readings, primarily populated by
+// Daily Task Manager task items (hour_meter_log / mileage_log) linked to an asset.
+// Used to compute runtime-hours run within a date range for the operating cost ledger.
+
+export const equipmentReadingLogsTable = pgTable("equipment_reading_logs", {
+  id: serial("id").primaryKey(),
+  equipmentId: integer("equipment_id").notNull().references(() => equipmentTable.id),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
+  date: text("date").notNull(), // ISO date YYYY-MM-DD
+  /** hours | mileage */
+  readingType: text("reading_type").notNull(),
+  value: real("value").notNull(),
+  /** task_bundle | manual */
+  source: text("source").notNull().default("manual"),
+  taskBundleCompletionId: integer("task_bundle_completion_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertEquipmentReadingLogSchema = createInsertSchema(equipmentReadingLogsTable).omit({ id: true, createdAt: true });
+export type InsertEquipmentReadingLog = z.infer<typeof insertEquipmentReadingLogSchema>;
+export type EquipmentReadingLog = typeof equipmentReadingLogsTable.$inferSelect;

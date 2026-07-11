@@ -2601,6 +2601,302 @@ paths:
         "204":
           description: Deleted
 
+  /equipment/{id}/ledger:
+    get:
+      operationId: getEquipmentLedger
+      tags: [equipment]
+      summary: Operating vs. Maintenance & Repair cost ledgers for an asset, with running totals over an optional date range
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: from
+          in: query
+          schema:
+            type: string
+        - name: to
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Ledger
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EquipmentLedger"
+
+  # DAILY TASKS MANAGER (Task Bundles) — compliance checklists, safety checks,
+  # mileage/fuel/hour-meter logs, tool inventory checks, warehouse counts.
+  /task-bundles:
+    get:
+      operationId: listTaskBundles
+      tags: [taskBundles]
+      summary: List active task bundles; pass scope=mine to filter to the caller's assigned bundles
+      parameters:
+        - name: scope
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Task bundles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TaskBundle"
+    post:
+      operationId: createTaskBundle
+      tags: [taskBundles]
+      summary: Create a task bundle, optionally with its items (admin/office only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskBundleInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskBundleDetail"
+        "403":
+          description: Admin or office role required
+
+  /task-bundles/{id}:
+    get:
+      operationId: getTaskBundle
+      tags: [taskBundles]
+      summary: Get a task bundle with its items
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Task bundle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskBundleDetail"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateTaskBundle
+      tags: [taskBundles]
+      summary: Update a task bundle's name, frequency, assignment, or active state (admin/office only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskBundleUpdateInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskBundleDetail"
+    delete:
+      operationId: deleteTaskBundle
+      tags: [taskBundles]
+      summary: Delete a task bundle (admin/office only; blocked once it has completion history)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "409":
+          description: Bundle has completion history
+
+  /task-bundles/{id}/items:
+    post:
+      operationId: createTaskBundleItem
+      tags: [taskBundles]
+      summary: Add an item to a task bundle (admin/office only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskBundleItemInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskBundleItem"
+
+  /task-bundle-items/{id}:
+    patch:
+      operationId: updateTaskBundleItem
+      tags: [taskBundles]
+      summary: Update a task bundle item (admin/office only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskBundleItemInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskBundleItem"
+    delete:
+      operationId: deleteTaskBundleItem
+      tags: [taskBundles]
+      summary: Remove an item from a task bundle (admin/office only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /task-bundles/{id}/start:
+    post:
+      operationId: startTaskBundle
+      tags: [taskBundles]
+      summary: Start a run of a bundle (starts the completion timer)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "201":
+          description: Started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskBundleCompletion"
+        "403":
+          description: Not assigned to this bundle
+
+  /task-bundle-completions/{id}/complete:
+    post:
+      operationId: completeTaskBundleCompletion
+      tags: [taskBundles]
+      summary: Submit a bundle run — stops the timer, records item results, and applies their side effects (equipment readings, concern alerts, shrinkage rows)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompleteTaskBundleInput"
+      responses:
+        "200":
+          description: Completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskBundleCompletion"
+        "409":
+          description: Already submitted
+
+  /task-bundle-completions:
+    get:
+      operationId: listTaskBundleCompletions
+      tags: [taskBundles]
+      summary: List/filter the completion log
+      parameters:
+        - name: bundleId
+          in: query
+          schema:
+            type: integer
+        - name: userId
+          in: query
+          schema:
+            type: integer
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Completions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TaskBundleCompletion"
+
+  /shrinkage-reports:
+    get:
+      operationId: listShrinkageReports
+      tags: [taskBundles]
+      summary: Cumulative shrinkage report ledger, optionally filtered to a single count event or date range
+      parameters:
+        - name: countEventId
+          in: query
+          schema:
+            type: string
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Shrinkage report ledger
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShrinkageReportLedger"
+
   # INTERNAL TASKS
   /tasks:
     get:
@@ -8632,7 +8928,7 @@ components:
 
     EquipmentMaintenance:
       type: object
-      required: [id, equipmentId, tenantId, date, description, cost, createdAt, updatedAt]
+      required: [id, equipmentId, tenantId, date, description, cost, partsCost, laborCost, downtimeHours, createdAt, updatedAt]
       properties:
         id:
           type: integer
@@ -8645,6 +8941,12 @@ components:
         description:
           type: string
         cost:
+          type: number
+        partsCost:
+          type: number
+        laborCost:
+          type: number
+        downtimeHours:
           type: number
         vendor:
           type: ["string", "null"]
@@ -8668,6 +8970,12 @@ components:
         description:
           type: string
         cost:
+          type: number
+        partsCost:
+          type: number
+        laborCost:
+          type: number
+        downtimeHours:
           type: number
         vendor:
           type: string
@@ -8711,6 +9019,191 @@ components:
           type: number
         odometerReading:
           type: number
+
+    EquipmentLedger:
+      type: object
+      required: [operating, maintenance]
+      properties:
+        operating:
+          type: object
+          required: [fuelCost, runtimeHours, runtimeCost, total, fuelLogs]
+          properties:
+            fuelCost: { type: number }
+            runtimeHours: { type: number }
+            runtimeCost: { type: number }
+            total: { type: number }
+            fuelLogs:
+              type: array
+              items:
+                $ref: "#/components/schemas/EquipmentFuelLog"
+        maintenance:
+          type: object
+          required: [partsCost, laborCost, downtimeHours, downtimeValue, total, records]
+          properties:
+            partsCost: { type: number }
+            laborCost: { type: number }
+            downtimeHours: { type: number }
+            downtimeValue: { type: number }
+            total: { type: number }
+            records:
+              type: array
+              items:
+                $ref: "#/components/schemas/EquipmentMaintenance"
+
+    TaskBundle:
+      type: object
+      required: [id, tenantId, name, frequency, isActive, itemCount, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        name: { type: string }
+        description: { type: ["string", "null"] }
+        frequency: { type: string }
+        assignedToUserId: { type: ["integer", "null"] }
+        assignedToName: { type: ["string", "null"] }
+        assignedToRole: { type: ["string", "null"] }
+        isActive: { type: boolean }
+        itemCount: { type: integer }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+
+    TaskBundleItem:
+      type: object
+      required: [id, tenantId, bundleId, type, label, order, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        bundleId: { type: integer }
+        type: { type: string }
+        label: { type: string }
+        order: { type: integer }
+        linkedEquipmentId: { type: ["integer", "null"] }
+        linkedInventoryItemId: { type: ["integer", "null"] }
+        config: {}
+        createdAt: { type: string }
+        updatedAt: { type: string }
+
+    TaskBundleDetail:
+      allOf:
+        - $ref: "#/components/schemas/TaskBundle"
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/TaskBundleItem"
+
+    TaskBundleItemInput:
+      type: object
+      properties:
+        type: { type: string }
+        label: { type: string }
+        order: { type: integer }
+        linkedEquipmentId: { type: integer }
+        linkedInventoryItemId: { type: integer }
+        config: {}
+
+    TaskBundleInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        frequency: { type: string }
+        assignedToUserId: { type: integer }
+        assignedToRole: { type: string }
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskBundleItemInput"
+
+    TaskBundleUpdateInput:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        frequency: { type: string }
+        assignedToUserId: { type: ["integer", "null"] }
+        assignedToRole: { type: ["string", "null"] }
+        isActive: { type: boolean }
+
+    TaskBundleItemResultInput:
+      type: object
+      required: [itemId, type, label]
+      properties:
+        itemId: { type: integer }
+        type: { type: string }
+        label: { type: string }
+        value: { type: ["string", "number", "null"] }
+        status: { type: ["string", "null"] }
+        note: { type: ["string", "null"] }
+        counts:
+          type: array
+          items:
+            type: object
+            required: [inventoryItemId, actualCount]
+            properties:
+              inventoryItemId: { type: integer }
+              actualCount: { type: integer }
+
+    CompleteTaskBundleInput:
+      type: object
+      required: [itemResults]
+      properties:
+        itemResults:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskBundleItemResultInput"
+
+    TaskBundleCompletion:
+      type: object
+      required: [id, tenantId, bundleId, userId, status, startedAt, hasFlags, createdAt]
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        bundleId: { type: integer }
+        bundleName: { type: ["string", "null"] }
+        userId: { type: integer }
+        userName: { type: ["string", "null"] }
+        status: { type: string }
+        startedAt: { type: string }
+        completedAt: { type: ["string", "null"] }
+        durationSeconds: { type: ["integer", "null"] }
+        itemResults:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskBundleItemResultInput"
+        hasFlags: { type: boolean }
+        createdAt: { type: string }
+
+    ShrinkageReportLine:
+      type: object
+      required: [id, tenantId, countEventId, inventoryItemId, itemName, sku, expectedStock, actualCount, variance, unitCost, totalLoss, createdAt]
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        countEventId: { type: string }
+        taskBundleCompletionId: { type: ["integer", "null"] }
+        inventoryItemId: { type: integer }
+        itemName: { type: string }
+        sku: { type: string }
+        expectedStock: { type: integer }
+        actualCount: { type: integer }
+        variance: { type: integer }
+        unitCost: { type: number }
+        totalLoss: { type: number }
+        createdAt: { type: string }
+
+    ShrinkageReportLedger:
+      type: object
+      required: [totalLoss, lines]
+      properties:
+        totalLoss: { type: number }
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShrinkageReportLine"
 
     # PORTAL SCHEMAS
     PortalOtpRequest:

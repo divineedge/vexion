@@ -39,6 +39,7 @@ import PlansDashboardPage from '@/pages/plans-dashboard';
 import PlanDetailPage from '@/pages/plan-detail';
 import TasksPage from '@/pages/tasks';
 import RoutesDashboardPage from '@/pages/routes';
+import TaskBundlesPage from '@/pages/task-bundles';
 
 import NotFound from '@/pages/not-found';
 
@@ -74,6 +75,7 @@ function ProtectedRoutes() {
         <Route path="/efficiency" component={EfficiencyPage} />
         <Route path="/callbacks" component={CallbacksPage} />
         <Route path="/tasks" component={TasksPage} />
+        <Route path="/daily-tasks" component={TaskBundlesPage} />
         <Route path="/marketing" component={MarketingPage} />
         <Route path="/payroll" component={PayrollPage} />
         <Route path="/services" component={ServicesPage} />

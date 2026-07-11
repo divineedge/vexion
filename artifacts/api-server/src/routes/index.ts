@@ -42,6 +42,7 @@ import reviewsRouter from "./reviews";
 import stopServiceFlagsRouter from "./stopServiceFlags";
 import internalTasksRouter from "./internalTasks";
 import routingRouter from "./routing";
+import taskBundlesRouter from "./taskBundles";
 
 const router: IRouter = Router();
 
@@ -88,5 +89,6 @@ router.use(reviewsRouter);
 router.use(stopServiceFlagsRouter);
 router.use(internalTasksRouter);
 router.use(routingRouter);
+router.use(taskBundlesRouter);
 
 export default router;

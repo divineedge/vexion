@@ -4,7 +4,7 @@ import {
   PackageSearch, Briefcase, Wrench,
   DollarSign, Banknote as InvoiceIcon,
   Megaphone, FlaskConical,
-  Settings, FileText, Footprints, BarChart3, Star, Repeat,
+  Settings, FileText, Footprints, BarChart3, Star, Repeat, ListTodo,
   LucideIcon,
 } from 'lucide-react';
 
@@ -27,6 +27,7 @@ export const techNavItems: NavItem[] = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Schedule',  href: '/schedule',  icon: CalendarDays },
   { name: 'Time Tracking', href: '/time-tracking', icon: Clock },
+  { name: 'Tasks',     href: '/tasks',     icon: ListTodo },
   { name: 'Callbacks', href: '/callbacks', icon: PhoneCall },
   { name: 'Daily Routines', href: '/daily-routines', icon: CheckSquare },
 ];
@@ -45,6 +46,7 @@ export const adminNavSections: NavSection[] = [
       { name: 'Visits',         href: '/visits',         icon: Footprints },
       { name: 'Blueprints',     href: '/blueprints',     icon: DraftingCompass },
       { name: 'Callbacks',      href: '/callbacks',      icon: PhoneCall },
+      { name: 'Tasks',          href: '/tasks',          icon: ListTodo },
     ],
   },
   {

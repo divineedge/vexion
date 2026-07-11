@@ -47,6 +47,8 @@ tags:
     description: Chemical products, mixtures, and application records
   - name: equipment
     description: Equipment management, maintenance logs, and fuel tracking
+  - name: tasks
+    description: Internal to-do / task management, role-based assignment, and notifications
   - name: communications
     description: SMS, email, and communications log
   - name: estimates
@@ -2574,6 +2576,177 @@ paths:
       responses:
         "204":
           description: Deleted
+
+  # INTERNAL TASKS
+  /tasks:
+    get:
+      operationId: listTasks
+      tags: [tasks]
+      summary: List internal tasks visible to the caller (admin/office see all; others see assigned/creatable/claimable)
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: priority
+          in: query
+          schema:
+            type: string
+        - name: assigneeId
+          in: query
+          schema:
+            type: integer
+        - name: contextType
+          in: query
+          schema:
+            type: string
+        - name: scope
+          in: query
+          description: Pass 'mine' to force the caller-scoped view even for admin/office roles
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Task list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InternalTask"
+    post:
+      operationId: createTask
+      tags: [tasks]
+      summary: Create an internal task (role-routing rules enforced server-side)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaskInput"
+      responses:
+        "201":
+          description: Task created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InternalTask"
+        "403":
+          description: Assignment violates role routing rules
+
+  /tasks/{id}:
+    get:
+      operationId: getTask
+      tags: [tasks]
+      summary: Get a single task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InternalTask"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateTask
+      tags: [tasks]
+      summary: Update, reassign, claim, or transition the status of a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTaskInput"
+      responses:
+        "200":
+          description: Task updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InternalTask"
+        "403":
+          description: Not permitted
+        "404":
+          description: Not found
+
+  /equipment/{id}/tasks:
+    get:
+      operationId: listEquipmentTasks
+      tags: [tasks]
+      summary: List open/in-progress internal tasks linked to an equipment item (maintenance queue)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Task list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InternalTask"
+
+  /notifications:
+    get:
+      operationId: listNotifications
+      tags: [tasks]
+      summary: List the caller's in-app task notifications (most recent 50)
+      responses:
+        "200":
+          description: Notification list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TaskNotification"
+
+  /notifications/{id}/read:
+    patch:
+      operationId: markNotificationRead
+      tags: [tasks]
+      summary: Mark a single notification as read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Notification updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskNotification"
+        "404":
+          description: Not found
+
+  /notifications/mark-all-read:
+    post:
+      operationId: markAllNotificationsRead
+      tags: [tasks]
+      summary: Mark all of the caller's notifications as read
+      responses:
+        "200":
+          description: OK
 
   # PORTAL AUTH (public — no staff auth required)
   /portal/auth/request-otp:
@@ -8689,3 +8862,71 @@ components:
         category: { type: string }
         description: { type: string }
         receiptUrl: { type: string }
+
+    # ── Internal Tasks ────────────────────────────────────────────────────────
+    InternalTask:
+      type: object
+      required: [id, tenantId, title, createdById, priority, status, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        title: { type: string }
+        description: { type: ["string", "null"] }
+        taskType: { type: ["string", "null"] }
+        createdById: { type: integer }
+        createdByName: { type: ["string", "null"] }
+        assignedToUserId: { type: ["integer", "null"] }
+        assignedToName: { type: ["string", "null"] }
+        assignedToRole: { type: ["string", "null"] }
+        priority: { type: string }
+        status: { type: string }
+        dueDate: { type: ["string", "null"] }
+        contextType: { type: ["string", "null"] }
+        contextId: { type: ["integer", "null"] }
+        contextLabel: { type: ["string", "null"] }
+        completedAt: { type: ["string", "null"] }
+        rejectionReason: { type: ["string", "null"] }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+
+    CreateTaskInput:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+        description: { type: string }
+        taskType: { type: string }
+        assignedToUserId: { type: integer }
+        assignedToRole: { type: string }
+        priority: { type: string }
+        dueDate: { type: string }
+        contextType: { type: string }
+        contextId: { type: integer }
+
+    UpdateTaskInput:
+      type: object
+      properties:
+        title: { type: string }
+        description: { type: string }
+        priority: { type: string }
+        dueDate: { type: string }
+        contextType: { type: string }
+        contextId: { type: integer }
+        assignedToUserId: { type: ["integer", "null"] }
+        assignedToRole: { type: ["string", "null"] }
+        status: { type: string }
+        rejectionReason: { type: string }
+        claim: { type: boolean }
+
+    TaskNotification:
+      type: object
+      required: [id, tenantId, recipientUserId, taskId, type, message, isRead, createdAt]
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        recipientUserId: { type: integer }
+        taskId: { type: integer }
+        type: { type: string }
+        message: { type: string }
+        isRead: { type: boolean }
+        createdAt: { type: string }

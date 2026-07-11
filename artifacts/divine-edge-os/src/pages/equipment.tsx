@@ -13,10 +13,14 @@ import {
   getListEquipmentFuelLogsQueryKey,
   useCreateEquipmentFuelLog,
   useDeleteEquipmentFuelLog,
+  useListEquipmentTasks, getListEquipmentTasksQueryKey,
 } from '@workspace/api-client-react';
 import type { Equipment, EquipmentMaintenance, EquipmentFuelLog } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
+import { TaskFormDrawer } from '@/components/tasks/TaskFormDrawer';
+import { TaskActions } from '@/components/tasks/TaskActions';
+import { priorityBadgeClass, statusBadgeClass } from '@/lib/taskConstants';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -112,6 +116,12 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
 
   const [fuelForm, setFuelForm] = useState({ date: '', gallons: '', cost: '', odometerReading: '' });
   const [fuelOpen, setFuelOpen] = useState(false);
+
+  // Maintenance tasks (internal to-do queue linked to this equipment)
+  const { data: equipmentTasks } = useListEquipmentTasks(equipment.id, {
+    query: { queryKey: getListEquipmentTasksQueryKey(equipment.id) },
+  });
+  const [taskFormOpen, setTaskFormOpen] = useState(false);
 
   const handleAddMaintenance = () => {
     if (!maintForm.date || !maintForm.description) { toast.error('Date and description are required'); return; }
@@ -290,6 +300,9 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
             <TabsTrigger value="fuel" className="flex-1 flex items-center gap-1.5">
               <Fuel className="w-3.5 h-3.5" /> Fuel ({fuelLogs?.length ?? 0})
             </TabsTrigger>
+            <TabsTrigger value="tasks" className="flex-1 flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5" /> Tasks ({equipmentTasks?.length ?? 0})
+            </TabsTrigger>
           </TabsList>
 
           {/* Maintenance tab */}
@@ -431,8 +444,41 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
               <p className="text-sm text-muted-foreground text-center py-6">No fuel logs yet.</p>
             )}
           </TabsContent>
+
+          {/* Maintenance Tasks tab — internal to-do queue linked to this equipment */}
+          <TabsContent value="tasks" className="space-y-3 mt-4">
+            <Button size="sm" className="w-full gap-2" onClick={() => setTaskFormOpen(true)}>
+              <Plus className="w-4 h-4" /> Flag for Repair / Maintenance
+            </Button>
+            {equipmentTasks && equipmentTasks.length > 0 ? (
+              <div className="space-y-2">
+                {equipmentTasks.map(t => (
+                  <div key={t.id} className="rounded-lg border p-3 space-y-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-medium flex-1 min-w-0 truncate">{t.title}</p>
+                      <Badge variant="outline" className={priorityBadgeClass(t.priority) + ' text-[10px]'}>{t.priority}</Badge>
+                      <Badge variant="outline" className={statusBadgeClass(t.status) + ' text-[10px]'}>{t.status.replace('_', ' ')}</Badge>
+                    </div>
+                    {t.description && <p className="text-xs text-muted-foreground">{t.description}</p>}
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">→ {t.assignedToName ?? t.assignedToRole ?? '—'}</span>
+                      <TaskActions task={t} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-6">No open maintenance tasks for this equipment.</p>
+            )}
+          </TabsContent>
         </Tabs>
       </div>
+
+      <TaskFormDrawer
+        open={taskFormOpen}
+        onOpenChange={setTaskFormOpen}
+        lockedContext={{ contextType: 'equipment', contextId: equipment.id, label: equipment.name }}
+      />
     </div>
   );
 }

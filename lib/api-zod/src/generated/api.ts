@@ -3886,6 +3886,230 @@ export const DeleteEquipmentFuelLogResponse = zod.void()
 
 
 /**
+ * @summary List internal tasks visible to the caller (admin/office see all; others see assigned/creatable/claimable)
+ */
+export const ListTasksQueryParams = zod.object({
+  "status": zod.coerce.string().optional(),
+  "priority": zod.coerce.string().optional(),
+  "assigneeId": zod.coerce.number().optional(),
+  "contextType": zod.coerce.string().optional(),
+  "scope": zod.coerce.string().optional().describe('Pass \'mine\' to force the caller-scoped view even for admin\/office roles')
+})
+
+export const ListTasksResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "taskType": zod.string().nullish(),
+  "createdById": zod.number(),
+  "createdByName": zod.string().nullish(),
+  "assignedToUserId": zod.number().nullish(),
+  "assignedToName": zod.string().nullish(),
+  "assignedToRole": zod.string().nullish(),
+  "priority": zod.string(),
+  "status": zod.string(),
+  "dueDate": zod.string().nullish(),
+  "contextType": zod.string().nullish(),
+  "contextId": zod.number().nullish(),
+  "contextLabel": zod.string().nullish(),
+  "completedAt": zod.string().nullish(),
+  "rejectionReason": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListTasksResponse = zod.array(ListTasksResponseItem)
+
+
+/**
+ * @summary Create an internal task (role-routing rules enforced server-side)
+ */
+export const CreateTaskBody = zod.object({
+  "title": zod.string(),
+  "description": zod.string().optional(),
+  "taskType": zod.string().optional(),
+  "assignedToUserId": zod.number().optional(),
+  "assignedToRole": zod.string().optional(),
+  "priority": zod.string().optional(),
+  "dueDate": zod.string().optional(),
+  "contextType": zod.string().optional(),
+  "contextId": zod.number().optional()
+})
+
+export const CreateTaskResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "taskType": zod.string().nullish(),
+  "createdById": zod.number(),
+  "createdByName": zod.string().nullish(),
+  "assignedToUserId": zod.number().nullish(),
+  "assignedToName": zod.string().nullish(),
+  "assignedToRole": zod.string().nullish(),
+  "priority": zod.string(),
+  "status": zod.string(),
+  "dueDate": zod.string().nullish(),
+  "contextType": zod.string().nullish(),
+  "contextId": zod.number().nullish(),
+  "contextLabel": zod.string().nullish(),
+  "completedAt": zod.string().nullish(),
+  "rejectionReason": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Get a single task
+ */
+export const GetTaskParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetTaskResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "taskType": zod.string().nullish(),
+  "createdById": zod.number(),
+  "createdByName": zod.string().nullish(),
+  "assignedToUserId": zod.number().nullish(),
+  "assignedToName": zod.string().nullish(),
+  "assignedToRole": zod.string().nullish(),
+  "priority": zod.string(),
+  "status": zod.string(),
+  "dueDate": zod.string().nullish(),
+  "contextType": zod.string().nullish(),
+  "contextId": zod.number().nullish(),
+  "contextLabel": zod.string().nullish(),
+  "completedAt": zod.string().nullish(),
+  "rejectionReason": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Update, reassign, claim, or transition the status of a task
+ */
+export const UpdateTaskParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateTaskBody = zod.object({
+  "title": zod.string().optional(),
+  "description": zod.string().optional(),
+  "priority": zod.string().optional(),
+  "dueDate": zod.string().optional(),
+  "contextType": zod.string().optional(),
+  "contextId": zod.number().optional(),
+  "assignedToUserId": zod.number().nullish(),
+  "assignedToRole": zod.string().nullish(),
+  "status": zod.string().optional(),
+  "rejectionReason": zod.string().optional(),
+  "claim": zod.boolean().optional()
+})
+
+export const UpdateTaskResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "taskType": zod.string().nullish(),
+  "createdById": zod.number(),
+  "createdByName": zod.string().nullish(),
+  "assignedToUserId": zod.number().nullish(),
+  "assignedToName": zod.string().nullish(),
+  "assignedToRole": zod.string().nullish(),
+  "priority": zod.string(),
+  "status": zod.string(),
+  "dueDate": zod.string().nullish(),
+  "contextType": zod.string().nullish(),
+  "contextId": zod.number().nullish(),
+  "contextLabel": zod.string().nullish(),
+  "completedAt": zod.string().nullish(),
+  "rejectionReason": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary List open/in-progress internal tasks linked to an equipment item (maintenance queue)
+ */
+export const ListEquipmentTasksParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListEquipmentTasksResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "taskType": zod.string().nullish(),
+  "createdById": zod.number(),
+  "createdByName": zod.string().nullish(),
+  "assignedToUserId": zod.number().nullish(),
+  "assignedToName": zod.string().nullish(),
+  "assignedToRole": zod.string().nullish(),
+  "priority": zod.string(),
+  "status": zod.string(),
+  "dueDate": zod.string().nullish(),
+  "contextType": zod.string().nullish(),
+  "contextId": zod.number().nullish(),
+  "contextLabel": zod.string().nullish(),
+  "completedAt": zod.string().nullish(),
+  "rejectionReason": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListEquipmentTasksResponse = zod.array(ListEquipmentTasksResponseItem)
+
+
+/**
+ * @summary List the caller's in-app task notifications (most recent 50)
+ */
+export const ListNotificationsResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "recipientUserId": zod.number(),
+  "taskId": zod.number(),
+  "type": zod.string(),
+  "message": zod.string(),
+  "isRead": zod.boolean(),
+  "createdAt": zod.string()
+})
+export const ListNotificationsResponse = zod.array(ListNotificationsResponseItem)
+
+
+/**
+ * @summary Mark a single notification as read
+ */
+export const MarkNotificationReadParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const MarkNotificationReadResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "recipientUserId": zod.number(),
+  "taskId": zod.number(),
+  "type": zod.string(),
+  "message": zod.string(),
+  "isRead": zod.boolean(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Mark all of the caller's notifications as read
+ */
+export const MarkAllNotificationsReadResponse = zod.unknown()
+
+
+/**
  * @summary Request a 6-digit OTP for portal login
  */
 export const PortalRequestOtpBody = zod.object({

@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Users, Briefcase, FileText, DollarSign, Clock, CheckCircle, Gauge, PhoneCall, Trophy, AlertTriangle } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { MyTasksWidget } from '@/components/tasks/MyTasksWidget';
 
 interface EfficiencyResponse { companyEfficiencyRate: number | null; companyCallbackRatio: number; technicians: { hasWarning: boolean }[] }
 interface RoasEntry { name: string; roas: number | null }
@@ -151,10 +152,14 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
-        </CardHeader>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-1">
+          <MyTasksWidget />
+        </div>
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Recent Activity</CardTitle>
+          </CardHeader>
         <CardContent>
           <div className="space-y-6">
             {recentActivity?.map((activity) => (
@@ -176,7 +181,8 @@ export default function DashboardPage() {
             )}
           </div>
         </CardContent>
-      </Card>
+        </Card>
+      </div>
     </div>
   );
 }

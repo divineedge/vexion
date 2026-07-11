@@ -8,9 +8,11 @@ interface SidebarSectionProps {
   section: NavSection;
   /** Called when a nav item is clicked (e.g. to close mobile sheet) */
   onNavClick?: () => void;
+  /** Optional per-href badge counts (e.g. open task count) */
+  badgeCounts?: Record<string, number>;
 }
 
-export function SidebarSection({ section, onNavClick }: SidebarSectionProps) {
+export function SidebarSection({ section, onNavClick, badgeCounts }: SidebarSectionProps) {
   const [location] = useLocation();
 
   const isActiveSectionItem = section.items.some(
@@ -93,7 +95,12 @@ export function SidebarSection({ section, onNavClick }: SidebarSectionProps) {
                       : 'text-sidebar-foreground/50 group-hover:text-sidebar-foreground/80'
                   )}
                 />
-                {item.name}
+                <span className="flex-1">{item.name}</span>
+                {!!badgeCounts?.[item.href] && (
+                  <span className="min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-sidebar-primary text-white text-[10px] font-semibold flex items-center justify-center shrink-0">
+                    {badgeCounts[item.href]}
+                  </span>
+                )}
               </Link>
             );
           })}

@@ -3299,6 +3299,80 @@ export interface CreateExpenseInput {
   receiptUrl?: string;
 }
 
+export interface InternalTask {
+  id: number;
+  tenantId: number;
+  title: string;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  taskType?: string | null;
+  createdById: number;
+  /** @nullable */
+  createdByName?: string | null;
+  /** @nullable */
+  assignedToUserId?: number | null;
+  /** @nullable */
+  assignedToName?: string | null;
+  /** @nullable */
+  assignedToRole?: string | null;
+  priority: string;
+  status: string;
+  /** @nullable */
+  dueDate?: string | null;
+  /** @nullable */
+  contextType?: string | null;
+  /** @nullable */
+  contextId?: number | null;
+  /** @nullable */
+  contextLabel?: string | null;
+  /** @nullable */
+  completedAt?: string | null;
+  /** @nullable */
+  rejectionReason?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateTaskInput {
+  title: string;
+  description?: string;
+  taskType?: string;
+  assignedToUserId?: number;
+  assignedToRole?: string;
+  priority?: string;
+  dueDate?: string;
+  contextType?: string;
+  contextId?: number;
+}
+
+export interface UpdateTaskInput {
+  title?: string;
+  description?: string;
+  priority?: string;
+  dueDate?: string;
+  contextType?: string;
+  contextId?: number;
+  /** @nullable */
+  assignedToUserId?: number | null;
+  /** @nullable */
+  assignedToRole?: string | null;
+  status?: string;
+  rejectionReason?: string;
+  claim?: boolean;
+}
+
+export interface TaskNotification {
+  id: number;
+  tenantId: number;
+  recipientUserId: number;
+  taskId: number;
+  type: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
 export type SendJobReminder200 = {
   sent?: string[];
   jobId?: number;
@@ -3363,6 +3437,17 @@ endDate?: string;
 propertyId?: number;
 applicatorId?: number;
 jobId?: number;
+};
+
+export type ListTasksParams = {
+status?: string;
+priority?: string;
+assigneeId?: number;
+contextType?: string;
+/**
+ * Pass 'mine' to force the caller-scoped view even for admin/office roles
+ */
+scope?: string;
 };
 
 export type SetPropertyProfilePhoto200 = {

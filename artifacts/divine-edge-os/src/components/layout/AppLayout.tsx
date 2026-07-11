@@ -8,11 +8,20 @@ import { Badge } from '@/components/ui/badge';
 import { adminNavSections, techNavItems } from './navConfig';
 import { SidebarSection } from './SidebarSection';
 import { Breadcrumb } from './Breadcrumb';
+import { NotificationBell } from '@/components/tasks/NotificationBell';
+import { useListTasks, getListTasksQueryKey } from '@workspace/api-client-react';
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, logout, isTechnician, isCrewManager, canManageOffice } = useAuth();
   const [location, setLocation] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const { data: myTasks = [] } = useListTasks(
+    { scope: 'mine' },
+    { query: { enabled: isAuthenticated, refetchInterval: 60000, queryKey: getListTasksQueryKey({ scope: 'mine' }) } },
+  );
+  const myOpenTaskCount = myTasks.filter(t => t.status === 'open' || t.status === 'in_progress').length;
+  const badgeCounts: Record<string, number> = { '/tasks': myOpenTaskCount };
 
   if (!isAuthenticated) {
     if (location !== '/login') {
@@ -83,7 +92,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                           : 'text-sidebar-foreground/50 group-hover:text-sidebar-foreground/80'
                       )}
                     />
-                    {item.name}
+                    <span className="flex-1">{item.name}</span>
+                    {!!badgeCounts[item.href] && (
+                      <span className="min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-sidebar-primary text-white text-[10px] font-semibold flex items-center justify-center shrink-0">
+                        {badgeCounts[item.href]}
+                      </span>
+                    )}
                   </Link>
                 );
               })}
@@ -96,6 +110,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                   key={section.id}
                   section={section}
                   onNavClick={onNavClick}
+                  badgeCounts={badgeCounts}
                 />
               ))}
             </div>
@@ -174,9 +189,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <Menu className="w-5 h-5" />
           </button>
           <span className="font-semibold text-sm">Divine Edge OS</span>
+          <div className="ml-auto"><NotificationBell /></div>
         </div>
 
         {/* Breadcrumb strip */}
+        <div className="hidden md:flex items-center justify-end px-6 md:px-8 pt-3">
+          <NotificationBell />
+        </div>
         <Breadcrumb isTechnician={isTechnician} />
 
         <div className="flex-1 overflow-y-auto">

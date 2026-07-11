@@ -40,6 +40,7 @@ import integrationsRouter from "./integrations";
 import devToolsRouter from "./devTools";
 import reviewsRouter from "./reviews";
 import stopServiceFlagsRouter from "./stopServiceFlags";
+import internalTasksRouter from "./internalTasks";
 
 const router: IRouter = Router();
 
@@ -84,5 +85,6 @@ router.use(integrationsRouter);
 router.use(devToolsRouter);
 router.use(reviewsRouter);
 router.use(stopServiceFlagsRouter);
+router.use(internalTasksRouter);
 
 export default router;

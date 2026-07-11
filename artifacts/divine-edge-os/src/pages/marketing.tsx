@@ -12,10 +12,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { Plus, Trash2, TrendingUp, DollarSign, Users, Trophy, Target, UserPlus, UserMinus } from 'lucide-react';
+import { Plus, Trash2, TrendingUp, DollarSign, Users, Trophy, Target, UserPlus, UserMinus, Send } from 'lucide-react';
 import { format } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import BroadcastPanel from '@/components/marketing/BroadcastPanel';
 
 interface Campaign {
   id: number;
@@ -189,11 +191,26 @@ export default function MarketingPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Marketing ROAS</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Marketing</h1>
           <p className="text-muted-foreground mt-1">
-            Return on Ad Spend = Revenue from campaign customers ÷ Campaign budget
+            Campaign ROAS tracking and bulk customer messaging
           </p>
         </div>
+      </div>
+
+      <Tabs defaultValue="campaigns">
+        <TabsList>
+          <TabsTrigger value="campaigns" className="gap-1.5"><Target className="w-3.5 h-3.5" /> Campaigns</TabsTrigger>
+          <TabsTrigger value="broadcast" className="gap-1.5"><Send className="w-3.5 h-3.5" /> Broadcast</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="broadcast" className="mt-4">
+          <BroadcastPanel campaigns={(campaigns ?? []).map(c => ({ id: c.id, name: c.name }))} />
+        </TabsContent>
+
+        <TabsContent value="campaigns" className="mt-4 space-y-6">
+
+      <div className="flex justify-end">
         {canManageOffice && (
           <Button className="gap-2" onClick={() => setCreateOpen(true)}>
             <Plus className="w-4 h-4" /> New Campaign
@@ -513,6 +530,8 @@ export default function MarketingPage() {
           )}
         </SheetContent>
       </Sheet>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

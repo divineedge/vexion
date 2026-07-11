@@ -31,6 +31,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BUILT_IN_CUSTOMER_FIELDS, getActiveCustomerFields, type CustomerFieldConfig } from '@/lib/fieldConfig';
+import IntegrationsGrid from '@/components/settings/IntegrationsGrid';
+import DevToolsPanel from '@/components/settings/DevToolsPanel';
 
 export default function SettingsPage() {
   const { isSuperAdmin, isOwner } = useAuth();
@@ -302,6 +304,7 @@ export default function SettingsPage() {
           <TabsTrigger value="operational"><SettingsIcon className="w-4 h-4 mr-2" />Operational</TabsTrigger>
           <TabsTrigger value="measurements"><MapPin className="w-4 h-4 mr-2" />Maps & Quotes</TabsTrigger>
           <TabsTrigger value="chemicals"><FlaskConical className="w-4 h-4 mr-2" />Chemicals</TabsTrigger>
+          {isOwner && <TabsTrigger value="advanced"><Shield className="w-4 h-4 mr-2" />Advanced</TabsTrigger>}
         </TabsList>
 
         {/* ── General ── */}
@@ -736,6 +739,8 @@ export default function SettingsPage() {
               )}
             </CardContent>
           </Card>
+
+          <IntegrationsGrid />
         </TabsContent>
 
         {/* ── Communications ── */}
@@ -1379,6 +1384,12 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
         {/* ── Chemicals ── */}
+        {isOwner && (
+          <TabsContent value="advanced" className="space-y-6 focus-visible:outline-none">
+            <DevToolsPanel />
+          </TabsContent>
+        )}
+
         <TabsContent value="chemicals" className="space-y-6 focus-visible:outline-none">
           {/* Products Library */}
           <Card>

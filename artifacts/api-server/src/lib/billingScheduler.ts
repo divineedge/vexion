@@ -205,6 +205,51 @@ async function runBillingCycle() {
   logger.info("Billing scheduler: daily cycle complete");
 }
 
+/**
+ * Dev/Test Panel: preview which of a tenant's active recurring templates are due
+ * to run today or earlier (mirrors the criteria the hourly scheduler uses), without
+ * generating anything.
+ */
+export async function previewDueTemplates(tenantId: number) {
+  const today = new Date().toISOString().slice(0, 10);
+  const due = await db
+    .select({ template: recurringInvoiceTemplatesTable, customerName: customersTable.name })
+    .from(recurringInvoiceTemplatesTable)
+    .leftJoin(customersTable, eq(recurringInvoiceTemplatesTable.customerId, customersTable.id))
+    .where(and(
+      eq(recurringInvoiceTemplatesTable.tenantId, tenantId),
+      eq(recurringInvoiceTemplatesTable.isActive, true),
+      sql`${recurringInvoiceTemplatesTable.nextBillingDate} <= ${today}`,
+    ));
+
+  return due.map(({ template, customerName }) => {
+    const lineItems = (template.lineItems as Array<{ quantity: number; unitPrice: number }>) ?? [];
+    const subtotal = lineItems.reduce((s, li) => s + li.quantity * li.unitPrice, 0);
+    return {
+      templateId: template.id,
+      templateName: template.name,
+      customerName: customerName ?? "Unknown",
+      nextBillingDate: template.nextBillingDate,
+      estimatedAmount: subtotal,
+    };
+  });
+}
+
+/** Dev/Test Panel: actually runs every due template for this tenant right now (same code path as the per-template "run now" button). */
+export async function runAllDueTemplatesNow(tenantId: number) {
+  const due = await previewDueTemplates(tenantId);
+  const results: Array<{ templateId: number; templateName: string; success: boolean; invoiceId?: number; error?: string }> = [];
+  for (const item of due) {
+    try {
+      const result = await runTemplateNow(item.templateId, tenantId);
+      results.push({ templateId: item.templateId, templateName: item.templateName, success: true, invoiceId: result.invoiceId });
+    } catch (err) {
+      results.push({ templateId: item.templateId, templateName: item.templateName, success: false, error: err instanceof Error ? err.message : "Unknown error" });
+    }
+  }
+  return results;
+}
+
 export function startBillingScheduler() {
   logger.info("Starting billing scheduler (runs every 24 hours)");
 

@@ -13,3 +13,9 @@ export async function isAdminRole(tenantId: number, userId: number): Promise<boo
   const role = await getCallerRole(tenantId, userId);
   return ADMIN_ROLES.has(role);
 }
+
+/** Strictly the company owner — used to gate destructive/simulation-only tooling (Dev/Test Panel). */
+export async function isOwnerRole(tenantId: number, userId: number): Promise<boolean> {
+  const role = await getCallerRole(tenantId, userId);
+  return role === "company_owner";
+}

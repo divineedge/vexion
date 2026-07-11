@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, marketingCampaignsTable, campaignCustomersTable, customersTable, invoicesTable } from "@workspace/db";
 import { eq, and, sum, count, desc, sql } from "drizzle-orm";
 import { getTenantId } from "../lib/tenantHelper";
+import { syncCustomerToMailchimp } from "../lib/mailchimpSync";
 
 const router: IRouter = Router();
 
@@ -180,6 +181,9 @@ router.post("/marketing/campaigns/:id/customers", async (req, res): Promise<void
     .insert(campaignCustomersTable)
     .values({ tenantId, campaignId, customerId: parseInt(customerId, 10), notes: notes ?? null })
     .returning();
+
+  const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, parseInt(customerId, 10)));
+  if (customer) void syncCustomerToMailchimp(tenantId, customer);
 
   res.status(201).json({ ...link, acquiredAt: link.acquiredAt.toISOString() });
 });

@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, customersTable, propertiesTable, jobsTable, invoicesTable, activityLogTable, propertyOwnershipHistoryTable, customerOtpSessionsTable } from "@workspace/db";
 import { eq, and, ilike, sql, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
+import { syncCustomerToMailchimp } from "../lib/mailchimpSync";
 
 const router: IRouter = Router();
 
@@ -108,6 +109,7 @@ router.post("/customers", async (req, res): Promise<void> => {
   }).returning();
 
   await db.insert(activityLogTable).values({ tenantId, userId, type: "customer_added", message: `New customer "${name}" added`, entityId: customer.id });
+  void syncCustomerToMailchimp(tenantId, customer);
 
   res.status(201).json(formatCustomer(customer, { propertyCount: 0 }));
 });
@@ -185,6 +187,7 @@ router.patch("/customers/:id", async (req, res): Promise<void> => {
     .returning();
 
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  if (tags !== undefined) void syncCustomerToMailchimp(tenantId, updated);
 
   const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(propertiesTable)
     .where(and(eq(propertiesTable.customerId, id), eq(propertiesTable.tenantId, tenantId)));

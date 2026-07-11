@@ -30,5 +30,9 @@ export interface Invoice {
   lineItems?: InvoiceLineItem[];
   /** @nullable */
   stripePaymentUrl?: string | null;
+  /** @nullable */
+  lobLetterId?: string | null;
+  /** @nullable */
+  lobStatus?: string | null;
   createdAt: string;
 }

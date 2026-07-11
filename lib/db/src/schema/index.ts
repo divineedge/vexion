@@ -28,3 +28,6 @@ export * from "./estimateTemplates";
 export * from "./recurringInvoiceTemplates";
 export * from "./billingEmailQueue";
 export * from "./vendors";
+export * from "./broadcasts";
+export * from "./integrationSyncLogs";
+export * from "./bankTransactions";

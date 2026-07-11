@@ -3456,6 +3456,426 @@ paths:
               schema:
                 $ref: "#/components/schemas/BillingAutomationStatus"
 
+  # BULK MESSAGING (BROADCASTS)
+  /broadcasts/preview:
+    post:
+      operationId: previewBroadcast
+      tags: [broadcasts]
+      summary: Preview the recipient count and sample for a broadcast segment filter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BroadcastPreviewInput"
+      responses:
+        "200":
+          description: Preview result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BroadcastPreviewResult"
+
+  /broadcasts/send:
+    post:
+      operationId: sendBroadcast
+      tags: [broadcasts]
+      summary: Dispatch a broadcast to a filtered customer segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendBroadcastInput"
+      responses:
+        "201":
+          description: Broadcast queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Broadcast"
+
+  /broadcasts:
+    get:
+      operationId: listBroadcasts
+      tags: [broadcasts]
+      summary: List broadcast history
+      responses:
+        "200":
+          description: Broadcast list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Broadcast"
+
+  /broadcasts/{id}:
+    get:
+      operationId: getBroadcast
+      tags: [broadcasts]
+      summary: Get broadcast detail including per-recipient results
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Broadcast detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BroadcastDetail"
+
+  # INTEGRATION EXTENSIONS
+  /integrations:
+    get:
+      operationId: listIntegrations
+      tags: [integrations]
+      summary: List integration connection cards
+      responses:
+        "200":
+          description: Integration list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IntegrationSummary"
+
+  /integrations/{name}:
+    get:
+      operationId: getIntegration
+      tags: [integrations]
+      summary: Get one integration's config and status
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Integration detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationDetail"
+    patch:
+      operationId: updateIntegration
+      tags: [integrations]
+      summary: Update an integration's connection config
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateIntegrationInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationDetail"
+    delete:
+      operationId: disconnectIntegration
+      tags: [integrations]
+      summary: Disconnect an integration
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Disconnected
+
+  /integrations/{name}/test:
+    post:
+      operationId: testIntegration
+      tags: [integrations]
+      summary: Send a test ping to a connected integration
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationTestResult"
+
+  /integrations/{name}/logs:
+    get:
+      operationId: getIntegrationLogs
+      tags: [integrations]
+      summary: Get recent sync/test logs for an integration
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Log list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IntegrationSyncLog"
+
+  /integrations/bank/sync:
+    post:
+      operationId: syncBankTransactions
+      tags: [integrations]
+      summary: Pull the latest bank transactions into the staging queue
+      responses:
+        "200":
+          description: Sync result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [imported, simulated]
+                properties:
+                  imported:
+                    type: integer
+                  simulated:
+                    type: boolean
+
+  /integrations/quickbooks/oauth/authorize-url:
+    get:
+      operationId: getQuickBooksAuthorizeUrl
+      tags: [integrations]
+      summary: Build the QuickBooks OAuth authorization URL
+      responses:
+        "200":
+          description: Authorize URL
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url]
+                properties:
+                  url:
+                    type: string
+
+  /bank-transactions:
+    get:
+      operationId: listBankTransactions
+      tags: [integrations]
+      summary: List staged bank transactions
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Transaction list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BankTransaction"
+
+  /bank-transactions/{id}/import:
+    post:
+      operationId: importBankTransaction
+      tags: [integrations]
+      summary: Import a staged bank transaction into the Vendor & Expense Ledger
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vendorId:
+                  type: integer
+                category:
+                  type: string
+      responses:
+        "200":
+          description: Imported
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BankTransaction"
+
+  /bank-transactions/{id}/ignore:
+    post:
+      operationId: ignoreBankTransaction
+      tags: [integrations]
+      summary: Mark a staged bank transaction as ignored
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Ignored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BankTransaction"
+
+  /invoices/{id}/print-mail:
+    post:
+      operationId: printMailInvoice
+      tags: [invoices]
+      summary: Mail a physical copy of an invoice via Lob
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Mailed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+
+  # SIMULATION / DEV-TEST PANEL
+  /dev-tools/environment:
+    get:
+      operationId: getDevToolsEnvironment
+      tags: [devTools]
+      summary: Whether the Dev/Test Panel is running against a production environment
+      responses:
+        "200":
+          description: Environment info
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [isProduction, environment]
+                properties:
+                  isProduction:
+                    type: boolean
+                  environment:
+                    type: string
+
+  /dev-tools/simulate/generate-invoices:
+    post:
+      operationId: simulateGenerateInvoices
+      tags: [devTools]
+      summary: Dry-run or execute "Generate Monthly Invoices Now"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimulationRunInput"
+      responses:
+        "200":
+          description: Simulation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimulationResult"
+
+  /dev-tools/simulate/send-reminders:
+    post:
+      operationId: simulateSendReminders
+      tags: [devTools]
+      summary: Dry-run or execute "Send 7-Day Reminders for This Week's Jobs"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimulationRunInput"
+      responses:
+        "200":
+          description: Simulation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimulationResult"
+
+  /dev-tools/simulate/completable-jobs:
+    get:
+      operationId: listCompletableJobs
+      tags: [devTools]
+      summary: Jobs eligible for the "Trigger Job Completion Auto-Invoice" simulation
+      responses:
+        "200":
+          description: Completable jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CompletableJob"
+
+  /dev-tools/simulate/complete-job-auto-invoice:
+    post:
+      operationId: simulateCompleteJobAutoInvoice
+      tags: [devTools]
+      summary: Dry-run or execute "Trigger Job Completion Auto-Invoice" for one job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimulationRunInput"
+      responses:
+        "200":
+          description: Simulation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimulationResult"
+
+  /dev-tools/simulate/run-recurring-scheduler:
+    post:
+      operationId: simulateRunRecurringScheduler
+      tags: [devTools]
+      summary: Dry-run or execute "Run Recurring Job Scheduler"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimulationRunInput"
+      responses:
+        "200":
+          description: Simulation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimulationResult"
+
   # BUSINESS REPORTS SUITE
   /reports/job-profitability:
     get:
@@ -5011,6 +5431,10 @@ components:
             $ref: "#/components/schemas/InvoiceLineItem"
         stripePaymentUrl:
           type: ["string", "null"]
+        lobLetterId:
+          type: ["string", "null"]
+        lobStatus:
+          type: ["string", "null"]
         createdAt:
           type: string
 
@@ -5028,6 +5452,310 @@ components:
           type: number
         total:
           type: number
+
+    BroadcastFilter:
+      type: object
+      properties:
+        tag:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        customerType:
+          type: string
+        lastServiceBefore:
+          type: string
+        lastServiceAfter:
+          type: string
+        campaignId:
+          type: integer
+        allCustomers:
+          type: boolean
+
+    BroadcastPreviewInput:
+      type: object
+      required: [channel]
+      properties:
+        channel:
+          type: string
+          enum: [sms, email]
+        filter:
+          $ref: "#/components/schemas/BroadcastFilter"
+
+    BroadcastPreviewResult:
+      type: object
+      required: [count, sample]
+      properties:
+        count:
+          type: integer
+        sample:
+          type: array
+          items:
+            type: object
+            required: [id, name]
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+              contact:
+                type: ["string", "null"]
+
+    SendBroadcastInput:
+      type: object
+      required: [channel, body]
+      properties:
+        channel:
+          type: string
+          enum: [sms, email]
+        subject:
+          type: string
+        body:
+          type: string
+        filter:
+          $ref: "#/components/schemas/BroadcastFilter"
+
+    BroadcastStats:
+      type: object
+      properties:
+        sent:
+          type: integer
+        failed:
+          type: integer
+        optedOut:
+          type: integer
+
+    Broadcast:
+      type: object
+      required: [id, tenantId, channel, body, recipientCount, status, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        channel:
+          type: string
+          enum: [sms, email]
+        subject:
+          type: ["string", "null"]
+        body:
+          type: string
+        recipientFilter:
+          $ref: "#/components/schemas/BroadcastFilter"
+        recipientCount:
+          type: integer
+        status:
+          type: string
+          enum: [sending, completed, failed]
+        stats:
+          $ref: "#/components/schemas/BroadcastStats"
+        sentAt:
+          type: ["string", "null"]
+        createdBy:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+
+    BroadcastRecipient:
+      type: object
+      required: [id, broadcastId, customerId, customerName, status, createdAt]
+      properties:
+        id:
+          type: integer
+        broadcastId:
+          type: integer
+        customerId:
+          type: integer
+        customerName:
+          type: string
+        status:
+          type: string
+          enum: [sent, failed]
+        error:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    BroadcastDetail:
+      allOf:
+        - $ref: "#/components/schemas/Broadcast"
+        - type: object
+          properties:
+            recipients:
+              type: array
+              items:
+                $ref: "#/components/schemas/BroadcastRecipient"
+
+    IntegrationSummary:
+      type: object
+      required: [name, displayName, description, connected, errorCount]
+      properties:
+        name:
+          type: string
+          enum: [bank, mailchimp, lob, quickbooks]
+        displayName:
+          type: string
+        description:
+          type: string
+        connected:
+          type: boolean
+        connectedAt:
+          type: ["string", "null"]
+        lastSyncedAt:
+          type: ["string", "null"]
+        lastSyncStatus:
+          type: ["string", "null"]
+        errorCount:
+          type: integer
+
+    IntegrationDetail:
+      allOf:
+        - $ref: "#/components/schemas/IntegrationSummary"
+        - type: object
+          properties:
+            config:
+              type: object
+              additionalProperties:
+                type: string
+
+    UpdateIntegrationInput:
+      type: object
+      properties:
+        connected:
+          type: boolean
+        config:
+          type: object
+          additionalProperties:
+            type: string
+
+    IntegrationTestResult:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        error:
+          type: string
+
+    IntegrationSyncLog:
+      type: object
+      required: [id, tenantId, integration, action, status, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        integration:
+          type: string
+        action:
+          type: string
+        status:
+          type: string
+          enum: [success, error]
+        message:
+          type: ["string", "null"]
+        detail:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+
+    BankTransaction:
+      type: object
+      required: [id, tenantId, externalId, date, amount, description, status, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        externalId:
+          type: string
+        date:
+          type: string
+        amount:
+          type: number
+        description:
+          type: string
+        merchantName:
+          type: ["string", "null"]
+        guessedCategory:
+          type: ["string", "null"]
+        guessedVendorId:
+          type: ["integer", "null"]
+        status:
+          type: string
+          enum: [pending, imported, ignored]
+        importedExpenseId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+
+    SimulationRunInput:
+      type: object
+      properties:
+        dryRun:
+          type: boolean
+        confirmProductionRun:
+          type: boolean
+        jobId:
+          type: integer
+
+    SimulationResult:
+      type: object
+      required: [dryRun]
+      properties:
+        dryRun:
+          type: boolean
+        due:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        jobs:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        series:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        jobId:
+          type: integer
+        title:
+          type: string
+        currentStatus:
+          type: string
+        wouldAutoInvoice:
+          type: boolean
+        estimatedAmount:
+          type: number
+        invoiceGenerated:
+          type: boolean
+        invoiceId:
+          type: integer
+
+    CompletableJob:
+      type: object
+      required: [jobId, title, customerName, totalAmount, wouldAutoInvoice]
+      properties:
+        jobId:
+          type: integer
+        title:
+          type: string
+        customerName:
+          type: string
+        totalAmount:
+          type: number
+        wouldAutoInvoice:
+          type: boolean
 
     InvoiceInput:
       type: object

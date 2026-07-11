@@ -34,6 +34,9 @@ import billingRouter from "./billing";
 import reportsRouter from "./reports";
 import vendorsRouter from "./vendors";
 import expensesRouter from "./expenses";
+import broadcastsRouter from "./broadcasts";
+import integrationsRouter from "./integrations";
+import devToolsRouter from "./devTools";
 
 const router: IRouter = Router();
 
@@ -72,5 +75,8 @@ router.use(billingRouter);
 router.use(reportsRouter);
 router.use(vendorsRouter);
 router.use(expensesRouter);
+router.use(broadcastsRouter);
+router.use(integrationsRouter);
+router.use(devToolsRouter);
 
 export default router;

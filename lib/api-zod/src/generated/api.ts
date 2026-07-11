@@ -2142,6 +2142,8 @@ export const ListInvoicesResponseItem = zod.object({
   "total": zod.number()
 })).optional(),
   "stripePaymentUrl": zod.string().nullish(),
+  "lobLetterId": zod.string().nullish(),
+  "lobStatus": zod.string().nullish(),
   "createdAt": zod.string()
 })
 export const ListInvoicesResponse = zod.array(ListInvoicesResponseItem)
@@ -2184,6 +2186,8 @@ export const CreateInvoiceResponse = zod.object({
   "total": zod.number()
 })).optional(),
   "stripePaymentUrl": zod.string().nullish(),
+  "lobLetterId": zod.string().nullish(),
+  "lobStatus": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -2217,6 +2221,8 @@ export const GetInvoiceResponse = zod.object({
   "total": zod.number()
 })).optional(),
   "stripePaymentUrl": zod.string().nullish(),
+  "lobLetterId": zod.string().nullish(),
+  "lobStatus": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -2256,6 +2262,8 @@ export const UpdateInvoiceResponse = zod.object({
   "total": zod.number()
 })).optional(),
   "stripePaymentUrl": zod.string().nullish(),
+  "lobLetterId": zod.string().nullish(),
+  "lobStatus": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -2289,6 +2297,8 @@ export const CreateInvoiceFromJobResponse = zod.object({
   "total": zod.number()
 })).optional(),
   "stripePaymentUrl": zod.string().nullish(),
+  "lobLetterId": zod.string().nullish(),
+  "lobStatus": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -5013,6 +5023,515 @@ export const GetBillingAutomationStatusResponse = zod.object({
   "sent": zod.number(),
   "failed": zod.number()
 })
+})
+
+
+/**
+ * @summary Preview the recipient count and sample for a broadcast segment filter
+ */
+export const PreviewBroadcastBody = zod.object({
+  "channel": zod.enum(['sms', 'email']),
+  "filter": zod.object({
+  "tag": zod.string().optional(),
+  "city": zod.string().optional(),
+  "state": zod.string().optional(),
+  "customerType": zod.string().optional(),
+  "lastServiceBefore": zod.string().optional(),
+  "lastServiceAfter": zod.string().optional(),
+  "campaignId": zod.number().optional(),
+  "allCustomers": zod.boolean().optional()
+}).optional()
+})
+
+export const PreviewBroadcastResponse = zod.object({
+  "count": zod.number(),
+  "sample": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "contact": zod.string().nullish()
+}))
+})
+
+
+/**
+ * @summary Dispatch a broadcast to a filtered customer segment
+ */
+export const SendBroadcastBody = zod.object({
+  "channel": zod.enum(['sms', 'email']),
+  "subject": zod.string().optional(),
+  "body": zod.string(),
+  "filter": zod.object({
+  "tag": zod.string().optional(),
+  "city": zod.string().optional(),
+  "state": zod.string().optional(),
+  "customerType": zod.string().optional(),
+  "lastServiceBefore": zod.string().optional(),
+  "lastServiceAfter": zod.string().optional(),
+  "campaignId": zod.number().optional(),
+  "allCustomers": zod.boolean().optional()
+}).optional()
+})
+
+export const SendBroadcastResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "channel": zod.enum(['sms', 'email']),
+  "subject": zod.string().nullish(),
+  "body": zod.string(),
+  "recipientFilter": zod.object({
+  "tag": zod.string().optional(),
+  "city": zod.string().optional(),
+  "state": zod.string().optional(),
+  "customerType": zod.string().optional(),
+  "lastServiceBefore": zod.string().optional(),
+  "lastServiceAfter": zod.string().optional(),
+  "campaignId": zod.number().optional(),
+  "allCustomers": zod.boolean().optional()
+}).optional(),
+  "recipientCount": zod.number(),
+  "status": zod.enum(['sending', 'completed', 'failed']),
+  "stats": zod.object({
+  "sent": zod.number().optional(),
+  "failed": zod.number().optional(),
+  "optedOut": zod.number().optional()
+}).optional(),
+  "sentAt": zod.string().nullish(),
+  "createdBy": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary List broadcast history
+ */
+export const ListBroadcastsResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "channel": zod.enum(['sms', 'email']),
+  "subject": zod.string().nullish(),
+  "body": zod.string(),
+  "recipientFilter": zod.object({
+  "tag": zod.string().optional(),
+  "city": zod.string().optional(),
+  "state": zod.string().optional(),
+  "customerType": zod.string().optional(),
+  "lastServiceBefore": zod.string().optional(),
+  "lastServiceAfter": zod.string().optional(),
+  "campaignId": zod.number().optional(),
+  "allCustomers": zod.boolean().optional()
+}).optional(),
+  "recipientCount": zod.number(),
+  "status": zod.enum(['sending', 'completed', 'failed']),
+  "stats": zod.object({
+  "sent": zod.number().optional(),
+  "failed": zod.number().optional(),
+  "optedOut": zod.number().optional()
+}).optional(),
+  "sentAt": zod.string().nullish(),
+  "createdBy": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+export const ListBroadcastsResponse = zod.array(ListBroadcastsResponseItem)
+
+
+/**
+ * @summary Get broadcast detail including per-recipient results
+ */
+export const GetBroadcastParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetBroadcastResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "channel": zod.enum(['sms', 'email']),
+  "subject": zod.string().nullish(),
+  "body": zod.string(),
+  "recipientFilter": zod.object({
+  "tag": zod.string().optional(),
+  "city": zod.string().optional(),
+  "state": zod.string().optional(),
+  "customerType": zod.string().optional(),
+  "lastServiceBefore": zod.string().optional(),
+  "lastServiceAfter": zod.string().optional(),
+  "campaignId": zod.number().optional(),
+  "allCustomers": zod.boolean().optional()
+}).optional(),
+  "recipientCount": zod.number(),
+  "status": zod.enum(['sending', 'completed', 'failed']),
+  "stats": zod.object({
+  "sent": zod.number().optional(),
+  "failed": zod.number().optional(),
+  "optedOut": zod.number().optional()
+}).optional(),
+  "sentAt": zod.string().nullish(),
+  "createdBy": zod.number().nullish(),
+  "createdAt": zod.string()
+}).and(zod.object({
+  "recipients": zod.array(zod.object({
+  "id": zod.number(),
+  "broadcastId": zod.number(),
+  "customerId": zod.number(),
+  "customerName": zod.string(),
+  "status": zod.enum(['sent', 'failed']),
+  "error": zod.string().nullish(),
+  "createdAt": zod.string()
+})).optional()
+}))
+
+
+/**
+ * @summary List integration connection cards
+ */
+export const ListIntegrationsResponseItem = zod.object({
+  "name": zod.enum(['bank', 'mailchimp', 'lob', 'quickbooks']),
+  "displayName": zod.string(),
+  "description": zod.string(),
+  "connected": zod.boolean(),
+  "connectedAt": zod.string().nullish(),
+  "lastSyncedAt": zod.string().nullish(),
+  "lastSyncStatus": zod.string().nullish(),
+  "errorCount": zod.number()
+})
+export const ListIntegrationsResponse = zod.array(ListIntegrationsResponseItem)
+
+
+/**
+ * @summary Get one integration's config and status
+ */
+export const GetIntegrationParams = zod.object({
+  "name": zod.coerce.string()
+})
+
+export const GetIntegrationResponse = zod.object({
+  "name": zod.enum(['bank', 'mailchimp', 'lob', 'quickbooks']),
+  "displayName": zod.string(),
+  "description": zod.string(),
+  "connected": zod.boolean(),
+  "connectedAt": zod.string().nullish(),
+  "lastSyncedAt": zod.string().nullish(),
+  "lastSyncStatus": zod.string().nullish(),
+  "errorCount": zod.number()
+}).and(zod.object({
+  "config": zod.record(zod.string(), zod.string()).optional()
+}))
+
+
+/**
+ * @summary Update an integration's connection config
+ */
+export const UpdateIntegrationParams = zod.object({
+  "name": zod.coerce.string()
+})
+
+export const UpdateIntegrationBody = zod.object({
+  "connected": zod.boolean().optional(),
+  "config": zod.record(zod.string(), zod.string()).optional()
+})
+
+export const UpdateIntegrationResponse = zod.object({
+  "name": zod.enum(['bank', 'mailchimp', 'lob', 'quickbooks']),
+  "displayName": zod.string(),
+  "description": zod.string(),
+  "connected": zod.boolean(),
+  "connectedAt": zod.string().nullish(),
+  "lastSyncedAt": zod.string().nullish(),
+  "lastSyncStatus": zod.string().nullish(),
+  "errorCount": zod.number()
+}).and(zod.object({
+  "config": zod.record(zod.string(), zod.string()).optional()
+}))
+
+
+/**
+ * @summary Disconnect an integration
+ */
+export const DisconnectIntegrationParams = zod.object({
+  "name": zod.coerce.string()
+})
+
+export const DisconnectIntegrationResponse = zod.void()
+
+
+/**
+ * @summary Send a test ping to a connected integration
+ */
+export const TestIntegrationParams = zod.object({
+  "name": zod.coerce.string()
+})
+
+export const TestIntegrationResponse = zod.object({
+  "success": zod.boolean(),
+  "error": zod.string().optional()
+})
+
+
+/**
+ * @summary Get recent sync/test logs for an integration
+ */
+export const GetIntegrationLogsParams = zod.object({
+  "name": zod.coerce.string()
+})
+
+export const GetIntegrationLogsResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "integration": zod.string(),
+  "action": zod.string(),
+  "status": zod.enum(['success', 'error']),
+  "message": zod.string().nullish(),
+  "detail": zod.record(zod.string(), zod.unknown()).optional(),
+  "createdAt": zod.string()
+})
+export const GetIntegrationLogsResponse = zod.array(GetIntegrationLogsResponseItem)
+
+
+/**
+ * @summary Pull the latest bank transactions into the staging queue
+ */
+export const SyncBankTransactionsResponse = zod.object({
+  "imported": zod.number(),
+  "simulated": zod.boolean()
+})
+
+
+/**
+ * @summary Build the QuickBooks OAuth authorization URL
+ */
+export const GetQuickBooksAuthorizeUrlResponse = zod.object({
+  "url": zod.string()
+})
+
+
+/**
+ * @summary List staged bank transactions
+ */
+export const ListBankTransactionsQueryParams = zod.object({
+  "status": zod.coerce.string().optional()
+})
+
+export const ListBankTransactionsResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "externalId": zod.string(),
+  "date": zod.string(),
+  "amount": zod.number(),
+  "description": zod.string(),
+  "merchantName": zod.string().nullish(),
+  "guessedCategory": zod.string().nullish(),
+  "guessedVendorId": zod.number().nullish(),
+  "status": zod.enum(['pending', 'imported', 'ignored']),
+  "importedExpenseId": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+export const ListBankTransactionsResponse = zod.array(ListBankTransactionsResponseItem)
+
+
+/**
+ * @summary Import a staged bank transaction into the Vendor & Expense Ledger
+ */
+export const ImportBankTransactionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ImportBankTransactionBody = zod.object({
+  "vendorId": zod.number().optional(),
+  "category": zod.string().optional()
+})
+
+export const ImportBankTransactionResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "externalId": zod.string(),
+  "date": zod.string(),
+  "amount": zod.number(),
+  "description": zod.string(),
+  "merchantName": zod.string().nullish(),
+  "guessedCategory": zod.string().nullish(),
+  "guessedVendorId": zod.number().nullish(),
+  "status": zod.enum(['pending', 'imported', 'ignored']),
+  "importedExpenseId": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Mark a staged bank transaction as ignored
+ */
+export const IgnoreBankTransactionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const IgnoreBankTransactionResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "externalId": zod.string(),
+  "date": zod.string(),
+  "amount": zod.number(),
+  "description": zod.string(),
+  "merchantName": zod.string().nullish(),
+  "guessedCategory": zod.string().nullish(),
+  "guessedVendorId": zod.number().nullish(),
+  "status": zod.enum(['pending', 'imported', 'ignored']),
+  "importedExpenseId": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Mail a physical copy of an invoice via Lob
+ */
+export const PrintMailInvoiceParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const PrintMailInvoiceResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "invoiceNumber": zod.string(),
+  "customerId": zod.number(),
+  "customerName": zod.string().nullish(),
+  "jobId": zod.number().nullish(),
+  "status": zod.enum(['draft', 'sent', 'paid', 'overdue', 'cancelled']),
+  "subtotal": zod.number(),
+  "tax": zod.number(),
+  "total": zod.number(),
+  "dueDate": zod.string().nullish(),
+  "paidAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.number(),
+  "description": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional(),
+  "stripePaymentUrl": zod.string().nullish(),
+  "lobLetterId": zod.string().nullish(),
+  "lobStatus": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Whether the Dev/Test Panel is running against a production environment
+ */
+export const GetDevToolsEnvironmentResponse = zod.object({
+  "isProduction": zod.boolean(),
+  "environment": zod.string()
+})
+
+
+/**
+ * @summary Dry-run or execute "Generate Monthly Invoices Now"
+ */
+export const SimulateGenerateInvoicesBody = zod.object({
+  "dryRun": zod.boolean().optional(),
+  "confirmProductionRun": zod.boolean().optional(),
+  "jobId": zod.number().optional()
+})
+
+export const SimulateGenerateInvoicesResponse = zod.object({
+  "dryRun": zod.boolean(),
+  "due": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "jobs": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "series": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "results": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "jobId": zod.number().optional(),
+  "title": zod.string().optional(),
+  "currentStatus": zod.string().optional(),
+  "wouldAutoInvoice": zod.boolean().optional(),
+  "estimatedAmount": zod.number().optional(),
+  "invoiceGenerated": zod.boolean().optional(),
+  "invoiceId": zod.number().optional()
+})
+
+
+/**
+ * @summary Dry-run or execute "Send 7-Day Reminders for This Week's Jobs"
+ */
+export const SimulateSendRemindersBody = zod.object({
+  "dryRun": zod.boolean().optional(),
+  "confirmProductionRun": zod.boolean().optional(),
+  "jobId": zod.number().optional()
+})
+
+export const SimulateSendRemindersResponse = zod.object({
+  "dryRun": zod.boolean(),
+  "due": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "jobs": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "series": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "results": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "jobId": zod.number().optional(),
+  "title": zod.string().optional(),
+  "currentStatus": zod.string().optional(),
+  "wouldAutoInvoice": zod.boolean().optional(),
+  "estimatedAmount": zod.number().optional(),
+  "invoiceGenerated": zod.boolean().optional(),
+  "invoiceId": zod.number().optional()
+})
+
+
+/**
+ * @summary Jobs eligible for the "Trigger Job Completion Auto-Invoice" simulation
+ */
+export const ListCompletableJobsResponseItem = zod.object({
+  "jobId": zod.number(),
+  "title": zod.string(),
+  "customerName": zod.string(),
+  "totalAmount": zod.number(),
+  "wouldAutoInvoice": zod.boolean()
+})
+export const ListCompletableJobsResponse = zod.array(ListCompletableJobsResponseItem)
+
+
+/**
+ * @summary Dry-run or execute "Trigger Job Completion Auto-Invoice" for one job
+ */
+export const SimulateCompleteJobAutoInvoiceBody = zod.object({
+  "dryRun": zod.boolean().optional(),
+  "confirmProductionRun": zod.boolean().optional(),
+  "jobId": zod.number().optional()
+})
+
+export const SimulateCompleteJobAutoInvoiceResponse = zod.object({
+  "dryRun": zod.boolean(),
+  "due": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "jobs": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "series": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "results": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "jobId": zod.number().optional(),
+  "title": zod.string().optional(),
+  "currentStatus": zod.string().optional(),
+  "wouldAutoInvoice": zod.boolean().optional(),
+  "estimatedAmount": zod.number().optional(),
+  "invoiceGenerated": zod.boolean().optional(),
+  "invoiceId": zod.number().optional()
+})
+
+
+/**
+ * @summary Dry-run or execute "Run Recurring Job Scheduler"
+ */
+export const SimulateRunRecurringSchedulerBody = zod.object({
+  "dryRun": zod.boolean().optional(),
+  "confirmProductionRun": zod.boolean().optional(),
+  "jobId": zod.number().optional()
+})
+
+export const SimulateRunRecurringSchedulerResponse = zod.object({
+  "dryRun": zod.boolean(),
+  "due": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "jobs": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "series": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "results": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "jobId": zod.number().optional(),
+  "title": zod.string().optional(),
+  "currentStatus": zod.string().optional(),
+  "wouldAutoInvoice": zod.boolean().optional(),
+  "estimatedAmount": zod.number().optional(),
+  "invoiceGenerated": zod.boolean().optional(),
+  "invoiceId": zod.number().optional()
 })
 
 

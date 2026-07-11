@@ -223,6 +223,64 @@ async function sendReminder(params: {
   }
 }
 
+/**
+ * Dev/Test Panel: preview jobs scheduled within the next 7 days for this tenant
+ * that have not yet received their 7-day reminder, without sending anything.
+ */
+export async function previewWeeklyReminders(tenantId: number) {
+  const now = new Date();
+  const weekOut = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  const jobs = await db
+    .select({ job: jobsTable, customerName: customersTable.name, customerEmail: customersTable.email, customerPhone: customersTable.phone, smsOptOut: customersTable.smsOptOut, emailOptOut: customersTable.emailOptOut })
+    .from(jobsTable)
+    .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
+    .where(and(
+      eq(jobsTable.tenantId, tenantId),
+      inArray(jobsTable.status, ["scheduled", "in_progress"]),
+      sql`${jobsTable.scheduledAt} BETWEEN ${now.toISOString()}::timestamptz AND ${weekOut.toISOString()}::timestamptz`,
+    ));
+
+  return jobs.map(({ job, customerName, customerEmail, customerPhone, smsOptOut, emailOptOut }) => {
+    const remindersSent = (job.remindersSent as RemindersSent) ?? {};
+    const wouldSend = !remindersSent.sent7d && !(smsOptOut && emailOptOut) && (!!customerEmail || !!customerPhone);
+    return {
+      jobId: job.id,
+      jobTitle: job.title,
+      customerName: customerName ?? "Unknown",
+      scheduledAt: job.scheduledAt.toISOString(),
+      alreadySent: !!remindersSent.sent7d,
+      wouldSend,
+    };
+  });
+}
+
+/** Dev/Test Panel: actually sends this week's 7-day reminders right now for this tenant, respecting the same idempotency claim used by the scheduler. */
+export async function runWeeklyRemindersNow(tenantId: number) {
+  const preview = await previewWeeklyReminders(tenantId);
+  const targets = preview.filter(p => p.wouldSend);
+  const results: Array<{ jobId: number; jobTitle: string; sent: boolean }> = [];
+
+  for (const target of targets) {
+    const claimed = await claimReminderSlot(target.jobId, "7d");
+    if (!claimed) { results.push({ jobId: target.jobId, jobTitle: target.jobTitle, sent: false }); continue; }
+
+    const [row] = await db
+      .select({ job: jobsTable, customer: customersTable, propertyAddress: propertiesTable.address, tenant: tenantsTable })
+      .from(jobsTable)
+      .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
+      .leftJoin(propertiesTable, eq(jobsTable.propertyId, propertiesTable.id))
+      .leftJoin(tenantsTable, eq(jobsTable.tenantId, tenantsTable.id))
+      .where(and(eq(jobsTable.id, target.jobId), eq(jobsTable.tenantId, tenantId)));
+
+    if (!row?.customer || !row.tenant) { results.push({ jobId: target.jobId, jobTitle: target.jobTitle, sent: false }); continue; }
+
+    await sendReminder({ job: row.job, customer: row.customer, tenant: row.tenant, propertyAddress: row.propertyAddress ?? null, reminderType: "7d", now: new Date() });
+    results.push({ jobId: target.jobId, jobTitle: target.jobTitle, sent: true });
+  }
+  return results;
+}
+
 export function startReminderScheduler() {
   logger.info("Starting reminder scheduler (runs every 15 minutes)");
 

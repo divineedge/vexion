@@ -1,7 +1,10 @@
 import { Router, type IRouter } from "express";
-import { db, invoicesTable, customersTable, jobsTable, activityLogTable } from "@workspace/db";
+import { db, invoicesTable, customersTable, jobsTable, activityLogTable, tenantsTable, integrationSyncLogsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
+import { isAdminRole } from "../lib/roles";
+import { decryptSecretConfig } from "../lib/secretsCrypto";
+import { sendLobLetter, type LobConfig } from "../lib/lobProvider";
 
 const router: IRouter = Router();
 
@@ -153,6 +156,78 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
   }
 
   res.json(formatInvoice(updated));
+});
+
+// POST /invoices/:id/print-mail — send a physical copy of the invoice via Lob
+router.post("/invoices/:id/print-mail", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  if (!(await isAdminRole(tenantId, userId))) { res.status(403).json({ error: "Restricted to owner/admin roles" }); return; }
+
+  const id = parseInt(req.params.id, 10);
+  const [row] = await db
+    .select({ invoice: invoicesTable, customer: customersTable, tenant: tenantsTable })
+    .from(invoicesTable)
+    .leftJoin(customersTable, eq(invoicesTable.customerId, customersTable.id))
+    .leftJoin(tenantsTable, eq(invoicesTable.tenantId, tenantsTable.id))
+    .where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId)));
+  if (!row?.invoice || !row.customer || !row.tenant) { res.status(404).json({ error: "Not found" }); return; }
+  if (!row.customer.billingAddress || !row.customer.billingCity || !row.customer.billingState || !row.customer.billingZip) {
+    res.status(400).json({ error: "Customer is missing a complete billing address" });
+    return;
+  }
+
+  const states = (row.tenant.integrationsConfig as Record<string, { connected: boolean; encryptedConfig?: string }>) ?? {};
+  const lobState = states.lob;
+  if (!lobState?.connected) { res.status(400).json({ error: "Lob is not connected. Connect it in Settings → Integrations first." }); return; }
+  const config = decryptSecretConfig(lobState.encryptedConfig) as LobConfig;
+
+  const lineItems = (row.invoice.lineItems as Array<{ description: string; quantity: number; unitPrice: number }>) ?? [];
+  const html = `
+    <html><body style="font-family: sans-serif; padding: 40px;">
+      <h2>${row.tenant.name}</h2>
+      <p><strong>Invoice ${row.invoice.invoiceNumber}</strong></p>
+      <p>Bill To: ${row.customer.name}</p>
+      <table style="width:100%; border-collapse: collapse;">
+        ${lineItems.map(li => `<tr><td>${li.description}</td><td style="text-align:right;">${li.quantity} x ${li.unitPrice.toFixed(2)}</td></tr>`).join("")}
+      </table>
+      <p style="text-align:right; font-size: 1.2em;"><strong>Total: ${row.invoice.total.toFixed(2)}</strong></p>
+    </body></html>
+  `;
+
+  const result = await sendLobLetter(config, {
+    to: {
+      name: row.customer.name,
+      address_line1: row.customer.billingAddress,
+      address_city: row.customer.billingCity,
+      address_state: row.customer.billingState,
+      address_zip: row.customer.billingZip,
+    },
+    from: {
+      name: row.tenant.name,
+      address_line1: row.customer.billingAddress, // Placeholder sender address until a dedicated company mailing address field exists
+      address_city: row.customer.billingCity,
+      address_state: row.customer.billingState,
+      address_zip: row.customer.billingZip,
+    },
+    html,
+    description: `Invoice ${row.invoice.invoiceNumber}`,
+  });
+
+  await db.insert(integrationSyncLogsTable).values({
+    tenantId, integration: "lob", action: "push",
+    status: result.success ? "success" : "error",
+    message: result.success ? `Mailed invoice ${row.invoice.invoiceNumber}` : result.error,
+  });
+
+  if (!result.success) { res.status(502).json({ error: result.error }); return; }
+
+  const [updated] = await db.update(invoicesTable)
+    .set({ lobLetterId: result.letterId, lobStatus: result.status ?? "requested" })
+    .where(eq(invoicesTable.id, id))
+    .returning();
+
+  res.json(formatInvoice(updated, row.customer.name));
 });
 
 export default router;

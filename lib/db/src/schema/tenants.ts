@@ -51,6 +51,15 @@ export const tenantsTable = pgTable("tenants", {
   emailProvider: text("email_provider"),
   /** JSONB: provider-specific config (API key, from address, SMTP host etc.) */
   emailProviderConfig: jsonb("email_provider_config").default("{}"),
+  // ── Integration Extensions ───────────────────────────────────────────────
+  /**
+   * JSONB map keyed by integration name ('bank' | 'mailchimp' | 'lob' | 'quickbooks').
+   * Each value: { connected: boolean, connectedAt, lastSyncedAt, lastSyncStatus,
+   * errorCount, encryptedConfig: string (AES-GCM ciphertext of the credentials) }.
+   * Secrets are encrypted at rest via lib/secretsCrypto.ts and are never returned
+   * in plaintext from the API — only masked placeholders are served to the client.
+   */
+  integrationsConfig: jsonb("integrations_config").default("{}"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

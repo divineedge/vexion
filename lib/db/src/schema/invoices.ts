@@ -22,6 +22,10 @@ export const invoicesTable = pgTable("invoices", {
   stripePaymentUrl: text("stripe_payment_url"),
   /** FK to recurring_invoice_templates when this invoice was auto-generated */
   generatedFromTemplateId: integer("generated_from_template_id"),
+  /** Lob letter id once a "Print & Mail" request has been sent */
+  lobLetterId: text("lob_letter_id"),
+  /** Lob delivery status: 'requested' | 'mailed' | 'delivered' | 'returned' | 'failed' */
+  lobStatus: text("lob_status"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

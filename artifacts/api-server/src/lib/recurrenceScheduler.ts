@@ -114,6 +114,101 @@ async function processRecurring() {
   }
 }
 
+/** Dev/Test Panel: preview which recurring series for this tenant would generate a new instance right now, without writing anything. */
+export async function previewRecurrenceForTenant(tenantId: number) {
+  const now = new Date();
+  const lookahead = new Date(now.getTime() + LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000);
+
+  const roots = await db
+    .select()
+    .from(jobsTable)
+    .where(and(
+      eq(jobsTable.tenantId, tenantId),
+      isNotNull(jobsTable.recurrenceRule),
+      isNull(jobsTable.recurrenceParentId),
+      eq(jobsTable.isRecurrencePaused, false),
+      ne(jobsTable.status, "cancelled"),
+    ));
+
+  return roots.flatMap(root => {
+    if (!root.recurrenceRule) return [];
+    const rule = root.recurrenceRule as unknown as RecurrenceRule;
+    const currentCount = root.recurrenceCount ?? 0;
+    const nextDate = nthOccurrenceAfterRoot(rule, root.scheduledAt, currentCount);
+    if (!nextDate) return [];
+    return [{
+      rootJobId: root.id,
+      title: root.title,
+      nextDate: nextDate.toISOString(),
+      wouldGenerate: nextDate <= lookahead,
+    }];
+  });
+}
+
+/** Dev/Test Panel: actually runs the recurrence generation pass scoped to this tenant right now. */
+export async function runRecurrenceForTenantNow(tenantId: number) {
+  const now = new Date();
+  const lookahead = new Date(now.getTime() + LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000);
+
+  const roots = await db
+    .select()
+    .from(jobsTable)
+    .where(and(
+      eq(jobsTable.tenantId, tenantId),
+      isNotNull(jobsTable.recurrenceRule),
+      isNull(jobsTable.recurrenceParentId),
+      eq(jobsTable.isRecurrencePaused, false),
+      ne(jobsTable.status, "cancelled"),
+    ));
+
+  const results: Array<{ rootJobId: number; title: string; generated: boolean; newJobId?: number }> = [];
+
+  for (const root of roots) {
+    if (!root.recurrenceRule) continue;
+    const rule = root.recurrenceRule as unknown as RecurrenceRule;
+    const currentCount = root.recurrenceCount ?? 0;
+    const nextDate = nthOccurrenceAfterRoot(rule, root.scheduledAt, currentCount);
+    if (!nextDate || nextDate > lookahead) { results.push({ rootJobId: root.id, title: root.title, generated: false }); continue; }
+
+    let newJobId: number | undefined;
+    try {
+      await db.transaction(async tx => {
+        const claimed = await tx.execute(sql`
+          UPDATE jobs SET recurrence_count = recurrence_count + 1
+          WHERE id = ${root.id} AND recurrence_count = ${currentCount}
+        `);
+        if ((claimed as unknown as { rowCount: number }).rowCount === 0) throw new Error("CAS_MISS");
+
+        const [inserted] = await tx.insert(jobsTable).values({
+          tenantId: root.tenantId,
+          title: root.title,
+          description: root.description,
+          status: "scheduled",
+          priority: root.priority,
+          customerId: root.customerId,
+          propertyId: root.propertyId,
+          assigneeId: root.assigneeId,
+          crewId: root.crewId,
+          blueprintId: root.blueprintId,
+          scheduledAt: nextDate,
+          estimatedDuration: root.estimatedDuration,
+          lineItems: root.lineItems,
+          totalAmount: root.totalAmount,
+          recurrenceParentId: root.id,
+          recurrenceIndex: currentCount,
+        }).returning({ id: jobsTable.id });
+        newJobId = inserted.id;
+      });
+      results.push({ rootJobId: root.id, title: root.title, generated: true, newJobId });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg !== "CAS_MISS") logger.error({ err, rootJobId: root.id }, "Dev-tools recurrence run failed");
+      results.push({ rootJobId: root.id, title: root.title, generated: false });
+    }
+  }
+  return results;
+}
+
 export function startRecurrenceScheduler() {
   logger.info("Starting recurrence scheduler (runs every hour)");
 

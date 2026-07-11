@@ -1081,7 +1081,255 @@ export interface Invoice {
   lineItems?: InvoiceLineItem[];
   /** @nullable */
   stripePaymentUrl?: string | null;
+  /** @nullable */
+  lobLetterId?: string | null;
+  /** @nullable */
+  lobStatus?: string | null;
   createdAt: string;
+}
+
+export interface BroadcastFilter {
+  tag?: string;
+  city?: string;
+  state?: string;
+  customerType?: string;
+  lastServiceBefore?: string;
+  lastServiceAfter?: string;
+  campaignId?: number;
+  allCustomers?: boolean;
+}
+
+export type BroadcastPreviewInputChannel = typeof BroadcastPreviewInputChannel[keyof typeof BroadcastPreviewInputChannel];
+
+
+export const BroadcastPreviewInputChannel = {
+  sms: 'sms',
+  email: 'email',
+} as const;
+
+export interface BroadcastPreviewInput {
+  channel: BroadcastPreviewInputChannel;
+  filter?: BroadcastFilter;
+}
+
+export type BroadcastPreviewResultSampleItem = {
+  id: number;
+  name: string;
+  /** @nullable */
+  contact?: string | null;
+};
+
+export interface BroadcastPreviewResult {
+  count: number;
+  sample: BroadcastPreviewResultSampleItem[];
+}
+
+export type SendBroadcastInputChannel = typeof SendBroadcastInputChannel[keyof typeof SendBroadcastInputChannel];
+
+
+export const SendBroadcastInputChannel = {
+  sms: 'sms',
+  email: 'email',
+} as const;
+
+export interface SendBroadcastInput {
+  channel: SendBroadcastInputChannel;
+  subject?: string;
+  body: string;
+  filter?: BroadcastFilter;
+}
+
+export interface BroadcastStats {
+  sent?: number;
+  failed?: number;
+  optedOut?: number;
+}
+
+export type BroadcastChannel = typeof BroadcastChannel[keyof typeof BroadcastChannel];
+
+
+export const BroadcastChannel = {
+  sms: 'sms',
+  email: 'email',
+} as const;
+
+export type BroadcastStatus = typeof BroadcastStatus[keyof typeof BroadcastStatus];
+
+
+export const BroadcastStatus = {
+  sending: 'sending',
+  completed: 'completed',
+  failed: 'failed',
+} as const;
+
+export interface Broadcast {
+  id: number;
+  tenantId: number;
+  channel: BroadcastChannel;
+  /** @nullable */
+  subject?: string | null;
+  body: string;
+  recipientFilter?: BroadcastFilter;
+  recipientCount: number;
+  status: BroadcastStatus;
+  stats?: BroadcastStats;
+  /** @nullable */
+  sentAt?: string | null;
+  /** @nullable */
+  createdBy?: number | null;
+  createdAt: string;
+}
+
+export type BroadcastRecipientStatus = typeof BroadcastRecipientStatus[keyof typeof BroadcastRecipientStatus];
+
+
+export const BroadcastRecipientStatus = {
+  sent: 'sent',
+  failed: 'failed',
+} as const;
+
+export interface BroadcastRecipient {
+  id: number;
+  broadcastId: number;
+  customerId: number;
+  customerName: string;
+  status: BroadcastRecipientStatus;
+  /** @nullable */
+  error?: string | null;
+  createdAt: string;
+}
+
+export type BroadcastDetail = Broadcast & {
+  recipients?: BroadcastRecipient[];
+};
+
+export type IntegrationSummaryName = typeof IntegrationSummaryName[keyof typeof IntegrationSummaryName];
+
+
+export const IntegrationSummaryName = {
+  bank: 'bank',
+  mailchimp: 'mailchimp',
+  lob: 'lob',
+  quickbooks: 'quickbooks',
+} as const;
+
+export interface IntegrationSummary {
+  name: IntegrationSummaryName;
+  displayName: string;
+  description: string;
+  connected: boolean;
+  /** @nullable */
+  connectedAt?: string | null;
+  /** @nullable */
+  lastSyncedAt?: string | null;
+  /** @nullable */
+  lastSyncStatus?: string | null;
+  errorCount: number;
+}
+
+export type IntegrationDetailConfig = {[key: string]: string};
+
+export type IntegrationDetail = IntegrationSummary & {
+  config?: IntegrationDetailConfig;
+};
+
+export type UpdateIntegrationInputConfig = {[key: string]: string};
+
+export interface UpdateIntegrationInput {
+  connected?: boolean;
+  config?: UpdateIntegrationInputConfig;
+}
+
+export interface IntegrationTestResult {
+  success: boolean;
+  error?: string;
+}
+
+export type IntegrationSyncLogStatus = typeof IntegrationSyncLogStatus[keyof typeof IntegrationSyncLogStatus];
+
+
+export const IntegrationSyncLogStatus = {
+  success: 'success',
+  error: 'error',
+} as const;
+
+export type IntegrationSyncLogDetail = { [key: string]: unknown };
+
+export interface IntegrationSyncLog {
+  id: number;
+  tenantId: number;
+  integration: string;
+  action: string;
+  status: IntegrationSyncLogStatus;
+  /** @nullable */
+  message?: string | null;
+  detail?: IntegrationSyncLogDetail;
+  createdAt: string;
+}
+
+export type BankTransactionStatus = typeof BankTransactionStatus[keyof typeof BankTransactionStatus];
+
+
+export const BankTransactionStatus = {
+  pending: 'pending',
+  imported: 'imported',
+  ignored: 'ignored',
+} as const;
+
+export interface BankTransaction {
+  id: number;
+  tenantId: number;
+  externalId: string;
+  date: string;
+  amount: number;
+  description: string;
+  /** @nullable */
+  merchantName?: string | null;
+  /** @nullable */
+  guessedCategory?: string | null;
+  /** @nullable */
+  guessedVendorId?: number | null;
+  status: BankTransactionStatus;
+  /** @nullable */
+  importedExpenseId?: number | null;
+  createdAt: string;
+}
+
+export interface SimulationRunInput {
+  dryRun?: boolean;
+  confirmProductionRun?: boolean;
+  jobId?: number;
+}
+
+export type SimulationResultDueItem = { [key: string]: unknown };
+
+export type SimulationResultJobsItem = { [key: string]: unknown };
+
+export type SimulationResultSeriesItem = { [key: string]: unknown };
+
+export type SimulationResultResultsItem = { [key: string]: unknown };
+
+export interface SimulationResult {
+  dryRun: boolean;
+  due?: SimulationResultDueItem[];
+  jobs?: SimulationResultJobsItem[];
+  series?: SimulationResultSeriesItem[];
+  results?: SimulationResultResultsItem[];
+  jobId?: number;
+  title?: string;
+  currentStatus?: string;
+  wouldAutoInvoice?: boolean;
+  estimatedAmount?: number;
+  invoiceGenerated?: boolean;
+  invoiceId?: number;
+}
+
+export interface CompletableJob {
+  jobId: number;
+  title: string;
+  customerName: string;
+  totalAmount: number;
+  wouldAutoInvoice: boolean;
 }
 
 export interface InvoiceLineItemInput {
@@ -2621,6 +2869,29 @@ export type ConvertVisitToJob201 = {
 export type RunRecurringTemplateNow200 = {
   success: boolean;
   invoiceId: number;
+};
+
+export type SyncBankTransactions200 = {
+  imported: number;
+  simulated: boolean;
+};
+
+export type GetQuickBooksAuthorizeUrl200 = {
+  url: string;
+};
+
+export type ListBankTransactionsParams = {
+status?: string;
+};
+
+export type ImportBankTransactionBody = {
+  vendorId?: number;
+  category?: string;
+};
+
+export type GetDevToolsEnvironment200 = {
+  isProduction: boolean;
+  environment: string;
 };
 
 export type GetJobProfitabilityReportParams = {

@@ -13,6 +13,7 @@ import {
   useGetBillingAutomationStatus, getGetBillingAutomationStatusQueryKey,
   useRetryBillingEmail,
   useListCustomers, getListCustomersQueryKey,
+  usePrintMailInvoice,
 } from '@workspace/api-client-react';
 import type { RecurringInvoiceTemplate, BillingLineItem } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -310,6 +311,16 @@ export default function FinancialsPage() {
   const deleteTemplate = useDeleteRecurringTemplate();
   const runNow = useRunRecurringTemplateNow();
   const retryEmail = useRetryBillingEmail();
+  const printMailInvoice = usePrintMailInvoice({
+    mutation: {
+      onSuccess: () => {
+        toast.success('Invoice mailed via Lob');
+        qc.invalidateQueries({ queryKey: getListInvoicesQueryKey() });
+        if (selectedInvoiceId) qc.invalidateQueries({ queryKey: getGetInvoiceQueryKey(selectedInvoiceId) });
+      },
+      onError: (err: any) => toast.error(err?.error ?? 'Failed to mail invoice'),
+    },
+  });
 
   // Fetch job for parts breakdown when the invoice is linked to a job
   const jobId = selectedInvoice?.jobId ?? null;
@@ -739,6 +750,24 @@ export default function FinancialsPage() {
                       <SelectItem value="cancelled">Cancelled</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+
+                {/* Print & Mail via Lob */}
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <p className="text-sm font-medium">Print & Mail</p>
+                    <p className="text-xs text-muted-foreground">
+                      {selectedInvoice.lobStatus ? `Mailed — status: ${selectedInvoice.lobStatus}` : 'Send a physical copy of this invoice via Lob'}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={printMailInvoice.isPending || !!selectedInvoice.lobLetterId}
+                    onClick={() => printMailInvoice.mutate({ id: selectedInvoice.id })}
+                  >
+                    {selectedInvoice.lobLetterId ? 'Mailed' : printMailInvoice.isPending ? 'Sending...' : 'Mail Invoice'}
+                  </Button>
                 </div>
 
                 <Separator />

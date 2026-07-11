@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { Upload, X, Star, Image, Video, Loader2, Trash2 } from 'lucide-react';
+import { Upload, X, Star, Image, Video, Loader2, Trash2, FileText, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { customFetch } from '@workspace/api-client-react';
@@ -22,7 +22,7 @@ interface MediaItem {
 }
 
 interface MediaGalleryProps {
-  entityType: 'property' | 'job';
+  entityType: 'property' | 'job' | 'equipment_maintenance';
   entityId: number;
   media: MediaItem[];
   onMediaAdded: () => void;
@@ -31,6 +31,8 @@ interface MediaGalleryProps {
   maxImageBytes?: number;
   maxVideoBytes?: number;
   readOnly?: boolean;
+  /** When true, only images and PDFs are accepted (no video). Used for receipts/documents. */
+  documentsOnly?: boolean;
 }
 
 /** Prefer a pre-signed GCS URL; fall back to the proxy route (dev / no sidecar). */
@@ -38,6 +40,14 @@ function resolveUrl(item: MediaItem): string {
   if (item.signedUrl) return item.signedUrl;
   const base = import.meta.env.BASE_URL.replace(/\/$/, '');
   return `${base}/api/storage${item.fileUrl}`;
+}
+
+function mediaEndpointBase(entityType: MediaGalleryProps['entityType'], entityId: number): string {
+  switch (entityType) {
+    case 'property': return `/api/properties/${entityId}/media`;
+    case 'job': return `/api/jobs/${entityId}/media`;
+    case 'equipment_maintenance': return `/api/equipment/maintenance/${entityId}/media`;
+  }
 }
 
 export default function MediaGallery({
@@ -50,6 +60,7 @@ export default function MediaGallery({
   maxImageBytes = 10 * 1024 * 1024,  // 10 MB
   maxVideoBytes = 100 * 1024 * 1024, // 100 MB
   readOnly = false,
+  documentsOnly = false,
 }: MediaGalleryProps) {
   const [lightboxItem, setLightboxItem] = useState<MediaItem | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -62,6 +73,13 @@ export default function MediaGallery({
     if (!file) return;
 
     const isVideo = file.type.startsWith('video/');
+    const isPdf = file.type === 'application/pdf';
+    const isImage = file.type.startsWith('image/');
+    if (documentsOnly && !isImage && !isPdf) {
+      toast.error('Only images and PDFs are allowed.');
+      e.target.value = '';
+      return;
+    }
     const maxBytes = isVideo ? maxVideoBytes : maxImageBytes;
 
     if (file.size > maxBytes) {
@@ -91,7 +109,7 @@ export default function MediaGallery({
       if (!uploadRes.ok) throw new Error('Upload to storage failed');
 
       // Step 3: save attachment record
-      const endpoint = entityType === 'property' ? `/api/properties/${entityId}/media` : `/api/jobs/${entityId}/media`;
+      const endpoint = mediaEndpointBase(entityType, entityId);
       await customFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -117,9 +135,7 @@ export default function MediaGallery({
   const handleDelete = async (item: MediaItem) => {
     setDeletingId(item.id);
     try {
-      const endpoint = entityType === 'property'
-        ? `/api/properties/${entityId}/media/${item.id}`
-        : `/api/jobs/${entityId}/media/${item.id}`;
+      const endpoint = `${mediaEndpointBase(entityType, entityId)}/${item.id}`;
       await customFetch(endpoint, { method: 'DELETE' });
       toast.success('Removed');
       onMediaDeleted();
@@ -158,7 +174,7 @@ export default function MediaGallery({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*,video/*"
+            accept={documentsOnly ? 'image/*,application/pdf' : 'image/*,video/*'}
             className="hidden"
             onChange={handleFileSelect}
           />
@@ -172,17 +188,19 @@ export default function MediaGallery({
             {uploading ? (
               <><Loader2 className="w-4 h-4 animate-spin" /> Uploading...</>
             ) : (
-              <><Upload className="w-4 h-4" /> Upload Photo / Video</>
+              <><Upload className="w-4 h-4" /> {documentsOnly ? 'Upload Receipt / Photo' : 'Upload Photo / Video'}</>
             )}
           </Button>
-          <span className="text-xs text-muted-foreground">Images ≤ 10 MB · Videos ≤ 100 MB</span>
+          <span className="text-xs text-muted-foreground">
+            {documentsOnly ? 'Images or PDFs ≤ 10 MB' : 'Images ≤ 10 MB · Videos ≤ 100 MB'}
+          </span>
         </div>
       )}
 
       {media.length === 0 ? (
         <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
           <Image className="w-8 h-8 mx-auto mb-2 opacity-30" />
-          <p className="text-sm">No media uploaded yet.</p>
+          <p className="text-sm">No {documentsOnly ? 'attachments' : 'media'} uploaded yet.</p>
           {!readOnly && (
             <Button
               variant="outline"
@@ -191,7 +209,7 @@ export default function MediaGallery({
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
             >
-              <Upload className="w-4 h-4" /> Add First Photo
+              <Upload className="w-4 h-4" /> {documentsOnly ? 'Add First Attachment' : 'Add First Photo'}
             </Button>
           )}
         </div>
@@ -199,6 +217,7 @@ export default function MediaGallery({
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
           {media.map(item => {
             const isVideo = item.mimeType.startsWith('video/');
+            const isPdf = item.mimeType === 'application/pdf';
             const serveUrl = resolveUrl(item);
             return (
               <div
@@ -210,6 +229,11 @@ export default function MediaGallery({
                   <div className="w-full h-full flex items-center justify-center bg-slate-800">
                     <Video className="w-8 h-8 text-white opacity-70" />
                     <Badge className="absolute bottom-2 left-2 text-xs" variant="secondary">Video</Badge>
+                  </div>
+                ) : isPdf ? (
+                  <div className="w-full h-full flex items-center justify-center bg-slate-100">
+                    <FileText className="w-8 h-8 text-slate-500" />
+                    <Badge className="absolute bottom-2 left-2 text-xs" variant="secondary">PDF</Badge>
                   </div>
                 ) : (
                   <img
@@ -265,7 +289,12 @@ export default function MediaGallery({
       <Dialog open={!!lightboxItem} onOpenChange={open => { if (!open) setLightboxItem(null); }}>
         <DialogContent className="max-w-3xl w-full p-4">
           <DialogHeader>
-            <DialogTitle>{lightboxItem?.caption ?? (lightboxItem?.mimeType?.startsWith('video/') ? 'Video' : 'Photo')}</DialogTitle>
+            <DialogTitle>
+              {lightboxItem?.caption ?? (
+                lightboxItem?.mimeType?.startsWith('video/') ? 'Video' :
+                lightboxItem?.mimeType === 'application/pdf' ? 'Document' : 'Photo'
+              )}
+            </DialogTitle>
           </DialogHeader>
           {lightboxItem && (
             <div className="mt-2">
@@ -275,6 +304,11 @@ export default function MediaGallery({
                   controls
                   className="w-full rounded-lg max-h-[70vh]"
                 />
+              ) : lightboxItem.mimeType === 'application/pdf' ? (
+                <div className="flex flex-col items-center gap-4 py-12 border rounded-lg bg-muted">
+                  <FileText className="w-16 h-16 text-slate-400" />
+                  <p className="text-sm text-muted-foreground">PDF document</p>
+                </div>
               ) : (
                 <img
                   src={resolveUrl(lightboxItem)}
@@ -284,7 +318,18 @@ export default function MediaGallery({
               )}
               <div className="mt-3 flex items-center justify-between text-sm text-muted-foreground">
                 <span>{new Date(lightboxItem.createdAt).toLocaleDateString()}</span>
-                <span>{(lightboxItem.sizeBytes / 1024).toFixed(0)} KB · {lightboxItem.mimeType}</span>
+                <div className="flex items-center gap-3">
+                  <span>{(lightboxItem.sizeBytes / 1024).toFixed(0)} KB · {lightboxItem.mimeType}</span>
+                  <a
+                    href={resolveUrl(lightboxItem)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download
+                    className="inline-flex items-center gap-1 text-primary hover:underline"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Download
+                  </a>
+                </div>
               </div>
             </div>
           )}

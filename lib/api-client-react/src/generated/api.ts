@@ -12276,6 +12276,228 @@ export const useDeleteJobMedia = <TError = ErrorType<unknown>,
       return useMutation(getDeleteJobMediaMutationOptions(options));
     }
 
+export const getListEquipmentMaintenanceMediaUrl = (id: number,) => {
+
+
+
+
+  return `/api/equipment/maintenance/${id}/media`
+}
+
+/**
+ * @summary List media attachments for an equipment maintenance record
+ */
+export const listEquipmentMaintenanceMedia = async (id: number, options?: RequestInit): Promise<MediaAttachment[]> => {
+
+  return customFetch<MediaAttachment[]>(getListEquipmentMaintenanceMediaUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListEquipmentMaintenanceMediaQueryKey = (id: number,) => {
+    return [
+    `/api/equipment/maintenance/${id}/media`
+    ] as const;
+    }
+
+
+export const getListEquipmentMaintenanceMediaQueryOptions = <TData = Awaited<ReturnType<typeof listEquipmentMaintenanceMedia>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEquipmentMaintenanceMedia>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListEquipmentMaintenanceMediaQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listEquipmentMaintenanceMedia>>> = ({ signal }) => listEquipmentMaintenanceMedia(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listEquipmentMaintenanceMedia>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListEquipmentMaintenanceMediaQueryResult = NonNullable<Awaited<ReturnType<typeof listEquipmentMaintenanceMedia>>>
+export type ListEquipmentMaintenanceMediaQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List media attachments for an equipment maintenance record
+ */
+
+export function useListEquipmentMaintenanceMedia<TData = Awaited<ReturnType<typeof listEquipmentMaintenanceMedia>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEquipmentMaintenanceMedia>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListEquipmentMaintenanceMediaQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getAddEquipmentMaintenanceMediaUrl = (id: number,) => {
+
+
+
+
+  return `/api/equipment/maintenance/${id}/media`
+}
+
+/**
+ * @summary Add a media attachment to an equipment maintenance record
+ */
+export const addEquipmentMaintenanceMedia = async (id: number,
+    addMediaInput: AddMediaInput, options?: RequestInit): Promise<MediaAttachment> => {
+
+  return customFetch<MediaAttachment>(getAddEquipmentMaintenanceMediaUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(addMediaInput)
+  }
+);}
+
+
+
+
+
+export const getAddEquipmentMaintenanceMediaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addEquipmentMaintenanceMedia>>, TError,{id: number;data: BodyType<AddMediaInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof addEquipmentMaintenanceMedia>>, TError,{id: number;data: BodyType<AddMediaInput>}, TContext> => {
+
+const mutationKey = ['addEquipmentMaintenanceMedia'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addEquipmentMaintenanceMedia>>, {id: number;data: BodyType<AddMediaInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  addEquipmentMaintenanceMedia(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AddEquipmentMaintenanceMediaMutationResult = NonNullable<Awaited<ReturnType<typeof addEquipmentMaintenanceMedia>>>
+    export type AddEquipmentMaintenanceMediaMutationBody = BodyType<AddMediaInput>
+    export type AddEquipmentMaintenanceMediaMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Add a media attachment to an equipment maintenance record
+ */
+export const useAddEquipmentMaintenanceMedia = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addEquipmentMaintenanceMedia>>, TError,{id: number;data: BodyType<AddMediaInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof addEquipmentMaintenanceMedia>>,
+        TError,
+        {id: number;data: BodyType<AddMediaInput>},
+        TContext
+      > => {
+      return useMutation(getAddEquipmentMaintenanceMediaMutationOptions(options));
+    }
+
+export const getDeleteEquipmentMaintenanceMediaUrl = (id: number,
+    mediaId: number,) => {
+
+
+
+
+  return `/api/equipment/maintenance/${id}/media/${mediaId}`
+}
+
+/**
+ * @summary Delete a media attachment from an equipment maintenance record
+ */
+export const deleteEquipmentMaintenanceMedia = async (id: number,
+    mediaId: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteEquipmentMaintenanceMediaUrl(id,mediaId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteEquipmentMaintenanceMediaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteEquipmentMaintenanceMedia>>, TError,{id: number;mediaId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteEquipmentMaintenanceMedia>>, TError,{id: number;mediaId: number}, TContext> => {
+
+const mutationKey = ['deleteEquipmentMaintenanceMedia'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteEquipmentMaintenanceMedia>>, {id: number;mediaId: number}> = (props) => {
+          const {id,mediaId} = props ?? {};
+
+          return  deleteEquipmentMaintenanceMedia(id,mediaId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteEquipmentMaintenanceMediaMutationResult = NonNullable<Awaited<ReturnType<typeof deleteEquipmentMaintenanceMedia>>>
+
+    export type DeleteEquipmentMaintenanceMediaMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a media attachment from an equipment maintenance record
+ */
+export const useDeleteEquipmentMaintenanceMedia = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteEquipmentMaintenanceMedia>>, TError,{id: number;mediaId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteEquipmentMaintenanceMedia>>,
+        TError,
+        {id: number;mediaId: number},
+        TContext
+      > => {
+      return useMutation(getDeleteEquipmentMaintenanceMediaMutationOptions(options));
+    }
+
 export const getSetCustomerProfilePhotoUrl = (id: number,) => {
 
 

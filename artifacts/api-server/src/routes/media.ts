@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
-import { mediaAttachmentsTable, propertiesTable, jobsTable, customersTable } from "@workspace/db";
+import { mediaAttachmentsTable, propertiesTable, jobsTable, customersTable, equipmentMaintenanceTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -254,6 +254,90 @@ router.patch("/properties/:id/media/:mediaId", async (req: Request, res: Respons
 
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
   res.json(updated);
+});
+
+// ── Equipment Maintenance Media ─────────────────────────────────────────────────
+
+router.get("/equipment/maintenance/:id/media", async (req: Request, res: Response): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const maintenanceId = Number(req.params.id);
+
+  const [record] = await db.select({ id: equipmentMaintenanceTable.id })
+    .from(equipmentMaintenanceTable)
+    .where(and(eq(equipmentMaintenanceTable.id, maintenanceId), eq(equipmentMaintenanceTable.tenantId, tenantId)))
+    .limit(1);
+  if (!record) { res.status(404).json({ error: "Maintenance record not found" }); return; }
+
+  const media = await db.select().from(mediaAttachmentsTable)
+    .where(and(
+      eq(mediaAttachmentsTable.tenantId, tenantId),
+      eq(mediaAttachmentsTable.entityType, "equipment_maintenance"),
+      eq(mediaAttachmentsTable.entityId, maintenanceId),
+    ))
+    .orderBy(mediaAttachmentsTable.createdAt);
+
+  res.json(await withSignedUrls(media));
+});
+
+router.post("/equipment/maintenance/:id/media", async (req: Request, res: Response): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  const maintenanceId = Number(req.params.id);
+
+  const [record] = await db.select({ id: equipmentMaintenanceTable.id })
+    .from(equipmentMaintenanceTable)
+    .where(and(eq(equipmentMaintenanceTable.id, maintenanceId), eq(equipmentMaintenanceTable.tenantId, tenantId)))
+    .limit(1);
+  if (!record) { res.status(404).json({ error: "Maintenance record not found" }); return; }
+
+  const { fileKey, fileUrl, mimeType, sizeBytes, caption } = req.body as {
+    fileKey?: string; fileUrl?: string; mimeType?: string;
+    sizeBytes?: number; caption?: string;
+  };
+  if (!fileKey || !fileUrl || !mimeType || !sizeBytes) {
+    res.status(400).json({ error: "fileKey, fileUrl, mimeType, sizeBytes are required" });
+    return;
+  }
+
+  const isImage = mimeType.startsWith("image/");
+  const isPdf = mimeType === "application/pdf";
+  if (!isImage && !isPdf) {
+    res.status(400).json({ error: "Only images and PDF receipts are allowed" });
+    return;
+  }
+
+  const [attachment] = await db.insert(mediaAttachmentsTable).values({
+    tenantId,
+    entityType: "equipment_maintenance",
+    entityId: maintenanceId,
+    fileKey,
+    fileUrl,
+    mimeType,
+    sizeBytes: Number(sizeBytes),
+    caption: caption ?? null,
+    isCover: false,
+    createdBy: userId,
+  }).returning();
+
+  res.status(201).json(attachment);
+});
+
+router.delete("/equipment/maintenance/:id/media/:mediaId", async (req: Request, res: Response): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const maintenanceId = Number(req.params.id);
+  const mediaId = Number(req.params.mediaId);
+
+  const [deleted] = await db.delete(mediaAttachmentsTable)
+    .where(and(
+      eq(mediaAttachmentsTable.id, mediaId),
+      eq(mediaAttachmentsTable.tenantId, tenantId),
+      eq(mediaAttachmentsTable.entityType, "equipment_maintenance"),
+      eq(mediaAttachmentsTable.entityId, maintenanceId),
+    ))
+    .returning();
+
+  if (!deleted) { res.status(404).json({ error: "Not found" }); return; }
+  res.status(204).end();
 });
 
 // ── Customer Profile Photo ────────────────────────────────────────────────────

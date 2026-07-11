@@ -10,6 +10,8 @@ import {
   getListEquipmentMaintenanceQueryKey,
   useCreateEquipmentMaintenance,
   useDeleteEquipmentMaintenance,
+  useListEquipmentMaintenanceMedia,
+  getListEquipmentMaintenanceMediaQueryKey,
   useListEquipmentFuelLogs,
   getListEquipmentFuelLogsQueryKey,
   useCreateEquipmentFuelLog,
@@ -31,9 +33,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
+import MediaGallery from '@/components/media/MediaGallery';
 import {
   Wrench, Plus, Trash2, AlertTriangle, TrendingUp, Fuel, Clock, DollarSign,
-  ChevronRight, X, CheckCircle2, BarChart3, Archive,
+  ChevronRight, ChevronDown, X, CheckCircle2, BarChart3, Archive, Paperclip,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -100,6 +103,81 @@ function equipmentToForm(e: Equipment): EquipmentFormState {
     currentMiles: e.currentMiles != null ? String(e.currentMiles) : '',
     notes: e.notes ?? '',
   };
+}
+
+// ── Maintenance Record Row (with receipt/photo attachments) ────────────────────
+
+function MaintenanceRecordItem({
+  record,
+  isTechnician,
+  onDelete,
+}: {
+  record: EquipmentMaintenance;
+  isTechnician: boolean;
+  onDelete: (id: number) => void;
+}) {
+  const qc = useQueryClient();
+  const [attachmentsOpen, setAttachmentsOpen] = useState(false);
+  const { data: attachments } = useListEquipmentMaintenanceMedia(record.id, {
+    query: {
+      queryKey: getListEquipmentMaintenanceMediaQueryKey(record.id),
+      enabled: attachmentsOpen,
+    },
+  });
+
+  const refetchAttachments = () => {
+    qc.invalidateQueries({ queryKey: getListEquipmentMaintenanceMediaQueryKey(record.id) });
+  };
+
+  return (
+    <div className="rounded-lg border p-3">
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-sm font-medium">{record.description}</p>
+            <Badge variant="outline" className="text-xs">{fmt$(record.cost)}</Badge>
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">{record.date}{record.vendor ? ` · ${record.vendor}` : ''}</p>
+          {(record.nextServiceDueDate || record.nextServiceDueHours || record.nextServiceDueMiles) && (
+            <p className="text-xs text-primary mt-1">
+              Next service: {[
+                record.nextServiceDueDate,
+                record.nextServiceDueHours ? `${record.nextServiceDueHours} hrs` : null,
+                record.nextServiceDueMiles ? `${record.nextServiceDueMiles} mi` : null,
+              ].filter(Boolean).join(' · ')}
+            </p>
+          )}
+          <button
+            type="button"
+            className="text-xs text-muted-foreground hover:text-foreground mt-2 flex items-center gap-1"
+            onClick={() => setAttachmentsOpen(o => !o)}
+          >
+            {attachmentsOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+            <Paperclip className="w-3 h-3" />
+            {attachmentsOpen ? 'Hide' : 'Show'} receipts & photos{attachments && attachments.length > 0 ? ` (${attachments.length})` : ''}
+          </button>
+        </div>
+        {!isTechnician && (
+          <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground hover:text-destructive shrink-0" onClick={() => onDelete(record.id)}>
+            <Trash2 className="w-3.5 h-3.5" />
+          </Button>
+        )}
+      </div>
+      {attachmentsOpen && (
+        <div className="mt-3 pt-3 border-t">
+          <MediaGallery
+            entityType="equipment_maintenance"
+            entityId={record.id}
+            media={attachments ?? []}
+            onMediaAdded={refetchAttachments}
+            onMediaDeleted={refetchAttachments}
+            readOnly={isTechnician}
+            documentsOnly
+          />
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Equipment Detail Panel ─────────────────────────────────────────────────────
@@ -368,29 +446,12 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
             {maintenance && maintenance.length > 0 ? (
               <div className="space-y-2">
                 {maintenance.map(m => (
-                  <div key={m.id} className="rounded-lg border p-3 flex items-start gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-medium">{m.description}</p>
-                        <Badge variant="outline" className="text-xs">{fmt$(m.cost)}</Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">{m.date}{m.vendor ? ` · ${m.vendor}` : ''}</p>
-                      {(m.nextServiceDueDate || m.nextServiceDueHours || m.nextServiceDueMiles) && (
-                        <p className="text-xs text-primary mt-1">
-                          Next service: {[
-                            m.nextServiceDueDate,
-                            m.nextServiceDueHours ? `${m.nextServiceDueHours} hrs` : null,
-                            m.nextServiceDueMiles ? `${m.nextServiceDueMiles} mi` : null,
-                          ].filter(Boolean).join(' · ')}
-                        </p>
-                      )}
-                    </div>
-                    {!isTechnician && (
-                      <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground hover:text-destructive shrink-0" onClick={() => handleDeleteMaintenance(m.id)}>
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    )}
-                  </div>
+                  <MaintenanceRecordItem
+                    key={m.id}
+                    record={m}
+                    isTechnician={isTechnician}
+                    onDelete={handleDeleteMaintenance}
+                  />
                 ))}
               </div>
             ) : (

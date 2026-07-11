@@ -4635,6 +4635,73 @@ export const DeleteJobMediaResponse = zod.void()
 
 
 /**
+ * @summary List media attachments for an equipment maintenance record
+ */
+export const ListEquipmentMaintenanceMediaParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListEquipmentMaintenanceMediaResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "entityType": zod.string(),
+  "entityId": zod.number(),
+  "fileKey": zod.string(),
+  "fileUrl": zod.string(),
+  "mimeType": zod.string(),
+  "sizeBytes": zod.number(),
+  "caption": zod.string().nullish(),
+  "isCover": zod.boolean(),
+  "createdBy": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+export const ListEquipmentMaintenanceMediaResponse = zod.array(ListEquipmentMaintenanceMediaResponseItem)
+
+
+/**
+ * @summary Add a media attachment to an equipment maintenance record
+ */
+export const AddEquipmentMaintenanceMediaParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AddEquipmentMaintenanceMediaBody = zod.object({
+  "fileKey": zod.string(),
+  "fileUrl": zod.string(),
+  "mimeType": zod.string(),
+  "sizeBytes": zod.number(),
+  "caption": zod.string().optional(),
+  "isCover": zod.boolean().optional()
+})
+
+export const AddEquipmentMaintenanceMediaResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "entityType": zod.string(),
+  "entityId": zod.number(),
+  "fileKey": zod.string(),
+  "fileUrl": zod.string(),
+  "mimeType": zod.string(),
+  "sizeBytes": zod.number(),
+  "caption": zod.string().nullish(),
+  "isCover": zod.boolean(),
+  "createdBy": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a media attachment from an equipment maintenance record
+ */
+export const DeleteEquipmentMaintenanceMediaParams = zod.object({
+  "id": zod.coerce.number(),
+  "mediaId": zod.coerce.number()
+})
+
+export const DeleteEquipmentMaintenanceMediaResponse = zod.void()
+
+
+/**
  * @summary Set the profile photo for a customer
  */
 export const SetCustomerProfilePhotoParams = zod.object({

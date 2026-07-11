@@ -3235,6 +3235,70 @@ paths:
         '204':
           description: Deleted
 
+  /equipment/maintenance/{id}/media:
+    get:
+      tags: [equipment]
+      operationId: listEquipmentMaintenanceMedia
+      summary: List media attachments for an equipment maintenance record
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of media attachments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MediaAttachment'
+    post:
+      tags: [equipment]
+      operationId: addEquipmentMaintenanceMedia
+      summary: Add a media attachment to an equipment maintenance record
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddMediaInput'
+      responses:
+        '201':
+          description: Media attachment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaAttachment'
+
+  /equipment/maintenance/{id}/media/{mediaId}:
+    delete:
+      tags: [equipment]
+      operationId: deleteEquipmentMaintenanceMedia
+      summary: Delete a media attachment from an equipment maintenance record
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: mediaId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Deleted
+
   /customers/{id}/profile-photo:
     patch:
       tags: [customers]

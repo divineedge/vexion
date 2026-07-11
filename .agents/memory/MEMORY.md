@@ -11,3 +11,4 @@
 - [Orval path-param type collision](orval-path-param-type-collision.md) — one operation shape emits a same-named zod const + TS type causing TS2308; delete the specific generated/types/index.ts line after each codegen run
 - [lib/db dist goes stale after schema edits](db-schema-dist-stale.md) — rebuild `lib/db` via `tsc --build --force` after schema changes, or downstream packages show phantom missing-export errors
 - [Expo Router typed routes staleness](expo-router-typed-routes-staleness.md) — new route files fail `pathname` typecheck until .expo/types/router.d.ts is regenerated
+- [Dev DB schema drift](db-schema-drift-dev.md) — existing route 500s with opaque "Failed query" on a schema column? Check dev DB has that column (`psql \d table`); run `pnpm --filter @workspace/db run push` if missing

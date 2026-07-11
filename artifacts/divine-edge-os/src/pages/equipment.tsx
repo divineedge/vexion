@@ -5,6 +5,7 @@ import {
   useCreateEquipment,
   useUpdateEquipment,
   useDeleteEquipment,
+  useHardDeleteEquipment,
   useListEquipmentMaintenance,
   getListEquipmentMaintenanceQueryKey,
   useCreateEquipmentMaintenance,
@@ -32,7 +33,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Separator } from '@/components/ui/separator';
 import {
   Wrench, Plus, Trash2, AlertTriangle, TrendingUp, Fuel, Clock, DollarSign,
-  ChevronRight, X, CheckCircle2, BarChart3,
+  ChevronRight, X, CheckCircle2, BarChart3, Archive,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -46,6 +47,16 @@ const EQUIPMENT_TYPES = [
   { value: 'chainsaw', label: 'Chainsaw' },
   { value: 'other', label: 'Other' },
 ];
+
+/**
+ * The equipment list query is parameterized by `includeArchived`, so a plain
+ * `getListEquipmentQueryKey()` invalidation only matches by key-prefix. Use a predicate
+ * instead so every variant of the list query (with or without archived items) is refreshed,
+ * regardless of which filter is currently active on the page.
+ */
+function invalidateEquipmentLists(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ predicate: query => query.queryKey[0] === getListEquipmentQueryKey()[0] });
+}
 
 function fmt$(v: number | null | undefined) {
   if (v == null) return '—';
@@ -140,7 +151,7 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
       onSuccess: () => {
         toast.success('Maintenance record added');
         qc.invalidateQueries({ queryKey: getListEquipmentMaintenanceQueryKey(equipment.id) });
-        qc.invalidateQueries({ queryKey: getListEquipmentQueryKey() });
+        invalidateEquipmentLists(qc);
         setMaintOpen(false);
         setMaintForm({ date: '', description: '', cost: '', vendor: '', nextServiceDueDate: '', nextServiceDueHours: '', nextServiceDueMiles: '' });
       },
@@ -176,7 +187,7 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
       onSuccess: () => {
         toast.success('Record deleted');
         qc.invalidateQueries({ queryKey: getListEquipmentMaintenanceQueryKey(equipment.id) });
-        qc.invalidateQueries({ queryKey: getListEquipmentQueryKey() });
+        invalidateEquipmentLists(qc);
       },
       onError: () => toast.error('Failed to delete'),
     });
@@ -188,7 +199,7 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
       onSuccess: () => {
         toast.success('Fuel log deleted');
         qc.invalidateQueries({ queryKey: getListEquipmentFuelLogsQueryKey(equipment.id) });
-        qc.invalidateQueries({ queryKey: getListEquipmentQueryKey() });
+        invalidateEquipmentLists(qc);
       },
       onError: () => toast.error('Failed to delete'),
     });
@@ -487,12 +498,17 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
 
 export default function EquipmentPage() {
   const qc = useQueryClient();
-  const { isTechnician } = useAuth();
+  const { isTechnician, isOwner } = useAuth();
 
-  const { data: equipment, isLoading } = useListEquipment({ query: { queryKey: getListEquipmentQueryKey() } });
+  const [includeArchived, setIncludeArchived] = useState(false);
+  const { data: equipment, isLoading } = useListEquipment(
+    { includeArchived },
+    { query: { queryKey: getListEquipmentQueryKey({ includeArchived }) } },
+  );
   const createEquipment = useCreateEquipment();
   const updateEquipment = useUpdateEquipment();
   const deleteEquipment = useDeleteEquipment();
+  const hardDeleteEquipment = useHardDeleteEquipment();
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -531,7 +547,7 @@ export default function EquipmentPage() {
       updateEquipment.mutate({ id: editingItem.id, data: payload }, {
         onSuccess: () => {
           toast.success('Equipment updated');
-          qc.invalidateQueries({ queryKey: getListEquipmentQueryKey() });
+          invalidateEquipmentLists(qc);
           setFormOpen(false);
         },
         onError: () => toast.error('Failed to update equipment'),
@@ -540,7 +556,7 @@ export default function EquipmentPage() {
       createEquipment.mutate({ data: payload }, {
         onSuccess: () => {
           toast.success('Equipment added');
-          qc.invalidateQueries({ queryKey: getListEquipmentQueryKey() });
+          invalidateEquipmentLists(qc);
           setFormOpen(false);
         },
         onError: () => toast.error('Failed to add equipment'),
@@ -549,14 +565,26 @@ export default function EquipmentPage() {
   };
 
   const handleDelete = (id: number, name: string) => {
-    if (!window.confirm(`Delete "${name}"? This will remove all maintenance and fuel records.`)) return;
+    if (!window.confirm(`Archive "${name}"? It will be hidden from the active list, but its maintenance and fuel history will be kept.`)) return;
     deleteEquipment.mutate({ id }, {
       onSuccess: () => {
-        toast.success(`${name} deleted`);
-        qc.invalidateQueries({ queryKey: getListEquipmentQueryKey() });
+        toast.success(`${name} archived`);
+        invalidateEquipmentLists(qc);
         if (selectedId === id) setSelectedId(null);
       },
-      onError: () => toast.error('Failed to delete equipment'),
+      onError: () => toast.error('Failed to archive equipment'),
+    });
+  };
+
+  const handleHardDelete = (id: number, name: string) => {
+    if (!window.confirm(`Permanently delete "${name}"? This cannot be undone and will remove all maintenance and fuel records.`)) return;
+    hardDeleteEquipment.mutate({ id }, {
+      onSuccess: () => {
+        toast.success(`${name} permanently deleted`);
+        invalidateEquipmentLists(qc);
+        if (selectedId === id) setSelectedId(null);
+      },
+      onError: () => toast.error('Failed to permanently delete equipment'),
     });
   };
 
@@ -569,11 +597,22 @@ export default function EquipmentPage() {
           <h1 className="text-3xl font-bold tracking-tight">Equipment</h1>
           <p className="text-muted-foreground mt-1">Track operating costs, maintenance, and fuel for your fleet.</p>
         </div>
-        {!isTechnician && (
-          <Button onClick={openCreate} className="gap-2">
-            <Plus className="w-4 h-4" /> Add Equipment
-          </Button>
-        )}
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              className="w-4 h-4 rounded border-input"
+              checked={includeArchived}
+              onChange={e => setIncludeArchived(e.target.checked)}
+            />
+            Include archived
+          </label>
+          {!isTechnician && (
+            <Button onClick={openCreate} className="gap-2">
+              <Plus className="w-4 h-4" /> Add Equipment
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Summary banner */}
@@ -611,7 +650,7 @@ export default function EquipmentPage() {
             return (
               <Card
                 key={item.id}
-                className={`cursor-pointer transition-all hover:shadow-md ${selectedId === item.id ? 'border-primary ring-1 ring-primary' : ''} ${item.sellRecommended ? 'border-destructive/40' : ''}`}
+                className={`cursor-pointer transition-all hover:shadow-md ${selectedId === item.id ? 'border-primary ring-1 ring-primary' : ''} ${item.sellRecommended ? 'border-destructive/40' : ''} ${item.archivedAt ? 'opacity-70' : ''}`}
                 onClick={() => setSelectedId(selectedId === item.id ? null : item.id)}
               >
                 <CardContent className="p-4">
@@ -628,7 +667,11 @@ export default function EquipmentPage() {
                             <AlertTriangle className="w-3 h-3" /> Sell Rec.
                           </Badge>
                         )}
-                        {!item.isActive && <Badge variant="outline" className="text-xs">Inactive</Badge>}
+                        {item.archivedAt ? (
+                          <Badge variant="outline" className="text-xs gap-1">
+                            <Archive className="w-3 h-3" /> Archived
+                          </Badge>
+                        ) : !item.isActive && <Badge variant="outline" className="text-xs">Inactive</Badge>}
                       </div>
                       <div className="flex items-center gap-4 mt-2 flex-wrap">
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
@@ -661,15 +704,20 @@ export default function EquipmentPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      {!isTechnician && (
+                      {!isTechnician && !item.archivedAt && (
                         <>
                           <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-primary" onClick={e => { e.stopPropagation(); openEdit(item); }}>
                             <Wrench className="w-3.5 h-3.5" />
                           </Button>
                           <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-destructive" onClick={e => { e.stopPropagation(); handleDelete(item.id, item.name); }}>
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Archive className="w-3.5 h-3.5" />
                           </Button>
                         </>
+                      )}
+                      {isOwner && item.archivedAt && (
+                        <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-destructive" title="Permanently delete" onClick={e => { e.stopPropagation(); handleHardDelete(item.id, item.name); }}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
                       )}
                       <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${selectedId === item.id ? 'rotate-90' : ''}`} />
                     </div>

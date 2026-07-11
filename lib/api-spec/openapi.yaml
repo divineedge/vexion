@@ -2365,6 +2365,13 @@ paths:
       operationId: listEquipment
       tags: [equipment]
       summary: List all equipment
+      parameters:
+        - name: includeArchived
+          in: query
+          required: false
+          description: When true, includes archived (soft-deleted) equipment in the results.
+          schema:
+            type: boolean
       responses:
         "200":
           description: Equipment list
@@ -2438,7 +2445,7 @@ paths:
     delete:
       operationId: deleteEquipment
       tags: [equipment]
-      summary: Delete equipment (admin/office only)
+      summary: Archive equipment (admin/office only) — soft-deletes and preserves maintenance/fuel history
       parameters:
         - name: id
           in: path
@@ -2447,7 +2454,24 @@ paths:
             type: integer
       responses:
         "204":
-          description: Deleted
+          description: Archived
+
+  /equipment/{id}/hard-delete:
+    delete:
+      operationId: hardDeleteEquipment
+      tags: [equipment]
+      summary: Permanently delete equipment and its maintenance/fuel history (owner/super-admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Permanently deleted
+        "403":
+          description: Owner role required
 
   /equipment/{id}/maintenance:
     get:
@@ -7986,6 +8010,8 @@ components:
           type: number
         isActive:
           type: boolean
+        archivedAt:
+          type: ["string", "null"]
         notes:
           type: ["string", "null"]
         costPerHour:

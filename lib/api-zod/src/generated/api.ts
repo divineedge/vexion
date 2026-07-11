@@ -3610,6 +3610,10 @@ export const ListPlansResponse = zod.array(ListPlansResponseItem)
 /**
  * @summary List all equipment
  */
+export const ListEquipmentQueryParams = zod.object({
+  "includeArchived": zod.coerce.boolean().optional().describe('When true, includes archived (soft-deleted) equipment in the results.')
+})
+
 export const ListEquipmentResponseItem = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
@@ -3624,6 +3628,7 @@ export const ListEquipmentResponseItem = zod.object({
   "totalRepairCost": zod.number(),
   "totalFuelCost": zod.number(),
   "isActive": zod.boolean(),
+  "archivedAt": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "costPerHour": zod.number().nullish(),
   "estimatedResaleValue": zod.number().nullish(),
@@ -3665,6 +3670,7 @@ export const CreateEquipmentResponse = zod.object({
   "totalRepairCost": zod.number(),
   "totalFuelCost": zod.number(),
   "isActive": zod.boolean(),
+  "archivedAt": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "costPerHour": zod.number().nullish(),
   "estimatedResaleValue": zod.number().nullish(),
@@ -3696,6 +3702,7 @@ export const GetEquipmentResponse = zod.object({
   "totalRepairCost": zod.number(),
   "totalFuelCost": zod.number(),
   "isActive": zod.boolean(),
+  "archivedAt": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "costPerHour": zod.number().nullish(),
   "estimatedResaleValue": zod.number().nullish(),
@@ -3740,6 +3747,7 @@ export const UpdateEquipmentResponse = zod.object({
   "totalRepairCost": zod.number(),
   "totalFuelCost": zod.number(),
   "isActive": zod.boolean(),
+  "archivedAt": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "costPerHour": zod.number().nullish(),
   "estimatedResaleValue": zod.number().nullish(),
@@ -3751,13 +3759,23 @@ export const UpdateEquipmentResponse = zod.object({
 
 
 /**
- * @summary Delete equipment (admin/office only)
+ * @summary Archive equipment (admin/office only) — soft-deletes and preserves maintenance/fuel history
  */
 export const DeleteEquipmentParams = zod.object({
   "id": zod.coerce.number()
 })
 
 export const DeleteEquipmentResponse = zod.void()
+
+
+/**
+ * @summary Permanently delete equipment and its maintenance/fuel history (owner/super-admin only)
+ */
+export const HardDeleteEquipmentParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const HardDeleteEquipmentResponse = zod.void()
 
 
 /**

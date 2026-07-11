@@ -26,6 +26,8 @@ export const equipmentTable = pgTable("equipment", {
   /** Running total of fuel costs — updated on each fuel log write */
   totalFuelCost: real("total_fuel_cost").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
+  /** Set when equipment is archived (soft-deleted) instead of hard-deleted; preserves maintenance/fuel history. */
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

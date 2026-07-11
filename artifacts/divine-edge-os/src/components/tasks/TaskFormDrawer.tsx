@@ -50,7 +50,7 @@ export function TaskFormDrawer({ open, onOpenChange, lockedContext, onCreated }:
   const customers = customersResponse?.items ?? [];
   const { data: jobs = [] } = useListJobs(undefined, { query: { enabled: open && contextType === 'job', queryKey: getListJobsQueryKey() } });
   const { data: properties = [] } = useListProperties(undefined, { query: { enabled: open && contextType === 'property', queryKey: getListPropertiesQueryKey() } });
-  const { data: equipmentList = [] } = useListEquipment({ query: { enabled: open && contextType === 'equipment', queryKey: getListEquipmentQueryKey() } });
+  const { data: equipmentList = [] } = useListEquipment(undefined, { query: { enabled: open && contextType === 'equipment', queryKey: getListEquipmentQueryKey() } });
 
   const createTask = useCreateTask({
     mutation: {

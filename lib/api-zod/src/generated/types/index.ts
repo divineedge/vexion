@@ -180,6 +180,7 @@ export * from './listBankTransactionsParams';
 export * from './listChemicalApplicationsParams';
 export * from './listCustomerPlansParams';
 export * from './listCustomersParams';
+export * from './listEquipmentParams';
 export * from './listEstimatesParams';
 export * from './listExpensesParams';
 export * from './listInventoryItemsParams';

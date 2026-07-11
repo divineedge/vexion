@@ -2604,6 +2604,8 @@ export interface Equipment {
   totalFuelCost: number;
   isActive: boolean;
   /** @nullable */
+  archivedAt?: string | null;
+  /** @nullable */
   notes?: string | null;
   /** @nullable */
   costPerHour?: number | null;
@@ -3437,6 +3439,13 @@ endDate?: string;
 propertyId?: number;
 applicatorId?: number;
 jobId?: number;
+};
+
+export type ListEquipmentParams = {
+/**
+ * When true, includes archived (soft-deleted) equipment in the results.
+ */
+includeArchived?: boolean;
 };
 
 export type ListTasksParams = {

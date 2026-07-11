@@ -119,6 +119,7 @@ import type {
   ListChemicalApplicationsParams,
   ListCustomerPlansParams,
   ListCustomersParams,
+  ListEquipmentParams,
   ListEstimatesParams,
   ListExpensesParams,
   ListInventoryItemsParams,
@@ -9077,20 +9078,27 @@ export function useListPlans<TData = Awaited<ReturnType<typeof listPlans>>, TErr
 
 
 
-export const getListEquipmentUrl = () => {
+export const getListEquipmentUrl = (params?: ListEquipmentParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/equipment`
+  return stringifiedParams.length > 0 ? `/api/equipment?${stringifiedParams}` : `/api/equipment`
 }
 
 /**
  * @summary List all equipment
  */
-export const listEquipment = async ( options?: RequestInit): Promise<Equipment[]> => {
+export const listEquipment = async (params?: ListEquipmentParams, options?: RequestInit): Promise<Equipment[]> => {
 
-  return customFetch<Equipment[]>(getListEquipmentUrl(),
+  return customFetch<Equipment[]>(getListEquipmentUrl(params),
   {
     ...options,
     method: 'GET'
@@ -9103,23 +9111,23 @@ export const listEquipment = async ( options?: RequestInit): Promise<Equipment[]
 
 
 
-export const getListEquipmentQueryKey = () => {
+export const getListEquipmentQueryKey = (params?: ListEquipmentParams,) => {
     return [
-    `/api/equipment`
+    `/api/equipment`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getListEquipmentQueryOptions = <TData = Awaited<ReturnType<typeof listEquipment>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEquipment>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListEquipmentQueryOptions = <TData = Awaited<ReturnType<typeof listEquipment>>, TError = ErrorType<unknown>>(params?: ListEquipmentParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEquipment>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getListEquipmentQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getListEquipmentQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof listEquipment>>> = ({ signal }) => listEquipment({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listEquipment>>> = ({ signal }) => listEquipment(params, { signal, ...requestOptions });
 
 
 
@@ -9137,11 +9145,11 @@ export type ListEquipmentQueryError = ErrorType<unknown>
  */
 
 export function useListEquipment<TData = Awaited<ReturnType<typeof listEquipment>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEquipment>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: ListEquipmentParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEquipment>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getListEquipmentQueryOptions(options)
+  const queryOptions = getListEquipmentQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -9383,7 +9391,7 @@ export const getDeleteEquipmentUrl = (id: number,) => {
 }
 
 /**
- * @summary Delete equipment (admin/office only)
+ * @summary Archive equipment (admin/office only) — soft-deletes and preserves maintenance/fuel history
  */
 export const deleteEquipment = async (id: number, options?: RequestInit): Promise<void> => {
 
@@ -9432,7 +9440,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type DeleteEquipmentMutationError = ErrorType<unknown>
 
     /**
- * @summary Delete equipment (admin/office only)
+ * @summary Archive equipment (admin/office only) — soft-deletes and preserves maintenance/fuel history
  */
 export const useDeleteEquipment = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteEquipment>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -9443,6 +9451,77 @@ export const useDeleteEquipment = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteEquipmentMutationOptions(options));
+    }
+
+export const getHardDeleteEquipmentUrl = (id: number,) => {
+
+
+
+
+  return `/api/equipment/${id}/hard-delete`
+}
+
+/**
+ * @summary Permanently delete equipment and its maintenance/fuel history (owner/super-admin only)
+ */
+export const hardDeleteEquipment = async (id: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getHardDeleteEquipmentUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getHardDeleteEquipmentMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof hardDeleteEquipment>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof hardDeleteEquipment>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['hardDeleteEquipment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof hardDeleteEquipment>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  hardDeleteEquipment(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type HardDeleteEquipmentMutationResult = NonNullable<Awaited<ReturnType<typeof hardDeleteEquipment>>>
+
+    export type HardDeleteEquipmentMutationError = ErrorType<void>
+
+    /**
+ * @summary Permanently delete equipment and its maintenance/fuel history (owner/super-admin only)
+ */
+export const useHardDeleteEquipment = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof hardDeleteEquipment>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof hardDeleteEquipment>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getHardDeleteEquipmentMutationOptions(options));
     }
 
 export const getListEquipmentMaintenanceUrl = (id: number,) => {

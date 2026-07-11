@@ -25,6 +25,8 @@ export interface Equipment {
   totalFuelCost: number;
   isActive: boolean;
   /** @nullable */
+  archivedAt?: string | null;
+  /** @nullable */
   notes?: string | null;
   /** @nullable */
   costPerHour?: number | null;

@@ -1,7 +1,8 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db, equipmentTable, equipmentMaintenanceTable, equipmentFuelLogsTable, tenantsTable, usersTable } from "@workspace/db";
-import { eq, and, desc, sum } from "drizzle-orm";
+import { eq, and, desc, sum, isNull } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
+import { isOwnerRole } from "../lib/roles";
 
 const router: IRouter = Router();
 
@@ -22,6 +23,18 @@ async function requireOfficeRole(req: Request, res: Response, next: NextFunction
   const role = await getUserRole(tenantId, userId);
   if (!role || role === "technician") {
     res.status(403).json({ error: "Admin or office role required" });
+    return;
+  }
+  next();
+}
+
+/** Hard-delete (with cascading history loss) is only available to the company owner / super-admin. */
+async function requireOwnerRole(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  const isOwner = await isOwnerRole(tenantId, userId);
+  if (!isOwner) {
+    res.status(403).json({ error: "Owner role required" });
     return;
   }
   next();
@@ -105,6 +118,7 @@ function formatEquipment(
     totalRepairCost: row.totalRepairCost,
     totalFuelCost: row.totalFuelCost,
     isActive: row.isActive,
+    archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
     notes: row.notes ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -127,8 +141,12 @@ async function getTenantThresholds(tenantId: number) {
 
 router.get("/equipment", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
+  const includeArchived = req.query.includeArchived === "true" || req.query.includeArchived === "1";
+  const whereClause = includeArchived
+    ? eq(equipmentTable.tenantId, tenantId)
+    : and(eq(equipmentTable.tenantId, tenantId), isNull(equipmentTable.archivedAt));
   const [rows, thresholds] = await Promise.all([
-    db.select().from(equipmentTable).where(eq(equipmentTable.tenantId, tenantId)).orderBy(equipmentTable.name),
+    db.select().from(equipmentTable).where(whereClause).orderBy(equipmentTable.name),
     getTenantThresholds(tenantId),
   ]);
   res.json(rows.map(r => formatEquipment(r, thresholds.repairThresholdPct, thresholds.resaleThresholdPct)));
@@ -188,6 +206,24 @@ router.patch("/equipment/:id", requireOfficeRole, async (req, res): Promise<void
 });
 
 router.delete("/equipment/:id", requireOfficeRole, async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+
+  // Verify ownership before touching anything
+  const owned = await requireEquipmentOwnership(id, tenantId, res);
+  if (!owned) return;
+
+  // Soft-delete: mark as archived and inactive, but keep all maintenance/fuel history intact.
+  await db.update(equipmentTable)
+    .set({ isActive: false, archivedAt: new Date() })
+    .where(and(eq(equipmentTable.id, id), eq(equipmentTable.tenantId, tenantId)));
+
+  res.sendStatus(204);
+});
+
+// Permanently delete equipment and cascade-delete its history. Restricted to the owner/super-admin
+// role since this is the only way to lose cost data once equipment has been archived.
+router.delete("/equipment/:id/hard-delete", requireOwnerRole, async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
 

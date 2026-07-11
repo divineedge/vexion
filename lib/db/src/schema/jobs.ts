@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, real, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, jsonb, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -30,6 +30,23 @@ export const jobsTable = pgTable("jobs", {
   jobParts: jsonb("job_parts").default("[]"),
   /** Reminder tracking: {sent7d: boolean, sent24h: boolean, sentAt7d: string|null, sentAt24h: string|null} */
   remindersSent: jsonb("reminders_sent").default("{}"),
+
+  // ── Recurrence ────────────────────────────────────────────────────────────
+  /**
+   * JSONB recurrence rule. Present only on the series root (recurrenceParentId IS NULL).
+   * Shape: { pattern, interval?, daysOfWeek?, dayOfMonth?, weekOfMonth?,
+   *          endCondition, endAfter?, endDate? }
+   */
+  recurrenceRule: jsonb("recurrence_rule"),
+  /** For generated instances: FK back to the series root job */
+  recurrenceParentId: integer("recurrence_parent_id"),
+  /** 0-based index of this occurrence within the series */
+  recurrenceIndex: integer("recurrence_index"),
+  /** When true the scheduler skips generating new instances until resumed */
+  isRecurrencePaused: boolean("is_recurrence_paused").notNull().default(false),
+  /** Number of occurrences already generated (only meaningful on the root) */
+  recurrenceCount: integer("recurrence_count").notNull().default(0),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

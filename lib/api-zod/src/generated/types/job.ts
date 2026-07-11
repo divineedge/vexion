@@ -9,6 +9,7 @@ import type { JobLineItem } from './jobLineItem';
 import type { JobPart } from './jobPart';
 import type { JobPriority } from './jobPriority';
 import type { JobStatus } from './jobStatus';
+import type { RecurrenceRule } from './recurrenceRule';
 
 export interface Job {
   id: number;
@@ -50,5 +51,24 @@ export interface Job {
   lineItems?: JobLineItem[];
   /** Parts used on this job from inventory */
   jobParts?: JobPart[];
+  /** Present only on series root jobs */
+  recurrenceRule?: RecurrenceRule | null;
+  /**
+     * FK to series root for generated instances
+     * @nullable
+     */
+  recurrenceParentId?: number | null;
+  /**
+     * 0-based index of this occurrence
+     * @nullable
+     */
+  recurrenceIndex?: number | null;
+  isRecurrencePaused?: boolean;
+  recurrenceCount?: number;
+  /**
+     * Human-readable summary e.g. Every Mon & Thu
+     * @nullable
+     */
+  recurrenceDescription?: string | null;
   createdAt: string;
 }

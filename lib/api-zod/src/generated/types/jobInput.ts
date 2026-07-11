@@ -7,6 +7,7 @@
  */
 import type { JobInputPriority } from './jobInputPriority';
 import type { JobInputStatus } from './jobInputStatus';
+import type { RecurrenceRule } from './recurrenceRule';
 
 export interface JobInput {
   title: string;
@@ -20,4 +21,5 @@ export interface JobInput {
   scheduledAt: string;
   estimatedDuration?: number;
   blueprintId?: number;
+  recurrenceRule?: RecurrenceRule;
 }

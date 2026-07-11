@@ -859,6 +859,22 @@ export const ListJobsResponseItem = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional().describe('Parts used on this job from inventory'),
+  "recurrenceRule": zod.object({
+  "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
+  "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
+  "daysOfWeek": zod.array(zod.number()).optional().describe('0=Sun…6=Sat; used by weekly and biweekly'),
+  "dayOfMonth": zod.number().optional().describe('1–31; used by monthly_date'),
+  "weekOfMonth": zod.number().optional().describe('1=first…5=last; used by monthly_weekday'),
+  "dayOfWeek": zod.number().optional().describe('0=Sun…6=Sat; used by monthly_weekday'),
+  "endCondition": zod.enum(['never', 'after', 'on_date']),
+  "endAfter": zod.number().optional().describe('Used when endCondition is after'),
+  "endDate": zod.string().optional().describe('ISO date string; used when endCondition is on_date')
+}).nullish().describe('Present only on series root jobs'),
+  "recurrenceParentId": zod.number().nullish().describe('FK to series root for generated instances'),
+  "recurrenceIndex": zod.number().nullish().describe('0-based index of this occurrence'),
+  "isRecurrencePaused": zod.boolean().optional(),
+  "recurrenceCount": zod.number().optional(),
+  "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "createdAt": zod.string()
 })
 export const ListJobsResponse = zod.array(ListJobsResponseItem)
@@ -878,7 +894,18 @@ export const CreateJobBody = zod.object({
   "crewId": zod.number().optional(),
   "scheduledAt": zod.string(),
   "estimatedDuration": zod.number().optional(),
-  "blueprintId": zod.number().optional()
+  "blueprintId": zod.number().optional(),
+  "recurrenceRule": zod.object({
+  "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
+  "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
+  "daysOfWeek": zod.array(zod.number()).optional().describe('0=Sun…6=Sat; used by weekly and biweekly'),
+  "dayOfMonth": zod.number().optional().describe('1–31; used by monthly_date'),
+  "weekOfMonth": zod.number().optional().describe('1=first…5=last; used by monthly_weekday'),
+  "dayOfWeek": zod.number().optional().describe('0=Sun…6=Sat; used by monthly_weekday'),
+  "endCondition": zod.enum(['never', 'after', 'on_date']),
+  "endAfter": zod.number().optional().describe('Used when endCondition is after'),
+  "endDate": zod.string().optional().describe('ISO date string; used when endCondition is on_date')
+}).optional()
 })
 
 export const CreateJobResponse = zod.object({
@@ -917,6 +944,22 @@ export const CreateJobResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional().describe('Parts used on this job from inventory'),
+  "recurrenceRule": zod.object({
+  "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
+  "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
+  "daysOfWeek": zod.array(zod.number()).optional().describe('0=Sun…6=Sat; used by weekly and biweekly'),
+  "dayOfMonth": zod.number().optional().describe('1–31; used by monthly_date'),
+  "weekOfMonth": zod.number().optional().describe('1=first…5=last; used by monthly_weekday'),
+  "dayOfWeek": zod.number().optional().describe('0=Sun…6=Sat; used by monthly_weekday'),
+  "endCondition": zod.enum(['never', 'after', 'on_date']),
+  "endAfter": zod.number().optional().describe('Used when endCondition is after'),
+  "endDate": zod.string().optional().describe('ISO date string; used when endCondition is on_date')
+}).nullish().describe('Present only on series root jobs'),
+  "recurrenceParentId": zod.number().nullish().describe('FK to series root for generated instances'),
+  "recurrenceIndex": zod.number().nullish().describe('0-based index of this occurrence'),
+  "isRecurrencePaused": zod.boolean().optional(),
+  "recurrenceCount": zod.number().optional(),
+  "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "createdAt": zod.string()
 })
 
@@ -964,6 +1007,22 @@ export const GetJobResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional().describe('Parts used on this job from inventory'),
+  "recurrenceRule": zod.object({
+  "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
+  "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
+  "daysOfWeek": zod.array(zod.number()).optional().describe('0=Sun…6=Sat; used by weekly and biweekly'),
+  "dayOfMonth": zod.number().optional().describe('1–31; used by monthly_date'),
+  "weekOfMonth": zod.number().optional().describe('1=first…5=last; used by monthly_weekday'),
+  "dayOfWeek": zod.number().optional().describe('0=Sun…6=Sat; used by monthly_weekday'),
+  "endCondition": zod.enum(['never', 'after', 'on_date']),
+  "endAfter": zod.number().optional().describe('Used when endCondition is after'),
+  "endDate": zod.string().optional().describe('ISO date string; used when endCondition is on_date')
+}).nullish().describe('Present only on series root jobs'),
+  "recurrenceParentId": zod.number().nullish().describe('FK to series root for generated instances'),
+  "recurrenceIndex": zod.number().nullish().describe('0-based index of this occurrence'),
+  "isRecurrencePaused": zod.boolean().optional(),
+  "recurrenceCount": zod.number().optional(),
+  "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "createdAt": zod.string()
 })
 
@@ -983,7 +1042,19 @@ export const UpdateJobBody = zod.object({
   "assigneeId": zod.number().optional(),
   "crewId": zod.number().optional(),
   "scheduledAt": zod.string().optional(),
-  "estimatedDuration": zod.number().optional()
+  "estimatedDuration": zod.number().optional(),
+  "recurrenceRule": zod.object({
+  "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
+  "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
+  "daysOfWeek": zod.array(zod.number()).optional().describe('0=Sun…6=Sat; used by weekly and biweekly'),
+  "dayOfMonth": zod.number().optional().describe('1–31; used by monthly_date'),
+  "weekOfMonth": zod.number().optional().describe('1=first…5=last; used by monthly_weekday'),
+  "dayOfWeek": zod.number().optional().describe('0=Sun…6=Sat; used by monthly_weekday'),
+  "endCondition": zod.enum(['never', 'after', 'on_date']),
+  "endAfter": zod.number().optional().describe('Used when endCondition is after'),
+  "endDate": zod.string().optional().describe('ISO date string; used when endCondition is on_date')
+}).optional(),
+  "editScope": zod.enum(['this', 'forward', 'all']).optional().describe('Scope of the edit for recurring jobs')
 })
 
 export const UpdateJobResponse = zod.object({
@@ -1022,6 +1093,22 @@ export const UpdateJobResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional().describe('Parts used on this job from inventory'),
+  "recurrenceRule": zod.object({
+  "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
+  "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
+  "daysOfWeek": zod.array(zod.number()).optional().describe('0=Sun…6=Sat; used by weekly and biweekly'),
+  "dayOfMonth": zod.number().optional().describe('1–31; used by monthly_date'),
+  "weekOfMonth": zod.number().optional().describe('1=first…5=last; used by monthly_weekday'),
+  "dayOfWeek": zod.number().optional().describe('0=Sun…6=Sat; used by monthly_weekday'),
+  "endCondition": zod.enum(['never', 'after', 'on_date']),
+  "endAfter": zod.number().optional().describe('Used when endCondition is after'),
+  "endDate": zod.string().optional().describe('ISO date string; used when endCondition is on_date')
+}).nullish().describe('Present only on series root jobs'),
+  "recurrenceParentId": zod.number().nullish().describe('FK to series root for generated instances'),
+  "recurrenceIndex": zod.number().nullish().describe('0-based index of this occurrence'),
+  "isRecurrencePaused": zod.boolean().optional(),
+  "recurrenceCount": zod.number().optional(),
+  "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "createdAt": zod.string()
 })
 
@@ -1034,6 +1121,179 @@ export const DeleteJobParams = zod.object({
 })
 
 export const DeleteJobResponse = zod.void()
+
+
+/**
+ * @summary List all recurring job series (one row per series root)
+ */
+export const ListRecurringSeriesResponseItem = zod.object({
+  "id": zod.number().describe('The root job ID'),
+  "title": zod.string(),
+  "status": zod.string().optional(),
+  "recurrenceRule": zod.object({
+  "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
+  "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
+  "daysOfWeek": zod.array(zod.number()).optional().describe('0=Sun…6=Sat; used by weekly and biweekly'),
+  "dayOfMonth": zod.number().optional().describe('1–31; used by monthly_date'),
+  "weekOfMonth": zod.number().optional().describe('1=first…5=last; used by monthly_weekday'),
+  "dayOfWeek": zod.number().optional().describe('0=Sun…6=Sat; used by monthly_weekday'),
+  "endCondition": zod.enum(['never', 'after', 'on_date']),
+  "endAfter": zod.number().optional().describe('Used when endCondition is after'),
+  "endDate": zod.string().optional().describe('ISO date string; used when endCondition is on_date')
+}),
+  "recurrenceDescription": zod.string().describe('Human-readable summary e.g. Every Mon & Thu'),
+  "isRecurrencePaused": zod.boolean().optional(),
+  "nextScheduledAt": zod.string().nullable(),
+  "completedCount": zod.number(),
+  "customerName": zod.string().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "crewName": zod.string().nullish()
+})
+export const ListRecurringSeriesResponse = zod.array(ListRecurringSeriesResponseItem)
+
+
+/**
+ * @summary Skip the next scheduled occurrence of a recurring series
+ */
+export const SkipNextOccurrenceParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SkipNextOccurrenceResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "status": zod.enum(['scheduled', 'in_progress', 'completed', 'cancelled', 'on_hold']),
+  "priority": zod.enum(['low', 'normal', 'high', 'urgent']).optional(),
+  "customerId": zod.number().nullish(),
+  "customerName": zod.string().nullish(),
+  "propertyId": zod.number().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "assigneeId": zod.number().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "crewId": zod.number().nullish(),
+  "crewName": zod.string().nullish(),
+  "scheduledAt": zod.string(),
+  "estimatedDuration": zod.number().nullish().describe('Duration stored in minutes; display as hours or minutes per tenant durationUnit setting'),
+  "completedAt": zod.string().nullish(),
+  "totalAmount": zod.number().optional(),
+  "invoiceId": zod.number().nullish(),
+  "blueprintId": zod.number().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "inventoryItemId": zod.number().nullish(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional(),
+  "jobParts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional().describe('Parts used on this job from inventory'),
+  "recurrenceRule": zod.object({
+  "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
+  "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
+  "daysOfWeek": zod.array(zod.number()).optional().describe('0=Sun…6=Sat; used by weekly and biweekly'),
+  "dayOfMonth": zod.number().optional().describe('1–31; used by monthly_date'),
+  "weekOfMonth": zod.number().optional().describe('1=first…5=last; used by monthly_weekday'),
+  "dayOfWeek": zod.number().optional().describe('0=Sun…6=Sat; used by monthly_weekday'),
+  "endCondition": zod.enum(['never', 'after', 'on_date']),
+  "endAfter": zod.number().optional().describe('Used when endCondition is after'),
+  "endDate": zod.string().optional().describe('ISO date string; used when endCondition is on_date')
+}).nullish().describe('Present only on series root jobs'),
+  "recurrenceParentId": zod.number().nullish().describe('FK to series root for generated instances'),
+  "recurrenceIndex": zod.number().nullish().describe('0-based index of this occurrence'),
+  "isRecurrencePaused": zod.boolean().optional(),
+  "recurrenceCount": zod.number().optional(),
+  "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Pause or resume a recurring series
+ */
+export const PauseRecurringSeriesParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const PauseRecurringSeriesBody = zod.object({
+  "paused": zod.boolean()
+})
+
+export const PauseRecurringSeriesResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "status": zod.enum(['scheduled', 'in_progress', 'completed', 'cancelled', 'on_hold']),
+  "priority": zod.enum(['low', 'normal', 'high', 'urgent']).optional(),
+  "customerId": zod.number().nullish(),
+  "customerName": zod.string().nullish(),
+  "propertyId": zod.number().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "assigneeId": zod.number().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "crewId": zod.number().nullish(),
+  "crewName": zod.string().nullish(),
+  "scheduledAt": zod.string(),
+  "estimatedDuration": zod.number().nullish().describe('Duration stored in minutes; display as hours or minutes per tenant durationUnit setting'),
+  "completedAt": zod.string().nullish(),
+  "totalAmount": zod.number().optional(),
+  "invoiceId": zod.number().nullish(),
+  "blueprintId": zod.number().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "inventoryItemId": zod.number().nullish(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional(),
+  "jobParts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional().describe('Parts used on this job from inventory'),
+  "recurrenceRule": zod.object({
+  "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
+  "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
+  "daysOfWeek": zod.array(zod.number()).optional().describe('0=Sun…6=Sat; used by weekly and biweekly'),
+  "dayOfMonth": zod.number().optional().describe('1–31; used by monthly_date'),
+  "weekOfMonth": zod.number().optional().describe('1=first…5=last; used by monthly_weekday'),
+  "dayOfWeek": zod.number().optional().describe('0=Sun…6=Sat; used by monthly_weekday'),
+  "endCondition": zod.enum(['never', 'after', 'on_date']),
+  "endAfter": zod.number().optional().describe('Used when endCondition is after'),
+  "endDate": zod.string().optional().describe('ISO date string; used when endCondition is on_date')
+}).nullish().describe('Present only on series root jobs'),
+  "recurrenceParentId": zod.number().nullish().describe('FK to series root for generated instances'),
+  "recurrenceIndex": zod.number().nullish().describe('0-based index of this occurrence'),
+  "isRecurrencePaused": zod.boolean().optional(),
+  "recurrenceCount": zod.number().optional(),
+  "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Cancel a recurring series
+ */
+export const CancelRecurringSeriesParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CancelRecurringSeriesQueryParams = zod.object({
+  "scope": zod.enum(['forward', 'all']).optional().describe('forward=cancel from next onwards; all=cancel entire series')
+})
+
+export const CancelRecurringSeriesResponse = zod.void()
 
 
 /**
@@ -1079,6 +1339,22 @@ export const CompleteJobResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional().describe('Parts used on this job from inventory'),
+  "recurrenceRule": zod.object({
+  "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
+  "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
+  "daysOfWeek": zod.array(zod.number()).optional().describe('0=Sun…6=Sat; used by weekly and biweekly'),
+  "dayOfMonth": zod.number().optional().describe('1–31; used by monthly_date'),
+  "weekOfMonth": zod.number().optional().describe('1=first…5=last; used by monthly_weekday'),
+  "dayOfWeek": zod.number().optional().describe('0=Sun…6=Sat; used by monthly_weekday'),
+  "endCondition": zod.enum(['never', 'after', 'on_date']),
+  "endAfter": zod.number().optional().describe('Used when endCondition is after'),
+  "endDate": zod.string().optional().describe('ISO date string; used when endCondition is on_date')
+}).nullish().describe('Present only on series root jobs'),
+  "recurrenceParentId": zod.number().nullish().describe('FK to series root for generated instances'),
+  "recurrenceIndex": zod.number().nullish().describe('0-based index of this occurrence'),
+  "isRecurrencePaused": zod.boolean().optional(),
+  "recurrenceCount": zod.number().optional(),
+  "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "createdAt": zod.string()
 })
 
@@ -1148,6 +1424,22 @@ export const AddJobPartResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional().describe('Parts used on this job from inventory'),
+  "recurrenceRule": zod.object({
+  "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
+  "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
+  "daysOfWeek": zod.array(zod.number()).optional().describe('0=Sun…6=Sat; used by weekly and biweekly'),
+  "dayOfMonth": zod.number().optional().describe('1–31; used by monthly_date'),
+  "weekOfMonth": zod.number().optional().describe('1=first…5=last; used by monthly_weekday'),
+  "dayOfWeek": zod.number().optional().describe('0=Sun…6=Sat; used by monthly_weekday'),
+  "endCondition": zod.enum(['never', 'after', 'on_date']),
+  "endAfter": zod.number().optional().describe('Used when endCondition is after'),
+  "endDate": zod.string().optional().describe('ISO date string; used when endCondition is on_date')
+}).nullish().describe('Present only on series root jobs'),
+  "recurrenceParentId": zod.number().nullish().describe('FK to series root for generated instances'),
+  "recurrenceIndex": zod.number().nullish().describe('0-based index of this occurrence'),
+  "isRecurrencePaused": zod.boolean().optional(),
+  "recurrenceCount": zod.number().optional(),
+  "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "createdAt": zod.string()
 })
 
@@ -1196,6 +1488,22 @@ export const RemoveJobPartResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional().describe('Parts used on this job from inventory'),
+  "recurrenceRule": zod.object({
+  "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
+  "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
+  "daysOfWeek": zod.array(zod.number()).optional().describe('0=Sun…6=Sat; used by weekly and biweekly'),
+  "dayOfMonth": zod.number().optional().describe('1–31; used by monthly_date'),
+  "weekOfMonth": zod.number().optional().describe('1=first…5=last; used by monthly_weekday'),
+  "dayOfWeek": zod.number().optional().describe('0=Sun…6=Sat; used by monthly_weekday'),
+  "endCondition": zod.enum(['never', 'after', 'on_date']),
+  "endAfter": zod.number().optional().describe('Used when endCondition is after'),
+  "endDate": zod.string().optional().describe('ISO date string; used when endCondition is on_date')
+}).nullish().describe('Present only on series root jobs'),
+  "recurrenceParentId": zod.number().nullish().describe('FK to series root for generated instances'),
+  "recurrenceIndex": zod.number().nullish().describe('0-based index of this occurrence'),
+  "isRecurrencePaused": zod.boolean().optional(),
+  "recurrenceCount": zod.number().optional(),
+  "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "createdAt": zod.string()
 })
 

@@ -28,6 +28,7 @@ import type {
   BlueprintEstimate,
   BlueprintInput,
   BlueprintUpdate,
+  CancelRecurringSeriesParams,
   ChemicalApplication,
   ChemicalApplicationInput,
   ChemicalMixture,
@@ -93,6 +94,7 @@ import type {
   LoginInput,
   MasterClockState,
   MediaAttachment,
+  PauseRecurringSeriesBody,
   Plan,
   PortalAlert,
   PortalAlertResponse,
@@ -116,6 +118,7 @@ import type {
   QuoteInput,
   QuoteRespondInput,
   QuoteWithProperty,
+  RecurringSeries,
   RevenueTrendItem,
   Routine,
   RoutineInput,
@@ -2712,6 +2715,306 @@ export const useDeleteJob = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteJobMutationOptions(options));
+    }
+
+export const getListRecurringSeriesUrl = () => {
+
+
+
+
+  return `/api/jobs/series`
+}
+
+/**
+ * @summary List all recurring job series (one row per series root)
+ */
+export const listRecurringSeries = async ( options?: RequestInit): Promise<RecurringSeries[]> => {
+
+  return customFetch<RecurringSeries[]>(getListRecurringSeriesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListRecurringSeriesQueryKey = () => {
+    return [
+    `/api/jobs/series`
+    ] as const;
+    }
+
+
+export const getListRecurringSeriesQueryOptions = <TData = Awaited<ReturnType<typeof listRecurringSeries>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRecurringSeries>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListRecurringSeriesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listRecurringSeries>>> = ({ signal }) => listRecurringSeries({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listRecurringSeries>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListRecurringSeriesQueryResult = NonNullable<Awaited<ReturnType<typeof listRecurringSeries>>>
+export type ListRecurringSeriesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all recurring job series (one row per series root)
+ */
+
+export function useListRecurringSeries<TData = Awaited<ReturnType<typeof listRecurringSeries>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRecurringSeries>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListRecurringSeriesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSkipNextOccurrenceUrl = (id: number,) => {
+
+
+
+
+  return `/api/jobs/${id}/skip-next`
+}
+
+/**
+ * @summary Skip the next scheduled occurrence of a recurring series
+ */
+export const skipNextOccurrence = async (id: number, options?: RequestInit): Promise<Job> => {
+
+  return customFetch<Job>(getSkipNextOccurrenceUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getSkipNextOccurrenceMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof skipNextOccurrence>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof skipNextOccurrence>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['skipNextOccurrence'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof skipNextOccurrence>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  skipNextOccurrence(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SkipNextOccurrenceMutationResult = NonNullable<Awaited<ReturnType<typeof skipNextOccurrence>>>
+
+    export type SkipNextOccurrenceMutationError = ErrorType<void>
+
+    /**
+ * @summary Skip the next scheduled occurrence of a recurring series
+ */
+export const useSkipNextOccurrence = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof skipNextOccurrence>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof skipNextOccurrence>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getSkipNextOccurrenceMutationOptions(options));
+    }
+
+export const getPauseRecurringSeriesUrl = (id: number,) => {
+
+
+
+
+  return `/api/jobs/${id}/pause-series`
+}
+
+/**
+ * @summary Pause or resume a recurring series
+ */
+export const pauseRecurringSeries = async (id: number,
+    pauseRecurringSeriesBody: PauseRecurringSeriesBody, options?: RequestInit): Promise<Job> => {
+
+  return customFetch<Job>(getPauseRecurringSeriesUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(pauseRecurringSeriesBody)
+  }
+);}
+
+
+
+
+
+export const getPauseRecurringSeriesMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof pauseRecurringSeries>>, TError,{id: number;data: BodyType<PauseRecurringSeriesBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof pauseRecurringSeries>>, TError,{id: number;data: BodyType<PauseRecurringSeriesBody>}, TContext> => {
+
+const mutationKey = ['pauseRecurringSeries'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof pauseRecurringSeries>>, {id: number;data: BodyType<PauseRecurringSeriesBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  pauseRecurringSeries(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PauseRecurringSeriesMutationResult = NonNullable<Awaited<ReturnType<typeof pauseRecurringSeries>>>
+    export type PauseRecurringSeriesMutationBody = BodyType<PauseRecurringSeriesBody>
+    export type PauseRecurringSeriesMutationError = ErrorType<void>
+
+    /**
+ * @summary Pause or resume a recurring series
+ */
+export const usePauseRecurringSeries = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof pauseRecurringSeries>>, TError,{id: number;data: BodyType<PauseRecurringSeriesBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof pauseRecurringSeries>>,
+        TError,
+        {id: number;data: BodyType<PauseRecurringSeriesBody>},
+        TContext
+      > => {
+      return useMutation(getPauseRecurringSeriesMutationOptions(options));
+    }
+
+export const getCancelRecurringSeriesUrl = (id: number,
+    params?: CancelRecurringSeriesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/jobs/${id}/cancel-series?${stringifiedParams}` : `/api/jobs/${id}/cancel-series`
+}
+
+/**
+ * @summary Cancel a recurring series
+ */
+export const cancelRecurringSeries = async (id: number,
+    params?: CancelRecurringSeriesParams, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getCancelRecurringSeriesUrl(id,params),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getCancelRecurringSeriesMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelRecurringSeries>>, TError,{id: number;params?: CancelRecurringSeriesParams}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelRecurringSeries>>, TError,{id: number;params?: CancelRecurringSeriesParams}, TContext> => {
+
+const mutationKey = ['cancelRecurringSeries'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelRecurringSeries>>, {id: number;params?: CancelRecurringSeriesParams}> = (props) => {
+          const {id,params} = props ?? {};
+
+          return  cancelRecurringSeries(id,params,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelRecurringSeriesMutationResult = NonNullable<Awaited<ReturnType<typeof cancelRecurringSeries>>>
+
+    export type CancelRecurringSeriesMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Cancel a recurring series
+ */
+export const useCancelRecurringSeries = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelRecurringSeries>>, TError,{id: number;params?: CancelRecurringSeriesParams}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof cancelRecurringSeries>>,
+        TError,
+        {id: number;params?: CancelRecurringSeriesParams},
+        TContext
+      > => {
+      return useMutation(getCancelRecurringSeriesMutationOptions(options));
     }
 
 export const getCompleteJobUrl = (id: number,) => {

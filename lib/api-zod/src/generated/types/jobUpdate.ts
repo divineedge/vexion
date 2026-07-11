@@ -5,8 +5,10 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { JobUpdateEditScope } from './jobUpdateEditScope';
 import type { JobUpdatePriority } from './jobUpdatePriority';
 import type { JobUpdateStatus } from './jobUpdateStatus';
+import type { RecurrenceRule } from './recurrenceRule';
 
 export interface JobUpdate {
   title?: string;
@@ -17,4 +19,7 @@ export interface JobUpdate {
   crewId?: number;
   scheduledAt?: string;
   estimatedDuration?: number;
+  recurrenceRule?: RecurrenceRule;
+  /** Scope of the edit for recurring jobs */
+  editScope?: JobUpdateEditScope;
 }

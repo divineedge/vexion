@@ -4,6 +4,7 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { startReminderScheduler } from "./lib/reminderScheduler";
+import { startRecurrenceScheduler } from "./lib/recurrenceScheduler";
 
 const app: Express = express();
 
@@ -43,5 +44,8 @@ app.use("/api", router);
 
 // Start automated reminder scheduler
 startReminderScheduler();
+
+// Start recurring job generation scheduler
+startRecurrenceScheduler();
 
 export default app;

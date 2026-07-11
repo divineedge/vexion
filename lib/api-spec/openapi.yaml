@@ -721,6 +721,94 @@ paths:
         "204":
           description: Deleted
 
+  /jobs/series:
+    get:
+      operationId: listRecurringSeries
+      tags: [jobs]
+      summary: List all recurring job series (one row per series root)
+      responses:
+        "200":
+          description: List of recurring series
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecurringSeries"
+
+  /jobs/{id}/skip-next:
+    post:
+      operationId: skipNextOccurrence
+      tags: [jobs]
+      summary: Skip the next scheduled occurrence of a recurring series
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated series root job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          description: Not found
+
+  /jobs/{id}/pause-series:
+    patch:
+      operationId: pauseRecurringSeries
+      tags: [jobs]
+      summary: Pause or resume a recurring series
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [paused]
+              properties:
+                paused:
+                  type: boolean
+      responses:
+        "200":
+          description: Updated series root job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          description: Not found
+
+  /jobs/{id}/cancel-series:
+    delete:
+      operationId: cancelRecurringSeries
+      tags: [jobs]
+      summary: Cancel a recurring series
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: scope
+          in: query
+          schema:
+            type: string
+            enum: [forward, all]
+          description: "forward=cancel from next onwards; all=cancel entire series"
+      responses:
+        "204":
+          description: Series cancelled
+
   /jobs/{id}/complete:
     post:
       operationId: completeJob
@@ -4066,6 +4154,69 @@ components:
         radius:
           type: integer
 
+    RecurrenceRule:
+      type: object
+      required: [pattern, endCondition]
+      properties:
+        pattern:
+          type: string
+          enum: [daily, weekly, biweekly, monthly_date, monthly_weekday, custom]
+        interval:
+          type: integer
+          description: "Used by custom (days) and biweekly patterns"
+        daysOfWeek:
+          type: array
+          items:
+            type: integer
+          description: "0=Sun…6=Sat; used by weekly and biweekly"
+        dayOfMonth:
+          type: integer
+          description: "1–31; used by monthly_date"
+        weekOfMonth:
+          type: integer
+          description: "1=first…5=last; used by monthly_weekday"
+        dayOfWeek:
+          type: integer
+          description: "0=Sun…6=Sat; used by monthly_weekday"
+        endCondition:
+          type: string
+          enum: [never, after, on_date]
+        endAfter:
+          type: integer
+          description: "Used when endCondition is after"
+        endDate:
+          type: string
+          description: "ISO date string; used when endCondition is on_date"
+
+    RecurringSeries:
+      type: object
+      required: [id, title, recurrenceRule, recurrenceDescription, nextScheduledAt, completedCount]
+      properties:
+        id:
+          type: integer
+          description: "The root job ID"
+        title:
+          type: string
+        status:
+          type: string
+        recurrenceRule:
+          $ref: "#/components/schemas/RecurrenceRule"
+        recurrenceDescription:
+          type: string
+          description: "Human-readable summary e.g. Every Mon & Thu"
+        isRecurrencePaused:
+          type: boolean
+        nextScheduledAt:
+          type: ["string", "null"]
+        completedCount:
+          type: integer
+        customerName:
+          type: ["string", "null"]
+        assigneeName:
+          type: ["string", "null"]
+        crewName:
+          type: ["string", "null"]
+
     Job:
       type: object
       required: [id, tenantId, title, status, scheduledAt, createdAt]
@@ -4122,6 +4273,24 @@ components:
           description: "Parts used on this job from inventory"
           items:
             $ref: "#/components/schemas/JobPart"
+        recurrenceRule:
+          allOf:
+            - $ref: "#/components/schemas/RecurrenceRule"
+          nullable: true
+          description: "Present only on series root jobs"
+        recurrenceParentId:
+          type: ["integer", "null"]
+          description: "FK to series root for generated instances"
+        recurrenceIndex:
+          type: ["integer", "null"]
+          description: "0-based index of this occurrence"
+        isRecurrencePaused:
+          type: boolean
+        recurrenceCount:
+          type: integer
+        recurrenceDescription:
+          type: ["string", "null"]
+          description: "Human-readable summary e.g. Every Mon & Thu"
         createdAt:
           type: string
 
@@ -4194,6 +4363,8 @@ components:
           type: integer
         blueprintId:
           type: integer
+        recurrenceRule:
+          $ref: "#/components/schemas/RecurrenceRule"
 
     JobUpdate:
       type: object
@@ -4216,6 +4387,12 @@ components:
           type: string
         estimatedDuration:
           type: integer
+        recurrenceRule:
+          $ref: "#/components/schemas/RecurrenceRule"
+        editScope:
+          type: string
+          enum: [this, forward, all]
+          description: "Scope of the edit for recurring jobs"
 
     Crew:
       type: object

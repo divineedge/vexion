@@ -673,6 +673,66 @@ export interface GeofencePinUpdate {
   radius?: number;
 }
 
+export type RecurrenceRulePattern = typeof RecurrenceRulePattern[keyof typeof RecurrenceRulePattern];
+
+
+export const RecurrenceRulePattern = {
+  daily: 'daily',
+  weekly: 'weekly',
+  biweekly: 'biweekly',
+  monthly_date: 'monthly_date',
+  monthly_weekday: 'monthly_weekday',
+  custom: 'custom',
+} as const;
+
+export type RecurrenceRuleEndCondition = typeof RecurrenceRuleEndCondition[keyof typeof RecurrenceRuleEndCondition];
+
+
+export const RecurrenceRuleEndCondition = {
+  never: 'never',
+  after: 'after',
+  on_date: 'on_date',
+} as const;
+
+export interface RecurrenceRule {
+  pattern: RecurrenceRulePattern;
+  /** Used by custom (days) and biweekly patterns */
+  interval?: number;
+  /** 0=Sun…6=Sat; used by weekly and biweekly */
+  daysOfWeek?: number[];
+  /** 1–31; used by monthly_date */
+  dayOfMonth?: number;
+  /** 1=first…5=last; used by monthly_weekday */
+  weekOfMonth?: number;
+  /** 0=Sun…6=Sat; used by monthly_weekday */
+  dayOfWeek?: number;
+  endCondition: RecurrenceRuleEndCondition;
+  /** Used when endCondition is after */
+  endAfter?: number;
+  /** ISO date string; used when endCondition is on_date */
+  endDate?: string;
+}
+
+export interface RecurringSeries {
+  /** The root job ID */
+  id: number;
+  title: string;
+  status?: string;
+  recurrenceRule: RecurrenceRule;
+  /** Human-readable summary e.g. Every Mon & Thu */
+  recurrenceDescription: string;
+  isRecurrencePaused?: boolean;
+  /** @nullable */
+  nextScheduledAt: string | null;
+  completedCount: number;
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  assigneeName?: string | null;
+  /** @nullable */
+  crewName?: string | null;
+}
+
 export type JobStatus = typeof JobStatus[keyof typeof JobStatus];
 
 
@@ -752,6 +812,25 @@ export interface Job {
   lineItems?: JobLineItem[];
   /** Parts used on this job from inventory */
   jobParts?: JobPart[];
+  /** Present only on series root jobs */
+  recurrenceRule?: RecurrenceRule | null;
+  /**
+     * FK to series root for generated instances
+     * @nullable
+     */
+  recurrenceParentId?: number | null;
+  /**
+     * 0-based index of this occurrence
+     * @nullable
+     */
+  recurrenceIndex?: number | null;
+  isRecurrencePaused?: boolean;
+  recurrenceCount?: number;
+  /**
+     * Human-readable summary e.g. Every Mon & Thu
+     * @nullable
+     */
+  recurrenceDescription?: string | null;
   createdAt: string;
 }
 
@@ -793,6 +872,7 @@ export interface JobInput {
   scheduledAt: string;
   estimatedDuration?: number;
   blueprintId?: number;
+  recurrenceRule?: RecurrenceRule;
 }
 
 export type JobUpdateStatus = typeof JobUpdateStatus[keyof typeof JobUpdateStatus];
@@ -816,6 +896,18 @@ export const JobUpdatePriority = {
   urgent: 'urgent',
 } as const;
 
+/**
+ * Scope of the edit for recurring jobs
+ */
+export type JobUpdateEditScope = typeof JobUpdateEditScope[keyof typeof JobUpdateEditScope];
+
+
+export const JobUpdateEditScope = {
+  this: 'this',
+  forward: 'forward',
+  all: 'all',
+} as const;
+
 export interface JobUpdate {
   title?: string;
   description?: string;
@@ -825,6 +917,9 @@ export interface JobUpdate {
   crewId?: number;
   scheduledAt?: string;
   estimatedDuration?: number;
+  recurrenceRule?: RecurrenceRule;
+  /** Scope of the edit for recurring jobs */
+  editScope?: JobUpdateEditScope;
 }
 
 export interface CrewMember {
@@ -2116,6 +2211,25 @@ startDate?: string;
 endDate?: string;
 customerId?: number;
 };
+
+export type PauseRecurringSeriesBody = {
+  paused: boolean;
+};
+
+export type CancelRecurringSeriesParams = {
+/**
+ * forward=cancel from next onwards; all=cancel entire series
+ */
+scope?: CancelRecurringSeriesScope;
+};
+
+export type CancelRecurringSeriesScope = typeof CancelRecurringSeriesScope[keyof typeof CancelRecurringSeriesScope];
+
+
+export const CancelRecurringSeriesScope = {
+  forward: 'forward',
+  all: 'all',
+} as const;
 
 export type ListInventoryItemsParams = {
 q?: string;

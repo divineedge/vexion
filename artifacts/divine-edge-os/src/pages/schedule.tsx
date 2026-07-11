@@ -20,7 +20,12 @@ import {
   useListJobMedia, getListJobMediaQueryKey,
   useListEstimates, getListEstimatesQueryKey,
   useListVisits, getListVisitsQueryKey,
+  useListRecurringSeries, getListRecurringSeriesQueryKey,
+  useSkipNextOccurrence,
+  usePauseRecurringSeries,
+  useCancelRecurringSeries,
 } from '@workspace/api-client-react';
+import type { RecurrenceRule } from '@workspace/api-client-react';
 import MediaGallery from '@/components/media/MediaGallery';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card } from '@/components/ui/card';
@@ -36,7 +41,8 @@ import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronRight, Clock, MapPin, User, Calendar,
   DollarSign, ClipboardList, Plus, Users, FlaskConical, Trash2, AlertTriangle,
-  Bell, BellOff, Send, Package, Search, Images,
+  Bell, BellOff, Send, Package, Search, Images, RefreshCw, Pause, Play, X,
+  SkipForward, ListEnd,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -68,6 +74,16 @@ type NewJobForm = {
   priority: string;
   customerId: string;
   assigneeId: string;
+  recurring: boolean;
+  recurrencePattern: string;
+  recurrenceInterval: string;
+  recurrenceDaysOfWeek: number[];
+  recurrenceDayOfMonth: string;
+  recurrenceWeekOfMonth: string;
+  recurrenceDayOfWeek: string;
+  recurrenceEndCondition: string;
+  recurrenceEndAfter: string;
+  recurrenceEndDate: string;
 };
 
 const EMPTY_JOB: NewJobForm = {
@@ -78,19 +94,66 @@ const EMPTY_JOB: NewJobForm = {
   priority: 'normal',
   customerId: '',
   assigneeId: '',
+  recurring: false,
+  recurrencePattern: 'weekly',
+  recurrenceInterval: '1',
+  recurrenceDaysOfWeek: [],
+  recurrenceDayOfMonth: '1',
+  recurrenceWeekOfMonth: '1',
+  recurrenceDayOfWeek: '1',
+  recurrenceEndCondition: 'never',
+  recurrenceEndAfter: '12',
+  recurrenceEndDate: '',
 };
+
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function buildRecurrenceRule(form: NewJobForm): RecurrenceRule | undefined {
+  if (!form.recurring) return undefined;
+  const rule: RecurrenceRule = {
+    pattern: form.recurrencePattern as RecurrenceRule['pattern'],
+    endCondition: form.recurrenceEndCondition as RecurrenceRule['endCondition'],
+  };
+  if (['weekly', 'biweekly'].includes(form.recurrencePattern)) {
+    rule.daysOfWeek = form.recurrenceDaysOfWeek;
+  }
+  if (form.recurrencePattern === 'biweekly') {
+    rule.interval = parseInt(form.recurrenceInterval, 10) || 2;
+  }
+  if (form.recurrencePattern === 'custom') {
+    rule.interval = parseInt(form.recurrenceInterval, 10) || 1;
+  }
+  if (form.recurrencePattern === 'monthly_date') {
+    rule.dayOfMonth = parseInt(form.recurrenceDayOfMonth, 10) || 1;
+  }
+  if (form.recurrencePattern === 'monthly_weekday') {
+    rule.weekOfMonth = parseInt(form.recurrenceWeekOfMonth, 10) || 1;
+    rule.dayOfWeek = parseInt(form.recurrenceDayOfWeek, 10);
+  }
+  if (form.recurrenceEndCondition === 'after') {
+    rule.endAfter = parseInt(form.recurrenceEndAfter, 10) || 12;
+  }
+  if (form.recurrenceEndCondition === 'on_date') {
+    rule.endDate = form.recurrenceEndDate;
+  }
+  return rule;
+}
 
 export default function SchedulePage() {
   const { user, isTechnician, canManageJobs } = useAuth();
   const [, setLocation] = useLocation();
   const qc = useQueryClient();
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [view, setView] = useState<'week' | 'month'>('week');
+  const [view, setView] = useState<'week' | 'month' | 'series'>('week');
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [newJob, setNewJob] = useState<NewJobForm>(EMPTY_JOB);
   const [alertPanelOpen, setAlertPanelOpen] = useState(false);
   const [alertForm, setAlertForm] = useState({ type: 'issue', message: '' });
+
+  // Edit scope dialog for recurring jobs
+  const [editScopeOpen, setEditScopeOpen] = useState(false);
+  const [pendingEdit, setPendingEdit] = useState<{ field: string; value: unknown } | null>(null);
 
   // Parts panel state
   const [partsSearch, setPartsSearch] = useState('');
@@ -149,6 +212,14 @@ export default function SchedulePage() {
   const createChemApp = useCreateJobChemicalApplication();
   const deleteChemApp = useDeleteChemicalApplication();
 
+  // Recurring series hooks
+  const { data: recurringSeries } = useListRecurringSeries({
+    query: { enabled: view === 'series', queryKey: getListRecurringSeriesQueryKey() },
+  });
+  const skipNextOccurrence = useSkipNextOccurrence();
+  const pauseSeries = usePauseRecurringSeries();
+  const cancelSeries = useCancelRecurringSeries();
+
   // Job parts hooks
   const addJobPart = useAddJobPart();
   const removeJobPart = useRemoveJobPart();
@@ -203,6 +274,8 @@ export default function SchedulePage() {
         : parseInt(newJob.estimatedDuration, 10)
       : undefined;
 
+    const recurrenceRule = buildRecurrenceRule(newJob);
+
     createJob.mutate({
       data: {
         title: newJob.title,
@@ -212,11 +285,13 @@ export default function SchedulePage() {
         priority: newJob.priority as 'low' | 'normal' | 'high' | 'urgent',
         customerId: newJob.customerId ? parseInt(newJob.customerId, 10) : undefined,
         assigneeId: newJob.assigneeId ? parseInt(newJob.assigneeId, 10) : undefined,
+        recurrenceRule,
       },
     }, {
       onSuccess: () => {
-        toast.success('Job created');
+        toast.success(recurrenceRule ? 'Recurring job series created' : 'Job created');
         qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+        qc.invalidateQueries({ queryKey: getListRecurringSeriesQueryKey() });
         setCreateOpen(false);
         setNewJob(EMPTY_JOB);
       },
@@ -242,6 +317,7 @@ export default function SchedulePage() {
           <div className="flex items-center rounded-md border p-1 bg-muted/50">
             <Button variant={view === 'week' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('week')} className="h-7 text-xs px-3">Week</Button>
             <Button variant={view === 'month' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('month')} className="h-7 text-xs px-3">Month</Button>
+            <Button variant={view === 'series' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('series')} className="h-7 text-xs px-3 gap-1"><RefreshCw className="w-3 h-3" />Series</Button>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="icon" onClick={prevRange}><ChevronLeft className="w-4 h-4" /></Button>
@@ -258,7 +334,87 @@ export default function SchedulePage() {
         </div>
       </div>
 
+      {/* Series View */}
+      {view === 'series' && (
+        <Card className="flex-1 overflow-y-auto">
+          <div className="p-4 border-b flex items-center justify-between">
+            <div>
+              <h2 className="font-semibold flex items-center gap-2"><RefreshCw className="w-4 h-4 text-primary" /> Recurring Series</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">One row per active recurring schedule. Manage pause, skip, and cancel from here.</p>
+            </div>
+          </div>
+          {!recurringSeries || recurringSeries.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-3 text-muted-foreground">
+              <RefreshCw className="w-8 h-8 opacity-30" />
+              <p className="text-sm">No recurring series yet.</p>
+              <p className="text-xs">Create a job and toggle "Make Recurring" to start a series.</p>
+            </div>
+          ) : (
+            <div className="divide-y">
+              {recurringSeries.map(s => (
+                <div key={s.id} className="flex items-center gap-4 px-4 py-3 hover:bg-muted/30 transition-colors">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium text-sm truncate">{s.title}</span>
+                      {s.isRecurrencePaused && <Badge variant="outline" className="text-xs text-amber-600 border-amber-300 bg-amber-50">Paused</Badge>}
+                      <Badge variant="outline" className="text-xs gap-1 text-primary border-primary/30 bg-primary/5">
+                        <RefreshCw className="w-2.5 h-2.5" />{s.recurrenceDescription}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground flex-wrap">
+                      {s.customerName && <span className="flex items-center gap-1"><User className="w-3 h-3" />{s.customerName}</span>}
+                      {(s.crewName || s.assigneeName) && <span className="flex items-center gap-1"><Users className="w-3 h-3" />{s.crewName ?? s.assigneeName}</span>}
+                      <span>{s.completedCount} occurrences generated</span>
+                      {s.nextScheduledAt && <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />Next: {format(new Date(s.nextScheduledAt), 'MMM d, yyyy')}</span>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      size="sm" variant="outline" className="h-7 text-xs gap-1"
+                      disabled={skipNextOccurrence.isPending}
+                      onClick={() => {
+                        skipNextOccurrence.mutate({ id: s.id }, {
+                          onSuccess: () => { toast.success('Next occurrence skipped'); qc.invalidateQueries({ queryKey: getListRecurringSeriesQueryKey() }); },
+                          onError: () => toast.error('Failed to skip'),
+                        });
+                      }}
+                    >
+                      <SkipForward className="w-3 h-3" /> Skip
+                    </Button>
+                    <Button
+                      size="sm" variant="outline" className={`h-7 text-xs gap-1 ${s.isRecurrencePaused ? 'text-emerald-600' : ''}`}
+                      disabled={pauseSeries.isPending}
+                      onClick={() => {
+                        pauseSeries.mutate({ id: s.id, data: { paused: !s.isRecurrencePaused } }, {
+                          onSuccess: () => { toast.success(s.isRecurrencePaused ? 'Series resumed' : 'Series paused'); qc.invalidateQueries({ queryKey: getListRecurringSeriesQueryKey() }); },
+                          onError: () => toast.error('Failed to update'),
+                        });
+                      }}
+                    >
+                      {s.isRecurrencePaused ? <><Play className="w-3 h-3" /> Resume</> : <><Pause className="w-3 h-3" /> Pause</>}
+                    </Button>
+                    <Button
+                      size="sm" variant="outline" className="h-7 text-xs gap-1 text-destructive hover:text-destructive"
+                      onClick={() => {
+                        if (!window.confirm('Cancel all future occurrences of this series?')) return;
+                        cancelSeries.mutate({ id: s.id, params: { scope: 'forward' } }, {
+                          onSuccess: () => { toast.success('Series cancelled'); qc.invalidateQueries({ queryKey: getListRecurringSeriesQueryKey() }); },
+                          onError: () => toast.error('Failed to cancel'),
+                        });
+                      }}
+                    >
+                      <X className="w-3 h-3" /> Cancel
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
+
       {/* Calendar */}
+      {view !== 'series' && (
       <Card className="flex-1 flex flex-col min-h-[600px] overflow-hidden">
         <div className="grid grid-cols-7 border-b shrink-0 bg-muted/30">
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
@@ -305,6 +461,12 @@ export default function SchedulePage() {
                             <span>{format(new Date(job.scheduledAt), 'h:mm a')}</span>
                           </div>
                           {job.customerName && <div className="mt-0.5 truncate opacity-80">{job.customerName}</div>}
+                          {(job.recurrenceRule || job.recurrenceParentId) && (
+                            <div className="mt-0.5 flex items-center gap-1 opacity-70">
+                              <RefreshCw className="w-2.5 h-2.5" />
+                              <span className="truncate text-[10px]">{(job as any).recurrenceDescription ?? 'Recurring'}</span>
+                            </div>
+                          )}
                         </div>
                       ))}
                       {/* Estimates */}
@@ -354,6 +516,7 @@ export default function SchedulePage() {
           )}
         </div>
       </Card>
+      )}
 
       {/* Create Job Sheet */}
       <Sheet open={createOpen} onOpenChange={open => { if (!open) { setCreateOpen(false); setNewJob(EMPTY_JOB); } }}>
@@ -435,6 +598,133 @@ export default function SchedulePage() {
               />
             </div>
 
+            {/* Recurrence */}
+            <Separator />
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="text-sm font-medium flex items-center gap-1.5"><RefreshCw className="w-3.5 h-3.5 text-primary" /> Make Recurring</label>
+                  <p className="text-xs text-muted-foreground">Auto-generate future job instances on a schedule.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setNewJob(f => ({ ...f, recurring: !f.recurring }))}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${newJob.recurring ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+                >
+                  <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${newJob.recurring ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                </button>
+              </div>
+
+              {newJob.recurring && (
+                <div className="rounded-lg border p-3 space-y-3 bg-muted/20">
+                  {/* Pattern */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Pattern</label>
+                    <Select value={newJob.recurrencePattern} onValueChange={v => setNewJob(f => ({ ...f, recurrencePattern: v }))}>
+                      <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="daily">Daily</SelectItem>
+                        <SelectItem value="weekly">Weekly (pick days)</SelectItem>
+                        <SelectItem value="biweekly">Every 2 weeks</SelectItem>
+                        <SelectItem value="monthly_date">Monthly by date</SelectItem>
+                        <SelectItem value="monthly_weekday">Monthly by weekday</SelectItem>
+                        <SelectItem value="custom">Custom interval (every N days)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Days of week (weekly / biweekly) */}
+                  {['weekly', 'biweekly'].includes(newJob.recurrencePattern) && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Days of Week</label>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {DAY_LABELS.map((d, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => setNewJob(f => {
+                              const cur = f.recurrenceDaysOfWeek;
+                              return { ...f, recurrenceDaysOfWeek: cur.includes(i) ? cur.filter(x => x !== i) : [...cur, i] };
+                            })}
+                            className={`w-9 h-9 rounded-md text-xs font-medium border transition-colors ${newJob.recurrenceDaysOfWeek.includes(i) ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-muted border-border'}`}
+                          >{d}</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Monthly by date */}
+                  {newJob.recurrencePattern === 'monthly_date' && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Day of Month</label>
+                      <Input type="number" min={1} max={31} className="h-8 text-sm" value={newJob.recurrenceDayOfMonth} onChange={e => setNewJob(f => ({ ...f, recurrenceDayOfMonth: e.target.value }))} />
+                    </div>
+                  )}
+
+                  {/* Monthly by weekday */}
+                  {newJob.recurrencePattern === 'monthly_weekday' && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Week</label>
+                        <Select value={newJob.recurrenceWeekOfMonth} onValueChange={v => setNewJob(f => ({ ...f, recurrenceWeekOfMonth: v }))}>
+                          <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">First</SelectItem>
+                            <SelectItem value="2">Second</SelectItem>
+                            <SelectItem value="3">Third</SelectItem>
+                            <SelectItem value="4">Fourth</SelectItem>
+                            <SelectItem value="5">Last</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Day</label>
+                        <Select value={newJob.recurrenceDayOfWeek} onValueChange={v => setNewJob(f => ({ ...f, recurrenceDayOfWeek: v }))}>
+                          <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {DAY_LABELS.map((d, i) => <SelectItem key={i} value={String(i)}>{d}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Custom interval */}
+                  {newJob.recurrencePattern === 'custom' && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Every N Days</label>
+                      <Input type="number" min={1} className="h-8 text-sm" value={newJob.recurrenceInterval} onChange={e => setNewJob(f => ({ ...f, recurrenceInterval: e.target.value }))} />
+                    </div>
+                  )}
+
+                  {/* End condition */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Ends</label>
+                    <Select value={newJob.recurrenceEndCondition} onValueChange={v => setNewJob(f => ({ ...f, recurrenceEndCondition: v }))}>
+                      <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="never">Never</SelectItem>
+                        <SelectItem value="after">After N occurrences</SelectItem>
+                        <SelectItem value="on_date">On a date</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {newJob.recurrenceEndCondition === 'after' && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Number of Occurrences</label>
+                      <Input type="number" min={1} className="h-8 text-sm" value={newJob.recurrenceEndAfter} onChange={e => setNewJob(f => ({ ...f, recurrenceEndAfter: e.target.value }))} />
+                    </div>
+                  )}
+                  {newJob.recurrenceEndCondition === 'on_date' && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">End Date</label>
+                      <Input type="date" className="h-8 text-sm" value={newJob.recurrenceEndDate} onChange={e => setNewJob(f => ({ ...f, recurrenceEndDate: e.target.value }))} />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <Separator />
             <div className="flex gap-3 justify-end">
               <Button variant="outline" onClick={() => { setCreateOpen(false); setNewJob(EMPTY_JOB); }}>Cancel</Button>
@@ -458,6 +748,15 @@ export default function SchedulePage() {
                     <SheetDescription className="mt-1">
                       Job #{selectedJob.id} · Created {format(new Date(selectedJob.createdAt), 'MMM d, yyyy')}
                     </SheetDescription>
+                    {((selectedJob as any).recurrenceDescription || (selectedJob as any).recurrenceParentId) && (
+                      <div className="mt-2 flex items-center gap-1.5 text-xs text-primary">
+                        <RefreshCw className="w-3 h-3" />
+                        <span>{(selectedJob as any).recurrenceDescription ?? 'Recurring'}</span>
+                        {(selectedJob as any).recurrenceIndex != null && (
+                          <span className="text-muted-foreground">· Occurrence #{((selectedJob as any).recurrenceIndex ?? 0) + 1}</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <Badge className={`shrink-0 capitalize ${STATUS_COLORS[selectedJob.status] ?? ''}`} variant="outline">
                     {selectedJob.status.replace('_', ' ')}
@@ -466,6 +765,58 @@ export default function SchedulePage() {
               </SheetHeader>
 
               <div className="space-y-5">
+                {/* Recurrence actions */}
+                {canManageJobs && ((selectedJob as any).recurrenceRule || (selectedJob as any).recurrenceParentId) && (
+                  <div className="rounded-lg border p-3 bg-primary/5 border-primary/20 space-y-2">
+                    <p className="text-xs font-medium text-primary flex items-center gap-1.5">
+                      <RefreshCw className="w-3 h-3" /> Recurring Series
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1" disabled={skipNextOccurrence.isPending}
+                        onClick={() => {
+                          const rootId = (selectedJob as any).recurrenceParentId ?? selectedJob.id;
+                          skipNextOccurrence.mutate({ id: rootId }, {
+                            onSuccess: () => { toast.success('Next occurrence skipped'); qc.invalidateQueries({ queryKey: getListRecurringSeriesQueryKey() }); },
+                            onError: () => toast.error('Failed to skip'),
+                          });
+                        }}>
+                        <SkipForward className="w-3 h-3" /> Skip Next
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1" disabled={pauseSeries.isPending}
+                        onClick={() => {
+                          const rootId = (selectedJob as any).recurrenceParentId ?? selectedJob.id;
+                          const isPaused = (selectedJob as any).isRecurrencePaused;
+                          pauseSeries.mutate({ id: rootId, data: { paused: !isPaused } }, {
+                            onSuccess: () => {
+                              toast.success(isPaused ? 'Series resumed' : 'Series paused');
+                              qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId!) });
+                              qc.invalidateQueries({ queryKey: getListRecurringSeriesQueryKey() });
+                            },
+                            onError: () => toast.error('Failed to update'),
+                          });
+                        }}>
+                        {(selectedJob as any).isRecurrencePaused ? <><Play className="w-3 h-3" /> Resume Series</> : <><Pause className="w-3 h-3" /> Pause Series</>}
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-destructive hover:text-destructive" disabled={cancelSeries.isPending}
+                        onClick={() => {
+                          if (!window.confirm('Cancel all future occurrences of this series?')) return;
+                          const rootId = (selectedJob as any).recurrenceParentId ?? selectedJob.id;
+                          cancelSeries.mutate({ id: rootId, params: { scope: 'forward' } }, {
+                            onSuccess: () => {
+                              toast.success('Series cancelled');
+                              qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                              qc.invalidateQueries({ queryKey: getListRecurringSeriesQueryKey() });
+                              setSelectedJobId(null);
+                            },
+                            onError: () => toast.error('Failed to cancel'),
+                          });
+                        }}>
+                        <X className="w-3 h-3" /> Cancel Series
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Status change (non-tech) */}
                 {canManageJobs && (
                   <div className="space-y-1.5">

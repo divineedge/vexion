@@ -1116,6 +1116,13 @@ export interface Job {
      * @nullable
      */
   recurrenceDescription?: string | null;
+  /** @nullable */
+  routeTemplateId?: number | null;
+  /** @nullable */
+  sequenceOrder?: number | null;
+  isOneTimeReschedule?: boolean;
+  /** @nullable */
+  originalScheduledDate?: string | null;
   createdAt: string;
 }
 
@@ -2108,6 +2115,8 @@ export interface TenantSettings {
   reviewCustomLink2Label?: string | null;
   /** @nullable */
   reviewCustomLink2Url?: string | null;
+  /** Trip charge auto-appended to a job's invoice when it uses a one-time reschedule */
+  routeExceptionFee?: number;
 }
 
 export interface PauseSeriesInput {
@@ -2130,6 +2139,183 @@ export const CancelSeriesScope = {
   forward: 'forward',
   all: 'all',
 } as const;
+
+export interface CancelPlanVisitInput {
+  reason: string;
+}
+
+export interface Division {
+  id: number;
+  tenantId: number;
+  name: string;
+  /** @nullable */
+  depotLabel?: string | null;
+  /** @nullable */
+  depotLat?: number | null;
+  /** @nullable */
+  depotLng?: number | null;
+  shiftHoursPerDay: number;
+  crewIds?: number[];
+  technicianIds?: number[];
+  isArchived?: boolean;
+  createdAt: string;
+}
+
+export interface DivisionInput {
+  name?: string;
+  depotLabel?: string;
+  depotLat?: number;
+  depotLng?: number;
+  shiftHoursPerDay?: number;
+  crewIds?: number[];
+  technicianIds?: number[];
+  isArchived?: boolean;
+}
+
+export type RouteTemplateFrequency = typeof RouteTemplateFrequency[keyof typeof RouteTemplateFrequency];
+
+
+export const RouteTemplateFrequency = {
+  weekly: 'weekly',
+  biweekly_a: 'biweekly_a',
+  biweekly_b: 'biweekly_b',
+  monthly: 'monthly',
+} as const;
+
+export interface RouteTemplate {
+  id: number;
+  tenantId: number;
+  divisionId: number;
+  /** @nullable */
+  divisionName?: string | null;
+  name: string;
+  frequency: RouteTemplateFrequency;
+  /** 0=Sunday .. 6=Saturday */
+  dayOfWeek: number;
+  /** @nullable */
+  exceptionFeeOverride?: number | null;
+  createdAt: string;
+}
+
+export type RouteTemplateInputFrequency = typeof RouteTemplateInputFrequency[keyof typeof RouteTemplateInputFrequency];
+
+
+export const RouteTemplateInputFrequency = {
+  weekly: 'weekly',
+  biweekly_a: 'biweekly_a',
+  biweekly_b: 'biweekly_b',
+  monthly: 'monthly',
+} as const;
+
+export interface RouteTemplateInput {
+  divisionId?: number;
+  name?: string;
+  frequency?: RouteTemplateInputFrequency;
+  dayOfWeek?: number;
+  exceptionFeeOverride?: number;
+}
+
+export interface CapacitySummary {
+  shiftHours: number;
+  budgetedJobHours: number;
+  driveHours: number;
+  usedHours: number;
+  /** Negative when the route is over capacity */
+  openSpaceHours: number;
+}
+
+export type RouteDashboardEntryFrequency = typeof RouteDashboardEntryFrequency[keyof typeof RouteDashboardEntryFrequency];
+
+
+export const RouteDashboardEntryFrequency = {
+  weekly: 'weekly',
+  biweekly_a: 'biweekly_a',
+  biweekly_b: 'biweekly_b',
+  monthly: 'monthly',
+} as const;
+
+export interface RouteDashboardEntry {
+  routeTemplateId: number;
+  routeTemplateName: string;
+  divisionId: number;
+  divisionName: string;
+  frequency: RouteDashboardEntryFrequency;
+  dayOfWeek: number;
+  runDate: string;
+  stopCount: number;
+  capacity: CapacitySummary;
+}
+
+export interface RouteStopDetail {
+  jobId: number;
+  sequenceOrder: number;
+  driveMinutesFromPrev: number;
+  title: string;
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  propertyAddress?: string | null;
+  /** @nullable */
+  assigneeName?: string | null;
+  /** @nullable */
+  crewName?: string | null;
+  /** @nullable */
+  estimatedDuration?: number | null;
+  status: string;
+}
+
+export interface RouteDayDetail {
+  routeTemplateId: number;
+  routeTemplateName: string;
+  divisionId: number;
+  divisionName: string;
+  /** @nullable */
+  depotLabel?: string | null;
+  date: string;
+  capacity: CapacitySummary;
+  stops: RouteStopDetail[];
+}
+
+export interface ResequenceRouteInput {
+  date: string;
+  /** Explicit job ID order for manual drag-reorder; omit to auto-optimize */
+  jobOrder?: number[];
+}
+
+export interface ResequenceRouteResult {
+  ok: boolean;
+  stopCount: number;
+}
+
+export interface JobRouteUpdate {
+  /** @nullable */
+  routeTemplateId?: number | null;
+  scheduledAt?: string;
+}
+
+export interface JobRouteAssignment {
+  id: number;
+  /** @nullable */
+  routeTemplateId?: number | null;
+  /** @nullable */
+  sequenceOrder: number | null;
+  scheduledAt: string;
+}
+
+export interface RescheduleOnceInput {
+  newScheduledAt: string;
+}
+
+export interface RescheduleOnceResult {
+  id: number;
+  scheduledAt: string;
+  /** @nullable */
+  originalScheduledDate?: string | null;
+  isOneTimeReschedule: boolean;
+  lineItems?: JobLineItem[];
+  totalAmount?: number;
+  exceptionFeeCharged: number;
+}
 
 export type TenantSettingsUpdateDurationUnit = typeof TenantSettingsUpdateDurationUnit[keyof typeof TenantSettingsUpdateDurationUnit];
 
@@ -2218,6 +2404,7 @@ export interface TenantSettingsUpdate {
   reviewCustomLink1Url?: string;
   reviewCustomLink2Label?: string;
   reviewCustomLink2Url?: string;
+  routeExceptionFee?: number;
 }
 
 export type ReviewRequestChannel = typeof ReviewRequestChannel[keyof typeof ReviewRequestChannel];
@@ -3499,10 +3686,6 @@ customerId?: number;
 status?: string;
 };
 
-export type CancelPlanVisitBody = {
-  reason: string;
-};
-
 export type CancelPlanVisit200 = {
   id: number;
   status: string;
@@ -3561,5 +3744,18 @@ startDate?: string;
 endDate?: string;
 category?: string;
 vendorId?: number;
+};
+
+export type ListRouteTemplatesParams = {
+divisionId?: number;
+};
+
+export type GetRoutesDashboardParams = {
+weekStart: string;
+divisionId?: number;
+};
+
+export type GetRouteDayDetailParams = {
+date: string;
 };
 

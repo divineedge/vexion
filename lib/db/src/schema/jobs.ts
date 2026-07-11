@@ -53,6 +53,16 @@ export const jobsTable = pgTable("jobs", {
   /** Number of occurrences already generated (only meaningful on the root) */
   recurrenceCount: integer("recurrence_count").notNull().default(0),
 
+  // ── Routing (Divisions & Route Templates) ────────────────────────────────
+  /** FK to route_templates — which recurring route slot this job belongs to */
+  routeTemplateId: integer("route_template_id"),
+  /** Stop order within its route/day, assigned by the sequencing engine */
+  sequenceOrder: integer("sequence_order"),
+  /** True when this occurrence was moved via "Reschedule This Week Only" */
+  isOneTimeReschedule: integer("is_one_time_reschedule").notNull().default(0),
+  /** The date this job would have been on before a one-time reschedule */
+  originalScheduledDate: timestamp("original_scheduled_date", { withTimezone: true }),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

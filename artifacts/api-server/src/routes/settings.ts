@@ -86,6 +86,8 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     reviewCustomLink1Url: tenant.reviewCustomLink1Url ?? null,
     reviewCustomLink2Label: tenant.reviewCustomLink2Label ?? null,
     reviewCustomLink2Url: tenant.reviewCustomLink2Url ?? null,
+    // Routing
+    routeExceptionFee: tenant.routeExceptionFee ?? 0,
   };
 }
 
@@ -122,6 +124,8 @@ router.patch("/settings", async (req, res): Promise<void> => {
     reviewGoogleUrl, reviewFacebookUrl,
     reviewCustomLink1Label, reviewCustomLink1Url,
     reviewCustomLink2Label, reviewCustomLink2Url,
+    // Routing
+    routeExceptionFee,
   } = req.body;
 
   const updates: Partial<typeof tenantsTable.$inferInsert> = {};
@@ -241,6 +245,7 @@ router.patch("/settings", async (req, res): Promise<void> => {
     if (incoming["smtpPass"] && !incoming["smtpPass"].startsWith("••")) merged["smtpPass"] = incoming["smtpPass"];
     updates.emailProviderConfig = merged;
   }
+  if (routeExceptionFee !== undefined) updates.routeExceptionFee = parseFloat(routeExceptionFee);
 
   const [updated] = await db.update(tenantsTable).set(updates).where(eq(tenantsTable.id, tenantId)).returning();
   if (!updated) { res.status(404).json({ error: "Tenant not found" }); return; }

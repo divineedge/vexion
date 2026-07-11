@@ -12,3 +12,4 @@
 - [lib/db dist goes stale after schema edits](db-schema-dist-stale.md) — rebuild `lib/db` via `tsc --build --force` after schema changes, or downstream packages show phantom missing-export errors
 - [Expo Router typed routes staleness](expo-router-typed-routes-staleness.md) — new route files fail `pathname` typecheck until .expo/types/router.d.ts is regenerated
 - [Dev DB schema drift](db-schema-drift-dev.md) — existing route 500s with opaque "Failed query" on a schema column? Check dev DB has that column (`psql \d table`); run `pnpm --filter @workspace/db run push` if missing
+- [Route sequencing design](route-sequencing-design.md) — Divine Edge routing uses a self-written nearest-neighbor haversine heuristic + fixed 28mph speed, not a mapping API; stay consistent

@@ -70,5 +70,12 @@ export interface Job {
      * @nullable
      */
   recurrenceDescription?: string | null;
+  /** @nullable */
+  routeTemplateId?: number | null;
+  /** @nullable */
+  sequenceOrder?: number | null;
+  isOneTimeReschedule?: boolean;
+  /** @nullable */
+  originalScheduledDate?: string | null;
   createdAt: string;
 }

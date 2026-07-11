@@ -86,4 +86,6 @@ export interface TenantSettings {
   reviewCustomLink2Label?: string | null;
   /** @nullable */
   reviewCustomLink2Url?: string | null;
+  /** Trip charge auto-appended to a job's invoice when it uses a one-time reschedule */
+  routeExceptionFee?: number;
 }

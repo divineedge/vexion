@@ -35,6 +35,10 @@ function formatJob(
     isRecurrencePaused: j.isRecurrencePaused ?? false,
     recurrenceCount: j.recurrenceCount ?? 0,
     recurrenceDescription: rule ? describeRule(rule) : null,
+    routeTemplateId: j.routeTemplateId ?? null,
+    sequenceOrder: j.sequenceOrder ?? null,
+    isOneTimeReschedule: !!j.isOneTimeReschedule,
+    originalScheduledDate: j.originalScheduledDate?.toISOString() ?? null,
   };
 }
 

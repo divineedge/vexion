@@ -40,6 +40,7 @@ import { toast } from 'sonner';
 import { BUILT_IN_CUSTOMER_FIELDS, getActiveCustomerFields, type CustomerFieldConfig } from '@/lib/fieldConfig';
 import IntegrationsGrid from '@/components/settings/IntegrationsGrid';
 import DevToolsPanel from '@/components/settings/DevToolsPanel';
+import RoutingSettings from '@/components/settings/RoutingSettings';
 
 export default function SettingsPage() {
   const { isSuperAdmin, isOwner } = useAuth();
@@ -424,6 +425,7 @@ export default function SettingsPage() {
           <TabsTrigger value="users"><Users className="w-4 h-4 mr-2" />Team</TabsTrigger>
           {isSuperAdmin && <TabsTrigger value="plans"><Shield className="w-4 h-4 mr-2" />Plans</TabsTrigger>}
           <TabsTrigger value="service-plans"><RepeatIcon className="w-4 h-4 mr-2" />Service Plans</TabsTrigger>
+          <TabsTrigger value="routing"><MapPin className="w-4 h-4 mr-2" />Routing</TabsTrigger>
           <TabsTrigger value="operational"><SettingsIcon className="w-4 h-4 mr-2" />Operational</TabsTrigger>
           <TabsTrigger value="measurements"><MapPin className="w-4 h-4 mr-2" />Maps & Quotes</TabsTrigger>
           <TabsTrigger value="chemicals"><FlaskConical className="w-4 h-4 mr-2" />Chemicals</TabsTrigger>
@@ -1379,6 +1381,11 @@ export default function SettingsPage() {
         {/* ── Service Plans ── */}
         <TabsContent value="service-plans" className="focus-visible:outline-none">
           <PlanTemplatesSettings />
+        </TabsContent>
+
+        {/* ── Routing ── */}
+        <TabsContent value="routing" className="focus-visible:outline-none">
+          <RoutingSettings />
         </TabsContent>
 
         {/* ── Operational ── */}

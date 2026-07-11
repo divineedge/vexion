@@ -930,6 +930,10 @@ export const ListJobsResponseItem = zod.object({
   "isRecurrencePaused": zod.boolean().optional(),
   "recurrenceCount": zod.number().optional(),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
+  "routeTemplateId": zod.number().nullish(),
+  "sequenceOrder": zod.number().nullish(),
+  "isOneTimeReschedule": zod.boolean().optional(),
+  "originalScheduledDate": zod.string().nullish(),
   "createdAt": zod.string()
 })
 export const ListJobsResponse = zod.array(ListJobsResponseItem)
@@ -1015,6 +1019,10 @@ export const CreateJobResponse = zod.object({
   "isRecurrencePaused": zod.boolean().optional(),
   "recurrenceCount": zod.number().optional(),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
+  "routeTemplateId": zod.number().nullish(),
+  "sequenceOrder": zod.number().nullish(),
+  "isOneTimeReschedule": zod.boolean().optional(),
+  "originalScheduledDate": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -1078,6 +1086,10 @@ export const GetJobResponse = zod.object({
   "isRecurrencePaused": zod.boolean().optional(),
   "recurrenceCount": zod.number().optional(),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
+  "routeTemplateId": zod.number().nullish(),
+  "sequenceOrder": zod.number().nullish(),
+  "isOneTimeReschedule": zod.boolean().optional(),
+  "originalScheduledDate": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -1164,6 +1176,10 @@ export const UpdateJobResponse = zod.object({
   "isRecurrencePaused": zod.boolean().optional(),
   "recurrenceCount": zod.number().optional(),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
+  "routeTemplateId": zod.number().nullish(),
+  "sequenceOrder": zod.number().nullish(),
+  "isOneTimeReschedule": zod.boolean().optional(),
+  "originalScheduledDate": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -1266,6 +1282,10 @@ export const SkipNextOccurrenceResponse = zod.object({
   "isRecurrencePaused": zod.boolean().optional(),
   "recurrenceCount": zod.number().optional(),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
+  "routeTemplateId": zod.number().nullish(),
+  "sequenceOrder": zod.number().nullish(),
+  "isOneTimeReschedule": zod.boolean().optional(),
+  "originalScheduledDate": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -1333,6 +1353,10 @@ export const PauseRecurringSeriesResponse = zod.object({
   "isRecurrencePaused": zod.boolean().optional(),
   "recurrenceCount": zod.number().optional(),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
+  "routeTemplateId": zod.number().nullish(),
+  "sequenceOrder": zod.number().nullish(),
+  "isOneTimeReschedule": zod.boolean().optional(),
+  "originalScheduledDate": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -1410,6 +1434,10 @@ export const CompleteJobResponse = zod.object({
   "isRecurrencePaused": zod.boolean().optional(),
   "recurrenceCount": zod.number().optional(),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
+  "routeTemplateId": zod.number().nullish(),
+  "sequenceOrder": zod.number().nullish(),
+  "isOneTimeReschedule": zod.boolean().optional(),
+  "originalScheduledDate": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -1495,6 +1523,10 @@ export const AddJobPartResponse = zod.object({
   "isRecurrencePaused": zod.boolean().optional(),
   "recurrenceCount": zod.number().optional(),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
+  "routeTemplateId": zod.number().nullish(),
+  "sequenceOrder": zod.number().nullish(),
+  "isOneTimeReschedule": zod.boolean().optional(),
+  "originalScheduledDate": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -1559,6 +1591,10 @@ export const RemoveJobPartResponse = zod.object({
   "isRecurrencePaused": zod.boolean().optional(),
   "recurrenceCount": zod.number().optional(),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
+  "routeTemplateId": zod.number().nullish(),
+  "sequenceOrder": zod.number().nullish(),
+  "isOneTimeReschedule": zod.boolean().optional(),
+  "originalScheduledDate": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -3022,7 +3058,8 @@ export const GetTenantSettingsResponse = zod.object({
   "reviewCustomLink1Label": zod.string().nullish(),
   "reviewCustomLink1Url": zod.string().nullish(),
   "reviewCustomLink2Label": zod.string().nullish(),
-  "reviewCustomLink2Url": zod.string().nullish()
+  "reviewCustomLink2Url": zod.string().nullish(),
+  "routeExceptionFee": zod.number().optional().describe('Trip charge auto-appended to a job\'s invoice when it uses a one-time reschedule')
 })
 
 
@@ -3081,7 +3118,8 @@ export const UpdateTenantSettingsBody = zod.object({
   "reviewCustomLink1Label": zod.string().optional(),
   "reviewCustomLink1Url": zod.string().optional(),
   "reviewCustomLink2Label": zod.string().optional(),
-  "reviewCustomLink2Url": zod.string().optional()
+  "reviewCustomLink2Url": zod.string().optional(),
+  "routeExceptionFee": zod.number().optional()
 })
 
 export const UpdateTenantSettingsResponse = zod.object({
@@ -3139,7 +3177,8 @@ export const UpdateTenantSettingsResponse = zod.object({
   "reviewCustomLink1Label": zod.string().nullish(),
   "reviewCustomLink1Url": zod.string().nullish(),
   "reviewCustomLink2Label": zod.string().nullish(),
-  "reviewCustomLink2Url": zod.string().nullish()
+  "reviewCustomLink2Url": zod.string().nullish(),
+  "routeExceptionFee": zod.number().optional().describe('Trip charge auto-appended to a job\'s invoice when it uses a one-time reschedule')
 })
 
 
@@ -7193,5 +7232,336 @@ export const DeleteExpenseParams = zod.object({
 })
 
 export const DeleteExpenseResponse = zod.void()
+
+
+/**
+ * @summary List all divisions
+ */
+export const ListDivisionsResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "depotLabel": zod.string().nullish(),
+  "depotLat": zod.number().nullish(),
+  "depotLng": zod.number().nullish(),
+  "shiftHoursPerDay": zod.number(),
+  "crewIds": zod.array(zod.number()).optional(),
+  "technicianIds": zod.array(zod.number()).optional(),
+  "isArchived": zod.boolean().optional(),
+  "createdAt": zod.string()
+})
+export const ListDivisionsResponse = zod.array(ListDivisionsResponseItem)
+
+
+/**
+ * @summary Create a division
+ */
+export const CreateDivisionBody = zod.object({
+  "name": zod.string().optional(),
+  "depotLabel": zod.string().optional(),
+  "depotLat": zod.number().optional(),
+  "depotLng": zod.number().optional(),
+  "shiftHoursPerDay": zod.number().optional(),
+  "crewIds": zod.array(zod.number()).optional(),
+  "technicianIds": zod.array(zod.number()).optional(),
+  "isArchived": zod.boolean().optional()
+})
+
+export const CreateDivisionResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "depotLabel": zod.string().nullish(),
+  "depotLat": zod.number().nullish(),
+  "depotLng": zod.number().nullish(),
+  "shiftHoursPerDay": zod.number(),
+  "crewIds": zod.array(zod.number()).optional(),
+  "technicianIds": zod.array(zod.number()).optional(),
+  "isArchived": zod.boolean().optional(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Get a division by ID
+ */
+export const GetDivisionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetDivisionResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "depotLabel": zod.string().nullish(),
+  "depotLat": zod.number().nullish(),
+  "depotLng": zod.number().nullish(),
+  "shiftHoursPerDay": zod.number(),
+  "crewIds": zod.array(zod.number()).optional(),
+  "technicianIds": zod.array(zod.number()).optional(),
+  "isArchived": zod.boolean().optional(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Update a division
+ */
+export const UpdateDivisionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateDivisionBody = zod.object({
+  "name": zod.string().optional(),
+  "depotLabel": zod.string().optional(),
+  "depotLat": zod.number().optional(),
+  "depotLng": zod.number().optional(),
+  "shiftHoursPerDay": zod.number().optional(),
+  "crewIds": zod.array(zod.number()).optional(),
+  "technicianIds": zod.array(zod.number()).optional(),
+  "isArchived": zod.boolean().optional()
+})
+
+export const UpdateDivisionResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "depotLabel": zod.string().nullish(),
+  "depotLat": zod.number().nullish(),
+  "depotLng": zod.number().nullish(),
+  "shiftHoursPerDay": zod.number(),
+  "crewIds": zod.array(zod.number()).optional(),
+  "technicianIds": zod.array(zod.number()).optional(),
+  "isArchived": zod.boolean().optional(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a division
+ */
+export const DeleteDivisionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteDivisionResponse = zod.void()
+
+
+/**
+ * @summary List route templates
+ */
+export const ListRouteTemplatesQueryParams = zod.object({
+  "divisionId": zod.coerce.number().optional()
+})
+
+export const ListRouteTemplatesResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "divisionId": zod.number(),
+  "divisionName": zod.string().nullish(),
+  "name": zod.string(),
+  "frequency": zod.enum(['weekly', 'biweekly_a', 'biweekly_b', 'monthly']),
+  "dayOfWeek": zod.number().describe('0=Sunday .. 6=Saturday'),
+  "exceptionFeeOverride": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+export const ListRouteTemplatesResponse = zod.array(ListRouteTemplatesResponseItem)
+
+
+/**
+ * @summary Create a route template
+ */
+export const CreateRouteTemplateBody = zod.object({
+  "divisionId": zod.number().optional(),
+  "name": zod.string().optional(),
+  "frequency": zod.enum(['weekly', 'biweekly_a', 'biweekly_b', 'monthly']).optional(),
+  "dayOfWeek": zod.number().optional(),
+  "exceptionFeeOverride": zod.number().optional()
+})
+
+export const CreateRouteTemplateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "divisionId": zod.number(),
+  "divisionName": zod.string().nullish(),
+  "name": zod.string(),
+  "frequency": zod.enum(['weekly', 'biweekly_a', 'biweekly_b', 'monthly']),
+  "dayOfWeek": zod.number().describe('0=Sunday .. 6=Saturday'),
+  "exceptionFeeOverride": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Update a route template
+ */
+export const UpdateRouteTemplateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateRouteTemplateBody = zod.object({
+  "divisionId": zod.number().optional(),
+  "name": zod.string().optional(),
+  "frequency": zod.enum(['weekly', 'biweekly_a', 'biweekly_b', 'monthly']).optional(),
+  "dayOfWeek": zod.number().optional(),
+  "exceptionFeeOverride": zod.number().optional()
+})
+
+export const UpdateRouteTemplateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "divisionId": zod.number(),
+  "divisionName": zod.string().nullish(),
+  "name": zod.string(),
+  "frequency": zod.enum(['weekly', 'biweekly_a', 'biweekly_b', 'monthly']),
+  "dayOfWeek": zod.number().describe('0=Sunday .. 6=Saturday'),
+  "exceptionFeeOverride": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a route template
+ */
+export const DeleteRouteTemplateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteRouteTemplateResponse = zod.void()
+
+
+/**
+ * @summary Weekly routes dashboard grouped by division, with capacity meters
+ */
+export const GetRoutesDashboardQueryParams = zod.object({
+  "weekStart": zod.date(),
+  "divisionId": zod.coerce.number().optional()
+})
+
+export const GetRoutesDashboardResponseItem = zod.object({
+  "routeTemplateId": zod.number(),
+  "routeTemplateName": zod.string(),
+  "divisionId": zod.number(),
+  "divisionName": zod.string(),
+  "frequency": zod.enum(['weekly', 'biweekly_a', 'biweekly_b', 'monthly']),
+  "dayOfWeek": zod.number(),
+  "runDate": zod.coerce.date(),
+  "stopCount": zod.number(),
+  "capacity": zod.object({
+  "shiftHours": zod.number(),
+  "budgetedJobHours": zod.number(),
+  "driveHours": zod.number(),
+  "usedHours": zod.number(),
+  "openSpaceHours": zod.number().describe('Negative when the route is over capacity')
+})
+})
+export const GetRoutesDashboardResponse = zod.array(GetRoutesDashboardResponseItem)
+
+
+/**
+ * @summary Sequenced stop detail for one route on a specific day
+ */
+export const GetRouteDayDetailParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetRouteDayDetailQueryParams = zod.object({
+  "date": zod.date()
+})
+
+export const GetRouteDayDetailResponse = zod.object({
+  "routeTemplateId": zod.number(),
+  "routeTemplateName": zod.string(),
+  "divisionId": zod.number(),
+  "divisionName": zod.string(),
+  "depotLabel": zod.string().nullish(),
+  "date": zod.coerce.date(),
+  "capacity": zod.object({
+  "shiftHours": zod.number(),
+  "budgetedJobHours": zod.number(),
+  "driveHours": zod.number(),
+  "usedHours": zod.number(),
+  "openSpaceHours": zod.number().describe('Negative when the route is over capacity')
+}),
+  "stops": zod.array(zod.object({
+  "jobId": zod.number(),
+  "sequenceOrder": zod.number(),
+  "driveMinutesFromPrev": zod.number(),
+  "title": zod.string(),
+  "customerName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "crewName": zod.string().nullish(),
+  "estimatedDuration": zod.number().nullish(),
+  "status": zod.string()
+}))
+})
+
+
+/**
+ * @summary Resequence a route's stops for a given day (auto or manual order)
+ */
+export const ResequenceRouteParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ResequenceRouteBody = zod.object({
+  "date": zod.coerce.date(),
+  "jobOrder": zod.array(zod.number()).optional().describe('Explicit job ID order for manual drag-reorder; omit to auto-optimize')
+})
+
+export const ResequenceRouteResponse = zod.object({
+  "ok": zod.boolean(),
+  "stopCount": zod.number()
+})
+
+
+/**
+ * @summary Assign or reassign a job to a route template + date
+ */
+export const UpdateJobRouteParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateJobRouteBody = zod.object({
+  "routeTemplateId": zod.number().nullish(),
+  "scheduledAt": zod.string().optional()
+})
+
+export const UpdateJobRouteResponse = zod.object({
+  "id": zod.number(),
+  "routeTemplateId": zod.number().nullish(),
+  "sequenceOrder": zod.number().nullable(),
+  "scheduledAt": zod.string()
+})
+
+
+/**
+ * @summary Move a single job occurrence to a new date and apply the route exception trip charge
+ */
+export const RescheduleJobOnceParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RescheduleJobOnceBody = zod.object({
+  "newScheduledAt": zod.string()
+})
+
+export const RescheduleJobOnceResponse = zod.object({
+  "id": zod.number(),
+  "scheduledAt": zod.string(),
+  "originalScheduledDate": zod.string().nullish(),
+  "isOneTimeReschedule": zod.boolean(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "inventoryItemId": zod.number().nullish(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional(),
+  "totalAmount": zod.number().optional(),
+  "exceptionFeeCharged": zod.number()
+})
 
 

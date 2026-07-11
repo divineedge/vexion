@@ -4029,11 +4029,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [reason]
-              properties:
-                reason:
-                  type: string
+              $ref: "#/components/schemas/CancelPlanVisitInput"
       responses:
         "200":
           description: Visit cancelled
@@ -4874,6 +4870,248 @@ paths:
       responses:
         "204":
           description: Deleted
+
+  /divisions:
+    get:
+      operationId: listDivisions
+      tags: [routing]
+      summary: List all divisions
+      responses:
+        "200":
+          description: List of divisions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Division"
+    post:
+      operationId: createDivision
+      tags: [routing]
+      summary: Create a division
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DivisionInput"
+      responses:
+        "201":
+          description: Division created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Division"
+
+  /divisions/{id}:
+    get:
+      operationId: getDivision
+      tags: [routing]
+      summary: Get a division by ID
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Division
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Division"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateDivision
+      tags: [routing]
+      summary: Update a division
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DivisionInput"
+      responses:
+        "200":
+          description: Updated division
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Division"
+    delete:
+      operationId: deleteDivision
+      tags: [routing]
+      summary: Delete a division
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204":
+          description: Deleted
+        "409":
+          description: Division has route templates
+
+  /route-templates:
+    get:
+      operationId: listRouteTemplates
+      tags: [routing]
+      summary: List route templates
+      parameters:
+        - { name: divisionId, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: List of route templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RouteTemplate"
+    post:
+      operationId: createRouteTemplate
+      tags: [routing]
+      summary: Create a route template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RouteTemplateInput"
+      responses:
+        "201":
+          description: Route template created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RouteTemplate"
+
+  /route-templates/{id}:
+    patch:
+      operationId: updateRouteTemplate
+      tags: [routing]
+      summary: Update a route template
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RouteTemplateInput"
+      responses:
+        "200":
+          description: Updated route template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RouteTemplate"
+    delete:
+      operationId: deleteRouteTemplate
+      tags: [routing]
+      summary: Delete a route template
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204":
+          description: Deleted
+
+  /routes/dashboard:
+    get:
+      operationId: getRoutesDashboard
+      tags: [routing]
+      summary: Weekly routes dashboard grouped by division, with capacity meters
+      parameters:
+        - { name: weekStart, in: query, required: true, schema: { type: string, format: date } }
+        - { name: divisionId, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: Route dashboard entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RouteDashboardEntry"
+
+  /routes/{id}/day:
+    get:
+      operationId: getRouteDayDetail
+      tags: [routing]
+      summary: Sequenced stop detail for one route on a specific day
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: date, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: Route day detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RouteDayDetail"
+        "404":
+          description: Not found
+
+  /routes/{id}/resequence:
+    post:
+      operationId: resequenceRoute
+      tags: [routing]
+      summary: Resequence a route's stops for a given day (auto or manual order)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResequenceRouteInput"
+      responses:
+        "200":
+          description: Resequence result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResequenceRouteResult"
+
+  /jobs/{id}/route:
+    patch:
+      operationId: updateJobRoute
+      tags: [routing]
+      summary: Assign or reassign a job to a route template + date
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobRouteUpdate"
+      responses:
+        "200":
+          description: Updated job route assignment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobRouteAssignment"
+
+  /jobs/{id}/reschedule-once:
+    post:
+      operationId: rescheduleJobOnce
+      tags: [routing]
+      summary: Move a single job occurrence to a new date and apply the route exception trip charge
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RescheduleOnceInput"
+      responses:
+        "200":
+          description: Reschedule result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RescheduleOnceResult"
 
 components:
   schemas:
@@ -6222,6 +6460,14 @@ components:
         recurrenceDescription:
           type: ["string", "null"]
           description: "Human-readable summary e.g. Every Mon & Thu"
+        routeTemplateId:
+          type: ["integer", "null"]
+        sequenceOrder:
+          type: ["integer", "null"]
+        isOneTimeReschedule:
+          type: boolean
+        originalScheduledDate:
+          type: ["string", "null"]
         createdAt:
           type: string
 
@@ -7417,6 +7663,9 @@ components:
           type: ["string", "null"]
         reviewCustomLink2Url:
           type: ["string", "null"]
+        routeExceptionFee:
+          type: number
+          description: "Trip charge auto-appended to a job's invoice when it uses a one-time reschedule"
 
     PauseSeriesInput:
       type: object
@@ -7442,6 +7691,269 @@ components:
     CancelSeriesScope:
       type: string
       enum: [forward, all]
+
+    CancelPlanVisitInput:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+
+    Division:
+      type: object
+      required: [id, tenantId, name, shiftHoursPerDay, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        name:
+          type: string
+        depotLabel:
+          type: ["string", "null"]
+        depotLat:
+          type: ["number", "null"]
+        depotLng:
+          type: ["number", "null"]
+        shiftHoursPerDay:
+          type: number
+        crewIds:
+          type: array
+          items:
+            type: integer
+        technicianIds:
+          type: array
+          items:
+            type: integer
+        isArchived:
+          type: boolean
+        createdAt:
+          type: string
+
+    DivisionInput:
+      type: object
+      properties:
+        name:
+          type: string
+        depotLabel:
+          type: string
+        depotLat:
+          type: number
+        depotLng:
+          type: number
+        shiftHoursPerDay:
+          type: number
+        crewIds:
+          type: array
+          items:
+            type: integer
+        technicianIds:
+          type: array
+          items:
+            type: integer
+        isArchived:
+          type: boolean
+
+    RouteTemplate:
+      type: object
+      required: [id, tenantId, divisionId, name, frequency, dayOfWeek, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        divisionId:
+          type: integer
+        divisionName:
+          type: ["string", "null"]
+        name:
+          type: string
+        frequency:
+          type: string
+          enum: [weekly, biweekly_a, biweekly_b, monthly]
+        dayOfWeek:
+          type: integer
+          description: "0=Sunday .. 6=Saturday"
+        exceptionFeeOverride:
+          type: ["number", "null"]
+        createdAt:
+          type: string
+
+    RouteTemplateInput:
+      type: object
+      properties:
+        divisionId:
+          type: integer
+        name:
+          type: string
+        frequency:
+          type: string
+          enum: [weekly, biweekly_a, biweekly_b, monthly]
+        dayOfWeek:
+          type: integer
+        exceptionFeeOverride:
+          type: number
+
+    CapacitySummary:
+      type: object
+      required: [shiftHours, budgetedJobHours, driveHours, usedHours, openSpaceHours]
+      properties:
+        shiftHours:
+          type: number
+        budgetedJobHours:
+          type: number
+        driveHours:
+          type: number
+        usedHours:
+          type: number
+        openSpaceHours:
+          type: number
+          description: "Negative when the route is over capacity"
+
+    RouteDashboardEntry:
+      type: object
+      required: [routeTemplateId, routeTemplateName, divisionId, divisionName, frequency, dayOfWeek, runDate, stopCount, capacity]
+      properties:
+        routeTemplateId:
+          type: integer
+        routeTemplateName:
+          type: string
+        divisionId:
+          type: integer
+        divisionName:
+          type: string
+        frequency:
+          type: string
+          enum: [weekly, biweekly_a, biweekly_b, monthly]
+        dayOfWeek:
+          type: integer
+        runDate:
+          type: string
+          format: date
+        stopCount:
+          type: integer
+        capacity:
+          $ref: "#/components/schemas/CapacitySummary"
+
+    RouteStopDetail:
+      type: object
+      required: [jobId, sequenceOrder, driveMinutesFromPrev, title, status]
+      properties:
+        jobId:
+          type: integer
+        sequenceOrder:
+          type: integer
+        driveMinutesFromPrev:
+          type: integer
+        title:
+          type: string
+        customerName:
+          type: ["string", "null"]
+        propertyAddress:
+          type: ["string", "null"]
+        assigneeName:
+          type: ["string", "null"]
+        crewName:
+          type: ["string", "null"]
+        estimatedDuration:
+          type: ["integer", "null"]
+        status:
+          type: string
+
+    RouteDayDetail:
+      type: object
+      required: [routeTemplateId, routeTemplateName, divisionId, divisionName, date, capacity, stops]
+      properties:
+        routeTemplateId:
+          type: integer
+        routeTemplateName:
+          type: string
+        divisionId:
+          type: integer
+        divisionName:
+          type: string
+        depotLabel:
+          type: ["string", "null"]
+        date:
+          type: string
+          format: date
+        capacity:
+          $ref: "#/components/schemas/CapacitySummary"
+        stops:
+          type: array
+          items:
+            $ref: "#/components/schemas/RouteStopDetail"
+
+    ResequenceRouteInput:
+      type: object
+      required: [date]
+      properties:
+        date:
+          type: string
+          format: date
+        jobOrder:
+          type: array
+          items:
+            type: integer
+          description: "Explicit job ID order for manual drag-reorder; omit to auto-optimize"
+
+    ResequenceRouteResult:
+      type: object
+      required: [ok, stopCount]
+      properties:
+        ok:
+          type: boolean
+        stopCount:
+          type: integer
+
+    JobRouteUpdate:
+      type: object
+      properties:
+        routeTemplateId:
+          type: ["integer", "null"]
+        scheduledAt:
+          type: string
+
+    JobRouteAssignment:
+      type: object
+      required: [id, sequenceOrder, scheduledAt]
+      properties:
+        id:
+          type: integer
+        routeTemplateId:
+          type: ["integer", "null"]
+        sequenceOrder:
+          type: ["integer", "null"]
+        scheduledAt:
+          type: string
+
+    RescheduleOnceInput:
+      type: object
+      required: [newScheduledAt]
+      properties:
+        newScheduledAt:
+          type: string
+
+    RescheduleOnceResult:
+      type: object
+      required: [id, scheduledAt, isOneTimeReschedule, exceptionFeeCharged]
+      properties:
+        id:
+          type: integer
+        scheduledAt:
+          type: string
+        originalScheduledDate:
+          type: ["string", "null"]
+        isOneTimeReschedule:
+          type: boolean
+        lineItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/JobLineItem"
+        totalAmount:
+          type: number
+        exceptionFeeCharged:
+          type: number
 
     PaymentReminderRule:
       type: object
@@ -7555,6 +8067,8 @@ components:
           type: string
         reviewCustomLink2Url:
           type: string
+        routeExceptionFee:
+          type: number
 
     CustomerFieldConfig:
       type: object

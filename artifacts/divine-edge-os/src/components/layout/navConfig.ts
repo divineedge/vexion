@@ -5,6 +5,7 @@ import {
   DollarSign, Banknote as InvoiceIcon,
   Megaphone, FlaskConical,
   Settings, FileText, Footprints, BarChart3, Star, Repeat, ListTodo,
+  Map,
   LucideIcon,
 } from 'lucide-react';
 
@@ -54,6 +55,7 @@ export const adminNavSections: NavSection[] = [
     label: 'Field Ops',
     items: [
       { name: 'Crews',          href: '/crews',          icon: UserCheck },
+      { name: 'Routes',         href: '/routes',         icon: Map },
       { name: 'Time Tracking',  href: '/time-tracking',  icon: Clock },
       { name: 'Daily Routines', href: '/daily-routines', icon: CheckSquare },
       { name: 'Efficiency',     href: '/efficiency',     icon: Gauge },

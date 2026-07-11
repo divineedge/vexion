@@ -57,4 +57,5 @@ export interface TenantSettingsUpdate {
   reviewCustomLink1Url?: string;
   reviewCustomLink2Label?: string;
   reviewCustomLink2Url?: string;
+  routeExceptionFee?: number;
 }

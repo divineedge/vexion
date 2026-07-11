@@ -89,6 +89,9 @@ export const tenantsTable = pgTable("tenants", {
   reviewCustomLink1Url: text("review_custom_link1_url"),
   reviewCustomLink2Label: text("review_custom_link2_label"),
   reviewCustomLink2Url: text("review_custom_link2_url"),
+  // ── Routing ───────────────────────────────────────────────────────────────
+  /** Trip charge auto-appended to a job's invoice when it uses a one-time reschedule */
+  routeExceptionFee: real("route_exception_fee").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

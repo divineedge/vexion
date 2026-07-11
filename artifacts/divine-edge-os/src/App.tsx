@@ -38,6 +38,7 @@ import ReviewPublicPage from '@/pages/review-public';
 import PlansDashboardPage from '@/pages/plans-dashboard';
 import PlanDetailPage from '@/pages/plan-detail';
 import TasksPage from '@/pages/tasks';
+import RoutesDashboardPage from '@/pages/routes';
 
 import NotFound from '@/pages/not-found';
 
@@ -69,6 +70,7 @@ function ProtectedRoutes() {
         <Route path="/blueprints" component={BlueprintsPage} />
         <Route path="/settings" component={SettingsPage} />
         <Route path="/crews" component={CrewsPage} />
+        <Route path="/routes" component={RoutesDashboardPage} />
         <Route path="/efficiency" component={EfficiencyPage} />
         <Route path="/callbacks" component={CallbacksPage} />
         <Route path="/tasks" component={TasksPage} />

@@ -27,3 +27,4 @@ export * from "./visits";
 export * from "./estimateTemplates";
 export * from "./recurringInvoiceTemplates";
 export * from "./billingEmailQueue";
+export * from "./vendors";

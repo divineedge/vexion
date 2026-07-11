@@ -5016,3 +5016,416 @@ export const GetBillingAutomationStatusResponse = zod.object({
 })
 
 
+/**
+ * @summary Per-job revenue, cost, and margin breakdown
+ */
+export const GetJobProfitabilityReportQueryParams = zod.object({
+  "startDate": zod.coerce.string().optional(),
+  "endDate": zod.coerce.string().optional(),
+  "crewId": zod.coerce.number().optional(),
+  "assigneeId": zod.coerce.number().optional(),
+  "propertyId": zod.coerce.number().optional()
+})
+
+export const GetJobProfitabilityReportResponse = zod.object({
+  "rows": zod.array(zod.object({
+  "jobId": zod.number(),
+  "jobTitle": zod.string(),
+  "customerName": zod.string().nullish(),
+  "completedAt": zod.string(),
+  "crewId": zod.number().nullish(),
+  "crewName": zod.string().nullish(),
+  "assigneeId": zod.number().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "propertyId": zod.number().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "revenue": zod.number(),
+  "partsCost": zod.number(),
+  "laborCost": zod.number(),
+  "fuelCost": zod.number(),
+  "netProfit": zod.number(),
+  "marginPct": zod.number()
+})),
+  "totals": zod.object({
+  "revenue": zod.number(),
+  "partsCost": zod.number(),
+  "laborCost": zod.number(),
+  "fuelCost": zod.number(),
+  "netProfit": zod.number()
+}),
+  "generatedAt": zod.string(),
+  "cached": zod.boolean(),
+  "startDate": zod.string(),
+  "endDate": zod.string()
+})
+
+
+/**
+ * @summary Per-technician revenue and P4P earnings breakdown
+ */
+export const GetEmployeeRevenueReportQueryParams = zod.object({
+  "startDate": zod.coerce.string().optional(),
+  "endDate": zod.coerce.string().optional()
+})
+
+export const GetEmployeeRevenueReportResponse = zod.object({
+  "rows": zod.array(zod.object({
+  "userId": zod.number(),
+  "name": zod.string(),
+  "jobCount": zod.number(),
+  "totalRevenue": zod.number(),
+  "averageJobValue": zod.number(),
+  "totalP4pEarnings": zod.number(),
+  "p4pToRevenueRatioPct": zod.number()
+})),
+  "generatedAt": zod.string(),
+  "cached": zod.boolean(),
+  "startDate": zod.string(),
+  "endDate": zod.string()
+})
+
+
+/**
+ * @summary Profit & loss statement for a date range
+ */
+export const GetPlStatementReportQueryParams = zod.object({
+  "startDate": zod.coerce.string().optional(),
+  "endDate": zod.coerce.string().optional()
+})
+
+export const GetPlStatementReportResponse = zod.object({
+  "revenue": zod.number(),
+  "costOfGoodsSold": zod.object({
+  "partsCost": zod.number(),
+  "laborCost": zod.number(),
+  "fuelCost": zod.number(),
+  "total": zod.number()
+}),
+  "grossProfit": zod.number(),
+  "operatingExpenses": zod.object({
+  "total": zod.number(),
+  "byCategory": zod.array(zod.object({
+  "category": zod.string(),
+  "amount": zod.number()
+}))
+}),
+  "netIncome": zod.number(),
+  "generatedAt": zod.string(),
+  "cached": zod.boolean(),
+  "startDate": zod.string(),
+  "endDate": zod.string()
+})
+
+
+/**
+ * @summary Open invoices grouped by aging bucket
+ */
+export const GetAgingInvoicesReportResponse = zod.object({
+  "buckets": zod.object({
+  "current": zod.object({
+  "label": zod.string(),
+  "total": zod.number(),
+  "invoices": zod.array(zod.object({
+  "invoiceId": zod.number(),
+  "invoiceNumber": zod.string(),
+  "customerName": zod.string().nullish(),
+  "total": zod.number(),
+  "dueDate": zod.string().nullish(),
+  "status": zod.string(),
+  "daysOverdue": zod.number()
+}))
+}).optional(),
+  "1-30": zod.object({
+  "label": zod.string(),
+  "total": zod.number(),
+  "invoices": zod.array(zod.object({
+  "invoiceId": zod.number(),
+  "invoiceNumber": zod.string(),
+  "customerName": zod.string().nullish(),
+  "total": zod.number(),
+  "dueDate": zod.string().nullish(),
+  "status": zod.string(),
+  "daysOverdue": zod.number()
+}))
+}).optional(),
+  "31-60": zod.object({
+  "label": zod.string(),
+  "total": zod.number(),
+  "invoices": zod.array(zod.object({
+  "invoiceId": zod.number(),
+  "invoiceNumber": zod.string(),
+  "customerName": zod.string().nullish(),
+  "total": zod.number(),
+  "dueDate": zod.string().nullish(),
+  "status": zod.string(),
+  "daysOverdue": zod.number()
+}))
+}).optional(),
+  "61-90": zod.object({
+  "label": zod.string(),
+  "total": zod.number(),
+  "invoices": zod.array(zod.object({
+  "invoiceId": zod.number(),
+  "invoiceNumber": zod.string(),
+  "customerName": zod.string().nullish(),
+  "total": zod.number(),
+  "dueDate": zod.string().nullish(),
+  "status": zod.string(),
+  "daysOverdue": zod.number()
+}))
+}).optional(),
+  "90+": zod.object({
+  "label": zod.string(),
+  "total": zod.number(),
+  "invoices": zod.array(zod.object({
+  "invoiceId": zod.number(),
+  "invoiceNumber": zod.string(),
+  "customerName": zod.string().nullish(),
+  "total": zod.number(),
+  "dueDate": zod.string().nullish(),
+  "status": zod.string(),
+  "daysOverdue": zod.number()
+}))
+}).optional()
+}),
+  "totalOutstanding": zod.number(),
+  "generatedAt": zod.string(),
+  "cached": zod.boolean()
+})
+
+
+/**
+ * @summary Monthly taxable revenue and tax collected
+ */
+export const GetSalesTaxReportQueryParams = zod.object({
+  "startDate": zod.coerce.string().optional(),
+  "endDate": zod.coerce.string().optional()
+})
+
+export const GetSalesTaxReportResponse = zod.object({
+  "rows": zod.array(zod.object({
+  "month": zod.string(),
+  "taxableRevenue": zod.number(),
+  "taxCollected": zod.number(),
+  "effectiveTaxRatePct": zod.number()
+})),
+  "totals": zod.object({
+  "taxableRevenue": zod.number(),
+  "taxCollected": zod.number()
+}),
+  "generatedAt": zod.string(),
+  "cached": zod.boolean(),
+  "startDate": zod.string(),
+  "endDate": zod.string()
+})
+
+
+/**
+ * @summary List vendors
+ */
+export const ListVendorsResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "category": zod.string().nullish(),
+  "contact": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListVendorsResponse = zod.array(ListVendorsResponseItem)
+
+
+/**
+ * @summary Create a vendor
+ */
+export const CreateVendorBody = zod.object({
+  "name": zod.string(),
+  "category": zod.string().optional(),
+  "contact": zod.string().optional(),
+  "notes": zod.string().optional()
+})
+
+export const CreateVendorResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "category": zod.string().nullish(),
+  "contact": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Get a vendor
+ */
+export const GetVendorParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetVendorResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "category": zod.string().nullish(),
+  "contact": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Update a vendor
+ */
+export const UpdateVendorParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateVendorBody = zod.object({
+  "name": zod.string(),
+  "category": zod.string().optional(),
+  "contact": zod.string().optional(),
+  "notes": zod.string().optional()
+})
+
+export const UpdateVendorResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "category": zod.string().nullish(),
+  "contact": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a vendor
+ */
+export const DeleteVendorParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteVendorResponse = zod.void()
+
+
+/**
+ * @summary List expense ledger entries
+ */
+export const ListExpensesQueryParams = zod.object({
+  "startDate": zod.coerce.string().optional(),
+  "endDate": zod.coerce.string().optional(),
+  "category": zod.coerce.string().optional(),
+  "vendorId": zod.coerce.number().optional()
+})
+
+export const ListExpensesResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "vendorId": zod.number().nullish(),
+  "vendorName": zod.string().nullish(),
+  "date": zod.string(),
+  "amount": zod.number(),
+  "category": zod.string(),
+  "description": zod.string().nullish(),
+  "receiptUrl": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListExpensesResponse = zod.array(ListExpensesResponseItem)
+
+
+/**
+ * @summary Log an expense entry
+ */
+export const CreateExpenseBody = zod.object({
+  "vendorId": zod.number().optional(),
+  "date": zod.string(),
+  "amount": zod.number(),
+  "category": zod.string().optional(),
+  "description": zod.string().optional(),
+  "receiptUrl": zod.string().optional()
+})
+
+export const CreateExpenseResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "vendorId": zod.number().nullish(),
+  "vendorName": zod.string().nullish(),
+  "date": zod.string(),
+  "amount": zod.number(),
+  "category": zod.string(),
+  "description": zod.string().nullish(),
+  "receiptUrl": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Get an expense entry
+ */
+export const GetExpenseParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetExpenseResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "vendorId": zod.number().nullish(),
+  "vendorName": zod.string().nullish(),
+  "date": zod.string(),
+  "amount": zod.number(),
+  "category": zod.string(),
+  "description": zod.string().nullish(),
+  "receiptUrl": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Update an expense entry
+ */
+export const UpdateExpenseParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateExpenseBody = zod.object({
+  "vendorId": zod.number().optional(),
+  "date": zod.string(),
+  "amount": zod.number(),
+  "category": zod.string().optional(),
+  "description": zod.string().optional(),
+  "receiptUrl": zod.string().optional()
+})
+
+export const UpdateExpenseResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "vendorId": zod.number().nullish(),
+  "vendorName": zod.string().nullish(),
+  "date": zod.string(),
+  "amount": zod.number(),
+  "category": zod.string(),
+  "description": zod.string().nullish(),
+  "receiptUrl": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Delete an expense entry
+ */
+export const DeleteExpenseParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteExpenseResponse = zod.void()
+
+

@@ -4,7 +4,7 @@ import {
   PackageSearch, Briefcase, Wrench,
   DollarSign, Banknote as InvoiceIcon,
   Megaphone, FlaskConical,
-  Settings, FileText, Footprints,
+  Settings, FileText, Footprints, BarChart3,
   LucideIcon,
 } from 'lucide-react';
 
@@ -74,6 +74,7 @@ export const adminNavSections: NavSection[] = [
     roles: ['canManageOffice'],
     items: [
       { name: 'Financials', href: '/financials', icon: DollarSign },
+      { name: 'Reports',    href: '/reports',    icon: BarChart3 },
     ],
   },
   {

@@ -3456,6 +3456,243 @@ paths:
               schema:
                 $ref: "#/components/schemas/BillingAutomationStatus"
 
+  # BUSINESS REPORTS SUITE
+  /reports/job-profitability:
+    get:
+      operationId: getJobProfitabilityReport
+      tags: [reports]
+      summary: Per-job revenue, cost, and margin breakdown
+      parameters:
+        - { name: startDate, in: query, schema: { type: string } }
+        - { name: endDate, in: query, schema: { type: string } }
+        - { name: crewId, in: query, schema: { type: integer } }
+        - { name: assigneeId, in: query, schema: { type: integer } }
+        - { name: propertyId, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: Job profitability report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobProfitabilityReport"
+
+  /reports/employee-revenue:
+    get:
+      operationId: getEmployeeRevenueReport
+      tags: [reports]
+      summary: Per-technician revenue and P4P earnings breakdown
+      parameters:
+        - { name: startDate, in: query, schema: { type: string } }
+        - { name: endDate, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Employee revenue report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeeRevenueReport"
+
+  /reports/pl-statement:
+    get:
+      operationId: getPlStatementReport
+      tags: [reports]
+      summary: Profit & loss statement for a date range
+      parameters:
+        - { name: startDate, in: query, schema: { type: string } }
+        - { name: endDate, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: P&L statement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlStatementReport"
+
+  /reports/aging-invoices:
+    get:
+      operationId: getAgingInvoicesReport
+      tags: [reports]
+      summary: Open invoices grouped by aging bucket
+      responses:
+        "200":
+          description: Aging invoices report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgingInvoicesReport"
+
+  /reports/sales-tax:
+    get:
+      operationId: getSalesTaxReport
+      tags: [reports]
+      summary: Monthly taxable revenue and tax collected
+      parameters:
+        - { name: startDate, in: query, schema: { type: string } }
+        - { name: endDate, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Sales tax report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesTaxReport"
+
+  # VENDORS & EXPENSE LEDGER
+  /vendors:
+    get:
+      operationId: listVendors
+      tags: [vendors]
+      summary: List vendors
+      responses:
+        "200":
+          description: Vendor list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Vendor"
+    post:
+      operationId: createVendor
+      tags: [vendors]
+      summary: Create a vendor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVendorInput"
+      responses:
+        "201":
+          description: Created vendor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vendor"
+
+  /vendors/{id}:
+    get:
+      operationId: getVendor
+      tags: [vendors]
+      summary: Get a vendor
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Vendor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vendor"
+    patch:
+      operationId: updateVendor
+      tags: [vendors]
+      summary: Update a vendor
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVendorInput"
+      responses:
+        "200":
+          description: Updated vendor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vendor"
+    delete:
+      operationId: deleteVendor
+      tags: [vendors]
+      summary: Delete a vendor
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204":
+          description: Deleted
+
+  /expenses:
+    get:
+      operationId: listExpenses
+      tags: [expenses]
+      summary: List expense ledger entries
+      parameters:
+        - { name: startDate, in: query, schema: { type: string } }
+        - { name: endDate, in: query, schema: { type: string } }
+        - { name: category, in: query, schema: { type: string } }
+        - { name: vendorId, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: Expense list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ExpenseEntry"
+    post:
+      operationId: createExpense
+      tags: [expenses]
+      summary: Log an expense entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExpenseInput"
+      responses:
+        "201":
+          description: Created expense
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExpenseEntry"
+
+  /expenses/{id}:
+    get:
+      operationId: getExpense
+      tags: [expenses]
+      summary: Get an expense entry
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Expense entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExpenseEntry"
+    patch:
+      operationId: updateExpense
+      tags: [expenses]
+      summary: Update an expense entry
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExpenseInput"
+      responses:
+        "200":
+          description: Updated expense
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExpenseEntry"
+    delete:
+      operationId: deleteExpense
+      tags: [expenses]
+      summary: Delete an expense entry
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204":
+          description: Deleted
+
 components:
   schemas:
 
@@ -6338,3 +6575,222 @@ components:
             $ref: "#/components/schemas/BillingEmailQueueEntry"
         queueStats:
           $ref: "#/components/schemas/BillingQueueStats"
+
+    # ── Business Reports Suite ──────────────────────────────────────────────
+    JobProfitabilityRow:
+      type: object
+      required: [jobId, jobTitle, completedAt, revenue, partsCost, laborCost, fuelCost, netProfit, marginPct]
+      properties:
+        jobId: { type: integer }
+        jobTitle: { type: string }
+        customerName: { type: ["string", "null"] }
+        completedAt: { type: string }
+        crewId: { type: ["integer", "null"] }
+        crewName: { type: ["string", "null"] }
+        assigneeId: { type: ["integer", "null"] }
+        assigneeName: { type: ["string", "null"] }
+        propertyId: { type: ["integer", "null"] }
+        propertyAddress: { type: ["string", "null"] }
+        revenue: { type: number }
+        partsCost: { type: number }
+        laborCost: { type: number }
+        fuelCost: { type: number }
+        netProfit: { type: number }
+        marginPct: { type: number }
+
+    JobProfitabilityReport:
+      type: object
+      required: [rows, totals, generatedAt, cached, startDate, endDate]
+      properties:
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/JobProfitabilityRow"
+        totals:
+          type: object
+          required: [revenue, partsCost, laborCost, fuelCost, netProfit]
+          properties:
+            revenue: { type: number }
+            partsCost: { type: number }
+            laborCost: { type: number }
+            fuelCost: { type: number }
+            netProfit: { type: number }
+        generatedAt: { type: string }
+        cached: { type: boolean }
+        startDate: { type: string }
+        endDate: { type: string }
+
+    EmployeeRevenueRow:
+      type: object
+      required: [userId, name, jobCount, totalRevenue, averageJobValue, totalP4pEarnings, p4pToRevenueRatioPct]
+      properties:
+        userId: { type: integer }
+        name: { type: string }
+        jobCount: { type: integer }
+        totalRevenue: { type: number }
+        averageJobValue: { type: number }
+        totalP4pEarnings: { type: number }
+        p4pToRevenueRatioPct: { type: number }
+
+    EmployeeRevenueReport:
+      type: object
+      required: [rows, generatedAt, cached, startDate, endDate]
+      properties:
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmployeeRevenueRow"
+        generatedAt: { type: string }
+        cached: { type: boolean }
+        startDate: { type: string }
+        endDate: { type: string }
+
+    PlStatementReport:
+      type: object
+      required: [revenue, costOfGoodsSold, grossProfit, operatingExpenses, netIncome, generatedAt, cached, startDate, endDate]
+      properties:
+        revenue: { type: number }
+        costOfGoodsSold:
+          type: object
+          required: [partsCost, laborCost, fuelCost, total]
+          properties:
+            partsCost: { type: number }
+            laborCost: { type: number }
+            fuelCost: { type: number }
+            total: { type: number }
+        grossProfit: { type: number }
+        operatingExpenses:
+          type: object
+          required: [total, byCategory]
+          properties:
+            total: { type: number }
+            byCategory:
+              type: array
+              items:
+                type: object
+                required: [category, amount]
+                properties:
+                  category: { type: string }
+                  amount: { type: number }
+        netIncome: { type: number }
+        generatedAt: { type: string }
+        cached: { type: boolean }
+        startDate: { type: string }
+        endDate: { type: string }
+
+    AgingInvoiceEntry:
+      type: object
+      required: [invoiceId, invoiceNumber, total, status, daysOverdue]
+      properties:
+        invoiceId: { type: integer }
+        invoiceNumber: { type: string }
+        customerName: { type: ["string", "null"] }
+        total: { type: number }
+        dueDate: { type: ["string", "null"] }
+        status: { type: string }
+        daysOverdue: { type: integer }
+
+    AgingBucket:
+      type: object
+      required: [label, total, invoices]
+      properties:
+        label: { type: string }
+        total: { type: number }
+        invoices:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgingInvoiceEntry"
+
+    AgingInvoicesReport:
+      type: object
+      required: [buckets, totalOutstanding, generatedAt, cached]
+      properties:
+        buckets:
+          type: object
+          properties:
+            current: { $ref: "#/components/schemas/AgingBucket" }
+            1-30: { $ref: "#/components/schemas/AgingBucket" }
+            31-60: { $ref: "#/components/schemas/AgingBucket" }
+            61-90: { $ref: "#/components/schemas/AgingBucket" }
+            90+: { $ref: "#/components/schemas/AgingBucket" }
+        totalOutstanding: { type: number }
+        generatedAt: { type: string }
+        cached: { type: boolean }
+
+    SalesTaxMonthRow:
+      type: object
+      required: [month, taxableRevenue, taxCollected, effectiveTaxRatePct]
+      properties:
+        month: { type: string }
+        taxableRevenue: { type: number }
+        taxCollected: { type: number }
+        effectiveTaxRatePct: { type: number }
+
+    SalesTaxReport:
+      type: object
+      required: [rows, totals, generatedAt, cached, startDate, endDate]
+      properties:
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/SalesTaxMonthRow"
+        totals:
+          type: object
+          required: [taxableRevenue, taxCollected]
+          properties:
+            taxableRevenue: { type: number }
+            taxCollected: { type: number }
+        generatedAt: { type: string }
+        cached: { type: boolean }
+        startDate: { type: string }
+        endDate: { type: string }
+
+    # ── Vendors & Expense Ledger ─────────────────────────────────────────────
+    Vendor:
+      type: object
+      required: [id, tenantId, name, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        name: { type: string }
+        category: { type: ["string", "null"] }
+        contact: { type: ["string", "null"] }
+        notes: { type: ["string", "null"] }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+
+    CreateVendorInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        category: { type: string }
+        contact: { type: string }
+        notes: { type: string }
+
+    ExpenseEntry:
+      type: object
+      required: [id, tenantId, date, amount, category, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        vendorId: { type: ["integer", "null"] }
+        vendorName: { type: ["string", "null"] }
+        date: { type: string }
+        amount: { type: number }
+        category: { type: string }
+        description: { type: ["string", "null"] }
+        receiptUrl: { type: ["string", "null"] }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+
+    CreateExpenseInput:
+      type: object
+      required: [date, amount]
+      properties:
+        vendorId: { type: integer }
+        date: { type: string }
+        amount: { type: number }
+        category: { type: string }
+        description: { type: string }
+        receiptUrl: { type: string }

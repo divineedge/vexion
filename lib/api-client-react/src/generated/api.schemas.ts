@@ -2318,6 +2318,198 @@ export interface BillingAutomationStatus {
   queueStats: BillingQueueStats;
 }
 
+export interface JobProfitabilityRow {
+  jobId: number;
+  jobTitle: string;
+  /** @nullable */
+  customerName?: string | null;
+  completedAt: string;
+  /** @nullable */
+  crewId?: number | null;
+  /** @nullable */
+  crewName?: string | null;
+  /** @nullable */
+  assigneeId?: number | null;
+  /** @nullable */
+  assigneeName?: string | null;
+  /** @nullable */
+  propertyId?: number | null;
+  /** @nullable */
+  propertyAddress?: string | null;
+  revenue: number;
+  partsCost: number;
+  laborCost: number;
+  fuelCost: number;
+  netProfit: number;
+  marginPct: number;
+}
+
+export type JobProfitabilityReportTotals = {
+  revenue: number;
+  partsCost: number;
+  laborCost: number;
+  fuelCost: number;
+  netProfit: number;
+};
+
+export interface JobProfitabilityReport {
+  rows: JobProfitabilityRow[];
+  totals: JobProfitabilityReportTotals;
+  generatedAt: string;
+  cached: boolean;
+  startDate: string;
+  endDate: string;
+}
+
+export interface EmployeeRevenueRow {
+  userId: number;
+  name: string;
+  jobCount: number;
+  totalRevenue: number;
+  averageJobValue: number;
+  totalP4pEarnings: number;
+  p4pToRevenueRatioPct: number;
+}
+
+export interface EmployeeRevenueReport {
+  rows: EmployeeRevenueRow[];
+  generatedAt: string;
+  cached: boolean;
+  startDate: string;
+  endDate: string;
+}
+
+export type PlStatementReportCostOfGoodsSold = {
+  partsCost: number;
+  laborCost: number;
+  fuelCost: number;
+  total: number;
+};
+
+export type PlStatementReportOperatingExpensesByCategoryItem = {
+  category: string;
+  amount: number;
+};
+
+export type PlStatementReportOperatingExpenses = {
+  total: number;
+  byCategory: PlStatementReportOperatingExpensesByCategoryItem[];
+};
+
+export interface PlStatementReport {
+  revenue: number;
+  costOfGoodsSold: PlStatementReportCostOfGoodsSold;
+  grossProfit: number;
+  operatingExpenses: PlStatementReportOperatingExpenses;
+  netIncome: number;
+  generatedAt: string;
+  cached: boolean;
+  startDate: string;
+  endDate: string;
+}
+
+export interface AgingInvoiceEntry {
+  invoiceId: number;
+  invoiceNumber: string;
+  /** @nullable */
+  customerName?: string | null;
+  total: number;
+  /** @nullable */
+  dueDate?: string | null;
+  status: string;
+  daysOverdue: number;
+}
+
+export interface AgingBucket {
+  label: string;
+  total: number;
+  invoices: AgingInvoiceEntry[];
+}
+
+export type AgingInvoicesReportBuckets = {
+  current?: AgingBucket;
+  '1-30'?: AgingBucket;
+  '31-60'?: AgingBucket;
+  '61-90'?: AgingBucket;
+  '90+'?: AgingBucket;
+};
+
+export interface AgingInvoicesReport {
+  buckets: AgingInvoicesReportBuckets;
+  totalOutstanding: number;
+  generatedAt: string;
+  cached: boolean;
+}
+
+export interface SalesTaxMonthRow {
+  month: string;
+  taxableRevenue: number;
+  taxCollected: number;
+  effectiveTaxRatePct: number;
+}
+
+export type SalesTaxReportTotals = {
+  taxableRevenue: number;
+  taxCollected: number;
+};
+
+export interface SalesTaxReport {
+  rows: SalesTaxMonthRow[];
+  totals: SalesTaxReportTotals;
+  generatedAt: string;
+  cached: boolean;
+  startDate: string;
+  endDate: string;
+}
+
+export interface Vendor {
+  id: number;
+  tenantId: number;
+  name: string;
+  /** @nullable */
+  category?: string | null;
+  /** @nullable */
+  contact?: string | null;
+  /** @nullable */
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateVendorInput {
+  name: string;
+  category?: string;
+  contact?: string;
+  notes?: string;
+}
+
+export interface ExpenseEntry {
+  id: number;
+  tenantId: number;
+  /** @nullable */
+  vendorId?: number | null;
+  /** @nullable */
+  vendorName?: string | null;
+  date: string;
+  amount: number;
+  category: string;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  receiptUrl?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateExpenseInput {
+  vendorId?: number;
+  date: string;
+  amount: number;
+  category?: string;
+  description?: string;
+  receiptUrl?: string;
+}
+
 export type SendJobReminder200 = {
   sent?: string[];
   jobId?: number;
@@ -2429,5 +2621,35 @@ export type ConvertVisitToJob201 = {
 export type RunRecurringTemplateNow200 = {
   success: boolean;
   invoiceId: number;
+};
+
+export type GetJobProfitabilityReportParams = {
+startDate?: string;
+endDate?: string;
+crewId?: number;
+assigneeId?: number;
+propertyId?: number;
+};
+
+export type GetEmployeeRevenueReportParams = {
+startDate?: string;
+endDate?: string;
+};
+
+export type GetPlStatementReportParams = {
+startDate?: string;
+endDate?: string;
+};
+
+export type GetSalesTaxReportParams = {
+startDate?: string;
+endDate?: string;
+};
+
+export type ListExpensesParams = {
+startDate?: string;
+endDate?: string;
+category?: string;
+vendorId?: number;
 };
 

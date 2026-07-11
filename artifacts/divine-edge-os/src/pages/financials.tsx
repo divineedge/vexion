@@ -30,8 +30,11 @@ import { toast } from 'sonner';
 import {
   Plus, ArrowUpRight, DollarSign, Clock, FileText, CheckCircle, Calendar,
   User, ChevronDown, Package, RefreshCw, Play, Pause, Mail, MailCheck, MailX, Trash2, Pencil,
+  Building2,
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { useAuth } from '@/contexts/AuthContext';
+import VendorExpenseLedger from '@/components/financials/VendorExpenseLedger';
 
 const STATUS_COLORS: Record<string, string> = {
   paid:      'bg-emerald-100 text-emerald-800 border-transparent',
@@ -283,6 +286,7 @@ function TemplateSheet({ open, onClose, editing, customers }: TemplateSheetProps
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function FinancialsPage() {
+  const { canManageOffice } = useAuth();
   const qc = useQueryClient();
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
   const [partsExpanded, setPartsExpanded] = useState(false);
@@ -423,6 +427,7 @@ export default function FinancialsPage() {
               </Badge>
             )}
           </TabsTrigger>
+          <TabsTrigger value="vendors"><Building2 className="w-4 h-4 mr-2" />Vendors & Expenses</TabsTrigger>
         </TabsList>
 
         {/* ── All Invoices ── */}
@@ -693,6 +698,11 @@ export default function FinancialsPage() {
               </Card>
             )}
           </div>
+        </TabsContent>
+
+        {/* ── Vendors & Expenses ── */}
+        <TabsContent value="vendors">
+          <VendorExpenseLedger canEdit={canManageOffice} />
         </TabsContent>
       </Tabs>
 

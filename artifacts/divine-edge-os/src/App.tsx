@@ -14,6 +14,7 @@ import PropertyDetailPage from '@/pages/property-detail';
 import SchedulePage from '@/pages/schedule';
 import InventoryPage from '@/pages/inventory';
 import FinancialsPage from '@/pages/financials';
+import ReportsPage from '@/pages/reports';
 import DailyRoutinesPage from '@/pages/daily-routines';
 import TimeTrackingPage from '@/pages/time-tracking';
 import BlueprintsPage from '@/pages/blueprints';
@@ -56,6 +57,7 @@ function ProtectedRoutes() {
         <Route path="/schedule" component={SchedulePage} />
         <Route path="/inventory" component={InventoryPage} />
         <Route path="/financials" component={FinancialsPage} />
+        <Route path="/reports" component={ReportsPage} />
         <Route path="/daily-routines" component={DailyRoutinesPage} />
         <Route path="/time-tracking" component={TimeTrackingPage} />
         <Route path="/blueprints/:id" component={BlueprintCanvasPage} />

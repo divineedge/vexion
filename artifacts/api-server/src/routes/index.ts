@@ -31,6 +31,9 @@ import estimatesRouter from "./estimates";
 import visitsRouter from "./visits";
 import estimateTemplatesRouter from "./estimateTemplates";
 import billingRouter from "./billing";
+import reportsRouter from "./reports";
+import vendorsRouter from "./vendors";
+import expensesRouter from "./expenses";
 
 const router: IRouter = Router();
 
@@ -66,5 +69,8 @@ router.use(estimatesRouter);
 router.use(visitsRouter);
 router.use(estimateTemplatesRouter);
 router.use(billingRouter);
+router.use(reportsRouter);
+router.use(vendorsRouter);
+router.use(expensesRouter);
 
 export default router;

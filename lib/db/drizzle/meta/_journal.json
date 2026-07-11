@@ -8,6 +8,13 @@
       "when": 1783720060133,
       "tag": "0000_add_recurrence_to_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783732847148,
+      "tag": "0001_add_recurring_billing",
+      "breakpoints": true
     }
   ]
 }

@@ -35,6 +35,14 @@ export interface Customer {
   customFieldValues?: CustomerCustomFieldValues;
   propertyCount?: number;
   totalSpend?: number;
+  smsOptOut?: boolean;
+  emailOptOut?: boolean;
+  /** Automatically create and email an invoice when a job for this customer is marked complete */
+  autoInvoiceOnCompletion?: boolean;
+  /** @nullable */
+  profilePhotoUrl?: string | null;
+  /** @nullable */
+  acquiredFromCampaignId?: number | null;
   /**
      * Total paid invoices for the current calendar year
      * @nullable

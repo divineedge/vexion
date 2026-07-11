@@ -20,6 +20,8 @@ export const invoicesTable = pgTable("invoices", {
   notes: text("notes"),
   lineItems: jsonb("line_items").default("[]"),
   stripePaymentUrl: text("stripe_payment_url"),
+  /** FK to recurring_invoice_templates when this invoice was auto-generated */
+  generatedFromTemplateId: integer("generated_from_template_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

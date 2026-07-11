@@ -30,6 +30,7 @@ function formatCustomer(
     acquiredFromCampaignId: c.acquiredFromCampaignId ?? null,
     smsOptOut: c.smsOptOut ?? false,
     emailOptOut: c.emailOptOut ?? false,
+    autoInvoiceOnCompletion: c.autoInvoiceOnCompletion ?? false,
     profilePhotoUrl: c.profilePhotoUrl ?? null,
     thisYearSpend: extras?.thisYearSpend ?? null,
     lastYearSpend: extras?.lastYearSpend ?? null,
@@ -175,6 +176,8 @@ router.patch("/customers/:id", async (req, res): Promise<void> => {
   }
   if (smsOptOut !== undefined) updates.smsOptOut = smsOptOut;
   if (emailOptOut !== undefined) updates.emailOptOut = emailOptOut;
+  const { autoInvoiceOnCompletion } = req.body;
+  if (autoInvoiceOnCompletion !== undefined) updates.autoInvoiceOnCompletion = autoInvoiceOnCompletion;
 
   const [updated] = await db.update(customersTable)
     .set(updates)

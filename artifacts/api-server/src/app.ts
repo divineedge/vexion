@@ -5,6 +5,7 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import { startReminderScheduler } from "./lib/reminderScheduler";
 import { startRecurrenceScheduler } from "./lib/recurrenceScheduler";
+import { startBillingScheduler } from "./lib/billingScheduler";
 
 const app: Express = express();
 
@@ -47,5 +48,8 @@ startReminderScheduler();
 
 // Start recurring job generation scheduler
 startRecurrenceScheduler();
+
+// Start recurring invoice & email billing scheduler
+startBillingScheduler();
 
 export default app;

@@ -216,6 +216,11 @@ export const ListCustomersResponse = zod.object({
   "customFieldValues": zod.record(zod.string(), zod.string()).optional(),
   "propertyCount": zod.number().optional(),
   "totalSpend": zod.number().optional(),
+  "smsOptOut": zod.boolean().optional(),
+  "emailOptOut": zod.boolean().optional(),
+  "autoInvoiceOnCompletion": zod.boolean().optional().describe('Automatically create and email an invoice when a job for this customer is marked complete'),
+  "profilePhotoUrl": zod.string().nullish(),
+  "acquiredFromCampaignId": zod.number().nullish(),
   "thisYearSpend": zod.number().nullish().describe('Total paid invoices for the current calendar year'),
   "lastYearSpend": zod.number().nullish().describe('Total paid invoices for the previous calendar year'),
   "createdAt": zod.string()
@@ -265,6 +270,11 @@ export const CreateCustomerResponse = zod.object({
   "customFieldValues": zod.record(zod.string(), zod.string()).optional(),
   "propertyCount": zod.number().optional(),
   "totalSpend": zod.number().optional(),
+  "smsOptOut": zod.boolean().optional(),
+  "emailOptOut": zod.boolean().optional(),
+  "autoInvoiceOnCompletion": zod.boolean().optional().describe('Automatically create and email an invoice when a job for this customer is marked complete'),
+  "profilePhotoUrl": zod.string().nullish(),
+  "acquiredFromCampaignId": zod.number().nullish(),
   "thisYearSpend": zod.number().nullish().describe('Total paid invoices for the current calendar year'),
   "lastYearSpend": zod.number().nullish().describe('Total paid invoices for the previous calendar year'),
   "createdAt": zod.string()
@@ -297,6 +307,11 @@ export const GetCustomerResponse = zod.object({
   "customFieldValues": zod.record(zod.string(), zod.string()).optional(),
   "propertyCount": zod.number().optional(),
   "totalSpend": zod.number().optional(),
+  "smsOptOut": zod.boolean().optional(),
+  "emailOptOut": zod.boolean().optional(),
+  "autoInvoiceOnCompletion": zod.boolean().optional().describe('Automatically create and email an invoice when a job for this customer is marked complete'),
+  "profilePhotoUrl": zod.string().nullish(),
+  "acquiredFromCampaignId": zod.number().nullish(),
   "thisYearSpend": zod.number().nullish().describe('Total paid invoices for the current calendar year'),
   "lastYearSpend": zod.number().nullish().describe('Total paid invoices for the previous calendar year'),
   "createdAt": zod.string()
@@ -324,7 +339,10 @@ export const UpdateCustomerBody = zod.object({
   "billingZip": zod.string().optional(),
   "notes": zod.string().optional(),
   "tags": zod.array(zod.string()).optional(),
-  "customFieldValues": zod.record(zod.string(), zod.string()).optional()
+  "customFieldValues": zod.record(zod.string(), zod.string()).optional(),
+  "smsOptOut": zod.boolean().optional(),
+  "emailOptOut": zod.boolean().optional(),
+  "autoInvoiceOnCompletion": zod.boolean().optional()
 })
 
 export const UpdateCustomerResponse = zod.object({
@@ -346,6 +364,11 @@ export const UpdateCustomerResponse = zod.object({
   "customFieldValues": zod.record(zod.string(), zod.string()).optional(),
   "propertyCount": zod.number().optional(),
   "totalSpend": zod.number().optional(),
+  "smsOptOut": zod.boolean().optional(),
+  "emailOptOut": zod.boolean().optional(),
+  "autoInvoiceOnCompletion": zod.boolean().optional().describe('Automatically create and email an invoice when a job for this customer is marked complete'),
+  "profilePhotoUrl": zod.string().nullish(),
+  "acquiredFromCampaignId": zod.number().nullish(),
   "thisYearSpend": zod.number().nullish().describe('Total paid invoices for the current calendar year'),
   "lastYearSpend": zod.number().nullish().describe('Total paid invoices for the previous calendar year'),
   "createdAt": zod.string()
@@ -4760,5 +4783,236 @@ export const DeleteEstimateTemplateParams = zod.object({
 })
 
 export const DeleteEstimateTemplateResponse = zod.void()
+
+
+/**
+ * @summary List all recurring invoice templates
+ */
+export const ListRecurringTemplatesResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "customerName": zod.string().nullish(),
+  "name": zod.string(),
+  "lineItems": zod.array(zod.object({
+  "description": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})),
+  "billingCycleDay": zod.number(),
+  "billingCycleType": zod.enum(['monthly', 'weekly']),
+  "nextBillingDate": zod.string(),
+  "isActive": zod.boolean(),
+  "lastGeneratedAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListRecurringTemplatesResponse = zod.array(ListRecurringTemplatesResponseItem)
+
+
+/**
+ * @summary Create a recurring invoice template
+ */
+export const CreateRecurringTemplateBody = zod.object({
+  "customerId": zod.number(),
+  "name": zod.string(),
+  "lineItems": zod.array(zod.object({
+  "description": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional(),
+  "billingCycleDay": zod.number().optional(),
+  "billingCycleType": zod.enum(['monthly', 'weekly']).optional(),
+  "nextBillingDate": zod.string(),
+  "isActive": zod.boolean().optional(),
+  "notes": zod.string().optional()
+})
+
+export const CreateRecurringTemplateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "customerName": zod.string().nullish(),
+  "name": zod.string(),
+  "lineItems": zod.array(zod.object({
+  "description": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})),
+  "billingCycleDay": zod.number(),
+  "billingCycleType": zod.enum(['monthly', 'weekly']),
+  "nextBillingDate": zod.string(),
+  "isActive": zod.boolean(),
+  "lastGeneratedAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Get a recurring invoice template
+ */
+export const GetRecurringTemplateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetRecurringTemplateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "customerName": zod.string().nullish(),
+  "name": zod.string(),
+  "lineItems": zod.array(zod.object({
+  "description": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})),
+  "billingCycleDay": zod.number(),
+  "billingCycleType": zod.enum(['monthly', 'weekly']),
+  "nextBillingDate": zod.string(),
+  "isActive": zod.boolean(),
+  "lastGeneratedAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Update a recurring invoice template
+ */
+export const UpdateRecurringTemplateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateRecurringTemplateBody = zod.object({
+  "name": zod.string().optional(),
+  "lineItems": zod.array(zod.object({
+  "description": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional(),
+  "billingCycleDay": zod.number().optional(),
+  "billingCycleType": zod.enum(['monthly', 'weekly']).optional(),
+  "nextBillingDate": zod.string().optional(),
+  "isActive": zod.boolean().optional(),
+  "notes": zod.string().optional()
+})
+
+export const UpdateRecurringTemplateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "customerName": zod.string().nullish(),
+  "name": zod.string(),
+  "lineItems": zod.array(zod.object({
+  "description": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})),
+  "billingCycleDay": zod.number(),
+  "billingCycleType": zod.enum(['monthly', 'weekly']),
+  "nextBillingDate": zod.string(),
+  "isActive": zod.boolean(),
+  "lastGeneratedAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a recurring invoice template
+ */
+export const DeleteRecurringTemplateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteRecurringTemplateResponse = zod.void()
+
+
+/**
+ * @summary Manually generate an invoice from a template now
+ */
+export const RunRecurringTemplateNowParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RunRecurringTemplateNowResponse = zod.object({
+  "success": zod.boolean(),
+  "invoiceId": zod.number()
+})
+
+
+/**
+ * @summary Retry a failed billing email queue entry
+ */
+export const RetryBillingEmailParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RetryBillingEmailResponse = zod.unknown()
+
+
+/**
+ * @summary Get billing automation dashboard status
+ */
+export const GetBillingAutomationStatusResponse = zod.object({
+  "todayInvoices": zod.array(zod.object({
+  "id": zod.number(),
+  "invoiceNumber": zod.string(),
+  "total": zod.number(),
+  "status": zod.string(),
+  "customerName": zod.string().nullish(),
+  "generatedFromTemplateId": zod.number().nullish(),
+  "createdAt": zod.string()
+})),
+  "templates": zod.array(zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "customerName": zod.string().nullish(),
+  "name": zod.string(),
+  "lineItems": zod.array(zod.object({
+  "description": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})),
+  "billingCycleDay": zod.number(),
+  "billingCycleType": zod.enum(['monthly', 'weekly']),
+  "nextBillingDate": zod.string(),
+  "isActive": zod.boolean(),
+  "lastGeneratedAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})),
+  "emailQueue": zod.array(zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "invoiceId": zod.number(),
+  "invoiceNumber": zod.string().nullish(),
+  "status": zod.enum(['pending', 'sent', 'failed']),
+  "attempts": zod.number(),
+  "lastAttemptAt": zod.string().nullish(),
+  "errorMsg": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})),
+  "queueStats": zod.object({
+  "pending": zod.number(),
+  "sent": zod.number(),
+  "failed": zod.number()
+})
+})
 
 

@@ -51,6 +51,8 @@ tags:
     description: Estimates, approval workflow, and upsell add-ons
   - name: visits
     description: Standalone customer visits and follow-ups
+  - name: billing
+    description: Recurring billing templates and automation
 
 paths:
   # COMMUNICATIONS
@@ -3313,6 +3315,147 @@ paths:
         "204":
           description: Deleted
 
+  # BILLING AUTOMATION
+  /billing/recurring-templates:
+    get:
+      operationId: listRecurringTemplates
+      tags: [billing]
+      summary: List all recurring invoice templates
+      responses:
+        "200":
+          description: Template list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecurringInvoiceTemplate"
+    post:
+      operationId: createRecurringTemplate
+      tags: [billing]
+      summary: Create a recurring invoice template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRecurringTemplateInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecurringInvoiceTemplate"
+
+  /billing/recurring-templates/{id}:
+    get:
+      operationId: getRecurringTemplate
+      tags: [billing]
+      summary: Get a recurring invoice template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecurringInvoiceTemplate"
+    patch:
+      operationId: updateRecurringTemplate
+      tags: [billing]
+      summary: Update a recurring invoice template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRecurringTemplateInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecurringInvoiceTemplate"
+    delete:
+      operationId: deleteRecurringTemplate
+      tags: [billing]
+      summary: Delete a recurring invoice template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /billing/recurring-templates/{id}/run-now:
+    post:
+      operationId: runRecurringTemplateNow
+      tags: [billing]
+      summary: Manually generate an invoice from a template now
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Invoice generated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, invoiceId]
+                properties:
+                  success:
+                    type: boolean
+                  invoiceId:
+                    type: integer
+
+  /billing/email-queue/{id}/retry:
+    post:
+      operationId: retryBillingEmail
+      tags: [billing]
+      summary: Retry a failed billing email queue entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Queued for retry
+
+  /billing/automation-status:
+    get:
+      operationId: getBillingAutomationStatus
+      tags: [billing]
+      summary: Get billing automation dashboard status
+      responses:
+        "200":
+          description: Automation status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingAutomationStatus"
+
 components:
   schemas:
 
@@ -3787,6 +3930,17 @@ components:
           type: integer
         totalSpend:
           type: number
+        smsOptOut:
+          type: boolean
+        emailOptOut:
+          type: boolean
+        autoInvoiceOnCompletion:
+          type: boolean
+          description: "Automatically create and email an invoice when a job for this customer is marked complete"
+        profilePhotoUrl:
+          type: ["string", "null"]
+        acquiredFromCampaignId:
+          type: ["integer", "null"]
         thisYearSpend:
           type: ["number", "null"]
           description: "Total paid invoices for the current calendar year"
@@ -3868,6 +4022,12 @@ components:
           type: object
           additionalProperties:
             type: string
+        smsOptOut:
+          type: boolean
+        emailOptOut:
+          type: boolean
+        autoInvoiceOnCompletion:
+          type: boolean
 
     CustomerListResponse:
       type: object
@@ -6009,3 +6169,172 @@ components:
       properties:
         fileUrl:
           type: string
+
+    BillingLineItem:
+      type: object
+      required: [description, quantity, unitPrice, total]
+      properties:
+        description:
+          type: string
+        quantity:
+          type: number
+        unitPrice:
+          type: number
+        total:
+          type: number
+
+    BillingTodayInvoice:
+      type: object
+      required: [id, invoiceNumber, total, status, createdAt]
+      properties:
+        id:
+          type: integer
+        invoiceNumber:
+          type: string
+        total:
+          type: number
+        status:
+          type: string
+        customerName:
+          type: ["string", "null"]
+        generatedFromTemplateId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+
+    BillingQueueStats:
+      type: object
+      required: [pending, sent, failed]
+      properties:
+        pending:
+          type: integer
+        sent:
+          type: integer
+        failed:
+          type: integer
+
+    RecurringInvoiceTemplate:
+      type: object
+      required: [id, tenantId, customerId, name, lineItems, billingCycleDay, billingCycleType, nextBillingDate, isActive, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        customerId:
+          type: integer
+        customerName:
+          type: ["string", "null"]
+        name:
+          type: string
+        lineItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillingLineItem"
+        billingCycleDay:
+          type: integer
+        billingCycleType:
+          type: string
+          enum: [monthly, weekly]
+        nextBillingDate:
+          type: string
+        isActive:
+          type: boolean
+        lastGeneratedAt:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    CreateRecurringTemplateInput:
+      type: object
+      required: [customerId, name, nextBillingDate]
+      properties:
+        customerId:
+          type: integer
+        name:
+          type: string
+        lineItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillingLineItem"
+        billingCycleDay:
+          type: integer
+        billingCycleType:
+          type: string
+          enum: [monthly, weekly]
+        nextBillingDate:
+          type: string
+        isActive:
+          type: boolean
+        notes:
+          type: string
+
+    UpdateRecurringTemplateInput:
+      type: object
+      properties:
+        name:
+          type: string
+        lineItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillingLineItem"
+        billingCycleDay:
+          type: integer
+        billingCycleType:
+          type: string
+          enum: [monthly, weekly]
+        nextBillingDate:
+          type: string
+        isActive:
+          type: boolean
+        notes:
+          type: string
+
+    BillingEmailQueueEntry:
+      type: object
+      required: [id, tenantId, invoiceId, status, attempts, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        invoiceId:
+          type: integer
+        invoiceNumber:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [pending, sent, failed]
+        attempts:
+          type: integer
+        lastAttemptAt:
+          type: ["string", "null"]
+        errorMsg:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    BillingAutomationStatus:
+      type: object
+      required: [todayInvoices, templates, emailQueue, queueStats]
+      properties:
+        todayInvoices:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillingTodayInvoice"
+        templates:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecurringInvoiceTemplate"
+        emailQueue:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillingEmailQueueEntry"
+        queueStats:
+          $ref: "#/components/schemas/BillingQueueStats"

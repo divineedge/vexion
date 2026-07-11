@@ -26,6 +26,8 @@ export const customersTable = pgTable("customers", {
   smsOptOut: boolean("sms_opt_out").notNull().default(false),
   /** Customer opted out of email communications */
   emailOptOut: boolean("email_opt_out").notNull().default(false),
+  /** Automatically create and send invoice when a job is marked complete */
+  autoInvoiceOnCompletion: boolean("auto_invoice_on_completion").notNull().default(false),
   /** Profile photo URL (stored objectPath) */
   profilePhotoUrl: text("profile_photo_url"),
   totalSpend: real("total_spend").notNull().default(0),

@@ -419,6 +419,14 @@ export interface Customer {
   customFieldValues?: CustomerCustomFieldValues;
   propertyCount?: number;
   totalSpend?: number;
+  smsOptOut?: boolean;
+  emailOptOut?: boolean;
+  /** Automatically create and email an invoice when a job for this customer is marked complete */
+  autoInvoiceOnCompletion?: boolean;
+  /** @nullable */
+  profilePhotoUrl?: string | null;
+  /** @nullable */
+  acquiredFromCampaignId?: number | null;
   /**
      * Total paid invoices for the current calendar year
      * @nullable
@@ -468,6 +476,9 @@ export interface CustomerUpdate {
   notes?: string;
   tags?: string[];
   customFieldValues?: CustomerUpdateCustomFieldValues;
+  smsOptOut?: boolean;
+  emailOptOut?: boolean;
+  autoInvoiceOnCompletion?: boolean;
 }
 
 export interface CustomerListResponse {
@@ -2185,6 +2196,128 @@ export interface SetProfilePhotoInput {
   fileUrl: string;
 }
 
+export interface BillingLineItem {
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+}
+
+export interface BillingTodayInvoice {
+  id: number;
+  invoiceNumber: string;
+  total: number;
+  status: string;
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  generatedFromTemplateId?: number | null;
+  createdAt: string;
+}
+
+export interface BillingQueueStats {
+  pending: number;
+  sent: number;
+  failed: number;
+}
+
+export type RecurringInvoiceTemplateBillingCycleType = typeof RecurringInvoiceTemplateBillingCycleType[keyof typeof RecurringInvoiceTemplateBillingCycleType];
+
+
+export const RecurringInvoiceTemplateBillingCycleType = {
+  monthly: 'monthly',
+  weekly: 'weekly',
+} as const;
+
+export interface RecurringInvoiceTemplate {
+  id: number;
+  tenantId: number;
+  customerId: number;
+  /** @nullable */
+  customerName?: string | null;
+  name: string;
+  lineItems: BillingLineItem[];
+  billingCycleDay: number;
+  billingCycleType: RecurringInvoiceTemplateBillingCycleType;
+  nextBillingDate: string;
+  isActive: boolean;
+  /** @nullable */
+  lastGeneratedAt?: string | null;
+  /** @nullable */
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CreateRecurringTemplateInputBillingCycleType = typeof CreateRecurringTemplateInputBillingCycleType[keyof typeof CreateRecurringTemplateInputBillingCycleType];
+
+
+export const CreateRecurringTemplateInputBillingCycleType = {
+  monthly: 'monthly',
+  weekly: 'weekly',
+} as const;
+
+export interface CreateRecurringTemplateInput {
+  customerId: number;
+  name: string;
+  lineItems?: BillingLineItem[];
+  billingCycleDay?: number;
+  billingCycleType?: CreateRecurringTemplateInputBillingCycleType;
+  nextBillingDate: string;
+  isActive?: boolean;
+  notes?: string;
+}
+
+export type UpdateRecurringTemplateInputBillingCycleType = typeof UpdateRecurringTemplateInputBillingCycleType[keyof typeof UpdateRecurringTemplateInputBillingCycleType];
+
+
+export const UpdateRecurringTemplateInputBillingCycleType = {
+  monthly: 'monthly',
+  weekly: 'weekly',
+} as const;
+
+export interface UpdateRecurringTemplateInput {
+  name?: string;
+  lineItems?: BillingLineItem[];
+  billingCycleDay?: number;
+  billingCycleType?: UpdateRecurringTemplateInputBillingCycleType;
+  nextBillingDate?: string;
+  isActive?: boolean;
+  notes?: string;
+}
+
+export type BillingEmailQueueEntryStatus = typeof BillingEmailQueueEntryStatus[keyof typeof BillingEmailQueueEntryStatus];
+
+
+export const BillingEmailQueueEntryStatus = {
+  pending: 'pending',
+  sent: 'sent',
+  failed: 'failed',
+} as const;
+
+export interface BillingEmailQueueEntry {
+  id: number;
+  tenantId: number;
+  invoiceId: number;
+  /** @nullable */
+  invoiceNumber?: string | null;
+  status: BillingEmailQueueEntryStatus;
+  attempts: number;
+  /** @nullable */
+  lastAttemptAt?: string | null;
+  /** @nullable */
+  errorMsg?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BillingAutomationStatus {
+  todayInvoices: BillingTodayInvoice[];
+  templates: RecurringInvoiceTemplate[];
+  emailQueue: BillingEmailQueueEntry[];
+  queueStats: BillingQueueStats;
+}
+
 export type SendJobReminder200 = {
   sent?: string[];
   jobId?: number;
@@ -2291,5 +2424,10 @@ export type ConvertVisitToEstimate201 = {
 
 export type ConvertVisitToJob201 = {
   jobId?: number;
+};
+
+export type RunRecurringTemplateNow200 = {
+  success: boolean;
+  invoiceId: number;
 };
 

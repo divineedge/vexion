@@ -24,6 +24,7 @@ import type {
   AddCrewMemberInput,
   AddMediaInput,
   AuthResponse,
+  BillingAutomationStatus,
   Blueprint,
   BlueprintEstimate,
   BlueprintInput,
@@ -42,6 +43,7 @@ import type {
   ConvertVisitToJob201,
   CreateEstimateInput,
   CreateEstimateTemplateInput,
+  CreateRecurringTemplateInput,
   CreateVisitInput,
   Crew,
   CrewInput,
@@ -118,11 +120,13 @@ import type {
   QuoteInput,
   QuoteRespondInput,
   QuoteWithProperty,
+  RecurringInvoiceTemplate,
   RecurringSeries,
   RevenueTrendItem,
   Routine,
   RoutineInput,
   RoutineUpdate,
+  RunRecurringTemplateNow200,
   SendJobReminder200,
   SendMessageInput,
   SendReminderInput,
@@ -142,6 +146,7 @@ import type {
   TenantSettingsUpdate,
   TimeEntry,
   UpdateEstimateInput,
+  UpdateRecurringTemplateInput,
   UpdateVisitInput,
   UploadUrlRequest,
   UploadUrlResponse,
@@ -12487,4 +12492,591 @@ export const useDeleteEstimateTemplate = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getDeleteEstimateTemplateMutationOptions(options));
     }
+
+export const getListRecurringTemplatesUrl = () => {
+
+
+
+
+  return `/api/billing/recurring-templates`
+}
+
+/**
+ * @summary List all recurring invoice templates
+ */
+export const listRecurringTemplates = async ( options?: RequestInit): Promise<RecurringInvoiceTemplate[]> => {
+
+  return customFetch<RecurringInvoiceTemplate[]>(getListRecurringTemplatesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListRecurringTemplatesQueryKey = () => {
+    return [
+    `/api/billing/recurring-templates`
+    ] as const;
+    }
+
+
+export const getListRecurringTemplatesQueryOptions = <TData = Awaited<ReturnType<typeof listRecurringTemplates>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRecurringTemplates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListRecurringTemplatesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listRecurringTemplates>>> = ({ signal }) => listRecurringTemplates({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listRecurringTemplates>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListRecurringTemplatesQueryResult = NonNullable<Awaited<ReturnType<typeof listRecurringTemplates>>>
+export type ListRecurringTemplatesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all recurring invoice templates
+ */
+
+export function useListRecurringTemplates<TData = Awaited<ReturnType<typeof listRecurringTemplates>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRecurringTemplates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListRecurringTemplatesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateRecurringTemplateUrl = () => {
+
+
+
+
+  return `/api/billing/recurring-templates`
+}
+
+/**
+ * @summary Create a recurring invoice template
+ */
+export const createRecurringTemplate = async (createRecurringTemplateInput: CreateRecurringTemplateInput, options?: RequestInit): Promise<RecurringInvoiceTemplate> => {
+
+  return customFetch<RecurringInvoiceTemplate>(getCreateRecurringTemplateUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createRecurringTemplateInput)
+  }
+);}
+
+
+
+
+
+export const getCreateRecurringTemplateMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createRecurringTemplate>>, TError,{data: BodyType<CreateRecurringTemplateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createRecurringTemplate>>, TError,{data: BodyType<CreateRecurringTemplateInput>}, TContext> => {
+
+const mutationKey = ['createRecurringTemplate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createRecurringTemplate>>, {data: BodyType<CreateRecurringTemplateInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createRecurringTemplate(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateRecurringTemplateMutationResult = NonNullable<Awaited<ReturnType<typeof createRecurringTemplate>>>
+    export type CreateRecurringTemplateMutationBody = BodyType<CreateRecurringTemplateInput>
+    export type CreateRecurringTemplateMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a recurring invoice template
+ */
+export const useCreateRecurringTemplate = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createRecurringTemplate>>, TError,{data: BodyType<CreateRecurringTemplateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createRecurringTemplate>>,
+        TError,
+        {data: BodyType<CreateRecurringTemplateInput>},
+        TContext
+      > => {
+      return useMutation(getCreateRecurringTemplateMutationOptions(options));
+    }
+
+export const getGetRecurringTemplateUrl = (id: number,) => {
+
+
+
+
+  return `/api/billing/recurring-templates/${id}`
+}
+
+/**
+ * @summary Get a recurring invoice template
+ */
+export const getRecurringTemplate = async (id: number, options?: RequestInit): Promise<RecurringInvoiceTemplate> => {
+
+  return customFetch<RecurringInvoiceTemplate>(getGetRecurringTemplateUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRecurringTemplateQueryKey = (id: number,) => {
+    return [
+    `/api/billing/recurring-templates/${id}`
+    ] as const;
+    }
+
+
+export const getGetRecurringTemplateQueryOptions = <TData = Awaited<ReturnType<typeof getRecurringTemplate>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRecurringTemplate>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRecurringTemplateQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRecurringTemplate>>> = ({ signal }) => getRecurringTemplate(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRecurringTemplate>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRecurringTemplateQueryResult = NonNullable<Awaited<ReturnType<typeof getRecurringTemplate>>>
+export type GetRecurringTemplateQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get a recurring invoice template
+ */
+
+export function useGetRecurringTemplate<TData = Awaited<ReturnType<typeof getRecurringTemplate>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRecurringTemplate>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRecurringTemplateQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateRecurringTemplateUrl = (id: number,) => {
+
+
+
+
+  return `/api/billing/recurring-templates/${id}`
+}
+
+/**
+ * @summary Update a recurring invoice template
+ */
+export const updateRecurringTemplate = async (id: number,
+    updateRecurringTemplateInput: UpdateRecurringTemplateInput, options?: RequestInit): Promise<RecurringInvoiceTemplate> => {
+
+  return customFetch<RecurringInvoiceTemplate>(getUpdateRecurringTemplateUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateRecurringTemplateInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateRecurringTemplateMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRecurringTemplate>>, TError,{id: number;data: BodyType<UpdateRecurringTemplateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateRecurringTemplate>>, TError,{id: number;data: BodyType<UpdateRecurringTemplateInput>}, TContext> => {
+
+const mutationKey = ['updateRecurringTemplate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateRecurringTemplate>>, {id: number;data: BodyType<UpdateRecurringTemplateInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateRecurringTemplate(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateRecurringTemplateMutationResult = NonNullable<Awaited<ReturnType<typeof updateRecurringTemplate>>>
+    export type UpdateRecurringTemplateMutationBody = BodyType<UpdateRecurringTemplateInput>
+    export type UpdateRecurringTemplateMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update a recurring invoice template
+ */
+export const useUpdateRecurringTemplate = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRecurringTemplate>>, TError,{id: number;data: BodyType<UpdateRecurringTemplateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateRecurringTemplate>>,
+        TError,
+        {id: number;data: BodyType<UpdateRecurringTemplateInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateRecurringTemplateMutationOptions(options));
+    }
+
+export const getDeleteRecurringTemplateUrl = (id: number,) => {
+
+
+
+
+  return `/api/billing/recurring-templates/${id}`
+}
+
+/**
+ * @summary Delete a recurring invoice template
+ */
+export const deleteRecurringTemplate = async (id: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteRecurringTemplateUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteRecurringTemplateMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteRecurringTemplate>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteRecurringTemplate>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteRecurringTemplate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteRecurringTemplate>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteRecurringTemplate(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteRecurringTemplateMutationResult = NonNullable<Awaited<ReturnType<typeof deleteRecurringTemplate>>>
+
+    export type DeleteRecurringTemplateMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a recurring invoice template
+ */
+export const useDeleteRecurringTemplate = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteRecurringTemplate>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteRecurringTemplate>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteRecurringTemplateMutationOptions(options));
+    }
+
+export const getRunRecurringTemplateNowUrl = (id: number,) => {
+
+
+
+
+  return `/api/billing/recurring-templates/${id}/run-now`
+}
+
+/**
+ * @summary Manually generate an invoice from a template now
+ */
+export const runRecurringTemplateNow = async (id: number, options?: RequestInit): Promise<RunRecurringTemplateNow200> => {
+
+  return customFetch<RunRecurringTemplateNow200>(getRunRecurringTemplateNowUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRunRecurringTemplateNowMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runRecurringTemplateNow>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runRecurringTemplateNow>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['runRecurringTemplateNow'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runRecurringTemplateNow>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  runRecurringTemplateNow(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunRecurringTemplateNowMutationResult = NonNullable<Awaited<ReturnType<typeof runRecurringTemplateNow>>>
+
+    export type RunRecurringTemplateNowMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Manually generate an invoice from a template now
+ */
+export const useRunRecurringTemplateNow = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runRecurringTemplateNow>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runRecurringTemplateNow>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getRunRecurringTemplateNowMutationOptions(options));
+    }
+
+export const getRetryBillingEmailUrl = (id: number,) => {
+
+
+
+
+  return `/api/billing/email-queue/${id}/retry`
+}
+
+/**
+ * @summary Retry a failed billing email queue entry
+ */
+export const retryBillingEmail = async (id: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getRetryBillingEmailUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRetryBillingEmailMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryBillingEmail>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof retryBillingEmail>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['retryBillingEmail'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof retryBillingEmail>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  retryBillingEmail(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RetryBillingEmailMutationResult = NonNullable<Awaited<ReturnType<typeof retryBillingEmail>>>
+
+    export type RetryBillingEmailMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Retry a failed billing email queue entry
+ */
+export const useRetryBillingEmail = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryBillingEmail>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof retryBillingEmail>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getRetryBillingEmailMutationOptions(options));
+    }
+
+export const getGetBillingAutomationStatusUrl = () => {
+
+
+
+
+  return `/api/billing/automation-status`
+}
+
+/**
+ * @summary Get billing automation dashboard status
+ */
+export const getBillingAutomationStatus = async ( options?: RequestInit): Promise<BillingAutomationStatus> => {
+
+  return customFetch<BillingAutomationStatus>(getGetBillingAutomationStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetBillingAutomationStatusQueryKey = () => {
+    return [
+    `/api/billing/automation-status`
+    ] as const;
+    }
+
+
+export const getGetBillingAutomationStatusQueryOptions = <TData = Awaited<ReturnType<typeof getBillingAutomationStatus>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBillingAutomationStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetBillingAutomationStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBillingAutomationStatus>>> = ({ signal }) => getBillingAutomationStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBillingAutomationStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetBillingAutomationStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getBillingAutomationStatus>>>
+export type GetBillingAutomationStatusQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get billing automation dashboard status
+ */
+
+export function useGetBillingAutomationStatus<TData = Awaited<ReturnType<typeof getBillingAutomationStatus>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBillingAutomationStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetBillingAutomationStatusQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 

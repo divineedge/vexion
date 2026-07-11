@@ -22,4 +22,7 @@ export interface CustomerUpdate {
   notes?: string;
   tags?: string[];
   customFieldValues?: CustomerUpdateCustomFieldValues;
+  smsOptOut?: boolean;
+  emailOptOut?: boolean;
+  autoInvoiceOnCompletion?: boolean;
 }

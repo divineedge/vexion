@@ -25,3 +25,5 @@ export * from "./mediaAttachments";
 export * from "./estimates";
 export * from "./visits";
 export * from "./estimateTemplates";
+export * from "./recurringInvoiceTemplates";
+export * from "./billingEmailQueue";

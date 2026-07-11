@@ -30,6 +30,7 @@ import communicationsRouter from "./communications";
 import estimatesRouter from "./estimates";
 import visitsRouter from "./visits";
 import estimateTemplatesRouter from "./estimateTemplates";
+import billingRouter from "./billing";
 
 const router: IRouter = Router();
 
@@ -64,5 +65,6 @@ router.use(communicationsRouter);
 router.use(estimatesRouter);
 router.use(visitsRouter);
 router.use(estimateTemplatesRouter);
+router.use(billingRouter);
 
 export default router;

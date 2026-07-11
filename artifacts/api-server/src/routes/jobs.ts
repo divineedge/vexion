@@ -1,8 +1,9 @@
 import { Router, type IRouter } from "express";
-import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable } from "@workspace/db";
+import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable, invoicesTable, tenantsTable } from "@workspace/db";
 import { eq, and, sql, desc, asc, isNotNull, isNull, ne, inArray, min, gt } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { nthOccurrenceAfterRoot, describeRule, type RecurrenceRule } from "../lib/recurrenceEngine";
+import { enqueueInvoiceEmail } from "../lib/billingScheduler";
 
 const router: IRouter = Router();
 
@@ -302,6 +303,52 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
 
   await db.insert(activityLogTable).values({ tenantId, userId, type: "job_completed", message: `Job "${updated.title}" completed`, entityId: id });
+
+  // Auto-invoice on completion if enabled for this customer
+  if (updated.customerId) {
+    const [customer] = await db
+      .select({ autoInvoiceOnCompletion: customersTable.autoInvoiceOnCompletion, email: customersTable.email })
+      .from(customersTable)
+      .where(eq(customersTable.id, updated.customerId));
+
+    if (customer?.autoInvoiceOnCompletion && !updated.invoiceId) {
+      try {
+        const [tenant] = await db.select({ taxRate: tenantsTable.taxRate }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+        const taxRate = tenant?.taxRate ?? 0;
+        const lineItems = (updated.lineItems as unknown[]) ?? [];
+        const subtotal = updated.totalAmount ?? 0;
+        const tax = subtotal * (taxRate / 100);
+        const total = subtotal + tax;
+        const invoiceNum = `INV-${Date.now().toString().slice(-8)}`;
+
+        let invoiceId!: number;
+        await db.transaction(async tx => {
+          const [invoice] = await tx.insert(invoicesTable).values({
+            tenantId,
+            invoiceNumber: invoiceNum,
+            customerId: updated.customerId!,
+            jobId: updated.id,
+            status: customer.email ? "sent" : "draft",
+            subtotal,
+            tax,
+            total,
+            lineItems,
+          }).returning();
+          invoiceId = invoice.id;
+          await tx.update(jobsTable).set({ invoiceId: invoice.id }).where(eq(jobsTable.id, id));
+        });
+
+        await db.insert(activityLogTable).values({ tenantId, userId, type: "invoice_sent", message: `Auto-invoice ${invoiceNum} created on job completion`, entityId: invoiceId });
+
+        if (customer.email) {
+          await enqueueInvoiceEmail(tenantId, invoiceId);
+        }
+      } catch (err) {
+        // Non-fatal: log but don't fail the job completion response
+        console.error("Auto-invoice creation failed:", err);
+      }
+    }
+  }
 
   res.json(formatJob(updated));
 });

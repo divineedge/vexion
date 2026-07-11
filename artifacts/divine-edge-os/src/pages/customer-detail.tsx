@@ -1062,6 +1062,20 @@ export default function CustomerDetailPage() {
                     onCheckedChange={v => setField('emailOptOut', v as any)}
                   />
                 </div>
+                <div className="flex items-center justify-between rounded-lg border p-3 bg-primary/5">
+                  <div>
+                    <p className="text-sm font-medium flex items-center gap-1.5">
+                      Auto-Invoice on Job Completion
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Automatically create and email an invoice when a job is marked complete
+                    </p>
+                  </div>
+                  <Switch
+                    checked={!!(form.autoInvoiceOnCompletion ?? (customer as any).autoInvoiceOnCompletion)}
+                    onCheckedChange={v => setField('autoInvoiceOnCompletion', v as any)}
+                  />
+                </div>
               </div>
             </Section>
 

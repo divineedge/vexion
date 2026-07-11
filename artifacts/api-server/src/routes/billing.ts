@@ -1,0 +1,268 @@
+import { Router, type IRouter } from "express";
+import { db, recurringInvoiceTemplatesTable, billingEmailQueueTable, invoicesTable, customersTable } from "@workspace/db";
+import { eq, and, desc, sql } from "drizzle-orm";
+import { getTenantId } from "../lib/tenantHelper";
+import { runTemplateNow } from "../lib/billingScheduler";
+
+const router: IRouter = Router();
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatTemplate(t: typeof recurringInvoiceTemplatesTable.$inferSelect, customerName?: string | null) {
+  return {
+    ...t,
+    lineItems: (t.lineItems as unknown[]) ?? [],
+    lastGeneratedAt: t.lastGeneratedAt?.toISOString() ?? null,
+    createdAt: t.createdAt.toISOString(),
+    updatedAt: t.updatedAt.toISOString(),
+    customerName: customerName ?? null,
+  };
+}
+
+function formatQueueEntry(q: typeof billingEmailQueueTable.$inferSelect, invoiceNumber?: string | null) {
+  return {
+    ...q,
+    lastAttemptAt: q.lastAttemptAt?.toISOString() ?? null,
+    createdAt: q.createdAt.toISOString(),
+    updatedAt: q.updatedAt.toISOString(),
+    invoiceNumber: invoiceNumber ?? null,
+  };
+}
+
+// ── Recurring Templates CRUD ──────────────────────────────────────────────────
+
+router.get("/billing/recurring-templates", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+
+  const rows = await db
+    .select({
+      template: recurringInvoiceTemplatesTable,
+      customerName: customersTable.name,
+    })
+    .from(recurringInvoiceTemplatesTable)
+    .leftJoin(customersTable, eq(recurringInvoiceTemplatesTable.customerId, customersTable.id))
+    .where(eq(recurringInvoiceTemplatesTable.tenantId, tenantId))
+    .orderBy(desc(recurringInvoiceTemplatesTable.createdAt));
+
+  res.json(rows.map(r => formatTemplate(r.template, r.customerName)));
+});
+
+router.post("/billing/recurring-templates", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const { customerId, name, lineItems = [], billingCycleDay = 1, billingCycleType = "monthly", nextBillingDate, isActive = true, notes } = req.body;
+
+  if (!customerId || !name || !nextBillingDate) {
+    res.status(400).json({ error: "customerId, name, and nextBillingDate are required" });
+    return;
+  }
+
+  const parsedCustomerId = parseInt(customerId, 10);
+
+  // Verify the customer belongs to this tenant
+  const [customer] = await db
+    .select({ id: customersTable.id })
+    .from(customersTable)
+    .where(and(eq(customersTable.id, parsedCustomerId), eq(customersTable.tenantId, tenantId)));
+  if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
+
+  const [template] = await db
+    .insert(recurringInvoiceTemplatesTable)
+    .values({
+      tenantId,
+      customerId: parsedCustomerId,
+      name,
+      lineItems,
+      billingCycleDay,
+      billingCycleType,
+      nextBillingDate,
+      isActive,
+      notes: notes ?? null,
+    })
+    .returning();
+
+  const [row] = await db
+    .select({ customerName: customersTable.name })
+    .from(customersTable)
+    .where(eq(customersTable.id, template.customerId));
+
+  res.status(201).json(formatTemplate(template, row?.customerName));
+});
+
+router.get("/billing/recurring-templates/:id", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const id = parseInt(req.params.id, 10);
+
+  const [row] = await db
+    .select({
+      template: recurringInvoiceTemplatesTable,
+      customerName: customersTable.name,
+    })
+    .from(recurringInvoiceTemplatesTable)
+    .leftJoin(customersTable, eq(recurringInvoiceTemplatesTable.customerId, customersTable.id))
+    .where(and(eq(recurringInvoiceTemplatesTable.id, id), eq(recurringInvoiceTemplatesTable.tenantId, tenantId)));
+
+  if (!row) { res.status(404).json({ error: "Not found" }); return; }
+  res.json(formatTemplate(row.template, row.customerName));
+});
+
+router.patch("/billing/recurring-templates/:id", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const id = parseInt(req.params.id, 10);
+
+  const { name, lineItems, billingCycleDay, billingCycleType, nextBillingDate, isActive, notes, customerId } = req.body;
+
+  if (customerId !== undefined) {
+    const parsedCustomerId = parseInt(customerId, 10);
+    const [customer] = await db
+      .select({ id: customersTable.id })
+      .from(customersTable)
+      .where(and(eq(customersTable.id, parsedCustomerId), eq(customersTable.tenantId, tenantId)));
+    if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
+  }
+
+  const updates: Partial<typeof recurringInvoiceTemplatesTable.$inferInsert> = {};
+  if (customerId !== undefined) updates.customerId = parseInt(customerId, 10);
+  if (name !== undefined) updates.name = name;
+  if (lineItems !== undefined) updates.lineItems = lineItems;
+  if (billingCycleDay !== undefined) updates.billingCycleDay = billingCycleDay;
+  if (billingCycleType !== undefined) updates.billingCycleType = billingCycleType;
+  if (nextBillingDate !== undefined) updates.nextBillingDate = nextBillingDate;
+  if (isActive !== undefined) updates.isActive = isActive;
+  if (notes !== undefined) updates.notes = notes;
+
+  const [updated] = await db
+    .update(recurringInvoiceTemplatesTable)
+    .set(updates)
+    .where(and(eq(recurringInvoiceTemplatesTable.id, id), eq(recurringInvoiceTemplatesTable.tenantId, tenantId)))
+    .returning();
+
+  if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+
+  const [row] = await db
+    .select({ customerName: customersTable.name })
+    .from(customersTable)
+    .where(eq(customersTable.id, updated.customerId));
+
+  res.json(formatTemplate(updated, row?.customerName));
+});
+
+router.delete("/billing/recurring-templates/:id", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const id = parseInt(req.params.id, 10);
+  await db
+    .delete(recurringInvoiceTemplatesTable)
+    .where(and(eq(recurringInvoiceTemplatesTable.id, id), eq(recurringInvoiceTemplatesTable.tenantId, tenantId)));
+  res.sendStatus(204);
+});
+
+// ── Manual trigger ────────────────────────────────────────────────────────────
+
+router.post("/billing/recurring-templates/:id/run-now", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const id = parseInt(req.params.id, 10);
+
+  try {
+    const result = await runTemplateNow(id, tenantId);
+    res.json({ success: true, invoiceId: result.invoiceId });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(400).json({ error: msg });
+  }
+});
+
+// ── Email queue retry ─────────────────────────────────────────────────────────
+
+router.post("/billing/email-queue/:id/retry", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const id = parseInt(req.params.id, 10);
+
+  const [entry] = await db
+    .select()
+    .from(billingEmailQueueTable)
+    .where(and(eq(billingEmailQueueTable.id, id), eq(billingEmailQueueTable.tenantId, tenantId)));
+
+  if (!entry) { res.status(404).json({ error: "Not found" }); return; }
+
+  await db
+    .update(billingEmailQueueTable)
+    .set({ status: "pending", attempts: 0, errorMsg: null })
+    .where(eq(billingEmailQueueTable.id, id));
+
+  res.json({ success: true });
+});
+
+// ── Billing automation status ─────────────────────────────────────────────────
+
+router.get("/billing/automation-status", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+
+  // Today's generated invoices (via templates)
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const todayInvoices = await db
+    .select({
+      invoice: invoicesTable,
+      customerName: customersTable.name,
+    })
+    .from(invoicesTable)
+    .leftJoin(customersTable, eq(invoicesTable.customerId, customersTable.id))
+    .where(
+      and(
+        eq(invoicesTable.tenantId, tenantId),
+        sql`${invoicesTable.generatedFromTemplateId} IS NOT NULL`,
+        sql`${invoicesTable.createdAt} >= ${todayStart}`,
+      ),
+    )
+    .orderBy(desc(invoicesTable.createdAt));
+
+  // All active templates with next run info
+  const templates = await db
+    .select({
+      template: recurringInvoiceTemplatesTable,
+      customerName: customersTable.name,
+    })
+    .from(recurringInvoiceTemplatesTable)
+    .leftJoin(customersTable, eq(recurringInvoiceTemplatesTable.customerId, customersTable.id))
+    .where(eq(recurringInvoiceTemplatesTable.tenantId, tenantId))
+    .orderBy(recurringInvoiceTemplatesTable.nextBillingDate);
+
+  // Email queue entries (last 100)
+  const emailQueue = await db
+    .select({
+      queue: billingEmailQueueTable,
+      invoiceNumber: invoicesTable.invoiceNumber,
+    })
+    .from(billingEmailQueueTable)
+    .leftJoin(invoicesTable, eq(billingEmailQueueTable.invoiceId, invoicesTable.id))
+    .where(eq(billingEmailQueueTable.tenantId, tenantId))
+    .orderBy(desc(billingEmailQueueTable.createdAt))
+    .limit(100);
+
+  // Queue stats
+  const [stats] = await db
+    .select({
+      pending: sql<number>`COUNT(*) FILTER (WHERE status = 'pending')::int`,
+      sent: sql<number>`COUNT(*) FILTER (WHERE status = 'sent')::int`,
+      failed: sql<number>`COUNT(*) FILTER (WHERE status = 'failed')::int`,
+    })
+    .from(billingEmailQueueTable)
+    .where(eq(billingEmailQueueTable.tenantId, tenantId));
+
+  res.json({
+    todayInvoices: todayInvoices.map(r => ({
+      id: r.invoice.id,
+      invoiceNumber: r.invoice.invoiceNumber,
+      total: r.invoice.total,
+      status: r.invoice.status,
+      customerName: r.customerName,
+      generatedFromTemplateId: r.invoice.generatedFromTemplateId,
+      createdAt: r.invoice.createdAt.toISOString(),
+    })),
+    templates: templates.map(r => formatTemplate(r.template, r.customerName)),
+    emailQueue: emailQueue.map(r => formatQueueEntry(r.queue, r.invoiceNumber)),
+    queueStats: stats ?? { pending: 0, sent: 0, failed: 0 },
+  });
+});
+
+export default router;

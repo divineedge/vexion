@@ -1,0 +1,27 @@
+ADD NEW MODULE: Division Routing, Capacity Planners, Custom Compliance Tasks, and Persistent Office Triggers
+
+Act as our senior software architect. Upgrade Divine Edge OS by adding specialized multi-crew routing structures, alternating week calendar frequencies, a customizable asset-linked task framework, and persistent, trigger-based office queues.
+
+Build out the following specific feature sets:
+
+1. CREW ROUTING & BI-WEEKLY CAPACITY PLANNING:
+- Build a master "Routes Dashboard" structured by distinct service divisions (e.g., Mowing Crew 1, Spray Crew 1).
+- Implement a multi-week calendar frequency filter supporting: Weekly, Bi-weekly Week A, Bi-weekly Week B, and Monthly rotations.
+- Route Sequencing: When an admin adds or subtracts jobs, automatically calculate the shortest sequential travel path from the company's designated start/stop depot pins.
+- Live Capacity & Open Space Meter: For every daily route template, display a capacity visualization calculating: (Sum of Budgeted Job Hours + Total Drive Time Matrix). Compare this against shift hours to display exactly how many "Open Space Hours" remain available for scheduling extra work on that specific rotation week.
+- One-Time Route Overrides: Implement a "Reschedule This Week Only" exception toggle on individual job calendar entries. Move the job instance to the newly requested day for that specific date only, keeping the underlying master template untouched so it automatically snaps back the following week. Automatically append a tenant-configured "Route Exception Trip Charge" fee line-item to the customer invoice upon execution.
+
+2. CUSTOM COMPLIANCE TASK ENGINE & ASSET LEDGER SPLITTING:
+- Create an internal "Daily Tasks Manager" completely separate from customer service tickets. Allow admins to bundle individual tasks into customized compliance workflows (e.g., a single "Pre-Leave Morning Routine" containing safety checklists, mileage logs, and tool inventory checks) and assign them to specific users. Include built-in timers to track how long tasks take.
+- Daily Asset Logs: When inputting daily hour meters, mileage, and fuel gallons into an equipment or vehicle task, map this data straight to the specific Asset File.
+- Dual-Ledger Asset Costing: Inside the Equipment tab, calculate and visualize asset data split into two distinct financial categories: (A) Operating/Run Cost (fuel expenses + runtime hours) and (B) Maintenance & Repair Costs (inventory parts costs + repair labor fees + calculated downtime value).
+- Proactive Maintenance & Issue Escalation: Upgrade inspection items to support three states: Pass, Fail, and "⚠️ Concern/Watch Item". Flagging an asset with a "Concern" keeps the equipment active in the fleet but automatically generates a proactive parts procurement alert on the mechanic's dashboard so parts can be ordered before a breakdown occurs.
+- Itemized Shrinkage Reporting: If a warehouse inventory count task inputs a stock level that does not match the database baseline, generate an itemized "Shrinkage Report Ledger" showing: Item Name/SKU, Expected Stock, Actual Count, Discrepancy Variance, Unit Cost, and Total Calculated Dollar Loss per line item.
+
+3. PERSISTENT OMNICHANNEL FOLLOW-UP QUEUES:
+- Build a persistent "Smart Follow-Up Queue" for office users. Records must remain permanently visible in the active queue, rolling over across calendar days and growing cumulatively until an employee logs a communication note and clicks "Mark Call Completed".
+- In Task Settings, create an automation trigger panel allowing owners to configure what events populate this queue and their exact frequencies. Add dedicated rule configurations for:
+  - (A) Sent Estimates & Invoices: Auto-generate a follow-up task X days after an estimate or invoice is sent, repeating every Y days until resolved.
+  - (B) Unanswered Emails: Auto-generate a follow-up task if an inbound client email remains without an outbound staff reply for X configured hours.
+  - (C) Missed Calls & Voicemails: Connect to the Open API infrastructure to instantly drop a "Return Call" task into the queue whenever a client call is missed or a voicemail payload is received.
+- Office Working Interface: Clicking a task must slide open a relational sidebar drawer displaying the customer's full contact history, phone number, and open estimate tracking split into "Pending Design/Review" and "Instant Sent" lists.

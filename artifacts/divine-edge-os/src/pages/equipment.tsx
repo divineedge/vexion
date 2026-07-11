@@ -25,6 +25,7 @@ import { Link } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { TaskFormDrawer } from '@/components/tasks/TaskFormDrawer';
+import { ImportExportControls } from '@/components/data-io/ImportExportControls';
 import { TaskActions } from '@/components/tasks/TaskActions';
 import { priorityBadgeClass, statusBadgeClass } from '@/lib/taskConstants';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -764,6 +765,14 @@ export default function EquipmentPage() {
             />
             Include archived
           </label>
+          {!isTechnician && (
+            <ImportExportControls
+              entity="equipment"
+              entityLabel="Equipment"
+              exportQuery={{ includeArchived: includeArchived ? 'true' : undefined }}
+              onImportComplete={() => qc.invalidateQueries({ queryKey: getListEquipmentQueryKey({ includeArchived }) })}
+            />
+          )}
           {!isTechnician && (
             <Button onClick={openCreate} className="gap-2">
               <Plus className="w-4 h-4" /> Add Equipment

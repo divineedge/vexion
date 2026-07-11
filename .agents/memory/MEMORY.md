@@ -14,3 +14,5 @@
 - [Dev DB schema drift](db-schema-drift-dev.md) — existing route 500s with opaque "Failed query" on a schema column? Check dev DB has that column (`psql \d table`); run `pnpm --filter @workspace/db run push` if missing
 - [Route sequencing design](route-sequencing-design.md) — Divine Edge routing uses a self-written nearest-neighbor haversine heuristic + fixed 28mph speed, not a mapping API; stay consistent
 - [Equipment ledger cumulative readings](equipment-ledger-cumulative-readings.md) — ledger runtime cost needs ≥2 hour-meter/mileage readings in range to show non-zero; $0 with 1 reading is correct, not a bug
+- [Divine Edge OS toaster mismatch](divine-edge-toaster-mismatch.md) — App.tsx must mount sonner's Toaster; app code calls `toast` from 'sonner' everywhere
+- [Bulk import/export pattern](bulk-import-export-pattern.md) — transient file uploads use multer + manual-hooks, not presigned-URL storage or orval codegen; shared engine in importExport.ts

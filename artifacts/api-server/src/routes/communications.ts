@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { createHmac, timingSafeEqual } from "crypto";
-import { db, communicationsLogTable, customersTable, tenantsTable, jobsTable, propertiesTable } from "@workspace/db";
+import { db, communicationsLogTable, customersTable, tenantsTable, jobsTable, propertiesTable, followupQueueItemsTable } from "@workspace/db";
 import { eq, and, desc, or } from "drizzle-orm";
 import { getTenantId } from "../lib/tenantHelper";
 import { sendSms, type SmsProviderConfig } from "../lib/smsProvider";
@@ -242,6 +242,80 @@ router.post("/communications/webhook", async (req, res): Promise<void> => {
   const from = (payload["from"] ?? payload["From"] ?? "") as string;
   const to = (payload["to"] ?? payload["To"] ?? "") as string;
   const body = (payload["body"] ?? payload["Body"] ?? payload["content"] ?? "") as string;
+
+  // ---- Call events (missed call / voicemail) ---------------------------
+  // Twilio voice status callbacks use CallStatus ('no-answer' | 'busy' | 'failed')
+  // and optionally RecordingUrl when a voicemail was left. OpenPhone sends a
+  // `type` field like 'call.completed' / 'call.recording.completed' with the
+  // call status nested under `data.object`.
+  const twilioCallStatus = (payload["CallStatus"] ?? "") as string;
+  const twilioRecordingUrl = (payload["RecordingUrl"] ?? "") as string;
+  const openPhoneEventType = (payload["type"] ?? "") as string;
+  const openPhoneObject = (payload["data"] as Record<string, unknown> | undefined)?.["object"] as Record<string, unknown> | undefined;
+  const openPhoneCallStatus = (openPhoneObject?.["status"] ?? "") as string;
+  const hasOpenPhoneVoicemail = openPhoneEventType.includes("voicemail") || openPhoneEventType.includes("recording");
+
+  const isMissedCall = ["no-answer", "busy", "failed"].includes(twilioCallStatus)
+    || openPhoneCallStatus === "missed"
+    || openPhoneEventType === "call.missed";
+  const isVoicemail = !!twilioRecordingUrl || hasOpenPhoneVoicemail;
+
+  if (isMissedCall || isVoicemail) {
+    const callFrom = from || ((payload["From"] ?? "") as string);
+    const callTo = to || ((payload["To"] ?? "") as string);
+
+    const tenants = await db
+      .select()
+      .from(tenantsTable)
+      .where(or(eq(tenantsTable.mainPhoneNumber, callTo), eq(tenantsTable.marketingPhoneNumber, callTo)));
+
+    for (const tenant of tenants) {
+      const cfg = (tenant.followupTriggerConfig as { missedCall?: { enabled?: boolean } } | null) ?? {};
+      if (cfg.missedCall?.enabled === false) continue;
+
+      const [customer] = callFrom
+        ? await db
+            .select()
+            .from(customersTable)
+            .where(
+              and(
+                eq(customersTable.tenantId, tenant.id),
+                or(eq(customersTable.phone, callFrom), eq(customersTable.secondaryPhone ?? "", callFrom)),
+              ),
+            )
+            .limit(1)
+        : [];
+
+      const triggerType = isVoicemail ? "voicemail" : "missed_call";
+      const [log] = await db.insert(communicationsLogTable).values({
+        tenantId: tenant.id,
+        customerId: customer?.id ?? null,
+        direction: "inbound",
+        channel: "call",
+        fromAddress: callFrom || null,
+        toAddress: callTo || null,
+        body: isVoicemail ? "Voicemail received" : "Missed call",
+        status: isVoicemail ? "voicemail" : "missed",
+        messageType: "manual",
+      }).returning();
+
+      if (customer) {
+        await db.insert(followupQueueItemsTable).values({
+          tenantId: tenant.id,
+          customerId: customer.id,
+          triggerType,
+          triggerContextId: log.id,
+          reason: isVoicemail
+            ? `${customer.name} left a voicemail`
+            : `Missed call from ${customer.name}`,
+          status: "open",
+        });
+      }
+    }
+
+    res.sendStatus(200);
+    return;
+  }
 
   if (!from || !body) {
     res.sendStatus(200); // Always 200 to prevent retries

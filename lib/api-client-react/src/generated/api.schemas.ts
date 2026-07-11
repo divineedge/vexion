@@ -2044,6 +2044,28 @@ export interface PaymentReminderRule {
   label: string;
 }
 
+export interface FollowupTriggerRule {
+  enabled?: boolean;
+  delayDays?: number;
+  repeatDays?: number;
+}
+
+export type FollowupTriggerConfigUnansweredEmail = {
+  enabled?: boolean;
+  hours?: number;
+};
+
+export type FollowupTriggerConfigMissedCall = {
+  enabled?: boolean;
+};
+
+export interface FollowupTriggerConfig {
+  sentEstimate?: FollowupTriggerRule;
+  sentInvoice?: FollowupTriggerRule;
+  unansweredEmail?: FollowupTriggerConfigUnansweredEmail;
+  missedCall?: FollowupTriggerConfigMissedCall;
+}
+
 export interface TenantSettings {
   id: number;
   tenantId: number;
@@ -2101,6 +2123,7 @@ export interface TenantSettings {
   paymentReminderChannels?: TenantSettingsPaymentReminderChannelsItem[];
   stopServiceRuleEnabled?: boolean;
   stopServiceThresholdDays?: number;
+  followupTriggerConfig?: FollowupTriggerConfig;
   reviewRequestOnInvoicePaid?: boolean;
   reviewRequestOnEstimateApproved?: boolean;
   /** @nullable */
@@ -2892,6 +2915,87 @@ export type EquipmentLedgerMaintenance = {
 export interface EquipmentLedger {
   operating: EquipmentLedgerOperating;
   maintenance: EquipmentLedgerMaintenance;
+}
+
+export interface FollowupQueueItem {
+  id: number;
+  tenantId: number;
+  customerId: number;
+  /** @nullable */
+  customerName: string | null;
+  triggerType: string;
+  /** @nullable */
+  triggerContextId?: number | null;
+  reason: string;
+  status: string;
+  priority: string;
+  ageDays: number;
+  createdAt: string;
+  lastRepeatedAt: string;
+  /** @nullable */
+  resolvedAt?: string | null;
+  /** @nullable */
+  resolvedByUserId?: number | null;
+  /** @nullable */
+  communicationNote?: string | null;
+}
+
+export interface FollowupContactHistoryEntry {
+  id: number;
+  direction: string;
+  channel: string;
+  body: string;
+  status: string;
+  createdAt: string;
+}
+
+/**
+ * @nullable
+ */
+export type FollowupQueueItemContextCustomer = {
+  id?: number;
+  name?: string;
+  phone?: string;
+  email?: string;
+  smsOptOut?: boolean;
+  emailOptOut?: boolean;
+} | null;
+
+export type FollowupQueueItemContextOpenEstimatesItem = {
+  id?: number;
+  status?: string;
+  total?: number;
+  /** @nullable */
+  sentAt?: string | null;
+};
+
+export type FollowupQueueItemContextClosedEstimatesItem = {
+  id?: number;
+  status?: string;
+  total?: number;
+};
+
+export type FollowupQueueItemContextInvoicesItem = {
+  id?: number;
+  invoiceNumber?: string;
+  status?: string;
+  total?: number;
+  /** @nullable */
+  dueDate?: string | null;
+};
+
+export interface FollowupQueueItemContext {
+  item: FollowupQueueItem;
+  /** @nullable */
+  customer: FollowupQueueItemContextCustomer;
+  contactHistory: FollowupContactHistoryEntry[];
+  openEstimates: FollowupQueueItemContextOpenEstimatesItem[];
+  closedEstimates: FollowupQueueItemContextClosedEstimatesItem[];
+  invoices: FollowupQueueItemContextInvoicesItem[];
+}
+
+export interface ResolveFollowupQueueItemInput {
+  note: string;
 }
 
 export interface TaskBundle {
@@ -3939,5 +4043,16 @@ divisionId?: number;
 
 export type GetRouteDayDetailParams = {
 date: string;
+};
+
+export type ListFollowupQueueItemsParams = {
+/**
+ * Filter to a single trigger type, e.g. 'sent_estimate' | 'sent_invoice' | 'unanswered_email' | 'missed_call' | 'voicemail'
+ */
+triggerType?: string;
+/**
+ * 'open' (default) or 'resolved'
+ */
+status?: string;
 };
 

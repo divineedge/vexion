@@ -9,7 +9,7 @@ import { adminNavSections, techNavItems } from './navConfig';
 import { SidebarSection } from './SidebarSection';
 import { Breadcrumb } from './Breadcrumb';
 import { NotificationBell } from '@/components/tasks/NotificationBell';
-import { useListTasks, getListTasksQueryKey } from '@workspace/api-client-react';
+import { useListTasks, getListTasksQueryKey, useListFollowupQueueItems, getListFollowupQueueItemsQueryKey } from '@workspace/api-client-react';
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, logout, isTechnician, isCrewManager, canManageOffice } = useAuth();
@@ -21,7 +21,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { query: { enabled: isAuthenticated, refetchInterval: 60000, queryKey: getListTasksQueryKey({ scope: 'mine' }) } },
   );
   const myOpenTaskCount = myTasks.filter(t => t.status === 'open' || t.status === 'in_progress').length;
-  const badgeCounts: Record<string, number> = { '/tasks': myOpenTaskCount };
+
+  const { data: openFollowups = [] } = useListFollowupQueueItems(
+    { status: 'open' },
+    { query: { enabled: isAuthenticated, refetchInterval: 60000, queryKey: getListFollowupQueueItemsQueryKey({ status: 'open' }) } },
+  );
+  const badgeCounts: Record<string, number> = { '/tasks': myOpenTaskCount, '/followup-queue': openFollowups.length };
 
   if (!isAuthenticated) {
     if (location !== '/login') {

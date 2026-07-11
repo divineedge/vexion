@@ -3051,6 +3051,25 @@ export const GetTenantSettingsResponse = zod.object({
   "paymentReminderChannels": zod.array(zod.enum(['sms', 'email'])).optional(),
   "stopServiceRuleEnabled": zod.boolean().optional(),
   "stopServiceThresholdDays": zod.number().optional(),
+  "followupTriggerConfig": zod.object({
+  "sentEstimate": zod.object({
+  "enabled": zod.boolean().optional(),
+  "delayDays": zod.number().optional(),
+  "repeatDays": zod.number().optional()
+}).optional(),
+  "sentInvoice": zod.object({
+  "enabled": zod.boolean().optional(),
+  "delayDays": zod.number().optional(),
+  "repeatDays": zod.number().optional()
+}).optional(),
+  "unansweredEmail": zod.object({
+  "enabled": zod.boolean().optional(),
+  "hours": zod.number().optional()
+}).optional(),
+  "missedCall": zod.object({
+  "enabled": zod.boolean().optional()
+}).optional()
+}).optional(),
   "reviewRequestOnInvoicePaid": zod.boolean().optional(),
   "reviewRequestOnEstimateApproved": zod.boolean().optional(),
   "reviewGoogleUrl": zod.string().nullish(),
@@ -3170,6 +3189,25 @@ export const UpdateTenantSettingsResponse = zod.object({
   "paymentReminderChannels": zod.array(zod.enum(['sms', 'email'])).optional(),
   "stopServiceRuleEnabled": zod.boolean().optional(),
   "stopServiceThresholdDays": zod.number().optional(),
+  "followupTriggerConfig": zod.object({
+  "sentEstimate": zod.object({
+  "enabled": zod.boolean().optional(),
+  "delayDays": zod.number().optional(),
+  "repeatDays": zod.number().optional()
+}).optional(),
+  "sentInvoice": zod.object({
+  "enabled": zod.boolean().optional(),
+  "delayDays": zod.number().optional(),
+  "repeatDays": zod.number().optional()
+}).optional(),
+  "unansweredEmail": zod.object({
+  "enabled": zod.boolean().optional(),
+  "hours": zod.number().optional()
+}).optional(),
+  "missedCall": zod.object({
+  "enabled": zod.boolean().optional()
+}).optional()
+}).optional(),
   "reviewRequestOnInvoicePaid": zod.boolean().optional(),
   "reviewRequestOnEstimateApproved": zod.boolean().optional(),
   "reviewGoogleUrl": zod.string().nullish(),
@@ -8018,6 +8056,170 @@ export const RescheduleJobOnceResponse = zod.object({
 })).optional(),
   "totalAmount": zod.number().optional(),
   "exceptionFeeCharged": zod.number()
+})
+
+
+/**
+ * @summary List the Smart Follow-Up Queue items for the tenant
+ */
+export const ListFollowupQueueItemsQueryParams = zod.object({
+  "triggerType": zod.coerce.string().optional().describe('Filter to a single trigger type, e.g. \'sent_estimate\' | \'sent_invoice\' | \'unanswered_email\' | \'missed_call\' | \'voicemail\''),
+  "status": zod.coerce.string().optional().describe('\'open\' (default) or \'resolved\'')
+})
+
+export const ListFollowupQueueItemsResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "customerName": zod.string().nullable(),
+  "triggerType": zod.string(),
+  "triggerContextId": zod.number().nullish(),
+  "reason": zod.string(),
+  "status": zod.string(),
+  "priority": zod.string(),
+  "ageDays": zod.number(),
+  "createdAt": zod.string(),
+  "lastRepeatedAt": zod.string(),
+  "resolvedAt": zod.string().nullish(),
+  "resolvedByUserId": zod.number().nullish(),
+  "communicationNote": zod.string().nullish()
+})
+export const ListFollowupQueueItemsResponse = zod.array(ListFollowupQueueItemsResponseItem)
+
+
+/**
+ * @summary Get the customer, contact history, and related estimates/invoices for the drawer
+ */
+export const GetFollowupQueueItemContextParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetFollowupQueueItemContextResponse = zod.object({
+  "item": zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "customerName": zod.string().nullable(),
+  "triggerType": zod.string(),
+  "triggerContextId": zod.number().nullish(),
+  "reason": zod.string(),
+  "status": zod.string(),
+  "priority": zod.string(),
+  "ageDays": zod.number(),
+  "createdAt": zod.string(),
+  "lastRepeatedAt": zod.string(),
+  "resolvedAt": zod.string().nullish(),
+  "resolvedByUserId": zod.number().nullish(),
+  "communicationNote": zod.string().nullish()
+}),
+  "customer": zod.object({
+  "id": zod.number().optional(),
+  "name": zod.string().optional(),
+  "phone": zod.string().optional(),
+  "email": zod.string().optional(),
+  "smsOptOut": zod.boolean().optional(),
+  "emailOptOut": zod.boolean().optional()
+}).nullable(),
+  "contactHistory": zod.array(zod.object({
+  "id": zod.number(),
+  "direction": zod.string(),
+  "channel": zod.string(),
+  "body": zod.string(),
+  "status": zod.string(),
+  "createdAt": zod.string()
+})),
+  "openEstimates": zod.array(zod.object({
+  "id": zod.number().optional(),
+  "status": zod.string().optional(),
+  "total": zod.number().optional(),
+  "sentAt": zod.string().nullish()
+})),
+  "closedEstimates": zod.array(zod.object({
+  "id": zod.number().optional(),
+  "status": zod.string().optional(),
+  "total": zod.number().optional()
+})),
+  "invoices": zod.array(zod.object({
+  "id": zod.number().optional(),
+  "invoiceNumber": zod.string().optional(),
+  "status": zod.string().optional(),
+  "total": zod.number().optional(),
+  "dueDate": zod.string().nullish()
+}))
+})
+
+
+/**
+ * @summary Resolve a follow-up item by logging a communication note
+ */
+export const ResolveFollowupQueueItemParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ResolveFollowupQueueItemBody = zod.object({
+  "note": zod.string()
+})
+
+export const ResolveFollowupQueueItemResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "customerName": zod.string().nullable(),
+  "triggerType": zod.string(),
+  "triggerContextId": zod.number().nullish(),
+  "reason": zod.string(),
+  "status": zod.string(),
+  "priority": zod.string(),
+  "ageDays": zod.number(),
+  "createdAt": zod.string(),
+  "lastRepeatedAt": zod.string(),
+  "resolvedAt": zod.string().nullish(),
+  "resolvedByUserId": zod.number().nullish(),
+  "communicationNote": zod.string().nullish()
+})
+
+
+/**
+ * @summary Update the tenant's Smart Follow-Up Queue automation trigger config
+ */
+export const UpdateFollowupTriggerConfigBody = zod.object({
+  "sentEstimate": zod.object({
+  "enabled": zod.boolean().optional(),
+  "delayDays": zod.number().optional(),
+  "repeatDays": zod.number().optional()
+}).optional(),
+  "sentInvoice": zod.object({
+  "enabled": zod.boolean().optional(),
+  "delayDays": zod.number().optional(),
+  "repeatDays": zod.number().optional()
+}).optional(),
+  "unansweredEmail": zod.object({
+  "enabled": zod.boolean().optional(),
+  "hours": zod.number().optional()
+}).optional(),
+  "missedCall": zod.object({
+  "enabled": zod.boolean().optional()
+}).optional()
+})
+
+export const UpdateFollowupTriggerConfigResponse = zod.object({
+  "sentEstimate": zod.object({
+  "enabled": zod.boolean().optional(),
+  "delayDays": zod.number().optional(),
+  "repeatDays": zod.number().optional()
+}).optional(),
+  "sentInvoice": zod.object({
+  "enabled": zod.boolean().optional(),
+  "delayDays": zod.number().optional(),
+  "repeatDays": zod.number().optional()
+}).optional(),
+  "unansweredEmail": zod.object({
+  "enabled": zod.boolean().optional(),
+  "hours": zod.number().optional()
+}).optional(),
+  "missedCall": zod.object({
+  "enabled": zod.boolean().optional()
+}).optional()
 })
 
 

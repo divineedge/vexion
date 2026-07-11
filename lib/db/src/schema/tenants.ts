@@ -89,6 +89,18 @@ export const tenantsTable = pgTable("tenants", {
   reviewCustomLink1Url: text("review_custom_link1_url"),
   reviewCustomLink2Label: text("review_custom_link2_label"),
   reviewCustomLink2Url: text("review_custom_link2_url"),
+  // ── Smart Follow-Up Queue automation triggers ────────────────────────────
+  /**
+   * Shape: {
+   *   sentEstimate: { enabled: boolean, delayDays: number, repeatDays: number },
+   *   sentInvoice: { enabled: boolean, delayDays: number, repeatDays: number },
+   *   unansweredEmail: { enabled: boolean, hours: number },
+   *   missedCall: { enabled: boolean },
+   * }
+   */
+  followupTriggerConfig: jsonb("followup_trigger_config").default(
+    '{"sentEstimate":{"enabled":true,"delayDays":3,"repeatDays":3},"sentInvoice":{"enabled":true,"delayDays":5,"repeatDays":5},"unansweredEmail":{"enabled":true,"hours":48},"missedCall":{"enabled":true}}',
+  ),
   // ── Routing ───────────────────────────────────────────────────────────────
   /** Trip charge auto-appended to a job's invoice when it uses a one-time reschedule */
   routeExceptionFee: real("route_exception_fee").notNull().default(0),

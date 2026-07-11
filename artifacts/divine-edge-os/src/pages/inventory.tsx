@@ -23,6 +23,7 @@ import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { ImportExportControls } from '@/components/data-io/ImportExportControls';
 import {
   Search, Plus, AlertTriangle, Package, DollarSign, Edit, Trash2,
   TrendingUp, ArrowRight, Eye, EyeOff, PlusCircle, MinusCircle,
@@ -286,6 +287,15 @@ export default function InventoryPage() {
           <p className="text-muted-foreground mt-1">Manage parts, tools, and materials.</p>
         </div>
         <div className="flex items-center gap-2">
+          <ImportExportControls
+            entity="inventory"
+            entityLabel="Inventory"
+            exportQuery={{ q: search || undefined }}
+            onImportComplete={() => {
+              qc.invalidateQueries({ queryKey: getListInventoryItemsQueryKey() });
+              qc.invalidateQueries({ queryKey: getGetInventorySummaryQueryKey() });
+            }}
+          />
           {canManage && (
             <Button variant="outline" className="gap-2" onClick={() => { setTransferDialogOpen(true); }}>
               <ArrowLeftRight className="w-4 h-4" /> Transfer

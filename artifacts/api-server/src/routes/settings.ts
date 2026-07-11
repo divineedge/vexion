@@ -92,6 +92,13 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     fuelPricePerGallon: tenant.fuelPricePerGallon ?? 4.0,
     equipmentRuntimeHourlyRate: tenant.equipmentRuntimeHourlyRate ?? 0,
     equipmentDowntimeHourlyRate: tenant.equipmentDowntimeHourlyRate ?? 0,
+    // Smart Follow-Up Queue automation triggers
+    followupTriggerConfig: (tenant.followupTriggerConfig as Record<string, unknown>) ?? {
+      sentEstimate: { enabled: true, delayDays: 3, repeatDays: 3 },
+      sentInvoice: { enabled: true, delayDays: 5, repeatDays: 5 },
+      unansweredEmail: { enabled: true, hours: 48 },
+      missedCall: { enabled: true },
+    },
   };
 }
 

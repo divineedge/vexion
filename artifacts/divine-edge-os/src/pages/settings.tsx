@@ -9,8 +9,10 @@ import {
   useCreateChemicalProduct, useUpdateChemicalProduct, useDeleteChemicalProduct,
   useListChemicalMixtures, getListChemicalMixturesQueryKey,
   useCreateChemicalMixture, useUpdateChemicalMixture, useDeleteChemicalMixture,
+  useUpdateFollowupTriggerConfig,
   customFetch,
 } from '@workspace/api-client-react';
+import type { FollowupTriggerConfig } from '@workspace/api-client-react';
 import type { ChemicalProduct, ChemicalMixture, ChemicalMixtureItem, PaymentReminderRule } from '@workspace/api-client-react';
 import { Repeat as RepeatIcon } from 'lucide-react';
 import PlanTemplatesSettings from '@/components/settings/PlanTemplatesSettings';
@@ -32,6 +34,7 @@ import {
   ArrowRight, FlaskConical, Pencil, X, MapPin, Ruler, Navigation, MessageSquare,
   Phone, Mail, Send, Wifi, WifiOff, CheckCircle, AlertCircle,
   ImageIcon, Bell, Star as StarIcon, Link, Camera, Loader2,
+  PhoneMissed as PhoneMissedIcon,
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -138,6 +141,14 @@ export default function SettingsPage() {
   const [paymentReminderSchedule, setPaymentReminderSchedule] = useState<PaymentReminderRule[]>([]);
   const [paymentReminderChannels, setPaymentReminderChannels] = useState<Array<'email' | 'sms'>>([]);
   const [stopServiceRuleEnabled, setStopServiceRuleEnabled] = useState(false);
+  const DEFAULT_FOLLOWUP_CONFIG: FollowupTriggerConfig = {
+    sentEstimate: { enabled: true, delayDays: 3, repeatDays: 4 },
+    sentInvoice: { enabled: true, delayDays: 5, repeatDays: 5 },
+    unansweredEmail: { enabled: true, hours: 48 },
+    missedCall: { enabled: true },
+  };
+  const [followupConfig, setFollowupConfig] = useState<FollowupTriggerConfig>(DEFAULT_FOLLOWUP_CONFIG);
+  const updateFollowupTriggerConfig = useUpdateFollowupTriggerConfig();
   const [stopServiceThresholdDays, setStopServiceThresholdDays] = useState('30');
 
   // Reviews
@@ -219,7 +230,13 @@ export default function SettingsPage() {
       setSmtpPort(s.emailProviderConfig?.smtpPort ?? '587');
       setSmtpUser(s.emailProviderConfig?.smtpUser ?? '');
       setSmtpPass(s.emailProviderConfig?.smtpPass ?? '');
+
+      // Follow-Up Queue triggers
+      if (s.followupTriggerConfig) {
+        setFollowupConfig({ ...DEFAULT_FOLLOWUP_CONFIG, ...s.followupTriggerConfig });
+      }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings]);
 
   // ── Branding handlers ──
@@ -266,6 +283,16 @@ export default function SettingsPage() {
       { data: { paymentRemindersEnabled, paymentReminderSchedule, paymentReminderChannels, stopServiceRuleEnabled, stopServiceThresholdDays: parseInt(stopServiceThresholdDays, 10) || 30 } as Parameters<typeof updateSettings.mutate>[0]['data'] },
       {
         onSuccess: () => { toast.success('Payment reminder settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
+        onError: () => toast.error('Failed to save'),
+      },
+    );
+  };
+
+  const saveFollowupConfig = () => {
+    updateFollowupTriggerConfig.mutate(
+      { data: followupConfig },
+      {
+        onSuccess: () => { toast.success('Follow-up automation settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
         onError: () => toast.error('Failed to save'),
       },
     );
@@ -431,6 +458,7 @@ export default function SettingsPage() {
           <TabsTrigger value="chemicals"><FlaskConical className="w-4 h-4 mr-2" />Chemicals</TabsTrigger>
           <TabsTrigger value="branding"><ImageIcon className="w-4 h-4 mr-2" />Branding</TabsTrigger>
           <TabsTrigger value="payment-reminders"><Bell className="w-4 h-4 mr-2" />Payment Reminders</TabsTrigger>
+          <TabsTrigger value="followups"><PhoneMissedIcon className="w-4 h-4 mr-2" />Follow-Ups</TabsTrigger>
           <TabsTrigger value="reviews"><StarIcon className="w-4 h-4 mr-2" />Reviews</TabsTrigger>
           {isOwner && <TabsTrigger value="advanced"><Shield className="w-4 h-4 mr-2" />Advanced</TabsTrigger>}
         </TabsList>
@@ -2177,6 +2205,102 @@ export default function SettingsPage() {
 
               <Button onClick={savePaymentReminders} disabled={updateSettings.isPending} variant="outline">
                 {updateSettings.isPending ? 'Saving…' : 'Save Stop-Service Rule'}
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Follow-Up Queue Automation ── */}
+        <TabsContent value="followups" className="space-y-6 focus-visible:outline-none">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><PhoneMissedIcon className="w-5 h-5" /> Follow-Up Queue Triggers</CardTitle>
+              <CardDescription>
+                Control which events add an item to the Follow-Up Queue and how often unresolved items are re-surfaced. Items never disappear on their own — staff must resolve them with a note.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="rounded-lg border p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">Sent estimate, no response</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Flag estimates that were sent but never approved or declined.</p>
+                  </div>
+                  <Switch
+                    checked={followupConfig.sentEstimate?.enabled ?? true}
+                    onCheckedChange={(v) => setFollowupConfig(c => ({ ...c, sentEstimate: { ...c.sentEstimate, enabled: v } }))}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Wait before flagging (days)</Label>
+                    <Input type="number" min={1} value={followupConfig.sentEstimate?.delayDays ?? 3}
+                      onChange={e => setFollowupConfig(c => ({ ...c, sentEstimate: { ...c.sentEstimate, delayDays: parseInt(e.target.value, 10) || 1 } }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Re-surface every (days)</Label>
+                    <Input type="number" min={1} value={followupConfig.sentEstimate?.repeatDays ?? 4}
+                      onChange={e => setFollowupConfig(c => ({ ...c, sentEstimate: { ...c.sentEstimate, repeatDays: parseInt(e.target.value, 10) || 1 } }))} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">Sent invoice, unpaid</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Flag invoices that were sent but remain unpaid.</p>
+                  </div>
+                  <Switch
+                    checked={followupConfig.sentInvoice?.enabled ?? true}
+                    onCheckedChange={(v) => setFollowupConfig(c => ({ ...c, sentInvoice: { ...c.sentInvoice, enabled: v } }))}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Wait before flagging (days)</Label>
+                    <Input type="number" min={1} value={followupConfig.sentInvoice?.delayDays ?? 5}
+                      onChange={e => setFollowupConfig(c => ({ ...c, sentInvoice: { ...c.sentInvoice, delayDays: parseInt(e.target.value, 10) || 1 } }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Re-surface every (days)</Label>
+                    <Input type="number" min={1} value={followupConfig.sentInvoice?.repeatDays ?? 5}
+                      onChange={e => setFollowupConfig(c => ({ ...c, sentInvoice: { ...c.sentInvoice, repeatDays: parseInt(e.target.value, 10) || 1 } }))} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">Unanswered inbound email</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Flag inbound customer emails that haven't been replied to.</p>
+                  </div>
+                  <Switch
+                    checked={followupConfig.unansweredEmail?.enabled ?? true}
+                    onCheckedChange={(v) => setFollowupConfig(c => ({ ...c, unansweredEmail: { ...c.unansweredEmail, enabled: v } }))}
+                  />
+                </div>
+                <div className="space-y-1 w-1/2">
+                  <Label className="text-xs">Wait before flagging (hours)</Label>
+                  <Input type="number" min={1} value={followupConfig.unansweredEmail?.hours ?? 48}
+                    onChange={e => setFollowupConfig(c => ({ ...c, unansweredEmail: { ...c.unansweredEmail, hours: parseInt(e.target.value, 10) || 1 } }))} />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div>
+                  <p className="text-sm font-medium">Missed calls & voicemails</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Immediately flag missed calls and voicemails from known customers.</p>
+                </div>
+                <Switch
+                  checked={followupConfig.missedCall?.enabled ?? true}
+                  onCheckedChange={(v) => setFollowupConfig(c => ({ ...c, missedCall: { ...c.missedCall, enabled: v } }))}
+                />
+              </div>
+
+              <Button onClick={saveFollowupConfig} disabled={updateFollowupTriggerConfig.isPending}>
+                {updateFollowupTriggerConfig.isPending ? 'Saving…' : 'Save Follow-Up Settings'}
               </Button>
             </CardContent>
           </Card>

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Toaster } from '@/components/ui/toaster';
+import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { AuthProvider } from '@/contexts/AuthContext';
@@ -38,6 +38,7 @@ import ReviewPublicPage from '@/pages/review-public';
 import PlansDashboardPage from '@/pages/plans-dashboard';
 import PlanDetailPage from '@/pages/plan-detail';
 import TasksPage from '@/pages/tasks';
+import FollowupQueuePage from '@/pages/followup-queue';
 import RoutesDashboardPage from '@/pages/routes';
 import TaskBundlesPage from '@/pages/task-bundles';
 
@@ -75,6 +76,7 @@ function ProtectedRoutes() {
         <Route path="/efficiency" component={EfficiencyPage} />
         <Route path="/callbacks" component={CallbacksPage} />
         <Route path="/tasks" component={TasksPage} />
+        <Route path="/followup-queue" component={FollowupQueuePage} />
         <Route path="/daily-tasks" component={TaskBundlesPage} />
         <Route path="/marketing" component={MarketingPage} />
         <Route path="/payroll" component={PayrollPage} />

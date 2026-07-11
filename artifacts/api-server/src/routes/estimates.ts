@@ -5,8 +5,168 @@ import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { sendReviewRequest } from "../lib/reviewService";
 import { logger } from "../lib/logger";
 import crypto from "crypto";
+import {
+  importUpload,
+  handleExportRequest,
+  handleImportPreview,
+  handleImportCommit,
+  requireString,
+  optionalString,
+  optionalNumber,
+  optionalDate,
+  type ImportExportEntityConfig,
+} from "../lib/importExport";
 
 const router: IRouter = Router();
+
+// ---------------------------------------------------------------------------
+// Bulk import / export
+// ---------------------------------------------------------------------------
+
+const estimatesImportExportConfig: ImportExportEntityConfig = {
+  entityKey: "estimates",
+  fields: [
+    { key: "id", header: "ID", hint: "Include to update an existing estimate instead of creating a new one" },
+    { key: "customerEmail", header: "Customer Email", required: true, hint: "Looked up against existing customers" },
+    { key: "propertyAddress", header: "Property Address", hint: "Looked up within the matched customer's properties" },
+    { key: "status", header: "Status", hint: "draft, sent, approved, declined, expired" },
+    { key: "scheduledAt", header: "Scheduled At" },
+    { key: "expiresAt", header: "Expires At" },
+    { key: "subtotal", header: "Subtotal" },
+    { key: "tax", header: "Tax" },
+    { key: "total", header: "Total" },
+    { key: "notes", header: "Notes" },
+  ],
+  exportColumns: [
+    { key: "id", header: "ID" },
+    { key: "customerName", header: "Customer Name" },
+    { key: "customerEmail", header: "Customer Email" },
+    { key: "propertyAddress", header: "Property Address" },
+    { key: "status", header: "Status" },
+    { key: "scheduledAt", header: "Scheduled At" },
+    { key: "expiresAt", header: "Expires At" },
+    { key: "subtotal", header: "Subtotal" },
+    { key: "tax", header: "Tax" },
+    { key: "total", header: "Total" },
+    { key: "notes", header: "Notes" },
+    { key: "createdAt", header: "Created At" },
+  ],
+  buildExportRows: async (tenantId, query) => {
+    let where = eq(estimatesTable.tenantId, tenantId) as ReturnType<typeof eq>;
+    if (query.status) where = and(where, eq(estimatesTable.status, query.status)) as typeof where;
+    if (query.customerId) where = and(where, eq(estimatesTable.customerId, parseInt(query.customerId, 10))) as typeof where;
+    if (query.startDate) where = and(where, sql`${estimatesTable.scheduledAt} >= ${query.startDate}::timestamptz`) as typeof where;
+    if (query.endDate) where = and(where, sql`${estimatesTable.scheduledAt} <= ${query.endDate}::timestamptz`) as typeof where;
+
+    const rows = await db
+      .select({
+        estimate: estimatesTable,
+        customerName: customersTable.name,
+        customerEmail: customersTable.email,
+        propertyAddress: propertiesTable.address,
+      })
+      .from(estimatesTable)
+      .leftJoin(customersTable, eq(estimatesTable.customerId, customersTable.id))
+      .leftJoin(propertiesTable, eq(estimatesTable.propertyId, propertiesTable.id))
+      .where(where)
+      .orderBy(desc(estimatesTable.createdAt));
+
+    return rows.map((r) => ({
+      id: r.estimate.id,
+      customerName: r.customerName ?? "",
+      customerEmail: r.customerEmail ?? "",
+      propertyAddress: r.propertyAddress ?? "",
+      status: r.estimate.status,
+      scheduledAt: r.estimate.scheduledAt?.toISOString() ?? "",
+      expiresAt: r.estimate.expiresAt?.toISOString() ?? "",
+      subtotal: r.estimate.subtotal,
+      tax: r.estimate.tax,
+      total: r.estimate.total,
+      notes: r.estimate.notes ?? "",
+      createdAt: r.estimate.createdAt.toISOString(),
+    }));
+  },
+  parseRow: async (tenantId, raw) => {
+    const errors: string[] = [];
+    const customerEmail = requireString(raw.customerEmail, "Customer Email", errors);
+    if (errors.length > 0 || !customerEmail) return { ok: false, errors };
+
+    const [customer] = await db
+      .select({ id: customersTable.id })
+      .from(customersTable)
+      .where(and(eq(customersTable.tenantId, tenantId), sql`lower(${customersTable.email}) = lower(${customerEmail})`))
+      .limit(1);
+    if (!customer) return { ok: false, errors: [`No customer found with email "${customerEmail}"`] };
+
+    let propertyId: number | null = null;
+    if (raw.propertyAddress?.trim()) {
+      const [property] = await db
+        .select({ id: propertiesTable.id })
+        .from(propertiesTable)
+        .where(and(
+          eq(propertiesTable.tenantId, tenantId),
+          eq(propertiesTable.customerId, customer.id),
+          sql`lower(${propertiesTable.address}) = lower(${raw.propertyAddress.trim()})`,
+        ))
+        .limit(1);
+      if (!property) return { ok: false, errors: [`No property found at "${raw.propertyAddress}" for that customer`] };
+      propertyId = property.id;
+    }
+
+    const idNum = optionalNumber(raw.id, "ID", errors);
+    const subtotal = optionalNumber(raw.subtotal, "Subtotal", errors) ?? 0;
+    const tax = optionalNumber(raw.tax, "Tax", errors) ?? 0;
+    const total = optionalNumber(raw.total, "Total", errors) ?? subtotal + tax;
+    const scheduledAt = optionalDate(raw.scheduledAt, "Scheduled At", errors);
+    const expiresAt = optionalDate(raw.expiresAt, "Expires At", errors);
+    if (errors.length > 0) return { ok: false, errors };
+
+    return {
+      ok: true,
+      values: {
+        ...(idNum != null ? { id: idNum } : {}),
+        customerId: customer.id,
+        propertyId,
+        status: optionalString(raw.status) ?? "draft",
+        scheduledAt: scheduledAt ?? null,
+        expiresAt: expiresAt ?? null,
+        subtotal,
+        tax,
+        total,
+        notes: optionalString(raw.notes) ?? null,
+      },
+    };
+  },
+  findExisting: async (tenantId, values) => {
+    if (values.id == null) return null;
+    const id = Number(values.id);
+    if (Number.isNaN(id)) return null;
+    const [existing] = await db.select({ id: estimatesTable.id }).from(estimatesTable)
+      .where(and(eq(estimatesTable.id, id), eq(estimatesTable.tenantId, tenantId))).limit(1);
+    return existing?.id ?? null;
+  },
+  insert: async (tenantId, values) => {
+    const { id: _ignoredId, ...rest } = values;
+    await db.insert(estimatesTable).values({ tenantId, ...rest } as typeof estimatesTable.$inferInsert);
+  },
+  update: async (tenantId, id, values) => {
+    const { id: _ignoredId, ...rest } = values;
+    await db.update(estimatesTable).set(rest as Partial<typeof estimatesTable.$inferInsert>)
+      .where(and(eq(estimatesTable.id, id), eq(estimatesTable.tenantId, tenantId)));
+  },
+};
+
+router.get("/estimates/export", async (req, res): Promise<void> => {
+  await handleExportRequest(req, res, getTenantId(req), estimatesImportExportConfig);
+});
+
+router.post("/estimates/import/preview", importUpload.single("file"), async (req, res): Promise<void> => {
+  await handleImportPreview(req, res, getTenantId(req), estimatesImportExportConfig);
+});
+
+router.post("/estimates/import/commit", importUpload.single("file"), async (req, res): Promise<void> => {
+  await handleImportCommit(req, res, getTenantId(req), estimatesImportExportConfig);
+});
 
 function generateToken(): string {
   return crypto.randomBytes(32).toString("hex");

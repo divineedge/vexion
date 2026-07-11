@@ -11,6 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { ImportExportControls } from '@/components/data-io/ImportExportControls';
 import {
   useListEstimates, getListEstimatesQueryKey,
   useGetEstimate, getGetEstimateQueryKey,
@@ -194,11 +195,19 @@ export default function EstimatesPage() {
           <h1 className="text-3xl font-bold tracking-tight">Estimates</h1>
           <p className="text-muted-foreground mt-1">Manage price proposals and convert them to jobs.</p>
         </div>
-        {canManageOffice && (
-          <Button onClick={() => setCreateOpen(true)} className="gap-2">
-            <Plus className="w-4 h-4" /> New Estimate
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <ImportExportControls
+            entity="estimates"
+            entityLabel="Estimates"
+            exportQuery={{ status: statusFilter || undefined }}
+            onImportComplete={() => qc.invalidateQueries({ queryKey: getListEstimatesQueryKey() })}
+          />
+          {canManageOffice && (
+            <Button onClick={() => setCreateOpen(true)} className="gap-2">
+              <Plus className="w-4 h-4" /> New Estimate
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Pipeline summary */}

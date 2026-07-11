@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { ImportExportControls } from '@/components/data-io/ImportExportControls';
 
 type NewPropertyForm = {
   customerId: string;
@@ -88,11 +89,19 @@ export default function PropertiesPage() {
           <h1 className="text-3xl font-bold tracking-tight">Properties</h1>
           <p className="text-muted-foreground mt-1">Manage job sites and geofences.</p>
         </div>
-        {canManageOffice && (
-          <Button onClick={() => setAddOpen(true)} className="gap-2">
-            <Plus className="w-4 h-4" /> Add Property
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <ImportExportControls
+            entity="properties"
+            entityLabel="Properties"
+            exportQuery={{ q: debouncedSearch || undefined }}
+            onImportComplete={() => qc.invalidateQueries({ queryKey: getListPropertiesQueryKey() })}
+          />
+          {canManageOffice && (
+            <Button onClick={() => setAddOpen(true)} className="gap-2">
+              <Plus className="w-4 h-4" /> Add Property
+            </Button>
+          )}
+        </div>
       </div>
 
       <Card>

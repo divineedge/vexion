@@ -4,8 +4,144 @@ import { eq, and, ilike, sql, desc, isNull, ne } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { syncCustomerToMailchimp } from "../lib/mailchimpSync";
 import { isAdminRole } from "../lib/roles";
+import {
+  importUpload,
+  handleExportRequest,
+  handleImportPreview,
+  handleImportCommit,
+  requireString,
+  optionalString,
+  optionalBoolean,
+  type ImportExportEntityConfig,
+} from "../lib/importExport";
 
 const router: IRouter = Router();
+
+// ---------------------------------------------------------------------------
+// Bulk import / export
+// ---------------------------------------------------------------------------
+
+const customersImportExportConfig: ImportExportEntityConfig = {
+  entityKey: "customers",
+  fields: [
+    { key: "name", header: "Name", required: true },
+    { key: "email", header: "Email", required: true, hint: "Used to match existing customers" },
+    { key: "phone", header: "Phone", required: true },
+    { key: "secondaryPhone", header: "Secondary Phone" },
+    { key: "company", header: "Company" },
+    { key: "customerType", header: "Customer Type" },
+    { key: "referralSource", header: "Referral Source" },
+    { key: "billingAddress", header: "Billing Address" },
+    { key: "billingCity", header: "Billing City" },
+    { key: "billingState", header: "Billing State" },
+    { key: "billingZip", header: "Billing Zip" },
+    { key: "notes", header: "Notes" },
+    { key: "tags", header: "Tags", hint: "Comma-separated" },
+    { key: "smsOptOut", header: "SMS Opt Out", hint: "true/false" },
+    { key: "emailOptOut", header: "Email Opt Out", hint: "true/false" },
+  ],
+  exportColumns: [
+    { key: "id", header: "ID" },
+    { key: "name", header: "Name" },
+    { key: "email", header: "Email" },
+    { key: "phone", header: "Phone" },
+    { key: "secondaryPhone", header: "Secondary Phone" },
+    { key: "company", header: "Company" },
+    { key: "customerType", header: "Customer Type" },
+    { key: "referralSource", header: "Referral Source" },
+    { key: "billingAddress", header: "Billing Address" },
+    { key: "billingCity", header: "Billing City" },
+    { key: "billingState", header: "Billing State" },
+    { key: "billingZip", header: "Billing Zip" },
+    { key: "notes", header: "Notes" },
+    { key: "tags", header: "Tags" },
+    { key: "totalSpend", header: "Total Spend" },
+    { key: "smsOptOut", header: "SMS Opt Out" },
+    { key: "emailOptOut", header: "Email Opt Out" },
+    { key: "createdAt", header: "Created At" },
+  ],
+  buildExportRows: async (tenantId, query) => {
+    const baseWhere = eq(customersTable.tenantId, tenantId);
+    const where = query.q ? and(baseWhere, ilike(customersTable.name, `%${query.q}%`)) : baseWhere;
+    const rows = await db.select().from(customersTable).where(where).orderBy(customersTable.createdAt);
+    return rows.map((c) => ({
+      id: c.id,
+      name: c.name,
+      email: c.email,
+      phone: c.phone,
+      secondaryPhone: c.secondaryPhone ?? "",
+      company: c.company ?? "",
+      customerType: c.customerType ?? "",
+      referralSource: c.referralSource ?? "",
+      billingAddress: c.billingAddress ?? "",
+      billingCity: c.billingCity ?? "",
+      billingState: c.billingState ?? "",
+      billingZip: c.billingZip ?? "",
+      notes: c.notes ?? "",
+      tags: (c.tags ?? []).join("; "),
+      totalSpend: c.totalSpend,
+      smsOptOut: c.smsOptOut,
+      emailOptOut: c.emailOptOut,
+      createdAt: c.createdAt.toISOString(),
+    }));
+  },
+  parseRow: async (_tenantId, raw) => {
+    const errors: string[] = [];
+    const name = requireString(raw.name, "Name", errors);
+    const email = requireString(raw.email, "Email", errors);
+    const phone = requireString(raw.phone, "Phone", errors);
+    if (errors.length > 0 || !name || !email || !phone) return { ok: false, errors };
+
+    const tags = raw.tags ? raw.tags.split(/[;,]/).map((t) => t.trim()).filter(Boolean) : [];
+    return {
+      ok: true,
+      values: {
+        name,
+        email: email.toLowerCase(),
+        phone,
+        secondaryPhone: optionalString(raw.secondaryPhone) ?? null,
+        company: optionalString(raw.company) ?? null,
+        customerType: optionalString(raw.customerType) ?? null,
+        referralSource: optionalString(raw.referralSource) ?? null,
+        billingAddress: optionalString(raw.billingAddress) ?? null,
+        billingCity: optionalString(raw.billingCity) ?? null,
+        billingState: optionalString(raw.billingState) ?? null,
+        billingZip: optionalString(raw.billingZip) ?? null,
+        notes: optionalString(raw.notes) ?? null,
+        tags,
+        smsOptOut: optionalBoolean(raw.smsOptOut) ?? false,
+        emailOptOut: optionalBoolean(raw.emailOptOut) ?? false,
+      },
+    };
+  },
+  findExisting: async (tenantId, values) => {
+    const [existing] = await db
+      .select({ id: customersTable.id })
+      .from(customersTable)
+      .where(and(eq(customersTable.tenantId, tenantId), sql`lower(${customersTable.email}) = lower(${values.email as string})`))
+      .limit(1);
+    return existing?.id ?? null;
+  },
+  insert: async (tenantId, values) => {
+    await db.insert(customersTable).values({ tenantId, ...values } as typeof customersTable.$inferInsert);
+  },
+  update: async (tenantId, id, values) => {
+    await db.update(customersTable).set(values as Partial<typeof customersTable.$inferInsert>)
+      .where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)));
+  },
+};
+
+router.get("/customers/export", async (req, res): Promise<void> => {
+  await handleExportRequest(req, res, getTenantId(req), customersImportExportConfig);
+});
+
+router.post("/customers/import/preview", importUpload.single("file"), async (req, res): Promise<void> => {
+  await handleImportPreview(req, res, getTenantId(req), customersImportExportConfig);
+});
+
+router.post("/customers/import/commit", importUpload.single("file"), async (req, res): Promise<void> => {
+  await handleImportCommit(req, res, getTenantId(req), customersImportExportConfig);
+});
 
 type PaymentStanding = {
   status: "current" | "reminded" | "overdue" | "flagged" | "paused";

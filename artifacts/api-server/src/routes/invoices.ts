@@ -7,8 +7,138 @@ import { decryptSecretConfig } from "../lib/secretsCrypto";
 import { sendLobLetter, type LobConfig } from "../lib/lobProvider";
 import { sendReviewRequest } from "../lib/reviewService";
 import { logger } from "../lib/logger";
+import {
+  importUpload,
+  handleExportRequest,
+  handleImportPreview,
+  handleImportCommit,
+  requireString,
+  optionalString,
+  optionalNumber,
+  optionalDate,
+  type ImportExportEntityConfig,
+} from "../lib/importExport";
 
 const router: IRouter = Router();
+
+// ---------------------------------------------------------------------------
+// Bulk import / export
+// ---------------------------------------------------------------------------
+
+const invoicesImportExportConfig: ImportExportEntityConfig = {
+  entityKey: "invoices",
+  fields: [
+    { key: "invoiceNumber", header: "Invoice Number", required: true, hint: "Used to match an existing invoice" },
+    { key: "customerEmail", header: "Customer Email", required: true, hint: "Looked up against existing customers" },
+    { key: "status", header: "Status", hint: "draft, sent, paid, overdue" },
+    { key: "subtotal", header: "Subtotal" },
+    { key: "tax", header: "Tax" },
+    { key: "total", header: "Total" },
+    { key: "dueDate", header: "Due Date" },
+    { key: "notes", header: "Notes" },
+  ],
+  exportColumns: [
+    { key: "id", header: "ID" },
+    { key: "invoiceNumber", header: "Invoice Number" },
+    { key: "customerName", header: "Customer Name" },
+    { key: "customerEmail", header: "Customer Email" },
+    { key: "status", header: "Status" },
+    { key: "subtotal", header: "Subtotal" },
+    { key: "tax", header: "Tax" },
+    { key: "total", header: "Total" },
+    { key: "dueDate", header: "Due Date" },
+    { key: "paidAt", header: "Paid At" },
+    { key: "notes", header: "Notes" },
+    { key: "createdAt", header: "Created At" },
+  ],
+  buildExportRows: async (tenantId, query) => {
+    let where = eq(invoicesTable.tenantId, tenantId) as ReturnType<typeof eq>;
+    if (query.status) where = and(where, eq(invoicesTable.status, query.status)) as typeof where;
+    if (query.customerId) where = and(where, eq(invoicesTable.customerId, parseInt(query.customerId, 10))) as typeof where;
+
+    const rows = await db
+      .select({ invoice: invoicesTable, customerName: customersTable.name, customerEmail: customersTable.email })
+      .from(invoicesTable)
+      .leftJoin(customersTable, eq(invoicesTable.customerId, customersTable.id))
+      .where(where)
+      .orderBy(sql`${invoicesTable.createdAt} DESC`);
+
+    return rows.map((r) => ({
+      id: r.invoice.id,
+      invoiceNumber: r.invoice.invoiceNumber,
+      customerName: r.customerName ?? "",
+      customerEmail: r.customerEmail ?? "",
+      status: r.invoice.status,
+      subtotal: r.invoice.subtotal,
+      tax: r.invoice.tax,
+      total: r.invoice.total,
+      dueDate: r.invoice.dueDate?.toISOString() ?? "",
+      paidAt: r.invoice.paidAt?.toISOString() ?? "",
+      notes: r.invoice.notes ?? "",
+      createdAt: r.invoice.createdAt.toISOString(),
+    }));
+  },
+  parseRow: async (tenantId, raw) => {
+    const errors: string[] = [];
+    const invoiceNumber = requireString(raw.invoiceNumber, "Invoice Number", errors);
+    const customerEmail = requireString(raw.customerEmail, "Customer Email", errors);
+    if (errors.length > 0 || !invoiceNumber || !customerEmail) return { ok: false, errors };
+
+    const [customer] = await db
+      .select({ id: customersTable.id })
+      .from(customersTable)
+      .where(and(eq(customersTable.tenantId, tenantId), sql`lower(${customersTable.email}) = lower(${customerEmail})`))
+      .limit(1);
+    if (!customer) return { ok: false, errors: [`No customer found with email "${customerEmail}"`] };
+
+    const subtotal = optionalNumber(raw.subtotal, "Subtotal", errors) ?? 0;
+    const tax = optionalNumber(raw.tax, "Tax", errors) ?? 0;
+    const total = optionalNumber(raw.total, "Total", errors) ?? subtotal + tax;
+    const dueDate = optionalDate(raw.dueDate, "Due Date", errors);
+    if (errors.length > 0) return { ok: false, errors };
+
+    return {
+      ok: true,
+      values: {
+        invoiceNumber,
+        customerId: customer.id,
+        status: optionalString(raw.status) ?? "draft",
+        subtotal,
+        tax,
+        total,
+        dueDate: dueDate ?? null,
+        notes: optionalString(raw.notes) ?? null,
+      },
+    };
+  },
+  findExisting: async (tenantId, values) => {
+    const [existing] = await db
+      .select({ id: invoicesTable.id })
+      .from(invoicesTable)
+      .where(and(eq(invoicesTable.tenantId, tenantId), eq(invoicesTable.invoiceNumber, values.invoiceNumber as string)))
+      .limit(1);
+    return existing?.id ?? null;
+  },
+  insert: async (tenantId, values) => {
+    await db.insert(invoicesTable).values({ tenantId, ...values } as typeof invoicesTable.$inferInsert);
+  },
+  update: async (tenantId, id, values) => {
+    await db.update(invoicesTable).set(values as Partial<typeof invoicesTable.$inferInsert>)
+      .where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId)));
+  },
+};
+
+router.get("/invoices/export", async (req, res): Promise<void> => {
+  await handleExportRequest(req, res, getTenantId(req), invoicesImportExportConfig);
+});
+
+router.post("/invoices/import/preview", importUpload.single("file"), async (req, res): Promise<void> => {
+  await handleImportPreview(req, res, getTenantId(req), invoicesImportExportConfig);
+});
+
+router.post("/invoices/import/commit", importUpload.single("file"), async (req, res): Promise<void> => {
+  await handleImportCommit(req, res, getTenantId(req), invoicesImportExportConfig);
+});
 
 function formatInvoice(i: typeof invoicesTable.$inferSelect, customerName?: string | null) {
   return {

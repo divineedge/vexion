@@ -4,8 +4,175 @@ import { eq, and, sql, desc, asc, isNotNull, isNull, ne, inArray, min, gt } from
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { nthOccurrenceAfterRoot, describeRule, type RecurrenceRule } from "../lib/recurrenceEngine";
 import { enqueueInvoiceEmail } from "../lib/billingScheduler";
+import {
+  importUpload,
+  handleExportRequest,
+  handleImportPreview,
+  handleImportCommit,
+  requireString,
+  optionalString,
+  optionalNumber,
+  optionalDate,
+  type ImportExportEntityConfig,
+} from "../lib/importExport";
 
 const router: IRouter = Router();
+
+// ---------------------------------------------------------------------------
+// Bulk import / export
+// ---------------------------------------------------------------------------
+
+const jobsImportExportConfig: ImportExportEntityConfig = {
+  entityKey: "jobs",
+  fields: [
+    { key: "id", header: "ID", hint: "Include to update an existing job instead of creating a new one" },
+    { key: "title", header: "Title", required: true },
+    { key: "customerEmail", header: "Customer Email", hint: "Looked up against existing customers" },
+    { key: "propertyAddress", header: "Property Address", hint: "Looked up within the matched customer's properties" },
+    { key: "scheduledAt", header: "Scheduled At", required: true, hint: "Date/time" },
+    { key: "status", header: "Status", hint: "e.g. scheduled, in_progress, completed, cancelled" },
+    { key: "priority", header: "Priority", hint: "e.g. low, normal, high, urgent" },
+    { key: "estimatedDuration", header: "Estimated Duration (min)" },
+    { key: "totalAmount", header: "Total Amount" },
+    { key: "description", header: "Description" },
+  ],
+  exportColumns: [
+    { key: "id", header: "ID" },
+    { key: "title", header: "Title" },
+    { key: "customerName", header: "Customer Name" },
+    { key: "customerEmail", header: "Customer Email" },
+    { key: "propertyAddress", header: "Property Address" },
+    { key: "scheduledAt", header: "Scheduled At" },
+    { key: "status", header: "Status" },
+    { key: "priority", header: "Priority" },
+    { key: "estimatedDuration", header: "Estimated Duration (min)" },
+    { key: "totalAmount", header: "Total Amount" },
+    { key: "description", header: "Description" },
+    { key: "createdAt", header: "Created At" },
+  ],
+  buildExportRows: async (tenantId, query) => {
+    let where = eq(jobsTable.tenantId, tenantId) as ReturnType<typeof eq>;
+    if (query.status) where = and(where, eq(jobsTable.status, query.status)) as typeof where;
+    if (query.customerId) where = and(where, eq(jobsTable.customerId, parseInt(query.customerId, 10))) as typeof where;
+    if (query.crewId) where = and(where, eq(jobsTable.crewId, parseInt(query.crewId, 10))) as typeof where;
+    if (query.assigneeId) where = and(where, eq(jobsTable.assigneeId, parseInt(query.assigneeId, 10))) as typeof where;
+    if (query.startDate) where = and(where, sql`${jobsTable.scheduledAt} >= ${query.startDate}::timestamptz`) as typeof where;
+    if (query.endDate) where = and(where, sql`${jobsTable.scheduledAt} <= ${query.endDate}::timestamptz`) as typeof where;
+
+    const rows = await db
+      .select({
+        job: jobsTable,
+        customerName: customersTable.name,
+        customerEmail: customersTable.email,
+        propertyAddress: propertiesTable.address,
+      })
+      .from(jobsTable)
+      .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
+      .leftJoin(propertiesTable, eq(jobsTable.propertyId, propertiesTable.id))
+      .where(where)
+      .orderBy(jobsTable.scheduledAt);
+
+    return rows.map((r) => ({
+      id: r.job.id,
+      title: r.job.title,
+      customerName: r.customerName ?? "",
+      customerEmail: r.customerEmail ?? "",
+      propertyAddress: r.propertyAddress ?? "",
+      scheduledAt: r.job.scheduledAt.toISOString(),
+      status: r.job.status,
+      priority: r.job.priority,
+      estimatedDuration: r.job.estimatedDuration ?? "",
+      totalAmount: r.job.totalAmount,
+      description: r.job.description ?? "",
+      createdAt: r.job.createdAt.toISOString(),
+    }));
+  },
+  parseRow: async (tenantId, raw) => {
+    const errors: string[] = [];
+    const title = requireString(raw.title, "Title", errors);
+    const scheduledAt = optionalDate(raw.scheduledAt, "Scheduled At", errors);
+    if (!raw.scheduledAt?.trim()) errors.push("Scheduled At is required");
+    if (errors.length > 0 || !title || !scheduledAt) return { ok: false, errors };
+
+    let customerId: number | null = null;
+    if (raw.customerEmail?.trim()) {
+      const [customer] = await db
+        .select({ id: customersTable.id })
+        .from(customersTable)
+        .where(and(eq(customersTable.tenantId, tenantId), sql`lower(${customersTable.email}) = lower(${raw.customerEmail.trim()})`))
+        .limit(1);
+      if (!customer) return { ok: false, errors: [`No customer found with email "${raw.customerEmail}"`] };
+      customerId = customer.id;
+    }
+
+    let propertyId: number | null = null;
+    if (raw.propertyAddress?.trim()) {
+      if (!customerId) return { ok: false, errors: ["Property Address was given without a matching Customer Email"] };
+      const [property] = await db
+        .select({ id: propertiesTable.id })
+        .from(propertiesTable)
+        .where(and(
+          eq(propertiesTable.tenantId, tenantId),
+          eq(propertiesTable.customerId, customerId),
+          sql`lower(${propertiesTable.address}) = lower(${raw.propertyAddress.trim()})`,
+        ))
+        .limit(1);
+      if (!property) return { ok: false, errors: [`No property found at "${raw.propertyAddress}" for that customer`] };
+      propertyId = property.id;
+    }
+
+    const idNum = optionalNumber(raw.id, "ID", errors);
+    const estimatedDuration = optionalNumber(raw.estimatedDuration, "Estimated Duration", errors);
+    const totalAmount = optionalNumber(raw.totalAmount, "Total Amount", errors);
+    if (errors.length > 0) return { ok: false, errors };
+
+    return {
+      ok: true,
+      values: {
+        ...(idNum != null ? { id: idNum } : {}),
+        title,
+        scheduledAt,
+        customerId,
+        propertyId,
+        status: optionalString(raw.status) ?? "scheduled",
+        priority: optionalString(raw.priority) ?? "normal",
+        estimatedDuration: estimatedDuration ?? null,
+        totalAmount: totalAmount ?? 0,
+        description: optionalString(raw.description) ?? null,
+      },
+    };
+  },
+  findExisting: async (tenantId, values) => {
+    const idRaw = values.id;
+    if (idRaw == null) return null;
+    const id = Number(idRaw);
+    if (Number.isNaN(id)) return null;
+    const [existing] = await db.select({ id: jobsTable.id }).from(jobsTable)
+      .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId))).limit(1);
+    return existing?.id ?? null;
+  },
+  insert: async (tenantId, values) => {
+    const { id: _ignoredId, ...rest } = values;
+    await db.insert(jobsTable).values({ tenantId, ...rest } as typeof jobsTable.$inferInsert);
+  },
+  update: async (tenantId, id, values) => {
+    const { id: _ignoredId, ...rest } = values;
+    await db.update(jobsTable).set(rest as Partial<typeof jobsTable.$inferInsert>)
+      .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
+  },
+};
+
+router.get("/jobs/export", async (req, res): Promise<void> => {
+  await handleExportRequest(req, res, getTenantId(req), jobsImportExportConfig);
+});
+
+router.post("/jobs/import/preview", importUpload.single("file"), async (req, res): Promise<void> => {
+  await handleImportPreview(req, res, getTenantId(req), jobsImportExportConfig);
+});
+
+router.post("/jobs/import/commit", importUpload.single("file"), async (req, res): Promise<void> => {
+  await handleImportCommit(req, res, getTenantId(req), jobsImportExportConfig);
+});
 
 function formatJob(
   j: typeof jobsTable.$inferSelect,

@@ -2,8 +2,140 @@ import { Router, type IRouter } from "express";
 import { db, propertiesTable, customersTable, propertyOwnershipHistoryTable, activityLogTable } from "@workspace/db";
 import { eq, and, ilike, sql, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
+import {
+  importUpload,
+  handleExportRequest,
+  handleImportPreview,
+  handleImportCommit,
+  requireString,
+  optionalString,
+  optionalNumber,
+  type ImportExportEntityConfig,
+} from "../lib/importExport";
 
 const router: IRouter = Router();
+
+// ---------------------------------------------------------------------------
+// Bulk import / export
+// ---------------------------------------------------------------------------
+
+const propertiesImportExportConfig: ImportExportEntityConfig = {
+  entityKey: "properties",
+  fields: [
+    { key: "customerEmail", header: "Customer Email", required: true, hint: "Looked up against existing customers" },
+    { key: "address", header: "Address", required: true },
+    { key: "city", header: "City" },
+    { key: "state", header: "State" },
+    { key: "zip", header: "Zip" },
+    { key: "type", header: "Type" },
+    { key: "size", header: "Size" },
+    { key: "sizeUnit", header: "Size Unit", hint: "sqft or acres" },
+    { key: "notes", header: "Notes" },
+  ],
+  exportColumns: [
+    { key: "id", header: "ID" },
+    { key: "customerName", header: "Customer Name" },
+    { key: "customerEmail", header: "Customer Email" },
+    { key: "address", header: "Address" },
+    { key: "city", header: "City" },
+    { key: "state", header: "State" },
+    { key: "zip", header: "Zip" },
+    { key: "type", header: "Type" },
+    { key: "size", header: "Size" },
+    { key: "sizeUnit", header: "Size Unit" },
+    { key: "notes", header: "Notes" },
+    { key: "createdAt", header: "Created At" },
+  ],
+  buildExportRows: async (tenantId, query) => {
+    let where = eq(propertiesTable.tenantId, tenantId) as ReturnType<typeof eq>;
+    if (query.customerId) where = and(where, eq(propertiesTable.customerId, parseInt(query.customerId, 10))) as typeof where;
+    if (query.q) where = and(where, ilike(propertiesTable.address, `%${query.q}%`)) as typeof where;
+
+    const rows = await db
+      .select({ property: propertiesTable, customerName: customersTable.name, customerEmail: customersTable.email })
+      .from(propertiesTable)
+      .leftJoin(customersTable, eq(propertiesTable.customerId, customersTable.id))
+      .where(where)
+      .orderBy(propertiesTable.createdAt);
+
+    return rows.map((r) => ({
+      id: r.property.id,
+      customerName: r.customerName ?? "",
+      customerEmail: r.customerEmail ?? "",
+      address: r.property.address,
+      city: r.property.city ?? "",
+      state: r.property.state ?? "",
+      zip: r.property.zip ?? "",
+      type: r.property.type ?? "",
+      size: r.property.size ?? "",
+      sizeUnit: r.property.sizeUnit ?? "",
+      notes: r.property.notes ?? "",
+      createdAt: r.property.createdAt.toISOString(),
+    }));
+  },
+  parseRow: async (tenantId, raw) => {
+    const errors: string[] = [];
+    const customerEmail = requireString(raw.customerEmail, "Customer Email", errors);
+    const address = requireString(raw.address, "Address", errors);
+    if (errors.length > 0 || !customerEmail || !address) return { ok: false, errors };
+
+    const [customer] = await db
+      .select({ id: customersTable.id })
+      .from(customersTable)
+      .where(and(eq(customersTable.tenantId, tenantId), sql`lower(${customersTable.email}) = lower(${customerEmail})`))
+      .limit(1);
+    if (!customer) return { ok: false, errors: [`No customer found with email "${customerEmail}"`] };
+
+    const size = optionalNumber(raw.size, "Size", errors);
+    if (errors.length > 0) return { ok: false, errors };
+
+    return {
+      ok: true,
+      values: {
+        customerId: customer.id,
+        address,
+        city: optionalString(raw.city) ?? null,
+        state: optionalString(raw.state) ?? null,
+        zip: optionalString(raw.zip) ?? null,
+        type: optionalString(raw.type) ?? null,
+        size: size ?? null,
+        sizeUnit: optionalString(raw.sizeUnit) ?? "sqft",
+        notes: optionalString(raw.notes) ?? null,
+      },
+    };
+  },
+  findExisting: async (tenantId, values) => {
+    const [existing] = await db
+      .select({ id: propertiesTable.id })
+      .from(propertiesTable)
+      .where(and(
+        eq(propertiesTable.tenantId, tenantId),
+        eq(propertiesTable.customerId, values.customerId as number),
+        sql`lower(${propertiesTable.address}) = lower(${values.address as string})`,
+      ))
+      .limit(1);
+    return existing?.id ?? null;
+  },
+  insert: async (tenantId, values) => {
+    await db.insert(propertiesTable).values({ tenantId, ...values } as typeof propertiesTable.$inferInsert);
+  },
+  update: async (tenantId, id, values) => {
+    await db.update(propertiesTable).set(values as Partial<typeof propertiesTable.$inferInsert>)
+      .where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId)));
+  },
+};
+
+router.get("/properties/export", async (req, res): Promise<void> => {
+  await handleExportRequest(req, res, getTenantId(req), propertiesImportExportConfig);
+});
+
+router.post("/properties/import/preview", importUpload.single("file"), async (req, res): Promise<void> => {
+  await handleImportPreview(req, res, getTenantId(req), propertiesImportExportConfig);
+});
+
+router.post("/properties/import/commit", importUpload.single("file"), async (req, res): Promise<void> => {
+  await handleImportCommit(req, res, getTenantId(req), propertiesImportExportConfig);
+});
 
 function formatProperty(p: typeof propertiesTable.$inferSelect, customerName?: string | null) {
   return {

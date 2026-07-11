@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CustomerFieldConfig } from './customerFieldConfig';
+import type { FollowupTriggerConfig } from './followupTriggerConfig';
 import type { PaymentReminderRule } from './paymentReminderRule';
 import type { TenantSettingsAutoInvoiceFrequency } from './tenantSettingsAutoInvoiceFrequency';
 import type { TenantSettingsDefaultGeofenceUnit } from './tenantSettingsDefaultGeofenceUnit';
@@ -72,6 +73,7 @@ export interface TenantSettings {
   paymentReminderChannels?: TenantSettingsPaymentReminderChannelsItem[];
   stopServiceRuleEnabled?: boolean;
   stopServiceThresholdDays?: number;
+  followupTriggerConfig?: FollowupTriggerConfig;
   reviewRequestOnInvoicePaid?: boolean;
   reviewRequestOnEstimateApproved?: boolean;
   /** @nullable */

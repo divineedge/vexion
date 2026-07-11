@@ -43,6 +43,7 @@ import stopServiceFlagsRouter from "./stopServiceFlags";
 import internalTasksRouter from "./internalTasks";
 import routingRouter from "./routing";
 import taskBundlesRouter from "./taskBundles";
+import followupQueueRouter from "./followupQueue";
 
 const router: IRouter = Router();
 
@@ -90,5 +91,6 @@ router.use(stopServiceFlagsRouter);
 router.use(internalTasksRouter);
 router.use(routingRouter);
 router.use(taskBundlesRouter);
+router.use(followupQueueRouter);
 
 export default router;

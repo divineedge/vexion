@@ -21,6 +21,7 @@ import {
 } from '@workspace/api-client-react';
 import type { RecurringInvoiceTemplate, BillingLineItem, StopServiceFlag } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { ImportExportControls } from '@/components/data-io/ImportExportControls';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -440,7 +441,14 @@ export default function FinancialsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Financials</h1>
           <p className="text-muted-foreground mt-1">Invoicing, payments, and revenue tracking.</p>
         </div>
-        <Button className="gap-2"><Plus className="w-4 h-4" /> Create Invoice</Button>
+        <div className="flex items-center gap-2">
+          <ImportExportControls
+            entity="invoices"
+            entityLabel="Invoices"
+            onImportComplete={() => qc.invalidateQueries({ queryKey: getListInvoicesQueryKey() })}
+          />
+          <Button className="gap-2"><Plus className="w-4 h-4" /> Create Invoice</Button>
+        </div>
       </div>
 
       {/* KPI Cards */}

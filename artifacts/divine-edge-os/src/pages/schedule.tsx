@@ -28,6 +28,7 @@ import {
 import type { RecurrenceRule } from '@workspace/api-client-react';
 import MediaGallery from '@/components/media/MediaGallery';
 import { useAuth } from '@/contexts/AuthContext';
+import { ImportExportControls } from '@/components/data-io/ImportExportControls';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -326,6 +327,11 @@ export default function SchedulePage() {
             </div>
             <Button variant="outline" size="icon" onClick={nextRange}><ChevronRight className="w-4 h-4" /></Button>
           </div>
+          <ImportExportControls
+            entity="jobs"
+            entityLabel="Jobs"
+            onImportComplete={() => qc.invalidateQueries({ queryKey: getListJobsQueryKey() })}
+          />
           {canManageJobs && (
             <Button className="gap-2" onClick={() => setCreateOpen(true)}>
               <Plus className="w-4 h-4" /> New Job

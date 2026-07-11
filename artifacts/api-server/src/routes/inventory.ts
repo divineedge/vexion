@@ -3,8 +3,119 @@ import { db, inventoryItemsTable, tenantsTable } from "@workspace/db";
 import { eq, and, ilike } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { usersTable } from "@workspace/db";
+import {
+  importUpload,
+  handleExportRequest,
+  handleImportPreview,
+  handleImportCommit,
+  requireString,
+  optionalString,
+  optionalNumber,
+  type ImportExportEntityConfig,
+} from "../lib/importExport";
 
 const router: IRouter = Router();
+
+// ---------------------------------------------------------------------------
+// Bulk import / export
+// ---------------------------------------------------------------------------
+
+const inventoryImportExportConfig: ImportExportEntityConfig = {
+  entityKey: "inventory",
+  fields: [
+    { key: "name", header: "Name", required: true },
+    { key: "sku", header: "SKU", required: true, hint: "Used to match an existing item" },
+    { key: "description", header: "Description" },
+    { key: "category", header: "Category" },
+    { key: "unitPrice", header: "Cost Price" },
+    { key: "markedUpPrice", header: "Sell Price" },
+    { key: "quantity", header: "Quantity" },
+    { key: "reorderPoint", header: "Reorder Point" },
+    { key: "unit", header: "Unit" },
+  ],
+  exportColumns: [
+    { key: "id", header: "ID" },
+    { key: "name", header: "Name" },
+    { key: "sku", header: "SKU" },
+    { key: "description", header: "Description" },
+    { key: "category", header: "Category" },
+    { key: "unitPrice", header: "Cost Price" },
+    { key: "markedUpPrice", header: "Sell Price" },
+    { key: "quantity", header: "Quantity" },
+    { key: "reorderPoint", header: "Reorder Point" },
+    { key: "unit", header: "Unit" },
+    { key: "createdAt", header: "Created At" },
+  ],
+  buildExportRows: async (tenantId, query) => {
+    let where = eq(inventoryItemsTable.tenantId, tenantId) as ReturnType<typeof eq>;
+    if (query.q) where = and(where, ilike(inventoryItemsTable.name, `%${query.q}%`)) as typeof where;
+    if (query.category) where = and(where, eq(inventoryItemsTable.category, query.category)) as typeof where;
+
+    const rows = await db.select().from(inventoryItemsTable).where(where).orderBy(inventoryItemsTable.name);
+    return rows.map((i) => ({
+      id: i.id,
+      name: i.name,
+      sku: i.sku,
+      description: i.description ?? "",
+      category: i.category ?? "",
+      unitPrice: i.unitPrice,
+      markedUpPrice: i.markedUpPrice,
+      quantity: i.quantity,
+      reorderPoint: i.reorderPoint,
+      unit: i.unit,
+      createdAt: i.createdAt.toISOString(),
+    }));
+  },
+  parseRow: async (_tenantId, raw) => {
+    const errors: string[] = [];
+    const name = requireString(raw.name, "Name", errors);
+    const sku = requireString(raw.sku, "SKU", errors);
+    if (errors.length > 0 || !name || !sku) return { ok: false, errors };
+
+    const unitPrice = optionalNumber(raw.unitPrice, "Cost Price", errors) ?? 0;
+    const markedUpPrice = optionalNumber(raw.markedUpPrice, "Sell Price", errors) ?? unitPrice;
+    const values = {
+      name,
+      sku,
+      description: optionalString(raw.description) ?? null,
+      category: optionalString(raw.category) ?? null,
+      unitPrice,
+      markedUpPrice,
+      quantity: optionalNumber(raw.quantity, "Quantity", errors) ?? 0,
+      reorderPoint: optionalNumber(raw.reorderPoint, "Reorder Point", errors) ?? 5,
+      unit: optionalString(raw.unit) ?? "each",
+    };
+    if (errors.length > 0) return { ok: false, errors };
+    return { ok: true, values };
+  },
+  findExisting: async (tenantId, values) => {
+    const [existing] = await db
+      .select({ id: inventoryItemsTable.id })
+      .from(inventoryItemsTable)
+      .where(and(eq(inventoryItemsTable.tenantId, tenantId), ilike(inventoryItemsTable.sku, values.sku as string)))
+      .limit(1);
+    return existing?.id ?? null;
+  },
+  insert: async (tenantId, values) => {
+    await db.insert(inventoryItemsTable).values({ tenantId, ...values } as typeof inventoryItemsTable.$inferInsert);
+  },
+  update: async (tenantId, id, values) => {
+    await db.update(inventoryItemsTable).set(values as Partial<typeof inventoryItemsTable.$inferInsert>)
+      .where(and(eq(inventoryItemsTable.id, id), eq(inventoryItemsTable.tenantId, tenantId)));
+  },
+};
+
+router.get("/inventory/export", async (req, res): Promise<void> => {
+  await handleExportRequest(req, res, getTenantId(req), inventoryImportExportConfig);
+});
+
+router.post("/inventory/import/preview", importUpload.single("file"), async (req, res): Promise<void> => {
+  await handleImportPreview(req, res, getTenantId(req), inventoryImportExportConfig);
+});
+
+router.post("/inventory/import/commit", importUpload.single("file"), async (req, res): Promise<void> => {
+  await handleImportCommit(req, res, getTenantId(req), inventoryImportExportConfig);
+});
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 

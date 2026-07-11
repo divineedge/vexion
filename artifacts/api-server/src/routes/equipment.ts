@@ -1,10 +1,128 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db, equipmentTable, equipmentMaintenanceTable, equipmentFuelLogsTable, equipmentReadingLogsTable, tenantsTable, usersTable } from "@workspace/db";
-import { eq, and, desc, sum, isNull, gte, lte } from "drizzle-orm";
+import { eq, and, desc, sum, isNull, gte, lte, ilike } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isOwnerRole } from "../lib/roles";
+import {
+  importUpload,
+  handleExportRequest,
+  handleImportPreview,
+  handleImportCommit,
+  requireString,
+  optionalString,
+  optionalNumber,
+  optionalBoolean,
+  type ImportExportEntityConfig,
+} from "../lib/importExport";
 
 const router: IRouter = Router();
+
+// ---------------------------------------------------------------------------
+// Bulk import / export
+// ---------------------------------------------------------------------------
+
+const equipmentImportExportConfig: ImportExportEntityConfig = {
+  entityKey: "equipment",
+  fields: [
+    { key: "name", header: "Name", required: true, hint: "Used to match an existing asset" },
+    { key: "type", header: "Type", hint: "mower, truck, trailer, sprayer, blower, edger, chainsaw, other" },
+    { key: "purchaseDate", header: "Purchase Date" },
+    { key: "purchasePrice", header: "Purchase Price" },
+    { key: "expectedLifespanYears", header: "Expected Lifespan (years)" },
+    { key: "expectedLifespanHours", header: "Expected Lifespan (hours)" },
+    { key: "currentHours", header: "Current Hours" },
+    { key: "currentMiles", header: "Current Miles" },
+    { key: "isActive", header: "Is Active", hint: "true/false" },
+    { key: "notes", header: "Notes" },
+  ],
+  exportColumns: [
+    { key: "id", header: "ID" },
+    { key: "name", header: "Name" },
+    { key: "type", header: "Type" },
+    { key: "purchaseDate", header: "Purchase Date" },
+    { key: "purchasePrice", header: "Purchase Price" },
+    { key: "expectedLifespanYears", header: "Expected Lifespan (years)" },
+    { key: "expectedLifespanHours", header: "Expected Lifespan (hours)" },
+    { key: "currentHours", header: "Current Hours" },
+    { key: "currentMiles", header: "Current Miles" },
+    { key: "isActive", header: "Is Active" },
+    { key: "notes", header: "Notes" },
+    { key: "createdAt", header: "Created At" },
+  ],
+  buildExportRows: async (tenantId, query) => {
+    const includeArchived = query.includeArchived === "true" || query.includeArchived === "1";
+    const where = includeArchived
+      ? eq(equipmentTable.tenantId, tenantId)
+      : and(eq(equipmentTable.tenantId, tenantId), isNull(equipmentTable.archivedAt));
+    const rows = await db.select().from(equipmentTable).where(where).orderBy(equipmentTable.name);
+    return rows.map((e) => ({
+      id: e.id,
+      name: e.name,
+      type: e.type,
+      purchaseDate: e.purchaseDate ?? "",
+      purchasePrice: e.purchasePrice,
+      expectedLifespanYears: e.expectedLifespanYears ?? "",
+      expectedLifespanHours: e.expectedLifespanHours ?? "",
+      currentHours: e.currentHours,
+      currentMiles: e.currentMiles ?? "",
+      isActive: e.isActive,
+      notes: e.notes ?? "",
+      createdAt: e.createdAt.toISOString(),
+    }));
+  },
+  parseRow: async (_tenantId, raw) => {
+    const errors: string[] = [];
+    const name = requireString(raw.name, "Name", errors);
+    if (errors.length > 0 || !name) return { ok: false, errors };
+
+    const purchaseDate = optionalString(raw.purchaseDate);
+    if (purchaseDate && Number.isNaN(new Date(purchaseDate).getTime())) {
+      errors.push(`Purchase Date is not a valid date (got "${raw.purchaseDate}")`);
+    }
+
+    const values = {
+      name,
+      type: optionalString(raw.type) ?? "other",
+      purchaseDate: purchaseDate ?? null,
+      purchasePrice: optionalNumber(raw.purchasePrice, "Purchase Price", errors) ?? 0,
+      expectedLifespanYears: optionalNumber(raw.expectedLifespanYears, "Expected Lifespan (years)", errors) ?? null,
+      expectedLifespanHours: optionalNumber(raw.expectedLifespanHours, "Expected Lifespan (hours)", errors) ?? null,
+      currentHours: optionalNumber(raw.currentHours, "Current Hours", errors) ?? 0,
+      currentMiles: optionalNumber(raw.currentMiles, "Current Miles", errors) ?? null,
+      isActive: optionalBoolean(raw.isActive) ?? true,
+      notes: optionalString(raw.notes) ?? null,
+    };
+    if (errors.length > 0) return { ok: false, errors };
+    return { ok: true, values };
+  },
+  findExisting: async (tenantId, values) => {
+    const [existing] = await db
+      .select({ id: equipmentTable.id })
+      .from(equipmentTable)
+      .where(and(eq(equipmentTable.tenantId, tenantId), ilike(equipmentTable.name, values.name as string)))
+      .limit(1);
+    return existing?.id ?? null;
+  },
+  insert: async (tenantId, values) => {
+    await db.insert(equipmentTable).values({ tenantId, ...values } as typeof equipmentTable.$inferInsert);
+  },
+  update: async (tenantId, id, values) => {
+    await db.update(equipmentTable).set(values as Partial<typeof equipmentTable.$inferInsert>)
+      .where(and(eq(equipmentTable.id, id), eq(equipmentTable.tenantId, tenantId)));
+  },
+};
+
+router.get("/equipment/export", async (req, res): Promise<void> => {
+  await handleExportRequest(req, res, getTenantId(req), equipmentImportExportConfig);
+});
+
+router.post("/equipment/import/preview", importUpload.single("file"), async (req, res): Promise<void> => {
+  await handleImportPreview(req, res, getTenantId(req), equipmentImportExportConfig);
+});
+
+router.post("/equipment/import/commit", importUpload.single("file"), async (req, res): Promise<void> => {
+  await handleImportCommit(req, res, getTenantId(req), equipmentImportExportConfig);
+});
 
 // ─── Auth helpers ──────────────────────────────────────────────────────────────
 

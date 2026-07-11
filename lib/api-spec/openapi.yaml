@@ -5409,6 +5409,93 @@ paths:
               schema:
                 $ref: "#/components/schemas/RescheduleOnceResult"
 
+  /followup-queue:
+    get:
+      operationId: listFollowupQueueItems
+      tags: [followupQueue]
+      summary: List the Smart Follow-Up Queue items for the tenant
+      parameters:
+        - name: triggerType
+          in: query
+          description: Filter to a single trigger type, e.g. 'sent_estimate' | 'sent_invoice' | 'unanswered_email' | 'missed_call' | 'voicemail'
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: "'open' (default) or 'resolved'"
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Follow-up queue items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FollowupQueueItem"
+
+  /followup-queue/{id}/context:
+    get:
+      operationId: getFollowupQueueItemContext
+      tags: [followupQueue]
+      summary: Get the customer, contact history, and related estimates/invoices for the drawer
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Follow-up queue item context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FollowupQueueItemContext"
+        "404":
+          description: Not found
+
+  /followup-queue/{id}/resolve:
+    post:
+      operationId: resolveFollowupQueueItem
+      tags: [followupQueue]
+      summary: Resolve a follow-up item by logging a communication note
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveFollowupQueueItemInput"
+      responses:
+        "200":
+          description: Follow-up item resolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FollowupQueueItem"
+        "400":
+          description: Missing communication note
+        "404":
+          description: Not found
+
+  /settings/followup-triggers:
+    patch:
+      operationId: updateFollowupTriggerConfig
+      tags: [followupQueue]
+      summary: Update the tenant's Smart Follow-Up Queue automation trigger config
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FollowupTriggerConfig"
+      responses:
+        "200":
+          description: Updated trigger config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FollowupTriggerConfig"
+
 components:
   schemas:
 
@@ -7942,6 +8029,9 @@ components:
           type: boolean
         stopServiceThresholdDays:
           type: integer
+        # ── Smart Follow-Up Queue automation triggers ───────────────────
+        followupTriggerConfig:
+          $ref: "#/components/schemas/FollowupTriggerConfig"
         # ── Review Collection ────────────────────────────────────────────
         reviewRequestOnInvoicePaid:
           type: boolean
@@ -9049,6 +9139,114 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/EquipmentMaintenance"
+
+    FollowupQueueItem:
+      type: object
+      required: [id, tenantId, customerId, customerName, triggerType, reason, status, priority, ageDays, createdAt, lastRepeatedAt]
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        customerId: { type: integer }
+        customerName: { type: ["string", "null"] }
+        triggerType: { type: string }
+        triggerContextId: { type: ["integer", "null"] }
+        reason: { type: string }
+        status: { type: string }
+        priority: { type: string }
+        ageDays: { type: integer }
+        createdAt: { type: string }
+        lastRepeatedAt: { type: string }
+        resolvedAt: { type: ["string", "null"] }
+        resolvedByUserId: { type: ["integer", "null"] }
+        communicationNote: { type: ["string", "null"] }
+
+    FollowupContactHistoryEntry:
+      type: object
+      required: [id, direction, channel, body, status, createdAt]
+      properties:
+        id: { type: integer }
+        direction: { type: string }
+        channel: { type: string }
+        body: { type: string }
+        status: { type: string }
+        createdAt: { type: string }
+
+    FollowupQueueItemContext:
+      type: object
+      required: [item, customer, contactHistory, openEstimates, closedEstimates, invoices]
+      properties:
+        item:
+          $ref: "#/components/schemas/FollowupQueueItem"
+        customer:
+          type: ["object", "null"]
+          properties:
+            id: { type: integer }
+            name: { type: string }
+            phone: { type: string }
+            email: { type: string }
+            smsOptOut: { type: boolean }
+            emailOptOut: { type: boolean }
+        contactHistory:
+          type: array
+          items:
+            $ref: "#/components/schemas/FollowupContactHistoryEntry"
+        openEstimates:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              status: { type: string }
+              total: { type: number }
+              sentAt: { type: ["string", "null"] }
+        closedEstimates:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              status: { type: string }
+              total: { type: number }
+        invoices:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              invoiceNumber: { type: string }
+              status: { type: string }
+              total: { type: number }
+              dueDate: { type: ["string", "null"] }
+
+    ResolveFollowupQueueItemInput:
+      type: object
+      required: [note]
+      properties:
+        note: { type: string }
+
+    FollowupTriggerRule:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        delayDays: { type: integer }
+        repeatDays: { type: integer }
+
+    FollowupTriggerConfig:
+      type: object
+      properties:
+        sentEstimate:
+          $ref: "#/components/schemas/FollowupTriggerRule"
+        sentInvoice:
+          $ref: "#/components/schemas/FollowupTriggerRule"
+        unansweredEmail:
+          type: object
+          properties:
+            enabled: { type: boolean }
+            hours: { type: integer }
+        missedCall:
+          type: object
+          properties:
+            enabled: { type: boolean }
 
     TaskBundle:
       type: object

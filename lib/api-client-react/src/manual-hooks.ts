@@ -100,3 +100,144 @@ export const getCustomerPropertyHistory = async (
     options,
   );
 };
+
+// ---------------------------------------------------------------------------
+// Bulk data import / export
+// ---------------------------------------------------------------------------
+
+export type ImportExportEntity =
+  | "customers"
+  | "properties"
+  | "jobs"
+  | "estimates"
+  | "invoices"
+  | "equipment"
+  | "inventory";
+
+export interface ImportFieldMeta {
+  key: string;
+  header: string;
+  required?: boolean;
+  hint?: string;
+}
+
+export interface ImportPreviewResult {
+  headers: string[];
+  fields: ImportFieldMeta[];
+  suggestedMapping: Record<string, string | null>;
+  sampleRows: Record<string, string>[];
+  totalRows: number;
+}
+
+export interface ImportRowError {
+  row: number;
+  errors: string[];
+}
+
+export interface ImportCommitResult {
+  total: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  errors: ImportRowError[];
+}
+
+/**
+ * Triggers a browser download of an entity export. Query params should
+ * mirror the filters already applied to that entity's list view.
+ */
+export const exportEntity = async (
+  entity: ImportExportEntity,
+  format: "csv" | "xlsx",
+  query: Record<string, string | undefined> = {},
+): Promise<void> => {
+  const params = new URLSearchParams({ format });
+  for (const [key, value] of Object.entries(query)) {
+    if (value != null && value !== "") params.set(key, value);
+  }
+  const blob = await customFetch<Blob>(`/api/${entity}/export?${params.toString()}`, {
+    method: "GET",
+    responseType: "blob",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${entity}-export.${format}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+};
+
+export const previewEntityImport = async (
+  entity: ImportExportEntity,
+  file: File,
+): Promise<ImportPreviewResult> => {
+  const form = new FormData();
+  form.append("file", file);
+  return customFetch<ImportPreviewResult>(`/api/${entity}/import/preview`, {
+    method: "POST",
+    body: form,
+  });
+};
+
+export const commitEntityImport = async (
+  entity: ImportExportEntity,
+  file: File,
+  mapping: Record<string, string | null>,
+): Promise<ImportCommitResult> => {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("mapping", JSON.stringify(mapping));
+  return customFetch<ImportCommitResult>(`/api/${entity}/import/commit`, {
+    method: "POST",
+    body: form,
+  });
+};
+
+export const usePreviewEntityImport = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof previewEntityImport>>,
+    TError,
+    { entity: ImportExportEntity; file: File },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof previewEntityImport>>,
+  TError,
+  { entity: ImportExportEntity; file: File },
+  TContext
+> => {
+  const { mutation: mutationOptions } = options ?? {};
+  return useMutation({
+    mutationFn: ({ entity, file }) => previewEntityImport(entity, file),
+    ...mutationOptions,
+  });
+};
+
+export const useCommitEntityImport = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof commitEntityImport>>,
+    TError,
+    { entity: ImportExportEntity; file: File; mapping: Record<string, string | null> },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof commitEntityImport>>,
+  TError,
+  { entity: ImportExportEntity; file: File; mapping: Record<string, string | null> },
+  TContext
+> => {
+  const { mutation: mutationOptions } = options ?? {};
+  return useMutation({
+    mutationFn: ({ entity, file, mapping }) => commitEntityImport(entity, file, mapping),
+    ...mutationOptions,
+  });
+};

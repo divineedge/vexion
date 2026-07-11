@@ -19,6 +19,7 @@ import { useLocation } from 'wouter';
 import { useDebounce } from '@/hooks/use-debounce';
 import { toast } from 'sonner';
 import { getActiveCustomerFields } from '@/lib/fieldConfig';
+import { ImportExportControls } from '@/components/data-io/ImportExportControls';
 
 type FormData = Record<string, string | string[]>;
 
@@ -114,9 +115,17 @@ export default function CustomersPage() {
           <h1 className="text-3xl font-bold tracking-tight">Customers</h1>
           <p className="text-muted-foreground mt-1">Manage your client base and their properties.</p>
         </div>
-        <Button onClick={() => setCreating(true)} className="gap-2">
-          <Plus className="w-4 h-4" /> Add Customer
-        </Button>
+        <div className="flex items-center gap-2">
+          <ImportExportControls
+            entity="customers"
+            entityLabel="Customers"
+            exportQuery={{ q: debouncedSearch || undefined }}
+            onImportComplete={() => qc.invalidateQueries({ queryKey: getListCustomersQueryKey() })}
+          />
+          <Button onClick={() => setCreating(true)} className="gap-2">
+            <Plus className="w-4 h-4" /> Add Customer
+          </Button>
+        </div>
       </div>
 
       <Card>

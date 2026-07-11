@@ -35,6 +35,8 @@ import VisitsPage from '@/pages/visits';
 import EstimatePublicPage from '@/pages/estimate-public';
 import ReviewsPage from '@/pages/reviews';
 import ReviewPublicPage from '@/pages/review-public';
+import PlansDashboardPage from '@/pages/plans-dashboard';
+import PlanDetailPage from '@/pages/plan-detail';
 
 import NotFound from '@/pages/not-found';
 
@@ -76,6 +78,8 @@ function ProtectedRoutes() {
         <Route path="/estimates" component={EstimatesPage} />
         <Route path="/visits" component={VisitsPage} />
         <Route path="/reviews" component={ReviewsPage} />
+        <Route path="/plans/:id" component={PlanDetailPage} />
+        <Route path="/plans" component={PlansDashboardPage} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

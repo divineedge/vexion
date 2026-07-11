@@ -277,6 +277,234 @@ export interface CreateEstimateTemplateInput {
   lineItems?: EstimateLineItem[];
 }
 
+export interface PlanTemplateServiceRule {
+  serviceId: number;
+  serviceName: string;
+  frequencyDays: number;
+}
+
+export type PlanTemplateBillingCycle = typeof PlanTemplateBillingCycle[keyof typeof PlanTemplateBillingCycle];
+
+
+export const PlanTemplateBillingCycle = {
+  monthly: 'monthly',
+  quarterly: 'quarterly',
+  annual: 'annual',
+  custom: 'custom',
+} as const;
+
+export interface PlanTemplate {
+  id: number;
+  tenantId: number;
+  name: string;
+  /** @nullable */
+  description?: string | null;
+  services: PlanTemplateServiceRule[];
+  visitCount: number;
+  billingCycle: PlanTemplateBillingCycle;
+  /** @nullable */
+  customCycleDays?: number | null;
+  price: number;
+  autoRenewDefault: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CreatePlanTemplateInputBillingCycle = typeof CreatePlanTemplateInputBillingCycle[keyof typeof CreatePlanTemplateInputBillingCycle];
+
+
+export const CreatePlanTemplateInputBillingCycle = {
+  monthly: 'monthly',
+  quarterly: 'quarterly',
+  annual: 'annual',
+  custom: 'custom',
+} as const;
+
+export interface CreatePlanTemplateInput {
+  name: string;
+  description?: string;
+  services: PlanTemplateServiceRule[];
+  visitCount?: number;
+  billingCycle?: CreatePlanTemplateInputBillingCycle;
+  customCycleDays?: number;
+  price?: number;
+  autoRenewDefault?: boolean;
+  isActive?: boolean;
+}
+
+export interface PlanVisitPreview {
+  serviceId: number;
+  serviceName: string;
+  date: string;
+  idealDate: string;
+  /** @nullable */
+  assigneeId?: number | null;
+  /** @nullable */
+  assigneeName?: string | null;
+  clustered: boolean;
+}
+
+export interface PreviewCustomerPlanInput {
+  templateId: number;
+  propertyId: number;
+  startDate: string;
+}
+
+export interface CustomerPlanPreview {
+  template: PlanTemplate;
+  visits: PlanVisitPreview[];
+}
+
+export type CustomerPlanBillingCycle = typeof CustomerPlanBillingCycle[keyof typeof CustomerPlanBillingCycle];
+
+
+export const CustomerPlanBillingCycle = {
+  monthly: 'monthly',
+  quarterly: 'quarterly',
+  annual: 'annual',
+  custom: 'custom',
+} as const;
+
+export type CustomerPlanStatus = typeof CustomerPlanStatus[keyof typeof CustomerPlanStatus];
+
+
+export const CustomerPlanStatus = {
+  active: 'active',
+  paused: 'paused',
+  cancelled: 'cancelled',
+  pending_renewal: 'pending_renewal',
+} as const;
+
+export type CustomerPlanServiceStateItem = {
+  serviceId?: number;
+  serviceName?: string;
+  frequencyDays?: number;
+  /** @nullable */
+  lastScheduledAt?: string | null;
+};
+
+export interface CustomerPlan {
+  id: number;
+  tenantId: number;
+  customerId: number;
+  propertyId: number;
+  templateId: number;
+  templateName: string;
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  propertyAddress?: string | null;
+  startDate: string;
+  endDate: string;
+  billingCycle: CustomerPlanBillingCycle;
+  /** @nullable */
+  customCycleDays?: number | null;
+  billingPrice: number;
+  autoRenew: boolean;
+  status: CustomerPlanStatus;
+  nextBillingDate: string;
+  /** @nullable */
+  lastBilledAt?: string | null;
+  serviceState?: CustomerPlanServiceStateItem[];
+  renewalReminderDaysBefore?: number;
+  /** @nullable */
+  renewalReminderSentAt?: string | null;
+  /** @nullable */
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CreateCustomerPlanInputVisitsItem = {
+  serviceId: number;
+  serviceName: string;
+  date: string;
+  /** @nullable */
+  assigneeId?: number | null;
+  /** @nullable */
+  assigneeName?: string | null;
+};
+
+export interface CreateCustomerPlanInput {
+  templateId: number;
+  customerId: number;
+  propertyId: number;
+  startDate: string;
+  autoRenew?: boolean;
+  visits?: CreateCustomerPlanInputVisitsItem[];
+}
+
+export type UpdateCustomerPlanInputStatus = typeof UpdateCustomerPlanInputStatus[keyof typeof UpdateCustomerPlanInputStatus];
+
+
+export const UpdateCustomerPlanInputStatus = {
+  active: 'active',
+  paused: 'paused',
+  cancelled: 'cancelled',
+  pending_renewal: 'pending_renewal',
+} as const;
+
+export type UpdateCustomerPlanInputServiceStateItem = {
+  serviceId?: number;
+  serviceName?: string;
+  frequencyDays?: number;
+  /** @nullable */
+  lastScheduledAt?: string | null;
+};
+
+export interface UpdateCustomerPlanInput {
+  status?: UpdateCustomerPlanInputStatus;
+  autoRenew?: boolean;
+  notes?: string;
+  serviceState?: UpdateCustomerPlanInputServiceStateItem[];
+}
+
+export interface CustomerPlanVisit {
+  id: number;
+  title: string;
+  status: string;
+  scheduledAt: string;
+  /** @nullable */
+  serviceId?: number | null;
+  /** @nullable */
+  assigneeId?: number | null;
+  /** @nullable */
+  assigneeName?: string | null;
+  /** @nullable */
+  cancelReason?: string | null;
+}
+
+export interface CustomerPlanBillingEntry {
+  id: number;
+  invoiceNumber: string;
+  status: string;
+  total: number;
+  /** @nullable */
+  dueDate?: string | null;
+  /** @nullable */
+  paidAt?: string | null;
+  createdAt: string;
+}
+
+export type CustomerPlanDetail = CustomerPlan & {
+  visits: CustomerPlanVisit[];
+  billingHistory: CustomerPlanBillingEntry[];
+};
+
+export type PlansDashboardPlansItem = CustomerPlan & {
+  isOverdue: boolean;
+};
+
+export interface PlansDashboard {
+  activeCount: number;
+  mrr: number;
+  autoRenewCount: number;
+  expiringSoonCount: number;
+  overdueCount: number;
+  plans: PlansDashboardPlansItem[];
+}
+
 export interface HealthStatus {
   status: string;
 }
@@ -3170,6 +3398,22 @@ export type ConvertVisitToEstimate201 = {
 
 export type ConvertVisitToJob201 = {
   jobId?: number;
+};
+
+export type ListCustomerPlansParams = {
+customerId?: number;
+status?: string;
+};
+
+export type CancelPlanVisitBody = {
+  reason: string;
+};
+
+export type CancelPlanVisit200 = {
+  id: number;
+  status: string;
+  /** @nullable */
+  cancelReason?: string | null;
 };
 
 export type RunRecurringTemplateNow200 = {

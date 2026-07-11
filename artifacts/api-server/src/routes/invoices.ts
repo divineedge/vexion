@@ -15,6 +15,7 @@ function formatInvoice(i: typeof invoicesTable.$inferSelect, customerName?: stri
     ...i,
     lineItems: (i.lineItems as unknown[]) ?? [],
     customerName: customerName ?? null,
+    planId: i.planId ?? null,
     dueDate: i.dueDate?.toISOString() ?? null,
     paidAt: i.paidAt?.toISOString() ?? null,
     stripePaymentUrl: i.stripePaymentUrl ?? null,

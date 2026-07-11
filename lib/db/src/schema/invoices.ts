@@ -11,6 +11,8 @@ export const invoicesTable = pgTable("invoices", {
   invoiceNumber: text("invoice_number").notNull(),
   customerId: integer("customer_id").notNull().references(() => customersTable.id),
   jobId: integer("job_id").references(() => jobsTable.id),
+  /** Set when this invoice bills a customer_plans period (one invoice per cycle, not per job). */
+  planId: integer("plan_id"),
   status: text("status").notNull().default("draft"),
   subtotal: real("subtotal").notNull().default(0),
   tax: real("tax").notNull().default(0),

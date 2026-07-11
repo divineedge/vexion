@@ -35,6 +35,8 @@ tags:
     description: Tenant settings
   - name: plans
     description: Subscription plan management
+  - name: servicePlans
+    description: Sellable service plan templates, customer plans, and automated visit scheduling
   - name: efficiency
     description: P4P labor efficiency metrics
   - name: callbacks
@@ -3555,6 +3557,270 @@ paths:
         "204":
           description: Deleted
 
+  # SERVICE PLANS & AUTOMATED SCHEDULING
+  /plan-templates:
+    get:
+      operationId: listPlanTemplates
+      tags: [servicePlans]
+      summary: List sellable plan templates
+      responses:
+        "200":
+          description: List of templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PlanTemplate"
+    post:
+      operationId: createPlanTemplate
+      tags: [servicePlans]
+      summary: Create a plan template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlanTemplateInput"
+      responses:
+        "201":
+          description: Created template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanTemplate"
+
+  /plan-templates/{id}:
+    get:
+      operationId: getPlanTemplate
+      tags: [servicePlans]
+      summary: Get a single plan template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanTemplate"
+    patch:
+      operationId: updatePlanTemplate
+      tags: [servicePlans]
+      summary: Update a plan template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlanTemplateInput"
+      responses:
+        "200":
+          description: Updated template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanTemplate"
+    delete:
+      operationId: deletePlanTemplate
+      tags: [servicePlans]
+      summary: Delete a plan template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /customer-plans/preview:
+    post:
+      operationId: previewCustomerPlan
+      tags: [servicePlans]
+      summary: Preview the visit schedule a plan would generate before selling it
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PreviewCustomerPlanInput"
+      responses:
+        "200":
+          description: Preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerPlanPreview"
+
+  /customer-plans:
+    get:
+      operationId: listCustomerPlans
+      tags: [servicePlans]
+      summary: List customer plans
+      parameters:
+        - name: customerId
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of plans
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CustomerPlan"
+    post:
+      operationId: createCustomerPlan
+      tags: [servicePlans]
+      summary: Sell/activate a plan for a customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCustomerPlanInput"
+      responses:
+        "201":
+          description: Created plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerPlan"
+
+  /customer-plans/{id}:
+    get:
+      operationId: getCustomerPlan
+      tags: [servicePlans]
+      summary: Get a customer plan with its visits and billing history
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Plan detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerPlanDetail"
+    patch:
+      operationId: updateCustomerPlan
+      tags: [servicePlans]
+      summary: Update a customer plan (status, auto-renew, services, notes)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCustomerPlanInput"
+      responses:
+        "200":
+          description: Updated plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerPlan"
+
+  /customer-plans/{id}/visits/{jobId}/cancel:
+    post:
+      operationId: cancelPlanVisit
+      tags: [servicePlans]
+      summary: Cancel a single scheduled plan visit (reason required)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: Visit cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status]
+                properties:
+                  id:
+                    type: integer
+                  status:
+                    type: string
+                  cancelReason:
+                    type: ["string", "null"]
+
+  /customer-plans/{id}/renew:
+    post:
+      operationId: renewCustomerPlan
+      tags: [servicePlans]
+      summary: Manually renew a plan for one more billing period
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Renewed plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerPlan"
+
+  /plans/dashboard:
+    get:
+      operationId: getPlansDashboard
+      tags: [servicePlans]
+      summary: Get the service plans overview dashboard
+      responses:
+        "200":
+          description: Dashboard data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlansDashboard"
+
   # BILLING AUTOMATION
   /billing/recurring-templates:
     get:
@@ -4658,6 +4924,317 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EstimateLineItem"
+
+    PlanTemplateServiceRule:
+      type: object
+      required: [serviceId, serviceName, frequencyDays]
+      properties:
+        serviceId:
+          type: integer
+        serviceName:
+          type: string
+        frequencyDays:
+          type: integer
+
+    PlanTemplate:
+      type: object
+      required: [id, tenantId, name, services, visitCount, billingCycle, price, autoRenewDefault, isActive, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        services:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanTemplateServiceRule"
+        visitCount:
+          type: integer
+        billingCycle:
+          type: string
+          enum: [monthly, quarterly, annual, custom]
+        customCycleDays:
+          type: ["integer", "null"]
+        price:
+          type: number
+        autoRenewDefault:
+          type: boolean
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    CreatePlanTemplateInput:
+      type: object
+      required: [name, services]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        services:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanTemplateServiceRule"
+        visitCount:
+          type: integer
+        billingCycle:
+          type: string
+          enum: [monthly, quarterly, annual, custom]
+        customCycleDays:
+          type: integer
+        price:
+          type: number
+        autoRenewDefault:
+          type: boolean
+        isActive:
+          type: boolean
+
+    PlanVisitPreview:
+      type: object
+      required: [serviceId, serviceName, date, idealDate, clustered]
+      properties:
+        serviceId:
+          type: integer
+        serviceName:
+          type: string
+        date:
+          type: string
+        idealDate:
+          type: string
+        assigneeId:
+          type: ["integer", "null"]
+        assigneeName:
+          type: ["string", "null"]
+        clustered:
+          type: boolean
+
+    PreviewCustomerPlanInput:
+      type: object
+      required: [templateId, propertyId, startDate]
+      properties:
+        templateId:
+          type: integer
+        propertyId:
+          type: integer
+        startDate:
+          type: string
+
+    CustomerPlanPreview:
+      type: object
+      required: [template, visits]
+      properties:
+        template:
+          $ref: "#/components/schemas/PlanTemplate"
+        visits:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanVisitPreview"
+
+    CustomerPlan:
+      type: object
+      required: [id, tenantId, customerId, propertyId, templateId, templateName, startDate, endDate, billingCycle, billingPrice, autoRenew, status, nextBillingDate, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        customerId:
+          type: integer
+        propertyId:
+          type: integer
+        templateId:
+          type: integer
+        templateName:
+          type: string
+        customerName:
+          type: ["string", "null"]
+        propertyAddress:
+          type: ["string", "null"]
+        startDate:
+          type: string
+        endDate:
+          type: string
+        billingCycle:
+          type: string
+          enum: [monthly, quarterly, annual, custom]
+        customCycleDays:
+          type: ["integer", "null"]
+        billingPrice:
+          type: number
+        autoRenew:
+          type: boolean
+        status:
+          type: string
+          enum: [active, paused, cancelled, pending_renewal]
+        nextBillingDate:
+          type: string
+        lastBilledAt:
+          type: ["string", "null"]
+        serviceState:
+          type: array
+          items:
+            type: object
+            properties:
+              serviceId:
+                type: integer
+              serviceName:
+                type: string
+              frequencyDays:
+                type: integer
+              lastScheduledAt:
+                type: ["string", "null"]
+        renewalReminderDaysBefore:
+          type: integer
+        renewalReminderSentAt:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    CreateCustomerPlanInput:
+      type: object
+      required: [templateId, customerId, propertyId, startDate]
+      properties:
+        templateId:
+          type: integer
+        customerId:
+          type: integer
+        propertyId:
+          type: integer
+        startDate:
+          type: string
+        autoRenew:
+          type: boolean
+        visits:
+          type: array
+          items:
+            type: object
+            required: [serviceId, serviceName, date]
+            properties:
+              serviceId:
+                type: integer
+              serviceName:
+                type: string
+              date:
+                type: string
+              assigneeId:
+                type: ["integer", "null"]
+              assigneeName:
+                type: ["string", "null"]
+
+    UpdateCustomerPlanInput:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [active, paused, cancelled, pending_renewal]
+        autoRenew:
+          type: boolean
+        notes:
+          type: string
+        serviceState:
+          type: array
+          items:
+            type: object
+            properties:
+              serviceId:
+                type: integer
+              serviceName:
+                type: string
+              frequencyDays:
+                type: integer
+              lastScheduledAt:
+                type: ["string", "null"]
+
+    CustomerPlanVisit:
+      type: object
+      required: [id, title, status, scheduledAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        status:
+          type: string
+        scheduledAt:
+          type: string
+        serviceId:
+          type: ["integer", "null"]
+        assigneeId:
+          type: ["integer", "null"]
+        assigneeName:
+          type: ["string", "null"]
+        cancelReason:
+          type: ["string", "null"]
+
+    CustomerPlanBillingEntry:
+      type: object
+      required: [id, invoiceNumber, status, total, createdAt]
+      properties:
+        id:
+          type: integer
+        invoiceNumber:
+          type: string
+        status:
+          type: string
+        total:
+          type: number
+        dueDate:
+          type: ["string", "null"]
+        paidAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    CustomerPlanDetail:
+      allOf:
+        - $ref: "#/components/schemas/CustomerPlan"
+        - type: object
+          required: [visits, billingHistory]
+          properties:
+            visits:
+              type: array
+              items:
+                $ref: "#/components/schemas/CustomerPlanVisit"
+            billingHistory:
+              type: array
+              items:
+                $ref: "#/components/schemas/CustomerPlanBillingEntry"
+
+    PlansDashboard:
+      type: object
+      required: [activeCount, mrr, autoRenewCount, expiringSoonCount, overdueCount, plans]
+      properties:
+        activeCount:
+          type: integer
+        mrr:
+          type: number
+        autoRenewCount:
+          type: integer
+        expiringSoonCount:
+          type: integer
+        overdueCount:
+          type: integer
+        plans:
+          type: array
+          items:
+            allOf:
+              - $ref: "#/components/schemas/CustomerPlan"
+              - type: object
+                required: [isOverdue]
+                properties:
+                  isOverdue:
+                    type: boolean
 
     HealthStatus:
       type: object

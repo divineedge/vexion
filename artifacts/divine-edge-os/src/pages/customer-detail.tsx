@@ -31,6 +31,7 @@ import {
   MessageSquare, Send, PhoneOff, MailMinus, ChevronRight, PlayCircle,
 } from 'lucide-react';
 import CustomerAvatar from '@/components/media/CustomerAvatar';
+import CustomerPlansTab from '@/components/customer/CustomerPlansTab';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import type { CustomerFieldConfig, TenantSettings } from '@/lib/fieldConfig';
@@ -382,6 +383,7 @@ export default function CustomerDetailPage() {
           <TabsTrigger value="properties">Properties ({properties?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="jobs">Jobs ({jobs?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="messages">Messages ({messages?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="plans">Plans</TabsTrigger>
         </TabsList>
 
         {/* Overview tab */}
@@ -692,6 +694,11 @@ export default function CustomerDetailPage() {
               </Table>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Plans tab */}
+        <TabsContent value="plans" className="focus-visible:outline-none">
+          <CustomerPlansTab customerId={id} properties={(properties ?? []).map(p => ({ id: p.id, address: p.address }))} />
         </TabsContent>
       </Tabs>
 

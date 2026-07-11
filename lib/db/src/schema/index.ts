@@ -33,3 +33,5 @@ export * from "./integrationSyncLogs";
 export * from "./bankTransactions";
 export * from "./reviewRequests";
 export * from "./stopServiceFlags";
+export * from "./planTemplates";
+export * from "./customerPlans";

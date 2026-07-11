@@ -5243,6 +5243,497 @@ export const DeleteEstimateTemplateResponse = zod.void()
 
 
 /**
+ * @summary List sellable plan templates
+ */
+export const ListPlanTemplatesResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "services": zod.array(zod.object({
+  "serviceId": zod.number(),
+  "serviceName": zod.string(),
+  "frequencyDays": zod.number()
+})),
+  "visitCount": zod.number(),
+  "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']),
+  "customCycleDays": zod.number().nullish(),
+  "price": zod.number(),
+  "autoRenewDefault": zod.boolean(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListPlanTemplatesResponse = zod.array(ListPlanTemplatesResponseItem)
+
+
+/**
+ * @summary Create a plan template
+ */
+export const CreatePlanTemplateBody = zod.object({
+  "name": zod.string(),
+  "description": zod.string().optional(),
+  "services": zod.array(zod.object({
+  "serviceId": zod.number(),
+  "serviceName": zod.string(),
+  "frequencyDays": zod.number()
+})),
+  "visitCount": zod.number().optional(),
+  "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']).optional(),
+  "customCycleDays": zod.number().optional(),
+  "price": zod.number().optional(),
+  "autoRenewDefault": zod.boolean().optional(),
+  "isActive": zod.boolean().optional()
+})
+
+export const CreatePlanTemplateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "services": zod.array(zod.object({
+  "serviceId": zod.number(),
+  "serviceName": zod.string(),
+  "frequencyDays": zod.number()
+})),
+  "visitCount": zod.number(),
+  "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']),
+  "customCycleDays": zod.number().nullish(),
+  "price": zod.number(),
+  "autoRenewDefault": zod.boolean(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Get a single plan template
+ */
+export const GetPlanTemplateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetPlanTemplateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "services": zod.array(zod.object({
+  "serviceId": zod.number(),
+  "serviceName": zod.string(),
+  "frequencyDays": zod.number()
+})),
+  "visitCount": zod.number(),
+  "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']),
+  "customCycleDays": zod.number().nullish(),
+  "price": zod.number(),
+  "autoRenewDefault": zod.boolean(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Update a plan template
+ */
+export const UpdatePlanTemplateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdatePlanTemplateBody = zod.object({
+  "name": zod.string(),
+  "description": zod.string().optional(),
+  "services": zod.array(zod.object({
+  "serviceId": zod.number(),
+  "serviceName": zod.string(),
+  "frequencyDays": zod.number()
+})),
+  "visitCount": zod.number().optional(),
+  "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']).optional(),
+  "customCycleDays": zod.number().optional(),
+  "price": zod.number().optional(),
+  "autoRenewDefault": zod.boolean().optional(),
+  "isActive": zod.boolean().optional()
+})
+
+export const UpdatePlanTemplateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "services": zod.array(zod.object({
+  "serviceId": zod.number(),
+  "serviceName": zod.string(),
+  "frequencyDays": zod.number()
+})),
+  "visitCount": zod.number(),
+  "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']),
+  "customCycleDays": zod.number().nullish(),
+  "price": zod.number(),
+  "autoRenewDefault": zod.boolean(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a plan template
+ */
+export const DeletePlanTemplateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeletePlanTemplateResponse = zod.void()
+
+
+/**
+ * @summary Preview the visit schedule a plan would generate before selling it
+ */
+export const PreviewCustomerPlanBody = zod.object({
+  "templateId": zod.number(),
+  "propertyId": zod.number(),
+  "startDate": zod.string()
+})
+
+export const PreviewCustomerPlanResponse = zod.object({
+  "template": zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "services": zod.array(zod.object({
+  "serviceId": zod.number(),
+  "serviceName": zod.string(),
+  "frequencyDays": zod.number()
+})),
+  "visitCount": zod.number(),
+  "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']),
+  "customCycleDays": zod.number().nullish(),
+  "price": zod.number(),
+  "autoRenewDefault": zod.boolean(),
+  "isActive": zod.boolean(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+}),
+  "visits": zod.array(zod.object({
+  "serviceId": zod.number(),
+  "serviceName": zod.string(),
+  "date": zod.string(),
+  "idealDate": zod.string(),
+  "assigneeId": zod.number().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "clustered": zod.boolean()
+}))
+})
+
+
+/**
+ * @summary List customer plans
+ */
+export const ListCustomerPlansQueryParams = zod.object({
+  "customerId": zod.coerce.number().optional(),
+  "status": zod.coerce.string().optional()
+})
+
+export const ListCustomerPlansResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "propertyId": zod.number(),
+  "templateId": zod.number(),
+  "templateName": zod.string(),
+  "customerName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "startDate": zod.string(),
+  "endDate": zod.string(),
+  "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']),
+  "customCycleDays": zod.number().nullish(),
+  "billingPrice": zod.number(),
+  "autoRenew": zod.boolean(),
+  "status": zod.enum(['active', 'paused', 'cancelled', 'pending_renewal']),
+  "nextBillingDate": zod.string(),
+  "lastBilledAt": zod.string().nullish(),
+  "serviceState": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "serviceName": zod.string().optional(),
+  "frequencyDays": zod.number().optional(),
+  "lastScheduledAt": zod.string().nullish()
+})).optional(),
+  "renewalReminderDaysBefore": zod.number().optional(),
+  "renewalReminderSentAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListCustomerPlansResponse = zod.array(ListCustomerPlansResponseItem)
+
+
+/**
+ * @summary Sell/activate a plan for a customer
+ */
+export const CreateCustomerPlanBody = zod.object({
+  "templateId": zod.number(),
+  "customerId": zod.number(),
+  "propertyId": zod.number(),
+  "startDate": zod.string(),
+  "autoRenew": zod.boolean().optional(),
+  "visits": zod.array(zod.object({
+  "serviceId": zod.number(),
+  "serviceName": zod.string(),
+  "date": zod.string(),
+  "assigneeId": zod.number().nullish(),
+  "assigneeName": zod.string().nullish()
+})).optional()
+})
+
+export const CreateCustomerPlanResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "propertyId": zod.number(),
+  "templateId": zod.number(),
+  "templateName": zod.string(),
+  "customerName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "startDate": zod.string(),
+  "endDate": zod.string(),
+  "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']),
+  "customCycleDays": zod.number().nullish(),
+  "billingPrice": zod.number(),
+  "autoRenew": zod.boolean(),
+  "status": zod.enum(['active', 'paused', 'cancelled', 'pending_renewal']),
+  "nextBillingDate": zod.string(),
+  "lastBilledAt": zod.string().nullish(),
+  "serviceState": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "serviceName": zod.string().optional(),
+  "frequencyDays": zod.number().optional(),
+  "lastScheduledAt": zod.string().nullish()
+})).optional(),
+  "renewalReminderDaysBefore": zod.number().optional(),
+  "renewalReminderSentAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Get a customer plan with its visits and billing history
+ */
+export const GetCustomerPlanParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetCustomerPlanResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "propertyId": zod.number(),
+  "templateId": zod.number(),
+  "templateName": zod.string(),
+  "customerName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "startDate": zod.string(),
+  "endDate": zod.string(),
+  "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']),
+  "customCycleDays": zod.number().nullish(),
+  "billingPrice": zod.number(),
+  "autoRenew": zod.boolean(),
+  "status": zod.enum(['active', 'paused', 'cancelled', 'pending_renewal']),
+  "nextBillingDate": zod.string(),
+  "lastBilledAt": zod.string().nullish(),
+  "serviceState": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "serviceName": zod.string().optional(),
+  "frequencyDays": zod.number().optional(),
+  "lastScheduledAt": zod.string().nullish()
+})).optional(),
+  "renewalReminderDaysBefore": zod.number().optional(),
+  "renewalReminderSentAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+}).and(zod.object({
+  "visits": zod.array(zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "status": zod.string(),
+  "scheduledAt": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "assigneeId": zod.number().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "cancelReason": zod.string().nullish()
+})),
+  "billingHistory": zod.array(zod.object({
+  "id": zod.number(),
+  "invoiceNumber": zod.string(),
+  "status": zod.string(),
+  "total": zod.number(),
+  "dueDate": zod.string().nullish(),
+  "paidAt": zod.string().nullish(),
+  "createdAt": zod.string()
+}))
+}))
+
+
+/**
+ * @summary Update a customer plan (status, auto-renew, services, notes)
+ */
+export const UpdateCustomerPlanParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateCustomerPlanBody = zod.object({
+  "status": zod.enum(['active', 'paused', 'cancelled', 'pending_renewal']).optional(),
+  "autoRenew": zod.boolean().optional(),
+  "notes": zod.string().optional(),
+  "serviceState": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "serviceName": zod.string().optional(),
+  "frequencyDays": zod.number().optional(),
+  "lastScheduledAt": zod.string().nullish()
+})).optional()
+})
+
+export const UpdateCustomerPlanResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "propertyId": zod.number(),
+  "templateId": zod.number(),
+  "templateName": zod.string(),
+  "customerName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "startDate": zod.string(),
+  "endDate": zod.string(),
+  "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']),
+  "customCycleDays": zod.number().nullish(),
+  "billingPrice": zod.number(),
+  "autoRenew": zod.boolean(),
+  "status": zod.enum(['active', 'paused', 'cancelled', 'pending_renewal']),
+  "nextBillingDate": zod.string(),
+  "lastBilledAt": zod.string().nullish(),
+  "serviceState": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "serviceName": zod.string().optional(),
+  "frequencyDays": zod.number().optional(),
+  "lastScheduledAt": zod.string().nullish()
+})).optional(),
+  "renewalReminderDaysBefore": zod.number().optional(),
+  "renewalReminderSentAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Cancel a single scheduled plan visit (reason required)
+ */
+export const CancelPlanVisitParams = zod.object({
+  "id": zod.coerce.number(),
+  "jobId": zod.coerce.number()
+})
+
+export const CancelPlanVisitBody = zod.object({
+  "reason": zod.string()
+})
+
+export const CancelPlanVisitResponse = zod.object({
+  "id": zod.number(),
+  "status": zod.string(),
+  "cancelReason": zod.string().nullish()
+})
+
+
+/**
+ * @summary Manually renew a plan for one more billing period
+ */
+export const RenewCustomerPlanParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RenewCustomerPlanResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "propertyId": zod.number(),
+  "templateId": zod.number(),
+  "templateName": zod.string(),
+  "customerName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "startDate": zod.string(),
+  "endDate": zod.string(),
+  "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']),
+  "customCycleDays": zod.number().nullish(),
+  "billingPrice": zod.number(),
+  "autoRenew": zod.boolean(),
+  "status": zod.enum(['active', 'paused', 'cancelled', 'pending_renewal']),
+  "nextBillingDate": zod.string(),
+  "lastBilledAt": zod.string().nullish(),
+  "serviceState": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "serviceName": zod.string().optional(),
+  "frequencyDays": zod.number().optional(),
+  "lastScheduledAt": zod.string().nullish()
+})).optional(),
+  "renewalReminderDaysBefore": zod.number().optional(),
+  "renewalReminderSentAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Get the service plans overview dashboard
+ */
+export const GetPlansDashboardResponse = zod.object({
+  "activeCount": zod.number(),
+  "mrr": zod.number(),
+  "autoRenewCount": zod.number(),
+  "expiringSoonCount": zod.number(),
+  "overdueCount": zod.number(),
+  "plans": zod.array(zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "propertyId": zod.number(),
+  "templateId": zod.number(),
+  "templateName": zod.string(),
+  "customerName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "startDate": zod.string(),
+  "endDate": zod.string(),
+  "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']),
+  "customCycleDays": zod.number().nullish(),
+  "billingPrice": zod.number(),
+  "autoRenew": zod.boolean(),
+  "status": zod.enum(['active', 'paused', 'cancelled', 'pending_renewal']),
+  "nextBillingDate": zod.string(),
+  "lastBilledAt": zod.string().nullish(),
+  "serviceState": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "serviceName": zod.string().optional(),
+  "frequencyDays": zod.number().optional(),
+  "lastScheduledAt": zod.string().nullish()
+})).optional(),
+  "renewalReminderDaysBefore": zod.number().optional(),
+  "renewalReminderSentAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+}).and(zod.object({
+  "isOverdue": zod.boolean()
+})))
+})
+
+
+/**
  * @summary List all recurring invoice templates
  */
 export const ListRecurringTemplatesResponseItem = zod.object({

@@ -20,6 +20,12 @@ export const jobsTable = pgTable("jobs", {
   crewId: integer("crew_id"),
   blueprintId: integer("blueprint_id"),
   invoiceId: integer("invoice_id"),
+  /** Service catalog link — set on plan-generated visits (and optionally any job). */
+  serviceId: integer("service_id"),
+  /** Set when this job was auto-scheduled from a customer_plans row. */
+  planId: integer("plan_id"),
+  /** Required note when a single plan visit is cancelled (office must explain why). */
+  cancelReason: text("cancel_reason"),
   scheduledAt: timestamp("scheduled_at", { withTimezone: true }).notNull(),
   /** duration stored always in minutes; UI displays in hours or minutes per tenant setting */
   estimatedDuration: integer("estimated_duration"),

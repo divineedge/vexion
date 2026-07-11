@@ -12,6 +12,8 @@ import {
   customFetch,
 } from '@workspace/api-client-react';
 import type { ChemicalProduct, ChemicalMixture, ChemicalMixtureItem, PaymentReminderRule } from '@workspace/api-client-react';
+import { Repeat as RepeatIcon } from 'lucide-react';
+import PlanTemplatesSettings from '@/components/settings/PlanTemplatesSettings';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -421,6 +423,7 @@ export default function SettingsPage() {
           <TabsTrigger value="communications"><MessageSquare className="w-4 h-4 mr-2" />Communications</TabsTrigger>
           <TabsTrigger value="users"><Users className="w-4 h-4 mr-2" />Team</TabsTrigger>
           {isSuperAdmin && <TabsTrigger value="plans"><Shield className="w-4 h-4 mr-2" />Plans</TabsTrigger>}
+          <TabsTrigger value="service-plans"><RepeatIcon className="w-4 h-4 mr-2" />Service Plans</TabsTrigger>
           <TabsTrigger value="operational"><SettingsIcon className="w-4 h-4 mr-2" />Operational</TabsTrigger>
           <TabsTrigger value="measurements"><MapPin className="w-4 h-4 mr-2" />Maps & Quotes</TabsTrigger>
           <TabsTrigger value="chemicals"><FlaskConical className="w-4 h-4 mr-2" />Chemicals</TabsTrigger>
@@ -1372,6 +1375,11 @@ export default function SettingsPage() {
             </div>
           </TabsContent>
         )}
+
+        {/* ── Service Plans ── */}
+        <TabsContent value="service-plans" className="focus-visible:outline-none">
+          <PlanTemplatesSettings />
+        </TabsContent>
 
         {/* ── Operational ── */}
         <TabsContent value="operational" className="space-y-6 focus-visible:outline-none">

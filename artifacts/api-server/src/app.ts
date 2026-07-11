@@ -7,6 +7,7 @@ import { startReminderScheduler } from "./lib/reminderScheduler";
 import { startRecurrenceScheduler } from "./lib/recurrenceScheduler";
 import { startBillingScheduler } from "./lib/billingScheduler";
 import { startPaymentReminderScheduler } from "./lib/paymentReminderScheduler";
+import { startPlanScheduler } from "./lib/planScheduler";
 
 const app: Express = express();
 
@@ -55,5 +56,8 @@ startBillingScheduler();
 
 // Start payment reminder & stop-service flagging scheduler
 startPaymentReminderScheduler();
+
+// Start service plan job-generation & auto-renewal scheduler
+startPlanScheduler();
 
 export default app;

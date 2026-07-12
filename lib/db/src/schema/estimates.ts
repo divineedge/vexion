@@ -20,6 +20,11 @@ import { usersTable } from "./users";
  *   optionalPitchLine?: string,
  *   acceptedByCustomer: boolean,
  * }
+ *
+ * CSV/XLSX import-export packs this array into a single "Line Items" cell —
+ * see the encodeLineItemsCell/decodeLineItemsCell convention in
+ * artifacts/api-server/src/lib/importExport.ts. jobs.lineItems shares this
+ * same shape and convention.
  */
 
 export const estimatesTable = pgTable("estimates", {

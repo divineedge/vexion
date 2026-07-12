@@ -14,7 +14,11 @@ import {
   optionalNumber,
   optionalDate,
   registerImportExportConfig,
+  encodeLineItemsCell,
+  decodeLineItemsCell,
+  sumLineItems,
   type ImportExportEntityConfig,
+  type LineItemCsvShape,
 } from "../lib/importExport";
 
 const router: IRouter = Router();
@@ -34,8 +38,13 @@ const jobsImportExportConfig: ImportExportEntityConfig = {
     { key: "status", header: "Status", hint: "e.g. scheduled, in_progress, completed, cancelled" },
     { key: "priority", header: "Priority", hint: "e.g. low, normal, high, urgent" },
     { key: "estimatedDuration", header: "Estimated Duration (min)" },
-    { key: "totalAmount", header: "Total Amount" },
+    { key: "totalAmount", header: "Total Amount", hint: "Auto-computed from Line Items if left blank" },
     { key: "description", header: "Description" },
+    {
+      key: "lineItems",
+      header: "Line Items",
+      hint: 'Optional. Format: "description=Mow lawn|qty=1|unitprice=75; description=Trim hedges|qty=2|unitprice=40". See docs for full syntax (markup, discount, optional, accepted).',
+    },
   ],
   exportColumns: [
     { key: "id", header: "ID" },
@@ -49,6 +58,7 @@ const jobsImportExportConfig: ImportExportEntityConfig = {
     { key: "estimatedDuration", header: "Estimated Duration (min)" },
     { key: "totalAmount", header: "Total Amount" },
     { key: "description", header: "Description" },
+    { key: "lineItems", header: "Line Items" },
     { key: "createdAt", header: "Created At" },
   ],
   buildExportRows: async (tenantId, query) => {
@@ -85,6 +95,7 @@ const jobsImportExportConfig: ImportExportEntityConfig = {
       estimatedDuration: r.job.estimatedDuration ?? "",
       totalAmount: r.job.totalAmount,
       description: r.job.description ?? "",
+      lineItems: encodeLineItemsCell((r.job.lineItems as LineItemCsvShape[]) ?? []),
       createdAt: r.job.createdAt.toISOString(),
     }));
   },
@@ -93,6 +104,7 @@ const jobsImportExportConfig: ImportExportEntityConfig = {
     const title = requireString(raw.title, "Title", errors);
     const scheduledAt = optionalDate(raw.scheduledAt, "Scheduled At", errors);
     if (!raw.scheduledAt?.trim()) errors.push("Scheduled At is required");
+    const lineItems = decodeLineItemsCell(raw.lineItems, errors);
     if (errors.length > 0 || !title || !scheduledAt) return { ok: false, errors };
 
     let customerId: number | null = null;
@@ -138,8 +150,9 @@ const jobsImportExportConfig: ImportExportEntityConfig = {
         status: optionalString(raw.status) ?? "scheduled",
         priority: optionalString(raw.priority) ?? "normal",
         estimatedDuration: estimatedDuration ?? null,
-        totalAmount: totalAmount ?? 0,
+        totalAmount: totalAmount ?? (lineItems.length > 0 ? sumLineItems(lineItems) : 0),
         description: optionalString(raw.description) ?? null,
+        ...(lineItems.length > 0 ? { lineItems } : {}),
       },
     };
   },

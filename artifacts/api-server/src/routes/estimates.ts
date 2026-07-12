@@ -15,7 +15,11 @@ import {
   optionalNumber,
   optionalDate,
   registerImportExportConfig,
+  encodeLineItemsCell,
+  decodeLineItemsCell,
+  sumLineItems,
   type ImportExportEntityConfig,
+  type LineItemCsvShape,
 } from "../lib/importExport";
 
 const router: IRouter = Router();
@@ -37,6 +41,11 @@ const estimatesImportExportConfig: ImportExportEntityConfig = {
     { key: "tax", header: "Tax" },
     { key: "total", header: "Total" },
     { key: "notes", header: "Notes" },
+    {
+      key: "lineItems",
+      header: "Line Items",
+      hint: 'Optional. Format: "description=Aerate lawn|qty=1|unitprice=150; description=Overseed|qty=1|unitprice=200|optional=true". Subtotal/Total auto-computed if left blank. See docs for full syntax.',
+    },
   ],
   exportColumns: [
     { key: "id", header: "ID" },
@@ -50,6 +59,7 @@ const estimatesImportExportConfig: ImportExportEntityConfig = {
     { key: "tax", header: "Tax" },
     { key: "total", header: "Total" },
     { key: "notes", header: "Notes" },
+    { key: "lineItems", header: "Line Items" },
     { key: "createdAt", header: "Created At" },
   ],
   buildExportRows: async (tenantId, query) => {
@@ -84,12 +94,14 @@ const estimatesImportExportConfig: ImportExportEntityConfig = {
       tax: r.estimate.tax,
       total: r.estimate.total,
       notes: r.estimate.notes ?? "",
+      lineItems: encodeLineItemsCell((r.estimate.lineItems as LineItemCsvShape[]) ?? []),
       createdAt: r.estimate.createdAt.toISOString(),
     }));
   },
   parseRow: async (tenantId, raw) => {
     const errors: string[] = [];
     const customerEmail = requireString(raw.customerEmail, "Customer Email", errors);
+    const lineItems = decodeLineItemsCell(raw.lineItems, errors);
     if (errors.length > 0 || !customerEmail) return { ok: false, errors };
 
     const [customer] = await db
@@ -115,7 +127,8 @@ const estimatesImportExportConfig: ImportExportEntityConfig = {
     }
 
     const idNum = optionalNumber(raw.id, "ID", errors);
-    const subtotal = optionalNumber(raw.subtotal, "Subtotal", errors) ?? 0;
+    const computedSubtotal = lineItems.length > 0 ? sumLineItems(lineItems) : 0;
+    const subtotal = optionalNumber(raw.subtotal, "Subtotal", errors) ?? computedSubtotal;
     const tax = optionalNumber(raw.tax, "Tax", errors) ?? 0;
     const total = optionalNumber(raw.total, "Total", errors) ?? subtotal + tax;
     const scheduledAt = optionalDate(raw.scheduledAt, "Scheduled At", errors);
@@ -135,6 +148,7 @@ const estimatesImportExportConfig: ImportExportEntityConfig = {
         tax,
         total,
         notes: optionalString(raw.notes) ?? null,
+        ...(lineItems.length > 0 ? { lineItems } : {}),
       },
     };
   },

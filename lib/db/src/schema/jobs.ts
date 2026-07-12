@@ -31,6 +31,13 @@ export const jobsTable = pgTable("jobs", {
   estimatedDuration: integer("estimated_duration"),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   totalAmount: real("total_amount").notNull().default(0),
+  /**
+   * Line items array — same shape as estimates.lineItems (see JSDoc there):
+   * [{id, serviceId?, description, qty, unitPrice, markup, discount, isOptional, optionalPitchLine?, acceptedByCustomer}]
+   * CSV/XLSX import-export packs this into a single "Line Items" cell —
+   * see the encodeLineItemsCell/decodeLineItemsCell convention in
+   * artifacts/api-server/src/lib/importExport.ts.
+   */
   lineItems: jsonb("line_items").default("[]"),
   /** parts used on this job: [{inventoryItemId, name, quantity, unitPrice, total}] */
   jobParts: jsonb("job_parts").default("[]"),

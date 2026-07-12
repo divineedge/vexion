@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 import multer from "multer";
+import crypto from "crypto";
 import type { Request, Response } from "express";
 import { db, importBatchesTable, usersTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
@@ -624,6 +625,148 @@ export function optionalDate(raw: string, fieldLabel: string, errors: string[]):
     return undefined;
   }
   return d;
+}
+
+// ---------------------------------------------------------------------------
+// Line items cell encoding — shared convention for jobs + estimates imports
+// ---------------------------------------------------------------------------
+//
+// The `lineItems` jsonb column on jobs/estimates is a variable-length array
+// that doesn't map onto flat spreadsheet columns. Rather than requiring a
+// secondary "line items" sheet/file (which the shared row-by-row import
+// engine above doesn't support — one spreadsheet row is always one entity
+// row), line items are packed into a single "Line Items" cell using a
+// documented mini-syntax:
+//
+//   <item>; <item>; ...
+//
+// where each <item> is a set of `|`-separated `key=value` pairs:
+//
+//   description=<text>|qty=<number>|unitprice=<number>|markup=<pct>|discount=<pct>|optional=true|accepted=true
+//
+// - `description` is required; all other keys are optional and default to
+//   qty=1, unitprice=0, markup=0, discount=0, optional=false (accepted=true).
+// - `optional=true` marks an upsell/add-on line; `accepted` only matters for
+//   optional lines (whether the customer has accepted it).
+// - Literal `|` or `;` inside a value must be escaped as `\|` / `\;`.
+//
+// Example cell value:
+//   "Mow lawn|qty=1|unitprice=75; Trim hedges|qty=2|unitprice=40|optional=true"
+//
+// Export re-encodes stored line items back into this exact format, so a
+// round-trip export -> edit -> import is lossless (aside from `id`, which is
+// regenerated on import, and `serviceId`, which is not represented in CSV).
+
+export interface LineItemCsvShape {
+  id: string;
+  description: string;
+  qty: number;
+  unitPrice: number;
+  markup: number;
+  discount: number;
+  isOptional: boolean;
+  acceptedByCustomer: boolean;
+}
+
+function escapeLineItemField(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/;/g, "\\;");
+}
+
+/** Splits on `delimiter`, honoring `\`-escaped occurrences of it. */
+function splitEscaped(text: string, delimiter: string): string[] {
+  const parts: string[] = [];
+  let current = "";
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "\\" && i + 1 < text.length) {
+      current += text[i + 1];
+      i++;
+    } else if (ch === delimiter) {
+      parts.push(current);
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  parts.push(current);
+  return parts;
+}
+
+export function encodeLineItemsCell(items: LineItemCsvShape[]): string {
+  return items
+    .filter((item) => item != null)
+    .map((item) => {
+      const parts = [
+        `description=${escapeLineItemField(item.description ?? "")}`,
+        `qty=${item.qty ?? 1}`,
+        `unitprice=${item.unitPrice ?? 0}`,
+      ];
+      if (item.markup) parts.push(`markup=${item.markup}`);
+      if (item.discount) parts.push(`discount=${item.discount}`);
+      if (item.isOptional) {
+        parts.push("optional=true");
+        parts.push(`accepted=${item.acceptedByCustomer ? "true" : "false"}`);
+      }
+      return parts.join("|");
+    })
+    .join("; ");
+}
+
+/** Parses a "Line Items" cell into line-item objects. Appends human-readable messages to `errors` for malformed segments (does not throw). */
+export function decodeLineItemsCell(raw: string | undefined, errors: string[]): LineItemCsvShape[] {
+  if (!raw || !raw.trim()) return [];
+  const items: LineItemCsvShape[] = [];
+  const itemStrs = splitEscaped(raw, ";").map((s) => s.trim()).filter(Boolean);
+
+  for (const itemStr of itemStrs) {
+    const pairStrs = splitEscaped(itemStr, "|").map((s) => s.trim()).filter(Boolean);
+    const fields: Record<string, string> = {};
+    for (const pairStr of pairStrs) {
+      const eqIdx = pairStr.indexOf("=");
+      if (eqIdx === -1) {
+        errors.push(`Invalid line item segment "${pairStr}" in "${itemStr}" — expected key=value`);
+        continue;
+      }
+      fields[pairStr.slice(0, eqIdx).trim().toLowerCase()] = pairStr.slice(eqIdx + 1).trim();
+    }
+    if (!fields.description) {
+      errors.push(`Line item is missing required "description" (in "${itemStr}")`);
+      continue;
+    }
+    const qty = fields.qty !== undefined ? Number(fields.qty) : 1;
+    const unitPrice = fields.unitprice !== undefined ? Number(fields.unitprice) : 0;
+    const markup = fields.markup !== undefined ? Number(fields.markup) : 0;
+    const discount = fields.discount !== undefined ? Number(fields.discount) : 0;
+    if ([qty, unitPrice, markup, discount].some((n) => Number.isNaN(n))) {
+      errors.push(`Line item "${fields.description}" has a non-numeric qty/unitprice/markup/discount`);
+      continue;
+    }
+    const isOptional = (fields.optional ?? "").toLowerCase() === "true";
+    items.push({
+      id: crypto.randomUUID(),
+      description: fields.description,
+      qty,
+      unitPrice,
+      markup,
+      discount,
+      isOptional,
+      acceptedByCustomer: isOptional ? (fields.accepted ?? "").toLowerCase() === "true" : true,
+    });
+  }
+  return items;
+}
+
+/** Sum of accepted line items (base qty*unitPrice with markup/discount applied). Unaccepted optional items are excluded, matching billing behavior elsewhere. */
+export function sumLineItems(items: LineItemCsvShape[]): number {
+  let total = 0;
+  for (const item of items) {
+    if (item.isOptional && !item.acceptedByCustomer) continue;
+    const base = item.qty * item.unitPrice;
+    const afterMarkup = base * (1 + item.markup / 100);
+    const afterDiscount = afterMarkup * (1 - item.discount / 100);
+    total += afterDiscount;
+  }
+  return total;
 }
 
 export function optionalEnum<T extends string>(

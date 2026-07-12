@@ -170,6 +170,18 @@ export default function PayrollPage() {
 
   const displayJobs = jobs ?? [];
 
+  if (!isTechnician && summaryLoading && !summary) {
+    return (
+      <div className="space-y-6 animate-in fade-in duration-500">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">P4P Payroll</h1>
+          <p className="text-muted-foreground mt-1">Run P4P payroll — review per-technician earnings before issuing bonuses.</p>
+        </div>
+        <div className="py-16 text-center text-muted-foreground">Loading payroll data...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       {/* Header */}
@@ -316,7 +328,7 @@ export default function PayrollPage() {
                     >
                       <TableCell>
                         <p className="font-medium">{t.name}</p>
-                        <p className="text-xs text-muted-foreground capitalize">{t.role.replace(/_/g, ' ')}</p>
+                        <p className="text-xs text-muted-foreground capitalize">{(t.role ?? '').replace(/_/g, ' ')}</p>
                       </TableCell>
                       <TableCell className="text-right">{t.jobCount}</TableCell>
                       <TableCell className="text-right">{fmt(t.totalRevenue)}</TableCell>

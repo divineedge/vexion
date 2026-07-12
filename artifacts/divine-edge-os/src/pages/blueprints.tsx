@@ -2,11 +2,14 @@ import React, { useState } from 'react';
 import {
   useListBlueprints, getListBlueprintsQueryKey,
   useUpdateBlueprint, getGetBlueprintQueryKey,
+  useCreateBlueprint,
   useGetBlueprintSuggestedParts, getGetBlueprintSuggestedPartsQueryKey,
   useUpdateBlueprintSuggestedParts,
   useListInventoryItems, getListInventoryItemsQueryKey,
+  useListProperties, getListPropertiesQueryKey,
   customFetch,
 } from '@workspace/api-client-react';
+import type { BlueprintInputMode } from '@workspace/api-client-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Plus, DraftingCompass, Percent, Package, AlertTriangle, Trash2 } from 'lucide-react';
 import { useLocation } from 'wouter';
@@ -28,6 +32,39 @@ export default function BlueprintsPage() {
   const qc = useQueryClient();
 
   const { data: blueprints, isLoading } = useListBlueprints({ query: { queryKey: getListBlueprintsQueryKey() } });
+
+  // New Blueprint dialog
+  const [newBpOpen, setNewBpOpen] = useState(false);
+  const [newBpName, setNewBpName] = useState('');
+  const [newBpMode, setNewBpMode] = useState<BlueprintInputMode>('landscape');
+  const [newBpPropertyId, setNewBpPropertyId] = useState('');
+  const createBlueprint = useCreateBlueprint();
+  const { data: properties } = useListProperties({}, { query: { enabled: newBpOpen, queryKey: getListPropertiesQueryKey({}) } });
+
+  const handleCreateBlueprint = () => {
+    if (!newBpName.trim()) { toast.error('Name is required'); return; }
+    createBlueprint.mutate(
+      {
+        data: {
+          name: newBpName.trim(),
+          mode: newBpMode,
+          propertyId: newBpPropertyId ? parseInt(newBpPropertyId, 10) : undefined,
+        },
+      },
+      {
+        onSuccess: (bp) => {
+          toast.success('Blueprint created');
+          qc.invalidateQueries({ queryKey: getListBlueprintsQueryKey() });
+          setNewBpOpen(false);
+          setNewBpName('');
+          setNewBpMode('landscape');
+          setNewBpPropertyId('');
+          setLocation(`/blueprints/${bp.id}`);
+        },
+        onError: () => toast.error('Failed to create blueprint'),
+      },
+    );
+  };
 
   // Inline P4P edit state: blueprintId → draft value
   const [p4pEditing, setP4pEditing] = useState<Record<number, string>>({});
@@ -103,7 +140,7 @@ export default function BlueprintsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Blueprints</h1>
           <p className="text-muted-foreground mt-1">Interactive schematics and material estimation. Set a per-service P4P rate on each blueprint.</p>
         </div>
-        <Button className="gap-2" onClick={() => setLocation('/blueprints/new')}>
+        <Button className="gap-2" onClick={() => setNewBpOpen(true)}>
           <Plus className="w-4 h-4" /> New Blueprint
         </Button>
       </div>
@@ -318,6 +355,58 @@ export default function BlueprintsPage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* New Blueprint Dialog */}
+      <Dialog open={newBpOpen} onOpenChange={setNewBpOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New Blueprint</DialogTitle>
+            <DialogDescription>Start a new schematic. You can draw the layout and measure the area on the next screen.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Name <span className="text-destructive">*</span></label>
+              <Input
+                value={newBpName}
+                onChange={e => setNewBpName(e.target.value)}
+                placeholder="e.g. Smith Front Yard Irrigation"
+                onKeyDown={e => { if (e.key === 'Enter') handleCreateBlueprint(); }}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Type</label>
+              <Select value={newBpMode} onValueChange={v => setNewBpMode(v as BlueprintInputMode)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="landscape">Landscape</SelectItem>
+                  <SelectItem value="irrigation">Irrigation</SelectItem>
+                  <SelectItem value="concrete">Concrete</SelectItem>
+                  <SelectItem value="general">General</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Property (optional)</label>
+              <Select value={newBpPropertyId || '__none__'} onValueChange={v => setNewBpPropertyId(v === '__none__' ? '' : v)}>
+                <SelectTrigger><SelectValue placeholder="Link to a property" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">No property</SelectItem>
+                  {properties?.map(p => (
+                    <SelectItem key={p.id} value={String(p.id)}>{p.address}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Linking a property lets you pull its map for area measurement.</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewBpOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreateBlueprint} disabled={createBlueprint.isPending}>
+              {createBlueprint.isPending ? 'Creating...' : 'Create Blueprint'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

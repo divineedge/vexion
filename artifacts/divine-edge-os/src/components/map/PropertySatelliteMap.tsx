@@ -150,11 +150,18 @@ export default function PropertySatelliteMap({
       markersRef.current.pin = pin;
 
       if (!readonly && onPinChange) {
+        pin.on('drag', () => {
+          const pos = pin.getLatLng();
+          // Geofence is locked to the pin — follow it live while dragging.
+          markersRef.current.geofenceCircle?.setLatLng(pos);
+        });
         pin.on('dragend', () => {
           const pos = pin.getLatLng();
           setCurrentLat(pos.lat);
           setCurrentLng(pos.lng);
+          markersRef.current.geofenceCircle?.setLatLng(pos);
           onPinChange(pos.lat, pos.lng);
+          onGeofenceChange?.(pos.lat, pos.lng, localGeofenceRadius);
         });
       }
 

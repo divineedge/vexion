@@ -18,6 +18,7 @@ import {
   useApproveStopServiceFlag,
   useDismissStopServiceFlag,
   useGetTenantSettings, getGetTenantSettingsQueryKey,
+  useCreateInvoice,
 } from '@workspace/api-client-react';
 import type { RecurringInvoiceTemplate, BillingLineItem, StopServiceFlag } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -290,6 +291,168 @@ function TemplateSheet({ open, onClose, editing, customers }: TemplateSheetProps
   );
 }
 
+// ── Create Invoice Sheet ────────────────────────────────────────────────────────
+
+interface CreateInvoiceSheetProps {
+  open: boolean;
+  onClose: () => void;
+  customers: Array<{ id: number; name: string }>;
+}
+
+function CreateInvoiceSheet({ open, onClose, customers }: CreateInvoiceSheetProps) {
+  const qc = useQueryClient();
+  const createInvoice = useCreateInvoice();
+
+  const [customerId, setCustomerId] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [notes, setNotes] = useState('');
+  const [lineItems, setLineItems] = useState<LineItemRow[]>([{ description: '', quantity: 1, unitPrice: 0, total: 0 }]);
+
+  React.useEffect(() => {
+    if (open) {
+      setCustomerId('');
+      setDueDate('');
+      setNotes('');
+      setLineItems([{ description: '', quantity: 1, unitPrice: 0, total: 0 }]);
+    }
+  }, [open]);
+
+  const updateLineItem = (index: number, field: keyof LineItemRow, value: string | number) => {
+    setLineItems(prev => prev.map((li, i) => {
+      if (i !== index) return li;
+      const updated = { ...li, [field]: value };
+      updated.total = updated.quantity * updated.unitPrice;
+      return updated;
+    }));
+  };
+
+  const subtotal = lineItems.reduce((s, li) => s + li.total, 0);
+
+  const handleSave = () => {
+    if (!customerId) {
+      toast.error('Customer is required');
+      return;
+    }
+    const validLineItems = lineItems.filter(li => li.description.trim() !== '');
+    createInvoice.mutate(
+      {
+        data: {
+          customerId: parseInt(customerId, 10),
+          notes: notes || undefined,
+          dueDate: dueDate || undefined,
+          lineItems: validLineItems.length > 0 ? validLineItems : undefined,
+        },
+      },
+      {
+        onSuccess: () => {
+          toast.success('Invoice created');
+          qc.invalidateQueries({ queryKey: getListInvoicesQueryKey() });
+          qc.invalidateQueries({ queryKey: getGetFinancialsSummaryQueryKey() });
+          onClose();
+        },
+        onError: () => toast.error('Failed to create invoice'),
+      },
+    );
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={o => { if (!o) onClose(); }}>
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetHeader className="pb-4">
+          <SheetTitle>Create Invoice</SheetTitle>
+          <SheetDescription>Create a one-off invoice for a customer.</SheetDescription>
+        </SheetHeader>
+
+        <div className="space-y-4 pb-6">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Customer <span className="text-destructive">*</span></label>
+            <Select value={customerId} onValueChange={setCustomerId}>
+              <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
+              <SelectContent>
+                {customers.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Due Date</label>
+            <Input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} />
+          </div>
+
+          <Separator />
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium">Line Items</label>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs gap-1"
+                onClick={() => setLineItems(p => [...p, { description: '', quantity: 1, unitPrice: 0, total: 0 }])}
+              >
+                <Plus className="w-3 h-3" /> Add Line
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {lineItems.map((li, i) => (
+                <div key={i} className="grid grid-cols-12 gap-1.5 items-center text-sm">
+                  <Input
+                    className="col-span-5 h-8 text-xs"
+                    placeholder="Description"
+                    value={li.description}
+                    onChange={e => updateLineItem(i, 'description', e.target.value)}
+                  />
+                  <Input
+                    className="col-span-2 h-8 text-xs"
+                    type="number"
+                    min={1}
+                    placeholder="Qty"
+                    value={li.quantity}
+                    onChange={e => updateLineItem(i, 'quantity', parseFloat(e.target.value) || 0)}
+                  />
+                  <Input
+                    className="col-span-3 h-8 text-xs"
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    placeholder="Unit price"
+                    value={li.unitPrice}
+                    onChange={e => updateLineItem(i, 'unitPrice', parseFloat(e.target.value) || 0)}
+                  />
+                  <span className="col-span-1 text-xs text-right font-medium">${li.total.toFixed(0)}</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="col-span-1 h-7 w-7 text-muted-foreground hover:text-destructive"
+                    onClick={() => setLineItems(p => p.filter((_, j) => j !== i))}
+                    disabled={lineItems.length === 1}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
+              ))}
+              <div className="flex justify-end text-sm font-semibold text-right pr-8">
+                Subtotal: ${subtotal.toFixed(2)}
+              </div>
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Notes</label>
+            <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional notes on invoice" />
+          </div>
+
+          <Button className="w-full" onClick={handleSave} disabled={createInvoice.isPending}>
+            {createInvoice.isPending ? 'Creating...' : 'Create Invoice'}
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function FinancialsPage() {
@@ -298,6 +461,7 @@ export default function FinancialsPage() {
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
   const [partsExpanded, setPartsExpanded] = useState(false);
   const [templateSheetOpen, setTemplateSheetOpen] = useState(false);
+  const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<RecurringInvoiceTemplate | null>(null);
   const [approvingFlag, setApprovingFlag] = useState<StopServiceFlag | null>(null);
 
@@ -447,7 +611,7 @@ export default function FinancialsPage() {
             entityLabel="Invoices"
             onImportComplete={() => qc.invalidateQueries({ queryKey: getListInvoicesQueryKey() })}
           />
-          <Button className="gap-2"><Plus className="w-4 h-4" /> Create Invoice</Button>
+          <Button className="gap-2" onClick={() => setCreateInvoiceOpen(true)}><Plus className="w-4 h-4" /> Create Invoice</Button>
         </div>
       </div>
 
@@ -1071,6 +1235,13 @@ export default function FinancialsPage() {
         open={templateSheetOpen}
         onClose={() => { setTemplateSheetOpen(false); setEditingTemplate(null); }}
         editing={editingTemplate}
+        customers={customerOptions}
+      />
+
+      {/* Create Invoice Sheet */}
+      <CreateInvoiceSheet
+        open={createInvoiceOpen}
+        onClose={() => setCreateInvoiceOpen(false)}
         customers={customerOptions}
       />
     </div>

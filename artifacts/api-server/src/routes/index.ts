@@ -11,7 +11,6 @@ import crewsRouter from "./crews";
 import inventoryRouter from "./inventory";
 import inventoryLocationsRouter from "./inventoryLocations";
 import invoicesRouter from "./invoices";
-import routinesRouter from "./routines";
 import timeTrackingRouter from "./timeTracking";
 import blueprintsRouter from "./blueprints";
 import settingsRouter from "./settings";
@@ -45,6 +44,7 @@ import routingRouter from "./routing";
 import taskBundlesRouter from "./taskBundles";
 import followupQueueRouter from "./followupQueue";
 import importBatchesRouter from "./importBatches";
+import employeeHistoryRouter from "./employeeHistory";
 
 const router: IRouter = Router();
 
@@ -60,7 +60,6 @@ router.use(crewsRouter);
 router.use(inventoryRouter);
 router.use(inventoryLocationsRouter);
 router.use(invoicesRouter);
-router.use(routinesRouter);
 router.use(timeTrackingRouter);
 router.use(blueprintsRouter);
 router.use(settingsRouter);
@@ -94,5 +93,6 @@ router.use(routingRouter);
 router.use(taskBundlesRouter);
 router.use(followupQueueRouter);
 router.use(importBatchesRouter);
+router.use(employeeHistoryRouter);
 
 export default router;

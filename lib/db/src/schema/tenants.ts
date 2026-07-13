@@ -16,7 +16,7 @@ export const tenantsTable = pgTable("tenants", {
   showCostPriceToTech: boolean("show_cost_price_to_tech").notNull().default(false),
   /** 'minutes' | 'hours' — controls how job duration is displayed/entered company-wide */
   durationUnit: text("duration_unit").notNull().default("minutes"),
-  /** auto-invoicing: 'off' | 'daily' | 'weekly' | 'monthly' */
+  /** auto-invoicing: 'off' | 'daily' | 'weekly' | 'bi_monthly' | 'monthly' */
   autoInvoiceFrequency: text("auto_invoice_frequency").notNull().default("off"),
   /** Global master P4P payout percentage (0–100). Used when a service has no override. */
   p4pMasterPercentage: real("p4p_master_percentage").notNull().default(0),
@@ -111,6 +111,12 @@ export const tenantsTable = pgTable("tenants", {
   equipmentRuntimeHourlyRate: real("equipment_runtime_hourly_rate").notNull().default(0),
   /** $/hour cost of an asset being out of service for repair (Maintenance & Repair ledger) */
   equipmentDowntimeHourlyRate: real("equipment_downtime_hourly_rate").notNull().default(0),
+  // ── Time Tracking ─────────────────────────────────────────────────────────
+  /** Hard cap (hours) on a single master-clock shift; after this, the system auto clocks-out the staffer. Null = no cap. */
+  maxClockInHours: real("max_clock_in_hours").default(12),
+  // ── Non-recurring job invoicing cadence ──────────────────────────────────
+  /** How completed non-recurring jobs flagged for auto-invoicing get billed: 'immediate' | 'weekly' */
+  nonRecurringInvoiceCadence: text("non_recurring_invoice_cadence").notNull().default("immediate"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

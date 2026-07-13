@@ -15,7 +15,6 @@ import SchedulePage from '@/pages/schedule';
 import InventoryPage from '@/pages/inventory';
 import FinancialsPage from '@/pages/financials';
 import ReportsPage from '@/pages/reports';
-import DailyRoutinesPage from '@/pages/daily-routines';
 import TimeTrackingPage from '@/pages/time-tracking';
 import BlueprintsPage from '@/pages/blueprints';
 import BlueprintCanvasPage from '@/pages/blueprint-canvas';
@@ -41,6 +40,7 @@ import TasksPage from '@/pages/tasks';
 import FollowupQueuePage from '@/pages/followup-queue';
 import RoutesDashboardPage from '@/pages/routes';
 import TaskBundlesPage from '@/pages/task-bundles';
+import EmployeeDetailPage from '@/pages/employee-detail';
 
 import NotFound from '@/pages/not-found';
 
@@ -66,7 +66,6 @@ function ProtectedRoutes() {
         <Route path="/inventory" component={InventoryPage} />
         <Route path="/financials" component={FinancialsPage} />
         <Route path="/reports" component={ReportsPage} />
-        <Route path="/daily-routines" component={DailyRoutinesPage} />
         <Route path="/time-tracking" component={TimeTrackingPage} />
         <Route path="/blueprints/:id" component={BlueprintCanvasPage} />
         <Route path="/blueprints" component={BlueprintsPage} />
@@ -88,6 +87,7 @@ function ProtectedRoutes() {
         <Route path="/reviews" component={ReviewsPage} />
         <Route path="/plans/:id" component={PlanDetailPage} />
         <Route path="/plans" component={PlansDashboardPage} />
+        <Route path="/team/:id" component={EmployeeDetailPage} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

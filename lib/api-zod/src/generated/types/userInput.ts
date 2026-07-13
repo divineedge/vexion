@@ -12,4 +12,6 @@ export interface UserInput {
   name: string;
   role: UserInputRole;
   password?: string;
+  hourlyRate?: number;
+  hireDate?: string;
 }

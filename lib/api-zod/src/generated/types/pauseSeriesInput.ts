@@ -8,4 +8,9 @@
 
 export interface PauseSeriesInput {
   paused: boolean;
+  /**
+     * Off-season pause: ISO date the scheduler should auto-resume the series. Only meaningful when paused=true.
+     * @nullable
+     */
+  resumeAt?: string | null;
 }

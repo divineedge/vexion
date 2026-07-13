@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, boolean, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, boolean, integer, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -14,6 +14,10 @@ export const usersTable = pgTable("users", {
   isActive: boolean("is_active").notNull().default(true),
   /** Assigned inventory location (e.g., their trailer). Used for location-scoped inventory views. */
   assignedLocationId: integer("assigned_location_id"),
+  /** Hourly pay rate ($/hr). Null = not set. */
+  hourlyRate: real("hourly_rate"),
+  /** Date this team member was hired. */
+  hireDate: timestamp("hire_date", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

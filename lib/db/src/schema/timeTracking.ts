@@ -4,7 +4,6 @@ import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { usersTable } from "./users";
 import { jobsTable } from "./jobs";
-import { routinesTable } from "./routines";
 
 export const timeEntriesTable = pgTable("time_entries", {
   id: serial("id").primaryKey(),
@@ -24,7 +23,6 @@ export const subTimersTable = pgTable("sub_timers", {
   label: text("label").notNull(),
   type: text("type").notNull().default("other"),
   jobId: integer("job_id").references(() => jobsTable.id),
-  routineId: integer("routine_id").references(() => routinesTable.id),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
   stoppedAt: timestamp("stopped_at", { withTimezone: true }),
   elapsedSeconds: integer("elapsed_seconds").notNull().default(0),

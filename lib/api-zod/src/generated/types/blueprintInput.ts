@@ -13,4 +13,6 @@ export interface BlueprintInput {
   jobId?: number;
   propertyId?: number;
   overageBufferPercent?: number;
+  isTemplate?: boolean;
+  templateId?: number;
 }

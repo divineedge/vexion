@@ -88,12 +88,12 @@ function GenerateInvoicesCard({ isProduction, confirmProd }: { isProduction: boo
   const run = (dryRun: boolean) => {
     sim.mutate({ data: { dryRun, confirmProductionRun: isProduction ? confirmProd : undefined } }, {
       onSuccess: (result) => {
-        if (result.dryRun) push('Generate Monthly Invoices — dry run', true, `${result.due?.length ?? 0} template(s) due`);
-        else push('Generate Monthly Invoices — executed', true, `${(result.results ?? []).length} template(s) processed`);
+        if (result.dryRun) push('Generate Invoices — dry run', true, `${result.due?.length ?? 0} template(s) due`);
+        else push('Generate Invoices — executed', true, `${(result.results ?? []).length} template(s) processed`);
       },
       onError: (err: any) => {
         const msg = err?.error ?? 'Failed';
-        push('Generate Monthly Invoices', false, msg);
+        push('Generate Invoices', false, msg);
         toast.error(msg);
       },
     });
@@ -102,7 +102,7 @@ function GenerateInvoicesCard({ isProduction, confirmProd }: { isProduction: boo
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">Generate Monthly Invoices Now</CardTitle>
+        <CardTitle className="text-base">Generate Invoices Now</CardTitle>
         <CardDescription>Runs the recurring billing scheduler immediately for this tenant.</CardDescription>
       </CardHeader>
       <CardContent>

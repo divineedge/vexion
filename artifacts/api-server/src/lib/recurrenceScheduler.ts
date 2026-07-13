@@ -23,7 +23,26 @@ import { nthOccurrenceAfterRoot, type RecurrenceRule } from "./recurrenceEngine"
 
 const LOOKAHEAD_DAYS = parseInt(process.env.RECURRENCE_LOOKAHEAD_DAYS ?? "7", 10);
 
+/** Off-season pause: auto-resume any paused series root whose resumeAt date has arrived. */
+async function processAutoResume() {
+  const now = new Date();
+  const resumed = await db.execute(sql`
+    UPDATE jobs
+    SET is_recurrence_paused = false, resume_at = NULL
+    WHERE is_recurrence_paused = true
+      AND resume_at IS NOT NULL
+      AND resume_at <= ${now}
+    RETURNING id
+  `);
+  const count = (resumed as unknown as { rowCount: number }).rowCount ?? 0;
+  if (count > 0) {
+    logger.info({ count }, "Recurrence scheduler: auto-resumed off-season series");
+  }
+}
+
 async function processRecurring() {
+  await processAutoResume();
+
   const now = new Date();
   const lookahead = new Date(now.getTime() + LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000);
 

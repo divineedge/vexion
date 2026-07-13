@@ -24,6 +24,7 @@ import type {
   AddCrewMemberInput,
   AddMediaInput,
   AgingInvoicesReport,
+  ApplyBlueprintTemplateBody,
   AuthResponse,
   BankTransaction,
   BillingAutomationStatus,
@@ -75,6 +76,10 @@ import type {
   DashboardSummary,
   Division,
   DivisionInput,
+  EmployeeFormTemplate,
+  EmployeeFormTemplateInput,
+  EmployeeHistoryEntry,
+  EmployeeHistoryEntryInput,
   EmployeeRevenueReport,
   Equipment,
   EquipmentFuelLog,
@@ -92,6 +97,7 @@ import type {
   FollowupQueueItem,
   FollowupQueueItemContext,
   FollowupTriggerConfig,
+  GenerateBlueprintFromAiBody,
   GeocodeResult,
   GeofencePinUpdate,
   GetDevToolsEnvironment200,
@@ -196,9 +202,6 @@ import type {
   RouteDayDetail,
   RouteTemplate,
   RouteTemplateInput,
-  Routine,
-  RoutineInput,
-  RoutineUpdate,
   RunRecurringTemplateNow200,
   SalesTaxReport,
   SendBroadcastInput,
@@ -6458,297 +6461,6 @@ export const useDismissStopServiceFlag = <TError = ErrorType<unknown>,
       return useMutation(getDismissStopServiceFlagMutationOptions(options));
     }
 
-export const getListRoutinesUrl = () => {
-
-
-
-
-  return `/api/routines`
-}
-
-/**
- * @summary List all daily routines
- */
-export const listRoutines = async ( options?: RequestInit): Promise<Routine[]> => {
-
-  return customFetch<Routine[]>(getListRoutinesUrl(),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-
-
-export const getListRoutinesQueryKey = () => {
-    return [
-    `/api/routines`
-    ] as const;
-    }
-
-
-export const getListRoutinesQueryOptions = <TData = Awaited<ReturnType<typeof listRoutines>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRoutines>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
-
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getListRoutinesQueryKey();
-
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof listRoutines>>> = ({ signal }) => listRoutines({ signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listRoutines>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type ListRoutinesQueryResult = NonNullable<Awaited<ReturnType<typeof listRoutines>>>
-export type ListRoutinesQueryError = ErrorType<unknown>
-
-
-/**
- * @summary List all daily routines
- */
-
-export function useListRoutines<TData = Awaited<ReturnType<typeof listRoutines>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRoutines>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getListRoutinesQueryOptions(options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
-
-  return withQueryKey(query, queryOptions.queryKey);
-}
-
-
-
-
-
-
-
-export const getCreateRoutineUrl = () => {
-
-
-
-
-  return `/api/routines`
-}
-
-/**
- * @summary Create a daily routine
- */
-export const createRoutine = async (routineInput: RoutineInput, options?: RequestInit): Promise<Routine> => {
-
-  return customFetch<Routine>(getCreateRoutineUrl(),
-  {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(routineInput)
-  }
-);}
-
-
-
-
-
-export const getCreateRoutineMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createRoutine>>, TError,{data: BodyType<RoutineInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof createRoutine>>, TError,{data: BodyType<RoutineInput>}, TContext> => {
-
-const mutationKey = ['createRoutine'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createRoutine>>, {data: BodyType<RoutineInput>}> = (props) => {
-          const {data} = props ?? {};
-
-          return  createRoutine(data,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type CreateRoutineMutationResult = NonNullable<Awaited<ReturnType<typeof createRoutine>>>
-    export type CreateRoutineMutationBody = BodyType<RoutineInput>
-    export type CreateRoutineMutationError = ErrorType<unknown>
-
-    /**
- * @summary Create a daily routine
- */
-export const useCreateRoutine = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createRoutine>>, TError,{data: BodyType<RoutineInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof createRoutine>>,
-        TError,
-        {data: BodyType<RoutineInput>},
-        TContext
-      > => {
-      return useMutation(getCreateRoutineMutationOptions(options));
-    }
-
-export const getUpdateRoutineUrl = (id: number,) => {
-
-
-
-
-  return `/api/routines/${id}`
-}
-
-/**
- * @summary Update a routine
- */
-export const updateRoutine = async (id: number,
-    routineUpdate: RoutineUpdate, options?: RequestInit): Promise<Routine> => {
-
-  return customFetch<Routine>(getUpdateRoutineUrl(id),
-  {
-    ...options,
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(routineUpdate)
-  }
-);}
-
-
-
-
-
-export const getUpdateRoutineMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRoutine>>, TError,{id: number;data: BodyType<RoutineUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof updateRoutine>>, TError,{id: number;data: BodyType<RoutineUpdate>}, TContext> => {
-
-const mutationKey = ['updateRoutine'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateRoutine>>, {id: number;data: BodyType<RoutineUpdate>}> = (props) => {
-          const {id,data} = props ?? {};
-
-          return  updateRoutine(id,data,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type UpdateRoutineMutationResult = NonNullable<Awaited<ReturnType<typeof updateRoutine>>>
-    export type UpdateRoutineMutationBody = BodyType<RoutineUpdate>
-    export type UpdateRoutineMutationError = ErrorType<unknown>
-
-    /**
- * @summary Update a routine
- */
-export const useUpdateRoutine = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRoutine>>, TError,{id: number;data: BodyType<RoutineUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof updateRoutine>>,
-        TError,
-        {id: number;data: BodyType<RoutineUpdate>},
-        TContext
-      > => {
-      return useMutation(getUpdateRoutineMutationOptions(options));
-    }
-
-export const getDeleteRoutineUrl = (id: number,) => {
-
-
-
-
-  return `/api/routines/${id}`
-}
-
-/**
- * @summary Delete a routine
- */
-export const deleteRoutine = async (id: number, options?: RequestInit): Promise<void> => {
-
-  return customFetch<void>(getDeleteRoutineUrl(id),
-  {
-    ...options,
-    method: 'DELETE'
-
-
-  }
-);}
-
-
-
-
-
-export const getDeleteRoutineMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteRoutine>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof deleteRoutine>>, TError,{id: number}, TContext> => {
-
-const mutationKey = ['deleteRoutine'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteRoutine>>, {id: number}> = (props) => {
-          const {id} = props ?? {};
-
-          return  deleteRoutine(id,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type DeleteRoutineMutationResult = NonNullable<Awaited<ReturnType<typeof deleteRoutine>>>
-
-    export type DeleteRoutineMutationError = ErrorType<unknown>
-
-    /**
- * @summary Delete a routine
- */
-export const useDeleteRoutine = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteRoutine>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof deleteRoutine>>,
-        TError,
-        {id: number},
-        TContext
-      > => {
-      return useMutation(getDeleteRoutineMutationOptions(options));
-    }
-
 export const getGetMasterClockUrl = () => {
 
 
@@ -7708,6 +7420,523 @@ export const useCalculateBlueprintEstimate = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCalculateBlueprintEstimateMutationOptions(options));
+    }
+
+export const getGenerateBlueprintFromAiUrl = () => {
+
+
+
+
+  return `/api/blueprints/generate-ai`
+}
+
+/**
+ * @summary AI-assisted layout generation from a property map + description
+ */
+export const generateBlueprintFromAi = async (generateBlueprintFromAiBody: GenerateBlueprintFromAiBody, options?: RequestInit): Promise<Blueprint> => {
+
+  return customFetch<Blueprint>(getGenerateBlueprintFromAiUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(generateBlueprintFromAiBody)
+  }
+);}
+
+
+
+
+
+export const getGenerateBlueprintFromAiMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateBlueprintFromAi>>, TError,{data: BodyType<GenerateBlueprintFromAiBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateBlueprintFromAi>>, TError,{data: BodyType<GenerateBlueprintFromAiBody>}, TContext> => {
+
+const mutationKey = ['generateBlueprintFromAi'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateBlueprintFromAi>>, {data: BodyType<GenerateBlueprintFromAiBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  generateBlueprintFromAi(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateBlueprintFromAiMutationResult = NonNullable<Awaited<ReturnType<typeof generateBlueprintFromAi>>>
+    export type GenerateBlueprintFromAiMutationBody = BodyType<GenerateBlueprintFromAiBody>
+    export type GenerateBlueprintFromAiMutationError = ErrorType<unknown>
+
+    /**
+ * @summary AI-assisted layout generation from a property map + description
+ */
+export const useGenerateBlueprintFromAi = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateBlueprintFromAi>>, TError,{data: BodyType<GenerateBlueprintFromAiBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateBlueprintFromAi>>,
+        TError,
+        {data: BodyType<GenerateBlueprintFromAiBody>},
+        TContext
+      > => {
+      return useMutation(getGenerateBlueprintFromAiMutationOptions(options));
+    }
+
+export const getListBlueprintTemplatesUrl = () => {
+
+
+
+
+  return `/api/blueprints/templates`
+}
+
+/**
+ * @summary List reusable business design-rule templates
+ */
+export const listBlueprintTemplates = async ( options?: RequestInit): Promise<Blueprint[]> => {
+
+  return customFetch<Blueprint[]>(getListBlueprintTemplatesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListBlueprintTemplatesQueryKey = () => {
+    return [
+    `/api/blueprints/templates`
+    ] as const;
+    }
+
+
+export const getListBlueprintTemplatesQueryOptions = <TData = Awaited<ReturnType<typeof listBlueprintTemplates>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBlueprintTemplates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListBlueprintTemplatesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listBlueprintTemplates>>> = ({ signal }) => listBlueprintTemplates({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listBlueprintTemplates>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListBlueprintTemplatesQueryResult = NonNullable<Awaited<ReturnType<typeof listBlueprintTemplates>>>
+export type ListBlueprintTemplatesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List reusable business design-rule templates
+ */
+
+export function useListBlueprintTemplates<TData = Awaited<ReturnType<typeof listBlueprintTemplates>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBlueprintTemplates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListBlueprintTemplatesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getApplyBlueprintTemplateUrl = (id: number,) => {
+
+
+
+
+  return `/api/blueprints/${id}/apply-template`
+}
+
+/**
+ * @summary Create a job/property-specific blueprint instance from a template
+ */
+export const applyBlueprintTemplate = async (id: number,
+    applyBlueprintTemplateBody: ApplyBlueprintTemplateBody, options?: RequestInit): Promise<Blueprint> => {
+
+  return customFetch<Blueprint>(getApplyBlueprintTemplateUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(applyBlueprintTemplateBody)
+  }
+);}
+
+
+
+
+
+export const getApplyBlueprintTemplateMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyBlueprintTemplate>>, TError,{id: number;data: BodyType<ApplyBlueprintTemplateBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof applyBlueprintTemplate>>, TError,{id: number;data: BodyType<ApplyBlueprintTemplateBody>}, TContext> => {
+
+const mutationKey = ['applyBlueprintTemplate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof applyBlueprintTemplate>>, {id: number;data: BodyType<ApplyBlueprintTemplateBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  applyBlueprintTemplate(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApplyBlueprintTemplateMutationResult = NonNullable<Awaited<ReturnType<typeof applyBlueprintTemplate>>>
+    export type ApplyBlueprintTemplateMutationBody = BodyType<ApplyBlueprintTemplateBody>
+    export type ApplyBlueprintTemplateMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a job/property-specific blueprint instance from a template
+ */
+export const useApplyBlueprintTemplate = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyBlueprintTemplate>>, TError,{id: number;data: BodyType<ApplyBlueprintTemplateBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof applyBlueprintTemplate>>,
+        TError,
+        {id: number;data: BodyType<ApplyBlueprintTemplateBody>},
+        TContext
+      > => {
+      return useMutation(getApplyBlueprintTemplateMutationOptions(options));
+    }
+
+export const getListEmployeeFormTemplatesUrl = () => {
+
+
+
+
+  return `/api/employee-form-templates`
+}
+
+/**
+ * @summary List admin-defined custom form templates for employee files
+ */
+export const listEmployeeFormTemplates = async ( options?: RequestInit): Promise<EmployeeFormTemplate[]> => {
+
+  return customFetch<EmployeeFormTemplate[]>(getListEmployeeFormTemplatesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListEmployeeFormTemplatesQueryKey = () => {
+    return [
+    `/api/employee-form-templates`
+    ] as const;
+    }
+
+
+export const getListEmployeeFormTemplatesQueryOptions = <TData = Awaited<ReturnType<typeof listEmployeeFormTemplates>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEmployeeFormTemplates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListEmployeeFormTemplatesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listEmployeeFormTemplates>>> = ({ signal }) => listEmployeeFormTemplates({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listEmployeeFormTemplates>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListEmployeeFormTemplatesQueryResult = NonNullable<Awaited<ReturnType<typeof listEmployeeFormTemplates>>>
+export type ListEmployeeFormTemplatesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List admin-defined custom form templates for employee files
+ */
+
+export function useListEmployeeFormTemplates<TData = Awaited<ReturnType<typeof listEmployeeFormTemplates>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEmployeeFormTemplates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListEmployeeFormTemplatesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateEmployeeFormTemplateUrl = () => {
+
+
+
+
+  return `/api/employee-form-templates`
+}
+
+/**
+ * @summary Create a custom form template
+ */
+export const createEmployeeFormTemplate = async (employeeFormTemplateInput: EmployeeFormTemplateInput, options?: RequestInit): Promise<EmployeeFormTemplate> => {
+
+  return customFetch<EmployeeFormTemplate>(getCreateEmployeeFormTemplateUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(employeeFormTemplateInput)
+  }
+);}
+
+
+
+
+
+export const getCreateEmployeeFormTemplateMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEmployeeFormTemplate>>, TError,{data: BodyType<EmployeeFormTemplateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createEmployeeFormTemplate>>, TError,{data: BodyType<EmployeeFormTemplateInput>}, TContext> => {
+
+const mutationKey = ['createEmployeeFormTemplate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createEmployeeFormTemplate>>, {data: BodyType<EmployeeFormTemplateInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createEmployeeFormTemplate(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateEmployeeFormTemplateMutationResult = NonNullable<Awaited<ReturnType<typeof createEmployeeFormTemplate>>>
+    export type CreateEmployeeFormTemplateMutationBody = BodyType<EmployeeFormTemplateInput>
+    export type CreateEmployeeFormTemplateMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a custom form template
+ */
+export const useCreateEmployeeFormTemplate = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEmployeeFormTemplate>>, TError,{data: BodyType<EmployeeFormTemplateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createEmployeeFormTemplate>>,
+        TError,
+        {data: BodyType<EmployeeFormTemplateInput>},
+        TContext
+      > => {
+      return useMutation(getCreateEmployeeFormTemplateMutationOptions(options));
+    }
+
+export const getListEmployeeHistoryUrl = (userId: number,) => {
+
+
+
+
+  return `/api/users/${userId}/history`
+}
+
+/**
+ * @summary List an employee's history entries (reviews, complaints, callbacks, custom forms)
+ */
+export const listEmployeeHistory = async (userId: number, options?: RequestInit): Promise<EmployeeHistoryEntry[]> => {
+
+  return customFetch<EmployeeHistoryEntry[]>(getListEmployeeHistoryUrl(userId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListEmployeeHistoryQueryKey = (userId: number,) => {
+    return [
+    `/api/users/${userId}/history`
+    ] as const;
+    }
+
+
+export const getListEmployeeHistoryQueryOptions = <TData = Awaited<ReturnType<typeof listEmployeeHistory>>, TError = ErrorType<unknown>>(userId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEmployeeHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListEmployeeHistoryQueryKey(userId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listEmployeeHistory>>> = ({ signal }) => listEmployeeHistory(userId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: userId !== null && userId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listEmployeeHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListEmployeeHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof listEmployeeHistory>>>
+export type ListEmployeeHistoryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List an employee's history entries (reviews, complaints, callbacks, custom forms)
+ */
+
+export function useListEmployeeHistory<TData = Awaited<ReturnType<typeof listEmployeeHistory>>, TError = ErrorType<unknown>>(
+ userId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEmployeeHistory>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListEmployeeHistoryQueryOptions(userId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateEmployeeHistoryEntryUrl = (userId: number,) => {
+
+
+
+
+  return `/api/users/${userId}/history`
+}
+
+/**
+ * @summary Add an entry to an employee's history file (never alters the base user record)
+ */
+export const createEmployeeHistoryEntry = async (userId: number,
+    employeeHistoryEntryInput: EmployeeHistoryEntryInput, options?: RequestInit): Promise<EmployeeHistoryEntry> => {
+
+  return customFetch<EmployeeHistoryEntry>(getCreateEmployeeHistoryEntryUrl(userId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(employeeHistoryEntryInput)
+  }
+);}
+
+
+
+
+
+export const getCreateEmployeeHistoryEntryMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEmployeeHistoryEntry>>, TError,{userId: number;data: BodyType<EmployeeHistoryEntryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createEmployeeHistoryEntry>>, TError,{userId: number;data: BodyType<EmployeeHistoryEntryInput>}, TContext> => {
+
+const mutationKey = ['createEmployeeHistoryEntry'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createEmployeeHistoryEntry>>, {userId: number;data: BodyType<EmployeeHistoryEntryInput>}> = (props) => {
+          const {userId,data} = props ?? {};
+
+          return  createEmployeeHistoryEntry(userId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateEmployeeHistoryEntryMutationResult = NonNullable<Awaited<ReturnType<typeof createEmployeeHistoryEntry>>>
+    export type CreateEmployeeHistoryEntryMutationBody = BodyType<EmployeeHistoryEntryInput>
+    export type CreateEmployeeHistoryEntryMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Add an entry to an employee's history file (never alters the base user record)
+ */
+export const useCreateEmployeeHistoryEntry = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEmployeeHistoryEntry>>, TError,{userId: number;data: BodyType<EmployeeHistoryEntryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createEmployeeHistoryEntry>>,
+        TError,
+        {userId: number;data: BodyType<EmployeeHistoryEntryInput>},
+        TContext
+      > => {
+      return useMutation(getCreateEmployeeHistoryEntryMutationOptions(options));
     }
 
 export const getGetTenantSettingsUrl = () => {

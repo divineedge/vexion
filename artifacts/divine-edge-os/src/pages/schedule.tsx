@@ -219,6 +219,21 @@ export default function SchedulePage() {
   });
   const skipNextOccurrence = useSkipNextOccurrence();
   const pauseSeries = usePauseRecurringSeries();
+  const [pauseDialogRootId, setPauseDialogRootId] = useState<number | null>(null);
+  const [pauseResumeAt, setPauseResumeAt] = useState('');
+
+  function confirmPause(rootId: number) {
+    pauseSeries.mutate({ id: rootId, data: { paused: true, resumeAt: pauseResumeAt ? new Date(pauseResumeAt).toISOString() : null } }, {
+      onSuccess: () => {
+        toast.success(pauseResumeAt ? `Series paused, will resume ${format(new Date(pauseResumeAt), 'MMM d, yyyy')}` : 'Series paused');
+        qc.invalidateQueries({ queryKey: getListRecurringSeriesQueryKey() });
+        qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+        setPauseDialogRootId(null);
+        setPauseResumeAt('');
+      },
+      onError: () => toast.error('Failed to pause series'),
+    });
+  }
   const cancelSeries = useCancelRecurringSeries();
 
   // Job parts hooks
@@ -391,10 +406,14 @@ export default function SchedulePage() {
                       size="sm" variant="outline" className={`h-7 text-xs gap-1 ${s.isRecurrencePaused ? 'text-emerald-600' : ''}`}
                       disabled={pauseSeries.isPending}
                       onClick={() => {
-                        pauseSeries.mutate({ id: s.id, data: { paused: !s.isRecurrencePaused } }, {
-                          onSuccess: () => { toast.success(s.isRecurrencePaused ? 'Series resumed' : 'Series paused'); qc.invalidateQueries({ queryKey: getListRecurringSeriesQueryKey() }); },
-                          onError: () => toast.error('Failed to update'),
-                        });
+                        if (s.isRecurrencePaused) {
+                          pauseSeries.mutate({ id: s.id, data: { paused: false } }, {
+                            onSuccess: () => { toast.success('Series resumed'); qc.invalidateQueries({ queryKey: getListRecurringSeriesQueryKey() }); },
+                            onError: () => toast.error('Failed to update'),
+                          });
+                        } else {
+                          setPauseDialogRootId(s.id);
+                        }
                       }}
                     >
                       {s.isRecurrencePaused ? <><Play className="w-3 h-3" /> Resume</> : <><Pause className="w-3 h-3" /> Pause</>}
@@ -792,14 +811,18 @@ export default function SchedulePage() {
                         onClick={() => {
                           const rootId = (selectedJob as any).recurrenceParentId ?? selectedJob.id;
                           const isPaused = (selectedJob as any).isRecurrencePaused;
-                          pauseSeries.mutate({ id: rootId, data: { paused: !isPaused } }, {
-                            onSuccess: () => {
-                              toast.success(isPaused ? 'Series resumed' : 'Series paused');
-                              qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId!) });
-                              qc.invalidateQueries({ queryKey: getListRecurringSeriesQueryKey() });
-                            },
-                            onError: () => toast.error('Failed to update'),
-                          });
+                          if (isPaused) {
+                            pauseSeries.mutate({ id: rootId, data: { paused: false } }, {
+                              onSuccess: () => {
+                                toast.success('Series resumed');
+                                qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId!) });
+                                qc.invalidateQueries({ queryKey: getListRecurringSeriesQueryKey() });
+                              },
+                              onError: () => toast.error('Failed to update'),
+                            });
+                          } else {
+                            setPauseDialogRootId(rootId);
+                          }
                         }}>
                         {(selectedJob as any).isRecurrencePaused ? <><Play className="w-3 h-3" /> Resume Series</> : <><Pause className="w-3 h-3" /> Pause Series</>}
                       </Button>
@@ -1445,6 +1468,25 @@ export default function SchedulePage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      <Dialog open={pauseDialogRootId !== null} onOpenChange={(open) => { if (!open) { setPauseDialogRootId(null); setPauseResumeAt(''); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Pause Recurring Series</DialogTitle>
+            <DialogDescription>Optionally set a date to auto-resume, e.g. for an off-season pause. Leave blank to pause indefinitely until resumed manually.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Auto-resume date (optional)</label>
+            <Input type="date" value={pauseResumeAt} onChange={(e) => setPauseResumeAt(e.target.value)} />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => { setPauseDialogRootId(null); setPauseResumeAt(''); }}>Cancel</Button>
+            <Button onClick={() => confirmPause(pauseDialogRootId!)} disabled={pauseSeries.isPending}>
+              {pauseSeries.isPending ? 'Pausing…' : 'Pause Series'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -7,6 +7,7 @@
  */
 import type { BlueprintCanvasData } from './blueprintCanvasData';
 import type { BlueprintMode } from './blueprintMode';
+import type { BlueprintSuggestedPartsItem } from './blueprintSuggestedPartsItem';
 
 export interface Blueprint {
   id: number;
@@ -21,5 +22,20 @@ export interface Blueprint {
   overageBufferPercent?: number;
   /** @nullable */
   totalEstimate?: number | null;
+  suggestedParts?: BlueprintSuggestedPartsItem[];
+  /** True = reusable business design-rule template, not tied to a job/property */
+  isTemplate?: boolean;
+  /**
+     * The template this blueprint was created from, if any
+     * @nullable
+     */
+  templateId?: number | null;
+  /**
+     * Real-world scale calibration: pixels per foot on the canvas
+     * @nullable
+     */
+  scalePxPerFt?: number | null;
+  /** @nullable */
+  aiGenerationPrompt?: string | null;
   createdAt: string;
 }

@@ -16,4 +16,8 @@ export interface UserUpdate {
      * @nullable
      */
   assignedLocationId?: number | null;
+  /** @nullable */
+  hourlyRate?: number | null;
+  /** @nullable */
+  hireDate?: string | null;
 }

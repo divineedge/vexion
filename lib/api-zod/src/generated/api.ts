@@ -109,6 +109,8 @@ export const LoginResponse = zod.object({
   "avatarUrl": zod.string().nullish(),
   "isActive": zod.boolean().optional(),
   "assignedLocationId": zod.number().nullish().describe('Assigned inventory location (e.g. their trailer)'),
+  "hourlyRate": zod.number().nullish().describe('Hourly pay rate ($\/hr)'),
+  "hireDate": zod.string().nullish(),
   "createdAt": zod.string().optional()
 }),
   "token": zod.string()
@@ -134,6 +136,8 @@ export const GetMeResponse = zod.object({
   "avatarUrl": zod.string().nullish(),
   "isActive": zod.boolean().optional(),
   "assignedLocationId": zod.number().nullish().describe('Assigned inventory location (e.g. their trailer)'),
+  "hourlyRate": zod.number().nullish().describe('Hourly pay rate ($\/hr)'),
+  "hireDate": zod.string().nullish(),
   "createdAt": zod.string().optional()
 })
 
@@ -928,7 +932,9 @@ export const ListJobsResponseItem = zod.object({
   "recurrenceParentId": zod.number().nullish().describe('FK to series root for generated instances'),
   "recurrenceIndex": zod.number().nullish().describe('0-based index of this occurrence'),
   "isRecurrencePaused": zod.boolean().optional(),
+  "resumeAt": zod.string().nullish().describe('Off-season pause: date the series will auto-resume'),
   "recurrenceCount": zod.number().optional(),
+  "pendingWeeklyInvoice": zod.boolean().optional().describe('True when this completed non-recurring job is waiting to be swept into a weekly batch invoice'),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "routeTemplateId": zod.number().nullish(),
   "sequenceOrder": zod.number().nullish(),
@@ -1017,7 +1023,9 @@ export const CreateJobResponse = zod.object({
   "recurrenceParentId": zod.number().nullish().describe('FK to series root for generated instances'),
   "recurrenceIndex": zod.number().nullish().describe('0-based index of this occurrence'),
   "isRecurrencePaused": zod.boolean().optional(),
+  "resumeAt": zod.string().nullish().describe('Off-season pause: date the series will auto-resume'),
   "recurrenceCount": zod.number().optional(),
+  "pendingWeeklyInvoice": zod.boolean().optional().describe('True when this completed non-recurring job is waiting to be swept into a weekly batch invoice'),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "routeTemplateId": zod.number().nullish(),
   "sequenceOrder": zod.number().nullish(),
@@ -1084,7 +1092,9 @@ export const GetJobResponse = zod.object({
   "recurrenceParentId": zod.number().nullish().describe('FK to series root for generated instances'),
   "recurrenceIndex": zod.number().nullish().describe('0-based index of this occurrence'),
   "isRecurrencePaused": zod.boolean().optional(),
+  "resumeAt": zod.string().nullish().describe('Off-season pause: date the series will auto-resume'),
   "recurrenceCount": zod.number().optional(),
+  "pendingWeeklyInvoice": zod.boolean().optional().describe('True when this completed non-recurring job is waiting to be swept into a weekly batch invoice'),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "routeTemplateId": zod.number().nullish(),
   "sequenceOrder": zod.number().nullish(),
@@ -1174,7 +1184,9 @@ export const UpdateJobResponse = zod.object({
   "recurrenceParentId": zod.number().nullish().describe('FK to series root for generated instances'),
   "recurrenceIndex": zod.number().nullish().describe('0-based index of this occurrence'),
   "isRecurrencePaused": zod.boolean().optional(),
+  "resumeAt": zod.string().nullish().describe('Off-season pause: date the series will auto-resume'),
   "recurrenceCount": zod.number().optional(),
+  "pendingWeeklyInvoice": zod.boolean().optional().describe('True when this completed non-recurring job is waiting to be swept into a weekly batch invoice'),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "routeTemplateId": zod.number().nullish(),
   "sequenceOrder": zod.number().nullish(),
@@ -1214,6 +1226,7 @@ export const ListRecurringSeriesResponseItem = zod.object({
 }),
   "recurrenceDescription": zod.string().describe('Human-readable summary e.g. Every Mon & Thu'),
   "isRecurrencePaused": zod.boolean().optional(),
+  "resumeAt": zod.string().nullish().describe('Off-season pause: date the series will auto-resume'),
   "nextScheduledAt": zod.string().nullable(),
   "completedCount": zod.number(),
   "customerName": zod.string().nullish(),
@@ -1280,7 +1293,9 @@ export const SkipNextOccurrenceResponse = zod.object({
   "recurrenceParentId": zod.number().nullish().describe('FK to series root for generated instances'),
   "recurrenceIndex": zod.number().nullish().describe('0-based index of this occurrence'),
   "isRecurrencePaused": zod.boolean().optional(),
+  "resumeAt": zod.string().nullish().describe('Off-season pause: date the series will auto-resume'),
   "recurrenceCount": zod.number().optional(),
+  "pendingWeeklyInvoice": zod.boolean().optional().describe('True when this completed non-recurring job is waiting to be swept into a weekly batch invoice'),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "routeTemplateId": zod.number().nullish(),
   "sequenceOrder": zod.number().nullish(),
@@ -1298,7 +1313,8 @@ export const PauseRecurringSeriesParams = zod.object({
 })
 
 export const PauseRecurringSeriesBody = zod.object({
-  "paused": zod.boolean()
+  "paused": zod.boolean(),
+  "resumeAt": zod.string().nullish().describe('Off-season pause: ISO date the scheduler should auto-resume the series. Only meaningful when paused=true.')
 })
 
 export const PauseRecurringSeriesResponse = zod.object({
@@ -1351,7 +1367,9 @@ export const PauseRecurringSeriesResponse = zod.object({
   "recurrenceParentId": zod.number().nullish().describe('FK to series root for generated instances'),
   "recurrenceIndex": zod.number().nullish().describe('0-based index of this occurrence'),
   "isRecurrencePaused": zod.boolean().optional(),
+  "resumeAt": zod.string().nullish().describe('Off-season pause: date the series will auto-resume'),
   "recurrenceCount": zod.number().optional(),
+  "pendingWeeklyInvoice": zod.boolean().optional().describe('True when this completed non-recurring job is waiting to be swept into a weekly batch invoice'),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "routeTemplateId": zod.number().nullish(),
   "sequenceOrder": zod.number().nullish(),
@@ -1432,7 +1450,9 @@ export const CompleteJobResponse = zod.object({
   "recurrenceParentId": zod.number().nullish().describe('FK to series root for generated instances'),
   "recurrenceIndex": zod.number().nullish().describe('0-based index of this occurrence'),
   "isRecurrencePaused": zod.boolean().optional(),
+  "resumeAt": zod.string().nullish().describe('Off-season pause: date the series will auto-resume'),
   "recurrenceCount": zod.number().optional(),
+  "pendingWeeklyInvoice": zod.boolean().optional().describe('True when this completed non-recurring job is waiting to be swept into a weekly batch invoice'),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "routeTemplateId": zod.number().nullish(),
   "sequenceOrder": zod.number().nullish(),
@@ -1521,7 +1541,9 @@ export const AddJobPartResponse = zod.object({
   "recurrenceParentId": zod.number().nullish().describe('FK to series root for generated instances'),
   "recurrenceIndex": zod.number().nullish().describe('0-based index of this occurrence'),
   "isRecurrencePaused": zod.boolean().optional(),
+  "resumeAt": zod.string().nullish().describe('Off-season pause: date the series will auto-resume'),
   "recurrenceCount": zod.number().optional(),
+  "pendingWeeklyInvoice": zod.boolean().optional().describe('True when this completed non-recurring job is waiting to be swept into a weekly batch invoice'),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "routeTemplateId": zod.number().nullish(),
   "sequenceOrder": zod.number().nullish(),
@@ -1589,7 +1611,9 @@ export const RemoveJobPartResponse = zod.object({
   "recurrenceParentId": zod.number().nullish().describe('FK to series root for generated instances'),
   "recurrenceIndex": zod.number().nullish().describe('0-based index of this occurrence'),
   "isRecurrencePaused": zod.boolean().optional(),
+  "resumeAt": zod.string().nullish().describe('Off-season pause: date the series will auto-resume'),
   "recurrenceCount": zod.number().optional(),
+  "pendingWeeklyInvoice": zod.boolean().optional().describe('True when this completed non-recurring job is waiting to be swept into a weekly batch invoice'),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "routeTemplateId": zod.number().nullish(),
   "sequenceOrder": zod.number().nullish(),
@@ -2675,92 +2699,6 @@ export const DismissStopServiceFlagResponse = zod.object({
 
 
 /**
- * @summary List all daily routines
- */
-export const ListRoutinesResponseItem = zod.object({
-  "id": zod.number(),
-  "tenantId": zod.number(),
-  "name": zod.string(),
-  "description": zod.string().nullish(),
-  "frequency": zod.enum(['daily', 'weekly', 'monthly', 'as_needed']),
-  "assigneeId": zod.number().nullish(),
-  "assigneeName": zod.string().nullish(),
-  "isActive": zod.boolean(),
-  "estimatedMinutes": zod.number().nullish(),
-  "lastCompletedAt": zod.string().nullish(),
-  "createdAt": zod.string()
-})
-export const ListRoutinesResponse = zod.array(ListRoutinesResponseItem)
-
-
-/**
- * @summary Create a daily routine
- */
-export const CreateRoutineBody = zod.object({
-  "name": zod.string(),
-  "description": zod.string().optional(),
-  "frequency": zod.enum(['daily', 'weekly', 'monthly', 'as_needed']),
-  "assigneeId": zod.number().optional(),
-  "estimatedMinutes": zod.number().optional()
-})
-
-export const CreateRoutineResponse = zod.object({
-  "id": zod.number(),
-  "tenantId": zod.number(),
-  "name": zod.string(),
-  "description": zod.string().nullish(),
-  "frequency": zod.enum(['daily', 'weekly', 'monthly', 'as_needed']),
-  "assigneeId": zod.number().nullish(),
-  "assigneeName": zod.string().nullish(),
-  "isActive": zod.boolean(),
-  "estimatedMinutes": zod.number().nullish(),
-  "lastCompletedAt": zod.string().nullish(),
-  "createdAt": zod.string()
-})
-
-
-/**
- * @summary Update a routine
- */
-export const UpdateRoutineParams = zod.object({
-  "id": zod.coerce.number()
-})
-
-export const UpdateRoutineBody = zod.object({
-  "name": zod.string().optional(),
-  "description": zod.string().optional(),
-  "frequency": zod.enum(['daily', 'weekly', 'monthly', 'as_needed']).optional(),
-  "assigneeId": zod.number().optional(),
-  "estimatedMinutes": zod.number().optional(),
-  "isActive": zod.boolean().optional()
-})
-
-export const UpdateRoutineResponse = zod.object({
-  "id": zod.number(),
-  "tenantId": zod.number(),
-  "name": zod.string(),
-  "description": zod.string().nullish(),
-  "frequency": zod.enum(['daily', 'weekly', 'monthly', 'as_needed']),
-  "assigneeId": zod.number().nullish(),
-  "assigneeName": zod.string().nullish(),
-  "isActive": zod.boolean(),
-  "estimatedMinutes": zod.number().nullish(),
-  "lastCompletedAt": zod.string().nullish(),
-  "createdAt": zod.string()
-})
-
-
-/**
- * @summary Delete a routine
- */
-export const DeleteRoutineParams = zod.object({
-  "id": zod.coerce.number()
-})
-
-export const DeleteRoutineResponse = zod.void()
-
-
-/**
  * @summary Get current master clock state for logged-in user
  */
 export const GetMasterClockResponse = zod.object({
@@ -2805,7 +2743,6 @@ export const ListSubTimersResponseItem = zod.object({
   "label": zod.string(),
   "type": zod.enum(['job', 'routine', 'other']),
   "jobId": zod.number().nullish(),
-  "routineId": zod.number().nullish(),
   "startedAt": zod.string(),
   "stoppedAt": zod.string().nullish(),
   "elapsedSeconds": zod.number().optional(),
@@ -2820,8 +2757,7 @@ export const ListSubTimersResponse = zod.array(ListSubTimersResponseItem)
 export const StartSubTimerBody = zod.object({
   "label": zod.string(),
   "type": zod.enum(['job', 'routine', 'other']),
-  "jobId": zod.number().optional(),
-  "routineId": zod.number().optional()
+  "jobId": zod.number().optional()
 })
 
 export const StartSubTimerResponse = zod.object({
@@ -2830,7 +2766,6 @@ export const StartSubTimerResponse = zod.object({
   "label": zod.string(),
   "type": zod.enum(['job', 'routine', 'other']),
   "jobId": zod.number().nullish(),
-  "routineId": zod.number().nullish(),
   "startedAt": zod.string(),
   "stoppedAt": zod.string().nullish(),
   "elapsedSeconds": zod.number().optional(),
@@ -2851,7 +2786,6 @@ export const StopSubTimerResponse = zod.object({
   "label": zod.string(),
   "type": zod.enum(['job', 'routine', 'other']),
   "jobId": zod.number().nullish(),
-  "routineId": zod.number().nullish(),
   "startedAt": zod.string(),
   "stoppedAt": zod.string().nullish(),
   "elapsedSeconds": zod.number().optional(),
@@ -2890,6 +2824,11 @@ export const ListBlueprintsResponseItem = zod.object({
   "canvasData": zod.record(zod.string(), zod.unknown()).optional(),
   "overageBufferPercent": zod.number().optional(),
   "totalEstimate": zod.number().nullish(),
+  "suggestedParts": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "isTemplate": zod.boolean().optional().describe('True = reusable business design-rule template, not tied to a job\/property'),
+  "templateId": zod.number().nullish().describe('The template this blueprint was created from, if any'),
+  "scalePxPerFt": zod.number().nullish().describe('Real-world scale calibration: pixels per foot on the canvas'),
+  "aiGenerationPrompt": zod.string().nullish(),
   "createdAt": zod.string()
 })
 export const ListBlueprintsResponse = zod.array(ListBlueprintsResponseItem)
@@ -2903,7 +2842,9 @@ export const CreateBlueprintBody = zod.object({
   "mode": zod.enum(['irrigation', 'concrete', 'landscape', 'general']),
   "jobId": zod.number().optional(),
   "propertyId": zod.number().optional(),
-  "overageBufferPercent": zod.number().optional()
+  "overageBufferPercent": zod.number().optional(),
+  "isTemplate": zod.boolean().optional(),
+  "templateId": zod.number().optional()
 })
 
 export const CreateBlueprintResponse = zod.object({
@@ -2916,6 +2857,11 @@ export const CreateBlueprintResponse = zod.object({
   "canvasData": zod.record(zod.string(), zod.unknown()).optional(),
   "overageBufferPercent": zod.number().optional(),
   "totalEstimate": zod.number().nullish(),
+  "suggestedParts": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "isTemplate": zod.boolean().optional().describe('True = reusable business design-rule template, not tied to a job\/property'),
+  "templateId": zod.number().nullish().describe('The template this blueprint was created from, if any'),
+  "scalePxPerFt": zod.number().nullish().describe('Real-world scale calibration: pixels per foot on the canvas'),
+  "aiGenerationPrompt": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -2937,6 +2883,11 @@ export const GetBlueprintResponse = zod.object({
   "canvasData": zod.record(zod.string(), zod.unknown()).optional(),
   "overageBufferPercent": zod.number().optional(),
   "totalEstimate": zod.number().nullish(),
+  "suggestedParts": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "isTemplate": zod.boolean().optional().describe('True = reusable business design-rule template, not tied to a job\/property'),
+  "templateId": zod.number().nullish().describe('The template this blueprint was created from, if any'),
+  "scalePxPerFt": zod.number().nullish().describe('Real-world scale calibration: pixels per foot on the canvas'),
+  "aiGenerationPrompt": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -2951,7 +2902,9 @@ export const UpdateBlueprintParams = zod.object({
 export const UpdateBlueprintBody = zod.object({
   "name": zod.string().optional(),
   "canvasData": zod.record(zod.string(), zod.unknown()).optional(),
-  "overageBufferPercent": zod.number().optional()
+  "overageBufferPercent": zod.number().optional(),
+  "scalePxPerFt": zod.number().optional(),
+  "suggestedParts": zod.array(zod.record(zod.string(), zod.unknown())).optional()
 })
 
 export const UpdateBlueprintResponse = zod.object({
@@ -2964,6 +2917,11 @@ export const UpdateBlueprintResponse = zod.object({
   "canvasData": zod.record(zod.string(), zod.unknown()).optional(),
   "overageBufferPercent": zod.number().optional(),
   "totalEstimate": zod.number().nullish(),
+  "suggestedParts": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "isTemplate": zod.boolean().optional().describe('True = reusable business design-rule template, not tied to a job\/property'),
+  "templateId": zod.number().nullish().describe('The template this blueprint was created from, if any'),
+  "scalePxPerFt": zod.number().nullish().describe('Real-world scale calibration: pixels per foot on the canvas'),
+  "aiGenerationPrompt": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -3001,6 +2959,177 @@ export const CalculateBlueprintEstimateResponse = zod.object({
 
 
 /**
+ * @summary AI-assisted layout generation from a property map + description
+ */
+export const GenerateBlueprintFromAiBody = zod.object({
+  "description": zod.string(),
+  "mode": zod.enum(['irrigation', 'concrete', 'landscape', 'general']),
+  "propertyId": zod.number().optional(),
+  "name": zod.string().optional()
+})
+
+export const GenerateBlueprintFromAiResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "mode": zod.enum(['irrigation', 'concrete', 'landscape', 'general']),
+  "jobId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "canvasData": zod.record(zod.string(), zod.unknown()).optional(),
+  "overageBufferPercent": zod.number().optional(),
+  "totalEstimate": zod.number().nullish(),
+  "suggestedParts": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "isTemplate": zod.boolean().optional().describe('True = reusable business design-rule template, not tied to a job\/property'),
+  "templateId": zod.number().nullish().describe('The template this blueprint was created from, if any'),
+  "scalePxPerFt": zod.number().nullish().describe('Real-world scale calibration: pixels per foot on the canvas'),
+  "aiGenerationPrompt": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary List reusable business design-rule templates
+ */
+export const ListBlueprintTemplatesResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "mode": zod.enum(['irrigation', 'concrete', 'landscape', 'general']),
+  "jobId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "canvasData": zod.record(zod.string(), zod.unknown()).optional(),
+  "overageBufferPercent": zod.number().optional(),
+  "totalEstimate": zod.number().nullish(),
+  "suggestedParts": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "isTemplate": zod.boolean().optional().describe('True = reusable business design-rule template, not tied to a job\/property'),
+  "templateId": zod.number().nullish().describe('The template this blueprint was created from, if any'),
+  "scalePxPerFt": zod.number().nullish().describe('Real-world scale calibration: pixels per foot on the canvas'),
+  "aiGenerationPrompt": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+export const ListBlueprintTemplatesResponse = zod.array(ListBlueprintTemplatesResponseItem)
+
+
+/**
+ * @summary Create a job/property-specific blueprint instance from a template
+ */
+export const ApplyBlueprintTemplateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ApplyBlueprintTemplateBody = zod.object({
+  "jobId": zod.number().optional(),
+  "propertyId": zod.number().optional()
+})
+
+export const ApplyBlueprintTemplateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "mode": zod.enum(['irrigation', 'concrete', 'landscape', 'general']),
+  "jobId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "canvasData": zod.record(zod.string(), zod.unknown()).optional(),
+  "overageBufferPercent": zod.number().optional(),
+  "totalEstimate": zod.number().nullish(),
+  "suggestedParts": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "isTemplate": zod.boolean().optional().describe('True = reusable business design-rule template, not tied to a job\/property'),
+  "templateId": zod.number().nullish().describe('The template this blueprint was created from, if any'),
+  "scalePxPerFt": zod.number().nullish().describe('Real-world scale calibration: pixels per foot on the canvas'),
+  "aiGenerationPrompt": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary List admin-defined custom form templates for employee files
+ */
+export const ListEmployeeFormTemplatesResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "fields": zod.array(zod.record(zod.string(), zod.unknown())),
+  "createdAt": zod.string()
+})
+export const ListEmployeeFormTemplatesResponse = zod.array(ListEmployeeFormTemplatesResponseItem)
+
+
+/**
+ * @summary Create a custom form template
+ */
+export const CreateEmployeeFormTemplateBody = zod.object({
+  "name": zod.string(),
+  "description": zod.string().optional(),
+  "fields": zod.array(zod.record(zod.string(), zod.unknown()))
+})
+
+export const CreateEmployeeFormTemplateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "fields": zod.array(zod.record(zod.string(), zod.unknown())),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary List an employee's history entries (reviews, complaints, callbacks, custom forms)
+ */
+export const ListEmployeeHistoryParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const ListEmployeeHistoryResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "userId": zod.number(),
+  "type": zod.enum(['review', 'complaint', 'callback', 'custom_form']),
+  "title": zod.string(),
+  "notes": zod.string().nullish(),
+  "formTemplateId": zod.number().nullish(),
+  "formTemplateName": zod.string().nullish(),
+  "formData": zod.record(zod.string(), zod.unknown()).optional(),
+  "createdById": zod.number().nullish(),
+  "createdByName": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+export const ListEmployeeHistoryResponse = zod.array(ListEmployeeHistoryResponseItem)
+
+
+/**
+ * @summary Add an entry to an employee's history file (never alters the base user record)
+ */
+export const CreateEmployeeHistoryEntryParams = zod.object({
+  "userId": zod.coerce.number()
+})
+
+export const CreateEmployeeHistoryEntryBody = zod.object({
+  "type": zod.enum(['review', 'complaint', 'callback', 'custom_form']),
+  "title": zod.string(),
+  "notes": zod.string().optional(),
+  "formTemplateId": zod.number().optional(),
+  "formData": zod.record(zod.string(), zod.unknown()).optional()
+})
+
+export const CreateEmployeeHistoryEntryResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "userId": zod.number(),
+  "type": zod.enum(['review', 'complaint', 'callback', 'custom_form']),
+  "title": zod.string(),
+  "notes": zod.string().nullish(),
+  "formTemplateId": zod.number().nullish(),
+  "formTemplateName": zod.string().nullish(),
+  "formData": zod.record(zod.string(), zod.unknown()).optional(),
+  "createdById": zod.number().nullish(),
+  "createdByName": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
  * @summary Get tenant settings
  */
 export const GetTenantSettingsResponse = zod.object({
@@ -3017,7 +3146,9 @@ export const GetTenantSettingsResponse = zod.object({
   "defaultMarkupPct": zod.number().optional().describe('Default markup percentage applied to inventory cost prices.'),
   "showCostPriceToTech": zod.boolean().optional().describe('When true, technicians can see the cost\/buy price of inventory items.'),
   "durationUnit": zod.enum(['minutes', 'hours']).optional().describe('Whether job duration is displayed\/entered in minutes or hours'),
-  "autoInvoiceFrequency": zod.enum(['off', 'daily', 'weekly', 'monthly']).optional().describe('How often to auto-generate invoices'),
+  "autoInvoiceFrequency": zod.enum(['off', 'daily', 'weekly', 'bi_monthly', 'monthly']).optional().describe('How often to auto-generate invoices'),
+  "nonRecurringInvoiceCadence": zod.enum(['immediate', 'weekly']).optional().describe('How completed non-recurring jobs flagged for auto-invoicing get billed'),
+  "maxClockInHours": zod.number().nullish().describe('Hard cap (hours) on a single master-clock shift before auto clock-out. Null = no cap.'),
   "rolePermissions": zod.record(zod.string(), zod.record(zod.string(), zod.boolean())).optional().describe('Per-role permission overrides'),
   "planTier": zod.enum(['starter', 'professional', 'enterprise']).optional(),
   "customerFields": zod.array(zod.object({
@@ -3096,7 +3227,9 @@ export const UpdateTenantSettingsBody = zod.object({
   "defaultMarkupPct": zod.number().optional(),
   "showCostPriceToTech": zod.boolean().optional(),
   "durationUnit": zod.enum(['minutes', 'hours']).optional(),
-  "autoInvoiceFrequency": zod.enum(['off', 'daily', 'weekly', 'monthly']).optional(),
+  "autoInvoiceFrequency": zod.enum(['off', 'daily', 'weekly', 'bi_monthly', 'monthly']).optional(),
+  "nonRecurringInvoiceCadence": zod.enum(['immediate', 'weekly']).optional(),
+  "maxClockInHours": zod.number().nullish(),
   "rolePermissions": zod.record(zod.string(), zod.record(zod.string(), zod.boolean())).optional(),
   "customerFields": zod.array(zod.object({
   "key": zod.string(),
@@ -3155,7 +3288,9 @@ export const UpdateTenantSettingsResponse = zod.object({
   "defaultMarkupPct": zod.number().optional().describe('Default markup percentage applied to inventory cost prices.'),
   "showCostPriceToTech": zod.boolean().optional().describe('When true, technicians can see the cost\/buy price of inventory items.'),
   "durationUnit": zod.enum(['minutes', 'hours']).optional().describe('Whether job duration is displayed\/entered in minutes or hours'),
-  "autoInvoiceFrequency": zod.enum(['off', 'daily', 'weekly', 'monthly']).optional().describe('How often to auto-generate invoices'),
+  "autoInvoiceFrequency": zod.enum(['off', 'daily', 'weekly', 'bi_monthly', 'monthly']).optional().describe('How often to auto-generate invoices'),
+  "nonRecurringInvoiceCadence": zod.enum(['immediate', 'weekly']).optional().describe('How completed non-recurring jobs flagged for auto-invoicing get billed'),
+  "maxClockInHours": zod.number().nullish().describe('Hard cap (hours) on a single master-clock shift before auto clock-out. Null = no cap.'),
   "rolePermissions": zod.record(zod.string(), zod.record(zod.string(), zod.boolean())).optional().describe('Per-role permission overrides'),
   "planTier": zod.enum(['starter', 'professional', 'enterprise']).optional(),
   "customerFields": zod.array(zod.object({
@@ -3233,6 +3368,8 @@ export const ListUsersResponseItem = zod.object({
   "avatarUrl": zod.string().nullish(),
   "isActive": zod.boolean().optional(),
   "assignedLocationId": zod.number().nullish().describe('Assigned inventory location (e.g. their trailer)'),
+  "hourlyRate": zod.number().nullish().describe('Hourly pay rate ($\/hr)'),
+  "hireDate": zod.string().nullish(),
   "createdAt": zod.string().optional()
 })
 export const ListUsersResponse = zod.array(ListUsersResponseItem)
@@ -3245,7 +3382,9 @@ export const CreateUserBody = zod.object({
   "email": zod.string(),
   "name": zod.string(),
   "role": zod.enum(['company_owner', 'office_manager', 'department_manager', 'crew_manager', 'technician']),
-  "password": zod.string().optional()
+  "password": zod.string().optional(),
+  "hourlyRate": zod.number().optional(),
+  "hireDate": zod.string().optional()
 })
 
 export const CreateUserResponse = zod.object({
@@ -3258,6 +3397,8 @@ export const CreateUserResponse = zod.object({
   "avatarUrl": zod.string().nullish(),
   "isActive": zod.boolean().optional(),
   "assignedLocationId": zod.number().nullish().describe('Assigned inventory location (e.g. their trailer)'),
+  "hourlyRate": zod.number().nullish().describe('Hourly pay rate ($\/hr)'),
+  "hireDate": zod.string().nullish(),
   "createdAt": zod.string().optional()
 })
 
@@ -3273,7 +3414,9 @@ export const UpdateUserBody = zod.object({
   "name": zod.string().optional(),
   "role": zod.enum(['company_owner', 'office_manager', 'department_manager', 'crew_manager', 'technician']).optional(),
   "isActive": zod.boolean().optional(),
-  "assignedLocationId": zod.number().nullish().describe('Assigned inventory location (e.g. their trailer)')
+  "assignedLocationId": zod.number().nullish().describe('Assigned inventory location (e.g. their trailer)'),
+  "hourlyRate": zod.number().nullish(),
+  "hireDate": zod.string().nullish()
 })
 
 export const UpdateUserResponse = zod.object({
@@ -3286,6 +3429,8 @@ export const UpdateUserResponse = zod.object({
   "avatarUrl": zod.string().nullish(),
   "isActive": zod.boolean().optional(),
   "assignedLocationId": zod.number().nullish().describe('Assigned inventory location (e.g. their trailer)'),
+  "hourlyRate": zod.number().nullish().describe('Hourly pay rate ($\/hr)'),
+  "hireDate": zod.string().nullish(),
   "createdAt": zod.string().optional()
 })
 

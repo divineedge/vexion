@@ -14,8 +14,6 @@ export interface SubTimer {
   type: SubTimerType;
   /** @nullable */
   jobId?: number | null;
-  /** @nullable */
-  routineId?: number | null;
   startedAt: string;
   /** @nullable */
   stoppedAt?: string | null;

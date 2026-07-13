@@ -9,6 +9,7 @@ import { startBillingScheduler } from "./lib/billingScheduler";
 import { startPaymentReminderScheduler } from "./lib/paymentReminderScheduler";
 import { startPlanScheduler } from "./lib/planScheduler";
 import { startFollowupScheduler } from "./lib/followupScheduler";
+import { startClockOutScheduler } from "./lib/clockOutScheduler";
 
 const app: Express = express();
 
@@ -63,5 +64,8 @@ startPlanScheduler();
 
 // Start Smart Follow-Up Queue trigger scheduler
 startFollowupScheduler();
+
+// Start hard clock-out enforcement scheduler
+startClockOutScheduler();
 
 export default app;

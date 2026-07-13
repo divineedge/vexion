@@ -23,5 +23,12 @@ export interface User {
      * @nullable
      */
   assignedLocationId?: number | null;
+  /**
+     * Hourly pay rate ($/hr)
+     * @nullable
+     */
+  hourlyRate?: number | null;
+  /** @nullable */
+  hireDate?: string | null;
   createdAt?: string;
 }

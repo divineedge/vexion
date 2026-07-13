@@ -59,6 +59,12 @@ export const jobsTable = pgTable("jobs", {
   isRecurrencePaused: boolean("is_recurrence_paused").notNull().default(false),
   /** Number of occurrences already generated (only meaningful on the root) */
   recurrenceCount: integer("recurrence_count").notNull().default(0),
+  /** Off-season pause: date the scheduler should auto-resume the series. Cleared once resumed. */
+  resumeAt: timestamp("resume_at", { withTimezone: true }),
+
+  // ── Non-recurring invoicing ───────────────────────────────────────────────
+  /** Set true when this (non-recurring) job completed and is waiting to be swept into a weekly batch invoice. */
+  pendingWeeklyInvoice: boolean("pending_weekly_invoice").notNull().default(false),
 
   // ── Routing (Divisions & Route Templates) ────────────────────────────────
   /** FK to route_templates — which recurring route slot this job belongs to */

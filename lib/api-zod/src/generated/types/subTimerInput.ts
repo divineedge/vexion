@@ -11,5 +11,4 @@ export interface SubTimerInput {
   label: string;
   type: SubTimerInputType;
   jobId?: number;
-  routineId?: number;
 }

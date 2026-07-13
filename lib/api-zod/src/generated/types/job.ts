@@ -64,7 +64,14 @@ export interface Job {
      */
   recurrenceIndex?: number | null;
   isRecurrencePaused?: boolean;
+  /**
+     * Off-season pause: date the series will auto-resume
+     * @nullable
+     */
+  resumeAt?: string | null;
   recurrenceCount?: number;
+  /** True when this completed non-recurring job is waiting to be swept into a weekly batch invoice */
+  pendingWeeklyInvoice?: boolean;
   /**
      * Human-readable summary e.g. Every Mon & Thu
      * @nullable

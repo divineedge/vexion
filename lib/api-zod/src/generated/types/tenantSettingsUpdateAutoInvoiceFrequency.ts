@@ -13,5 +13,6 @@ export const TenantSettingsUpdateAutoInvoiceFrequency = {
   off: 'off',
   daily: 'daily',
   weekly: 'weekly',
+  bi_monthly: 'bi_monthly',
   monthly: 'monthly',
 } as const;

@@ -28,7 +28,9 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     defaultMarkupPct: tenant.defaultMarkupPct,
     showCostPriceToTech: tenant.showCostPriceToTech,
     durationUnit: (tenant.durationUnit ?? "minutes") as "minutes" | "hours",
-    autoInvoiceFrequency: (tenant.autoInvoiceFrequency ?? "off") as "off" | "daily" | "weekly" | "monthly",
+    autoInvoiceFrequency: (tenant.autoInvoiceFrequency ?? "off") as "off" | "daily" | "weekly" | "bi_monthly" | "monthly",
+    nonRecurringInvoiceCadence: (tenant.nonRecurringInvoiceCadence ?? "immediate") as "immediate" | "weekly",
+    maxClockInHours: tenant.maxClockInHours ?? null,
     p4pMasterPercentage: tenant.p4pMasterPercentage ?? 0,
     rolePermissions: rolePerms ?? {},
     planTier: tenant.planTier as "starter" | "professional" | "enterprise",
@@ -115,7 +117,7 @@ router.patch("/settings", async (req, res): Promise<void> => {
     companyName, timezone, workdayCutoffTime, overageMaterialBuffer,
     stripeEnabled, quickbooksEnabled, taxRate,
     defaultMarkupPct, showCostPriceToTech,
-    durationUnit, autoInvoiceFrequency, p4pMasterPercentage,
+    durationUnit, autoInvoiceFrequency, nonRecurringInvoiceCadence, maxClockInHours, p4pMasterPercentage,
     rolePermissions, customerFields,
     equipmentRepairThresholdPct, equipmentResaleThresholdPct,
     defaultGeofenceRadius, defaultGeofenceUnit, autoCreateGeofence,
@@ -153,6 +155,8 @@ router.patch("/settings", async (req, res): Promise<void> => {
   if (showCostPriceToTech !== undefined) updates.showCostPriceToTech = showCostPriceToTech;
   if (durationUnit !== undefined) updates.durationUnit = durationUnit;
   if (autoInvoiceFrequency !== undefined) updates.autoInvoiceFrequency = autoInvoiceFrequency;
+  if (nonRecurringInvoiceCadence !== undefined) updates.nonRecurringInvoiceCadence = nonRecurringInvoiceCadence;
+  if (maxClockInHours !== undefined) updates.maxClockInHours = maxClockInHours === null ? null : parseFloat(maxClockInHours);
   if (p4pMasterPercentage !== undefined) updates.p4pMasterPercentage = parseFloat(p4pMasterPercentage);
   if (rolePermissions !== undefined) {
     updates.rolePermissions = rolePermissions;
@@ -282,13 +286,15 @@ router.get("/settings/users", async (req, res): Promise<void> => {
     planTier: tenant?.planTier ?? "starter",
     avatarUrl: u.avatarUrl ?? null,
     isActive: u.isActive,
+    hourlyRate: u.hourlyRate ?? null,
+    hireDate: u.hireDate?.toISOString() ?? null,
     createdAt: u.createdAt.toISOString(),
   })));
 });
 
 router.post("/settings/users", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { email, name, role, password } = req.body;
+  const { email, name, role, password, hourlyRate, hireDate } = req.body;
   if (!email || !name || !role) { res.status(400).json({ error: "email, name, role required" }); return; }
 
   const [user] = await db.insert(usersTable).values({
@@ -297,6 +303,8 @@ router.post("/settings/users", async (req, res): Promise<void> => {
     name,
     role,
     passwordHash: password ?? "mock",
+    hourlyRate: hourlyRate !== undefined && hourlyRate !== null ? parseFloat(hourlyRate) : null,
+    hireDate: hireDate ? new Date(hireDate) : null,
   }).returning();
 
   const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
@@ -310,6 +318,8 @@ router.post("/settings/users", async (req, res): Promise<void> => {
     planTier: tenant?.planTier ?? "starter",
     avatarUrl: null,
     isActive: user.isActive,
+    hourlyRate: user.hourlyRate ?? null,
+    hireDate: user.hireDate?.toISOString() ?? null,
     createdAt: user.createdAt.toISOString(),
   });
 });
@@ -319,18 +329,20 @@ router.patch("/settings/users/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const { name, role, isActive, assignedLocationId } = req.body;
+  const { name, role, isActive, assignedLocationId, hourlyRate, hireDate } = req.body;
   const updates: Partial<typeof usersTable.$inferInsert> = {};
   if (name) updates.name = name;
   if (role) updates.role = role;
   if (isActive !== undefined) updates.isActive = isActive;
   if (assignedLocationId !== undefined) updates.assignedLocationId = assignedLocationId ? parseInt(String(assignedLocationId), 10) : null;
+  if (hourlyRate !== undefined) updates.hourlyRate = hourlyRate === null ? null : parseFloat(hourlyRate);
+  if (hireDate !== undefined) updates.hireDate = hireDate ? new Date(hireDate) : null;
 
   const [updated] = await db.update(usersTable).set(updates).where(and(eq(usersTable.id, id), eq(usersTable.tenantId, tenantId))).returning();
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
 
   const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
-  res.json({ id: updated.id, email: updated.email, name: updated.name, role: updated.role, tenantId: updated.tenantId, planTier: tenant?.planTier ?? "starter", avatarUrl: updated.avatarUrl ?? null, isActive: updated.isActive, assignedLocationId: updated.assignedLocationId ?? null, createdAt: updated.createdAt.toISOString() });
+  res.json({ id: updated.id, email: updated.email, name: updated.name, role: updated.role, tenantId: updated.tenantId, planTier: tenant?.planTier ?? "starter", avatarUrl: updated.avatarUrl ?? null, isActive: updated.isActive, assignedLocationId: updated.assignedLocationId ?? null, hourlyRate: updated.hourlyRate ?? null, hireDate: updated.hireDate?.toISOString() ?? null, createdAt: updated.createdAt.toISOString() });
 });
 
 router.delete("/settings/users/:id", async (req, res): Promise<void> => {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation } from 'wouter';
 import {
   useGetTenantSettings, getGetTenantSettingsQueryKey,
   useUpdateTenantSettings,
@@ -15,6 +16,7 @@ import {
 import type { FollowupTriggerConfig } from '@workspace/api-client-react';
 import type { ChemicalProduct, ChemicalMixture, ChemicalMixtureItem, PaymentReminderRule } from '@workspace/api-client-react';
 import { Repeat as RepeatIcon } from 'lucide-react';
+import { format } from 'date-fns';
 import PlanTemplatesSettings from '@/components/settings/PlanTemplatesSettings';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
@@ -48,6 +50,7 @@ import RoutingSettings from '@/components/settings/RoutingSettings';
 export default function SettingsPage() {
   const { isSuperAdmin, isOwner } = useAuth();
   const qc = useQueryClient();
+  const [, setLocation] = useLocation();
 
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
   const { data: users } = useListUsers({ query: { queryKey: getListUsersQueryKey() } });
@@ -84,7 +87,9 @@ export default function SettingsPage() {
 
   // Operational
   const [durationUnit, setDurationUnit] = useState<'minutes' | 'hours'>('minutes');
-  const [autoInvoiceFrequency, setAutoInvoiceFrequency] = useState<'off' | 'daily' | 'weekly' | 'monthly'>('off');
+  const [autoInvoiceFrequency, setAutoInvoiceFrequency] = useState<'off' | 'daily' | 'weekly' | 'bi_monthly' | 'monthly'>('off');
+  const [nonRecurringInvoiceCadence, setNonRecurringInvoiceCadence] = useState<'immediate' | 'weekly'>('immediate');
+  const [maxClockInHours, setMaxClockInHours] = useState('');
   const [p4pMasterPct, setP4pMasterPct] = useState('0');
 
   // Equipment thresholds
@@ -117,7 +122,9 @@ export default function SettingsPage() {
 
   // Team
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: 'technician' });
+  const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: 'technician', hourlyRate: '', hireDate: '' });
+  const [editUserOpen, setEditUserOpen] = useState(false);
+  const [editUserForm, setEditUserForm] = useState<{ id: number; name: string; role: string; hourlyRate: string; hireDate: string } | null>(null);
 
   // Chemicals – Product form
   const [prodFormOpen, setProdFormOpen] = useState(false);
@@ -176,7 +183,9 @@ export default function SettingsPage() {
       setMarkupPct(String(settings.defaultMarkupPct ?? 20));
       setShowCostToTech(settings.showCostPriceToTech ?? false);
       setDurationUnit((settings.durationUnit as 'minutes' | 'hours') ?? 'minutes');
-      setAutoInvoiceFrequency((settings.autoInvoiceFrequency as 'off' | 'daily' | 'weekly' | 'monthly') ?? 'off');
+      setAutoInvoiceFrequency((settings.autoInvoiceFrequency as 'off' | 'daily' | 'weekly' | 'bi_monthly' | 'monthly') ?? 'off');
+      setNonRecurringInvoiceCadence(((settings as any).nonRecurringInvoiceCadence as 'immediate' | 'weekly') ?? 'immediate');
+      setMaxClockInHours((settings as any).maxClockInHours != null ? String((settings as any).maxClockInHours) : '');
       setP4pMasterPct(String((settings as any).p4pMasterPercentage ?? 0));
       setEquipRepairPct(String((settings as any).equipmentRepairThresholdPct ?? 50));
       setEquipResalePct(String((settings as any).equipmentResaleThresholdPct ?? 20));
@@ -330,7 +339,7 @@ export default function SettingsPage() {
 
   const saveOperational = () => {
     updateSettings.mutate(
-      { data: { durationUnit, autoInvoiceFrequency, p4pMasterPercentage: parseFloat(p4pMasterPct) || 0 } as Parameters<typeof updateSettings.mutate>[0]['data'] },
+      { data: { durationUnit, autoInvoiceFrequency, nonRecurringInvoiceCadence, maxClockInHours: maxClockInHours ? parseFloat(maxClockInHours) : null, p4pMasterPercentage: parseFloat(p4pMasterPct) || 0 } as Parameters<typeof updateSettings.mutate>[0]['data'] },
       {
         onSuccess: () => { toast.success('Operational settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
         onError: () => toast.error('Failed to save settings'),
@@ -394,17 +403,57 @@ export default function SettingsPage() {
   const handleInvite = () => {
     if (!inviteForm.name || !inviteForm.email) { toast.error('Name and email are required'); return; }
     createUser.mutate(
-      { data: inviteForm as Parameters<typeof createUser.mutate>[0]['data'] },
+      {
+        data: {
+          name: inviteForm.name,
+          email: inviteForm.email,
+          role: inviteForm.role,
+          hourlyRate: inviteForm.hourlyRate ? parseFloat(inviteForm.hourlyRate) : undefined,
+          hireDate: inviteForm.hireDate ? new Date(inviteForm.hireDate).toISOString() : undefined,
+        } as Parameters<typeof createUser.mutate>[0]['data'],
+      },
       {
         onSuccess: () => {
           toast.success(`${inviteForm.name} added`);
           qc.invalidateQueries({ queryKey: getListUsersQueryKey() });
           setInviteOpen(false);
-          setInviteForm({ name: '', email: '', role: 'technician' });
+          setInviteForm({ name: '', email: '', role: 'technician', hourlyRate: '', hireDate: '' });
         },
         onError: () => toast.error('Failed to add user'),
       },
     );
+  };
+
+  const openEditUser = (u: { id: number; name: string; role: string; hourlyRate?: number | null; hireDate?: string | null }) => {
+    setEditUserForm({
+      id: u.id,
+      name: u.name,
+      role: u.role,
+      hourlyRate: u.hourlyRate != null ? String(u.hourlyRate) : '',
+      hireDate: u.hireDate ? u.hireDate.slice(0, 10) : '',
+    });
+    setEditUserOpen(true);
+  };
+
+  const handleSaveEditUser = () => {
+    if (!editUserForm) return;
+    updateUser.mutate({
+      id: editUserForm.id,
+      data: {
+        name: editUserForm.name,
+        role: editUserForm.role,
+        hourlyRate: editUserForm.hourlyRate ? parseFloat(editUserForm.hourlyRate) : null,
+        hireDate: editUserForm.hireDate ? new Date(editUserForm.hireDate).toISOString() : null,
+      } as Parameters<typeof updateUser.mutate>[0]['data'],
+    }, {
+      onSuccess: () => {
+        toast.success('Team member updated');
+        qc.invalidateQueries({ queryKey: getListUsersQueryKey() });
+        setEditUserOpen(false);
+        setEditUserForm(null);
+      },
+      onError: () => toast.error('Failed to update user'),
+    });
   };
 
   const toggleUserActive = (id: number, current: boolean) => {
@@ -1279,8 +1328,10 @@ export default function SettingsPage() {
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Role</TableHead>
+                    <TableHead>Hourly Rate</TableHead>
+                    <TableHead>Hire Date</TableHead>
                     <TableHead>Status</TableHead>
-                    {isOwner && <TableHead className="w-[100px]">Actions</TableHead>}
+                    <TableHead className="w-[170px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1291,6 +1342,8 @@ export default function SettingsPage() {
                       <TableCell>
                         <Badge variant="secondary" className="capitalize">{u.role.replace(/_/g, ' ')}</Badge>
                       </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{(u as any).hourlyRate != null ? `${(u as any).hourlyRate.toFixed(2)}/hr` : '—'}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{(u as any).hireDate ? format(new Date((u as any).hireDate), 'MMM d, yyyy') : '—'}</TableCell>
                       <TableCell>
                         {u.isActive !== false ? (
                           <Badge className="bg-emerald-500/10 text-emerald-600 border-transparent">Active</Badge>
@@ -1298,30 +1351,49 @@ export default function SettingsPage() {
                           <Badge variant="outline" className="text-muted-foreground">Inactive</Badge>
                         )}
                       </TableCell>
-                      {isOwner && (
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 text-xs px-2"
-                              onClick={() => toggleUserActive(u.id, u.isActive !== false)}
-                              disabled={updateUser.isPending}
-                            >
-                              {u.isActive !== false ? 'Deactivate' : 'Activate'}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                              onClick={() => handleDeleteUser(u.id, u.name)}
-                              disabled={deleteUser.isPending}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      )}
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                            title="View employee file"
+                            onClick={() => setLocation(`/team/${u.id}`)}
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </Button>
+                          {isOwner && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs px-2"
+                                onClick={() => openEditUser(u as any)}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs px-2"
+                                onClick={() => toggleUserActive(u.id, u.isActive !== false)}
+                                disabled={updateUser.isPending}
+                              >
+                                {u.isActive !== false ? 'Deactivate' : 'Activate'}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                onClick={() => handleDeleteUser(u.id, u.name)}
+                                disabled={deleteUser.isPending}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1358,6 +1430,14 @@ export default function SettingsPage() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Hourly Pay Rate</label>
+                  <Input type="number" min="0" step="0.01" value={inviteForm.hourlyRate} onChange={e => setInviteForm(f => ({ ...f, hourlyRate: e.target.value }))} placeholder="e.g. 22.50" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Hire Date</label>
+                  <Input type="date" value={inviteForm.hireDate} onChange={e => setInviteForm(f => ({ ...f, hireDate: e.target.value }))} />
+                </div>
                 <Separator />
                 <div className="flex gap-3 justify-end">
                   <Button variant="outline" onClick={() => setInviteOpen(false)}>Cancel</Button>
@@ -1366,6 +1446,52 @@ export default function SettingsPage() {
                   </Button>
                 </div>
               </div>
+            </SheetContent>
+          </Sheet>
+
+          {/* Edit Member Sheet */}
+          <Sheet open={editUserOpen} onOpenChange={(open) => { setEditUserOpen(open); if (!open) setEditUserForm(null); }}>
+            <SheetContent className="w-full sm:max-w-md">
+              <SheetHeader className="pb-4">
+                <SheetTitle>Edit Team Member</SheetTitle>
+                <SheetDescription>Update role, pay rate, and hire date.</SheetDescription>
+              </SheetHeader>
+              {editUserForm && (
+                <div className="space-y-4 pb-6">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Full Name</label>
+                    <Input value={editUserForm.name} onChange={e => setEditUserForm(f => f && ({ ...f, name: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Role</label>
+                    <Select value={editUserForm.role} onValueChange={v => setEditUserForm(f => f && ({ ...f, role: v }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="company_owner">Company Owner</SelectItem>
+                        <SelectItem value="office_manager">Office Manager</SelectItem>
+                        <SelectItem value="department_manager">Department Manager</SelectItem>
+                        <SelectItem value="crew_manager">Crew Manager</SelectItem>
+                        <SelectItem value="technician">Technician</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Hourly Pay Rate</label>
+                    <Input type="number" min="0" step="0.01" value={editUserForm.hourlyRate} onChange={e => setEditUserForm(f => f && ({ ...f, hourlyRate: e.target.value }))} placeholder="e.g. 22.50" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Hire Date</label>
+                    <Input type="date" value={editUserForm.hireDate} onChange={e => setEditUserForm(f => f && ({ ...f, hireDate: e.target.value }))} />
+                  </div>
+                  <Separator />
+                  <div className="flex gap-3 justify-end">
+                    <Button variant="outline" onClick={() => setEditUserOpen(false)}>Cancel</Button>
+                    <Button onClick={handleSaveEditUser} disabled={updateUser.isPending}>
+                      {updateUser.isPending ? 'Saving...' : 'Save Changes'}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </SheetContent>
           </Sheet>
         </TabsContent>
@@ -1457,12 +1583,38 @@ export default function SettingsPage() {
                       <SelectItem value="off">Off (manual only)</SelectItem>
                       <SelectItem value="daily">Daily</SelectItem>
                       <SelectItem value="weekly">Weekly (every Monday)</SelectItem>
+                      <SelectItem value="bi_monthly">Bi-monthly (every 2 months)</SelectItem>
                       <SelectItem value="monthly">Monthly (1st of month)</SelectItem>
                       <SelectItem value="biweekly">Bi-weekly (every 2 weeks)</SelectItem>
                       <SelectItem value="weekly_friday">Weekly (every Friday)</SelectItem>
                       <SelectItem value="monthly_15">Monthly (15th of month)</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+
+                {/* Non-recurring job invoicing cadence */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Invoicing for Completed (Non-Recurring) Jobs</label>
+                  <p className="text-xs text-muted-foreground">Controls when an invoice is generated after a one-off job with auto-invoicing is completed.</p>
+                  <Select value={nonRecurringInvoiceCadence} onValueChange={v => setNonRecurringInvoiceCadence(v as typeof nonRecurringInvoiceCadence)}>
+                    <SelectTrigger className="w-64"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="immediate">Immediately on completion</SelectItem>
+                      <SelectItem value="weekly">Batch weekly (every Monday)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Hard clock-out */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Max Clock-In Duration (hours)</label>
+                  <p className="text-xs text-muted-foreground">Auto clock-out staff who forget to clock out after this many hours. Leave blank to disable.</p>
+                  <Input
+                    type="number" min="0" step="0.5" className="w-40"
+                    value={maxClockInHours}
+                    onChange={e => setMaxClockInHours(e.target.value)}
+                    placeholder="e.g. 12"
+                  />
                 </div>
               </div>
 

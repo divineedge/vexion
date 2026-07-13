@@ -16,6 +16,11 @@ export interface RecurringSeries {
   /** Human-readable summary e.g. Every Mon & Thu */
   recurrenceDescription: string;
   isRecurrencePaused?: boolean;
+  /**
+     * Off-season pause: date the series will auto-resume
+     * @nullable
+     */
+  resumeAt?: string | null;
   /** @nullable */
   nextScheduledAt: string | null;
   completedCount: number;

@@ -6,7 +6,7 @@
  *   2. Email Queue — send pending billing emails with retry logic (max 3 attempts).
  */
 
-import { db, recurringInvoiceTemplatesTable, billingEmailQueueTable, invoicesTable, customersTable, tenantsTable } from "@workspace/db";
+import { db, recurringInvoiceTemplatesTable, billingEmailQueueTable, invoicesTable, customersTable, tenantsTable, jobsTable } from "@workspace/db";
 import { eq, and, lte, sql } from "drizzle-orm";
 import { logger } from "./logger";
 import { sendEmail } from "./emailProvider";
@@ -32,8 +32,16 @@ function addWeek(dateStr: string): string {
   return d.toISOString().slice(0, 10);
 }
 
+function addBiMonth(dateStr: string): string {
+  const d = new Date(dateStr + "T12:00:00Z");
+  d.setMonth(d.getMonth() + 2);
+  return d.toISOString().slice(0, 10);
+}
+
 function nextBillingDate(current: string, cycleType: string): string {
-  return cycleType === "weekly" ? addWeek(current) : addMonth(current);
+  if (cycleType === "weekly") return addWeek(current);
+  if (cycleType === "bi_monthly") return addBiMonth(current);
+  return addMonth(current);
 }
 
 function generateInvoiceNumber(): string {
@@ -129,6 +137,62 @@ async function processRecurringTemplates() {
   }
 }
 
+// ── 1b. Weekly batch for completed non-recurring jobs flagged pendingWeeklyInvoice ──
+
+async function processWeeklyNonRecurringInvoices() {
+  // Batch runs once a week (Mondays); jobs accumulate the pendingWeeklyInvoice flag
+  // between runs and are all invoiced together on the weekly sweep.
+  if (new Date().getUTCDay() !== 1) return;
+
+  const flaggedJobs = await db
+    .select({ job: jobsTable, customerEmail: customersTable.email, customerName: customersTable.name })
+    .from(jobsTable)
+    .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
+    .where(and(eq(jobsTable.pendingWeeklyInvoice, true), sql`${jobsTable.invoiceId} IS NULL`));
+
+  let generated = 0;
+
+  for (const { job, customerEmail } of flaggedJobs) {
+    if (!job.customerId) continue;
+    try {
+      const [tenant] = await db.select({ taxRate: tenantsTable.taxRate }).from(tenantsTable).where(eq(tenantsTable.id, job.tenantId));
+      const taxRate = tenant?.taxRate ?? 0;
+      const lineItems = (job.lineItems as unknown[]) ?? [];
+      const subtotal = job.totalAmount ?? 0;
+      const tax = subtotal * (taxRate / 100);
+      const total = subtotal + tax;
+      const invoiceNum = generateInvoiceNumber();
+
+      let invoiceId!: number;
+      await db.transaction(async tx => {
+        const [invoice] = await tx.insert(invoicesTable).values({
+          tenantId: job.tenantId,
+          invoiceNumber: invoiceNum,
+          customerId: job.customerId!,
+          jobId: job.id,
+          status: customerEmail ? "sent" : "draft",
+          subtotal,
+          tax,
+          total,
+          lineItems,
+        }).returning();
+        invoiceId = invoice.id;
+        await tx.update(jobsTable).set({ invoiceId: invoice.id, pendingWeeklyInvoice: false }).where(eq(jobsTable.id, job.id));
+      });
+
+      if (customerEmail) await enqueueInvoiceEmail(job.tenantId, invoiceId);
+      generated++;
+      logger.info({ jobId: job.id, invoiceId }, "Generated weekly batch invoice for completed job");
+    } catch (err) {
+      logger.error({ err, jobId: job.id }, "Failed to generate weekly batch invoice");
+    }
+  }
+
+  if (generated > 0) {
+    logger.info({ generated }, "Billing scheduler: generated weekly non-recurring invoices");
+  }
+}
+
 // ── 2. Process email queue ───────────────────────────────────────────────────
 
 async function processEmailQueue() {
@@ -201,6 +265,7 @@ async function processEmailQueue() {
 async function runBillingCycle() {
   logger.info("Billing scheduler: starting daily cycle");
   await processRecurringTemplates();
+  await processWeeklyNonRecurringInvoices();
   await processEmailQueue();
   logger.info("Billing scheduler: daily cycle complete");
 }

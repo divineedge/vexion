@@ -542,6 +542,13 @@ export interface User {
      * @nullable
      */
   assignedLocationId?: number | null;
+  /**
+     * Hourly pay rate ($/hr)
+     * @nullable
+     */
+  hourlyRate?: number | null;
+  /** @nullable */
+  hireDate?: string | null;
   createdAt?: string;
 }
 
@@ -566,6 +573,8 @@ export interface UserInput {
   name: string;
   role: UserInputRole;
   password?: string;
+  hourlyRate?: number;
+  hireDate?: string;
 }
 
 export type UserUpdateRole = typeof UserUpdateRole[keyof typeof UserUpdateRole];
@@ -588,6 +597,10 @@ export interface UserUpdate {
      * @nullable
      */
   assignedLocationId?: number | null;
+  /** @nullable */
+  hourlyRate?: number | null;
+  /** @nullable */
+  hireDate?: string | null;
 }
 
 export interface DashboardSummary {
@@ -1007,6 +1020,11 @@ export interface RecurringSeries {
   /** Human-readable summary e.g. Every Mon & Thu */
   recurrenceDescription: string;
   isRecurrencePaused?: boolean;
+  /**
+     * Off-season pause: date the series will auto-resume
+     * @nullable
+     */
+  resumeAt?: string | null;
   /** @nullable */
   nextScheduledAt: string | null;
   completedCount: number;
@@ -1110,7 +1128,14 @@ export interface Job {
      */
   recurrenceIndex?: number | null;
   isRecurrencePaused?: boolean;
+  /**
+     * Off-season pause: date the series will auto-resume
+     * @nullable
+     */
+  resumeAt?: string | null;
   recurrenceCount?: number;
+  /** True when this completed non-recurring job is waiting to be swept into a weekly batch invoice */
+  pendingWeeklyInvoice?: boolean;
   /**
      * Human-readable summary e.g. Every Mon & Thu
      * @nullable
@@ -1652,70 +1677,76 @@ export interface FinancialsSummary {
   averageInvoiceValue: number;
 }
 
-export type RoutineFrequency = typeof RoutineFrequency[keyof typeof RoutineFrequency];
+export type EmployeeFormTemplateFieldsItem = { [key: string]: unknown };
 
-
-export const RoutineFrequency = {
-  daily: 'daily',
-  weekly: 'weekly',
-  monthly: 'monthly',
-  as_needed: 'as_needed',
-} as const;
-
-export interface Routine {
+export interface EmployeeFormTemplate {
   id: number;
   tenantId: number;
   name: string;
   /** @nullable */
   description?: string | null;
-  frequency: RoutineFrequency;
-  /** @nullable */
-  assigneeId?: number | null;
-  /** @nullable */
-  assigneeName?: string | null;
-  isActive: boolean;
-  /** @nullable */
-  estimatedMinutes?: number | null;
-  /** @nullable */
-  lastCompletedAt?: string | null;
+  fields: EmployeeFormTemplateFieldsItem[];
   createdAt: string;
 }
 
-export type RoutineInputFrequency = typeof RoutineInputFrequency[keyof typeof RoutineInputFrequency];
+export type EmployeeFormTemplateInputFieldsItem = { [key: string]: unknown };
 
-
-export const RoutineInputFrequency = {
-  daily: 'daily',
-  weekly: 'weekly',
-  monthly: 'monthly',
-  as_needed: 'as_needed',
-} as const;
-
-export interface RoutineInput {
+export interface EmployeeFormTemplateInput {
   name: string;
   description?: string;
-  frequency: RoutineInputFrequency;
-  assigneeId?: number;
-  estimatedMinutes?: number;
+  fields: EmployeeFormTemplateInputFieldsItem[];
 }
 
-export type RoutineUpdateFrequency = typeof RoutineUpdateFrequency[keyof typeof RoutineUpdateFrequency];
+export type EmployeeHistoryEntryType = typeof EmployeeHistoryEntryType[keyof typeof EmployeeHistoryEntryType];
 
 
-export const RoutineUpdateFrequency = {
-  daily: 'daily',
-  weekly: 'weekly',
-  monthly: 'monthly',
-  as_needed: 'as_needed',
+export const EmployeeHistoryEntryType = {
+  review: 'review',
+  complaint: 'complaint',
+  callback: 'callback',
+  custom_form: 'custom_form',
 } as const;
 
-export interface RoutineUpdate {
-  name?: string;
-  description?: string;
-  frequency?: RoutineUpdateFrequency;
-  assigneeId?: number;
-  estimatedMinutes?: number;
-  isActive?: boolean;
+export type EmployeeHistoryEntryFormData = { [key: string]: unknown };
+
+export interface EmployeeHistoryEntry {
+  id: number;
+  tenantId: number;
+  userId: number;
+  type: EmployeeHistoryEntryType;
+  title: string;
+  /** @nullable */
+  notes?: string | null;
+  /** @nullable */
+  formTemplateId?: number | null;
+  /** @nullable */
+  formTemplateName?: string | null;
+  formData?: EmployeeHistoryEntryFormData;
+  /** @nullable */
+  createdById?: number | null;
+  /** @nullable */
+  createdByName?: string | null;
+  createdAt: string;
+}
+
+export type EmployeeHistoryEntryInputType = typeof EmployeeHistoryEntryInputType[keyof typeof EmployeeHistoryEntryInputType];
+
+
+export const EmployeeHistoryEntryInputType = {
+  review: 'review',
+  complaint: 'complaint',
+  callback: 'callback',
+  custom_form: 'custom_form',
+} as const;
+
+export type EmployeeHistoryEntryInputFormData = { [key: string]: unknown };
+
+export interface EmployeeHistoryEntryInput {
+  type: EmployeeHistoryEntryInputType;
+  title: string;
+  notes?: string;
+  formTemplateId?: number;
+  formData?: EmployeeHistoryEntryInputFormData;
 }
 
 export interface MasterClockState {
@@ -1744,8 +1775,6 @@ export interface SubTimer {
   type: SubTimerType;
   /** @nullable */
   jobId?: number | null;
-  /** @nullable */
-  routineId?: number | null;
   startedAt: string;
   /** @nullable */
   stoppedAt?: string | null;
@@ -1766,7 +1795,6 @@ export interface SubTimerInput {
   label: string;
   type: SubTimerInputType;
   jobId?: number;
-  routineId?: number;
 }
 
 export interface TimeEntry {
@@ -1888,6 +1916,8 @@ export const BlueprintMode = {
 
 export type BlueprintCanvasData = { [key: string]: unknown };
 
+export type BlueprintSuggestedPartsItem = { [key: string]: unknown };
+
 export interface Blueprint {
   id: number;
   tenantId: number;
@@ -1901,6 +1931,21 @@ export interface Blueprint {
   overageBufferPercent?: number;
   /** @nullable */
   totalEstimate?: number | null;
+  suggestedParts?: BlueprintSuggestedPartsItem[];
+  /** True = reusable business design-rule template, not tied to a job/property */
+  isTemplate?: boolean;
+  /**
+     * The template this blueprint was created from, if any
+     * @nullable
+     */
+  templateId?: number | null;
+  /**
+     * Real-world scale calibration: pixels per foot on the canvas
+     * @nullable
+     */
+  scalePxPerFt?: number | null;
+  /** @nullable */
+  aiGenerationPrompt?: string | null;
   createdAt: string;
 }
 
@@ -1920,14 +1965,20 @@ export interface BlueprintInput {
   jobId?: number;
   propertyId?: number;
   overageBufferPercent?: number;
+  isTemplate?: boolean;
+  templateId?: number;
 }
 
 export type BlueprintUpdateCanvasData = { [key: string]: unknown };
+
+export type BlueprintUpdateSuggestedPartsItem = { [key: string]: unknown };
 
 export interface BlueprintUpdate {
   name?: string;
   canvasData?: BlueprintUpdateCanvasData;
   overageBufferPercent?: number;
+  scalePxPerFt?: number;
+  suggestedParts?: BlueprintUpdateSuggestedPartsItem[];
 }
 
 export type BlueprintEstimateMeasurements = { [key: string]: unknown };
@@ -1969,7 +2020,19 @@ export const TenantSettingsAutoInvoiceFrequency = {
   off: 'off',
   daily: 'daily',
   weekly: 'weekly',
+  bi_monthly: 'bi_monthly',
   monthly: 'monthly',
+} as const;
+
+/**
+ * How completed non-recurring jobs flagged for auto-invoicing get billed
+ */
+export type TenantSettingsNonRecurringInvoiceCadence = typeof TenantSettingsNonRecurringInvoiceCadence[keyof typeof TenantSettingsNonRecurringInvoiceCadence];
+
+
+export const TenantSettingsNonRecurringInvoiceCadence = {
+  immediate: 'immediate',
+  weekly: 'weekly',
 } as const;
 
 /**
@@ -2086,6 +2149,13 @@ export interface TenantSettings {
   durationUnit?: TenantSettingsDurationUnit;
   /** How often to auto-generate invoices */
   autoInvoiceFrequency?: TenantSettingsAutoInvoiceFrequency;
+  /** How completed non-recurring jobs flagged for auto-invoicing get billed */
+  nonRecurringInvoiceCadence?: TenantSettingsNonRecurringInvoiceCadence;
+  /**
+     * Hard cap (hours) on a single master-clock shift before auto clock-out. Null = no cap.
+     * @nullable
+     */
+  maxClockInHours?: number | null;
   /** Per-role permission overrides */
   rolePermissions?: TenantSettingsRolePermissions;
   planTier?: TenantSettingsPlanTier;
@@ -2144,6 +2214,11 @@ export interface TenantSettings {
 
 export interface PauseSeriesInput {
   paused: boolean;
+  /**
+     * Off-season pause: ISO date the scheduler should auto-resume the series. Only meaningful when paused=true.
+     * @nullable
+     */
+  resumeAt?: string | null;
 }
 
 export interface CompleteVisitInput {
@@ -2355,7 +2430,16 @@ export const TenantSettingsUpdateAutoInvoiceFrequency = {
   off: 'off',
   daily: 'daily',
   weekly: 'weekly',
+  bi_monthly: 'bi_monthly',
   monthly: 'monthly',
+} as const;
+
+export type TenantSettingsUpdateNonRecurringInvoiceCadence = typeof TenantSettingsUpdateNonRecurringInvoiceCadence[keyof typeof TenantSettingsUpdateNonRecurringInvoiceCadence];
+
+
+export const TenantSettingsUpdateNonRecurringInvoiceCadence = {
+  immediate: 'immediate',
+  weekly: 'weekly',
 } as const;
 
 export type TenantSettingsUpdateRolePermissions = {[key: string]: {[key: string]: boolean}};
@@ -2396,6 +2480,9 @@ export interface TenantSettingsUpdate {
   showCostPriceToTech?: boolean;
   durationUnit?: TenantSettingsUpdateDurationUnit;
   autoInvoiceFrequency?: TenantSettingsUpdateAutoInvoiceFrequency;
+  nonRecurringInvoiceCadence?: TenantSettingsUpdateNonRecurringInvoiceCadence;
+  /** @nullable */
+  maxClockInHours?: number | null;
   rolePermissions?: TenantSettingsUpdateRolePermissions;
   customerFields?: CustomerFieldConfig[];
   equipmentRepairThresholdPct?: number;
@@ -3882,6 +3969,28 @@ status?: string;
 
 export type ListTimeEntriesParams = {
 date?: string;
+};
+
+export type GenerateBlueprintFromAiBodyMode = typeof GenerateBlueprintFromAiBodyMode[keyof typeof GenerateBlueprintFromAiBodyMode];
+
+
+export const GenerateBlueprintFromAiBodyMode = {
+  irrigation: 'irrigation',
+  concrete: 'concrete',
+  landscape: 'landscape',
+  general: 'general',
+} as const;
+
+export type GenerateBlueprintFromAiBody = {
+  description: string;
+  mode: GenerateBlueprintFromAiBodyMode;
+  propertyId?: number;
+  name?: string;
+};
+
+export type ApplyBlueprintTemplateBody = {
+  jobId?: number;
+  propertyId?: number;
 };
 
 export type ListChemicalApplicationsParams = {

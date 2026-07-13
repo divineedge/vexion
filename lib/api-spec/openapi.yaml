@@ -25,10 +25,10 @@ tags:
     description: Inventory and parts management
   - name: invoices
     description: Invoice management
-  - name: routines
-    description: Daily routines
   - name: timeTracking
     description: Time tracking
+  - name: employeeHistory
+    description: Per-employee history (reviews, complaints, callbacks, custom forms)
   - name: blueprints
     description: Blueprint canvas
   - name: settings
@@ -1716,77 +1716,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/StopServiceFlag"
 
-  # DAILY ROUTINES
-  /routines:
-    get:
-      operationId: listRoutines
-      tags: [routines]
-      summary: List all daily routines
-      responses:
-        "200":
-          description: List of routines
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Routine"
-    post:
-      operationId: createRoutine
-      tags: [routines]
-      summary: Create a daily routine
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RoutineInput"
-      responses:
-        "201":
-          description: Routine created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Routine"
-
-  /routines/{id}:
-    patch:
-      operationId: updateRoutine
-      tags: [routines]
-      summary: Update a routine
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RoutineUpdate"
-      responses:
-        "200":
-          description: Updated routine
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Routine"
-    delete:
-      operationId: deleteRoutine
-      tags: [routines]
-      summary: Delete a routine
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        "204":
-          description: Deleted
-
   # TIME TRACKING
   /time-tracking/master-clock:
     get:
@@ -2005,6 +1934,158 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BlueprintEstimate"
+
+  /blueprints/generate-ai:
+    post:
+      operationId: generateBlueprintFromAi
+      tags: [blueprints]
+      summary: AI-assisted layout generation from a property map + description
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [description, mode]
+              properties:
+                description:
+                  type: string
+                mode:
+                  type: string
+                  enum: [irrigation, concrete, landscape, general]
+                propertyId:
+                  type: integer
+                name:
+                  type: string
+      responses:
+        "200":
+          description: Newly created blueprint with an AI-drafted layout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Blueprint"
+
+  /blueprints/templates:
+    get:
+      operationId: listBlueprintTemplates
+      tags: [blueprints]
+      summary: List reusable business design-rule templates
+      responses:
+        "200":
+          description: List of templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Blueprint"
+
+  /blueprints/{id}/apply-template:
+    post:
+      operationId: applyBlueprintTemplate
+      tags: [blueprints]
+      summary: Create a job/property-specific blueprint instance from a template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                jobId:
+                  type: integer
+                propertyId:
+                  type: integer
+      responses:
+        "200":
+          description: New blueprint instance created from the template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Blueprint"
+
+  # EMPLOYEE HISTORY
+  /employee-form-templates:
+    get:
+      operationId: listEmployeeFormTemplates
+      tags: [employeeHistory]
+      summary: List admin-defined custom form templates for employee files
+      responses:
+        "200":
+          description: List of form templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EmployeeFormTemplate"
+    post:
+      operationId: createEmployeeFormTemplate
+      tags: [employeeHistory]
+      summary: Create a custom form template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmployeeFormTemplateInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeeFormTemplate"
+
+  /users/{userId}/history:
+    get:
+      operationId: listEmployeeHistory
+      tags: [employeeHistory]
+      summary: List an employee's history entries (reviews, complaints, callbacks, custom forms)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of history entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EmployeeHistoryEntry"
+    post:
+      operationId: createEmployeeHistoryEntry
+      tags: [employeeHistory]
+      summary: Add an entry to an employee's history file (never alters the base user record)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmployeeHistoryEntryInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeeHistoryEntry"
 
   # SETTINGS
   /settings:
@@ -6169,6 +6250,11 @@ components:
         assignedLocationId:
           type: ["integer", "null"]
           description: "Assigned inventory location (e.g. their trailer)"
+        hourlyRate:
+          type: ["number", "null"]
+          description: "Hourly pay rate ($/hr)"
+        hireDate:
+          type: ["string", "null"]
         createdAt:
           type: string
 
@@ -6185,6 +6271,10 @@ components:
           enum: [company_owner, office_manager, department_manager, crew_manager, technician]
         password:
           type: string
+        hourlyRate:
+          type: number
+        hireDate:
+          type: string
 
     UserUpdate:
       type: object
@@ -6199,6 +6289,10 @@ components:
         assignedLocationId:
           type: ["integer", "null"]
           description: "Assigned inventory location (e.g. their trailer)"
+        hourlyRate:
+          type: ["number", "null"]
+        hireDate:
+          type: ["string", "null"]
 
     DashboardSummary:
       type: object
@@ -6758,6 +6852,9 @@ components:
           description: "Human-readable summary e.g. Every Mon & Thu"
         isRecurrencePaused:
           type: boolean
+        resumeAt:
+          type: ["string", "null"]
+          description: "Off-season pause: date the series will auto-resume"
         nextScheduledAt:
           type: ["string", "null"]
         completedCount:
@@ -6838,8 +6935,14 @@ components:
           description: "0-based index of this occurrence"
         isRecurrencePaused:
           type: boolean
+        resumeAt:
+          type: ["string", "null"]
+          description: "Off-season pause: date the series will auto-resume"
         recurrenceCount:
           type: integer
+        pendingWeeklyInvoice:
+          type: boolean
+          description: "True when this completed non-recurring job is waiting to be swept into a weekly batch invoice"
         recurrenceDescription:
           type: ["string", "null"]
           description: "Human-readable summary e.g. Every Mon & Thu"
@@ -7554,9 +7657,9 @@ components:
         averageInvoiceValue:
           type: number
 
-    Routine:
+    EmployeeFormTemplate:
       type: object
-      required: [id, tenantId, name, frequency, isActive, createdAt]
+      required: [id, tenantId, name, fields, createdAt]
       properties:
         id:
           type: integer
@@ -7566,54 +7669,75 @@ components:
           type: string
         description:
           type: ["string", "null"]
-        frequency:
+        fields:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        createdAt:
           type: string
-          enum: [daily, weekly, monthly, as_needed]
-        assigneeId:
-          type: ["integer", "null"]
-        assigneeName:
+
+    EmployeeFormTemplateInput:
+      type: object
+      required: [name, fields]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        fields:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    EmployeeHistoryEntry:
+      type: object
+      required: [id, tenantId, userId, type, title, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        userId:
+          type: integer
+        type:
+          type: string
+          enum: [review, complaint, callback, custom_form]
+        title:
+          type: string
+        notes:
           type: ["string", "null"]
-        isActive:
-          type: boolean
-        estimatedMinutes:
+        formTemplateId:
           type: ["integer", "null"]
-        lastCompletedAt:
+        formTemplateName:
+          type: ["string", "null"]
+        formData:
+          type: object
+          additionalProperties: true
+        createdById:
+          type: ["integer", "null"]
+        createdByName:
           type: ["string", "null"]
         createdAt:
           type: string
 
-    RoutineInput:
+    EmployeeHistoryEntryInput:
       type: object
-      required: [name, frequency]
+      required: [type, title]
       properties:
-        name:
+        type:
           type: string
-        description:
+          enum: [review, complaint, callback, custom_form]
+        title:
           type: string
-        frequency:
+        notes:
           type: string
-          enum: [daily, weekly, monthly, as_needed]
-        assigneeId:
+        formTemplateId:
           type: integer
-        estimatedMinutes:
-          type: integer
-
-    RoutineUpdate:
-      type: object
-      properties:
-        name:
-          type: string
-        description:
-          type: string
-        frequency:
-          type: string
-          enum: [daily, weekly, monthly, as_needed]
-        assigneeId:
-          type: integer
-        estimatedMinutes:
-          type: integer
-        isActive:
-          type: boolean
+        formData:
+          type: object
+          additionalProperties: true
 
     MasterClockState:
       type: object
@@ -7645,8 +7769,6 @@ components:
           enum: [job, routine, other]
         jobId:
           type: ["integer", "null"]
-        routineId:
-          type: ["integer", "null"]
         startedAt:
           type: string
         stoppedAt:
@@ -7666,8 +7788,6 @@ components:
           type: string
           enum: [job, routine, other]
         jobId:
-          type: integer
-        routineId:
           type: integer
 
     TimeEntry:
@@ -7858,6 +7978,22 @@ components:
           type: number
         totalEstimate:
           type: ["number", "null"]
+        suggestedParts:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        isTemplate:
+          type: boolean
+          description: "True = reusable business design-rule template, not tied to a job/property"
+        templateId:
+          type: ["integer", "null"]
+          description: "The template this blueprint was created from, if any"
+        scalePxPerFt:
+          type: ["number", "null"]
+          description: "Real-world scale calibration: pixels per foot on the canvas"
+        aiGenerationPrompt:
+          type: ["string", "null"]
         createdAt:
           type: string
 
@@ -7876,6 +8012,10 @@ components:
           type: integer
         overageBufferPercent:
           type: number
+        isTemplate:
+          type: boolean
+        templateId:
+          type: integer
 
     BlueprintUpdate:
       type: object
@@ -7887,6 +8027,13 @@ components:
           additionalProperties: true
         overageBufferPercent:
           type: number
+        scalePxPerFt:
+          type: number
+        suggestedParts:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
 
     BlueprintEstimate:
       type: object
@@ -7957,8 +8104,15 @@ components:
           description: "Whether job duration is displayed/entered in minutes or hours"
         autoInvoiceFrequency:
           type: string
-          enum: [off, daily, weekly, monthly]
+          enum: [off, daily, weekly, bi_monthly, monthly]
           description: "How often to auto-generate invoices"
+        nonRecurringInvoiceCadence:
+          type: string
+          enum: [immediate, weekly]
+          description: "How completed non-recurring jobs flagged for auto-invoicing get billed"
+        maxClockInHours:
+          type: ["number", "null"]
+          description: "Hard cap (hours) on a single master-clock shift before auto clock-out. Null = no cap."
         rolePermissions:
           type: object
           additionalProperties:
@@ -8059,6 +8213,9 @@ components:
       properties:
         paused:
           type: boolean
+        resumeAt:
+          type: ["string", "null"]
+          description: "Off-season pause: ISO date the scheduler should auto-resume the series. Only meaningful when paused=true."
 
     CompleteVisitInput:
       type: object
@@ -8377,7 +8534,12 @@ components:
           enum: [minutes, hours]
         autoInvoiceFrequency:
           type: string
-          enum: [off, daily, weekly, monthly]
+          enum: [off, daily, weekly, bi_monthly, monthly]
+        nonRecurringInvoiceCadence:
+          type: string
+          enum: [immediate, weekly]
+        maxClockInHours:
+          type: ["number", "null"]
         rolePermissions:
           type: object
           additionalProperties:

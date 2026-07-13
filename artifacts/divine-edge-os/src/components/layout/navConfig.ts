@@ -30,7 +30,6 @@ export const techNavItems: NavItem[] = [
   { name: 'Time Tracking', href: '/time-tracking', icon: Clock },
   { name: 'Tasks',     href: '/tasks',     icon: ListTodo },
   { name: 'Callbacks', href: '/callbacks', icon: PhoneCall },
-  { name: 'Daily Routines', href: '/daily-routines', icon: CheckSquare },
   { name: 'Daily Tasks', href: '/daily-tasks', icon: ClipboardList },
 ];
 
@@ -60,8 +59,7 @@ export const adminNavSections: NavSection[] = [
       { name: 'Crews',          href: '/crews',          icon: UserCheck },
       { name: 'Routes',         href: '/routes',         icon: Map },
       { name: 'Time Tracking',  href: '/time-tracking',  icon: Clock },
-      { name: 'Daily Routines', href: '/daily-routines', icon: CheckSquare },
-      { name: 'Efficiency',     href: '/efficiency',     icon: Gauge },
+          { name: 'Efficiency',     href: '/efficiency',     icon: Gauge },
       { name: 'P4P Payroll',    href: '/payroll',        icon: Banknote },
     ],
   },

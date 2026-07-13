@@ -11,6 +11,7 @@ import type { PaymentReminderRule } from './paymentReminderRule';
 import type { TenantSettingsAutoInvoiceFrequency } from './tenantSettingsAutoInvoiceFrequency';
 import type { TenantSettingsDefaultGeofenceUnit } from './tenantSettingsDefaultGeofenceUnit';
 import type { TenantSettingsDurationUnit } from './tenantSettingsDurationUnit';
+import type { TenantSettingsNonRecurringInvoiceCadence } from './tenantSettingsNonRecurringInvoiceCadence';
 import type { TenantSettingsPaymentReminderChannelsItem } from './tenantSettingsPaymentReminderChannelsItem';
 import type { TenantSettingsPlanTier } from './tenantSettingsPlanTier';
 import type { TenantSettingsPreferredAreaUnit } from './tenantSettingsPreferredAreaUnit';
@@ -36,6 +37,13 @@ export interface TenantSettings {
   durationUnit?: TenantSettingsDurationUnit;
   /** How often to auto-generate invoices */
   autoInvoiceFrequency?: TenantSettingsAutoInvoiceFrequency;
+  /** How completed non-recurring jobs flagged for auto-invoicing get billed */
+  nonRecurringInvoiceCadence?: TenantSettingsNonRecurringInvoiceCadence;
+  /**
+     * Hard cap (hours) on a single master-clock shift before auto clock-out. Null = no cap.
+     * @nullable
+     */
+  maxClockInHours?: number | null;
   /** Per-role permission overrides */
   rolePermissions?: TenantSettingsRolePermissions;
   planTier?: TenantSettingsPlanTier;

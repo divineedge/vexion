@@ -5,12 +5,10 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
-import type { RoutineInputFrequency } from './routineInputFrequency';
+import type { EmployeeFormTemplateInputFieldsItem } from './employeeFormTemplateInputFieldsItem';
 
-export interface RoutineInput {
+export interface EmployeeFormTemplateInput {
   name: string;
   description?: string;
-  frequency: RoutineInputFrequency;
-  assigneeId?: number;
-  estimatedMinutes?: number;
+  fields: EmployeeFormTemplateInputFieldsItem[];
 }

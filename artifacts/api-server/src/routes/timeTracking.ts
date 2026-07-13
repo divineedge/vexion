@@ -92,7 +92,7 @@ router.get("/time-tracking/sub-timers", async (req, res): Promise<void> => {
 router.post("/time-tracking/sub-timers", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
-  const { label, type, jobId, routineId } = req.body;
+  const { label, type, jobId } = req.body;
 
   if (!label || !type) { res.status(400).json({ error: "label and type required" }); return; }
 
@@ -102,7 +102,6 @@ router.post("/time-tracking/sub-timers", async (req, res): Promise<void> => {
     label,
     type,
     jobId: jobId ? parseInt(jobId, 10) : null,
-    routineId: routineId ? parseInt(routineId, 10) : null,
   }).returning();
 
   res.status(201).json({ ...timer, startedAt: timer.startedAt.toISOString(), stoppedAt: null, createdAt: timer.createdAt.toISOString() });

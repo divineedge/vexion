@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, real, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, jsonb, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -19,6 +19,14 @@ export const blueprintsTable = pgTable("blueprints", {
   p4pPercentage: real("p4p_percentage"),
   /** Suggested parts for this blueprint: [{inventoryItemId, name, estimatedQuantity}] */
   suggestedParts: jsonb("suggested_parts").default("[]"),
+  /** True = reusable business design-rule template (not tied to a specific job/property); false = one-off instance. */
+  isTemplate: boolean("is_template").notNull().default(false),
+  /** FK to the template this blueprint was created from, when applicable. */
+  templateId: integer("template_id"),
+  /** Real-world scale for area/length math: pixels per foot on the canvas. Null until the user calibrates it against the map. */
+  scalePxPerFt: real("scale_px_per_ft"),
+  /** AI-assisted generation: the free-text description the user gave (if any) to auto-generate this layout. */
+  aiGenerationPrompt: text("ai_generation_prompt"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

@@ -10,6 +10,7 @@ import type { PaymentReminderRule } from './paymentReminderRule';
 import type { TenantSettingsUpdateAutoInvoiceFrequency } from './tenantSettingsUpdateAutoInvoiceFrequency';
 import type { TenantSettingsUpdateDefaultGeofenceUnit } from './tenantSettingsUpdateDefaultGeofenceUnit';
 import type { TenantSettingsUpdateDurationUnit } from './tenantSettingsUpdateDurationUnit';
+import type { TenantSettingsUpdateNonRecurringInvoiceCadence } from './tenantSettingsUpdateNonRecurringInvoiceCadence';
 import type { TenantSettingsUpdatePaymentReminderChannelsItem } from './tenantSettingsUpdatePaymentReminderChannelsItem';
 import type { TenantSettingsUpdatePreferredAreaUnit } from './tenantSettingsUpdatePreferredAreaUnit';
 import type { TenantSettingsUpdateRolePermissions } from './tenantSettingsUpdateRolePermissions';
@@ -26,6 +27,9 @@ export interface TenantSettingsUpdate {
   showCostPriceToTech?: boolean;
   durationUnit?: TenantSettingsUpdateDurationUnit;
   autoInvoiceFrequency?: TenantSettingsUpdateAutoInvoiceFrequency;
+  nonRecurringInvoiceCadence?: TenantSettingsUpdateNonRecurringInvoiceCadence;
+  /** @nullable */
+  maxClockInHours?: number | null;
   rolePermissions?: TenantSettingsUpdateRolePermissions;
   customerFields?: CustomerFieldConfig[];
   equipmentRepairThresholdPct?: number;

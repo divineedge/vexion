@@ -225,7 +225,9 @@ function formatJob(
     recurrenceParentId: j.recurrenceParentId ?? null,
     recurrenceIndex: j.recurrenceIndex ?? null,
     isRecurrencePaused: j.isRecurrencePaused ?? false,
+    resumeAt: j.resumeAt?.toISOString() ?? null,
     recurrenceCount: j.recurrenceCount ?? 0,
+    pendingWeeklyInvoice: j.pendingWeeklyInvoice ?? false,
     recurrenceDescription: rule ? describeRule(rule) : null,
     routeTemplateId: j.routeTemplateId ?? null,
     sequenceOrder: j.sequenceOrder ?? null,
@@ -340,6 +342,7 @@ router.get("/jobs/series", async (req, res): Promise<void> => {
       recurrenceRule: rule,
       recurrenceDescription: rule ? describeRule(rule) : "",
       isRecurrencePaused: r.job.isRecurrencePaused,
+      resumeAt: r.job.resumeAt?.toISOString() ?? null,
       nextScheduledAt,
       completedCount: r.job.recurrenceCount ?? 0,
       customerName: r.customerName ?? null,
@@ -511,6 +514,13 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
       .where(eq(customersTable.id, updated.customerId));
 
     if (customer?.autoInvoiceOnCompletion && !updated.invoiceId) {
+      const [tenantCadence] = await db.select({ nonRecurringInvoiceCadence: tenantsTable.nonRecurringInvoiceCadence }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+      if ((tenantCadence?.nonRecurringInvoiceCadence ?? "immediate") === "weekly") {
+        // Weekly cadence: flag for the weekly batch sweep instead of invoicing immediately.
+        await db.update(jobsTable).set({ pendingWeeklyInvoice: true }).where(eq(jobsTable.id, id));
+        res.json(formatJob({ ...updated, pendingWeeklyInvoice: true }));
+        return;
+      }
       try {
         const [tenant] = await db.select({ taxRate: tenantsTable.taxRate }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
         const taxRate = tenant?.taxRate ?? 0;
@@ -608,10 +618,14 @@ router.post("/jobs/:id/skip-next", async (req, res): Promise<void> => {
 router.patch("/jobs/:id/pause-series", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(req.params.id, 10);
-  const { paused } = req.body as { paused?: boolean };
+  const { paused, resumeAt } = req.body as { paused?: boolean; resumeAt?: string | null };
 
   if (typeof paused !== "boolean") {
     res.status(400).json({ error: "paused (boolean) is required" });
+    return;
+  }
+  if (resumeAt !== undefined && resumeAt !== null && isNaN(Date.parse(resumeAt))) {
+    res.status(400).json({ error: "resumeAt must be a valid ISO date" });
     return;
   }
 
@@ -620,7 +634,11 @@ router.patch("/jobs/:id/pause-series", async (req, res): Promise<void> => {
   const rootId = job.recurrenceParentId ?? job.id;
 
   const [updated] = await db.update(jobsTable)
-    .set({ isRecurrencePaused: paused })
+    .set({
+      isRecurrencePaused: paused,
+      // Off-season pause: only persist resumeAt while pausing; resuming manually clears it.
+      resumeAt: paused ? (resumeAt ? new Date(resumeAt) : null) : null,
+    })
     .where(and(eq(jobsTable.id, rootId), eq(jobsTable.tenantId, tenantId)))
     .returning();
 

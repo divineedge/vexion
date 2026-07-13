@@ -6,9 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { BlueprintUpdateCanvasData } from './blueprintUpdateCanvasData';
+import type { BlueprintUpdateSuggestedPartsItem } from './blueprintUpdateSuggestedPartsItem';
 
 export interface BlueprintUpdate {
   name?: string;
   canvasData?: BlueprintUpdateCanvasData;
   overageBufferPercent?: number;
+  scalePxPerFt?: number;
+  suggestedParts?: BlueprintUpdateSuggestedPartsItem[];
 }

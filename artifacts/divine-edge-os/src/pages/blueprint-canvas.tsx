@@ -1,8 +1,9 @@
-import React, { useState, useRef, useEffect, MouseEvent } from 'react';
+import React, { useState, useRef, useEffect, useCallback, MouseEvent } from 'react';
 import { useParams, useLocation } from 'wouter';
 import { 
   useGetBlueprint, getGetBlueprintQueryKey,
-  useUpdateBlueprint, useCalculateBlueprintEstimate
+  useUpdateBlueprint, useCalculateBlueprintEstimate,
+  useGetProperty, getGetPropertyQueryKey
 } from '@workspace/api-client-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -34,6 +35,53 @@ function polygonAreaPx(pts: Point[]): number {
 /** Convert px² → sq ft given scalePxPerFt */
 function pxAreaToSqFt(areaPx: number, scale: number): number {
   return areaPx / (scale * scale);
+}
+
+const METERS_PER_FOOT = 0.3048;
+const METERS_PER_DEGREE_LAT = 111320;
+/** Real-world east-west span (in feet) the satellite backdrop should cover. */
+const SATELLITE_SPAN_FT = 300;
+
+/** Build an ESRI World Imagery static export URL centered on lat/lng, sized to match the canvas aspect ratio. */
+function buildSatelliteImageUrl(lat: number, lng: number, widthPx: number, heightPx: number): { url: string; widthFt: number; heightFt: number } {
+  const widthFt = SATELLITE_SPAN_FT;
+  const heightFt = widthFt * (heightPx / widthPx);
+  const widthM = widthFt * METERS_PER_FOOT;
+  const heightM = heightFt * METERS_PER_FOOT;
+  const deltaLat = (heightM / 2) / METERS_PER_DEGREE_LAT;
+  const metersPerDegreeLng = METERS_PER_DEGREE_LAT * Math.cos((lat * Math.PI) / 180);
+  const deltaLng = (widthM / 2) / metersPerDegreeLng;
+  const xmin = lng - deltaLng;
+  const xmax = lng + deltaLng;
+  const ymin = lat - deltaLat;
+  const ymax = lat + deltaLat;
+  const size = `${Math.max(1, Math.round(widthPx))},${Math.max(1, Math.round(heightPx))}`;
+  const url = `https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${xmin},${ymin},${xmax},${ymax}&bboxSR=4326&size=${size}&format=png&f=image`;
+  return { url, widthFt, heightFt };
+}
+
+/** Resolve whether an image URL actually loads (the ESRI export service errors on some pixel sizes when the requested
+ * resolution exceeds the available imagery cache for a given location — this can't be predicted up front). */
+function probeImageLoads(url: string, timeoutMs = 8000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const img = new window.Image();
+    const timer = setTimeout(() => { img.onload = null; img.onerror = null; resolve(false); }, timeoutMs);
+    img.onload = () => { clearTimeout(timer); resolve(true); };
+    img.onerror = () => { clearTimeout(timer); resolve(false); };
+    img.src = url;
+  });
+}
+
+/** Try progressively smaller export sizes (same aspect ratio) until one is actually servable by the imagery cache. */
+async function resolveSatelliteImage(lat: number, lng: number, aspect: number): Promise<{ url: string; widthFt: number; heightFt: number } | null> {
+  const candidateWidths = [1024, 768, 512, 384, 256, 160];
+  for (const w of candidateWidths) {
+    const h = Math.max(1, Math.round(w / aspect));
+    const built = buildSatelliteImageUrl(lat, lng, w, h);
+    // eslint-disable-next-line no-await-in-loop
+    if (await probeImageLoads(built.url)) return built;
+  }
+  return null;
 }
 
 /** Compute rough total area: each connected component treated as a polygon */
@@ -79,7 +127,19 @@ export default function BlueprintCanvasPage() {
   const calcEstimate = useCalculateBlueprintEstimate();
 
   const svgRef = useRef<SVGSVGElement>(null);
-  
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+
+  // ── Satellite backdrop ───────────────────────────────────────────────────────
+  const propertyId = blueprint?.propertyId ?? 0;
+  const { data: property } = useGetProperty(propertyId, {
+    query: { enabled: !!blueprint?.propertyId, queryKey: getGetPropertyQueryKey(propertyId) },
+  });
+  const [satelliteImage, setSatelliteImage] = useState<{ url: string; widthFt: number; heightFt: number } | null>(null);
+  const [satelliteFailed, setSatelliteFailed] = useState(false);
+  const satelliteBuiltRef = useRef(false);
+  const autoScaleAppliedRef = useRef(false);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+
   const [tool, setTool] = useState<ToolMode>('select');
   const [points, setPoints] = useState<Point[]>([]);
   const [lines, setLines] = useState<Line[]>([]);
@@ -109,6 +169,74 @@ export default function BlueprintCanvasPage() {
       setScalePxPerFt(blueprint.scalePxPerFt);
     }
   }, [blueprint]);
+
+  // Reset satellite backdrop state when switching blueprints/properties
+  useEffect(() => {
+    satelliteBuiltRef.current = false;
+    autoScaleAppliedRef.current = false;
+    setSatelliteImage(null);
+    setSatelliteFailed(false);
+  }, [blueprint?.id, blueprint?.propertyId]);
+
+  // Track the canvas container's pixel size so we can size/frame the satellite image to match.
+  useEffect(() => {
+    const container = canvasContainerRef.current;
+    if (!container) return;
+    const update = () => setContainerSize({ width: container.clientWidth, height: container.clientHeight });
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  // Build the satellite backdrop once we know the property's location and the canvas's pixel size.
+  // Falls back silently to the blank/grid canvas when there's no property, no coordinates, or the imagery can't be found.
+  useEffect(() => {
+    if (satelliteBuiltRef.current) return;
+    if (!blueprint?.propertyId) return;
+    if (!property || property.lat == null || property.lng == null) return;
+    const widthPx = containerSize.width;
+    const heightPx = containerSize.height;
+    if (!widthPx || !heightPx) return;
+
+    satelliteBuiltRef.current = true;
+    let cancelled = false;
+    const aspect = widthPx / heightPx;
+    resolveSatelliteImage(property.lat, property.lng, aspect).then((built) => {
+      if (cancelled) return;
+      if (!built) {
+        setSatelliteFailed(true);
+        return;
+      }
+      setSatelliteImage(built);
+
+      // Give the user a sensible starting scale so the Calibrate tool has a real-world baseline to fine-tune,
+      // but never clobber a scale that was already set (loaded from the blueprint or set by the user this session).
+      // Use the functional updater so this always checks the *latest* scale at the moment it applies, not a
+      // value captured in this effect's closure — the blueprint's persisted scale can finish loading afterward.
+      if (!autoScaleAppliedRef.current) {
+        const estimatedScale = widthPx / built.widthFt;
+        let applied = false;
+        setScalePxPerFt((prev) => {
+          if (prev != null) return prev;
+          applied = true;
+          return estimatedScale;
+        });
+        if (applied) {
+          autoScaleAppliedRef.current = true;
+          toast.message('Scale estimated from satellite imagery', {
+            description: 'Use the Calibrate tool to fine-tune against a known distance in the image.',
+          });
+        }
+      }
+    });
+    return () => { cancelled = true; };
+  }, [blueprint?.propertyId, property, containerSize]);
+
+  const handleSatelliteImageError = useCallback(() => {
+    setSatelliteFailed(true);
+    setSatelliteImage(null);
+  }, []);
 
   const getCoordinates = (e: MouseEvent) => {
     if (!svgRef.current) return { x: 0, y: 0 };
@@ -253,8 +381,12 @@ export default function BlueprintCanvasPage() {
   if (!blueprint && !isLoading) return <div className="p-8 text-center">Blueprint not found.</div>;
 
   const isIrrigation = blueprint?.mode === 'irrigation';
-  const nodeColor = isIrrigation ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground))';
-  const lineColor = isIrrigation ? 'hsl(var(--primary))' : 'hsl(var(--border))';
+  const hasSatelliteBackdrop = !!satelliteImage && !satelliteFailed;
+  // Against a busy satellite photo, the default muted/border tones are nearly invisible — switch to
+  // higher-contrast colors so nodes/lines stay legible on top of imagery. Irrigation's primary color
+  // already reads well on both backgrounds.
+  const nodeColor = isIrrigation ? 'hsl(var(--primary))' : hasSatelliteBackdrop ? '#facc15' : 'hsl(var(--muted-foreground))';
+  const lineColor = isIrrigation ? 'hsl(var(--primary))' : hasSatelliteBackdrop ? '#facc15' : 'hsl(var(--border))';
 
   const totalAreaSqFt = computeTotalAreaSqFt(points, lines, scalePxPerFt);
 
@@ -322,7 +454,7 @@ export default function BlueprintCanvasPage() {
           </div>
           
           {/* Canvas */}
-          <div className="flex-1 bg-gray-50 dark:bg-zinc-950 relative overflow-hidden cursor-crosshair">
+          <div ref={canvasContainerRef} className="flex-1 bg-gray-50 dark:bg-zinc-950 relative overflow-hidden cursor-crosshair">
             <svg
               ref={svgRef}
               className="w-full h-full"
@@ -336,7 +468,22 @@ export default function BlueprintCanvasPage() {
                   <path d="M 40 0 L 0 0 0 40" fill="none" stroke="hsl(var(--border))" strokeWidth="0.5" strokeOpacity="0.5"/>
                 </pattern>
               </defs>
-              <rect width="100%" height="100%" fill="url(#grid-pattern)" pointerEvents="none" />
+              {satelliteImage && !satelliteFailed ? (
+                <image
+                  href={satelliteImage.url}
+                  x={0} y={0}
+                  width="100%" height="100%"
+                  preserveAspectRatio="none"
+                  pointerEvents="none"
+                  onError={handleSatelliteImageError}
+                />
+              ) : (
+                <rect width="100%" height="100%" fill="url(#grid-pattern)" pointerEvents="none" />
+              )}
+
+              {satelliteImage && !satelliteFailed && (
+                <text x={8} y={18} fontSize={10} fontFamily="monospace" fill="white" fillOpacity={0.85} pointerEvents="none">SATELLITE</text>
+              )}
               
               {/* Lines */}
               {lines.map(line => {

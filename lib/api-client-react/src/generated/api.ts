@@ -58,6 +58,7 @@ import type {
   CreateExpenseInput,
   CreatePlanTemplateInput,
   CreateRecurringTemplateInput,
+  CreateTaskFromQuoCallBody,
   CreateTaskInput,
   CreateVendorInput,
   CreateVisitInput,
@@ -183,6 +184,7 @@ import type {
   PropertyUpdate,
   PublicEstimate,
   PublicReviewRequest,
+  QuoCall,
   Quote,
   QuoteInput,
   QuoteRespondInput,
@@ -438,7 +440,7 @@ export const getCommunicationsWebhookUrl = () => {
 }
 
 /**
- * @summary Inbound message webhook (OpenPhone / Grasshopper)
+ * @summary Inbound message webhook (OpenPhone / Grasshopper / Quo / Twilio)
  */
 export const communicationsWebhook = async ( options?: RequestInit): Promise<void> => {
 
@@ -487,7 +489,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CommunicationsWebhookMutationError = ErrorType<unknown>
 
     /**
- * @summary Inbound message webhook (OpenPhone / Grasshopper)
+ * @summary Inbound message webhook (OpenPhone / Grasshopper / Quo / Twilio)
  */
 export const useCommunicationsWebhook = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof communicationsWebhook>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -498,6 +500,155 @@ export const useCommunicationsWebhook = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCommunicationsWebhookMutationOptions(options));
+    }
+
+export const getListQuoCallsUrl = () => {
+
+
+
+
+  return `/api/communications/quo/calls`
+}
+
+/**
+ * @summary List recent calls from the tenant's connected Quo phone number
+ */
+export const listQuoCalls = async ( options?: RequestInit): Promise<QuoCall[]> => {
+
+  return customFetch<QuoCall[]>(getListQuoCallsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListQuoCallsQueryKey = () => {
+    return [
+    `/api/communications/quo/calls`
+    ] as const;
+    }
+
+
+export const getListQuoCallsQueryOptions = <TData = Awaited<ReturnType<typeof listQuoCalls>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listQuoCalls>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListQuoCallsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listQuoCalls>>> = ({ signal }) => listQuoCalls({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listQuoCalls>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListQuoCallsQueryResult = NonNullable<Awaited<ReturnType<typeof listQuoCalls>>>
+export type ListQuoCallsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List recent calls from the tenant's connected Quo phone number
+ */
+
+export function useListQuoCalls<TData = Awaited<ReturnType<typeof listQuoCalls>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listQuoCalls>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListQuoCallsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateTaskFromQuoCallUrl = (callId: string,) => {
+
+
+
+
+  return `/api/communications/quo/calls/${callId}/create-task`
+}
+
+/**
+ * @summary Create an internal task from a Quo call (e.g. a missed call or voicemail follow-up)
+ */
+export const createTaskFromQuoCall = async (callId: string,
+    createTaskFromQuoCallBody?: CreateTaskFromQuoCallBody, options?: RequestInit): Promise<InternalTask> => {
+
+  return customFetch<InternalTask>(getCreateTaskFromQuoCallUrl(callId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createTaskFromQuoCallBody)
+  }
+);}
+
+
+
+
+
+export const getCreateTaskFromQuoCallMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTaskFromQuoCall>>, TError,{callId: string;data?: BodyType<CreateTaskFromQuoCallBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createTaskFromQuoCall>>, TError,{callId: string;data?: BodyType<CreateTaskFromQuoCallBody>}, TContext> => {
+
+const mutationKey = ['createTaskFromQuoCall'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createTaskFromQuoCall>>, {callId: string;data?: BodyType<CreateTaskFromQuoCallBody>}> = (props) => {
+          const {callId,data} = props ?? {};
+
+          return  createTaskFromQuoCall(callId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateTaskFromQuoCallMutationResult = NonNullable<Awaited<ReturnType<typeof createTaskFromQuoCall>>>
+    export type CreateTaskFromQuoCallMutationBody = BodyType<CreateTaskFromQuoCallBody> | undefined
+    export type CreateTaskFromQuoCallMutationError = ErrorType<void>
+
+    /**
+ * @summary Create an internal task from a Quo call (e.g. a missed call or voicemail follow-up)
+ */
+export const useCreateTaskFromQuoCall = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTaskFromQuoCall>>, TError,{callId: string;data?: BodyType<CreateTaskFromQuoCallBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createTaskFromQuoCall>>,
+        TError,
+        {callId: string;data?: BodyType<CreateTaskFromQuoCallBody>},
+        TContext
+      > => {
+      return useMutation(getCreateTaskFromQuoCallMutationOptions(options));
     }
 
 export const getSendJobReminderUrl = (id: number,) => {

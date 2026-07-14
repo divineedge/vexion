@@ -18,3 +18,4 @@
 - [Bulk import/export pattern](bulk-import-export-pattern.md) — transient file uploads use multer + manual-hooks, not presigned-URL storage or orval codegen; shared engine in importExport.ts
 - [Import batch rollback](import-batch-rollback.md) — undo tracks per-row created/updated ids + prior values in jsonb; revive ISO date strings before replaying them into `update()`
 - [Line items CSV convention](line-items-csv-convention.md) — jobs/estimates lineItems packed into one "Line Items" cell via key=value|... mini-syntax; reuse, don't reinvent
+- [Quo (quo.com) API integration](quo-openphone-integration.md) — Quo = rebranded OpenPhone; same data model but a different svix-style webhook signing scheme

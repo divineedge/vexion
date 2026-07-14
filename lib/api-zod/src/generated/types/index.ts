@@ -280,6 +280,7 @@ export * from './publicEstimate';
 export * from './publicEstimateBusinessProfile';
 export * from './publicReviewRequest';
 export * from './publicReviewRequestStatus';
+export * from './quoCall';
 export * from './quote';
 export * from './quoteInput';
 export * from './quoteInputPriceType';

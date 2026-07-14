@@ -3839,6 +3839,27 @@ export interface CreateExpenseInput {
   receiptUrl?: string;
 }
 
+export interface QuoCall {
+  id: string;
+  /** incoming | outgoing */
+  direction: string;
+  /** completed | missed | busy | no-answer | voicemail */
+  status: string;
+  participants?: string[];
+  /** @nullable */
+  customerId?: number | null;
+  /** @nullable */
+  customerName?: string | null;
+  /**
+     * Call duration in seconds
+     * @nullable
+     */
+  duration?: number | null;
+  /** @nullable */
+  voicemailUrl?: string | null;
+  createdAt: string;
+}
+
 export interface InternalTask {
   id: number;
   tenantId: number;
@@ -3912,6 +3933,11 @@ export interface TaskNotification {
   isRead: boolean;
   createdAt: string;
 }
+
+export type CreateTaskFromQuoCallBody = {
+  title?: string;
+  assignedToRole?: string;
+};
 
 export type SendJobReminder200 = {
   sent?: string[];

@@ -104,10 +104,60 @@ paths:
     post:
       operationId: communicationsWebhook
       tags: [communications]
-      summary: Inbound message webhook (OpenPhone / Grasshopper)
+      summary: Inbound message webhook (OpenPhone / Grasshopper / Quo / Twilio)
       responses:
         "200":
           description: OK
+
+  /communications/quo/calls:
+    get:
+      operationId: listQuoCalls
+      tags: [communications]
+      summary: List recent calls from the tenant's connected Quo phone number
+      responses:
+        "200":
+          description: Call list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/QuoCall"
+        "400":
+          description: Quo is not configured for this tenant
+
+  /communications/quo/calls/{callId}/create-task:
+    post:
+      operationId: createTaskFromQuoCall
+      tags: [communications]
+      summary: Create an internal task from a Quo call (e.g. a missed call or voicemail follow-up)
+      parameters:
+        - name: callId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                assignedToRole:
+                  type: string
+      responses:
+        "201":
+          description: Task created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InternalTask"
+        "400":
+          description: Quo is not configured for this tenant
+        "404":
+          description: Call not found
 
   /jobs/{id}/send-reminder:
     post:
@@ -10321,6 +10371,22 @@ components:
         receiptUrl: { type: string }
 
     # ── Internal Tasks ────────────────────────────────────────────────────────
+    QuoCall:
+      type: object
+      required: [id, direction, status, createdAt]
+      properties:
+        id: { type: string }
+        direction: { type: string, description: "incoming | outgoing" }
+        status: { type: string, description: "completed | missed | busy | no-answer | voicemail" }
+        participants:
+          type: array
+          items: { type: string }
+        customerId: { type: ["integer", "null"] }
+        customerName: { type: ["string", "null"] }
+        duration: { type: ["integer", "null"], description: "Call duration in seconds" }
+        voicemailUrl: { type: ["string", "null"] }
+        createdAt: { type: string }
+
     InternalTask:
       type: object
       required: [id, tenantId, title, createdById, priority, status, createdAt, updatedAt]

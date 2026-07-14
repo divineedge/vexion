@@ -60,9 +60,62 @@ export const SendMessageResponse = zod.object({
 
 
 /**
- * @summary Inbound message webhook (OpenPhone / Grasshopper)
+ * @summary Inbound message webhook (OpenPhone / Grasshopper / Quo / Twilio)
  */
 export const CommunicationsWebhookResponse = zod.unknown()
+
+
+/**
+ * @summary List recent calls from the tenant's connected Quo phone number
+ */
+export const ListQuoCallsResponseItem = zod.object({
+  "id": zod.string(),
+  "direction": zod.string().describe('incoming | outgoing'),
+  "status": zod.string().describe('completed | missed | busy | no-answer | voicemail'),
+  "participants": zod.array(zod.string()).optional(),
+  "customerId": zod.number().nullish(),
+  "customerName": zod.string().nullish(),
+  "duration": zod.number().nullish().describe('Call duration in seconds'),
+  "voicemailUrl": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+export const ListQuoCallsResponse = zod.array(ListQuoCallsResponseItem)
+
+
+/**
+ * @summary Create an internal task from a Quo call (e.g. a missed call or voicemail follow-up)
+ */
+export const CreateTaskFromQuoCallParams = zod.object({
+  "callId": zod.coerce.string()
+})
+
+export const CreateTaskFromQuoCallBody = zod.object({
+  "title": zod.string().optional(),
+  "assignedToRole": zod.string().optional()
+})
+
+export const CreateTaskFromQuoCallResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "taskType": zod.string().nullish(),
+  "createdById": zod.number(),
+  "createdByName": zod.string().nullish(),
+  "assignedToUserId": zod.number().nullish(),
+  "assignedToName": zod.string().nullish(),
+  "assignedToRole": zod.string().nullish(),
+  "priority": zod.string(),
+  "status": zod.string(),
+  "dueDate": zod.string().nullish(),
+  "contextType": zod.string().nullish(),
+  "contextId": zod.number().nullish(),
+  "contextLabel": zod.string().nullish(),
+  "completedAt": zod.string().nullish(),
+  "rejectionReason": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
 
 
 /**

@@ -121,7 +121,7 @@ async function sendReminder(params: {
   const companyName = tenant.name;
 
   const smsProviderConfig: SmsProviderConfig = {
-    platform: (tenant.phonePlatform as "openphone" | "grasshopper" | "twilio" | null) ?? null,
+    platform: (tenant.phonePlatform as "openphone" | "grasshopper" | "twilio" | "quo" | null) ?? null,
     config: (tenant.phonePlatformConfig as Record<string, string>) ?? {},
     fromNumber: tenant.mainPhoneNumber ?? null,
   };

@@ -38,6 +38,7 @@ import PlansDashboardPage from '@/pages/plans-dashboard';
 import PlanDetailPage from '@/pages/plan-detail';
 import TasksPage from '@/pages/tasks';
 import FollowupQueuePage from '@/pages/followup-queue';
+import CallsPage from '@/pages/calls';
 import RoutesDashboardPage from '@/pages/routes';
 import TaskBundlesPage from '@/pages/task-bundles';
 import EmployeeDetailPage from '@/pages/employee-detail';
@@ -76,6 +77,7 @@ function ProtectedRoutes() {
         <Route path="/callbacks" component={CallbacksPage} />
         <Route path="/tasks" component={TasksPage} />
         <Route path="/followup-queue" component={FollowupQueuePage} />
+        <Route path="/calls" component={CallsPage} />
         <Route path="/daily-tasks" component={TaskBundlesPage} />
         <Route path="/marketing" component={MarketingPage} />
         <Route path="/payroll" component={PayrollPage} />

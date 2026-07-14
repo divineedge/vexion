@@ -104,6 +104,7 @@ export default function SettingsPage() {
   const [phonePlatformAccountSid, setPhonePlatformAccountSid] = useState('');
   const [phonePlatformAuthToken, setPhonePlatformAuthToken] = useState('');
   const [phonePlatformWebhookSecret, setPhonePlatformWebhookSecret] = useState('');
+  const [quoPhoneNumberId, setQuoPhoneNumberId] = useState('');
   const [emailProvider, setEmailProvider] = useState('');
   const [emailApiKey, setEmailApiKey] = useState('');
   const [emailFromAddress, setEmailFromAddress] = useState('');
@@ -231,6 +232,7 @@ export default function SettingsPage() {
       setPhonePlatformApiKey(s.phonePlatformConfig?.apiKey ?? '');
       setPhonePlatformAccountSid(s.phonePlatformConfig?.accountSid ?? '');
       setPhonePlatformWebhookSecret(s.phonePlatformConfig?.webhookSecret ?? '');
+      setQuoPhoneNumberId(s.phonePlatformConfig?.quoPhoneNumberId ?? '');
       setEmailProvider(s.emailProvider ?? '');
       setEmailApiKey(s.emailProviderConfig?.apiKey ?? '');
       setEmailFromAddress(s.emailProviderConfig?.fromAddress ?? '');
@@ -1008,11 +1010,55 @@ export default function SettingsPage() {
                   <SelectContent>
                     <SelectItem value="none">Not connected (dev mode)</SelectItem>
                     <SelectItem value="openphone">OpenPhone</SelectItem>
+                    <SelectItem value="quo">Quo</SelectItem>
                     <SelectItem value="grasshopper">Grasshopper</SelectItem>
                     <SelectItem value="twilio">Twilio</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+
+              {phonePlatform === 'quo' && (
+                <div className="rounded-lg border p-4 space-y-3 bg-muted/20">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <div className="w-6 h-6 rounded bg-indigo-600 flex items-center justify-center text-white text-xs font-bold">Q</div>
+                    Quo Configuration
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">API Key</label>
+                    <Input
+                      type="password"
+                      placeholder={phonePlatformApiKey.startsWith('••') ? '(saved)' : 'Enter Quo API key'}
+                      value={phonePlatformApiKey}
+                      onChange={e => setPhonePlatformApiKey(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">Quo → Workspace Settings → API → Generate API key</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Phone Number ID</label>
+                    <Input
+                      placeholder="PN123abc"
+                      value={quoPhoneNumberId}
+                      onChange={e => setQuoPhoneNumberId(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">The Quo number this tenant sends/receives from — needed to pull calls for the Calls tab.</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Webhook Signing Key</label>
+                    <Input
+                      type="password"
+                      placeholder={phonePlatformWebhookSecret.startsWith('••') ? '(saved)' : 'whsec_...'}
+                      value={phonePlatformWebhookSecret}
+                      onChange={e => setPhonePlatformWebhookSecret(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">Returned when you create a webhook in Quo. Required to verify inbound call/message events.</p>
+                  </div>
+                  <div className="rounded-md bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800 space-y-1">
+                    <p className="font-medium">Webhook URL for inbound calls & messages:</p>
+                    <code className="block font-mono break-all">{`${window.location.origin}/api/communications/webhook`}</code>
+                    <p className="text-blue-700">Create webhooks for "message.received" and call events pointing at this URL in Quo → API → Webhooks.</p>
+                  </div>
+                </div>
+              )}
 
               {phonePlatform === 'openphone' && (
                 <div className="rounded-lg border p-4 space-y-3 bg-muted/20">
@@ -1107,6 +1153,7 @@ export default function SettingsPage() {
                         accountSid: phonePlatformAccountSid,
                         authToken: phonePlatformAuthToken,
                         webhookSecret: phonePlatformWebhookSecret,
+                        quoPhoneNumberId: quoPhoneNumberId,
                       },
                     } as any
                   },

@@ -149,7 +149,7 @@ async function sendPaymentReminder(params: {
       : `Hi ${firstName}, reminder: invoice ${invoice.invoiceNumber} ($${invoice.total.toFixed(2)}) from ${companyName} is due soon. Reply STOP to opt out.`;
 
     const smsProviderConfig: SmsProviderConfig = {
-      platform: (tenant.phonePlatform as "openphone" | "grasshopper" | "twilio" | null) ?? null,
+      platform: (tenant.phonePlatform as "openphone" | "grasshopper" | "twilio" | "quo" | null) ?? null,
       config: (tenant.phonePlatformConfig as Record<string, string>) ?? {},
       fromNumber: tenant.mainPhoneNumber ?? null,
     };

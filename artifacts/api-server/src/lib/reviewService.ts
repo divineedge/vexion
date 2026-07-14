@@ -96,7 +96,7 @@ export async function sendReviewRequest(params: {
   if (customer.phone && !customer.smsOptOut) {
     const smsBody = `Hi ${firstName}, thanks for choosing ${companyName}! Please rate your experience: ${url}`;
     const smsProviderConfig: SmsProviderConfig = {
-      platform: (tenant.phonePlatform as "openphone" | "grasshopper" | "twilio" | null) ?? null,
+      platform: (tenant.phonePlatform as "openphone" | "grasshopper" | "twilio" | "quo" | null) ?? null,
       config: (tenant.phonePlatformConfig as Record<string, string>) ?? {},
       fromNumber: tenant.mainPhoneNumber ?? null,
     };

@@ -7,7 +7,7 @@
 import { logger } from "./logger";
 
 export interface SmsProviderConfig {
-  platform: "openphone" | "grasshopper" | "twilio" | null;
+  platform: "openphone" | "grasshopper" | "twilio" | "quo" | null;
   config: Record<string, string>;
   fromNumber: string | null;
 }
@@ -36,6 +36,32 @@ async function sendViaOpenPhone(
     if (!resp.ok) {
       const err = await resp.text();
       return { success: false, error: `OpenPhone error ${resp.status}: ${err}` };
+    }
+    const data = await resp.json() as { data?: { id?: string } };
+    return { success: true, externalId: data?.data?.id };
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+}
+
+async function sendViaQuo(
+  apiKey: string,
+  from: string,
+  to: string,
+  body: string,
+): Promise<SendSmsResult> {
+  try {
+    const resp = await fetch("https://api.quo.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Authorization": apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ from, to, content: body }),
+    });
+    if (!resp.ok) {
+      const err = await resp.text();
+      return { success: false, error: `Quo error ${resp.status}: ${err}` };
     }
     const data = await resp.json() as { data?: { id?: string } };
     return { success: true, externalId: data?.data?.id };
@@ -108,6 +134,12 @@ export async function sendSms(
     const authToken = config["authToken"] ?? "";
     if (!accountSid || !authToken) return { success: false, error: "Twilio credentials not configured" };
     return sendViaTwilio(accountSid, authToken, from, to, body);
+  }
+
+  if (platform === "quo") {
+    const apiKey = config["apiKey"] ?? "";
+    if (!apiKey) return { success: false, error: "Quo API key not configured" };
+    return sendViaQuo(apiKey, from, to, body);
   }
 
   return { success: false, error: `Unknown SMS platform: ${platform}` };

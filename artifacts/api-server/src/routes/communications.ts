@@ -1,10 +1,11 @@
 import { Router, type IRouter } from "express";
 import { createHmac, timingSafeEqual } from "crypto";
-import { db, communicationsLogTable, customersTable, tenantsTable, jobsTable, propertiesTable, followupQueueItemsTable } from "@workspace/db";
+import { db, communicationsLogTable, customersTable, tenantsTable, jobsTable, propertiesTable, followupQueueItemsTable, internalTasksTable } from "@workspace/db";
 import { eq, and, desc, or } from "drizzle-orm";
-import { getTenantId } from "../lib/tenantHelper";
+import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { sendSms, type SmsProviderConfig } from "../lib/smsProvider";
 import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
+import { listQuoCalls, getQuoCallById, verifyQuoSignature } from "../lib/quoClient";
 
 const router: IRouter = Router();
 
@@ -87,7 +88,7 @@ router.post("/communications/send", async (req, res): Promise<void> => {
   if (channel === "sms") {
     toAddress = customer.phone;
     const smsConfig: SmsProviderConfig = {
-      platform: (tenant.phonePlatform as "openphone" | "grasshopper" | "twilio" | null) ?? null,
+      platform: (tenant.phonePlatform as "openphone" | "grasshopper" | "twilio" | "quo" | null) ?? null,
       config: (tenant.phonePlatformConfig as Record<string, string>) ?? {},
       fromNumber: tenant.mainPhoneNumber ?? null,
     };
@@ -180,8 +181,36 @@ router.post("/communications/webhook", async (req, res): Promise<void> => {
   // Without verification, anyone could spoof opt-out/opt-in requests.
   const twilioSig = req.headers["x-twilio-signature"] as string | undefined;
   const openPhoneSig = req.headers["x-openphone-signature"] as string | undefined;
+  const quoWebhookId = req.headers["webhook-id"] as string | undefined;
+  const quoWebhookTimestamp = req.headers["webhook-timestamp"] as string | undefined;
+  const quoWebhookSig = req.headers["webhook-signature"] as string | undefined;
 
-  if (twilioSig) {
+  if (quoWebhookId && quoWebhookTimestamp && quoWebhookSig) {
+    // Quo webhook (svix-compatible scheme) — verify HMAC-SHA256 against the
+    // tenant's whsec_... signing key using the raw request bytes.
+    const rawBody = ((req as unknown as { rawBody?: Buffer }).rawBody ?? Buffer.alloc(0)).toString("utf8");
+    const toNumber = (payload["to"] ?? "") as string;
+    const matchingTenants = toNumber
+      ? await db.select().from(tenantsTable).where(
+          or(
+            eq(tenantsTable.mainPhoneNumber, toNumber),
+            eq(tenantsTable.marketingPhoneNumber, toNumber),
+          ),
+        )
+      : await db.select().from(tenantsTable).where(eq(tenantsTable.phonePlatform, "quo"));
+
+    const verified = matchingTenants.some(t => {
+      const cfg = (t.phonePlatformConfig as Record<string, string>) ?? {};
+      const whsecKey = cfg["webhookSecret"] ?? "";
+      if (!whsecKey) return false;
+      return verifyQuoSignature(whsecKey, quoWebhookId, quoWebhookTimestamp, quoWebhookSig, rawBody);
+    });
+
+    if (!verified) {
+      res.status(403).json({ error: "Invalid Quo webhook signature" });
+      return;
+    }
+  } else if (twilioSig) {
     // Twilio webhook — verify HMAC-SHA1 against the auth token.
     // We need to find the tenant's auth token to verify. Look up by 'To' number first.
     const toNumber = (payload["To"] ?? payload["to"] ?? "") as string;
@@ -424,7 +453,7 @@ router.post("/jobs/:id/send-reminder", async (req, res): Promise<void> => {
       companyName,
     });
     const smsConfig: SmsProviderConfig = {
-      platform: (tenant.phonePlatform as "openphone" | "grasshopper" | "twilio" | null) ?? null,
+      platform: (tenant.phonePlatform as "openphone" | "grasshopper" | "twilio" | "quo" | null) ?? null,
       config: (tenant.phonePlatformConfig as Record<string, string>) ?? {},
       fromNumber: tenant.mainPhoneNumber ?? null,
     };
@@ -476,6 +505,137 @@ router.post("/jobs/:id/send-reminder", async (req, res): Promise<void> => {
   }
 
   res.json({ sent: results, jobId });
+});
+
+// ---------------------------------------------------------------------------
+// GET /communications/quo/calls — list recent calls from the connected Quo number
+// ---------------------------------------------------------------------------
+router.get("/communications/quo/calls", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  if (!tenant) { res.status(404).json({ error: "Tenant not found" }); return; }
+
+  const cfg = (tenant.phonePlatformConfig as Record<string, string>) ?? {};
+  const apiKey = cfg["apiKey"] ?? "";
+  const phoneNumberId = cfg["quoPhoneNumberId"] ?? "";
+
+  if (tenant.phonePlatform !== "quo" || !apiKey || !phoneNumberId) {
+    res.status(400).json({ error: "Quo is not configured for this tenant" });
+    return;
+  }
+
+  const result = await listQuoCalls(apiKey, phoneNumberId, { maxResults: 50 });
+  if (!result.success) { res.status(502).json({ error: result.error }); return; }
+
+  const calls = await Promise.all(result.calls.map(async call => {
+    const counterparty = (call.participants ?? [])[0] ?? null;
+    const [customer] = counterparty
+      ? await db
+          .select({ id: customersTable.id, name: customersTable.name })
+          .from(customersTable)
+          .where(
+            and(
+              eq(customersTable.tenantId, tenantId),
+              or(eq(customersTable.phone, counterparty), eq(customersTable.secondaryPhone ?? "", counterparty)),
+            ),
+          )
+          .limit(1)
+      : [];
+
+    return {
+      id: call.id,
+      direction: call.direction ?? "incoming",
+      status: call.status ?? "completed",
+      participants: call.participants ?? [],
+      customerId: customer?.id ?? null,
+      customerName: customer?.name ?? null,
+      duration: call.duration ?? null,
+      voicemailUrl: call.voicemail?.url ?? null,
+      createdAt: call.createdAt ?? new Date().toISOString(),
+    };
+  }));
+
+  res.json(calls);
+});
+
+// ---------------------------------------------------------------------------
+// POST /communications/quo/calls/:callId/create-task — turn a call into an internal task
+// ---------------------------------------------------------------------------
+router.post("/communications/quo/calls/:callId/create-task", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  const callId = req.params.callId;
+  const { title, assignedToRole } = req.body as { title?: string; assignedToRole?: string };
+
+  const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  if (!tenant) { res.status(404).json({ error: "Tenant not found" }); return; }
+
+  const cfg = (tenant.phonePlatformConfig as Record<string, string>) ?? {};
+  const apiKey = cfg["apiKey"] ?? "";
+
+  if (tenant.phonePlatform !== "quo" || !apiKey) {
+    res.status(400).json({ error: "Quo is not configured for this tenant" });
+    return;
+  }
+
+  const result = await getQuoCallById(apiKey, callId);
+  if (!result.success) { res.status(404).json({ error: result.error }); return; }
+
+  const call = result.call;
+  const counterparty = (call.participants ?? [])[0] ?? null;
+  const [customer] = counterparty
+    ? await db
+        .select()
+        .from(customersTable)
+        .where(
+          and(
+            eq(customersTable.tenantId, tenantId),
+            or(eq(customersTable.phone, counterparty), eq(customersTable.secondaryPhone ?? "", counterparty)),
+          ),
+        )
+        .limit(1)
+    : [];
+
+  const isVoicemail = !!call.voicemail?.url;
+  const defaultTitle = customer
+    ? `Call back ${customer.name}${isVoicemail ? " (left a voicemail)" : ""}`
+    : `Call back ${counterparty ?? "unknown number"}${isVoicemail ? " (left a voicemail)" : ""}`;
+
+  const [task] = await db.insert(internalTasksTable).values({
+    tenantId,
+    title: title ?? defaultTitle,
+    description: `From Quo call ${call.id}${counterparty ? ` (${counterparty})` : ""}${isVoicemail ? ` — voicemail: ${call.voicemail?.url}` : ""}`,
+    taskType: "call_customer",
+    createdById: userId,
+    assignedToRole: assignedToRole ?? "admin_office",
+    priority: isVoicemail ? "high" : "normal",
+    status: "open",
+    contextType: customer ? "customer" : null,
+    contextId: customer?.id ?? null,
+  }).returning();
+
+  res.status(201).json({
+    id: task.id,
+    tenantId: task.tenantId,
+    title: task.title,
+    description: task.description,
+    taskType: task.taskType,
+    createdById: task.createdById,
+    createdByName: null,
+    assignedToUserId: task.assignedToUserId ?? null,
+    assignedToName: null,
+    assignedToRole: task.assignedToRole ?? null,
+    priority: task.priority,
+    status: task.status,
+    dueDate: task.dueDate ?? null,
+    contextType: task.contextType ?? null,
+    contextId: task.contextId ?? null,
+    contextLabel: customer?.name ?? null,
+    completedAt: task.completedAt?.toISOString() ?? null,
+    rejectionReason: task.rejectionReason ?? null,
+    createdAt: task.createdAt.toISOString(),
+    updatedAt: task.updatedAt.toISOString(),
+  });
 });
 
 export default router;

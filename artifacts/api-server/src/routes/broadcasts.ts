@@ -133,7 +133,7 @@ async function dispatchBroadcast(
     try {
       if (channel === "sms") {
         const smsConfig: SmsProviderConfig = {
-          platform: (tenant?.phonePlatform as "openphone" | "grasshopper" | "twilio" | null) ?? null,
+          platform: (tenant?.phonePlatform as "openphone" | "grasshopper" | "twilio" | "quo" | null) ?? null,
           config: (tenant?.phonePlatformConfig as Record<string, string>) ?? {},
           fromNumber: tenant?.marketingPhoneNumber ?? tenant?.mainPhoneNumber ?? null,
         };

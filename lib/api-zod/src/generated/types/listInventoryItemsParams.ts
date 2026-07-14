@@ -10,4 +10,8 @@ export type ListInventoryItemsParams = {
 q?: string;
 category?: string;
 lowStock?: boolean;
+/**
+ * When true, only return items flagged as usable in the Blueprint canvas palette.
+ */
+availableForBlueprint?: boolean;
 };

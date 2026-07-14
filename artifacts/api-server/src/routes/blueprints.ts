@@ -213,7 +213,27 @@ router.delete("/blueprints/:id", async (req, res): Promise<void> => {
   res.sendStatus(204);
 });
 
-// ─── Estimate (uses suggestedParts, not arbitrary inventory) ─────────────────
+// ─── Estimate (derives quantities from labeled/linked canvas elements first,
+// falls back to manual suggestedParts, then to a rough generic heuristic) ────
+
+interface CanvasPointEl {
+  id: string;
+  x: number;
+  y: number;
+  elementType?: string;
+  inventoryItemId?: number | null;
+}
+interface CanvasLineEl {
+  id: string;
+  startId: string;
+  endId: string;
+  pipeType?: string;
+  inventoryItemId?: number | null;
+}
+
+function pxDistance(a: CanvasPointEl, b: CanvasPointEl): number {
+  return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+}
 
 router.post("/blueprints/:id/estimate", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
@@ -223,11 +243,50 @@ router.post("/blueprints/:id/estimate", async (req, res): Promise<void> => {
   const [bp] = await db.select().from(blueprintsTable).where(and(eq(blueprintsTable.id, id), eq(blueprintsTable.tenantId, tenantId)));
   if (!bp) { res.status(404).json({ error: "Not found" }); return; }
 
-  const canvas = (bp.canvasData as { nodes?: unknown[]; lines?: unknown[]; points?: unknown[] }) ?? {};
-  const nodeCount = canvas.nodes?.length ?? canvas.points?.length ?? 0;
-  const lineCount = canvas.lines?.length ?? 0;
+  const canvas = (bp.canvasData as { nodes?: unknown[]; lines?: CanvasLineEl[]; points?: CanvasPointEl[] }) ?? {};
+  const points = canvas.points ?? [];
+  const lines = canvas.lines ?? [];
+  const pointById = new Map(points.map(p => [p.id, p]));
+  const nodeCount = canvas.nodes?.length ?? points.length ?? 0;
+  const lineCount = lines.length;
+  const scale = bp.scalePxPerFt;
 
   const suggestedParts = (bp.suggestedParts as SuggestedPart[]) ?? [];
+
+  // ── Derive quantities from labeled/linked canvas elements ──────────────────
+  // Keyed by inventoryItemId, accumulating quantity + tracking unit/source.
+  const derived = new Map<number, { quantity: number; unit: string; source: string }>();
+
+  for (const pt of points) {
+    if (pt.inventoryItemId == null) continue;
+    const entry = derived.get(pt.inventoryItemId) ?? { quantity: 0, unit: "each", source: "canvas" };
+    entry.quantity += 1;
+    derived.set(pt.inventoryItemId, entry);
+  }
+
+  for (const line of lines) {
+    if (line.inventoryItemId == null) continue;
+    const p1 = pointById.get(line.startId);
+    const p2 = pointById.get(line.endId);
+    const pxLen = p1 && p2 ? pxDistance(p1, p2) : 0;
+    const lengthFt = scale ? pxLen / scale : 0;
+    const entry = derived.get(line.inventoryItemId) ?? { quantity: 0, unit: scale ? "ft" : "each", source: "canvas" };
+    // Prefer real-world feet once a scale exists, even if an earlier line contributed before calibration.
+    if (scale) entry.unit = "ft";
+    entry.quantity += scale ? lengthFt : 1;
+    derived.set(line.inventoryItemId, entry);
+  }
+
+  // ── Merge in manually-tagged Suggested Parts (additive by inventoryItemId) ─
+  for (const sp of suggestedParts) {
+    const entry = derived.get(sp.inventoryItemId);
+    if (entry) {
+      entry.quantity += sp.estimatedQuantity;
+      entry.source = "canvas+manual";
+    } else {
+      derived.set(sp.inventoryItemId, { quantity: sp.estimatedQuantity, unit: "each", source: "manual" });
+    }
+  }
 
   let parts: Array<{
     inventoryItemId: number;
@@ -235,27 +294,30 @@ router.post("/blueprints/:id/estimate", async (req, res): Promise<void> => {
     quantity: number;
     unitPrice: number;
     total: number;
+    unit: string;
+    source: string;
   }>;
 
-  if (suggestedParts.length > 0) {
-    // Use the blueprint's suggestedParts to look up real inventory items
+  if (derived.size > 0) {
     const items = await db.select().from(inventoryItemsTable).where(eq(inventoryItemsTable.tenantId, tenantId));
     const itemMap = new Map(items.map(i => [i.id, i]));
 
-    parts = suggestedParts.map(sp => {
-      const item = itemMap.get(sp.inventoryItemId);
+    parts = Array.from(derived.entries()).map(([inventoryItemId, info]) => {
+      const item = itemMap.get(inventoryItemId);
       const unitPrice = item?.markedUpPrice ?? item?.unitPrice ?? 0;
-      const quantity = sp.estimatedQuantity;
+      const quantity = Math.round(info.quantity * 100) / 100;
       return {
-        inventoryItemId: sp.inventoryItemId,
-        name: item?.name ?? `Item #${sp.inventoryItemId}`,
+        inventoryItemId,
+        name: item?.name ?? `Item #${inventoryItemId}`,
         quantity,
         unitPrice,
         total: quantity * unitPrice,
+        unit: info.unit,
+        source: info.source,
       };
     });
   } else {
-    // No suggestedParts: derive a rough estimate from canvas element counts
+    // No labeled/linked elements and no manual parts: derive a rough estimate from canvas element counts
     const items = await db.select().from(inventoryItemsTable).where(eq(inventoryItemsTable.tenantId, tenantId)).limit(5);
     parts = items.slice(0, Math.min(items.length, Math.max(1, nodeCount + lineCount))).map((item, idx) => ({
       inventoryItemId: item.id,
@@ -263,6 +325,8 @@ router.post("/blueprints/:id/estimate", async (req, res): Promise<void> => {
       quantity: (idx === 0 ? nodeCount || 1 : lineCount || 1) * 1.0,
       unitPrice: item.markedUpPrice || item.unitPrice,
       total: ((idx === 0 ? nodeCount || 1 : lineCount || 1)) * (item.markedUpPrice || item.unitPrice),
+      unit: "each",
+      source: "generic",
     }));
   }
 

@@ -12,4 +12,8 @@ export interface EstimatedPart {
   quantity: number;
   unitPrice: number;
   total: number;
+  /** Unit the quantity is expressed in (e.g. each, ft) for parts derived from drawn canvas elements. */
+  unit?: string;
+  /** Where this line came from: 'canvas' (linked to a placed palette element) or 'manual' (added via Suggested Parts). */
+  source?: string;
 }

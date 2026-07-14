@@ -1,24 +1,93 @@
-import React, { useState, useRef, useEffect, useCallback, MouseEvent } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo, MouseEvent } from 'react';
 import { useParams, useLocation } from 'wouter';
 import { 
   useGetBlueprint, getGetBlueprintQueryKey,
   useUpdateBlueprint, useCalculateBlueprintEstimate,
-  useGetProperty, getGetPropertyQueryKey
+  useGetProperty, getGetPropertyQueryKey,
+  useListInventoryItems, getListInventoryItemsQueryKey,
 } from '@workspace/api-client-react';
+import type { EstimatedPart } from '@workspace/api-client-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Save, MousePointer2, PlusCircle, Minus, Trash2, Calculator, Ruler } from 'lucide-react';
+import {
+  ArrowLeft, Save, MousePointer2, PlusCircle, Minus, Trash2, Calculator, Ruler,
+  ChevronDown, TreeDeciduous, Mountain, Waves, Hash, Layers, SprayCan, Link2,
+} from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 
-type Point = { id: string, x: number, y: number };
-type Line = { id: string, startId: string, endId: string };
+/** Specific fixture/material types placeable as points on the canvas, beyond the plain generic point. */
+type PointElementType =
+  | 'node' | 'sprinkler' | 'tree' | 'largeRock' | 'dryRiverBed'
+  | 'gravel_1in' | 'gravel_2in' | 'gravel_3in' | 'gravel_4in' | 'trench';
+
+/** Specific types for line segments, beyond the plain generic edge. */
+type LineElementType = 'edge' | 'pipe';
+
+type Point = {
+  id: string; x: number; y: number;
+  /** Specific fixture/material type; omitted/'node' = plain generic point (legacy behavior). */
+  elementType?: PointElementType;
+  /** Free-text label, e.g. auto-numbered "Trench 1", "Trench 2"... */
+  label?: string;
+  /** Sprinkler head type, only meaningful when elementType === 'sprinkler'. */
+  sprinklerHeadType?: string;
+  /** Optional link to a flagged inventory item so materials can be pulled straight from inventory. */
+  inventoryItemId?: number | null;
+};
+
+type Line = {
+  id: string; startId: string; endId: string;
+  /** Specific line type; omitted/'edge' = plain generic edge (legacy behavior). */
+  elementType?: LineElementType;
+  /** Pipe class/size, only meaningful when elementType === 'pipe'. */
+  pipeType?: string;
+  /** Optional link to a flagged inventory item; quantity pulled is the real-world length in feet. */
+  inventoryItemId?: number | null;
+};
+
 type CanvasData = { points: Point[], lines: Line[] };
 
 type ToolMode = 'select' | 'addNode' | 'addLine' | 'delete' | 'calibrate';
+
+const POINT_PALETTE: { type: PointElementType; label: string; icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; color: string }[] = [
+  { type: 'node', label: 'Generic Point', icon: PlusCircle, color: 'hsl(var(--muted-foreground))' },
+  { type: 'sprinkler', label: 'Sprinkler', icon: SprayCan, color: '#38bdf8' },
+  { type: 'tree', label: 'Tree', icon: TreeDeciduous, color: '#16a34a' },
+  { type: 'largeRock', label: 'Large Rock', icon: Mountain, color: '#78716c' },
+  { type: 'dryRiverBed', label: 'Dry River Bed', icon: Waves, color: '#0891b2' },
+  { type: 'gravel_1in', label: 'Gravel (1")', icon: Layers, color: '#d6b98c' },
+  { type: 'gravel_2in', label: 'Gravel (2")', icon: Layers, color: '#c9a876' },
+  { type: 'gravel_3in', label: 'Gravel (3")', icon: Layers, color: '#bb9660' },
+  { type: 'gravel_4in', label: 'Gravel (4")', icon: Layers, color: '#ad844a' },
+  { type: 'trench', label: 'Trench (numbered)', icon: Hash, color: '#f97316' },
+];
+
+const SPRINKLER_HEAD_TYPES = ['Rotor', 'Spray', 'Drip / Micro', 'Bubbler', 'MP Rotator'];
+
+const PIPE_TYPES = [
+  'PVC Sch40 1/2"', 'PVC Sch40 3/4"', 'PVC Sch40 1"',
+  'PVC Class200 3/4"', 'PVC Class200 1"', 'PVC Class200 1.5"',
+  'Poly 1/2"', 'Poly 3/4"', 'Copper 1/2"',
+];
+
+function pointElementMeta(elementType: PointElementType | undefined) {
+  return POINT_PALETTE.find(p => p.type === (elementType ?? 'node')) ?? POINT_PALETTE[0];
+}
+
+/** Real-world length of a line segment in feet, given the calibrated scale. Null if not calibrated. */
+function lineLengthFt(p1: { x: number; y: number } | undefined, p2: { x: number; y: number } | undefined, scale: number | null | undefined): number | null {
+  if (!p1 || !p2 || !scale || scale <= 0) return null;
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  return Math.sqrt(dx * dx + dy * dy) / scale;
+}
 
 /** Shoelace formula — area of a polygon from ordered vertices (px²) */
 function polygonAreaPx(pts: Point[]): number {
@@ -151,6 +220,27 @@ export default function BlueprintCanvasPage() {
   const [drawingLineStartId, setDrawingLineStartId] = useState<string | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
+  // ── Palette: which specific fixture/material type is placed by the current add tools ──────
+  const [pendingPointType, setPendingPointType] = useState<PointElementType>('node');
+  const [pendingLineType, setPendingLineType] = useState<LineElementType>('edge');
+  const [pendingPipeType, setPendingPipeType] = useState<string>(PIPE_TYPES[0]);
+  const [pointPaletteOpen, setPointPaletteOpen] = useState(false);
+  const [linePaletteOpen, setLinePaletteOpen] = useState(false);
+
+  // Inventory items flagged as usable in the Blueprint canvas palette, for linking placed elements.
+  const { data: blueprintInventoryItems } = useListInventoryItems(
+    { availableForBlueprint: true },
+    { query: { queryKey: getListInventoryItemsQueryKey({ availableForBlueprint: true }) } },
+  );
+
+  // Last calculated itemized estimate breakdown (parts list), shown alongside the total.
+  const [estimateResult, setEstimateResult] = useState<{ parts: EstimatedPart[]; subtotal: number; overageAmount: number; total: number } | null>(null);
+
+  const nextTrenchNumber = useMemo(
+    () => points.filter(p => p.elementType === 'trench').length + 1,
+    [points],
+  );
+
   // ── Calibration state ────────────────────────────────────────────────────────
   const [calibStart, setCalibStart] = useState<{ x: number; y: number } | null>(null);
   const [calibEnd, setCalibEnd] = useState<{ x: number; y: number } | null>(null);
@@ -252,7 +342,9 @@ export default function BlueprintCanvasPage() {
     const coords = getCoordinates(e);
     
     if (tool === 'addNode') {
-      const newPoint = { id: `p_${Date.now()}`, x: coords.x, y: coords.y };
+      const newPoint: Point = { id: `p_${Date.now()}`, x: coords.x, y: coords.y, elementType: pendingPointType };
+      if (pendingPointType === 'trench') newPoint.label = `Trench ${nextTrenchNumber}`;
+      if (pendingPointType === 'sprinkler') newPoint.sprinklerHeadType = SPRINKLER_HEAD_TYPES[0];
       setPoints([...points, newPoint]);
     } else if (tool === 'select') {
       setSelectedPointId(null);
@@ -294,7 +386,9 @@ export default function BlueprintCanvasPage() {
       if (!drawingLineStartId) {
         setDrawingLineStartId(pointId);
       } else if (drawingLineStartId !== pointId) {
-        setLines([...lines, { id: `l_${Date.now()}`, startId: drawingLineStartId, endId: pointId }]);
+        const newLine: Line = { id: `l_${Date.now()}`, startId: drawingLineStartId, endId: pointId, elementType: pendingLineType };
+        if (pendingLineType === 'pipe') newLine.pipeType = pendingPipeType;
+        setLines([...lines, newLine]);
         setDrawingLineStartId(null);
       }
     }
@@ -330,7 +424,8 @@ export default function BlueprintCanvasPage() {
 
   const handleCalculate = () => {
     calcEstimate.mutate({ id }, {
-      onSuccess: () => {
+      onSuccess: (data) => {
+        setEstimateResult(data);
         toast.success('Estimate calculated');
         queryClient.invalidateQueries({ queryKey: getGetBlueprintQueryKey(id) });
       }
@@ -425,12 +520,68 @@ export default function BlueprintCanvasPage() {
               <MousePointer2 className="w-4 h-4" />
             </Button>
             <div className="w-px h-6 bg-border mx-1" />
-            <Button variant={tool === 'addNode' ? 'default' : 'ghost'} size="sm" onClick={() => { setTool('addNode'); setDrawingLineStartId(null); }} title="Add Node (Sprinkler / Form Corner)">
-              <PlusCircle className="w-4 h-4" />
-            </Button>
-            <Button variant={tool === 'addLine' ? 'default' : 'ghost'} size="sm" onClick={() => setTool('addLine')} title="Add Line (Pipe / Edge)">
-              <Minus className="w-4 h-4" />
-            </Button>
+            <Popover open={pointPaletteOpen} onOpenChange={setPointPaletteOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant={tool === 'addNode' ? 'default' : 'ghost'}
+                  size="sm"
+                  className="gap-1"
+                  title="Add fixture / material point"
+                  onClick={() => { setTool('addNode'); setDrawingLineStartId(null); setPointPaletteOpen(true); }}
+                >
+                  {React.createElement(pointElementMeta(pendingPointType).icon, { className: 'w-4 h-4' })}
+                  <span className="text-[10px] max-w-[5.5rem] truncate">{pointElementMeta(pendingPointType).label}</span>
+                  <ChevronDown className="w-3 h-3" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-1" align="start">
+                {POINT_PALETTE.map(p => (
+                  <button
+                    key={p.type}
+                    className={`w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted text-left ${pendingPointType === p.type ? 'bg-muted' : ''}`}
+                    onClick={() => { setPendingPointType(p.type); setTool('addNode'); setDrawingLineStartId(null); setPointPaletteOpen(false); }}
+                  >
+                    <p.icon className="w-4 h-4" style={{ color: p.color }} />
+                    {p.label}
+                  </button>
+                ))}
+              </PopoverContent>
+            </Popover>
+            <Popover open={linePaletteOpen} onOpenChange={setLinePaletteOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant={tool === 'addLine' ? 'default' : 'ghost'}
+                  size="sm"
+                  className="gap-1"
+                  title="Add line / pipe segment"
+                  onClick={() => { setTool('addLine'); setLinePaletteOpen(true); }}
+                >
+                  <Minus className="w-4 h-4" />
+                  <span className="text-[10px] max-w-[5.5rem] truncate">{pendingLineType === 'pipe' ? pendingPipeType : 'Generic Edge'}</span>
+                  <ChevronDown className="w-3 h-3" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-2 space-y-2" align="start">
+                <button
+                  className={`w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted text-left ${pendingLineType === 'edge' ? 'bg-muted' : ''}`}
+                  onClick={() => { setPendingLineType('edge'); setTool('addLine'); setLinePaletteOpen(false); }}
+                >
+                  <Minus className="w-4 h-4" /> Generic Edge
+                </button>
+                <div className="border-t pt-2">
+                  <p className="text-xs text-muted-foreground px-2 pb-1">Pipe (real-world length auto-calculated)</p>
+                  {PIPE_TYPES.map(pt => (
+                    <button
+                      key={pt}
+                      className={`w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted text-left ${pendingLineType === 'pipe' && pendingPipeType === pt ? 'bg-muted' : ''}`}
+                      onClick={() => { setPendingLineType('pipe'); setPendingPipeType(pt); setTool('addLine'); setLinePaletteOpen(false); }}
+                    >
+                      <Ruler className="w-4 h-4 text-primary" /> {pt}
+                    </button>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
             <div className="w-px h-6 bg-border mx-1" />
             <Button variant={tool === 'delete' ? 'destructive' : 'ghost'} size="sm" onClick={() => { setTool('delete'); setDrawingLineStartId(null); }} title="Delete">
               <Trash2 className="w-4 h-4" />
@@ -452,7 +603,104 @@ export default function BlueprintCanvasPage() {
                `Mode: ${tool.replace(/([A-Z])/g, ' $1')}`}
             </span>
           </div>
-          
+
+          {/* Selected element details */}
+          {tool === 'select' && selectedPointId && (() => {
+            const pt = points.find(p => p.id === selectedPointId);
+            if (!pt) return null;
+            const meta = pointElementMeta(pt.elementType);
+            const updatePoint = (patch: Partial<Point>) => setPoints(pts => pts.map(p => p.id === pt.id ? { ...p, ...patch } : p));
+            return (
+              <div className="border-b p-3 flex flex-wrap items-end gap-3 bg-muted/10">
+                <div className="flex items-center gap-1.5">
+                  <meta.icon className="w-4 h-4" style={{ color: meta.color }} />
+                  <span className="text-sm font-medium">{meta.label}</span>
+                </div>
+                {(pt.elementType === 'trench' || !pt.elementType || pt.elementType === 'node') && (
+                  <div className="space-y-1">
+                    <Label className="text-xs">Label</Label>
+                    <Input className="h-8 w-36" value={pt.label ?? ''} placeholder="Optional label" onChange={e => updatePoint({ label: e.target.value })} />
+                  </div>
+                )}
+                {pt.elementType === 'sprinkler' && (
+                  <div className="space-y-1">
+                    <Label className="text-xs">Head Type</Label>
+                    <Select value={pt.sprinklerHeadType ?? SPRINKLER_HEAD_TYPES[0]} onValueChange={v => updatePoint({ sprinklerHeadType: v })}>
+                      <SelectTrigger className="h-8 w-36"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {SPRINKLER_HEAD_TYPES.map(h => <SelectItem key={h} value={h}>{h}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <div className="space-y-1">
+                  <Label className="text-xs flex items-center gap-1"><Link2 className="w-3 h-3" /> Linked Inventory Item</Label>
+                  <Select
+                    value={pt.inventoryItemId != null ? String(pt.inventoryItemId) : 'none'}
+                    onValueChange={v => updatePoint({ inventoryItemId: v === 'none' ? null : Number(v) })}
+                  >
+                    <SelectTrigger className="h-8 w-48"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {(blueprintInventoryItems ?? []).map(item => (
+                        <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            );
+          })()}
+          {tool === 'select' && selectedLineId && (() => {
+            const ln = lines.find(l => l.id === selectedLineId);
+            if (!ln) return null;
+            const p1 = points.find(p => p.id === ln.startId);
+            const p2 = points.find(p => p.id === ln.endId);
+            const lengthFt = lineLengthFt(p1, p2, scalePxPerFt);
+            const updateLine = (patch: Partial<Line>) => setLines(ls => ls.map(l => l.id === ln.id ? { ...l, ...patch } : l));
+            return (
+              <div className="border-b p-3 flex flex-wrap items-end gap-3 bg-muted/10">
+                <div className="flex items-center gap-1.5">
+                  <Minus className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-medium">{ln.elementType === 'pipe' ? 'Pipe' : 'Generic Edge'}</span>
+                  {lengthFt !== null ? (
+                    <Badge variant="outline" className="text-xs">{lengthFt.toFixed(1)} ft</Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-xs text-muted-foreground">Calibrate for length</Badge>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Type</Label>
+                  <Select
+                    value={ln.elementType === 'pipe' ? (ln.pipeType ?? PIPE_TYPES[0]) : 'edge'}
+                    onValueChange={v => v === 'edge' ? updateLine({ elementType: 'edge', pipeType: undefined }) : updateLine({ elementType: 'pipe', pipeType: v })}
+                  >
+                    <SelectTrigger className="h-8 w-44"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="edge">Generic Edge</SelectItem>
+                      {PIPE_TYPES.map(pt => <SelectItem key={pt} value={pt}>{pt}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs flex items-center gap-1"><Link2 className="w-3 h-3" /> Linked Inventory Item</Label>
+                  <Select
+                    value={ln.inventoryItemId != null ? String(ln.inventoryItemId) : 'none'}
+                    onValueChange={v => updateLine({ inventoryItemId: v === 'none' ? null : Number(v) })}
+                  >
+                    <SelectTrigger className="h-8 w-48"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {(blueprintInventoryItems ?? []).map(item => (
+                        <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Canvas */}
           <div ref={canvasContainerRef} className="flex-1 bg-gray-50 dark:bg-zinc-950 relative overflow-hidden cursor-crosshair">
             <svg
@@ -491,15 +739,33 @@ export default function BlueprintCanvasPage() {
                 const p2 = points.find(p => p.id === line.endId);
                 if (!p1 || !p2) return null;
                 const isSelected = selectedLineId === line.id;
+                const isPipe = line.elementType === 'pipe';
+                const lengthFt = lineLengthFt(p1, p2, scalePxPerFt);
+                const midX = (p1.x + p2.x) / 2;
+                const midY = (p1.y + p2.y) / 2;
                 return (
-                  <line
-                    key={line.id}
-                    x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-                    stroke={isSelected ? 'hsl(var(--destructive))' : lineColor}
-                    strokeWidth={isSelected ? 4 : 2}
-                    className="cursor-pointer transition-colors"
-                    onClick={(e) => handleLineClick(e, line.id)}
-                  />
+                  <g key={line.id}>
+                    <line
+                      x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+                      stroke={isSelected ? 'hsl(var(--destructive))' : isPipe ? '#0ea5e9' : lineColor}
+                      strokeWidth={isSelected ? 4 : isPipe ? 3 : 2}
+                      strokeDasharray={isPipe ? undefined : undefined}
+                      className="cursor-pointer transition-colors"
+                      onClick={(e) => handleLineClick(e, line.id)}
+                    />
+                    {isPipe && (
+                      <text
+                        x={midX} y={midY - 6}
+                        fontSize={10}
+                        textAnchor="middle"
+                        fill={isSelected ? 'hsl(var(--destructive))' : '#0369a1'}
+                        pointerEvents="none"
+                        className="font-medium"
+                      >
+                        {line.pipeType}{lengthFt !== null ? ` · ${lengthFt.toFixed(1)} ft` : ''}
+                      </text>
+                    )}
+                  </g>
                 );
               })}
 
@@ -507,12 +773,20 @@ export default function BlueprintCanvasPage() {
               {drawingLineStartId && tool === 'addLine' && (() => {
                 const p1 = points.find(p => p.id === drawingLineStartId);
                 if (!p1) return null;
+                const previewLengthFt = lineLengthFt(p1, mousePos, scalePxPerFt);
                 return (
-                  <line
-                    x1={p1.x} y1={p1.y} x2={mousePos.x} y2={mousePos.y}
-                    stroke={lineColor} strokeWidth={2} strokeDasharray="4 4"
-                    pointerEvents="none"
-                  />
+                  <>
+                    <line
+                      x1={p1.x} y1={p1.y} x2={mousePos.x} y2={mousePos.y}
+                      stroke={pendingLineType === 'pipe' ? '#0ea5e9' : lineColor} strokeWidth={2} strokeDasharray="4 4"
+                      pointerEvents="none"
+                    />
+                    {previewLengthFt !== null && (
+                      <text x={mousePos.x + 10} y={mousePos.y - 10} fontSize={10} fill="#0369a1" pointerEvents="none">
+                        {previewLengthFt.toFixed(1)} ft
+                      </text>
+                    )}
+                  </>
                 )
               })()}
 
@@ -537,19 +811,27 @@ export default function BlueprintCanvasPage() {
               {points.map(point => {
                 const isSelected = selectedPointId === point.id;
                 const isDrawingStart = drawingLineStartId === point.id;
+                const meta = pointElementMeta(point.elementType);
+                const isSpecial = !!point.elementType && point.elementType !== 'node';
+                const displayLabel = point.label ?? (point.elementType === 'sprinkler' ? point.sprinklerHeadType : undefined);
                 return (
                   <g key={point.id} transform={`translate(${point.x}, ${point.y})`}>
                     <circle
-                      r={isDrawingStart ? 10 : 8}
-                      fill={isSelected || isDrawingStart ? 'hsl(var(--destructive))' : nodeColor}
-                      stroke={isSelected ? 'white' : 'transparent'}
-                      strokeWidth={2}
+                      r={isDrawingStart ? 10 : isSpecial ? 9 : 8}
+                      fill={isSelected || isDrawingStart ? 'hsl(var(--destructive))' : isSpecial ? meta.color : nodeColor}
+                      stroke={isSelected ? 'white' : point.inventoryItemId ? '#22c55e' : 'transparent'}
+                      strokeWidth={point.inventoryItemId && !isSelected ? 2.5 : 2}
                       className="cursor-pointer transition-all hover:opacity-80"
                       onClick={(e) => handlePointClick(e, point.id)}
                       onMouseDown={(e) => handlePointMouseDown(e, point.id)}
                     />
-                    {isIrrigation && !isSelected && !isDrawingStart && (
+                    {isIrrigation && !isSpecial && !isSelected && !isDrawingStart && (
                       <circle r={3} fill="white" pointerEvents="none" />
+                    )}
+                    {displayLabel && !isSelected && (
+                      <text y={-13} textAnchor="middle" fontSize={9} fill={meta.color} className="font-medium" pointerEvents="none">
+                        {displayLabel}
+                      </text>
                     )}
                   </g>
                 );
@@ -606,6 +888,30 @@ export default function BlueprintCanvasPage() {
                   </div>
                   <p className="text-xs text-muted-foreground">Adjust buffer percentage to account for waste/spoilage.</p>
                 </div>
+
+                {estimateResult && estimateResult.parts.length > 0 && (
+                  <div className="space-y-2 pt-4 border-t">
+                    <p className="text-sm font-medium">Parts Breakdown</p>
+                    <div className="space-y-1.5">
+                      {estimateResult.parts.map(part => (
+                        <div key={part.inventoryItemId} className="flex items-center justify-between text-xs">
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">{part.name}</p>
+                            <p className="text-muted-foreground">
+                              {part.quantity.toLocaleString(undefined, { maximumFractionDigits: 1 })} {part.unit ?? 'each'}
+                              {part.source && part.source !== 'generic' && (
+                                <span className="ml-1 opacity-70">
+                                  ({part.source === 'canvas' ? 'from canvas' : part.source === 'manual' ? 'manual' : 'canvas + manual'})
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                          <p className="font-medium shrink-0 ml-2">${part.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="h-full flex flex-col items-center justify-center p-8 text-center text-muted-foreground">

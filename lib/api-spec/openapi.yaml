@@ -1099,6 +1099,11 @@ paths:
           in: query
           schema:
             type: boolean
+        - name: availableForBlueprint
+          in: query
+          description: "When true, only return items flagged as usable in the Blueprint canvas palette."
+          schema:
+            type: boolean
       responses:
         "200":
           description: List of inventory items
@@ -7218,6 +7223,9 @@ components:
           type: string
         isLowStock:
           type: boolean
+        availableForBlueprint:
+          type: boolean
+          description: "When true, this item is offered as a pickable option in the Blueprint canvas palette."
         createdAt:
           type: string
 
@@ -7245,6 +7253,9 @@ components:
           type: integer
         unit:
           type: string
+        availableForBlueprint:
+          type: boolean
+          description: "When true, this item is offered as a pickable option in the Blueprint canvas palette."
 
     InventoryItemUpdate:
       type: object
@@ -7265,6 +7276,9 @@ components:
           type: integer
         unit:
           type: string
+        availableForBlueprint:
+          type: boolean
+          description: "When true, this item is offered as a pickable option in the Blueprint canvas palette."
 
     InventorySummary:
       type: object
@@ -8117,6 +8131,12 @@ components:
           type: number
         total:
           type: number
+        unit:
+          type: string
+          description: "Unit the quantity is expressed in (e.g. each, ft) for parts derived from drawn canvas elements."
+        source:
+          type: string
+          description: "Where this line came from: 'canvas' (linked to a placed palette element) or 'manual' (added via Suggested Parts)."
 
     TenantSettings:
       type: object

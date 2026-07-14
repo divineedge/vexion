@@ -11,6 +11,7 @@ import {
   requireString,
   optionalString,
   optionalNumber,
+  optionalBoolean,
   registerImportExportConfig,
   type ImportExportEntityConfig,
 } from "../lib/importExport";
@@ -33,6 +34,7 @@ const inventoryImportExportConfig: ImportExportEntityConfig = {
     { key: "quantity", header: "Quantity" },
     { key: "reorderPoint", header: "Reorder Point" },
     { key: "unit", header: "Unit" },
+    { key: "availableForBlueprint", header: "Blueprint Ready" },
   ],
   exportColumns: [
     { key: "id", header: "ID" },
@@ -45,6 +47,7 @@ const inventoryImportExportConfig: ImportExportEntityConfig = {
     { key: "quantity", header: "Quantity" },
     { key: "reorderPoint", header: "Reorder Point" },
     { key: "unit", header: "Unit" },
+    { key: "availableForBlueprint", header: "Blueprint Ready" },
     { key: "createdAt", header: "Created At" },
   ],
   buildExportRows: async (tenantId, query) => {
@@ -64,6 +67,7 @@ const inventoryImportExportConfig: ImportExportEntityConfig = {
       quantity: i.quantity,
       reorderPoint: i.reorderPoint,
       unit: i.unit,
+      availableForBlueprint: i.availableForBlueprint,
       createdAt: i.createdAt.toISOString(),
     }));
   },
@@ -85,6 +89,7 @@ const inventoryImportExportConfig: ImportExportEntityConfig = {
       quantity: optionalNumber(raw.quantity, "Quantity", errors) ?? 0,
       reorderPoint: optionalNumber(raw.reorderPoint, "Reorder Point", errors) ?? 5,
       unit: optionalString(raw.unit) ?? "each",
+      availableForBlueprint: optionalBoolean(raw.availableForBlueprint) ?? false,
     };
     if (errors.length > 0) return { ok: false, errors };
     return { ok: true, values };
@@ -208,6 +213,7 @@ function formatItem(
     reorderPoint: i.reorderPoint,
     unit: i.unit,
     isLowStock: i.quantity <= i.reorderPoint,
+    availableForBlueprint: i.availableForBlueprint,
     createdAt: i.createdAt.toISOString(),
   };
 }
@@ -248,11 +254,12 @@ router.get("/inventory/summary", async (req, res): Promise<void> => {
 router.get("/inventory", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
-  const { q, category, lowStock } = req.query as Record<string, string>;
+  const { q, category, lowStock, availableForBlueprint } = req.query as Record<string, string>;
 
   let where = eq(inventoryItemsTable.tenantId, tenantId) as ReturnType<typeof eq>;
   if (q) where = and(where, ilike(inventoryItemsTable.name, `%${q}%`)) as typeof where;
   if (category) where = and(where, eq(inventoryItemsTable.category, category)) as typeof where;
+  if (availableForBlueprint === "true") where = and(where, eq(inventoryItemsTable.availableForBlueprint, true)) as typeof where;
 
   const [items, markupPct, showCost] = await Promise.all([
     db.select().from(inventoryItemsTable).where(where).orderBy(inventoryItemsTable.name),
@@ -272,7 +279,7 @@ router.get("/inventory", async (req, res): Promise<void> => {
 router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
-  const { name, sku, description, category, costPrice, markupPct: reqMarkupPct, quantity, reorderPoint, unit } = req.body;
+  const { name, sku, description, category, costPrice, markupPct: reqMarkupPct, quantity, reorderPoint, unit, availableForBlueprint } = req.body;
 
   if (!name || !sku) {
     res.status(400).json({ error: "name and sku are required" });
@@ -300,6 +307,7 @@ router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void
     reorderPoint: reorder,
     unit: unit ? String(unit) : "each",
     isLowStock: qty <= reorder,
+    availableForBlueprint: availableForBlueprint === true || availableForBlueprint === "true",
   }).returning();
 
   const showCost = await canSeeCostPrice(tenantId, userId);
@@ -340,7 +348,7 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
     if (isNaN(m) || m < 0) { res.status(400).json({ error: "markupPct must be a non-negative number" }); return; }
   }
 
-  const { name, description, category, costPrice, markupPct: reqMarkupPct, quantity, reorderPoint, unit } = req.body;
+  const { name, description, category, costPrice, markupPct: reqMarkupPct, quantity, reorderPoint, unit, availableForBlueprint } = req.body;
   const updates: Partial<typeof inventoryItemsTable.$inferInsert> = {};
   if (name !== undefined) updates.name = String(name);
   if (description !== undefined) updates.description = description ? String(description) : null;
@@ -348,6 +356,7 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
   if (quantity !== undefined) { updates.quantity = parseSafeInt(quantity, 0); }
   if (reorderPoint !== undefined) { updates.reorderPoint = parseSafeInt(reorderPoint, 5); }
   if (unit !== undefined) updates.unit = String(unit) || "each";
+  if (availableForBlueprint !== undefined) updates.availableForBlueprint = availableForBlueprint === true || availableForBlueprint === "true";
 
   if (costPrice !== undefined || reqMarkupPct !== undefined) {
     const [existing] = await db

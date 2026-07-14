@@ -21,6 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
@@ -42,11 +43,13 @@ type ItemForm = {
   quantity: string;
   reorderPoint: string;
   unit: string;
+  availableForBlueprint: boolean;
 };
 
 const EMPTY_FORM: ItemForm = {
   name: '', sku: '', description: '', category: '',
   costPrice: '', markupPct: '', quantity: '0', reorderPoint: '5', unit: 'each',
+  availableForBlueprint: false,
 };
 
 export default function InventoryPage() {
@@ -222,6 +225,7 @@ export default function InventoryPage() {
       quantity: String(item.quantity),
       reorderPoint: String(item.reorderPoint),
       unit: item.unit ?? 'each',
+      availableForBlueprint: item.availableForBlueprint ?? false,
     });
     updateSellPreview(costVal, mPct);
     setSelectedId(id);
@@ -240,6 +244,7 @@ export default function InventoryPage() {
       quantity: parseInt(form.quantity, 10) || 0,
       reorderPoint: parseInt(form.reorderPoint, 10) || 5,
       unit: form.unit || 'each',
+      availableForBlueprint: form.availableForBlueprint,
     };
 
     if (sheetMode === 'create') {
@@ -545,6 +550,7 @@ export default function InventoryPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     {selectedItem.isLowStock && <Badge variant="destructive" className="gap-1"><AlertTriangle className="w-3 h-3" /> Low Stock</Badge>}
+                    {selectedItem.availableForBlueprint && <Badge variant="outline" className="text-primary border-primary/40">Blueprint Ready</Badge>}
                     {canManage && (
                       <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { setSheetMode(null); setTimeout(() => openEdit(selectedItem.id), 50); }}>
                         <Edit className="w-3.5 h-3.5" /> Edit
@@ -739,6 +745,19 @@ export default function InventoryPage() {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Description</label>
               <Input placeholder="Optional notes" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+            </div>
+
+            <Separator />
+
+            <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/20">
+              <div>
+                <p className="text-sm font-medium">Available for Blueprint design</p>
+                <p className="text-xs text-muted-foreground">Show this item as a pickable option in the Blueprint canvas palette.</p>
+              </div>
+              <Switch
+                checked={form.availableForBlueprint}
+                onCheckedChange={v => setForm(f => ({ ...f, availableForBlueprint: v }))}
+              />
             </div>
 
             <Separator />

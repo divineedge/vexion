@@ -15,4 +15,6 @@ export interface InventoryItemUpdate {
   quantity?: number;
   reorderPoint?: number;
   unit?: string;
+  /** When true, this item is offered as a pickable option in the Blueprint canvas palette. */
+  availableForBlueprint?: boolean;
 }

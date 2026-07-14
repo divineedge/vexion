@@ -29,5 +29,7 @@ export interface InventoryItem {
   reorderPoint?: number;
   unit?: string;
   isLowStock?: boolean;
+  /** When true, this item is offered as a pickable option in the Blueprint canvas palette. */
+  availableForBlueprint?: boolean;
   createdAt: string;
 }

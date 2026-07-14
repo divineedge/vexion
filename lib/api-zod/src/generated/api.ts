@@ -1837,7 +1837,8 @@ export const RemoveCrewMemberResponse = zod.void()
 export const ListInventoryItemsQueryParams = zod.object({
   "q": zod.coerce.string().optional(),
   "category": zod.coerce.string().optional(),
-  "lowStock": zod.coerce.boolean().optional()
+  "lowStock": zod.coerce.boolean().optional(),
+  "availableForBlueprint": zod.coerce.boolean().optional().describe('When true, only return items flagged as usable in the Blueprint canvas palette.')
 })
 
 export const ListInventoryItemsResponseItem = zod.object({
@@ -1855,6 +1856,7 @@ export const ListInventoryItemsResponseItem = zod.object({
   "reorderPoint": zod.number().optional(),
   "unit": zod.string().optional(),
   "isLowStock": zod.boolean().optional(),
+  "availableForBlueprint": zod.boolean().optional().describe('When true, this item is offered as a pickable option in the Blueprint canvas palette.'),
   "createdAt": zod.string()
 })
 export const ListInventoryItemsResponse = zod.array(ListInventoryItemsResponseItem)
@@ -1872,7 +1874,8 @@ export const CreateInventoryItemBody = zod.object({
   "markupPct": zod.number().optional().describe('Override markup %. Defaults to tenant default if omitted.'),
   "quantity": zod.number(),
   "reorderPoint": zod.number().optional(),
-  "unit": zod.string().optional()
+  "unit": zod.string().optional(),
+  "availableForBlueprint": zod.boolean().optional().describe('When true, this item is offered as a pickable option in the Blueprint canvas palette.')
 })
 
 export const CreateInventoryItemResponse = zod.object({
@@ -1890,6 +1893,7 @@ export const CreateInventoryItemResponse = zod.object({
   "reorderPoint": zod.number().optional(),
   "unit": zod.string().optional(),
   "isLowStock": zod.boolean().optional(),
+  "availableForBlueprint": zod.boolean().optional().describe('When true, this item is offered as a pickable option in the Blueprint canvas palette.'),
   "createdAt": zod.string()
 })
 
@@ -1916,6 +1920,7 @@ export const GetInventoryItemResponse = zod.object({
   "reorderPoint": zod.number().optional(),
   "unit": zod.string().optional(),
   "isLowStock": zod.boolean().optional(),
+  "availableForBlueprint": zod.boolean().optional().describe('When true, this item is offered as a pickable option in the Blueprint canvas palette.'),
   "createdAt": zod.string()
 })
 
@@ -1935,7 +1940,8 @@ export const UpdateInventoryItemBody = zod.object({
   "markupPct": zod.number().optional(),
   "quantity": zod.number().optional(),
   "reorderPoint": zod.number().optional(),
-  "unit": zod.string().optional()
+  "unit": zod.string().optional(),
+  "availableForBlueprint": zod.boolean().optional().describe('When true, this item is offered as a pickable option in the Blueprint canvas palette.')
 })
 
 export const UpdateInventoryItemResponse = zod.object({
@@ -1953,6 +1959,7 @@ export const UpdateInventoryItemResponse = zod.object({
   "reorderPoint": zod.number().optional(),
   "unit": zod.string().optional(),
   "isLowStock": zod.boolean().optional(),
+  "availableForBlueprint": zod.boolean().optional().describe('When true, this item is offered as a pickable option in the Blueprint canvas palette.'),
   "createdAt": zod.string()
 })
 
@@ -1994,6 +2001,7 @@ export const AdjustInventoryStockResponse = zod.object({
   "reorderPoint": zod.number().optional(),
   "unit": zod.string().optional(),
   "isLowStock": zod.boolean().optional(),
+  "availableForBlueprint": zod.boolean().optional().describe('When true, this item is offered as a pickable option in the Blueprint canvas palette.'),
   "createdAt": zod.string()
 })
 
@@ -3002,7 +3010,9 @@ export const CalculateBlueprintEstimateResponse = zod.object({
   "name": zod.string(),
   "quantity": zod.number(),
   "unitPrice": zod.number(),
-  "total": zod.number()
+  "total": zod.number(),
+  "unit": zod.string().optional().describe('Unit the quantity is expressed in (e.g. each, ft) for parts derived from drawn canvas elements.'),
+  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).')
 })),
   "subtotal": zod.number(),
   "overageAmount": zod.number(),

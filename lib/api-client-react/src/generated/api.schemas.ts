@@ -1306,6 +1306,8 @@ export interface InventoryItem {
   reorderPoint?: number;
   unit?: string;
   isLowStock?: boolean;
+  /** When true, this item is offered as a pickable option in the Blueprint canvas palette. */
+  availableForBlueprint?: boolean;
   createdAt: string;
 }
 
@@ -1321,6 +1323,8 @@ export interface InventoryItemInput {
   quantity: number;
   reorderPoint?: number;
   unit?: string;
+  /** When true, this item is offered as a pickable option in the Blueprint canvas palette. */
+  availableForBlueprint?: boolean;
 }
 
 export interface InventoryItemUpdate {
@@ -1332,6 +1336,8 @@ export interface InventoryItemUpdate {
   quantity?: number;
   reorderPoint?: number;
   unit?: string;
+  /** When true, this item is offered as a pickable option in the Blueprint canvas palette. */
+  availableForBlueprint?: boolean;
 }
 
 export interface CategoryCount {
@@ -1989,6 +1995,10 @@ export interface EstimatedPart {
   quantity: number;
   unitPrice: number;
   total: number;
+  /** Unit the quantity is expressed in (e.g. each, ft) for parts derived from drawn canvas elements. */
+  unit?: string;
+  /** Where this line came from: 'canvas' (linked to a placed palette element) or 'manual' (added via Suggested Parts). */
+  source?: string;
 }
 
 export interface BlueprintEstimate {
@@ -3977,6 +3987,10 @@ export type ListInventoryItemsParams = {
 q?: string;
 category?: string;
 lowStock?: boolean;
+/**
+ * When true, only return items flagged as usable in the Blueprint canvas palette.
+ */
+availableForBlueprint?: boolean;
 };
 
 export type ListInvoicesParams = {

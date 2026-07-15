@@ -376,6 +376,50 @@ export default function BlueprintCanvasPage() {
     [lines],
   );
 
+  // ── Bulk migration of legacy-unknown points (Task 124 covers reassigning one at a time) ────
+  const [bulkMigrateOpen, setBulkMigrateOpen] = useState(false);
+  const [bulkGroupTargets, setBulkGroupTargets] = useState<Record<string, PointElementType>>({});
+  const [bulkAllTarget, setBulkAllTarget] = useState<PointElementType | ''>('');
+
+  const legacyGroups = useMemo(() => {
+    const counts = new Map<string, number>();
+    points.forEach(p => {
+      if (isLegacyUnknownPoint(p)) counts.set(p.label!, (counts.get(p.label!) ?? 0) + 1);
+    });
+    return Array.from(counts.entries())
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [points]);
+  const totalLegacyCount = useMemo(() => legacyGroups.reduce((sum, g) => sum + g.count, 0), [legacyGroups]);
+
+  /** Builds the point patch for reassigning to a real fixture type, including sprinkler defaults. */
+  const realTypeAssignmentPatch = (type: PointElementType): Partial<Point> => {
+    const patch: Partial<Point> = { elementType: type };
+    if (type === 'sprinkler') {
+      patch.sprinklerHeadType = SPRINKLER_HEAD_TYPES[0];
+      patch.coverageRadiusFt = DEFAULT_SPRINKLER_RADIUS_FT[SPRINKLER_HEAD_TYPES[0]];
+    }
+    return patch;
+  };
+
+  const migrateLegacyGroup = (label: string, type: PointElementType) => {
+    const patch = realTypeAssignmentPatch(type);
+    const count = legacyGroups.find(g => g.label === label)?.count ?? 0;
+    setPoints(pts => pts.map(p => (isLegacyUnknownPoint(p) && p.label === label) ? { ...p, ...patch } : p));
+    setBulkGroupTargets(prev => { const next = { ...prev }; delete next[label]; return next; });
+    toast.success(`Migrated ${count} "${label}" point${count === 1 ? '' : 's'} to ${pointElementMeta(type).label}`);
+  };
+
+  const migrateAllLegacyPoints = (type: PointElementType) => {
+    const patch = realTypeAssignmentPatch(type);
+    const count = totalLegacyCount;
+    setPoints(pts => pts.map(p => isLegacyUnknownPoint(p) ? { ...p, ...patch } : p));
+    setBulkAllTarget('');
+    setBulkGroupTargets({});
+    setBulkMigrateOpen(false);
+    toast.success(`Migrated all ${count} remaining legacy point${count === 1 ? '' : 's'} to ${pointElementMeta(type).label}`);
+  };
+
   // ── Calibration state ────────────────────────────────────────────────────────
   const [calibStart, setCalibStart] = useState<{ x: number; y: number } | null>(null);
   const [calibEnd, setCalibEnd] = useState<{ x: number; y: number } | null>(null);
@@ -892,6 +936,11 @@ export default function BlueprintCanvasPage() {
           </div>
         </div>
         <div className="flex gap-2">
+          {totalLegacyCount > 0 && (
+            <Button variant="outline" onClick={() => setBulkMigrateOpen(true)} className="gap-2 text-amber-600 border-amber-400 hover:text-amber-700">
+              <HelpCircle className="w-4 h-4" /> Legacy Points ({totalLegacyCount})
+            </Button>
+          )}
           <Button variant="outline" onClick={handleSave} disabled={updateBlueprint.isPending} className="gap-2">
             <Save className="w-4 h-4" /> Save
           </Button>
@@ -900,6 +949,81 @@ export default function BlueprintCanvasPage() {
           </Button>
         </div>
       </div>
+
+      <Dialog open={bulkMigrateOpen} onOpenChange={setBulkMigrateOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Migrate Legacy Points</DialogTitle>
+            <DialogDescription>
+              This blueprint has {totalLegacyCount} point{totalLegacyCount === 1 ? '' : 's'} imported from an old legacy type that doesn't
+              match a current fixture type. Assign a real type to each group at once, or migrate everything remaining in one action.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+            {legacyGroups.map(group => (
+              <div key={group.label} className="flex items-center gap-2 border rounded-md p-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <HelpCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    <span className="text-sm font-medium truncate">"{group.label}"</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">{group.count} point{group.count === 1 ? '' : 's'}</span>
+                </div>
+                <Select
+                  value={bulkGroupTargets[group.label] ?? ''}
+                  onValueChange={v => setBulkGroupTargets(prev => ({ ...prev, [group.label]: v as PointElementType }))}
+                >
+                  <SelectTrigger className="h-8 w-40"><SelectValue placeholder="Pick a type" /></SelectTrigger>
+                  <SelectContent>
+                    {POINT_PALETTE.map(p => (
+                      <SelectItem key={p.type} value={p.type}>
+                        <span className="flex items-center gap-2">
+                          <p.icon className="w-3.5 h-3.5" style={{ color: p.color }} />
+                          {p.label}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  size="sm"
+                  disabled={!bulkGroupTargets[group.label]}
+                  onClick={() => migrateLegacyGroup(group.label, bulkGroupTargets[group.label]!)}
+                >
+                  Migrate
+                </Button>
+              </div>
+            ))}
+            {legacyGroups.length === 0 && (
+              <p className="text-sm text-muted-foreground py-4 text-center">No legacy points remaining — you're all caught up.</p>
+            )}
+          </div>
+          {legacyGroups.length > 1 && (
+            <div className="flex items-center gap-2 border-t pt-3">
+              <span className="text-sm shrink-0">Or migrate all {totalLegacyCount} remaining to:</span>
+              <Select value={bulkAllTarget} onValueChange={v => setBulkAllTarget(v as PointElementType)}>
+                <SelectTrigger className="h-8 flex-1"><SelectValue placeholder="Pick a type" /></SelectTrigger>
+                <SelectContent>
+                  {POINT_PALETTE.map(p => (
+                    <SelectItem key={p.type} value={p.type}>
+                      <span className="flex items-center gap-2">
+                        <p.icon className="w-3.5 h-3.5" style={{ color: p.color }} />
+                        {p.label}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button size="sm" disabled={!bulkAllTarget} onClick={() => migrateAllLegacyPoints(bulkAllTarget as PointElementType)}>
+                Migrate All
+              </Button>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkMigrateOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="flex-1 flex gap-4 min-h-0">
         <Card className="flex-1 flex flex-col overflow-hidden shadow-md">

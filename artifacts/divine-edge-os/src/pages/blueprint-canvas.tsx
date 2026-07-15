@@ -498,9 +498,10 @@ export default function BlueprintCanvasPage() {
     return patch;
   };
 
-  // Snapshot of the points affected by the most recent bulk migration (single group or "migrate all"),
-  // captured *before* the type/label patch was applied, so staff can undo it before saving. A fresh
-  // migration replaces this — only the single most recent bulk action is undoable.
+  // Snapshot of the points affected by the most recent legacy-type reassignment — bulk (single group or
+  // "migrate all") or a single point picked in the point detail panel — captured *before* the type/label
+  // patch was applied, so staff can undo it before saving. A fresh reassignment replaces this — only the
+  // single most recent action is undoable.
   const [lastMigration, setLastMigration] = useState<{ description: string; priorPoints: Point[] } | null>(null);
 
   const migrateLegacyGroup = (label: string, type: PointElementType) => {
@@ -1648,12 +1649,10 @@ export default function BlueprintCanvasPage() {
             const isLegacyUnknown = isLegacyUnknownPoint(pt);
             const updatePoint = (patch: Partial<Point>) => setPoints(pts => pts.map(p => p.id === pt.id ? { ...p, ...patch } : p));
             const assignRealType = (type: PointElementType) => {
-              const patch: Partial<Point> = { elementType: type };
-              if (type === 'sprinkler') {
-                patch.sprinklerHeadType = SPRINKLER_HEAD_TYPES[0];
-                patch.coverageRadiusFt = DEFAULT_SPRINKLER_RADIUS_FT[SPRINKLER_HEAD_TYPES[0]];
-              }
+              const patch = realTypeAssignmentPatch(type);
+              const priorPoints = [{ ...pt }];
               updatePoint(patch);
+              setLastMigration({ description: `"${pt.label}" → ${pointElementMeta(type).label}`, priorPoints });
               toast.success(`Reassigned "${pt.label}" to ${pointElementMeta(type).label}`);
             };
             return (

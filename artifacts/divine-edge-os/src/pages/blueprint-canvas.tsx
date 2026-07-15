@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import {
   ArrowLeft, Save, MousePointer2, PlusCircle, Minus, Trash2, Calculator, Ruler,
   ChevronDown, TreeDeciduous, Mountain, Waves, Hash, Layers, SprayCan, Link2,
-  Wand2, Shapes, Sparkles, X, Check, ZoomIn, ZoomOut, Maximize, Square,
+  Wand2, Shapes, Sparkles, X, Check, ZoomIn, ZoomOut, Maximize, Square, HelpCircle,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useQueryClient } from '@tanstack/react-query';
@@ -137,6 +137,26 @@ const PIPE_TYPES = [
 
 function pointElementMeta(elementType: PointElementType | undefined) {
   return POINT_PALETTE.find(p => p.type === (elementType ?? 'node')) ?? POINT_PALETTE[0];
+}
+
+/**
+ * A point normalized from a legacy blueprint whose original free-text node type didn't match any current
+ * palette entry (e.g. "valve", "corner") — normalizeCanvasData keeps the original type name as `label` but
+ * leaves `elementType` undefined rather than dropping the point. These read identically to a plain new
+ * generic point unless flagged here.
+ */
+function isLegacyUnknownPoint(point: Pick<Point, 'elementType' | 'label'>): boolean {
+  return !point.elementType && !!point.label;
+}
+
+/** Distinct icon/color used for legacy-unknown points so they read as meaningfully different from a plain
+ * generic point on the canvas and in the selected-point detail panel, not just differently labeled. */
+const LEGACY_UNKNOWN_META = { type: 'node' as PointElementType, label: 'Unmapped Legacy Type', icon: HelpCircle, color: '#eab308' };
+
+/** Resolves the icon/color/label metadata for an actual placed point, accounting for the legacy-unknown case. */
+function resolvePointMeta(point: Pick<Point, 'elementType' | 'label'>) {
+  if (isLegacyUnknownPoint(point)) return LEGACY_UNKNOWN_META;
+  return pointElementMeta(point.elementType);
 }
 
 /** Real-world length of a line segment in feet, given the calibrated scale. Null if not calibrated. */
@@ -1111,7 +1131,7 @@ export default function BlueprintCanvasPage() {
           {tool === 'select' && selectedPointId && (() => {
             const pt = points.find(p => p.id === selectedPointId);
             if (!pt) return null;
-            const meta = pointElementMeta(pt.elementType);
+            const meta = resolvePointMeta(pt);
             const updatePoint = (patch: Partial<Point>) => setPoints(pts => pts.map(p => p.id === pt.id ? { ...p, ...patch } : p));
             return (
               <div className="border-b p-3 flex flex-wrap items-end gap-3 bg-muted/10">
@@ -1484,20 +1504,25 @@ export default function BlueprintCanvasPage() {
               {points.map(point => {
                 const isSelected = selectedPointId === point.id;
                 const isDrawingStart = drawingLineStartId === point.id;
-                const meta = pointElementMeta(point.elementType);
-                const isSpecial = !!point.elementType && point.elementType !== 'node';
+                const meta = resolvePointMeta(point);
+                const isLegacyUnknown = isLegacyUnknownPoint(point);
+                const isSpecial = isLegacyUnknown || (!!point.elementType && point.elementType !== 'node');
                 const displayLabel = point.label ?? (point.elementType === 'sprinkler' ? point.sprinklerHeadType : undefined);
                 return (
                   <g key={point.id} transform={`translate(${point.x}, ${point.y})`}>
                     <circle
                       r={isDrawingStart ? 10 : isSpecial ? 9 : 8}
                       fill={isSelected || isDrawingStart ? 'hsl(var(--destructive))' : isSpecial ? meta.color : nodeColor}
-                      stroke={isSelected ? 'white' : point.inventoryItemId ? '#22c55e' : 'transparent'}
-                      strokeWidth={point.inventoryItemId && !isSelected ? 2.5 : 2}
+                      stroke={isSelected ? 'white' : isLegacyUnknown ? 'white' : point.inventoryItemId ? '#22c55e' : 'transparent'}
+                      strokeWidth={isLegacyUnknown && !isSelected ? 1.5 : point.inventoryItemId && !isSelected ? 2.5 : 2}
+                      strokeDasharray={isLegacyUnknown && !isSelected ? '2.5,2' : undefined}
                       className="cursor-pointer transition-all hover:opacity-80"
                       onClick={(e) => handlePointClick(e, point.id)}
                       onMouseDown={(e) => handlePointMouseDown(e, point.id)}
                     />
+                    {isLegacyUnknown && !isSelected && !isDrawingStart && (
+                      <text y={3} textAnchor="middle" fontSize={9} fontWeight={700} fill="white" pointerEvents="none">?</text>
+                    )}
                     {isIrrigation && !isSpecial && !isSelected && !isDrawingStart && (
                       <circle r={3} fill="white" pointerEvents="none" />
                     )}

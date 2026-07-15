@@ -9,9 +9,10 @@
  */
 
 import { Router, type IRouter } from "express";
-import { db, timeEntriesTable, subTimersTable, usersTable, callbacksTable, jobsTable } from "@workspace/db";
-import { eq, and, gte, lte, sql, sum, count } from "drizzle-orm";
+import { db, timeEntriesTable, subTimersTable, usersTable } from "@workspace/db";
+import { eq, and, gte, lte, sql, sum } from "drizzle-orm";
 import { getTenantId } from "../lib/tenantHelper";
+import { getCallbackRatioStats } from "../lib/callbackRatio";
 import { startOfDay, endOfDay, startOfWeek, endOfWeek, subDays, format } from "date-fns";
 
 const router: IRouter = Router();
@@ -60,25 +61,10 @@ router.get("/efficiency", async (req, res): Promise<void> => {
     GROUP BY user_id
   `);
 
-  // ── Callback counts per user (all time — quality score) ─────────────────
-  const callbackRows = await db
-    .select({
-      userId: callbacksTable.originalAssigneeId,
-      callbackCount: count().mapWith(Number),
-    })
-    .from(callbacksTable)
-    .where(eq(callbacksTable.tenantId, tenantId))
-    .groupBy(callbacksTable.originalAssigneeId);
-
-  // ── Completed revenue jobs per user (all time) ────────────────────────────
-  const completedJobRows = await db
-    .select({
-      userId: jobsTable.assigneeId,
-      completedCount: count().mapWith(Number),
-    })
-    .from(jobsTable)
-    .where(and(eq(jobsTable.tenantId, tenantId), eq(jobsTable.status, "completed")))
-    .groupBy(jobsTable.assigneeId);
+  // ── Callback ratio per user (all time — quality score) ───────────────────
+  // Shared with GET /callbacks/stats so the two pages never report different numbers.
+  const callbackStats = await getCallbackRatioStats(tenantId);
+  const callbackStatMap = new Map(callbackStats.technicians.map(t => [t.userId, t]));
 
   // ── User names ────────────────────────────────────────────────────────────
   const users = await db
@@ -92,16 +78,6 @@ router.get("/efficiency", async (req, res): Promise<void> => {
     subTimerMap.set(Number(row.user_id), Number(row.job_seconds ?? 0));
   }
 
-  const callbackMap = new Map<number, number>();
-  for (const row of callbackRows) {
-    if (row.userId) callbackMap.set(row.userId, row.callbackCount);
-  }
-
-  const completedJobMap = new Map<number, number>();
-  for (const row of completedJobRows) {
-    if (row.userId) completedJobMap.set(row.userId, row.completedCount);
-  }
-
   const clockMap = new Map<number, number>();
   for (const row of clockRows) {
     clockMap.set(row.userId, row.totalClockMinutes ?? 0);
@@ -112,14 +88,13 @@ router.get("/efficiency", async (req, res): Promise<void> => {
     .map(u => {
       const clockMins = clockMap.get(u.id) ?? 0;
       const jobSeconds = subTimerMap.get(u.id) ?? 0;
-      const callbacks = callbackMap.get(u.id) ?? 0;
-      const completedJobs = completedJobMap.get(u.id) ?? 0;
+      const cb = callbackStatMap.get(u.id);
+      const callbacks = cb?.callbackCount ?? 0;
+      const completedJobs = cb?.completedJobs ?? 0;
+      const callbackRatio = cb?.callbackRatio ?? 0;
 
       const efficiencyRate =
         clockMins > 0 ? Math.min(Math.round((jobSeconds / (clockMins * 60)) * 100), 200) : null;
-
-      const callbackRatio =
-        completedJobs > 0 ? Math.round((callbacks / completedJobs) * 100 * 10) / 10 : 0;
 
       return {
         userId: u.id,
@@ -131,7 +106,7 @@ router.get("/efficiency", async (req, res): Promise<void> => {
         callbacks,
         completedJobs,
         callbackRatio,
-        hasWarning: callbackRatio > 10, // >10% callback ratio triggers warning
+        hasWarning: cb?.hasWarning ?? false, // shared threshold from callbackRatio.ts
       };
     });
 
@@ -142,10 +117,10 @@ router.get("/efficiency", async (req, res): Promise<void> => {
       ? Math.round(withData.reduce((s, t) => s + (t.efficiencyRate ?? 0), 0) / withData.length)
       : null;
 
-  const totalCallbacks = technicianMetrics.reduce((s, t) => s + t.callbacks, 0);
-  const totalCompleted = technicianMetrics.reduce((s, t) => s + t.completedJobs, 0);
-  const companyCallbackRatio =
-    totalCompleted > 0 ? Math.round((totalCallbacks / totalCompleted) * 100 * 10) / 10 : 0;
+  // Company-wide callback ratio comes straight from the shared calculation (not re-derived from
+  // technicianMetrics) so it matches GET /callbacks/stats exactly, even though the list of
+  // technicians shown here is filtered to technician/crew_manager roles.
+  const companyCallbackRatio = callbackStats.companyCallbackRatio;
 
   res.json({
     period,

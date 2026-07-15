@@ -91,7 +91,7 @@ export default function CallbacksPage() {
     mutationFn: (data: { originalJobId: number; reason?: string; scheduledFixDate?: string }) =>
       customFetch<Callback>('/api/callbacks', { method: 'POST', body: JSON.stringify(data), headers: { 'Content-Type': 'application/json' } }),
     onSuccess: () => {
-      toast.success('Callback ticket created — technician auto-detected from job');
+      toast.success('Callback ticket created and credited to the job\'s assigned technician');
       qc.invalidateQueries({ queryKey: ['callbacks'] });
       qc.invalidateQueries({ queryKey: ['callback-stats'] });
       setCreateOpen(false);
@@ -380,7 +380,7 @@ export default function CallbacksPage() {
             <SheetTitle>Log Callback Ticket</SheetTitle>
             <SheetDescription>
               A callback is a non-revenue fix ticket issued because of a mistake on a prior completed job.
-              The responsible technician is auto-detected from the job's crew.
+              The responsible technician is credited automatically from the job's assigned technician.
             </SheetDescription>
           </SheetHeader>
           <div className="space-y-4 pb-6">
@@ -397,7 +397,7 @@ export default function CallbacksPage() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                The responsible technician will be auto-detected from who clocked time on this job.
+                The responsible technician will be credited to whoever is assigned to this job.
               </p>
             </div>
 

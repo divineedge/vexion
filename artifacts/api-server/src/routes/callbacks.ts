@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
-import { db, callbacksTable, jobsTable, usersTable, activityLogTable, subTimersTable } from "@workspace/db";
-import { eq, and, count, desc } from "drizzle-orm";
+import { db, callbacksTable, jobsTable, usersTable, activityLogTable } from "@workspace/db";
+import { eq, and, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
+import { getCallbackRatioStats } from "../lib/callbackRatio";
 
 const router: IRouter = Router();
 
@@ -75,21 +76,12 @@ router.post("/callbacks", async (req, res): Promise<void> => {
     }
   }
 
-  // Auto-detect the responsible technician from sub-timers (clocked-in crew members).
-  // Use DISTINCT user IDs so multiple timer segments for the same person count as one.
-  // Falls back to the job's primary assignee when zero or multiple distinct technicians are found.
-  let resolvedAssigneeId = origJob.assigneeId ?? null;
-  const subTimerRows = await db
-    .select({ userId: subTimersTable.userId })
-    .from(subTimersTable)
-    .where(eq(subTimersTable.jobId, origJob.id));
-
-  const distinctUserIds = [...new Set(subTimerRows.map(r => r.userId))];
-  if (distinctUserIds.length === 1) {
-    // Exactly one technician clocked into this job — unambiguous attribution
-    resolvedAssigneeId = distinctUserIds[0];
-  }
-  // If 0 or 2+ distinct users: fall back to job's primary assignee.
+  // Attribute the callback to the job's primary assignee — the same technician who is
+  // credited with the completed job for the completed-jobs denominator elsewhere (callback
+  // stats, efficiency). Keeping numerator and denominator on the same identity avoids a
+  // technician showing a callback in the list while the ratio calc can't find any completed
+  // jobs to divide by (and thus reports 0%).
+  const resolvedAssigneeId = origJob.assigneeId ?? null;
 
   const [callback] = await db
     .insert(callbacksTable)
@@ -161,71 +153,8 @@ router.delete("/callbacks/:id", async (req, res): Promise<void> => {
 // GET /callbacks/stats — per-technician callback ratios + company summary
 router.get("/callbacks/stats", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-
-  // Callbacks per assignee
-  const cbRows = await db
-    .select({
-      userId: callbacksTable.originalAssigneeId,
-      userName: usersTable.name,
-      callbackCount: count().mapWith(Number),
-    })
-    .from(callbacksTable)
-    .leftJoin(usersTable, eq(callbacksTable.originalAssigneeId, usersTable.id))
-    .where(eq(callbacksTable.tenantId, tenantId))
-    .groupBy(callbacksTable.originalAssigneeId, usersTable.name);
-
-  // ALL techs with any completed jobs (correct denominator — includes techs with 0 callbacks)
-  const jobRows = await db
-    .select({
-      userId: jobsTable.assigneeId,
-      userName: usersTable.name,
-      completedCount: count().mapWith(Number),
-    })
-    .from(jobsTable)
-    .leftJoin(usersTable, eq(jobsTable.assigneeId, usersTable.id))
-    .where(and(eq(jobsTable.tenantId, tenantId), eq(jobsTable.status, "completed")))
-    .groupBy(jobsTable.assigneeId, usersTable.name);
-
-  const cbMap = new Map<number, number>();
-  for (const r of cbRows) {
-    if (r.userId) cbMap.set(r.userId, r.callbackCount);
-  }
-
-  // Build from the complete set of techs with completed jobs
-  const stats = jobRows
-    .filter(r => r.userId !== null)
-    .map(r => {
-      const callbacks = cbMap.get(r.userId!) ?? 0;
-      const ratio = r.completedCount > 0 ? Math.round((callbacks / r.completedCount) * 100 * 10) / 10 : 0;
-      return {
-        userId: r.userId!,
-        name: r.userName ?? "Unknown",
-        callbackCount: callbacks,
-        completedJobs: r.completedCount,
-        callbackRatio: ratio,
-        hasWarning: ratio > 10,
-      };
-    });
-
-  // Also include techs with callbacks but 0 completed jobs (shouldn't happen, but be safe)
-  for (const r of cbRows) {
-    if (r.userId && !stats.some(s => s.userId === r.userId)) {
-      stats.push({
-        userId: r.userId,
-        name: r.userName ?? "Unknown",
-        callbackCount: r.callbackCount,
-        completedJobs: 0,
-        callbackRatio: 0,
-        hasWarning: false,
-      });
-    }
-  }
-
-  const totalCallbacks = stats.reduce((s, r) => s + r.callbackCount, 0);
-  const totalCompleted = stats.reduce((s, r) => s + r.completedJobs, 0);
-  const companyRatio = totalCompleted > 0 ? Math.round((totalCallbacks / totalCompleted) * 100 * 10) / 10 : 0;
-
-  res.json({ companyCallbackRatio: companyRatio, totalCallbacks, totalCompleted, technicians: stats });
+  const result = await getCallbackRatioStats(tenantId);
+  res.json(result);
 });
 
 export default router;

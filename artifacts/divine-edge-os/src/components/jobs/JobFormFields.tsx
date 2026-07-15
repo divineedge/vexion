@@ -1,0 +1,303 @@
+import React from 'react';
+import type { RecurrenceRule } from '@workspace/api-client-react';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Separator } from '@/components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { RefreshCw } from 'lucide-react';
+
+export type NewJobForm = {
+  title: string;
+  description: string;
+  scheduledAt: string;
+  estimatedDuration: string;
+  priority: string;
+  customerId: string;
+  assigneeId: string;
+  recurring: boolean;
+  recurrencePattern: string;
+  recurrenceInterval: string;
+  recurrenceDaysOfWeek: number[];
+  recurrenceDayOfMonth: string;
+  recurrenceWeekOfMonth: string;
+  recurrenceDayOfWeek: string;
+  recurrenceEndCondition: string;
+  recurrenceEndAfter: string;
+  recurrenceEndDate: string;
+};
+
+export const EMPTY_JOB: NewJobForm = {
+  title: '',
+  description: '',
+  scheduledAt: '',
+  estimatedDuration: '',
+  priority: 'normal',
+  customerId: '',
+  assigneeId: '',
+  recurring: false,
+  recurrencePattern: 'weekly',
+  recurrenceInterval: '1',
+  recurrenceDaysOfWeek: [],
+  recurrenceDayOfMonth: '1',
+  recurrenceWeekOfMonth: '1',
+  recurrenceDayOfWeek: '1',
+  recurrenceEndCondition: 'never',
+  recurrenceEndAfter: '12',
+  recurrenceEndDate: '',
+};
+
+export const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+export function buildRecurrenceRule(form: NewJobForm): RecurrenceRule | undefined {
+  if (!form.recurring) return undefined;
+  const rule: RecurrenceRule = {
+    pattern: form.recurrencePattern as RecurrenceRule['pattern'],
+    endCondition: form.recurrenceEndCondition as RecurrenceRule['endCondition'],
+  };
+  if (['weekly', 'biweekly'].includes(form.recurrencePattern)) {
+    rule.daysOfWeek = form.recurrenceDaysOfWeek;
+  }
+  if (form.recurrencePattern === 'biweekly') {
+    rule.interval = parseInt(form.recurrenceInterval, 10) || 2;
+  }
+  if (form.recurrencePattern === 'custom') {
+    rule.interval = parseInt(form.recurrenceInterval, 10) || 1;
+  }
+  if (form.recurrencePattern === 'monthly_date') {
+    rule.dayOfMonth = parseInt(form.recurrenceDayOfMonth, 10) || 1;
+  }
+  if (form.recurrencePattern === 'monthly_weekday') {
+    rule.weekOfMonth = parseInt(form.recurrenceWeekOfMonth, 10) || 1;
+    rule.dayOfWeek = parseInt(form.recurrenceDayOfWeek, 10);
+  }
+  if (form.recurrenceEndCondition === 'after') {
+    rule.endAfter = parseInt(form.recurrenceEndAfter, 10) || 12;
+  }
+  if (form.recurrenceEndCondition === 'on_date') {
+    rule.endDate = form.recurrenceEndDate;
+  }
+  return rule;
+}
+
+export interface JobFormFieldsProps {
+  form: NewJobForm;
+  setForm: React.Dispatch<React.SetStateAction<NewJobForm>>;
+  customers: { id: number; name: string }[];
+  users: { id: number; name: string; role: string }[];
+  durationUnit: string;
+  /** Show the "Make Recurring" section. Defaults to true. */
+  showRecurrence?: boolean;
+}
+
+/**
+ * The customer/property/service/time/etc. job-creation fields shared between the Schedule
+ * page's "New Job" sheet and any other entry point (e.g. Routes' "New Job" action) that needs
+ * to create a job with the same details.
+ */
+export function JobFormFields({ form, setForm, customers, users, durationUnit, showRecurrence = true }: JobFormFieldsProps) {
+  return (
+    <>
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium">Title <span className="text-destructive">*</span></label>
+        <Input placeholder="e.g. Irrigation system repair" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium">Scheduled Date & Time <span className="text-destructive">*</span></label>
+        <Input type="datetime-local" value={form.scheduledAt} onChange={e => setForm(f => ({ ...f, scheduledAt: e.target.value }))} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">Duration ({durationUnit})</label>
+          <Input
+            type="number"
+            min={0}
+            step={durationUnit === 'hours' ? 0.5 : 15}
+            placeholder={durationUnit === 'hours' ? '1.5' : '90'}
+            value={form.estimatedDuration}
+            onChange={e => setForm(f => ({ ...f, estimatedDuration: e.target.value }))}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">Priority</label>
+          <Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v }))}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="low">Low</SelectItem>
+              <SelectItem value="normal">Normal</SelectItem>
+              <SelectItem value="high">High</SelectItem>
+              <SelectItem value="urgent">Urgent</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium">Customer</label>
+        <Select value={form.customerId} onValueChange={v => setForm(f => ({ ...f, customerId: v }))}>
+          <SelectTrigger><SelectValue placeholder="Select customer..." /></SelectTrigger>
+          <SelectContent>
+            {customers.map(c => (
+              <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium">Assign To</label>
+        <Select value={form.assigneeId} onValueChange={v => setForm(f => ({ ...f, assigneeId: v }))}>
+          <SelectTrigger><SelectValue placeholder="Select technician..." /></SelectTrigger>
+          <SelectContent>
+            {users
+              .filter(u => u.role === 'technician' || u.role === 'crew_manager')
+              .map(u => (
+                <SelectItem key={u.id} value={String(u.id)}>{u.name} ({u.role.replace(/_/g, ' ')})</SelectItem>
+              ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium">Description</label>
+        <Textarea
+          placeholder="Job details, special instructions..."
+          rows={3}
+          value={form.description}
+          onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+        />
+      </div>
+
+      {showRecurrence && (
+        <>
+          <Separator />
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="text-sm font-medium flex items-center gap-1.5"><RefreshCw className="w-3.5 h-3.5 text-primary" /> Make Recurring</label>
+                <p className="text-xs text-muted-foreground">Auto-generate future job instances on a schedule.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setForm(f => ({ ...f, recurring: !f.recurring }))}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${form.recurring ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+              >
+                <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${form.recurring ? 'translate-x-4' : 'translate-x-0.5'}`} />
+              </button>
+            </div>
+
+            {form.recurring && (
+              <div className="rounded-lg border p-3 space-y-3 bg-muted/20">
+                {/* Pattern */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Pattern</label>
+                  <Select value={form.recurrencePattern} onValueChange={v => setForm(f => ({ ...f, recurrencePattern: v }))}>
+                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="daily">Daily</SelectItem>
+                      <SelectItem value="weekly">Weekly (pick days)</SelectItem>
+                      <SelectItem value="biweekly">Every 2 weeks</SelectItem>
+                      <SelectItem value="monthly_date">Monthly by date</SelectItem>
+                      <SelectItem value="monthly_weekday">Monthly by weekday</SelectItem>
+                      <SelectItem value="custom">Custom interval (every N days)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Days of week (weekly / biweekly) */}
+                {['weekly', 'biweekly'].includes(form.recurrencePattern) && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Days of Week</label>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {DAY_LABELS.map((d, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setForm(f => {
+                            const cur = f.recurrenceDaysOfWeek;
+                            return { ...f, recurrenceDaysOfWeek: cur.includes(i) ? cur.filter(x => x !== i) : [...cur, i] };
+                          })}
+                          className={`w-9 h-9 rounded-md text-xs font-medium border transition-colors ${form.recurrenceDaysOfWeek.includes(i) ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-muted border-border'}`}
+                        >{d}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Monthly by date */}
+                {form.recurrencePattern === 'monthly_date' && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Day of Month</label>
+                    <Input type="number" min={1} max={31} className="h-8 text-sm" value={form.recurrenceDayOfMonth} onChange={e => setForm(f => ({ ...f, recurrenceDayOfMonth: e.target.value }))} />
+                  </div>
+                )}
+
+                {/* Monthly by weekday */}
+                {form.recurrencePattern === 'monthly_weekday' && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Week</label>
+                      <Select value={form.recurrenceWeekOfMonth} onValueChange={v => setForm(f => ({ ...f, recurrenceWeekOfMonth: v }))}>
+                        <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1">First</SelectItem>
+                          <SelectItem value="2">Second</SelectItem>
+                          <SelectItem value="3">Third</SelectItem>
+                          <SelectItem value="4">Fourth</SelectItem>
+                          <SelectItem value="5">Last</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Day</label>
+                      <Select value={form.recurrenceDayOfWeek} onValueChange={v => setForm(f => ({ ...f, recurrenceDayOfWeek: v }))}>
+                        <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {DAY_LABELS.map((d, i) => <SelectItem key={i} value={String(i)}>{d}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
+
+                {/* Custom interval */}
+                {form.recurrencePattern === 'custom' && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Every N Days</label>
+                    <Input type="number" min={1} className="h-8 text-sm" value={form.recurrenceInterval} onChange={e => setForm(f => ({ ...f, recurrenceInterval: e.target.value }))} />
+                  </div>
+                )}
+
+                {/* End condition */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Ends</label>
+                  <Select value={form.recurrenceEndCondition} onValueChange={v => setForm(f => ({ ...f, recurrenceEndCondition: v }))}>
+                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="never">Never</SelectItem>
+                      <SelectItem value="after">After N occurrences</SelectItem>
+                      <SelectItem value="on_date">On a date</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {form.recurrenceEndCondition === 'after' && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Number of Occurrences</label>
+                    <Input type="number" min={1} className="h-8 text-sm" value={form.recurrenceEndAfter} onChange={e => setForm(f => ({ ...f, recurrenceEndAfter: e.target.value }))} />
+                  </div>
+                )}
+                {form.recurrenceEndCondition === 'on_date' && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">End Date</label>
+                    <Input type="date" className="h-8 text-sm" value={form.recurrenceEndDate} onChange={e => setForm(f => ({ ...f, recurrenceEndDate: e.target.value }))} />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </>
+  );
+}

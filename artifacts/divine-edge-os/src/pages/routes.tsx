@@ -7,6 +7,10 @@ import {
   useUpdateJobRoute,
   useRescheduleJobOnce,
   useListJobs, getListJobsQueryKey,
+  useCreateJob,
+  useListCustomers, getListCustomersQueryKey,
+  useListUsers, getListUsersQueryKey,
+  useGetTenantSettings, getGetTenantSettingsQueryKey,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
@@ -24,6 +28,7 @@ import {
   Wand2, Clock, User, Building, CalendarClock, Plus,
 } from 'lucide-react';
 import { startOfWeek, addWeeks, subWeeks, format, addDays } from 'date-fns';
+import { JobFormFields, EMPTY_JOB, buildRecurrenceRule, type NewJobForm } from '@/components/jobs/JobFormFields';
 
 const FREQUENCY_LABEL: Record<string, string> = {
   weekly: 'Weekly',
@@ -51,6 +56,8 @@ export default function RoutesDashboardPage() {
   const [rescheduleDate, setRescheduleDate] = useState('');
   const [addStopOpen, setAddStopOpen] = useState(false);
   const [addStopJobId, setAddStopJobId] = useState<string>('');
+  const [newJobOpen, setNewJobOpen] = useState(false);
+  const [newJob, setNewJob] = useState<NewJobForm>(EMPTY_JOB);
 
   const weekStartStr = format(weekStart, 'yyyy-MM-dd');
 
@@ -79,6 +86,16 @@ export default function RoutesDashboardPage() {
   const resequence = useResequenceRoute();
   const updateJobRoute = useUpdateJobRoute();
   const rescheduleOnce = useRescheduleJobOnce();
+  const createJob = useCreateJob();
+
+  const { data: customers } = useListCustomers({}, {
+    query: { enabled: newJobOpen, queryKey: getListCustomersQueryKey({}) },
+  });
+  const { data: users } = useListUsers({
+    query: { enabled: newJobOpen, queryKey: getListUsersQueryKey() },
+  });
+  const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
+  const durationUnit = settings?.durationUnit ?? 'minutes';
 
   const invalidateDetail = () => {
     if (!dayDetail) return;
@@ -148,6 +165,59 @@ export default function RoutesDashboardPage() {
     updateJobRoute.mutate({ id: jobId, data: { routeTemplateId: null } }, {
       onSuccess: () => { toast.success('Removed from route'); invalidateDetail(); },
       onError: () => toast.error('Failed to remove job from route'),
+    });
+  };
+
+  const openNewJob = () => {
+    if (!dayDetail) return;
+    setNewJob({ ...EMPTY_JOB, scheduledAt: `${dayDetail.date}T09:00` });
+    setNewJobOpen(true);
+  };
+
+  const handleCreateJobFromRoute = () => {
+    if (!dayDetail) return;
+    if (!newJob.title || !newJob.scheduledAt) {
+      toast.error('Title and scheduled date are required');
+      return;
+    }
+    const durationMins = newJob.estimatedDuration
+      ? durationUnit === 'hours'
+        ? Math.round(parseFloat(newJob.estimatedDuration) * 60)
+        : parseInt(newJob.estimatedDuration, 10)
+      : undefined;
+
+    const recurrenceRule = buildRecurrenceRule(newJob);
+    const routeTemplateId = dayDetail.routeTemplateId;
+    const scheduledAtIso = new Date(newJob.scheduledAt).toISOString();
+
+    createJob.mutate({
+      data: {
+        title: newJob.title,
+        description: newJob.description || undefined,
+        scheduledAt: scheduledAtIso,
+        estimatedDuration: durationMins,
+        priority: newJob.priority as 'low' | 'normal' | 'high' | 'urgent',
+        customerId: newJob.customerId ? parseInt(newJob.customerId, 10) : undefined,
+        assigneeId: newJob.assigneeId ? parseInt(newJob.assigneeId, 10) : undefined,
+        recurrenceRule,
+      },
+    }, {
+      onSuccess: (job) => {
+        // Assign the newly created job to this route/day in the same step so it shows up
+        // as a stop immediately, without a separate "Add Stop" action.
+        updateJobRoute.mutate({ id: job.id, data: { routeTemplateId, scheduledAt: scheduledAtIso } }, {
+          onSuccess: () => {
+            toast.success(recurrenceRule ? 'Recurring job series created and added to route' : 'Job created and added to route');
+            setNewJobOpen(false);
+            setNewJob(EMPTY_JOB);
+            invalidateDetail();
+            qc.invalidateQueries({ queryKey: getListJobsQueryKey({ startDate: dayDetail.date, endDate: dayDetailEndDate }) });
+            qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+          },
+          onError: () => toast.error('Job was created but could not be assigned to the route'),
+        });
+      },
+      onError: () => toast.error('Failed to create job'),
     });
   };
 
@@ -267,6 +337,9 @@ export default function RoutesDashboardPage() {
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Stops ({detail.stops.length})</p>
                   <div className="flex gap-2">
+                    <Button variant="outline" size="sm" className="gap-1.5 h-7 text-xs" onClick={openNewJob}>
+                      <Plus className="w-3.5 h-3.5" /> New Job
+                    </Button>
                     <Button variant="outline" size="sm" className="gap-1.5 h-7 text-xs" onClick={() => setAddStopOpen(true)}>
                       <Plus className="w-3.5 h-3.5" /> Add Stop
                     </Button>
@@ -371,6 +444,35 @@ export default function RoutesDashboardPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* New Job Sheet — creates a brand-new job and assigns it straight to this route/day */}
+      <Sheet open={newJobOpen} onOpenChange={open => { if (!open) { setNewJobOpen(false); setNewJob(EMPTY_JOB); } }}>
+        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader className="pb-4">
+            <SheetTitle>New Job</SheetTitle>
+            <SheetDescription>
+              {detail ? `Creates a job scheduled for ${format(new Date(`${detail.date}T00:00:00`), 'EEEE, MMM d')} and adds it to ${detail.routeTemplateName} automatically.` : 'Creates a job and adds it to this route automatically.'}
+            </SheetDescription>
+          </SheetHeader>
+          <div className="space-y-4 pb-6">
+            <JobFormFields
+              form={newJob}
+              setForm={setNewJob}
+              customers={customers?.items ?? []}
+              users={users ?? []}
+              durationUnit={durationUnit}
+            />
+
+            <Separator />
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" onClick={() => { setNewJobOpen(false); setNewJob(EMPTY_JOB); }}>Cancel</Button>
+              <Button onClick={handleCreateJobFromRoute} disabled={createJob.isPending || updateJobRoute.isPending}>
+                {createJob.isPending || updateJobRoute.isPending ? 'Creating...' : 'Create & Add to Route'}
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

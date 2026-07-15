@@ -138,6 +138,7 @@ import type {
   JobRouteUpdate,
   JobUpdate,
   ListBankTransactionsParams,
+  ListBlueprintsParams,
   ListChemicalApplicationsParams,
   ListCustomerPlansParams,
   ListCustomersParams,
@@ -7138,20 +7139,27 @@ export function useListTimeEntries<TData = Awaited<ReturnType<typeof listTimeEnt
 
 
 
-export const getListBlueprintsUrl = () => {
+export const getListBlueprintsUrl = (params?: ListBlueprintsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/blueprints`
+  return stringifiedParams.length > 0 ? `/api/blueprints?${stringifiedParams}` : `/api/blueprints`
 }
 
 /**
  * @summary List all blueprints
  */
-export const listBlueprints = async ( options?: RequestInit): Promise<Blueprint[]> => {
+export const listBlueprints = async (params?: ListBlueprintsParams, options?: RequestInit): Promise<Blueprint[]> => {
 
-  return customFetch<Blueprint[]>(getListBlueprintsUrl(),
+  return customFetch<Blueprint[]>(getListBlueprintsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -7164,23 +7172,23 @@ export const listBlueprints = async ( options?: RequestInit): Promise<Blueprint[
 
 
 
-export const getListBlueprintsQueryKey = () => {
+export const getListBlueprintsQueryKey = (params?: ListBlueprintsParams,) => {
     return [
-    `/api/blueprints`
+    `/api/blueprints`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getListBlueprintsQueryOptions = <TData = Awaited<ReturnType<typeof listBlueprints>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBlueprints>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListBlueprintsQueryOptions = <TData = Awaited<ReturnType<typeof listBlueprints>>, TError = ErrorType<unknown>>(params?: ListBlueprintsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBlueprints>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getListBlueprintsQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getListBlueprintsQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof listBlueprints>>> = ({ signal }) => listBlueprints({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listBlueprints>>> = ({ signal }) => listBlueprints(params, { signal, ...requestOptions });
 
 
 
@@ -7198,11 +7206,11 @@ export type ListBlueprintsQueryError = ErrorType<unknown>
  */
 
 export function useListBlueprints<TData = Awaited<ReturnType<typeof listBlueprints>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBlueprints>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: ListBlueprintsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBlueprints>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getListBlueprintsQueryOptions(options)
+  const queryOptions = getListBlueprintsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

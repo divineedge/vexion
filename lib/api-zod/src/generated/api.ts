@@ -2875,6 +2875,11 @@ export const ListTimeEntriesResponse = zod.array(ListTimeEntriesResponseItem)
 /**
  * @summary List all blueprints
  */
+export const ListBlueprintsQueryParams = zod.object({
+  "propertyId": zod.coerce.number().optional().describe('Filter to blueprints for a single property.'),
+  "includeArchived": zod.coerce.boolean().optional().describe('When true, includes archived blueprints in the results. Defaults to false (archived blueprints are hidden from the main list).')
+})
+
 export const ListBlueprintsResponseItem = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
@@ -2912,6 +2917,8 @@ export const ListBlueprintsResponseItem = zod.object({
   "measurements": zod.record(zod.string(), zod.unknown()).optional(),
   "computedAt": zod.string().optional().describe('ISO timestamp of when this estimate snapshot was computed. Only present on persisted (lastEstimate) snapshots.')
 }).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
+  "isArchived": zod.boolean().optional().describe('True once the linked job is completed or the linked estimate\/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page.'),
+  "archivedAt": zod.string().nullish(),
   "createdAt": zod.string()
 })
 export const ListBlueprintsResponse = zod.array(ListBlueprintsResponseItem)
@@ -2971,6 +2978,8 @@ export const CreateBlueprintResponse = zod.object({
   "measurements": zod.record(zod.string(), zod.unknown()).optional(),
   "computedAt": zod.string().optional().describe('ISO timestamp of when this estimate snapshot was computed. Only present on persisted (lastEstimate) snapshots.')
 }).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
+  "isArchived": zod.boolean().optional().describe('True once the linked job is completed or the linked estimate\/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page.'),
+  "archivedAt": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -3019,6 +3028,8 @@ export const GetBlueprintResponse = zod.object({
   "measurements": zod.record(zod.string(), zod.unknown()).optional(),
   "computedAt": zod.string().optional().describe('ISO timestamp of when this estimate snapshot was computed. Only present on persisted (lastEstimate) snapshots.')
 }).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
+  "isArchived": zod.boolean().optional().describe('True once the linked job is completed or the linked estimate\/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page.'),
+  "archivedAt": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -3078,6 +3089,8 @@ export const UpdateBlueprintResponse = zod.object({
   "measurements": zod.record(zod.string(), zod.unknown()).optional(),
   "computedAt": zod.string().optional().describe('ISO timestamp of when this estimate snapshot was computed. Only present on persisted (lastEstimate) snapshots.')
 }).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
+  "isArchived": zod.boolean().optional().describe('True once the linked job is completed or the linked estimate\/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page.'),
+  "archivedAt": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -3166,6 +3179,8 @@ export const GenerateBlueprintFromAiResponse = zod.object({
   "measurements": zod.record(zod.string(), zod.unknown()).optional(),
   "computedAt": zod.string().optional().describe('ISO timestamp of when this estimate snapshot was computed. Only present on persisted (lastEstimate) snapshots.')
 }).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
+  "isArchived": zod.boolean().optional().describe('True once the linked job is completed or the linked estimate\/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page.'),
+  "archivedAt": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -3236,6 +3251,8 @@ export const GenerateBlueprintAiZonesResponse = zod.object({
   "measurements": zod.record(zod.string(), zod.unknown()).optional(),
   "computedAt": zod.string().optional().describe('ISO timestamp of when this estimate snapshot was computed. Only present on persisted (lastEstimate) snapshots.')
 }).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
+  "isArchived": zod.boolean().optional().describe('True once the linked job is completed or the linked estimate\/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page.'),
+  "archivedAt": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -3280,6 +3297,8 @@ export const ListBlueprintTemplatesResponseItem = zod.object({
   "measurements": zod.record(zod.string(), zod.unknown()).optional(),
   "computedAt": zod.string().optional().describe('ISO timestamp of when this estimate snapshot was computed. Only present on persisted (lastEstimate) snapshots.')
 }).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
+  "isArchived": zod.boolean().optional().describe('True once the linked job is completed or the linked estimate\/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page.'),
+  "archivedAt": zod.string().nullish(),
   "createdAt": zod.string()
 })
 export const ListBlueprintTemplatesResponse = zod.array(ListBlueprintTemplatesResponseItem)
@@ -3334,6 +3353,8 @@ export const ApplyBlueprintTemplateResponse = zod.object({
   "measurements": zod.record(zod.string(), zod.unknown()).optional(),
   "computedAt": zod.string().optional().describe('ISO timestamp of when this estimate snapshot was computed. Only present on persisted (lastEstimate) snapshots.')
 }).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
+  "isArchived": zod.boolean().optional().describe('True once the linked job is completed or the linked estimate\/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page.'),
+  "archivedAt": zod.string().nullish(),
   "createdAt": zod.string()
 })
 

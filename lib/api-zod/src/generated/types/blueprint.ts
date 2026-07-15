@@ -58,5 +58,9 @@ export interface Blueprint {
   pdfSignedUrl?: string | null;
   /** Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor. */
   lastEstimate?: BlueprintEstimate | null;
+  /** True once the linked job is completed or the linked estimate/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page. */
+  isArchived?: boolean;
+  /** @nullable */
+  archivedAt?: string | null;
   createdAt: string;
 }

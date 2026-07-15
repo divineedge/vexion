@@ -672,7 +672,7 @@ export default function BlueprintCanvasPage() {
   // ── "Load from Template" — lets staff start a zone's materials from a saved template blueprint's ──
   // ── canvas, instead of picking every material by hand.
   const [loadingTemplateId, setLoadingTemplateId] = useState<number | null>(null);
-  const { data: allBlueprints } = useListBlueprints({ query: { queryKey: getListBlueprintsQueryKey(), enabled: materialsDialogOpen } });
+  const { data: allBlueprints } = useListBlueprints(undefined, { query: { queryKey: getListBlueprintsQueryKey(), enabled: materialsDialogOpen } });
   const templateOptions = (allBlueprints ?? []).filter((b: any) => b.isTemplate && b.id !== Number(id));
   const { data: templateDetail } = useGetBlueprint(loadingTemplateId ?? 0, {
     query: { enabled: loadingTemplateId != null, queryKey: getGetBlueprintQueryKey(loadingTemplateId ?? 0) },

@@ -10,6 +10,7 @@ import {
   useListPropertyQuotes, getListPropertyQuotesQueryKey,
   useGetTenantSettings,
   useListPropertyMedia, getListPropertyMediaQueryKey,
+  useListBlueprints, getListBlueprintsQueryKey,
   customFetch,
 } from '@workspace/api-client-react';
 import type { MeasurementZone, Quote } from '@workspace/api-client-react';
@@ -30,7 +31,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import {
   ArrowLeft, Edit, MapPin, Navigation, Calendar, Save, GitMerge,
   AlertTriangle, Clock, ChevronDown, Check, ArrowRight, Satellite,
-  Calculator, ExternalLink, Copy, Ruler, Images,
+  Calculator, ExternalLink, Copy, Ruler, Images, DraftingCompass, Archive,
 } from 'lucide-react';
 import MediaGallery from '@/components/media/MediaGallery';
 import { toast } from 'sonner';
@@ -96,6 +97,12 @@ export default function PropertyDetailPage() {
   const { data: propertyMedia, refetch: refetchPropertyMedia } = useListPropertyMedia(id, {
     query: { enabled: !!id, queryKey: getListPropertyMediaQueryKey(id) },
   });
+  // includeArchived: true — this property page is the one place archived blueprints (from a completed
+  // job or a declined estimate) stay visible and reusable, even though they're hidden from the main list.
+  const { data: propertyBlueprints } = useListBlueprints(
+    { propertyId: id, includeArchived: true } as Parameters<typeof useListBlueprints>[0],
+    { query: { enabled: !!id, queryKey: getListBlueprintsQueryKey({ propertyId: id, includeArchived: true } as Parameters<typeof useListBlueprints>[0]) } },
+  );
   const { data: tenantSettings } = useGetTenantSettings();
 
   const preferredAreaUnit = (tenantSettings?.preferredAreaUnit as 'sqft' | 'acres') ?? 'sqft';
@@ -329,6 +336,9 @@ export default function PropertyDetailPage() {
           <TabsTrigger value="details">Details & Geofence</TabsTrigger>
           <TabsTrigger value="jobs">Jobs ({jobs?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="quotes">Quotes ({quotes?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="blueprints" className="gap-1.5">
+            <DraftingCompass className="w-4 h-4" /> Blueprints ({propertyBlueprints?.length ?? 0})
+          </TabsTrigger>
           <TabsTrigger value="media" className="gap-1.5">
             <Images className="w-4 h-4" /> Media ({propertyMedia?.length ?? 0})
           </TabsTrigger>
@@ -601,6 +611,70 @@ export default function PropertyDetailPage() {
                       <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
                         <Calculator className="w-8 h-8 mx-auto mb-2 opacity-30" />
                         No quotes generated yet. Use the Quick Quote tab to create one.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Blueprints tab ── */}
+        <TabsContent value="blueprints" className="focus-visible:outline-none">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <DraftingCompass className="w-5 h-5" /> Blueprints
+              </CardTitle>
+              <CardDescription>
+                Every canvas design created for this property, including archived ones. A blueprint is archived
+                automatically once its job is completed or its estimate is declined — it drops off the main
+                Blueprints list but stays here and remains fully reusable.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Mode</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead className="text-right">Estimate</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(propertyBlueprints ?? []).map(bp => (
+                    <TableRow
+                      key={bp.id}
+                      className="hover:bg-muted/50 cursor-pointer"
+                      onClick={() => setLocation(`/blueprints/${bp.id}`)}
+                    >
+                      <TableCell className="font-medium">{bp.name}</TableCell>
+                      <TableCell><Badge variant="outline" className="capitalize text-[10px]">{bp.mode}</Badge></TableCell>
+                      <TableCell>
+                        {bp.isArchived ? (
+                          <Badge variant="outline" className="gap-1 text-[10px] text-muted-foreground">
+                            <Archive className="w-2.5 h-2.5" /> Archived
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-emerald-500/10 text-emerald-700 border-transparent text-[10px]">Active</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {new Date(bp.createdAt).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {bp.totalEstimate != null ? `${bp.totalEstimate.toLocaleString()}` : '—'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {!propertyBlueprints?.length && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
+                        <DraftingCompass className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                        No blueprints created for this property yet.
                       </TableCell>
                     </TableRow>
                   )}

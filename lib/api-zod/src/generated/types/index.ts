@@ -223,6 +223,7 @@ export * from './jobUpdateEditScope';
 export * from './jobUpdatePriority';
 export * from './jobUpdateStatus';
 export * from './listBankTransactionsParams';
+export * from './listBlueprintsParams';
 export * from './listChemicalApplicationsParams';
 export * from './listCustomerPlansParams';
 export * from './listCustomersParams';

@@ -1889,6 +1889,19 @@ paths:
       operationId: listBlueprints
       tags: [blueprints]
       summary: List all blueprints
+      parameters:
+        - name: propertyId
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: "Filter to blueprints for a single property."
+        - name: includeArchived
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: "When true, includes archived blueprints in the results. Defaults to false (archived blueprints are hidden from the main list)."
       responses:
         "200":
           description: List of blueprints
@@ -8171,6 +8184,11 @@ components:
             - $ref: "#/components/schemas/BlueprintEstimate"
           nullable: true
           description: "Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor."
+        isArchived:
+          type: boolean
+          description: "True once the linked job is completed or the linked estimate/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page."
+        archivedAt:
+          type: ["string", "null"]
         createdAt:
           type: string
 

@@ -190,7 +190,13 @@ router.post("/blueprints/generate-ai", async (req, res): Promise<void> => {
 
 router.get("/blueprints", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const rows = await db.select().from(blueprintsTable).where(eq(blueprintsTable.tenantId, tenantId)).orderBy(blueprintsTable.createdAt);
+  const { propertyId, includeArchived } = req.query as { propertyId?: string; includeArchived?: string };
+
+  const conditions = [eq(blueprintsTable.tenantId, tenantId)];
+  if (propertyId) conditions.push(eq(blueprintsTable.propertyId, parseInt(propertyId, 10)));
+  if (includeArchived !== "true") conditions.push(eq(blueprintsTable.isArchived, false));
+
+  const rows = await db.select().from(blueprintsTable).where(and(...conditions)).orderBy(blueprintsTable.createdAt);
   res.json(await Promise.all(rows.map(formatBlueprint)));
 });
 

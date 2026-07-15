@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable, invoicesTable, tenantsTable } from "@workspace/db";
-import { eq, and, sql, desc, asc, isNotNull, isNull, ne, inArray, min, gt } from "drizzle-orm";
+import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable, invoicesTable, tenantsTable, blueprintsTable } from "@workspace/db";
+import { eq, and, or, sql, desc, asc, isNotNull, isNull, ne, inArray, min, gt } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { nthOccurrenceAfterRoot, describeRule, type RecurrenceRule } from "../lib/recurrenceEngine";
 import { enqueueInvoiceEmail } from "../lib/billingScheduler";
@@ -505,6 +505,12 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
 
   await db.insert(activityLogTable).values({ tenantId, userId, type: "job_completed", message: `Job "${updated.title}" completed`, entityId: id });
+
+  // Archive any blueprint tied to this job (either direction of the link) so it drops out of the
+  // main Blueprints list but stays visible/reusable from the property page.
+  await db.update(blueprintsTable)
+    .set({ isArchived: true, archivedAt: new Date() })
+    .where(and(eq(blueprintsTable.tenantId, tenantId), or(eq(blueprintsTable.jobId, id), eq(blueprintsTable.id, updated.blueprintId ?? -1))));
 
   // Auto-invoice on completion if enabled for this customer
   if (updated.customerId) {

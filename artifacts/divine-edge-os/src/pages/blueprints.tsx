@@ -42,7 +42,7 @@ export default function BlueprintsPage() {
   const { canManageOffice } = useAuth();
   const qc = useQueryClient();
 
-  const { data: blueprints, isLoading } = useListBlueprints({ query: { queryKey: getListBlueprintsQueryKey() } });
+  const { data: blueprints, isLoading } = useListBlueprints(undefined, { query: { queryKey: getListBlueprintsQueryKey() } });
 
   // New Blueprint dialog
   const [newBpOpen, setNewBpOpen] = useState(false);

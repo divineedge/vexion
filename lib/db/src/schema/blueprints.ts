@@ -37,6 +37,9 @@ export const blueprintsTable = pgTable("blueprints", {
    *  Persisted so the materials breakdown a price was based on stays visible after leaving the canvas editor,
    *  instead of only existing transiently in the editor's local state right after clicking Calculate Estimate. */
   lastEstimate: jsonb("last_estimate"),
+  /** True once the linked job is completed or the linked estimate/quote is declined. Hidden from the main Blueprints list but still visible on its property page. */
+  isArchived: boolean("is_archived").notNull().default(false),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

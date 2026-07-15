@@ -2010,6 +2010,10 @@ export interface Blueprint {
   pdfSignedUrl?: string | null;
   /** Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor. */
   lastEstimate?: BlueprintEstimate | null;
+  /** True once the linked job is completed or the linked estimate/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page. */
+  isArchived?: boolean;
+  /** @nullable */
+  archivedAt?: string | null;
   createdAt: string;
 }
 
@@ -4190,6 +4194,17 @@ status?: string;
 
 export type ListTimeEntriesParams = {
 date?: string;
+};
+
+export type ListBlueprintsParams = {
+/**
+ * Filter to blueprints for a single property.
+ */
+propertyId?: number;
+/**
+ * When true, includes archived blueprints in the results. Defaults to false (archived blueprints are hidden from the main list).
+ */
+includeArchived?: boolean;
 };
 
 export type GenerateBlueprintFromAiBodyMode = typeof GenerateBlueprintFromAiBodyMode[keyof typeof GenerateBlueprintFromAiBodyMode];

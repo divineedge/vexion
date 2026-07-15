@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, estimatesTable, visitsTable, jobsTable, customersTable, propertiesTable, usersTable, tenantsTable } from "@workspace/db";
+import { db, estimatesTable, visitsTable, jobsTable, customersTable, propertiesTable, usersTable, tenantsTable, blueprintsTable } from "@workspace/db";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { sendReviewRequest } from "../lib/reviewService";
@@ -426,6 +426,16 @@ router.patch("/estimates/:id", async (req, res): Promise<void> => {
     .returning();
 
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+
+  // Same archive-on-decline side effect as the public respond endpoint — status can also transition
+  // to declined from here (staff manually marking an estimate declined), so the blueprint must be
+  // archived from this path too, not just the customer-facing token respond flow.
+  if (updateData.status === "declined" && updated.blueprintId) {
+    await db.update(blueprintsTable)
+      .set({ isArchived: true, archivedAt: new Date() })
+      .where(and(eq(blueprintsTable.id, updated.blueprintId), eq(blueprintsTable.tenantId, updated.tenantId)));
+  }
+
   res.json(formatEstimate(updated));
 });
 
@@ -596,6 +606,14 @@ router.post("/public/estimates/:token/respond", async (req, res): Promise<void> 
     })
     .where(eq(estimatesTable.approvalToken, token))
     .returning();
+
+  // A declined estimate means the design it was built around isn't going forward — archive the
+  // linked blueprint so it drops out of the main Blueprints list but stays reachable from the property.
+  if (!isApproved && updated.blueprintId) {
+    await db.update(blueprintsTable)
+      .set({ isArchived: true, archivedAt: now })
+      .where(and(eq(blueprintsTable.id, updated.blueprintId), eq(blueprintsTable.tenantId, updated.tenantId)));
+  }
 
   if (isApproved && updated.customerId) {
     const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, updated.tenantId));

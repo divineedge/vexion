@@ -54,7 +54,8 @@ function addBiMonth(dateStr: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-function nextBillingDate(current: string, cycleType: string): string {
+/** Exported for unit testing of calendar edge-case advancement (month-end, leap year, year boundary). */
+export function nextBillingDate(current: string, cycleType: string): string {
   if (cycleType === "daily") return addDay(current);
   if (cycleType === "weekly") return addWeek(current);
   if (cycleType === "bi_monthly") return addBiMonth(current);

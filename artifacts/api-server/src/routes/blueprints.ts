@@ -7,6 +7,89 @@ import { ObjectStorageService } from "../lib/objectStorage";
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
 
+// ─── Canvas data normalization ─────────────────────────────────────────────────
+// Some legacy/seeded blueprints store their layout as { nodes: [{id,x,y,type}], lines: [{id,from,to}] }
+// instead of the current { points: [{id,x,y,elementType}], lines: [{id,startId,endId}], areas: [...] }
+// shape the canvas editor reads and writes. Without normalizing on read, the editor sees an empty
+// points/lines array, shows a blank canvas, and then overwrites the legacy fields with empty arrays
+// the first time it saves (including the AI zone-generation save-on-generate step). Normalizing here,
+// at every read path, means the editor always works with — and therefore always saves back — the
+// current shape, so the legacy fields are naturally migrated away instead of silently discarded.
+interface NormalizedCanvasPoint {
+  id: string; x: number; y: number;
+  elementType?: string;
+  label?: string;
+  sprinklerHeadType?: string;
+  inventoryItemId?: number | null;
+  coverageRadiusFt?: number | null;
+}
+interface NormalizedCanvasLine {
+  id: string; startId: string; endId: string;
+  elementType?: string;
+  pipeType?: string;
+  label?: string;
+  inventoryItemId?: number | null;
+}
+interface NormalizedCanvasArea {
+  id: string;
+  elementType: string;
+  polygon: { x: number; y: number }[];
+  label?: string;
+  inventoryItemId?: number | null;
+}
+interface NormalizedCanvasData {
+  points: NormalizedCanvasPoint[];
+  lines: NormalizedCanvasLine[];
+  areas: NormalizedCanvasArea[];
+}
+
+/** Best-effort mapping from legacy free-text node "type" values to the current elementType union; unrecognized
+ * legacy types (e.g. "valve", "corner") fall back to a plain generic point rather than being dropped. */
+const LEGACY_NODE_TYPE_MAP: Record<string, string> = {
+  sprinkler: "sprinkler",
+  tree: "tree",
+  largeRock: "largeRock",
+  rock: "largeRock",
+};
+
+function normalizeCanvasData(raw: unknown): NormalizedCanvasData {
+  const data = (raw ?? {}) as {
+    points?: NormalizedCanvasPoint[];
+    lines?: Array<Partial<NormalizedCanvasLine> & { from?: string; to?: string }>;
+    areas?: NormalizedCanvasArea[];
+    nodes?: Array<{ id: string; x: number; y: number; type?: string }>;
+  };
+
+  if (Array.isArray(data.points)) {
+    // Current shape. Still tolerate individual lines saved under the legacy from/to keys instead of startId/endId.
+    const lines: NormalizedCanvasLine[] = (data.lines ?? []).map((l) => ({
+      ...l,
+      id: l.id!,
+      startId: l.startId ?? l.from!,
+      endId: l.endId ?? l.to!,
+    }));
+    return { points: data.points, lines, areas: data.areas ?? [] };
+  }
+
+  if (Array.isArray(data.nodes)) {
+    // Legacy shape: nodes[] + lines with from/to instead of points[] + startId/endId.
+    const points: NormalizedCanvasPoint[] = data.nodes.map((n) => ({
+      id: n.id,
+      x: n.x,
+      y: n.y,
+      elementType: n.type ? LEGACY_NODE_TYPE_MAP[n.type] : undefined,
+    }));
+    const lines: NormalizedCanvasLine[] = (data.lines ?? []).map((l) => ({
+      id: l.id!,
+      startId: (l.from ?? l.startId)!,
+      endId: (l.to ?? l.endId)!,
+    }));
+    return { points, lines, areas: [] };
+  }
+
+  return { points: [], lines: [], areas: data.areas ?? [] };
+}
+
 async function formatBlueprint(b: typeof blueprintsTable.$inferSelect) {
   let pdfSignedUrl: string | null = null;
   if (b.pdfObjectPath) {
@@ -18,7 +101,7 @@ async function formatBlueprint(b: typeof blueprintsTable.$inferSelect) {
   }
   return {
     ...b,
-    canvasData: (b.canvasData as object) ?? {},
+    canvasData: normalizeCanvasData(b.canvasData),
     createdAt: b.createdAt.toISOString(),
     pdfSignedUrl,
   };
@@ -301,12 +384,12 @@ router.post("/blueprints/:id/estimate", async (req, res): Promise<void> => {
   const [bp] = await db.select().from(blueprintsTable).where(and(eq(blueprintsTable.id, id), eq(blueprintsTable.tenantId, tenantId)));
   if (!bp) { res.status(404).json({ error: "Not found" }); return; }
 
-  const canvas = (bp.canvasData as { nodes?: unknown[]; lines?: CanvasLineEl[]; points?: CanvasPointEl[]; areas?: CanvasAreaEl[] }) ?? {};
-  const points = canvas.points ?? [];
-  const lines = canvas.lines ?? [];
-  const areas = canvas.areas ?? [];
+  const canvas = normalizeCanvasData(bp.canvasData);
+  const points = canvas.points as CanvasPointEl[];
+  const lines = canvas.lines as CanvasLineEl[];
+  const areas = canvas.areas as CanvasAreaEl[];
   const pointById = new Map(points.map(p => [p.id, p]));
-  const nodeCount = canvas.nodes?.length ?? points.length ?? 0;
+  const nodeCount = points.length;
   const lineCount = lines.length;
   const scale = bp.scalePxPerFt;
 
@@ -657,10 +740,12 @@ router.post("/blueprints/:id/generate-ai-zones", async (req, res): Promise<void>
   const [bp] = await db.select().from(blueprintsTable).where(and(eq(blueprintsTable.id, id), eq(blueprintsTable.tenantId, tenantId)));
   if (!bp) { res.status(404).json({ error: "Not found" }); return; }
 
-  const existing = (bp.canvasData as { points?: GeneratedZonePoint[]; lines?: GeneratedZoneLine[]; areas?: GeneratedZoneArea[] }) ?? {};
-  const existingPoints = existing.points ?? [];
-  const existingLines = existing.lines ?? [];
-  const existingAreas = existing.areas ?? [];
+  // Normalize first: legacy-shaped blueprints (nodes/from/to) would otherwise look empty here, and
+  // merging + saving would silently discard their original layout under the old field names.
+  const existing = normalizeCanvasData(bp.canvasData);
+  const existingPoints = existing.points as GeneratedZonePoint[];
+  const existingLines = existing.lines as GeneratedZoneLine[];
+  const existingAreas = existing.areas as GeneratedZoneArea[];
 
   const nextTrenchNumberRef = { value: existingLines.filter((l) => l.elementType === "trench").length + 1 };
   const newPoints: GeneratedZonePoint[] = [];

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, quotesTable, propertiesTable, customersTable, servicesTable, jobsTable } from "@workspace/db";
+import { db, quotesTable, propertiesTable, customersTable, servicesTable, jobsTable, blueprintsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { getTenantId } from "../lib/tenantHelper";
 import crypto from "crypto";
@@ -26,7 +26,7 @@ router.post("/properties/:id/quotes", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const propertyId = parseInt(req.params.id, 10);
 
-  const { serviceId, selectedZoneLabels, totalAreaSqft, priceType } = req.body;
+  const { serviceId, selectedZoneLabels, totalAreaSqft, priceType, blueprintId } = req.body;
 
   const [property] = await db
     .select({ property: propertiesTable, customerName: customersTable.name })
@@ -35,6 +35,18 @@ router.post("/properties/:id/quotes", async (req, res): Promise<void> => {
     .where(and(eq(propertiesTable.id, propertyId), eq(propertiesTable.tenantId, tenantId)));
 
   if (!property) { res.status(404).json({ error: "Property not found" }); return; }
+
+  // Validate blueprintId belongs to this tenant (and ideally the same property)
+  let resolvedBlueprintId: number | null = null;
+  if (blueprintId) {
+    const bpId = parseInt(blueprintId, 10);
+    const [bp] = await db
+      .select({ id: blueprintsTable.id })
+      .from(blueprintsTable)
+      .where(and(eq(blueprintsTable.id, bpId), eq(blueprintsTable.tenantId, tenantId)));
+    if (!bp) { res.status(404).json({ error: "Blueprint not found" }); return; }
+    resolvedBlueprintId = bp.id;
+  }
 
   let serviceName = "Custom Quote";
   let serviceDescription: string | null = null;
@@ -68,6 +80,7 @@ router.post("/properties/:id/quotes", async (req, res): Promise<void> => {
     propertyId,
     token: generateToken(),
     serviceId: serviceId ? parseInt(serviceId, 10) : null,
+    blueprintId: resolvedBlueprintId,
     serviceName,
     serviceDescription,
     selectedZoneLabels: selectedZoneLabels ?? [],
@@ -164,6 +177,14 @@ router.post("/quotes/:token/respond", async (req, res): Promise<void> => {
     })
     .where(eq(quotesTable.token, token))
     .returning();
+
+  // A declined quote means the design it was generated from isn't going forward — archive the
+  // linked blueprint so it drops out of the main Blueprints list but stays reachable from the property.
+  if (action === "declined" && updated.blueprintId) {
+    await db.update(blueprintsTable)
+      .set({ isArchived: true, archivedAt: new Date() })
+      .where(and(eq(blueprintsTable.id, updated.blueprintId), eq(blueprintsTable.tenantId, updated.tenantId)));
+  }
 
   // If approved, create a draft estimate (pending job)
   if (action === "approved" && quote.propertyId) {

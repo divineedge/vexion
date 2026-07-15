@@ -47,6 +47,7 @@ const AREA_DEFAULT_DEPTH_INCHES: Record<string, number> = {
   gravel_4in: 4,
   dryRiverBed: 3,
   largeRockBed: 4,
+  paver: 2,
   turf: 0,
 };
 
@@ -673,7 +674,7 @@ interface GeneratedZoneArea {
 }
 
 /** Ground-cover materials that draw as a bounded polygon area instead of scattered points. */
-const AREA_MATERIAL_TYPES = new Set(["dryRiverBed", "gravel_1in", "gravel_2in", "gravel_3in", "gravel_4in", "largeRockBed", "turf"]);
+const AREA_MATERIAL_TYPES = new Set(["dryRiverBed", "gravel_1in", "gravel_2in", "gravel_3in", "gravel_4in", "largeRockBed", "paver", "turf"]);
 
 /** Ray-casting point-in-polygon test. */
 function pointInPolygon(px: number, py: number, polygon: AiZonePointInput[]): boolean {
@@ -735,7 +736,7 @@ function generateZoneElements(
   const MAX_PLACEMENTS_PER_MATERIAL = 40;
 
   for (const material of zone.materials) {
-    if (material.elementType === "edge" || material.elementType === "pipe") continue; // lines are derived, not directly selectable
+    if (material.elementType === "edge" || material.elementType === "pipe" || material.elementType === "retainingWall") continue; // lines are derived/boundary-only, not directly scattered as points or areas
 
     // Ground cover (gravel/dry river bed): the whole zone becomes one area, quantified by sq ft, not a scatter of dots.
     if (AREA_MATERIAL_TYPES.has(material.elementType)) {

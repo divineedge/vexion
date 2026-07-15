@@ -7,6 +7,7 @@ import {
   useListInventoryItems, getListInventoryItemsQueryKey,
   useGenerateBlueprintAiZones,
   useListBlueprints, getListBlueprintsQueryKey,
+  useDeleteBlueprint,
   customFetch,
 } from '@workspace/api-client-react';
 import type { EstimatedPart, InventoryItem } from '@workspace/api-client-react';
@@ -24,6 +25,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+} from '@/components/ui/alert-dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
@@ -40,12 +45,12 @@ import 'leaflet/dist/leaflet.css';
 type PointElementType =
   | 'node' | 'sprinkler' | 'tree' | 'largeRock' | 'dryRiverBed'
   | 'gravel_1in' | 'gravel_2in' | 'gravel_3in' | 'gravel_4in' | 'trench'
-  | 'canopyTree' | 'evergreenShrub' | 'perennialFlowers' | 'paver';
+  | 'canopyTree' | 'evergreenShrub' | 'perennialFlowers';
 
 /** Ground-cover material types drawn as a bounded area (polygon) rather than a single point. */
 type AreaElementType =
   | 'dryRiverBed' | 'gravel_1in' | 'gravel_2in' | 'gravel_3in' | 'gravel_4in' | 'largeRockBed'
-  | 'patio' | 'walkway' | 'mulchBed' | 'retainingWall' | 'turf';
+  | 'patio' | 'walkway' | 'mulchBed' | 'paver' | 'turf';
 
 /** Area types quantified by raw coverage (sq ft of material laid down) rather than fill volume — sod/turf
  * is sold and installed by the square foot, not by cubic yards of depth like gravel or mulch. */
@@ -64,14 +69,14 @@ function defaultDepthInches(elementType: AreaElementType): number {
     case 'mulchBed': return 3;
     case 'patio': return 4;
     case 'walkway': return 4;
-    case 'retainingWall': return 8;
+    case 'paver': return 2;
     case 'turf': return 0;
     default: return 3;
   }
 }
 
 /** Specific types for line segments, beyond the plain generic edge. */
-type LineElementType = 'edge' | 'pipe' | 'trench';
+type LineElementType = 'edge' | 'pipe' | 'trench' | 'retainingWall';
 
 type Point = {
   id: string; x: number; y: number;
@@ -134,7 +139,6 @@ const POINT_PALETTE: { type: PointElementType; label: string; icon: React.Compon
   { type: 'canopyTree', label: 'Canopy Tree', icon: TreeDeciduous, color: '#15803d', inventoryCategory: 'Landscape' },
   { type: 'evergreenShrub', label: 'Evergreen Shrub', icon: Shrub, color: '#166534', inventoryCategory: 'Landscape' },
   { type: 'perennialFlowers', label: 'Perennial Flowers', icon: Flower2, color: '#db2777', inventoryCategory: 'Landscape' },
-  { type: 'paver', label: 'Paver', icon: Grid3x3, color: '#a8a29e', inventoryCategory: 'Landscape' },
 ];
 
 /** Ground-cover area types — drawn as a bounded polygon (sq ft), not a single dot. */
@@ -148,7 +152,7 @@ const AREA_PALETTE: { type: AreaElementType; label: string; icon: React.Componen
   { type: 'patio', label: 'Patio', icon: Square, color: '#94a3b8', inventoryCategory: 'Concrete' },
   { type: 'walkway', label: 'Walkway', icon: Milestone, color: '#cbd5e1', inventoryCategory: 'Concrete' },
   { type: 'mulchBed', label: 'Mulch Bed', icon: Sprout, color: '#92400e', inventoryCategory: 'Landscape' },
-  { type: 'retainingWall', label: 'Retaining Wall', icon: BrickWall, color: '#57534e', inventoryCategory: 'Concrete' },
+  { type: 'paver', label: 'Paver', icon: Grid3x3, color: '#a8a29e', inventoryCategory: 'Landscape' },
   { type: 'turf', label: 'Turf / Sod', icon: Sprout, color: '#65a30d', inventoryCategory: 'Landscape' },
 ];
 
@@ -226,6 +230,7 @@ const ZONE_MATERIAL_PALETTE: { type: PointElementType | AreaElementType | LineEl
   ...POINT_PALETTE.filter(p => p.type !== 'node'),
   ...AREA_PALETTE,
   { type: 'trench', label: 'Trench (numbered line)', icon: Hash, color: '#f97316', inventoryCategory: LINE_INVENTORY_CATEGORY },
+  { type: 'retainingWall', label: 'Retaining Wall', icon: BrickWall, color: '#57534e', inventoryCategory: 'Concrete' },
 ];
 
 const SPRINKLER_HEAD_TYPES = ['Rotor', 'Spray', 'Drip / Micro', 'Bubbler', 'MP Rotator'];
@@ -383,6 +388,8 @@ export default function BlueprintCanvasPage() {
 
   const { data: blueprint, isLoading } = useGetBlueprint(id, { query: { enabled: !!id, queryKey: getGetBlueprintQueryKey(id) } });
   const updateBlueprint = useUpdateBlueprint();
+  const deleteBlueprintMutation = useDeleteBlueprint();
+  const [deleteBlueprintOpen, setDeleteBlueprintOpen] = useState(false);
   const calcEstimate = useCalculateBlueprintEstimate();
 
   const svgRef = useRef<SVGSVGElement>(null);
@@ -1449,6 +1456,9 @@ export default function BlueprintCanvasPage() {
               <HelpCircle className="w-4 h-4" /> Legacy Points ({totalLegacyCount})
             </Button>
           )}
+          <Button variant="outline" onClick={() => setDeleteBlueprintOpen(true)} className="gap-2 text-destructive border-destructive/40 hover:text-destructive">
+            <Trash2 className="w-4 h-4" /> Delete Blueprint
+          </Button>
           {lastMigration && (
             <Button variant="outline" onClick={undoLastMigration} className="gap-2 text-blue-600 border-blue-400 hover:text-blue-700">
               <Undo2 className="w-4 h-4" /> Undo Migration
@@ -1591,7 +1601,7 @@ export default function BlueprintCanvasPage() {
                   onClick={() => { setTool('addLine'); setLinePaletteOpen(true); }}
                 >
                   <Minus className="w-4 h-4" />
-                  <span className="text-[10px] max-w-[5.5rem] truncate">{pendingLineType === 'pipe' ? pendingPipeType : 'Generic Edge'}</span>
+                  <span className="text-[10px] max-w-[5.5rem] truncate">{pendingLineType === 'pipe' ? pendingPipeType : pendingLineType === 'trench' ? 'Trench' : pendingLineType === 'retainingWall' ? 'Retaining Wall' : 'Generic Edge'}</span>
                   <ChevronDown className="w-3 h-3" />
                 </Button>
               </PopoverTrigger>
@@ -1620,6 +1630,14 @@ export default function BlueprintCanvasPage() {
                     onClick={() => { setPendingLineType('trench'); setTool('addLine'); setLinePaletteOpen(false); }}
                   >
                     <Hash className="w-4 h-4" style={{ color: '#f97316' }} /> Trench (numbered, real-world length auto-calculated)
+                  </button>
+                </div>
+                <div className="border-t pt-2">
+                  <button
+                    className={`w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted text-left ${pendingLineType === 'retainingWall' ? 'bg-muted' : ''}`}
+                    onClick={() => { setPendingLineType('retainingWall'); setTool('addLine'); setLinePaletteOpen(false); }}
+                  >
+                    <BrickWall className="w-4 h-4" style={{ color: '#57534e' }} /> Retaining Wall (real-world length auto-calculated)
                   </button>
                 </div>
               </PopoverContent>
@@ -1896,7 +1914,7 @@ export default function BlueprintCanvasPage() {
               <div className="border-b p-3 flex flex-wrap items-end gap-3 bg-muted/10">
                 <div className="flex items-center gap-1.5">
                   <Minus className="w-4 h-4 text-primary" />
-                  <span className="text-sm font-medium">{ln.elementType === 'pipe' ? 'Pipe' : 'Generic Edge'}</span>
+                  <span className="text-sm font-medium">{ln.elementType === 'pipe' ? 'Pipe' : ln.elementType === 'trench' ? 'Trench' : ln.elementType === 'retainingWall' ? 'Retaining Wall' : 'Generic Edge'}</span>
                   {lengthFt !== null ? (
                     <Badge variant="outline" className="text-xs">{lengthFt.toFixed(1)} ft</Badge>
                   ) : (
@@ -1906,10 +1924,11 @@ export default function BlueprintCanvasPage() {
                 <div className="space-y-1">
                   <Label className="text-xs">Type</Label>
                   <Select
-                    value={ln.elementType === 'pipe' ? (ln.pipeType ?? PIPE_TYPES[0]) : ln.elementType === 'trench' ? 'trench' : 'edge'}
+                    value={ln.elementType === 'pipe' ? (ln.pipeType ?? PIPE_TYPES[0]) : ln.elementType === 'trench' ? 'trench' : ln.elementType === 'retainingWall' ? 'retainingWall' : 'edge'}
                     onValueChange={v => {
                       if (v === 'edge') updateLine({ elementType: 'edge', pipeType: undefined, label: undefined });
                       else if (v === 'trench') updateLine({ elementType: 'trench', pipeType: undefined, label: ln.label ?? `Trench ${nextTrenchNumber}` });
+                      else if (v === 'retainingWall') updateLine({ elementType: 'retainingWall', pipeType: undefined, label: undefined });
                       else updateLine({ elementType: 'pipe', pipeType: v, label: undefined });
                     }}
                   >
@@ -1917,6 +1936,7 @@ export default function BlueprintCanvasPage() {
                     <SelectContent>
                       <SelectItem value="edge">Generic Edge</SelectItem>
                       <SelectItem value="trench">Trench</SelectItem>
+                      <SelectItem value="retainingWall">Retaining Wall</SelectItem>
                       {PIPE_TYPES.map(pt => <SelectItem key={pt} value={pt}>{pt}</SelectItem>)}
                     </SelectContent>
                   </Select>
@@ -1929,7 +1949,7 @@ export default function BlueprintCanvasPage() {
                 )}
                 <InventoryLinkField
                   items={blueprintInventoryItems}
-                  category={LINE_INVENTORY_CATEGORY}
+                  category={ln.elementType === 'retainingWall' ? 'Concrete' : LINE_INVENTORY_CATEGORY}
                   value={ln.inventoryItemId}
                   onChange={id => updateLine({ inventoryItemId: id })}
                 />
@@ -2123,6 +2143,7 @@ export default function BlueprintCanvasPage() {
                 const isSelected = selectedLineId === line.id || isMultiSelected;
                 const isPipe = line.elementType === 'pipe';
                 const isTrench = line.elementType === 'trench';
+                const isRetainingWall = line.elementType === 'retainingWall';
                 const lengthFt = lineLengthFt(p1, p2, scalePxPerFt);
                 const midX = (p1.x + p2.x) / 2;
                 const midY = (p1.y + p2.y) / 2;
@@ -2130,12 +2151,25 @@ export default function BlueprintCanvasPage() {
                   <g key={line.id}>
                     <line
                       x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-                      stroke={isMultiSelected ? 'hsl(var(--primary))' : isSelected ? 'hsl(var(--destructive))' : isPipe ? '#0ea5e9' : isTrench ? '#f97316' : lineColor}
-                      strokeWidth={isSelected ? 4 : isPipe ? 3 : isTrench ? 4 : 2}
+                      stroke={isMultiSelected ? 'hsl(var(--primary))' : isSelected ? 'hsl(var(--destructive))' : isPipe ? '#0ea5e9' : isTrench ? '#f97316' : isRetainingWall ? '#57534e' : lineColor}
+                      strokeWidth={isSelected ? 4 : isPipe ? 3 : isTrench ? 4 : isRetainingWall ? 5 : 2}
                       strokeDasharray={isMultiSelected ? '3 3' : isTrench ? '8 4' : undefined}
                       className="cursor-pointer transition-colors"
                       onClick={(e) => handleLineClick(e, line.id)}
                     />
+                    {isRetainingWall && (
+                      <text
+                        x={midX} y={midY - 6}
+                        fontSize={10}
+                        textAnchor="middle"
+                        fill={isSelected ? 'hsl(var(--destructive))' : '#44403c'}
+                        pointerEvents="none"
+                        className="font-medium"
+                        style={{ paintOrder: 'stroke', stroke: 'white', strokeWidth: 3 }}
+                      >
+                        Retaining Wall{lengthFt !== null ? ` · ${lengthFt.toFixed(1)} ft` : ''}
+                      </text>
+                    )}
                     {isPipe && (
                       <text
                         x={midX} y={midY - 6}
@@ -2525,6 +2559,34 @@ export default function BlueprintCanvasPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <AlertDialog open={deleteBlueprintOpen} onOpenChange={setDeleteBlueprintOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete "{blueprint?.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes the blueprint and its canvas layout. Jobs and estimates that referenced it will be unlinked, not deleted. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                deleteBlueprintMutation.mutate({ id }, {
+                  onSuccess: () => {
+                    toast.success('Blueprint deleted');
+                    queryClient.invalidateQueries({ queryKey: getListBlueprintsQueryKey() });
+                    setLocation('/blueprints');
+                  },
+                  onError: () => toast.error('Failed to delete blueprint'),
+                });
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

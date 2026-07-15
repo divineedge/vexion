@@ -1132,13 +1132,44 @@ export default function BlueprintCanvasPage() {
             const pt = points.find(p => p.id === selectedPointId);
             if (!pt) return null;
             const meta = resolvePointMeta(pt);
+            const isLegacyUnknown = isLegacyUnknownPoint(pt);
             const updatePoint = (patch: Partial<Point>) => setPoints(pts => pts.map(p => p.id === pt.id ? { ...p, ...patch } : p));
+            const assignRealType = (type: PointElementType) => {
+              const patch: Partial<Point> = { elementType: type };
+              if (type === 'sprinkler') {
+                patch.sprinklerHeadType = SPRINKLER_HEAD_TYPES[0];
+                patch.coverageRadiusFt = DEFAULT_SPRINKLER_RADIUS_FT[SPRINKLER_HEAD_TYPES[0]];
+              }
+              updatePoint(patch);
+              toast.success(`Reassigned "${pt.label}" to ${pointElementMeta(type).label}`);
+            };
             return (
               <div className="border-b p-3 flex flex-wrap items-end gap-3 bg-muted/10">
                 <div className="flex items-center gap-1.5">
                   <meta.icon className="w-4 h-4" style={{ color: meta.color }} />
                   <span className="text-sm font-medium">{meta.label}</span>
+                  {isLegacyUnknown && (
+                    <Badge variant="outline" className="text-xs text-amber-600 border-amber-400">Legacy: "{pt.label}"</Badge>
+                  )}
                 </div>
+                {isLegacyUnknown && (
+                  <div className="space-y-1">
+                    <Label className="text-xs">Assign real type</Label>
+                    <Select value="" onValueChange={v => assignRealType(v as PointElementType)}>
+                      <SelectTrigger className="h-8 w-44"><SelectValue placeholder="Pick a fixture type" /></SelectTrigger>
+                      <SelectContent>
+                        {POINT_PALETTE.map(p => (
+                          <SelectItem key={p.type} value={p.type}>
+                            <span className="flex items-center gap-2">
+                              <p.icon className="w-3.5 h-3.5" style={{ color: p.color }} />
+                              {p.label}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 {(pt.elementType === 'trench' || !pt.elementType || pt.elementType === 'node') && (
                   <div className="space-y-1">
                     <Label className="text-xs">Label</Label>

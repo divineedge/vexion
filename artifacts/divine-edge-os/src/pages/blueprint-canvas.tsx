@@ -16,7 +16,7 @@ import {
   ArrowLeft, Save, MousePointer2, PlusCircle, Minus, Trash2, Calculator, Ruler,
   ChevronDown, TreeDeciduous, Mountain, Waves, Hash, Layers, SprayCan, Link2,
   Wand2, Shapes, Sparkles, X, Check, ZoomIn, ZoomOut, Maximize, Square, HelpCircle, Library,
-  Upload, FileText, Undo2,
+  Upload, FileText, Undo2, Shrub, Flower2, Sprout, Grid3x3, Milestone, BrickWall,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useQueryClient } from '@tanstack/react-query';
@@ -27,6 +27,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
 /**
  * Specific fixture/material types placeable as points on the canvas, beyond the plain generic point.
@@ -36,10 +38,13 @@ import { Checkbox } from '@/components/ui/checkbox';
  */
 type PointElementType =
   | 'node' | 'sprinkler' | 'tree' | 'largeRock' | 'dryRiverBed'
-  | 'gravel_1in' | 'gravel_2in' | 'gravel_3in' | 'gravel_4in' | 'trench';
+  | 'gravel_1in' | 'gravel_2in' | 'gravel_3in' | 'gravel_4in' | 'trench'
+  | 'canopyTree' | 'evergreenShrub' | 'perennialFlowers' | 'turf' | 'paver';
 
 /** Ground-cover material types drawn as a bounded area (polygon) rather than a single point. */
-type AreaElementType = 'dryRiverBed' | 'gravel_1in' | 'gravel_2in' | 'gravel_3in' | 'gravel_4in' | 'largeRockBed';
+type AreaElementType =
+  | 'dryRiverBed' | 'gravel_1in' | 'gravel_2in' | 'gravel_3in' | 'gravel_4in' | 'largeRockBed'
+  | 'patio' | 'walkway' | 'mulchBed' | 'retainingWall';
 
 /** Default fill depth (inches) per ground-cover area type — drives the cubic-yard estimate; staff can override per-area. */
 function defaultDepthInches(elementType: AreaElementType): number {
@@ -50,6 +55,10 @@ function defaultDepthInches(elementType: AreaElementType): number {
     case 'gravel_4in': return 4;
     case 'dryRiverBed': return 3;
     case 'largeRockBed': return 4;
+    case 'mulchBed': return 3;
+    case 'patio': return 4;
+    case 'walkway': return 4;
+    case 'retainingWall': return 8;
     default: return 3;
   }
 }
@@ -111,6 +120,11 @@ const POINT_PALETTE: { type: PointElementType; label: string; icon: React.Compon
   { type: 'sprinkler', label: 'Sprinkler', icon: SprayCan, color: '#38bdf8' },
   { type: 'tree', label: 'Tree', icon: TreeDeciduous, color: '#16a34a' },
   { type: 'largeRock', label: 'Large Rock', icon: Mountain, color: '#78716c' },
+  { type: 'canopyTree', label: 'Canopy Tree', icon: TreeDeciduous, color: '#15803d' },
+  { type: 'evergreenShrub', label: 'Evergreen Shrub', icon: Shrub, color: '#166534' },
+  { type: 'perennialFlowers', label: 'Perennial Flowers', icon: Flower2, color: '#db2777' },
+  { type: 'turf', label: 'Turf / Sod', icon: Sprout, color: '#65a30d' },
+  { type: 'paver', label: 'Paver', icon: Grid3x3, color: '#a8a29e' },
 ];
 
 /** Ground-cover area types — drawn as a bounded polygon (sq ft), not a single dot. */
@@ -121,6 +135,10 @@ const AREA_PALETTE: { type: AreaElementType; label: string; icon: React.Componen
   { type: 'gravel_3in', label: 'Gravel (3")', icon: Layers, color: '#bb9660' },
   { type: 'gravel_4in', label: 'Gravel (4")', icon: Layers, color: '#ad844a' },
   { type: 'largeRockBed', label: 'Large Rock (Bed)', icon: Mountain, color: '#78716c' },
+  { type: 'patio', label: 'Patio', icon: Square, color: '#94a3b8' },
+  { type: 'walkway', label: 'Walkway', icon: Milestone, color: '#cbd5e1' },
+  { type: 'mulchBed', label: 'Mulch Bed', icon: Sprout, color: '#92400e' },
+  { type: 'retainingWall', label: 'Retaining Wall', icon: BrickWall, color: '#57534e' },
 ];
 
 function areaElementMeta(elementType: AreaElementType) {
@@ -203,51 +221,54 @@ function pxAreaToSqFt(areaPx: number, scale: number): number {
   return areaPx / (scale * scale);
 }
 
+/** Perimeter (px) of a closed polygon from ordered vertices. */
+function polygonPerimeterPx(pts: { x: number; y: number }[]): number {
+  if (pts.length < 2) return 0;
+  let perimeter = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const j = (i + 1) % pts.length;
+    perimeter += Math.hypot(pts[j].x - pts[i].x, pts[j].y - pts[i].y);
+  }
+  return perimeter;
+}
+
+/** Convert px perimeter → linear ft given scalePxPerFt */
+function pxLengthToFt(lengthPx: number, scale: number): number {
+  return lengthPx / scale;
+}
+
 const METERS_PER_FOOT = 0.3048;
 const METERS_PER_DEGREE_LAT = 111320;
-/** Real-world east-west span (in feet) the satellite backdrop should cover. */
+/** Placeholder real-world width (ft) assumed for a freshly-traced PDF page until the user calibrates it —
+ * a PDF has no inherent geo-reference, so this just seeds a starting scale in a sane ballpark. */
 const SATELLITE_SPAN_FT = 300;
 
-/** Build an ESRI World Imagery static export URL centered on lat/lng, sized to match the canvas aspect ratio. */
-function buildSatelliteImageUrl(lat: number, lng: number, widthPx: number, heightPx: number): { url: string; widthFt: number; heightFt: number } {
-  const widthFt = SATELLITE_SPAN_FT;
-  const heightFt = widthFt * (heightPx / widthPx);
-  const widthM = widthFt * METERS_PER_FOOT;
-  const heightM = heightFt * METERS_PER_FOOT;
-  const deltaLat = (heightM / 2) / METERS_PER_DEGREE_LAT;
-  const metersPerDegreeLng = METERS_PER_DEGREE_LAT * Math.cos((lat * Math.PI) / 180);
-  const deltaLng = (widthM / 2) / metersPerDegreeLng;
-  const xmin = lng - deltaLng;
-  const xmax = lng + deltaLng;
-  const ymin = lat - deltaLat;
-  const ymax = lat + deltaLat;
-  const size = `${Math.max(1, Math.round(widthPx))},${Math.max(1, Math.round(heightPx))}`;
-  const url = `https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${xmin},${ymin},${xmax},${ymax}&bboxSR=4326&size=${size}&format=png&f=image`;
-  return { url, widthFt, heightFt };
+/** Standard Web Mercator meters-per-pixel at a given zoom/latitude (Leaflet/Google Maps tile convention). */
+function metersPerPixelAtZoom(lat: number, zoom: number): number {
+  return (156543.03392 * Math.cos((lat * Math.PI) / 180)) / Math.pow(2, zoom);
 }
 
-/** Resolve whether an image URL actually loads (the ESRI export service errors on some pixel sizes when the requested
- * resolution exceeds the available imagery cache for a given location — this can't be predicted up front). */
-function probeImageLoads(url: string, timeoutMs = 8000): Promise<boolean> {
-  return new Promise((resolve) => {
-    const img = new window.Image();
-    const timer = setTimeout(() => { img.onload = null; img.onerror = null; resolve(false); }, timeoutMs);
-    img.onload = () => { clearTimeout(timer); resolve(true); };
-    img.onerror = () => { clearTimeout(timer); resolve(false); };
-    img.src = url;
-  });
+/** Inverse of the above — the fractional zoom level whose tiles render at ~metersPerPixel at this latitude. */
+function zoomForMetersPerPixel(lat: number, metersPerPixel: number): number {
+  return Math.log2((156543.03392 * Math.cos((lat * Math.PI) / 180)) / metersPerPixel);
 }
 
-/** Try progressively smaller export sizes (same aspect ratio) until one is actually servable by the imagery cache. */
-async function resolveSatelliteImage(lat: number, lng: number, aspect: number): Promise<{ url: string; widthFt: number; heightFt: number } | null> {
-  const candidateWidths = [1024, 768, 512, 384, 256, 160];
-  for (const w of candidateWidths) {
-    const h = Math.max(1, Math.round(w / aspect));
-    const built = buildSatelliteImageUrl(lat, lng, w, h);
-    // eslint-disable-next-line no-await-in-loop
-    if (await probeImageLoads(built.url)) return built;
-  }
-  return null;
+/** Georeference anchor tying one point in the canvas's local (pre-pan/zoom) coordinate space to a real
+ * lat/lng, so every point/line/area drawn against the live map can be translated to/from real-world
+ * coordinates. Established once per blueprint the moment the property's location is known. */
+type MapAnchor = { lat: number; lng: number; localX: number; localY: number };
+
+/** Local canvas coordinates → real lat/lng, using the anchor and the calibrated feet-per-local-unit scale. */
+function localToLatLng(localX: number, localY: number, anchor: MapAnchor, scalePxPerFt: number): { lat: number; lng: number } {
+  const dxFt = (localX - anchor.localX) / scalePxPerFt;
+  const dyFt = (localY - anchor.localY) / scalePxPerFt;
+  const dxM = dxFt * METERS_PER_FOOT;
+  const dyM = dyFt * METERS_PER_FOOT;
+  const metersPerDegreeLng = METERS_PER_DEGREE_LAT * Math.cos((anchor.lat * Math.PI) / 180);
+  return {
+    lat: anchor.lat - dyM / METERS_PER_DEGREE_LAT, // +y (screen down) = south = decreasing latitude
+    lng: anchor.lng + dxM / metersPerDegreeLng,
+  };
 }
 
 /** Compute rough total area: each connected component treated as a polygon */
@@ -300,11 +321,23 @@ export default function BlueprintCanvasPage() {
   const { data: property } = useGetProperty(propertyId, {
     query: { enabled: !!blueprint?.propertyId, queryKey: getGetPropertyQueryKey(propertyId) },
   });
+  // PDF trace-mode backdrop only now (see below) — the live property view uses a real Leaflet map instead.
   const [satelliteImage, setSatelliteImage] = useState<{ url: string; widthFt: number; heightFt: number } | null>(null);
   // Trace Mode: lets staff draw editable points/lines/areas over a rendered PDF page instead of just
   // viewing it. Reuses the satellite-image backdrop slot (same <image> render + scale-estimate logic) —
   // the rendered PDF page bitmap is a drop-in replacement for a satellite photo.
   const [traceMode, setTraceMode] = useState(false);
+
+  // ── Live interactive map (real Esri World Imagery tiles via Leaflet, not a flat static export) ──────
+  // The map itself is fully non-interactive (dragging/scroll-zoom disabled) and instead is driven
+  // programmatically off the *same* viewTransform the SVG drawing layer already uses — so the existing
+  // drag-to-pan / wheel-to-zoom handlers (unchanged) end up panning & zooming a real live map underneath,
+  // one that keeps loading sharp tiles at any zoom and isn't cropped to a fixed real-world span.
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const leafletMapRef = useRef<L.Map | null>(null);
+  const mapAnchorRef = useRef<MapAnchor | null>(null);
+  const mapInitRef = useRef(false);
+  const hasLiveMap = !traceMode && !!property && property.lat != null && property.lng != null;
   const pdfBuiltRef = useRef(false);
   const [pdfReplaceOpen, setPdfReplaceOpen] = useState(false);
   const [pdfReplaceFile, setPdfReplaceFile] = useState<File | null>(null);
@@ -346,7 +379,6 @@ export default function BlueprintCanvasPage() {
     }
   };
   const [satelliteFailed, setSatelliteFailed] = useState(false);
-  const satelliteBuiltRef = useRef(false);
   const autoScaleAppliedRef = useRef(false);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   // Only true once the component has actually unmounted — NOT once per re-render. The container keeps
@@ -743,13 +775,18 @@ export default function BlueprintCanvasPage() {
     }
   }, [blueprint]);
 
-  // Reset satellite backdrop state when switching blueprints/properties
+  // Reset satellite/map backdrop state when switching blueprints/properties
   useEffect(() => {
-    satelliteBuiltRef.current = false;
     autoScaleAppliedRef.current = false;
     pdfBuiltRef.current = false;
+    mapInitRef.current = false;
+    mapAnchorRef.current = null;
     setSatelliteImage(null);
     setSatelliteFailed(false);
+    if (leafletMapRef.current) {
+      leafletMapRef.current.remove();
+      leafletMapRef.current = null;
+    }
   }, [blueprint?.id, blueprint?.propertyId]);
 
   // Build the Trace Mode backdrop: rasterize the PDF's first page client-side (pdfjs) and reuse it as
@@ -849,47 +886,78 @@ export default function BlueprintCanvasPage() {
     return () => container.removeEventListener('wheel', onWheel);
   }, [isLoading]);
 
-  // Build the satellite backdrop once we know the property's location and the canvas's pixel size.
-  // Falls back silently to the blank/grid canvas when there's no property, no coordinates, or the imagery can't be found.
+  // Create the live Leaflet map + its georeference anchor once we know the property's location and the
+  // canvas's pixel size. The map has all of its own interaction disabled (dragging/scrollWheelZoom/etc off) —
+  // it's a pure rendering surface kept in sync with viewTransform by the effect below, so every existing
+  // drag-to-pan / wheel-to-zoom gesture on the SVG ends up panning & zooming this real map underneath.
   useEffect(() => {
-    if (satelliteBuiltRef.current) return;
-    if (!blueprint?.propertyId) return;
+    if (!hasLiveMap) return;
+    if (mapInitRef.current) return;
     if (!property || property.lat == null || property.lng == null) return;
     const widthPx = containerSize.width;
     const heightPx = containerSize.height;
-    if (!widthPx || !heightPx) return;
+    if (!widthPx || !heightPx || !mapContainerRef.current) return;
 
-    satelliteBuiltRef.current = true;
-    const aspect = widthPx / heightPx;
-    resolveSatelliteImage(property.lat, property.lng, aspect).then((built) => {
-      if (unmountedRef.current) return;
-      if (!built) {
-        setSatelliteFailed(true);
-        return;
-      }
-      setSatelliteImage(built);
-
-      // Give the user a sensible starting scale so the Calibrate tool has a real-world baseline to fine-tune,
-      // but never clobber a scale that was already set (loaded from the blueprint or set by the user this session).
-      // Use the functional updater so this always checks the *latest* scale at the moment it applies, not a
-      // value captured in this effect's closure — the blueprint's persisted scale can finish loading afterward.
-      if (!autoScaleAppliedRef.current) {
-        const estimatedScale = widthPx / built.widthFt;
-        let applied = false;
-        setScalePxPerFt((prev) => {
-          if (prev != null) return prev;
-          applied = true;
-          return estimatedScale;
-        });
-        if (applied) {
-          autoScaleAppliedRef.current = true;
-          toast.message('Scale estimated from satellite imagery', {
-            description: 'Use the Calibrate tool to fine-tune against a known distance in the image.',
-          });
-        }
-      }
+    mapInitRef.current = true;
+    const map = L.map(mapContainerRef.current, {
+      center: [property.lat, property.lng],
+      zoom: 20,
+      zoomSnap: 0,
+      zoomDelta: 0,
+      dragging: false,
+      scrollWheelZoom: false,
+      doubleClickZoom: false,
+      boxZoom: false,
+      keyboard: false,
+      touchZoom: false,
+      zoomControl: false,
+      attributionControl: false,
+      fadeAnimation: false,
     });
-  }, [blueprint?.propertyId, property, containerSize]);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 21,
+      maxNativeZoom: 19,
+    }).addTo(map);
+    leafletMapRef.current = map;
+    mapAnchorRef.current = { lat: property.lat, lng: property.lng, localX: widthPx / 2, localY: heightPx / 2 };
+
+    // Seed a sensible starting scale (~150ft visible across the container at the default zoom) so the
+    // Calibrate tool has a real-world baseline to fine-tune — never clobber a scale that's already set.
+    if (!autoScaleAppliedRef.current) {
+      let applied = false;
+      setScalePxPerFt((prev) => {
+        if (prev != null) return prev;
+        applied = true;
+        return widthPx / 150;
+      });
+      if (applied) {
+        autoScaleAppliedRef.current = true;
+        toast.message('Live map ready', {
+          description: 'Use the Calibrate tool to set a real scale against a known distance.',
+        });
+      }
+    }
+  }, [hasLiveMap, property, containerSize]);
+
+  // Keep the live map's center/zoom in lockstep with the SVG's own pan/zoom (viewTransform) — this is the
+  // only thing that moves the map; it never receives direct user interaction itself.
+  useEffect(() => {
+    const map = leafletMapRef.current;
+    const anchor = mapAnchorRef.current;
+    if (!map || !anchor || !scalePxPerFt || !containerSize.width || !containerSize.height) return;
+    map.invalidateSize();
+    const screenCenter = { x: containerSize.width / 2, y: containerSize.height / 2 };
+    const localCenter = {
+      x: (screenCenter.x - viewTransform.x) / viewTransform.k,
+      y: (screenCenter.y - viewTransform.y) / viewTransform.k,
+    };
+    const centerLatLng = localToLatLng(localCenter.x, localCenter.y, anchor, scalePxPerFt);
+    const metersPerScreenPx = METERS_PER_FOOT / (scalePxPerFt * viewTransform.k);
+    const zoom = zoomForMetersPerPixel(centerLatLng.lat, metersPerScreenPx);
+    map.setView([centerLatLng.lat, centerLatLng.lng], zoom, { animate: false });
+  }, [viewTransform, containerSize, scalePxPerFt]);
+
+  useEffect(() => () => { leafletMapRef.current?.remove(); leafletMapRef.current = null; }, []);
 
   const handleSatelliteImageError = useCallback(() => {
     setSatelliteFailed(true);
@@ -915,7 +983,25 @@ export default function BlueprintCanvasPage() {
     const coords = getCoordinates(e);
     
     if (tool === 'addNode') {
-      const newPoint: Point = { id: `p_${Date.now()}`, x: coords.x, y: coords.y, elementType: pendingPointType };
+      // Snap to any existing point/area-vertex within tolerance, matching the click-to-close convention
+      // used for areas — keeps newly placed points precisely aligned with nearby geometry instead of a
+      // few px off, which matters when e.g. anchoring a sprinkler to a corner.
+      const SNAP_TOLERANCE_PX = 10;
+      const toleranceWorld = SNAP_TOLERANCE_PX / viewTransform.k;
+      const snapCandidates: { x: number; y: number }[] = [
+        ...points.map(p => ({ x: p.x, y: p.y })),
+        ...areas.flatMap(a => a.polygon),
+      ];
+      let snapCoords = coords;
+      let bestDist = toleranceWorld;
+      for (const c of snapCandidates) {
+        const d = Math.hypot(c.x - coords.x, c.y - coords.y);
+        if (d <= bestDist) {
+          bestDist = d;
+          snapCoords = { x: c.x, y: c.y };
+        }
+      }
+      const newPoint: Point = { id: `p_${Date.now()}`, x: snapCoords.x, y: snapCoords.y, elementType: pendingPointType };
       if (pendingPointType === 'sprinkler') {
         newPoint.sprinklerHeadType = SPRINKLER_HEAD_TYPES[0];
         newPoint.coverageRadiusFt = DEFAULT_SPRINKLER_RADIUS_FT[SPRINKLER_HEAD_TYPES[0]];
@@ -1249,7 +1335,7 @@ export default function BlueprintCanvasPage() {
   }
 
   const isIrrigation = blueprint?.mode === 'irrigation';
-  const hasSatelliteBackdrop = !!satelliteImage && !satelliteFailed;
+  const hasSatelliteBackdrop = hasLiveMap || (!!satelliteImage && !satelliteFailed);
   // Against a busy satellite photo, the default muted/border tones are nearly invisible — switch to
   // higher-contrast colors so nodes/lines stay legible on top of imagery. Irrigation's primary color
   // already reads well on both backgrounds.
@@ -1844,9 +1930,13 @@ export default function BlueprintCanvasPage() {
 
           {/* Canvas */}
           <div ref={canvasContainerRef} className={`flex-1 bg-gray-50 dark:bg-zinc-950 relative overflow-hidden ${isPanning ? 'cursor-grabbing' : tool === 'select' ? 'cursor-grab' : 'cursor-crosshair'}`}>
+            {/* Live map: a real Leaflet/Esri tile layer, driven programmatically off viewTransform (see effects
+                above) — dragging/zooming the SVG on top pans & zooms this actual map underneath. */}
+            {hasLiveMap && <div ref={mapContainerRef} className="absolute inset-0 z-0" />}
             <svg
               ref={svgRef}
-              className="w-full h-full"
+              className="w-full h-full absolute inset-0"
+              style={{ background: hasLiveMap ? 'transparent' : undefined }}
               onClick={handleSvgClick}
               onMouseDown={handleSvgMouseDown}
               onMouseMove={handleSvgMouseMove}
@@ -1858,13 +1948,16 @@ export default function BlueprintCanvasPage() {
                   <path d="M 40 0 L 0 0 0 40" fill="none" stroke="hsl(var(--border))" strokeWidth="0.5" strokeOpacity="0.5"/>
                 </pattern>
               </defs>
-              {satelliteImage && !satelliteFailed && (
-                <text x={8} y={18} fontSize={10} fontFamily="monospace" fill="white" fillOpacity={0.85} pointerEvents="none">SATELLITE</text>
+              {hasLiveMap && (
+                <text x={8} y={18} fontSize={10} fontFamily="monospace" fill="white" fillOpacity={0.85} pointerEvents="none">LIVE MAP</text>
+              )}
+              {!hasLiveMap && satelliteImage && !satelliteFailed && (
+                <text x={8} y={18} fontSize={10} fontFamily="monospace" fill="white" fillOpacity={0.85} pointerEvents="none">TRACING PDF</text>
               )}
 
-              {/* Everything below pans/zooms together; the SATELLITE HUD label above stays fixed. */}
+              {/* Everything below pans/zooms together; the HUD label above stays fixed. */}
               <g transform={`translate(${viewTransform.x}, ${viewTransform.y}) scale(${viewTransform.k})`}>
-              {satelliteImage && !satelliteFailed ? (
+              {hasLiveMap ? null : satelliteImage && !satelliteFailed ? (
                 <image
                   href={satelliteImage.url}
                   x={0} y={0}
@@ -1886,6 +1979,7 @@ export default function BlueprintCanvasPage() {
                 const cx = area.polygon.reduce((s, p) => s + p.x, 0) / area.polygon.length;
                 const cy = area.polygon.reduce((s, p) => s + p.y, 0) / area.polygon.length;
                 const sqFt = scalePxPerFt ? pxAreaToSqFt(polygonAreaPx(area.polygon), scalePxPerFt) : null;
+                const perimeterFt = scalePxPerFt ? pxLengthToFt(polygonPerimeterPx(area.polygon), scalePxPerFt) : null;
                 return (
                   <g key={area.id}>
                     <path
@@ -1901,6 +1995,11 @@ export default function BlueprintCanvasPage() {
                     <text x={cx} y={cy} fontSize={10} textAnchor="middle" fill={meta.color} className="font-medium" pointerEvents="none" style={{ paintOrder: 'stroke', stroke: 'white', strokeWidth: 3 }}>
                       {area.label ?? meta.label}{sqFt !== null ? ` · ${sqFt.toLocaleString(undefined, { maximumFractionDigits: 0 })} sq ft` : ''}
                     </text>
+                    {perimeterFt !== null && (
+                      <text x={cx} y={cy + 12} fontSize={9} textAnchor="middle" fill={meta.color} pointerEvents="none" style={{ paintOrder: 'stroke', stroke: 'white', strokeWidth: 3 }}>
+                        {perimeterFt.toLocaleString(undefined, { maximumFractionDigits: 0 })} ft perimeter
+                      </text>
+                    )}
                   </g>
                 );
               })}
@@ -1920,6 +2019,16 @@ export default function BlueprintCanvasPage() {
                   {areaDraftPoints.map((p, i) => (
                     <circle key={i} cx={p.x} cy={p.y} r={4} fill={areaElementMeta(pendingAreaType).color} pointerEvents="none" />
                   ))}
+                  {scalePxPerFt && (() => {
+                    const draftPts = [...areaDraftPoints, mousePos];
+                    const liveSqFt = areaDraftPoints.length >= 2 ? pxAreaToSqFt(polygonAreaPx(draftPts), scalePxPerFt) : 0;
+                    const livePerimeterFt = pxLengthToFt(polygonPerimeterPx(draftPts), scalePxPerFt);
+                    return (
+                      <text x={mousePos.x + 10} y={mousePos.y - 10} fontSize={10} fontFamily="monospace" fill={areaElementMeta(pendingAreaType).color} pointerEvents="none" style={{ paintOrder: 'stroke', stroke: 'white', strokeWidth: 3 }}>
+                        {liveSqFt.toLocaleString(undefined, { maximumFractionDigits: 0 })} sq ft · {livePerimeterFt.toLocaleString(undefined, { maximumFractionDigits: 0 })} ft
+                      </text>
+                    );
+                  })()}
                 </>
               )}
 

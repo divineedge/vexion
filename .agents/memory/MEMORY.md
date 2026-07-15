@@ -24,3 +24,4 @@
 - [Recurring billing completed-work mode](recurring-billing-completed-work.md) — period window is (lastGeneratedAt/createdAt, now]; jobs gated by invoiceId IS NULL; service-only scope fans out to one invoice per customer
 - [Blueprint legacy canvas shape](blueprint-legacy-canvas-shape.md) — some blueprints store {nodes,lines{from,to}} not {points,lines{startId,endId}}; normalize on every DB read or saves discard the old layout
 - [Blueprint PDF file size storage](blueprint-pdf-size-storage.md) — pdfSizeBytes lives on media_attachments, not a column on blueprintsTable; update both sides when replacing a PDF
+- [Blueprint canvas live map sync](blueprint-canvas-live-map-sync.md) — Leaflet map is a non-interactive rendering slave driven by the existing viewTransform + a lat/lng anchor, not the interaction owner

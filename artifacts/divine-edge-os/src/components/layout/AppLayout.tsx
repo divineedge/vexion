@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
@@ -28,12 +28,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   );
   const badgeCounts: Record<string, number> = { '/tasks': myOpenTaskCount, '/followup-queue': openFollowups.length };
 
-  if (!isAuthenticated) {
-    if (location !== '/login') {
+  useEffect(() => {
+    if (!isAuthenticated && location !== '/login') {
       setLocation('/login');
-      return null;
     }
-    return <>{children}</>;
+  }, [isAuthenticated, location, setLocation]);
+
+  if (!isAuthenticated) {
+    return null;
   }
 
   // Role map used to filter sections

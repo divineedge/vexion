@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { Route, Switch, Router as WouterRouter } from 'wouter';
+import { Route, Switch, Router as WouterRouter, Redirect } from 'wouter';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 
@@ -105,6 +105,7 @@ function Router() {
       <Route path="/estimate/:token" component={EstimatePublicPage} />
       <Route path="/review/:token" component={ReviewPublicPage} />
       <Route path="/login" component={LoginPage} />
+      <Route path="/" component={() => <Redirect to="/dashboard" />} />
       <Route component={ProtectedRoutes} />
     </Switch>
   );

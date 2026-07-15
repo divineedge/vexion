@@ -936,7 +936,19 @@ export default function BlueprintCanvasPage() {
     } else if (tool === 'zone') {
       setZoneDraftPoints(pts => [...pts, coords]);
     } else if (tool === 'addArea') {
-      setAreaDraftPoints(pts => [...pts, coords]);
+      // Click-to-close: clicking back on any already-placed vertex of the in-progress polygon (not just
+      // the first one) completes the shape, matching the convention in most CAD/landscape design tools —
+      // rather than requiring the separate "Finish Area" button.
+      const CLOSE_TOLERANCE_PX = 10;
+      const toleranceWorld = CLOSE_TOLERANCE_PX / viewTransform.k;
+      const hitExisting = areaDraftPoints.length >= 2 && areaDraftPoints.some(
+        p => Math.hypot(p.x - coords.x, p.y - coords.y) <= toleranceWorld
+      );
+      if (hitExisting) {
+        finishAreaDrawing();
+      } else {
+        setAreaDraftPoints(pts => [...pts, coords]);
+      }
     }
   };
 

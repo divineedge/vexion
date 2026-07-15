@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, blueprintsTable, inventoryItemsTable, mediaAttachmentsTable } from "@workspace/db";
+import { db, blueprintsTable, inventoryItemsTable, mediaAttachmentsTable, jobsTable, estimatesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -380,6 +380,22 @@ router.delete("/blueprints/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
+
+  const [existing] = await db.select().from(blueprintsTable).where(and(eq(blueprintsTable.id, id), eq(blueprintsTable.tenantId, tenantId)));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+
+  // blueprintId on jobs/estimates has no DB-level foreign key, so deleting the blueprint row alone would
+  // leave those references dangling (pointing at an id that no longer exists). Null them out first so
+  // the job/estimate itself is untouched but no longer thinks it has a blueprint attached.
+  await db.update(jobsTable).set({ blueprintId: null }).where(and(eq(jobsTable.blueprintId, id), eq(jobsTable.tenantId, tenantId)));
+  await db.update(estimatesTable).set({ blueprintId: null }).where(and(eq(estimatesTable.blueprintId, id), eq(estimatesTable.tenantId, tenantId)));
+  // Clear any blueprint used as a template source by other blueprints, so they keep their own copy of
+  // the canvas but stop pointing at a template id that's about to disappear.
+  await db.update(blueprintsTable).set({ templateId: null }).where(and(eq(blueprintsTable.templateId, id), eq(blueprintsTable.tenantId, tenantId)));
+
+  // (The underlying object-storage file, if any, is left in place — only the DB rows referencing this
+  // blueprint are cleaned up. No route currently exposes deleting an individual storage object.)
+  await db.delete(mediaAttachmentsTable).where(and(eq(mediaAttachmentsTable.entityType, "blueprint"), eq(mediaAttachmentsTable.entityId, id)));
   await db.delete(blueprintsTable).where(and(eq(blueprintsTable.id, id), eq(blueprintsTable.tenantId, tenantId)));
   res.sendStatus(204);
 });

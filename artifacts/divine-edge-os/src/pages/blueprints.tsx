@@ -10,6 +10,7 @@ import {
   useListBlueprintTemplates, getListBlueprintTemplatesQueryKey,
   useApplyBlueprintTemplate,
   useGenerateBlueprintFromAi,
+  useDeleteBlueprint,
   customFetch,
 } from '@workspace/api-client-react';
 import type { BlueprintInputMode } from '@workspace/api-client-react';
@@ -22,6 +23,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+} from '@/components/ui/alert-dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
@@ -186,6 +191,24 @@ export default function BlueprintsPage() {
   const [applyDialogOpen, setApplyDialogOpen] = useState(false);
   const { data: applyProperties } = useListProperties({}, { query: { enabled: applyDialogOpen, queryKey: getListPropertiesQueryKey({}) } });
 
+  // ── Delete blueprint ─────────────────────────────────────────────────────────
+  const deleteBlueprint = useDeleteBlueprint();
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
+  const handleDeleteBlueprint = () => {
+    if (!deleteTarget) return;
+    deleteBlueprint.mutate(
+      { id: deleteTarget.id },
+      {
+        onSuccess: () => {
+          toast.success(`"${deleteTarget.name}" deleted`);
+          qc.invalidateQueries({ queryKey: getListBlueprintsQueryKey() });
+          setDeleteTarget(null);
+        },
+        onError: () => toast.error('Failed to delete blueprint'),
+      },
+    );
+  };
+
   const handleApplyTemplate = () => {
     if (!applyingTemplateId) return;
     applyTemplate.mutate(
@@ -336,7 +359,7 @@ export default function BlueprintsPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {isLoading ? (
               <div className="col-span-full text-center py-12 text-muted-foreground">Loading blueprints...</div>
-            ) : instanceBlueprints.map((bp) => <BlueprintCard key={bp.id} bp={bp} globalPct={globalPct} p4pEditing={p4pEditing} p4pOpen={p4pOpen} setP4pEditing={setP4pEditing} setP4pOpen={setP4pOpen} saveP4p={saveP4p} updateBlueprint={updateBlueprint} setSuggestedPartsBpId={setSuggestedPartsBpId} setSuggestedPartsOpen={setSuggestedPartsOpen} setEstimateViewBp={setEstimateViewBp} setEstimateViewOpen={setEstimateViewOpen} canManageOffice={canManageOffice} setLocation={setLocation} handleToggleTemplate={handleToggleTemplate} />)}
+            ) : instanceBlueprints.map((bp) => <BlueprintCard key={bp.id} bp={bp} globalPct={globalPct} p4pEditing={p4pEditing} p4pOpen={p4pOpen} setP4pEditing={setP4pEditing} setP4pOpen={setP4pOpen} saveP4p={saveP4p} updateBlueprint={updateBlueprint} setSuggestedPartsBpId={setSuggestedPartsBpId} setSuggestedPartsOpen={setSuggestedPartsOpen} setEstimateViewBp={setEstimateViewBp} setEstimateViewOpen={setEstimateViewOpen} canManageOffice={canManageOffice} setLocation={setLocation} handleToggleTemplate={handleToggleTemplate} setDeleteTarget={setDeleteTarget} />)}
             {!isLoading && instanceBlueprints.length === 0 && (
               <div className="col-span-full text-center py-12 border-2 border-dashed rounded-xl text-muted-foreground">
                 No blueprints yet. Create one or apply a template.
@@ -350,7 +373,7 @@ export default function BlueprintsPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {isLoading ? (
               <div className="col-span-full text-center py-12 text-muted-foreground">Loading...</div>
-            ) : templateBlueprints.map((bp) => <BlueprintCard key={bp.id} bp={bp} globalPct={globalPct} p4pEditing={p4pEditing} p4pOpen={p4pOpen} setP4pEditing={setP4pEditing} setP4pOpen={setP4pOpen} saveP4p={saveP4p} updateBlueprint={updateBlueprint} setSuggestedPartsBpId={setSuggestedPartsBpId} setSuggestedPartsOpen={setSuggestedPartsOpen} setEstimateViewBp={setEstimateViewBp} setEstimateViewOpen={setEstimateViewOpen} canManageOffice={canManageOffice} setLocation={setLocation} handleToggleTemplate={handleToggleTemplate}
+            ) : templateBlueprints.map((bp) => <BlueprintCard key={bp.id} bp={bp} globalPct={globalPct} p4pEditing={p4pEditing} p4pOpen={p4pOpen} setP4pEditing={setP4pEditing} setP4pOpen={setP4pOpen} saveP4p={saveP4p} updateBlueprint={updateBlueprint} setSuggestedPartsBpId={setSuggestedPartsBpId} setSuggestedPartsOpen={setSuggestedPartsOpen} setEstimateViewBp={setEstimateViewBp} setEstimateViewOpen={setEstimateViewOpen} canManageOffice={canManageOffice} setLocation={setLocation} handleToggleTemplate={handleToggleTemplate} setDeleteTarget={setDeleteTarget}
               extraAction={
                 <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs h-7 mt-1"
                   onClick={e => { e.stopPropagation(); setApplyingTemplateId(bp.id); setApplyDialogOpen(true); }}>
@@ -725,6 +748,28 @@ export default function BlueprintsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete "{deleteTarget?.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes the blueprint and its canvas drawing. Any jobs or estimates linked to it will keep their own records but lose the blueprint link. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleDeleteBlueprint}
+              disabled={deleteBlueprint.isPending}
+            >
+              {deleteBlueprint.isPending ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -747,10 +792,11 @@ interface BlueprintCardProps {
   canManageOffice: boolean;
   setLocation: (path: string) => void;
   handleToggleTemplate: (bpId: number, current: boolean) => void;
+  setDeleteTarget: (target: { id: number; name: string } | null) => void;
   extraAction?: React.ReactNode;
 }
 
-function BlueprintCard({ bp, globalPct, p4pEditing, p4pOpen, setP4pEditing, setP4pOpen, saveP4p, updateBlueprint, setSuggestedPartsBpId, setSuggestedPartsOpen, setEstimateViewBp, setEstimateViewOpen, canManageOffice, setLocation, handleToggleTemplate, extraAction }: BlueprintCardProps) {
+function BlueprintCard({ bp, globalPct, p4pEditing, p4pOpen, setP4pEditing, setP4pOpen, saveP4p, updateBlueprint, setSuggestedPartsBpId, setSuggestedPartsOpen, setEstimateViewBp, setEstimateViewOpen, canManageOffice, setLocation, handleToggleTemplate, setDeleteTarget, extraAction }: BlueprintCardProps) {
   const bpPct = bp.p4pPercentage as number | null | undefined;
   const hasOverride = bpPct != null;
   const displayPct = hasOverride ? bpPct : globalPct;
@@ -769,6 +815,15 @@ function BlueprintCard({ bp, globalPct, p4pEditing, p4pOpen, setP4pEditing, setP
         )}
         {isTemplate && (
           <Badge variant="outline" className="absolute top-2 right-2 text-primary border-primary/40 text-[10px]">Template</Badge>
+        )}
+        {canManageOffice && (
+          <Button
+            variant="ghost" size="icon"
+            className="absolute top-2 left-2 h-7 w-7 bg-background/80 backdrop-blur-sm text-muted-foreground hover:text-destructive hover:bg-background opacity-0 group-hover:opacity-100 transition-opacity"
+            onClick={e => { e.stopPropagation(); setDeleteTarget({ id: bp.id, name: bp.name }); }}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </Button>
         )}
       </div>
 

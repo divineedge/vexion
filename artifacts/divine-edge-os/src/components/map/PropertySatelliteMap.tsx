@@ -220,13 +220,32 @@ export default function PropertySatelliteMap({
     });
   }, [mapReady, zones, preferredAreaUnit]);
 
+  // Distance (in screen pixels) between two lat/lng points, using the current map projection.
+  const pixelDistance = useCallback(
+    (a: [number, number], b: import('leaflet').LatLng) => {
+      const map = mapRef.current;
+      if (!map) return Infinity;
+      const pa = map.latLngToContainerPoint(a);
+      const pb = map.latLngToContainerPoint(b);
+      return Math.hypot(pa.x - pb.x, pa.y - pb.y);
+    },
+    []
+  );
+
+  const FIRST_POINT_HIT_RADIUS_PX = 16;
+
   // Handle map clicks for drawing
   const handleMapClick = useCallback((e: import('leaflet').LeafletMouseEvent) => {
     setDrawingPoints(prev => {
+      // Clicking on/near the first placed point closes the polygon, once enough points exist.
+      if (prev.length >= 3 && pixelDistance(prev[0], e.latlng) <= FIRST_POINT_HIT_RADIUS_PX) {
+        finishPolygonRef.current(prev);
+        return prev;
+      }
       const next = [...prev, [e.latlng.lat, e.latlng.lng] as [number, number]];
       return next;
     });
-  }, []);
+  }, [pixelDistance]);
 
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
@@ -274,14 +293,15 @@ export default function PropertySatelliteMap({
     });
   }, [drawingPoints, drawingMode, mapReady]);
 
-  const finishPolygon = () => {
-    if (drawingPoints.length < 3) return;
-    const areaSqft = polygonAreaSqft(drawingPoints);
+  const finishPolygon = (pointsOverride?: [number, number][]) => {
+    const points = pointsOverride ?? drawingPoints;
+    if (points.length < 3) return;
+    const areaSqft = polygonAreaSqft(points);
     const colorIndex = zones.length % ZONE_COLORS.length;
     const newZone: MeasurementZone = {
       id: generateId(),
       label: newZoneLabel,
-      vertices: drawingPoints,
+      vertices: points,
       areaSqft,
       enabled: true,
       color: ZONE_COLORS[colorIndex],
@@ -293,6 +313,13 @@ export default function PropertySatelliteMap({
     const total = next.filter(z => z.enabled).reduce((s, z) => s + z.areaSqft, 0);
     onMeasurementsChange?.(next, total);
   };
+
+  // Kept in sync so handleMapClick (defined earlier, with a stable identity) can always call
+  // the latest finishPolygon without needing it as a dependency.
+  const finishPolygonRef = useRef(finishPolygon);
+  useEffect(() => {
+    finishPolygonRef.current = finishPolygon;
+  });
 
   const cancelDrawing = () => {
     setDrawingMode(false);
@@ -352,7 +379,7 @@ export default function PropertySatelliteMap({
             {drawingPoints.length >= 3 && (
               <button
                 className="bg-white text-amber-700 px-3 py-0.5 rounded-full font-semibold hover:bg-amber-50 transition"
-                onClick={finishPolygon}
+                onClick={() => finishPolygon()}
               >
                 Close Polygon
               </button>

@@ -26,7 +26,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, DraftingCompass, Percent, Package, AlertTriangle, Trash2, Wand2, Library, CopyPlus, Upload, FileText, Loader2 } from 'lucide-react';
+import { Plus, DraftingCompass, Percent, Package, AlertTriangle, Trash2, Wand2, Library, CopyPlus, Upload, FileText, Loader2, Calculator } from 'lucide-react';
 import { useLocation } from 'wouter';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -155,6 +155,10 @@ export default function BlueprintsPage() {
   // Suggested parts panel
   const [suggestedPartsOpen, setSuggestedPartsOpen] = useState(false);
   const [suggestedPartsBpId, setSuggestedPartsBpId] = useState<number | null>(null);
+
+  // Materials breakdown viewer — shows the persisted lastEstimate snapshot outside the canvas editor.
+  const [estimateViewOpen, setEstimateViewOpen] = useState(false);
+  const [estimateViewBp, setEstimateViewBp] = useState<any>(null);
   const [partItemId, setPartItemId] = useState('');
   const [partQty, setPartQty] = useState('1');
   const updateSuggestedParts = useUpdateBlueprintSuggestedParts();
@@ -332,7 +336,7 @@ export default function BlueprintsPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {isLoading ? (
               <div className="col-span-full text-center py-12 text-muted-foreground">Loading blueprints...</div>
-            ) : instanceBlueprints.map((bp) => <BlueprintCard key={bp.id} bp={bp} globalPct={globalPct} p4pEditing={p4pEditing} p4pOpen={p4pOpen} setP4pEditing={setP4pEditing} setP4pOpen={setP4pOpen} saveP4p={saveP4p} updateBlueprint={updateBlueprint} setSuggestedPartsBpId={setSuggestedPartsBpId} setSuggestedPartsOpen={setSuggestedPartsOpen} canManageOffice={canManageOffice} setLocation={setLocation} handleToggleTemplate={handleToggleTemplate} />)}
+            ) : instanceBlueprints.map((bp) => <BlueprintCard key={bp.id} bp={bp} globalPct={globalPct} p4pEditing={p4pEditing} p4pOpen={p4pOpen} setP4pEditing={setP4pEditing} setP4pOpen={setP4pOpen} saveP4p={saveP4p} updateBlueprint={updateBlueprint} setSuggestedPartsBpId={setSuggestedPartsBpId} setSuggestedPartsOpen={setSuggestedPartsOpen} setEstimateViewBp={setEstimateViewBp} setEstimateViewOpen={setEstimateViewOpen} canManageOffice={canManageOffice} setLocation={setLocation} handleToggleTemplate={handleToggleTemplate} />)}
             {!isLoading && instanceBlueprints.length === 0 && (
               <div className="col-span-full text-center py-12 border-2 border-dashed rounded-xl text-muted-foreground">
                 No blueprints yet. Create one or apply a template.
@@ -346,7 +350,7 @@ export default function BlueprintsPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {isLoading ? (
               <div className="col-span-full text-center py-12 text-muted-foreground">Loading...</div>
-            ) : templateBlueprints.map((bp) => <BlueprintCard key={bp.id} bp={bp} globalPct={globalPct} p4pEditing={p4pEditing} p4pOpen={p4pOpen} setP4pEditing={setP4pEditing} setP4pOpen={setP4pOpen} saveP4p={saveP4p} updateBlueprint={updateBlueprint} setSuggestedPartsBpId={setSuggestedPartsBpId} setSuggestedPartsOpen={setSuggestedPartsOpen} canManageOffice={canManageOffice} setLocation={setLocation} handleToggleTemplate={handleToggleTemplate}
+            ) : templateBlueprints.map((bp) => <BlueprintCard key={bp.id} bp={bp} globalPct={globalPct} p4pEditing={p4pEditing} p4pOpen={p4pOpen} setP4pEditing={setP4pEditing} setP4pOpen={setP4pOpen} saveP4p={saveP4p} updateBlueprint={updateBlueprint} setSuggestedPartsBpId={setSuggestedPartsBpId} setSuggestedPartsOpen={setSuggestedPartsOpen} setEstimateViewBp={setEstimateViewBp} setEstimateViewOpen={setEstimateViewOpen} canManageOffice={canManageOffice} setLocation={setLocation} handleToggleTemplate={handleToggleTemplate}
               extraAction={
                 <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs h-7 mt-1"
                   onClick={e => { e.stopPropagation(); setApplyingTemplateId(bp.id); setApplyDialogOpen(true); }}>
@@ -450,6 +454,64 @@ export default function BlueprintsPage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Materials Breakdown Dialog — shows the persisted lastEstimate snapshot for a blueprint */}
+      <Dialog open={estimateViewOpen} onOpenChange={open => { setEstimateViewOpen(open); if (!open) setEstimateViewBp(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Calculator className="w-5 h-5 text-primary" /> Materials Breakdown
+            </DialogTitle>
+            <DialogDescription>
+              {estimateViewBp?.lastEstimate?.computedAt
+                ? `Last calculated ${format(new Date(estimateViewBp.lastEstimate.computedAt), 'MMM d, yyyy h:mm a')}`
+                : `${estimateViewBp?.name ?? ''}`}
+            </DialogDescription>
+          </DialogHeader>
+
+          {estimateViewBp?.lastEstimate && (
+            <div className="space-y-3">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Part</TableHead>
+                    <TableHead className="text-right">Qty</TableHead>
+                    <TableHead className="text-right">Unit Price</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {estimateViewBp.lastEstimate.parts.map((part: any) => (
+                    <TableRow key={part.inventoryItemId}>
+                      <TableCell>
+                        <div className="font-medium text-sm">{part.name}</div>
+                        <div className="text-xs text-muted-foreground">{part.source}</div>
+                      </TableCell>
+                      <TableCell className="text-right">{part.quantity} {part.unit}</TableCell>
+                      <TableCell className="text-right">${part.unitPrice.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-medium">${part.total.toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <div className="border-t pt-3 space-y-1 text-sm">
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Subtotal</span>
+                  <span>${estimateViewBp.lastEstimate.subtotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Overage Buffer</span>
+                  <span>${estimateViewBp.lastEstimate.overageAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex justify-between font-semibold text-base pt-1">
+                  <span>Total</span>
+                  <span>${estimateViewBp.lastEstimate.total.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* New Blueprint Dialog */}
       <Dialog open={newBpOpen} onOpenChange={setNewBpOpen}>
@@ -680,13 +742,15 @@ interface BlueprintCardProps {
   updateBlueprint: ReturnType<typeof useUpdateBlueprint>;
   setSuggestedPartsBpId: (id: number) => void;
   setSuggestedPartsOpen: (open: boolean) => void;
+  setEstimateViewBp: (bp: any) => void;
+  setEstimateViewOpen: (open: boolean) => void;
   canManageOffice: boolean;
   setLocation: (path: string) => void;
   handleToggleTemplate: (bpId: number, current: boolean) => void;
   extraAction?: React.ReactNode;
 }
 
-function BlueprintCard({ bp, globalPct, p4pEditing, p4pOpen, setP4pEditing, setP4pOpen, saveP4p, updateBlueprint, setSuggestedPartsBpId, setSuggestedPartsOpen, canManageOffice, setLocation, handleToggleTemplate, extraAction }: BlueprintCardProps) {
+function BlueprintCard({ bp, globalPct, p4pEditing, p4pOpen, setP4pEditing, setP4pOpen, saveP4p, updateBlueprint, setSuggestedPartsBpId, setSuggestedPartsOpen, setEstimateViewBp, setEstimateViewOpen, canManageOffice, setLocation, handleToggleTemplate, extraAction }: BlueprintCardProps) {
   const bpPct = bp.p4pPercentage as number | null | undefined;
   const hasOverride = bpPct != null;
   const displayPct = hasOverride ? bpPct : globalPct;
@@ -724,6 +788,14 @@ function BlueprintCard({ bp, globalPct, p4pEditing, p4pOpen, setP4pEditing, setP
 
         {bp.totalEstimate !== undefined && bp.totalEstimate !== null && (
           <p className="text-sm font-medium">Est: ${bp.totalEstimate.toLocaleString()}</p>
+        )}
+
+        {/* Materials breakdown — the parts list the last estimate was computed from, viewable outside the editor */}
+        {bp.lastEstimate && (
+          <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs h-7 mt-1"
+            onClick={e => { e.stopPropagation(); setEstimateViewBp(bp); setEstimateViewOpen(true); }}>
+            <Calculator className="w-3 h-3" /> View Materials Breakdown
+          </Button>
         )}
 
         {/* Suggested Parts button */}

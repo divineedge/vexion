@@ -9,4 +9,6 @@ import type { AiZoneInput } from './aiZoneInput';
 
 export type GenerateBlueprintAiZonesBody = {
   zones: AiZoneInput[];
+  /** When true, returns the merged canvas the generation would produce without saving it — lets staff preview the result and Accept (call again with preview=false) or Discard. */
+  preview?: boolean;
 };

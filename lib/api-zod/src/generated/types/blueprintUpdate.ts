@@ -14,4 +14,8 @@ export interface BlueprintUpdate {
   overageBufferPercent?: number;
   scalePxPerFt?: number;
   suggestedParts?: BlueprintUpdateSuggestedPartsItem[];
+  /** Set together with pdfFileName/pdfSizeBytes to replace the source PDF on a pdf-sourced blueprint. */
+  pdfObjectPath?: string;
+  pdfFileName?: string | null;
+  pdfSizeBytes?: number;
 }

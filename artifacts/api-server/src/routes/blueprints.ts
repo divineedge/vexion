@@ -36,7 +36,18 @@ interface NormalizedCanvasArea {
   polygon: { x: number; y: number }[];
   label?: string;
   inventoryItemId?: number | null;
+  depthInches?: number;
 }
+
+/** Default fill depth (inches) per ground-cover area type — mirrors the frontend's defaultDepthInches. */
+const AREA_DEFAULT_DEPTH_INCHES: Record<string, number> = {
+  gravel_1in: 1,
+  gravel_2in: 2,
+  gravel_3in: 3,
+  gravel_4in: 4,
+  dryRiverBed: 3,
+  largeRockBed: 4,
+};
 interface NormalizedCanvasData {
   points: NormalizedCanvasPoint[];
   lines: NormalizedCanvasLine[];
@@ -241,7 +252,7 @@ router.patch("/blueprints/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const { name, canvasData, overageBufferPercent, p4pPercentage, isTemplate, scalePxPerFt } = req.body;
+  const { name, canvasData, overageBufferPercent, p4pPercentage, isTemplate, scalePxPerFt, pdfObjectPath, pdfFileName, pdfSizeBytes } = req.body;
   const updates: Partial<typeof blueprintsTable.$inferInsert> = {};
   if (name) updates.name = name;
   if (canvasData !== undefined) updates.canvasData = canvasData as typeof blueprintsTable.$inferInsert["canvasData"];
@@ -249,9 +260,37 @@ router.patch("/blueprints/:id", async (req, res): Promise<void> => {
   if (p4pPercentage !== undefined) updates.p4pPercentage = p4pPercentage === null ? null : parseFloat(p4pPercentage);
   if (isTemplate !== undefined) updates.isTemplate = isTemplate === true || isTemplate === "true";
   if (scalePxPerFt !== undefined) updates.scalePxPerFt = scalePxPerFt === null ? null : parseFloat(scalePxPerFt);
+  // Replacing the source PDF on a pdf-sourced blueprint — pdfObjectPath/pdfFileName/pdfSizeBytes always
+  // come together from a fresh upload, so only accept the swap when both required fields are present.
+  const isPdfReplace = pdfObjectPath !== undefined && pdfSizeBytes !== undefined;
+  if (isPdfReplace) {
+    updates.pdfObjectPath = pdfObjectPath;
+    updates.pdfFileName = pdfFileName ?? null;
+    updates.sourceType = "pdf";
+  }
 
   const [updated] = await db.update(blueprintsTable).set(updates).where(and(eq(blueprintsTable.id, id), eq(blueprintsTable.tenantId, tenantId))).returning();
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+
+  // media_attachments backs the tenant-ownership check in the object-serving routes — keep it in sync
+  // with the newly-uploaded file (there's at most one PDF attachment per blueprint, so replace it).
+  if (isPdfReplace) {
+    const userId = getUserId(req);
+    await db.delete(mediaAttachmentsTable).where(and(eq(mediaAttachmentsTable.entityType, "blueprint"), eq(mediaAttachmentsTable.entityId, id)));
+    await db.insert(mediaAttachmentsTable).values({
+      tenantId,
+      entityType: "blueprint",
+      entityId: id,
+      fileKey: pdfObjectPath,
+      fileUrl: pdfObjectPath,
+      mimeType: "application/pdf",
+      sizeBytes: Number(pdfSizeBytes),
+      caption: pdfFileName ?? null,
+      isCover: false,
+      createdBy: userId,
+    });
+  }
+
   res.json(await formatBlueprint(updated));
 });
 
@@ -367,6 +406,7 @@ interface CanvasAreaEl {
   elementType?: string;
   polygon: { x: number; y: number }[];
   inventoryItemId?: number | null;
+  depthInches?: number;
 }
 
 function pxDistance(a: CanvasPointEl, b: CanvasPointEl): number {
@@ -427,14 +467,17 @@ router.post("/blueprints/:id/estimate", async (req, res): Promise<void> => {
     derived.set(line.inventoryItemId, entry);
   }
 
-  // Ground-cover areas (gravel, dry river bed) are quantified by real-world sq ft, not point count.
+  // Ground-cover areas (gravel, dry river bed, large rock) are quantified by real-world cubic yards
+  // (sq ft x fill depth), not point count or bare sq ft — a 4" gravel bed needs 4x the material of a 1" bed.
   for (const area of areas) {
     if (area.inventoryItemId == null) continue;
     const pxArea = polygonAreaPx(area.polygon);
     const sqFt = scale ? pxArea / (scale * scale) : 0;
-    const entry = derived.get(area.inventoryItemId) ?? { quantity: 0, unit: scale ? "sq ft" : "each", source: "canvas" };
-    if (scale) entry.unit = "sq ft";
-    entry.quantity += scale ? sqFt : 1;
+    const depthInches = area.depthInches ?? AREA_DEFAULT_DEPTH_INCHES[area.elementType ?? ""] ?? 3;
+    const cubicYards = (sqFt * (depthInches / 12)) / 27;
+    const entry = derived.get(area.inventoryItemId) ?? { quantity: 0, unit: scale ? "cu yd" : "each", source: "canvas" };
+    if (scale) entry.unit = "cu yd";
+    entry.quantity += scale ? cubicYards : 1;
     derived.set(area.inventoryItemId, entry);
   }
 
@@ -494,8 +537,13 @@ router.post("/blueprints/:id/estimate", async (req, res): Promise<void> => {
   const subtotal = parts.reduce((s, p) => s + p.total, 0);
   const overageAmount = subtotal * (bp.overageBufferPercent / 100);
   const total = subtotal + overageAmount;
+  const computedAt = new Date().toISOString();
 
-  await db.update(blueprintsTable).set({ totalEstimate: total }).where(eq(blueprintsTable.id, id));
+  // Persist the breakdown, not just the rolled-up total — so the materials list a price was based on
+  // stays visible on the blueprint (list/detail) after leaving the canvas editor, not just transiently
+  // in the editor's local state right after clicking Calculate Estimate.
+  const lastEstimate = { parts, subtotal, overageAmount, total, computedAt };
+  await db.update(blueprintsTable).set({ totalEstimate: total, lastEstimate }).where(eq(blueprintsTable.id, id));
 
   res.json({
     parts,
@@ -577,10 +625,11 @@ interface GeneratedZoneArea {
   elementType: string;
   polygon: AiZonePointInput[];
   inventoryItemId?: number | null;
+  depthInches?: number;
 }
 
 /** Ground-cover materials that draw as a bounded polygon area instead of scattered points. */
-const AREA_MATERIAL_TYPES = new Set(["dryRiverBed", "gravel_1in", "gravel_2in", "gravel_3in", "gravel_4in"]);
+const AREA_MATERIAL_TYPES = new Set(["dryRiverBed", "gravel_1in", "gravel_2in", "gravel_3in", "gravel_4in", "largeRockBed"]);
 
 /** Ray-casting point-in-polygon test. */
 function pointInPolygon(px: number, py: number, polygon: AiZonePointInput[]): boolean {
@@ -651,6 +700,7 @@ function generateZoneElements(
         elementType: material.elementType,
         polygon: zone.polygon,
         inventoryItemId: material.inventoryItemId ?? null,
+        depthInches: AREA_DEFAULT_DEPTH_INCHES[material.elementType] ?? 3,
       });
       continue;
     }
@@ -733,7 +783,7 @@ router.post("/blueprints/:id/generate-ai-zones", async (req, res): Promise<void>
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const { zones } = req.body as { zones?: AiZoneInput[] };
+  const { zones, preview } = req.body as { zones?: AiZoneInput[]; preview?: boolean };
   if (!Array.isArray(zones) || zones.length === 0) {
     res.status(400).json({ error: "zones array (at least one zone) is required" });
     return;
@@ -773,6 +823,14 @@ router.post("/blueprints/:id/generate-ai-zones", async (req, res): Promise<void>
     lines: [...existingLines, ...newLines],
     areas: [...existingAreas, ...newAreas],
   };
+
+  // Preview mode: staff get to see what AI would generate before it's committed to the canvas.
+  // Return the merged result without writing to the DB — the frontend renders it as an overlay and
+  // only re-calls this route with preview=false (Accept) or discards the response (Discard).
+  if (preview) {
+    res.json(await formatBlueprint({ ...bp, canvasData: mergedCanvasData as typeof blueprintsTable.$inferInsert["canvasData"] }));
+    return;
+  }
 
   const [updated] = await db
     .update(blueprintsTable)

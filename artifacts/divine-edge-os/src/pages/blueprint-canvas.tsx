@@ -6,6 +6,8 @@ import {
   useGetProperty, getGetPropertyQueryKey,
   useListInventoryItems, getListInventoryItemsQueryKey,
   useGenerateBlueprintAiZones,
+  useListBlueprints, getListBlueprintsQueryKey,
+  customFetch,
 } from '@workspace/api-client-react';
 import type { EstimatedPart } from '@workspace/api-client-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,7 +15,8 @@ import { Button } from '@/components/ui/button';
 import {
   ArrowLeft, Save, MousePointer2, PlusCircle, Minus, Trash2, Calculator, Ruler,
   ChevronDown, TreeDeciduous, Mountain, Waves, Hash, Layers, SprayCan, Link2,
-  Wand2, Shapes, Sparkles, X, Check, ZoomIn, ZoomOut, Maximize, Square, HelpCircle,
+  Wand2, Shapes, Sparkles, X, Check, ZoomIn, ZoomOut, Maximize, Square, HelpCircle, Library,
+  Upload, FileText,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useQueryClient } from '@tanstack/react-query';
@@ -36,7 +39,20 @@ type PointElementType =
   | 'gravel_1in' | 'gravel_2in' | 'gravel_3in' | 'gravel_4in' | 'trench';
 
 /** Ground-cover material types drawn as a bounded area (polygon) rather than a single point. */
-type AreaElementType = 'dryRiverBed' | 'gravel_1in' | 'gravel_2in' | 'gravel_3in' | 'gravel_4in';
+type AreaElementType = 'dryRiverBed' | 'gravel_1in' | 'gravel_2in' | 'gravel_3in' | 'gravel_4in' | 'largeRockBed';
+
+/** Default fill depth (inches) per ground-cover area type — drives the cubic-yard estimate; staff can override per-area. */
+function defaultDepthInches(elementType: AreaElementType): number {
+  switch (elementType) {
+    case 'gravel_1in': return 1;
+    case 'gravel_2in': return 2;
+    case 'gravel_3in': return 3;
+    case 'gravel_4in': return 4;
+    case 'dryRiverBed': return 3;
+    case 'largeRockBed': return 4;
+    default: return 3;
+  }
+}
 
 /** Specific types for line segments, beyond the plain generic edge. */
 type LineElementType = 'edge' | 'pipe' | 'trench';
@@ -73,8 +89,10 @@ type Area = {
   elementType: AreaElementType;
   polygon: { x: number; y: number }[];
   label?: string;
-  /** Optional link to a flagged inventory item; quantity pulled is the real-world area in sq ft. */
+  /** Optional link to a flagged inventory item; quantity pulled is real-world cubic yards (sq ft x depth). */
   inventoryItemId?: number | null;
+  /** Fill depth in inches, used with the polygon's sq ft to derive a cubic-yard quantity. Defaults per elementType, editable per-area. */
+  depthInches?: number;
 };
 
 type CanvasData = { points: Point[], lines: Line[], areas?: Area[] };
@@ -82,7 +100,7 @@ type CanvasData = { points: Point[], lines: Line[], areas?: Area[] };
 type ToolMode = 'select' | 'addNode' | 'addLine' | 'addArea' | 'delete' | 'calibrate' | 'zone';
 
 /** A material/fixture chosen for a zone: either a generic palette type or one tied to a specific inventory item. */
-type ZoneMaterial = { elementType: PointElementType; inventoryItemId: number | null; pipeType?: string };
+type ZoneMaterial = { elementType: PointElementType | AreaElementType | LineElementType; inventoryItemId: number | null; pipeType?: string };
 
 /** A user-drawn "needs design" area on the satellite map, with the materials AI should use inside it. */
 type AiZone = { id: string; label: string; polygon: { x: number; y: number }[]; materials: ZoneMaterial[] };
@@ -102,6 +120,7 @@ const AREA_PALETTE: { type: AreaElementType; label: string; icon: React.Componen
   { type: 'gravel_2in', label: 'Gravel (2")', icon: Layers, color: '#c9a876' },
   { type: 'gravel_3in', label: 'Gravel (3")', icon: Layers, color: '#bb9660' },
   { type: 'gravel_4in', label: 'Gravel (4")', icon: Layers, color: '#ad844a' },
+  { type: 'largeRockBed', label: 'Large Rock (Bed)', icon: Mountain, color: '#78716c' },
 ];
 
 function areaElementMeta(elementType: AreaElementType) {
@@ -113,7 +132,7 @@ function areaElementMeta(elementType: AreaElementType) {
  * ground-cover areas, and the trench line — AI generation places each as the right element kind
  * (point, area, or line) even though they're all picked from one flat "materials" list here.
  */
-const ZONE_MATERIAL_PALETTE: { type: PointElementType; label: string; icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; color: string }[] = [
+const ZONE_MATERIAL_PALETTE: { type: PointElementType | AreaElementType | LineElementType; label: string; icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; color: string }[] = [
   ...POINT_PALETTE.filter(p => p.type !== 'node'),
   ...AREA_PALETTE,
   { type: 'trench', label: 'Trench (numbered line)', icon: Hash, color: '#f97316' },
@@ -282,6 +301,50 @@ export default function BlueprintCanvasPage() {
     query: { enabled: !!blueprint?.propertyId, queryKey: getGetPropertyQueryKey(propertyId) },
   });
   const [satelliteImage, setSatelliteImage] = useState<{ url: string; widthFt: number; heightFt: number } | null>(null);
+  // Trace Mode: lets staff draw editable points/lines/areas over a rendered PDF page instead of just
+  // viewing it. Reuses the satellite-image backdrop slot (same <image> render + scale-estimate logic) —
+  // the rendered PDF page bitmap is a drop-in replacement for a satellite photo.
+  const [traceMode, setTraceMode] = useState(false);
+  const pdfBuiltRef = useRef(false);
+  const [pdfReplaceOpen, setPdfReplaceOpen] = useState(false);
+  const [pdfReplaceFile, setPdfReplaceFile] = useState<File | null>(null);
+  const [pdfReplaceUploading, setPdfReplaceUploading] = useState(false);
+
+  const handleReplacePdf = async () => {
+    if (!pdfReplaceFile) return;
+    setPdfReplaceUploading(true);
+    try {
+      const { uploadURL, objectPath } = await customFetch<{ uploadURL: string; objectPath: string }>(
+        '/api/storage/uploads/request-url',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: pdfReplaceFile.name, size: pdfReplaceFile.size, contentType: pdfReplaceFile.type }),
+        },
+      );
+      const uploadRes = await fetch(uploadURL, { method: 'PUT', body: pdfReplaceFile, headers: { 'Content-Type': pdfReplaceFile.type } });
+      if (!uploadRes.ok) throw new Error('Upload to storage failed');
+
+      updateBlueprint.mutate(
+        { id, data: { pdfObjectPath: objectPath, pdfFileName: pdfReplaceFile.name, pdfSizeBytes: pdfReplaceFile.size } },
+        {
+          onSuccess: () => {
+            toast.success('PDF replaced');
+            queryClient.invalidateQueries({ queryKey: getGetBlueprintQueryKey(id) });
+            setPdfReplaceOpen(false);
+            setPdfReplaceFile(null);
+            pdfBuiltRef.current = false;
+            setSatelliteImage(null);
+          },
+          onError: () => toast.error('Failed to replace PDF'),
+        },
+      );
+    } catch {
+      toast.error('Upload failed');
+    } finally {
+      setPdfReplaceUploading(false);
+    }
+  };
   const [satelliteFailed, setSatelliteFailed] = useState(false);
   const satelliteBuiltRef = useRef(false);
   const autoScaleAppliedRef = useRef(false);
@@ -301,6 +364,39 @@ export default function BlueprintCanvasPage() {
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
   const [selectedAreaId, setSelectedAreaId] = useState<string | null>(null);
+
+  // Shift-click multi-select of same-kind, same-elementType elements, for bulk-linking them all to one
+  // inventory item in a single action instead of clicking through each element's properties panel.
+  const [multiSelect, setMultiSelect] = useState<{ kind: 'point' | 'line' | 'area'; elementType?: string; ids: string[] } | null>(null);
+  const [bulkLinkInventoryId, setBulkLinkInventoryId] = useState<string>('none');
+
+  const clearMultiSelect = () => { setMultiSelect(null); setBulkLinkInventoryId('none'); };
+
+  /** Shift-click toggle: starts/extends a multi-select set, restricted to one element kind + elementType at a time. */
+  const shiftClickSelect = (kind: 'point' | 'line' | 'area', id: string, elementType: string | undefined) => {
+    setMultiSelect(prev => {
+      if (!prev || prev.kind !== kind || prev.elementType !== elementType) {
+        return { kind, elementType, ids: [id] };
+      }
+      return prev.ids.includes(id)
+        ? { ...prev, ids: prev.ids.filter(x => x !== id) }
+        : { ...prev, ids: [...prev.ids, id] };
+    });
+    setSelectedPointId(null);
+    setSelectedLineId(null);
+    setSelectedAreaId(null);
+  };
+
+  const applyBulkLink = () => {
+    if (!multiSelect || multiSelect.ids.length === 0) return;
+    const inventoryItemId = bulkLinkInventoryId === 'none' ? null : Number(bulkLinkInventoryId);
+    const { kind, ids } = multiSelect;
+    if (kind === 'point') setPoints(pts => pts.map(p => ids.includes(p.id) ? { ...p, inventoryItemId } : p));
+    else if (kind === 'line') setLines(ls => ls.map(l => ids.includes(l.id) ? { ...l, inventoryItemId } : l));
+    else setAreas(ars => ars.map(a => ids.includes(a.id) ? { ...a, inventoryItemId } : a));
+    toast.success(`Linked ${ids.length} item${ids.length > 1 ? 's' : ''} to inventory`);
+    clearMultiSelect();
+  };
   
   const [draggingPointId, setDraggingPointId] = useState<string | null>(null);
   const [drawingLineStartId, setDrawingLineStartId] = useState<string | null>(null);
@@ -333,7 +429,7 @@ export default function BlueprintCanvasPage() {
 
   const finishAreaDrawing = () => {
     if (areaDraftPoints.length < 3) return;
-    const newArea: Area = { id: `a_${Date.now()}`, elementType: pendingAreaType, polygon: areaDraftPoints };
+    const newArea: Area = { id: `a_${Date.now()}`, elementType: pendingAreaType, polygon: areaDraftPoints, depthInches: defaultDepthInches(pendingAreaType) };
     setAreas(prev => [...prev, newArea]);
     setAreaDraftPoints([]);
     setTool('select');
@@ -439,6 +535,51 @@ export default function BlueprintCanvasPage() {
   const [zoneMaterialsDraft, setZoneMaterialsDraft] = useState<ZoneMaterial[]>([]);
   const generateAiZones = useGenerateBlueprintAiZones();
 
+  // Preview-before-commit: generation results render as a ghost overlay until staff explicitly Accept
+  // (which re-calls the same endpoint without preview, saving it) or Discard (which just clears it).
+  const [aiPreview, setAiPreview] = useState<{ points: Point[]; lines: Line[]; areas: Area[] } | null>(null);
+
+  // ── "Load from Template" — lets staff start a zone's materials from a saved template blueprint's ──
+  // ── canvas, instead of picking every material by hand.
+  const [loadingTemplateId, setLoadingTemplateId] = useState<number | null>(null);
+  const { data: allBlueprints } = useListBlueprints({ query: { queryKey: getListBlueprintsQueryKey(), enabled: materialsDialogOpen } });
+  const templateOptions = (allBlueprints ?? []).filter((b: any) => b.isTemplate && b.id !== Number(id));
+  const { data: templateDetail } = useGetBlueprint(loadingTemplateId ?? 0, {
+    query: { enabled: loadingTemplateId != null, queryKey: getGetBlueprintQueryKey(loadingTemplateId ?? 0) },
+  });
+
+  useEffect(() => {
+    if (loadingTemplateId == null || !templateDetail) return;
+    const data = (templateDetail.canvasData ?? {}) as unknown as CanvasData;
+    const seen = new Set(zoneMaterialsDraft.map(m => m.elementType));
+    const loaded: ZoneMaterial[] = [];
+    for (const p of data.points ?? []) {
+      const et = p.elementType && p.elementType !== 'node' ? p.elementType : undefined;
+      if (!et || seen.has(et)) continue;
+      seen.add(et);
+      loaded.push({ elementType: et, inventoryItemId: p.inventoryItemId ?? null, pipeType: undefined });
+    }
+    for (const l of data.lines ?? []) {
+      const et = l.elementType && l.elementType !== 'edge' ? l.elementType : undefined;
+      if (!et || seen.has(et)) continue;
+      seen.add(et);
+      loaded.push({ elementType: et, inventoryItemId: l.inventoryItemId ?? null, pipeType: l.pipeType });
+    }
+    for (const a of data.areas ?? []) {
+      if (seen.has(a.elementType)) continue;
+      seen.add(a.elementType);
+      loaded.push({ elementType: a.elementType, inventoryItemId: a.inventoryItemId ?? null });
+    }
+    if (loaded.length === 0) {
+      toast.info('That template has no materials to load');
+    } else {
+      setZoneMaterialsDraft(prev => [...prev, ...loaded]);
+      toast.success(`Loaded ${loaded.length} material${loaded.length > 1 ? 's' : ''} from template`);
+    }
+    setLoadingTemplateId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templateDetail, loadingTemplateId]);
+
   const startZoneDrawing = () => {
     setTool('zone');
     setZoneDraftPoints([]);
@@ -469,7 +610,7 @@ export default function BlueprintCanvasPage() {
     setMaterialsDialogOpen(true);
   };
 
-  const toggleZoneMaterial = (elementType: PointElementType, checked: boolean) => {
+  const toggleZoneMaterial = (elementType: ZoneMaterial['elementType'], checked: boolean) => {
     setZoneMaterialsDraft(prev =>
       checked
         ? [...prev, { elementType, inventoryItemId: null, pipeType: elementType === 'sprinkler' ? PIPE_TYPES[0] : undefined }]
@@ -477,7 +618,7 @@ export default function BlueprintCanvasPage() {
     );
   };
 
-  const updateZoneMaterial = (elementType: PointElementType, patch: Partial<ZoneMaterial>) => {
+  const updateZoneMaterial = (elementType: ZoneMaterial['elementType'], patch: Partial<ZoneMaterial>) => {
     setZoneMaterialsDraft(prev => prev.map(m => m.elementType === elementType ? { ...m, ...patch } : m));
   };
 
@@ -504,7 +645,41 @@ export default function BlueprintCanvasPage() {
 
   const removeZone = (zoneId: string) => setAiZones(zones => zones.filter(z => z.id !== zoneId));
 
-  const handleGenerateAiZones = () => {
+  const handlePreviewAiZones = () => {
+    if (aiZones.length === 0) return;
+    generateAiZones.mutate(
+      {
+        id,
+        data: {
+          preview: true,
+          zones: aiZones.map(z => ({
+            id: z.id,
+            label: z.label,
+            polygon: z.polygon,
+            materials: z.materials.map(m => ({ elementType: m.elementType, inventoryItemId: m.inventoryItemId, pipeType: m.pipeType ?? null })),
+          })),
+        },
+      },
+      {
+        onSuccess: (previewResult) => {
+          const data = (previewResult.canvasData ?? {}) as unknown as CanvasData;
+          // Isolate just the newly-generated elements (their ids aren't in the current committed canvas
+          // yet) so the overlay only highlights what would be added, not everything already on canvas.
+          const existingPointIds = new Set(points.map(p => p.id));
+          const existingLineIds = new Set(lines.map(l => l.id));
+          const existingAreaIds = new Set(areas.map(a => a.id));
+          setAiPreview({
+            points: (data.points ?? []).filter(p => !existingPointIds.has(p.id)),
+            lines: (data.lines ?? []).filter(l => !existingLineIds.has(l.id)),
+            areas: (data.areas ?? []).filter(a => !existingAreaIds.has(a.id)),
+          });
+        },
+        onError: () => toast.error('Failed to preview AI design for the selected zones'),
+      },
+    );
+  };
+
+  const handleAcceptAiPreview = () => {
     if (aiZones.length === 0) return;
     generateAiZones.mutate(
       {
@@ -525,6 +700,7 @@ export default function BlueprintCanvasPage() {
           setLines(data.lines ?? []);
           setAreas(data.areas ?? []);
           setAiZones([]);
+          setAiPreview(null);
           toast.success(`AI design generated for ${aiZones.length} zone${aiZones.length > 1 ? 's' : ''}`);
           queryClient.invalidateQueries({ queryKey: getGetBlueprintQueryKey(id) });
         },
@@ -532,6 +708,8 @@ export default function BlueprintCanvasPage() {
       },
     );
   };
+
+  const handleDiscardAiPreview = () => setAiPreview(null);
 
   // Init canvas data and scale from blueprint
   useEffect(() => {
@@ -550,9 +728,71 @@ export default function BlueprintCanvasPage() {
   useEffect(() => {
     satelliteBuiltRef.current = false;
     autoScaleAppliedRef.current = false;
+    pdfBuiltRef.current = false;
     setSatelliteImage(null);
     setSatelliteFailed(false);
   }, [blueprint?.id, blueprint?.propertyId]);
+
+  // Build the Trace Mode backdrop: rasterize the PDF's first page client-side (pdfjs) and reuse it as
+  // the same "satellite image" backdrop slot. Real-world scale is unknown from a PDF, so a placeholder
+  // widthFt just seeds a starting scale — the Calibrate tool gets the user to a real one.
+  useEffect(() => {
+    if (!traceMode || blueprint?.sourceType !== 'pdf') return;
+    if (pdfBuiltRef.current) return;
+    const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+    const pdfViewUrl = blueprint.pdfSignedUrl ?? (blueprint.pdfObjectPath ? `${base}/api/storage${blueprint.pdfObjectPath}` : null);
+    const widthPx = containerSize.width;
+    const heightPx = containerSize.height;
+    if (!pdfViewUrl || !widthPx || !heightPx) return;
+    pdfBuiltRef.current = true;
+
+    (async () => {
+      try {
+        const pdfjsLib = await import('pdfjs-dist');
+        const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+        const res = await fetch(pdfViewUrl, { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to fetch PDF');
+        const buf = await res.arrayBuffer();
+        const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+        const page = await doc.getPage(1);
+        const baseViewport = page.getViewport({ scale: 1 });
+        const renderScale = Math.min(4, Math.max(1, widthPx / baseViewport.width) * 2);
+        const viewport = page.getViewport({ scale: renderScale });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Canvas 2D context unavailable');
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        if (unmountedRef.current) return;
+        const dataUrl = canvas.toDataURL('image/png');
+        // Placeholder assumed real-world width (ft) until the user calibrates — matches the typical
+        // satellite-image span default so the initial estimated scale is in a sane ballpark.
+        const assumedWidthFt = SATELLITE_SPAN_FT;
+        const built = { url: dataUrl, widthFt: assumedWidthFt, heightFt: assumedWidthFt * (canvas.height / canvas.width) };
+        setSatelliteImage(built);
+        setSatelliteFailed(false);
+        if (!autoScaleAppliedRef.current) {
+          const estimatedScale = widthPx / built.widthFt;
+          let applied = false;
+          setScalePxPerFt((prev) => {
+            if (prev != null) return prev;
+            applied = true;
+            return estimatedScale;
+          });
+          if (applied) {
+            autoScaleAppliedRef.current = true;
+            toast.message('Now tracing over the PDF page', {
+              description: 'Use the Calibrate tool against a known dimension on the drawing to set a real scale.',
+            });
+          }
+        }
+      } catch {
+        if (!unmountedRef.current) toast.error('Could not render the PDF page for tracing');
+      }
+    })();
+  }, [traceMode, blueprint?.sourceType, blueprint?.pdfSignedUrl, blueprint?.pdfObjectPath, containerSize]);
 
   // Track the canvas container's pixel size so we can size/frame the satellite image to match.
   // The container <div> only mounts once `isLoading` flips false (it's behind an early-return while
@@ -687,6 +927,7 @@ export default function BlueprintCanvasPage() {
     const target = e.target as SVGElement;
     if (target.tagName.toLowerCase() !== 'svg') return;
     if (tool === 'select') {
+      if (!e.shiftKey) clearMultiSelect();
       setIsPanning(true);
       panStartRef.current = { clientX: e.clientX, clientY: e.clientY, tx: viewTransform.x, ty: viewTransform.y };
     } else if (tool === 'delete') {
@@ -747,8 +988,14 @@ export default function BlueprintCanvasPage() {
 
   const handlePointClick = (e: MouseEvent, pointId: string) => {
     e.stopPropagation();
-    
+
     if (tool === 'select') {
+      if (e.shiftKey) {
+        const pt = points.find(p => p.id === pointId);
+        shiftClickSelect('point', pointId, pt?.elementType ?? 'node');
+        return;
+      }
+      clearMultiSelect();
       setSelectedPointId(pointId);
       setSelectedLineId(null);
       setSelectedAreaId(null);
@@ -778,6 +1025,12 @@ export default function BlueprintCanvasPage() {
   const handleLineClick = (e: MouseEvent, lineId: string) => {
     e.stopPropagation();
     if (tool === 'select') {
+      if (e.shiftKey) {
+        const ln = lines.find(l => l.id === lineId);
+        shiftClickSelect('line', lineId, ln?.elementType ?? 'edge');
+        return;
+      }
+      clearMultiSelect();
       setSelectedLineId(lineId);
       setSelectedPointId(null);
       setSelectedAreaId(null);
@@ -789,6 +1042,12 @@ export default function BlueprintCanvasPage() {
   const handleAreaClick = (e: MouseEvent, areaId: string) => {
     e.stopPropagation();
     if (tool === 'select') {
+      if (e.shiftKey) {
+        const ar = areas.find(a => a.id === areaId);
+        shiftClickSelect('area', areaId, ar?.elementType);
+        return;
+      }
+      clearMultiSelect();
       setSelectedAreaId(areaId);
       setSelectedPointId(null);
       setSelectedLineId(null);
@@ -865,9 +1124,9 @@ export default function BlueprintCanvasPage() {
   if (isLoading) return <div className="p-8 text-center">Loading...</div>;
   if (!blueprint && !isLoading) return <div className="p-8 text-center">Blueprint not found.</div>;
 
-  // Uploaded-PDF blueprints are a view-only import — show the PDF inline instead of the drawing canvas.
-  // None of the drawing/estimate/AI tooling below applies to them.
-  if (blueprint?.sourceType === 'pdf') {
+  // Uploaded-PDF blueprints default to a view-only import — show the PDF inline instead of the drawing
+  // canvas. Staff can switch into Trace Mode to draw editable elements over the rendered PDF page.
+  if (blueprint?.sourceType === 'pdf' && !traceMode) {
     const base = import.meta.env.BASE_URL.replace(/\/$/, '');
     const pdfViewUrl = blueprint.pdfSignedUrl ?? (blueprint.pdfObjectPath ? `${base}/api/storage${blueprint.pdfObjectPath}` : null);
     return (
@@ -887,13 +1146,21 @@ export default function BlueprintCanvasPage() {
               )}
             </div>
           </div>
-          {pdfViewUrl && (
-            <Button variant="outline" asChild className="gap-2">
-              <a href={pdfViewUrl} target="_blank" rel="noopener noreferrer" download={blueprint.pdfFileName ?? undefined}>
-                Download
-              </a>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" className="gap-2" onClick={() => setPdfReplaceOpen(true)}>
+              <Upload className="w-4 h-4" /> Replace PDF
             </Button>
-          )}
+            <Button className="gap-2" onClick={() => setTraceMode(true)}>
+              <PlusCircle className="w-4 h-4" /> Trace on Canvas
+            </Button>
+            {pdfViewUrl && (
+              <Button variant="outline" asChild className="gap-2">
+                <a href={pdfViewUrl} target="_blank" rel="noopener noreferrer" download={blueprint.pdfFileName ?? undefined}>
+                  Download
+                </a>
+              </Button>
+            )}
+          </div>
         </div>
         <Card className="flex-1 overflow-hidden shadow-md">
           {pdfViewUrl ? (
@@ -904,6 +1171,46 @@ export default function BlueprintCanvasPage() {
             </div>
           )}
         </Card>
+        <Dialog open={pdfReplaceOpen} onOpenChange={open => { setPdfReplaceOpen(open); if (!open) setPdfReplaceFile(null); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Replace PDF</DialogTitle>
+              <DialogDescription>Upload a new PDF to replace this blueprint's source file. This does not affect any traced elements you've already drawn.</DialogDescription>
+            </DialogHeader>
+            <div className="py-2">
+              {pdfReplaceFile ? (
+                <div className="flex items-center gap-2 border rounded-md p-3">
+                  <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm truncate flex-1">{pdfReplaceFile.name}</span>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setPdfReplaceFile(null)}><X className="w-3.5 h-3.5" /></Button>
+                </div>
+              ) : (
+                <label className="flex flex-col items-center gap-2 border-2 border-dashed rounded-md p-6 cursor-pointer hover:bg-muted/40">
+                  <Upload className="w-5 h-5 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Click to choose a PDF (max 25 MB)</span>
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    className="hidden"
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.type !== 'application/pdf') { toast.error('Only PDF files are allowed'); e.target.value = ''; return; }
+                      if (file.size > 25 * 1024 * 1024) { toast.error('PDF too large. Max 25 MB allowed.'); e.target.value = ''; return; }
+                      setPdfReplaceFile(file);
+                    }}
+                  />
+                </label>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPdfReplaceOpen(false)}>Cancel</Button>
+              <Button onClick={handleReplacePdf} disabled={!pdfReplaceFile || pdfReplaceUploading}>
+                {pdfReplaceUploading ? 'Uploading...' : 'Replace'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     );
   }
@@ -932,10 +1239,20 @@ export default function BlueprintCanvasPage() {
               {blueprint?.isTemplate && (
                 <Badge variant="outline" className="text-primary border-primary/40 text-[10px]">Template</Badge>
               )}
+              {blueprint?.sourceType === 'pdf' && traceMode && (
+                <Badge variant="outline" className="uppercase text-[10px] gap-1 text-amber-600 border-amber-400 bg-amber-500/10">
+                  <FileText className="w-3 h-3" /> Tracing PDF
+                </Badge>
+              )}
             </div>
           </div>
         </div>
         <div className="flex gap-2">
+          {blueprint?.sourceType === 'pdf' && traceMode && (
+            <Button variant="outline" onClick={() => setTraceMode(false)} className="gap-2">
+              <ArrowLeft className="w-4 h-4" /> Back to PDF View
+            </Button>
+          )}
           {totalLegacyCount > 0 && (
             <Button variant="outline" onClick={() => setBulkMigrateOpen(true)} className="gap-2 text-amber-600 border-amber-400 hover:text-amber-700">
               <HelpCircle className="w-4 h-4" /> Legacy Points ({totalLegacyCount})
@@ -1167,17 +1484,32 @@ export default function BlueprintCanvasPage() {
               <Shapes className="w-4 h-4" />
               <span className="text-[10px]">Draw AI Zone</span>
             </Button>
-            {aiZones.length > 0 && (
+            {aiZones.length > 0 && !aiPreview && (
               <Button
                 size="sm"
                 className="gap-1"
-                onClick={handleGenerateAiZones}
+                onClick={handlePreviewAiZones}
                 disabled={generateAiZones.isPending}
-                title="Generate AI design for the drawn zones"
+                title="Preview AI design for the drawn zones before committing it"
               >
                 <Wand2 className="w-4 h-4" />
-                <span className="text-[10px]">{generateAiZones.isPending ? 'Generating...' : `Generate (${aiZones.length})`}</span>
+                <span className="text-[10px]">{generateAiZones.isPending ? 'Generating preview...' : `Preview (${aiZones.length})`}</span>
               </Button>
+            )}
+            {aiPreview && (
+              <>
+                <Badge variant="outline" className="gap-1 text-amber-600 border-amber-400 bg-amber-500/10">
+                  <Sparkles className="w-3 h-3" /> Previewing {aiPreview.points.length + aiPreview.lines.length + aiPreview.areas.length} new item{(aiPreview.points.length + aiPreview.lines.length + aiPreview.areas.length) === 1 ? '' : 's'}
+                </Badge>
+                <Button size="sm" className="gap-1" onClick={handleAcceptAiPreview} disabled={generateAiZones.isPending}>
+                  <Check className="w-4 h-4" />
+                  <span className="text-[10px]">{generateAiZones.isPending ? 'Saving...' : 'Accept'}</span>
+                </Button>
+                <Button size="sm" variant="outline" className="gap-1" onClick={handleDiscardAiPreview} disabled={generateAiZones.isPending}>
+                  <X className="w-4 h-4" />
+                  <span className="text-[10px]">Discard</span>
+                </Button>
+              </>
             )}
             <span className="ml-auto text-xs text-muted-foreground mr-2 capitalize">
               {tool === 'calibrate' && !calibStart ? 'Click first point of reference line' :
@@ -1251,8 +1583,32 @@ export default function BlueprintCanvasPage() {
             </div>
           )}
 
+          {/* Bulk-link toolbar — shown while a shift-click multi-select of same-type elements is active */}
+          {tool === 'select' && multiSelect && multiSelect.ids.length > 0 && (
+            <div className="border-b p-3 flex flex-wrap items-end gap-3 bg-primary/5">
+              <Badge variant="outline" className="text-xs">{multiSelect.ids.length} {multiSelect.kind}{multiSelect.ids.length > 1 ? 's' : ''} selected</Badge>
+              <div className="space-y-1">
+                <Label className="text-xs flex items-center gap-1"><Link2 className="w-3 h-3" /> Link all to Inventory Item</Label>
+                <Select value={bulkLinkInventoryId} onValueChange={setBulkLinkInventoryId}>
+                  <SelectTrigger className="h-8 w-48"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {(blueprintInventoryItems ?? []).map(item => (
+                      <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button size="sm" className="h-8 gap-1.5" onClick={applyBulkLink}>
+                <Check className="w-3.5 h-3.5" /> Apply to All
+              </Button>
+              <Button size="sm" variant="ghost" className="h-8" onClick={clearMultiSelect}>Clear</Button>
+              <span className="text-xs text-muted-foreground">Shift-click more {multiSelect.kind}s of the same type to add them.</span>
+            </div>
+          )}
+
           {/* Selected element details */}
-          {tool === 'select' && selectedPointId && (() => {
+          {tool === 'select' && !multiSelect && selectedPointId && (() => {
             const pt = points.find(p => p.id === selectedPointId);
             if (!pt) return null;
             const meta = resolvePointMeta(pt);
@@ -1329,7 +1685,7 @@ export default function BlueprintCanvasPage() {
               </div>
             );
           })()}
-          {tool === 'select' && selectedLineId && (() => {
+          {tool === 'select' && !multiSelect && selectedLineId && (() => {
             const ln = lines.find(l => l.id === selectedLineId);
             if (!ln) return null;
             const p1 = points.find(p => p.id === ln.startId);
@@ -1389,11 +1745,13 @@ export default function BlueprintCanvasPage() {
               </div>
             );
           })()}
-          {tool === 'select' && selectedAreaId && (() => {
+          {tool === 'select' && !multiSelect && selectedAreaId && (() => {
             const area = areas.find(a => a.id === selectedAreaId);
             if (!area) return null;
             const meta = areaElementMeta(area.elementType);
             const sqFt = scalePxPerFt ? pxAreaToSqFt(polygonAreaPx(area.polygon), scalePxPerFt) : null;
+            const depthInches = area.depthInches ?? defaultDepthInches(area.elementType);
+            const cubicYards = sqFt !== null ? (sqFt * (depthInches / 12)) / 27 : null;
             const updateArea = (patch: Partial<Area>) => setAreas(ars => ars.map(a => a.id === area.id ? { ...a, ...patch } : a));
             return (
               <div className="border-b p-3 flex flex-wrap items-end gap-3 bg-muted/10">
@@ -1401,7 +1759,10 @@ export default function BlueprintCanvasPage() {
                   <meta.icon className="w-4 h-4" style={{ color: meta.color }} />
                   <span className="text-sm font-medium">{meta.label}</span>
                   {sqFt !== null ? (
-                    <Badge variant="outline" className="text-xs">{sqFt.toLocaleString(undefined, { maximumFractionDigits: 1 })} sq ft</Badge>
+                    <>
+                      <Badge variant="outline" className="text-xs">{sqFt.toLocaleString(undefined, { maximumFractionDigits: 1 })} sq ft</Badge>
+                      <Badge variant="outline" className="text-xs">{cubicYards!.toLocaleString(undefined, { maximumFractionDigits: 2 })} cu yd</Badge>
+                    </>
                   ) : (
                     <Badge variant="outline" className="text-xs text-muted-foreground">Calibrate for sq ft</Badge>
                   )}
@@ -1409,6 +1770,14 @@ export default function BlueprintCanvasPage() {
                 <div className="space-y-1">
                   <Label className="text-xs">Label</Label>
                   <Input className="h-8 w-36" value={area.label ?? ''} placeholder="Optional label" onChange={e => updateArea({ label: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Depth (in)</Label>
+                  <Input
+                    type="number" min={0.5} step={0.5} className="h-8 w-20"
+                    value={depthInches}
+                    onChange={e => updateArea({ depthInches: Number(e.target.value) || 0 })}
+                  />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs flex items-center gap-1"><Link2 className="w-3 h-3" /> Linked Inventory Item</Label>
@@ -1467,7 +1836,8 @@ export default function BlueprintCanvasPage() {
               {/* Ground-cover areas (gravel, dry river bed) */}
               {areas.map(area => {
                 const meta = areaElementMeta(area.elementType);
-                const isSelected = selectedAreaId === area.id;
+                const isMultiSelected = multiSelect?.kind === 'area' && multiSelect.ids.includes(area.id);
+                const isSelected = selectedAreaId === area.id || isMultiSelected;
                 const pathD = `M ${area.polygon.map(p => `${p.x},${p.y}`).join(' L ')} Z`;
                 const cx = area.polygon.reduce((s, p) => s + p.x, 0) / area.polygon.length;
                 const cy = area.polygon.reduce((s, p) => s + p.y, 0) / area.polygon.length;
@@ -1478,8 +1848,9 @@ export default function BlueprintCanvasPage() {
                       d={pathD}
                       fill={meta.color}
                       fillOpacity={isSelected ? 0.45 : 0.3}
-                      stroke={isSelected ? 'hsl(var(--destructive))' : meta.color}
+                      stroke={isMultiSelected ? 'hsl(var(--primary))' : isSelected ? 'hsl(var(--destructive))' : meta.color}
                       strokeWidth={isSelected ? 3 : 2}
+                      strokeDasharray={isMultiSelected ? '4 2' : undefined}
                       className="cursor-pointer"
                       onClick={(e) => handleAreaClick(e, area.id)}
                     />
@@ -1538,7 +1909,8 @@ export default function BlueprintCanvasPage() {
                 const p1 = points.find(p => p.id === line.startId);
                 const p2 = points.find(p => p.id === line.endId);
                 if (!p1 || !p2) return null;
-                const isSelected = selectedLineId === line.id;
+                const isMultiSelected = multiSelect?.kind === 'line' && multiSelect.ids.includes(line.id);
+                const isSelected = selectedLineId === line.id || isMultiSelected;
                 const isPipe = line.elementType === 'pipe';
                 const isTrench = line.elementType === 'trench';
                 const lengthFt = lineLengthFt(p1, p2, scalePxPerFt);
@@ -1548,9 +1920,9 @@ export default function BlueprintCanvasPage() {
                   <g key={line.id}>
                     <line
                       x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-                      stroke={isSelected ? 'hsl(var(--destructive))' : isPipe ? '#0ea5e9' : isTrench ? '#f97316' : lineColor}
+                      stroke={isMultiSelected ? 'hsl(var(--primary))' : isSelected ? 'hsl(var(--destructive))' : isPipe ? '#0ea5e9' : isTrench ? '#f97316' : lineColor}
                       strokeWidth={isSelected ? 4 : isPipe ? 3 : isTrench ? 4 : 2}
-                      strokeDasharray={isTrench ? '8 4' : undefined}
+                      strokeDasharray={isMultiSelected ? '3 3' : isTrench ? '8 4' : undefined}
                       className="cursor-pointer transition-colors"
                       onClick={(e) => handleLineClick(e, line.id)}
                     />
@@ -1657,7 +2029,8 @@ export default function BlueprintCanvasPage() {
 
               {/* Nodes */}
               {points.map(point => {
-                const isSelected = selectedPointId === point.id;
+                const isMultiSelected = multiSelect?.kind === 'point' && multiSelect.ids.includes(point.id);
+                const isSelected = selectedPointId === point.id || isMultiSelected;
                 const isDrawingStart = drawingLineStartId === point.id;
                 const meta = resolvePointMeta(point);
                 const isLegacyUnknown = isLegacyUnknownPoint(point);
@@ -1667,7 +2040,7 @@ export default function BlueprintCanvasPage() {
                   <g key={point.id} transform={`translate(${point.x}, ${point.y})`}>
                     <circle
                       r={isDrawingStart ? 10 : isSpecial ? 9 : 8}
-                      fill={isSelected || isDrawingStart ? 'hsl(var(--destructive))' : isSpecial ? meta.color : nodeColor}
+                      fill={isMultiSelected ? 'hsl(var(--primary))' : isSelected || isDrawingStart ? 'hsl(var(--destructive))' : isSpecial ? meta.color : nodeColor}
                       stroke={isSelected ? 'white' : isLegacyUnknown ? 'white' : point.inventoryItemId ? '#22c55e' : 'transparent'}
                       strokeWidth={isLegacyUnknown && !isSelected ? 1.5 : point.inventoryItemId && !isSelected ? 2.5 : 2}
                       strokeDasharray={isLegacyUnknown && !isSelected ? '2.5,2' : undefined}
@@ -1689,6 +2062,26 @@ export default function BlueprintCanvasPage() {
                   </g>
                 );
               })}
+
+              {/* AI preview overlay — ghost render of what Accept would add; not yet saved, not interactive */}
+              {aiPreview && (
+                <g pointerEvents="none" opacity={0.75}>
+                  {aiPreview.areas.map(area => {
+                    const meta = areaElementMeta(area.elementType);
+                    const pathD = `M ${area.polygon.map(p => `${p.x},${p.y}`).join(' L ')} Z`;
+                    return <path key={area.id} d={pathD} fill={meta.color} fillOpacity={0.25} stroke="#f59e0b" strokeWidth={2} strokeDasharray="6 3" />;
+                  })}
+                  {aiPreview.lines.map(line => {
+                    const p1 = [...points, ...aiPreview.points].find(p => p.id === line.startId);
+                    const p2 = [...points, ...aiPreview.points].find(p => p.id === line.endId);
+                    if (!p1 || !p2) return null;
+                    return <line key={line.id} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="#f59e0b" strokeWidth={2.5} strokeDasharray="6 3" />;
+                  })}
+                  {aiPreview.points.map(point => (
+                    <circle key={point.id} cx={point.x} cy={point.y} r={7} fill="none" stroke="#f59e0b" strokeWidth={2} strokeDasharray="3 2" />
+                  ))}
+                </g>
+              )}
               </g>
             </svg>
           </div>
@@ -1837,6 +2230,24 @@ export default function BlueprintCanvasPage() {
             <div className="space-y-1.5">
               <Label className="text-xs">Zone Label</Label>
               <Input value={zoneLabelDraft} onChange={e => setZoneLabelDraft(e.target.value)} placeholder="e.g. Front Bed" />
+            </div>
+            <div className="space-y-1.5 rounded-md border p-2.5 bg-muted/20">
+              <Label className="text-xs flex items-center gap-1"><Library className="w-3 h-3" /> Load materials from a saved template</Label>
+              <Select
+                value=""
+                onValueChange={v => setLoadingTemplateId(Number(v))}
+                disabled={templateOptions.length === 0 || loadingTemplateId != null}
+              >
+                <SelectTrigger className="h-8">
+                  <SelectValue placeholder={templateOptions.length === 0 ? 'No saved templates yet' : loadingTemplateId != null ? 'Loading...' : 'Pick a template to start from...'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {templateOptions.map((t: any) => (
+                    <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Copies the distinct fixture/material types used on that template's canvas as a starting point — still fully editable below.</p>
             </div>
             <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
               {ZONE_MATERIAL_PALETTE.map(p => {

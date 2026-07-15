@@ -14,4 +14,6 @@ export interface BlueprintEstimate {
   overageAmount: number;
   total: number;
   measurements?: BlueprintEstimateMeasurements;
+  /** ISO timestamp of when this estimate snapshot was computed. Only present on persisted (lastEstimate) snapshots. */
+  computedAt?: string;
 }

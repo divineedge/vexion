@@ -33,6 +33,10 @@ export const blueprintsTable = pgTable("blueprints", {
   pdfObjectPath: text("pdf_object_path"),
   /** Original uploaded file name, for display. */
   pdfFileName: text("pdf_file_name"),
+  /** Snapshot of the last computed estimate: {parts: EstimatedPart[], subtotal, overageAmount, total, computedAt}.
+   *  Persisted so the materials breakdown a price was based on stays visible after leaving the canvas editor,
+   *  instead of only existing transiently in the editor's local state right after clicking Calculate Estimate. */
+  lastEstimate: jsonb("last_estimate"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

@@ -2894,6 +2894,22 @@ export const ListBlueprintsResponseItem = zod.object({
   "pdfObjectPath": zod.string().nullish().describe('Object storage path for the uploaded PDF. Only set when sourceType is \'pdf\'.'),
   "pdfFileName": zod.string().nullish().describe('Original uploaded file name, for display.'),
   "pdfSignedUrl": zod.string().nullish().describe('Short-lived signed URL for viewing the uploaded PDF inline. Only set when sourceType is \'pdf\'.'),
+  "lastEstimate": zod.object({
+  "parts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number(),
+  "unit": zod.string().optional().describe('Unit the quantity is expressed in (e.g. each, ft) for parts derived from drawn canvas elements.'),
+  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).')
+})),
+  "subtotal": zod.number(),
+  "overageAmount": zod.number(),
+  "total": zod.number(),
+  "measurements": zod.record(zod.string(), zod.unknown()).optional(),
+  "computedAt": zod.string().optional().describe('ISO timestamp of when this estimate snapshot was computed. Only present on persisted (lastEstimate) snapshots.')
+}).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
   "createdAt": zod.string()
 })
 export const ListBlueprintsResponse = zod.array(ListBlueprintsResponseItem)
@@ -2935,6 +2951,22 @@ export const CreateBlueprintResponse = zod.object({
   "pdfObjectPath": zod.string().nullish().describe('Object storage path for the uploaded PDF. Only set when sourceType is \'pdf\'.'),
   "pdfFileName": zod.string().nullish().describe('Original uploaded file name, for display.'),
   "pdfSignedUrl": zod.string().nullish().describe('Short-lived signed URL for viewing the uploaded PDF inline. Only set when sourceType is \'pdf\'.'),
+  "lastEstimate": zod.object({
+  "parts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number(),
+  "unit": zod.string().optional().describe('Unit the quantity is expressed in (e.g. each, ft) for parts derived from drawn canvas elements.'),
+  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).')
+})),
+  "subtotal": zod.number(),
+  "overageAmount": zod.number(),
+  "total": zod.number(),
+  "measurements": zod.record(zod.string(), zod.unknown()).optional(),
+  "computedAt": zod.string().optional().describe('ISO timestamp of when this estimate snapshot was computed. Only present on persisted (lastEstimate) snapshots.')
+}).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
   "createdAt": zod.string()
 })
 
@@ -2965,6 +2997,22 @@ export const GetBlueprintResponse = zod.object({
   "pdfObjectPath": zod.string().nullish().describe('Object storage path for the uploaded PDF. Only set when sourceType is \'pdf\'.'),
   "pdfFileName": zod.string().nullish().describe('Original uploaded file name, for display.'),
   "pdfSignedUrl": zod.string().nullish().describe('Short-lived signed URL for viewing the uploaded PDF inline. Only set when sourceType is \'pdf\'.'),
+  "lastEstimate": zod.object({
+  "parts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number(),
+  "unit": zod.string().optional().describe('Unit the quantity is expressed in (e.g. each, ft) for parts derived from drawn canvas elements.'),
+  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).')
+})),
+  "subtotal": zod.number(),
+  "overageAmount": zod.number(),
+  "total": zod.number(),
+  "measurements": zod.record(zod.string(), zod.unknown()).optional(),
+  "computedAt": zod.string().optional().describe('ISO timestamp of when this estimate snapshot was computed. Only present on persisted (lastEstimate) snapshots.')
+}).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
   "createdAt": zod.string()
 })
 
@@ -2981,7 +3029,10 @@ export const UpdateBlueprintBody = zod.object({
   "canvasData": zod.record(zod.string(), zod.unknown()).optional(),
   "overageBufferPercent": zod.number().optional(),
   "scalePxPerFt": zod.number().optional(),
-  "suggestedParts": zod.array(zod.record(zod.string(), zod.unknown())).optional()
+  "suggestedParts": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "pdfObjectPath": zod.string().optional().describe('Set together with pdfFileName\/pdfSizeBytes to replace the source PDF on a pdf-sourced blueprint.'),
+  "pdfFileName": zod.string().nullish(),
+  "pdfSizeBytes": zod.number().optional()
 })
 
 export const UpdateBlueprintResponse = zod.object({
@@ -3003,6 +3054,22 @@ export const UpdateBlueprintResponse = zod.object({
   "pdfObjectPath": zod.string().nullish().describe('Object storage path for the uploaded PDF. Only set when sourceType is \'pdf\'.'),
   "pdfFileName": zod.string().nullish().describe('Original uploaded file name, for display.'),
   "pdfSignedUrl": zod.string().nullish().describe('Short-lived signed URL for viewing the uploaded PDF inline. Only set when sourceType is \'pdf\'.'),
+  "lastEstimate": zod.object({
+  "parts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number(),
+  "unit": zod.string().optional().describe('Unit the quantity is expressed in (e.g. each, ft) for parts derived from drawn canvas elements.'),
+  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).')
+})),
+  "subtotal": zod.number(),
+  "overageAmount": zod.number(),
+  "total": zod.number(),
+  "measurements": zod.record(zod.string(), zod.unknown()).optional(),
+  "computedAt": zod.string().optional().describe('ISO timestamp of when this estimate snapshot was computed. Only present on persisted (lastEstimate) snapshots.')
+}).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
   "createdAt": zod.string()
 })
 
@@ -3037,7 +3104,8 @@ export const CalculateBlueprintEstimateResponse = zod.object({
   "subtotal": zod.number(),
   "overageAmount": zod.number(),
   "total": zod.number(),
-  "measurements": zod.record(zod.string(), zod.unknown()).optional()
+  "measurements": zod.record(zod.string(), zod.unknown()).optional(),
+  "computedAt": zod.string().optional().describe('ISO timestamp of when this estimate snapshot was computed. Only present on persisted (lastEstimate) snapshots.')
 })
 
 
@@ -3070,6 +3138,22 @@ export const GenerateBlueprintFromAiResponse = zod.object({
   "pdfObjectPath": zod.string().nullish().describe('Object storage path for the uploaded PDF. Only set when sourceType is \'pdf\'.'),
   "pdfFileName": zod.string().nullish().describe('Original uploaded file name, for display.'),
   "pdfSignedUrl": zod.string().nullish().describe('Short-lived signed URL for viewing the uploaded PDF inline. Only set when sourceType is \'pdf\'.'),
+  "lastEstimate": zod.object({
+  "parts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number(),
+  "unit": zod.string().optional().describe('Unit the quantity is expressed in (e.g. each, ft) for parts derived from drawn canvas elements.'),
+  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).')
+})),
+  "subtotal": zod.number(),
+  "overageAmount": zod.number(),
+  "total": zod.number(),
+  "measurements": zod.record(zod.string(), zod.unknown()).optional(),
+  "computedAt": zod.string().optional().describe('ISO timestamp of when this estimate snapshot was computed. Only present on persisted (lastEstimate) snapshots.')
+}).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
   "createdAt": zod.string()
 })
 
@@ -3099,7 +3183,8 @@ export const GenerateBlueprintAiZonesBody = zod.object({
   "inventoryItemId": zod.number().nullish().describe('Optional linked inventory item; generated elements of this type will carry this link.'),
   "pipeType": zod.string().nullish().describe('When elementType is sprinkler, the pipe class\/size used to connect heads to the supply line.')
 }))
-}))
+})),
+  "preview": zod.boolean().optional().describe('When true, returns the merged canvas the generation would produce without saving it — lets staff preview the result and Accept (call again with preview=false) or Discard.')
 })
 
 export const GenerateBlueprintAiZonesResponse = zod.object({
@@ -3121,6 +3206,22 @@ export const GenerateBlueprintAiZonesResponse = zod.object({
   "pdfObjectPath": zod.string().nullish().describe('Object storage path for the uploaded PDF. Only set when sourceType is \'pdf\'.'),
   "pdfFileName": zod.string().nullish().describe('Original uploaded file name, for display.'),
   "pdfSignedUrl": zod.string().nullish().describe('Short-lived signed URL for viewing the uploaded PDF inline. Only set when sourceType is \'pdf\'.'),
+  "lastEstimate": zod.object({
+  "parts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number(),
+  "unit": zod.string().optional().describe('Unit the quantity is expressed in (e.g. each, ft) for parts derived from drawn canvas elements.'),
+  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).')
+})),
+  "subtotal": zod.number(),
+  "overageAmount": zod.number(),
+  "total": zod.number(),
+  "measurements": zod.record(zod.string(), zod.unknown()).optional(),
+  "computedAt": zod.string().optional().describe('ISO timestamp of when this estimate snapshot was computed. Only present on persisted (lastEstimate) snapshots.')
+}).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
   "createdAt": zod.string()
 })
 
@@ -3147,6 +3248,22 @@ export const ListBlueprintTemplatesResponseItem = zod.object({
   "pdfObjectPath": zod.string().nullish().describe('Object storage path for the uploaded PDF. Only set when sourceType is \'pdf\'.'),
   "pdfFileName": zod.string().nullish().describe('Original uploaded file name, for display.'),
   "pdfSignedUrl": zod.string().nullish().describe('Short-lived signed URL for viewing the uploaded PDF inline. Only set when sourceType is \'pdf\'.'),
+  "lastEstimate": zod.object({
+  "parts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number(),
+  "unit": zod.string().optional().describe('Unit the quantity is expressed in (e.g. each, ft) for parts derived from drawn canvas elements.'),
+  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).')
+})),
+  "subtotal": zod.number(),
+  "overageAmount": zod.number(),
+  "total": zod.number(),
+  "measurements": zod.record(zod.string(), zod.unknown()).optional(),
+  "computedAt": zod.string().optional().describe('ISO timestamp of when this estimate snapshot was computed. Only present on persisted (lastEstimate) snapshots.')
+}).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
   "createdAt": zod.string()
 })
 export const ListBlueprintTemplatesResponse = zod.array(ListBlueprintTemplatesResponseItem)
@@ -3183,6 +3300,22 @@ export const ApplyBlueprintTemplateResponse = zod.object({
   "pdfObjectPath": zod.string().nullish().describe('Object storage path for the uploaded PDF. Only set when sourceType is \'pdf\'.'),
   "pdfFileName": zod.string().nullish().describe('Original uploaded file name, for display.'),
   "pdfSignedUrl": zod.string().nullish().describe('Short-lived signed URL for viewing the uploaded PDF inline. Only set when sourceType is \'pdf\'.'),
+  "lastEstimate": zod.object({
+  "parts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number(),
+  "unit": zod.string().optional().describe('Unit the quantity is expressed in (e.g. each, ft) for parts derived from drawn canvas elements.'),
+  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).')
+})),
+  "subtotal": zod.number(),
+  "overageAmount": zod.number(),
+  "total": zod.number(),
+  "measurements": zod.record(zod.string(), zod.unknown()).optional(),
+  "computedAt": zod.string().optional().describe('ISO timestamp of when this estimate snapshot was computed. Only present on persisted (lastEstimate) snapshots.')
+}).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
   "createdAt": zod.string()
 })
 

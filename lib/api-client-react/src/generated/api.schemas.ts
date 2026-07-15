@@ -1935,6 +1935,30 @@ export const BlueprintSourceType = {
   pdf: 'pdf',
 } as const;
 
+export interface EstimatedPart {
+  inventoryItemId: number;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+  /** Unit the quantity is expressed in (e.g. each, ft) for parts derived from drawn canvas elements. */
+  unit?: string;
+  /** Where this line came from: 'canvas' (linked to a placed palette element) or 'manual' (added via Suggested Parts). */
+  source?: string;
+}
+
+export type BlueprintEstimateMeasurements = { [key: string]: unknown };
+
+export interface BlueprintEstimate {
+  parts: EstimatedPart[];
+  subtotal: number;
+  overageAmount: number;
+  total: number;
+  measurements?: BlueprintEstimateMeasurements;
+  /** ISO timestamp of when this estimate snapshot was computed. Only present on persisted (lastEstimate) snapshots. */
+  computedAt?: string;
+}
+
 export interface Blueprint {
   id: number;
   tenantId: number;
@@ -1980,6 +2004,8 @@ export interface Blueprint {
      * @nullable
      */
   pdfSignedUrl?: string | null;
+  /** Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor. */
+  lastEstimate?: BlueprintEstimate | null;
   createdAt: string;
 }
 
@@ -2032,28 +2058,10 @@ export interface BlueprintUpdate {
   overageBufferPercent?: number;
   scalePxPerFt?: number;
   suggestedParts?: BlueprintUpdateSuggestedPartsItem[];
-}
-
-export type BlueprintEstimateMeasurements = { [key: string]: unknown };
-
-export interface EstimatedPart {
-  inventoryItemId: number;
-  name: string;
-  quantity: number;
-  unitPrice: number;
-  total: number;
-  /** Unit the quantity is expressed in (e.g. each, ft) for parts derived from drawn canvas elements. */
-  unit?: string;
-  /** Where this line came from: 'canvas' (linked to a placed palette element) or 'manual' (added via Suggested Parts). */
-  source?: string;
-}
-
-export interface BlueprintEstimate {
-  parts: EstimatedPart[];
-  subtotal: number;
-  overageAmount: number;
-  total: number;
-  measurements?: BlueprintEstimateMeasurements;
+  /** Set together with pdfFileName/pdfSizeBytes to replace the source PDF on a pdf-sourced blueprint. */
+  pdfObjectPath?: string;
+  pdfFileName?: string | null;
+  pdfSizeBytes?: number;
 }
 
 export interface AiZonePoint {
@@ -4199,6 +4207,8 @@ export type GenerateBlueprintFromAiBody = {
 
 export type GenerateBlueprintAiZonesBody = {
   zones: AiZoneInput[];
+  /** When true, returns the merged canvas the generation would produce without saving it — lets staff preview the result and Accept (call again with preview=false) or Discard. */
+  preview?: boolean;
 };
 
 export type ApplyBlueprintTemplateBody = {

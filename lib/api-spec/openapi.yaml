@@ -2047,9 +2047,14 @@ paths:
                   type: array
                   items:
                     $ref: "#/components/schemas/AiZoneInput"
+                preview:
+                  type: boolean
+                  description: >-
+                    When true, returns the merged canvas the generation would produce without saving it —
+                    lets staff preview the result and Accept (call again with preview=false) or Discard.
       responses:
         "200":
-          description: Blueprint with the zone-scoped AI-generated elements merged into its canvas
+          description: Blueprint with the zone-scoped AI-generated elements merged into its canvas (or, when preview=true, a preview of that result that has not been saved)
           content:
             application/json:
               schema:
@@ -8161,6 +8166,11 @@ components:
         pdfSignedUrl:
           type: ["string", "null"]
           description: "Short-lived signed URL for viewing the uploaded PDF inline. Only set when sourceType is 'pdf'."
+        lastEstimate:
+          allOf:
+            - $ref: "#/components/schemas/BlueprintEstimate"
+          nullable: true
+          description: "Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor."
         createdAt:
           type: string
 
@@ -8214,6 +8224,14 @@ components:
           items:
             type: object
             additionalProperties: true
+        pdfObjectPath:
+          type: string
+          description: Set together with pdfFileName/pdfSizeBytes to replace the source PDF on a pdf-sourced blueprint.
+        pdfFileName:
+          type: string
+          nullable: true
+        pdfSizeBytes:
+          type: integer
 
     BlueprintEstimate:
       type: object
@@ -8232,6 +8250,9 @@ components:
         measurements:
           type: object
           additionalProperties: true
+        computedAt:
+          type: string
+          description: "ISO timestamp of when this estimate snapshot was computed. Only present on persisted (lastEstimate) snapshots."
 
     EstimatedPart:
       type: object

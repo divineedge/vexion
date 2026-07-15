@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { BlueprintCanvasData } from './blueprintCanvasData';
+import type { BlueprintEstimate } from './blueprintEstimate';
 import type { BlueprintMode } from './blueprintMode';
 import type { BlueprintSourceType } from './blueprintSourceType';
 import type { BlueprintSuggestedPartsItem } from './blueprintSuggestedPartsItem';
@@ -55,5 +56,7 @@ export interface Blueprint {
      * @nullable
      */
   pdfSignedUrl?: string | null;
+  /** Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor. */
+  lastEstimate?: BlueprintEstimate | null;
   createdAt: string;
 }

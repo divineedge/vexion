@@ -16,7 +16,7 @@ import {
   ArrowLeft, Save, MousePointer2, PlusCircle, Minus, Trash2, Calculator, Ruler,
   ChevronDown, TreeDeciduous, Mountain, Waves, Hash, Layers, SprayCan, Link2,
   Wand2, Shapes, Sparkles, X, Check, ZoomIn, ZoomOut, Maximize, Square, HelpCircle, Library,
-  Upload, FileText,
+  Upload, FileText, Undo2,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useQueryClient } from '@tanstack/react-query';
@@ -498,22 +498,40 @@ export default function BlueprintCanvasPage() {
     return patch;
   };
 
+  // Snapshot of the points affected by the most recent bulk migration (single group or "migrate all"),
+  // captured *before* the type/label patch was applied, so staff can undo it before saving. A fresh
+  // migration replaces this — only the single most recent bulk action is undoable.
+  const [lastMigration, setLastMigration] = useState<{ description: string; priorPoints: Point[] } | null>(null);
+
   const migrateLegacyGroup = (label: string, type: PointElementType) => {
     const patch = realTypeAssignmentPatch(type);
     const count = legacyGroups.find(g => g.label === label)?.count ?? 0;
+    const priorPoints = points.filter(p => isLegacyUnknownPoint(p) && p.label === label).map(p => ({ ...p }));
     setPoints(pts => pts.map(p => (isLegacyUnknownPoint(p) && p.label === label) ? { ...p, ...patch } : p));
     setBulkGroupTargets(prev => { const next = { ...prev }; delete next[label]; return next; });
+    setLastMigration({ description: `"${label}" → ${pointElementMeta(type).label}`, priorPoints });
     toast.success(`Migrated ${count} "${label}" point${count === 1 ? '' : 's'} to ${pointElementMeta(type).label}`);
   };
 
   const migrateAllLegacyPoints = (type: PointElementType) => {
     const patch = realTypeAssignmentPatch(type);
     const count = totalLegacyCount;
+    const priorPoints = points.filter(isLegacyUnknownPoint).map(p => ({ ...p }));
     setPoints(pts => pts.map(p => isLegacyUnknownPoint(p) ? { ...p, ...patch } : p));
     setBulkAllTarget('');
     setBulkGroupTargets({});
     setBulkMigrateOpen(false);
+    setLastMigration({ description: `all remaining legacy points → ${pointElementMeta(type).label}`, priorPoints });
     toast.success(`Migrated all ${count} remaining legacy point${count === 1 ? '' : 's'} to ${pointElementMeta(type).label}`);
+  };
+
+  /** Restores the exact prior elementType/label/etc. of every point touched by the last bulk migration. */
+  const undoLastMigration = () => {
+    if (!lastMigration) return;
+    const priorById = new Map(lastMigration.priorPoints.map(p => [p.id, p]));
+    setPoints(pts => pts.map(p => priorById.get(p.id) ?? p));
+    toast.success(`Undid migration of ${lastMigration.priorPoints.length} point${lastMigration.priorPoints.length === 1 ? '' : 's'}`);
+    setLastMigration(null);
   };
 
   // ── Calibration state ────────────────────────────────────────────────────────
@@ -1064,6 +1082,8 @@ export default function BlueprintCanvasPage() {
       onSuccess: () => {
         toast.success('Blueprint saved');
         queryClient.invalidateQueries({ queryKey: getGetBlueprintQueryKey(id) });
+        // Once saved, the prior migration state is no longer recoverable via undo (it's not persisted anywhere).
+        setLastMigration(null);
       }
     });
   };
@@ -1258,6 +1278,11 @@ export default function BlueprintCanvasPage() {
               <HelpCircle className="w-4 h-4" /> Legacy Points ({totalLegacyCount})
             </Button>
           )}
+          {lastMigration && (
+            <Button variant="outline" onClick={undoLastMigration} className="gap-2 text-blue-600 border-blue-400 hover:text-blue-700">
+              <Undo2 className="w-4 h-4" /> Undo Migration
+            </Button>
+          )}
           <Button variant="outline" onClick={handleSave} disabled={updateBlueprint.isPending} className="gap-2">
             <Save className="w-4 h-4" /> Save
           </Button>
@@ -1333,6 +1358,14 @@ export default function BlueprintCanvasPage() {
               </Select>
               <Button size="sm" disabled={!bulkAllTarget} onClick={() => migrateAllLegacyPoints(bulkAllTarget as PointElementType)}>
                 Migrate All
+              </Button>
+            </div>
+          )}
+          {lastMigration && (
+            <div className="flex items-center justify-between gap-2 border-t pt-3 text-sm">
+              <span className="text-muted-foreground truncate">Last migration: {lastMigration.description}</span>
+              <Button size="sm" variant="outline" onClick={undoLastMigration} className="gap-1.5 shrink-0 text-blue-600 border-blue-400 hover:text-blue-700">
+                <Undo2 className="w-3.5 h-3.5" /> Undo
               </Button>
             </div>
           )}

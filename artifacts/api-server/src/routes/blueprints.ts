@@ -73,12 +73,20 @@ function normalizeCanvasData(raw: unknown): NormalizedCanvasData {
 
   if (Array.isArray(data.nodes)) {
     // Legacy shape: nodes[] + lines with from/to instead of points[] + startId/endId.
-    const points: NormalizedCanvasPoint[] = data.nodes.map((n) => ({
-      id: n.id,
-      x: n.x,
-      y: n.y,
-      elementType: n.type ? LEGACY_NODE_TYPE_MAP[n.type] : undefined,
-    }));
+    const points: NormalizedCanvasPoint[] = data.nodes.map((n) => {
+      const mappedType = n.type ? LEGACY_NODE_TYPE_MAP[n.type] : undefined;
+      // Legacy type names that don't map to a current palette entry (e.g. "valve", "corner") would
+      // otherwise be silently discarded, leaving an unlabeled generic dot. Keep the original type
+      // name visible as the point's label so the fixture stays meaningful after migration.
+      const label = !mappedType && n.type ? n.type : undefined;
+      return {
+        id: n.id,
+        x: n.x,
+        y: n.y,
+        elementType: mappedType,
+        label,
+      };
+    });
     const lines: NormalizedCanvasLine[] = (data.lines ?? []).map((l) => ({
       id: l.id!,
       startId: (l.from ?? l.startId)!,

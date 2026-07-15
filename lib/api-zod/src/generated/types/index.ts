@@ -168,6 +168,7 @@ export * from './geocodeResult';
 export * from './geofencePinUpdate';
 export * from './getDevToolsEnvironment200';
 export * from './getEmployeeRevenueReportParams';
+export * from './getGmailAuthorizeUrl200';
 export * from './getJobProfitabilityReportParams';
 export * from './getPlStatementReportParams';
 export * from './getQuickBooksAuthorizeUrl200';

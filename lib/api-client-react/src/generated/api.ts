@@ -105,6 +105,7 @@ import type {
   GetDevToolsEnvironment200,
   GetEmployeeRevenueReportParams,
   GetEquipmentLedgerParams,
+  GetGmailAuthorizeUrl200,
   GetJobProfitabilityReportParams,
   GetPlStatementReportParams,
   GetQuickBooksAuthorizeUrl200,
@@ -8310,6 +8311,154 @@ export const useUpdateTenantSettings = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpdateTenantSettingsMutationOptions(options));
+    }
+
+export const getGetGmailAuthorizeUrlUrl = () => {
+
+
+
+
+  return `/api/settings/email/gmail/oauth/authorize-url`
+}
+
+/**
+ * @summary Build the Gmail (Google) OAuth authorization URL for connecting a send-only account
+ */
+export const getGmailAuthorizeUrl = async ( options?: RequestInit): Promise<GetGmailAuthorizeUrl200> => {
+
+  return customFetch<GetGmailAuthorizeUrl200>(getGetGmailAuthorizeUrlUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetGmailAuthorizeUrlQueryKey = () => {
+    return [
+    `/api/settings/email/gmail/oauth/authorize-url`
+    ] as const;
+    }
+
+
+export const getGetGmailAuthorizeUrlQueryOptions = <TData = Awaited<ReturnType<typeof getGmailAuthorizeUrl>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGmailAuthorizeUrl>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetGmailAuthorizeUrlQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getGmailAuthorizeUrl>>> = ({ signal }) => getGmailAuthorizeUrl({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getGmailAuthorizeUrl>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetGmailAuthorizeUrlQueryResult = NonNullable<Awaited<ReturnType<typeof getGmailAuthorizeUrl>>>
+export type GetGmailAuthorizeUrlQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Build the Gmail (Google) OAuth authorization URL for connecting a send-only account
+ */
+
+export function useGetGmailAuthorizeUrl<TData = Awaited<ReturnType<typeof getGmailAuthorizeUrl>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGmailAuthorizeUrl>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetGmailAuthorizeUrlQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getDisconnectGmailUrl = () => {
+
+
+
+
+  return `/api/settings/email/gmail`
+}
+
+/**
+ * @summary Disconnect the tenant's connected Gmail account
+ */
+export const disconnectGmail = async ( options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDisconnectGmailUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDisconnectGmailMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectGmail>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof disconnectGmail>>, TError,void, TContext> => {
+
+const mutationKey = ['disconnectGmail'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof disconnectGmail>>, void> = () => {
+
+
+          return  disconnectGmail(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DisconnectGmailMutationResult = NonNullable<Awaited<ReturnType<typeof disconnectGmail>>>
+
+    export type DisconnectGmailMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Disconnect the tenant's connected Gmail account
+ */
+export const useDisconnectGmail = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectGmail>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof disconnectGmail>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getDisconnectGmailMutationOptions(options));
     }
 
 export const getListUsersUrl = () => {

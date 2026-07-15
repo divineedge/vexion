@@ -2208,6 +2208,32 @@ paths:
               schema:
                 $ref: "#/components/schemas/TenantSettings"
 
+  /settings/email/gmail/oauth/authorize-url:
+    get:
+      operationId: getGmailAuthorizeUrl
+      tags: [settings]
+      summary: Build the Gmail (Google) OAuth authorization URL for connecting a send-only account
+      responses:
+        "200":
+          description: Authorize URL
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url]
+                properties:
+                  url:
+                    type: string
+
+  /settings/email/gmail:
+    delete:
+      operationId: disconnectGmail
+      tags: [settings]
+      summary: Disconnect the tenant's connected Gmail account
+      responses:
+        "204":
+          description: Disconnected
+
   /settings/users:
     get:
       operationId: listUsers

@@ -1,8 +1,11 @@
 import { Router, type IRouter } from "express";
+import crypto from "node:crypto";
 import { db, tenantsTable, usersTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { getTenantId } from "../lib/tenantHelper";
+import { getTenantId, getUserId } from "../lib/tenantHelper";
+import { isAdminRole } from "../lib/roles";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { buildGoogleAuthorizeUrl, exchangeGoogleCode } from "../lib/gmailProvider";
 
 const objectStorageService = new ObjectStorageService();
 
@@ -64,6 +67,9 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
       smtpPort: emailProviderConfig["smtpPort"] ?? "587",
       smtpUser: emailProviderConfig["smtpUser"] ?? "",
       smtpPass: emailProviderConfig["smtpPass"] ? "••••••••" : "",
+      // Gmail OAuth — never expose the refresh token, just whether/who is connected
+      gmailConnected: !!emailProviderConfig["gmailRefreshToken"],
+      gmailEmail: emailProviderConfig["gmailEmail"] ?? "",
     },
     // Business Profile
     businessPhone: tenant.businessPhone ?? null,
@@ -278,6 +284,102 @@ router.patch("/settings", async (req, res): Promise<void> => {
   const [updated] = await db.update(tenantsTable).set(updates).where(eq(tenantsTable.id, tenantId)).returning();
   if (!updated) { res.status(404).json({ error: "Tenant not found" }); return; }
   res.json(formatTenant(updated));
+});
+
+// ── Gmail OAuth (send-only) ─────────────────────────────────────────────────
+// Lets an admin connect their own Google account instead of hand-entering SMTP/API-key
+// credentials. Mirrors the QuickBooks OAuth pattern in routes/integrations.ts, including
+// the single-use CSRF nonce bound to tenant+user for the callback.
+
+router.get("/settings/email/gmail/oauth/authorize-url", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  if (!(await isAdminRole(tenantId, userId))) { res.status(403).json({ error: "Restricted to owner/admin roles" }); return; }
+
+  const nonce = crypto.randomBytes(24).toString("hex");
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+  const [existing] = await db.select({ emailProviderConfig: tenantsTable.emailProviderConfig }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  const prev = (existing?.emailProviderConfig as Record<string, string>) ?? {};
+  await db.update(tenantsTable).set({
+    emailProviderConfig: { ...prev, gmailOAuthNonce: nonce, gmailOAuthNonceExpiresAt: expiresAt, gmailOAuthUserId: String(userId) },
+  }).where(eq(tenantsTable.id, tenantId));
+
+  const redirectUri = `${req.protocol}://${req.get("host")}/api/settings/email/gmail/oauth/callback`;
+  const { url, error } = buildGoogleAuthorizeUrl(redirectUri, `${tenantId}.${nonce}`);
+  if (error) { res.status(400).json({ error }); return; }
+  res.json({ url });
+});
+
+router.get("/settings/email/gmail/oauth/callback", async (req, res): Promise<void> => {
+  const { code, state } = req.query as Record<string, string>;
+  const separatorIndex = state ? state.indexOf(".") : -1;
+  const tenantId = separatorIndex > 0 ? parseInt(state.slice(0, separatorIndex), 10) : NaN;
+  const nonce = separatorIndex > 0 ? state.slice(separatorIndex + 1) : "";
+  if (!tenantId || !nonce || !code) { res.status(400).send("Missing or malformed code/state"); return; }
+
+  const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  if (!tenant) { res.status(400).send("Unknown tenant"); return; }
+  const prev = (tenant.emailProviderConfig as Record<string, string>) ?? {};
+
+  // Validate the nonce against the one this tenant's admin was issued, constant-time, and
+  // reject if missing, mismatched, or expired. Invalidate it immediately (single-use) so a
+  // captured callback URL cannot be replayed to bind another attacker-controlled account.
+  const nonceBuffer = Buffer.from(nonce);
+  const pendingBuffer = Buffer.from(prev["gmailOAuthNonce"] ?? "");
+  const nonceValid = !!prev["gmailOAuthNonce"]
+    && nonceBuffer.length === pendingBuffer.length
+    && crypto.timingSafeEqual(nonceBuffer, pendingBuffer)
+    && !!prev["gmailOAuthNonceExpiresAt"]
+    && new Date(prev["gmailOAuthNonceExpiresAt"]).getTime() > Date.now();
+
+  const cleared = { ...prev };
+  delete cleared["gmailOAuthNonce"];
+  delete cleared["gmailOAuthNonceExpiresAt"];
+  delete cleared["gmailOAuthUserId"];
+
+  if (!nonceValid) {
+    await db.update(tenantsTable).set({ emailProviderConfig: cleared }).where(eq(tenantsTable.id, tenantId));
+    res.status(400).send("Gmail connection failed: invalid or expired authorization request. Please retry from Settings.");
+    return;
+  }
+
+  const redirectUri = `${req.protocol}://${req.get("host")}/api/settings/email/gmail/oauth/callback`;
+  const result = await exchangeGoogleCode(code, redirectUri);
+
+  if (!result.success) {
+    await db.update(tenantsTable).set({ emailProviderConfig: cleared }).where(eq(tenantsTable.id, tenantId));
+    res.status(400).send(`Gmail connection failed: ${result.error}`);
+    return;
+  }
+
+  await db.update(tenantsTable).set({
+    emailProvider: "gmail",
+    emailProviderConfig: { ...cleared, gmailRefreshToken: result.refreshToken, gmailEmail: result.email },
+  }).where(eq(tenantsTable.id, tenantId));
+
+  res.send("<html><body>Gmail connected successfully. You can close this window and return to Settings.</body></html>");
+});
+
+router.delete("/settings/email/gmail", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  if (!(await isAdminRole(tenantId, userId))) { res.status(403).json({ error: "Restricted to owner/admin roles" }); return; }
+
+  const [existing] = await db.select({ emailProviderConfig: tenantsTable.emailProviderConfig, emailProvider: tenantsTable.emailProvider }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  const prev = (existing?.emailProviderConfig as Record<string, string>) ?? {};
+  const cleared = { ...prev };
+  delete cleared["gmailRefreshToken"];
+  delete cleared["gmailEmail"];
+
+  await db.update(tenantsTable).set({
+    emailProviderConfig: cleared,
+    // Fall back to dev/no-provider mode if Gmail was the active provider, matching how
+    // disconnecting an integration elsewhere in Settings leaves no dangling active state.
+    emailProvider: existing?.emailProvider === "gmail" ? null : existing?.emailProvider,
+  }).where(eq(tenantsTable.id, tenantId));
+
+  res.sendStatus(204);
 });
 
 router.get("/settings/users", async (req, res): Promise<void> => {

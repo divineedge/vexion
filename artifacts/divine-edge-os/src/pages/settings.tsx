@@ -11,6 +11,8 @@ import {
   useListChemicalMixtures, getListChemicalMixturesQueryKey,
   useCreateChemicalMixture, useUpdateChemicalMixture, useDeleteChemicalMixture,
   useUpdateFollowupTriggerConfig,
+  useGetGmailAuthorizeUrl, getGetGmailAuthorizeUrlQueryKey,
+  useDisconnectGmail,
   customFetch,
 } from '@workspace/api-client-react';
 import type { FollowupTriggerConfig } from '@workspace/api-client-react';
@@ -68,6 +70,24 @@ export default function SettingsPage() {
   const createChemMixture = useCreateChemicalMixture();
   const updateChemMixture = useUpdateChemicalMixture();
   const deleteChemMixture = useDeleteChemicalMixture();
+  const gmailAuthorizeUrl = useGetGmailAuthorizeUrl({ query: { enabled: false, queryKey: getGetGmailAuthorizeUrlQueryKey() } });
+  const disconnectGmail = useDisconnectGmail({
+    mutation: {
+      onSuccess: () => {
+        toast.success('Gmail disconnected');
+        setGmailConnected(false);
+        setGmailEmail('');
+        qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() });
+      },
+      onError: () => toast.error('Failed to disconnect Gmail'),
+    },
+  });
+
+  const handleGmailConnect = async () => {
+    const result = await gmailAuthorizeUrl.refetch();
+    if (result.data?.url) window.location.href = result.data.url;
+    else toast.error('Could not start Google authorization. Please try again.');
+  };
 
   // General
   const [companyName, setCompanyName] = useState('');
@@ -113,6 +133,8 @@ export default function SettingsPage() {
   const [smtpPort, setSmtpPort] = useState('587');
   const [smtpUser, setSmtpUser] = useState('');
   const [smtpPass, setSmtpPass] = useState('');
+  const [gmailConnected, setGmailConnected] = useState(false);
+  const [gmailEmail, setGmailEmail] = useState('');
 
   // Maps & measurement
   const [defaultGeofenceRadius, setDefaultGeofenceRadius] = useState('100');
@@ -241,6 +263,8 @@ export default function SettingsPage() {
       setSmtpPort(s.emailProviderConfig?.smtpPort ?? '587');
       setSmtpUser(s.emailProviderConfig?.smtpUser ?? '');
       setSmtpPass(s.emailProviderConfig?.smtpPass ?? '');
+      setGmailConnected(!!s.emailProviderConfig?.gmailConnected);
+      setGmailEmail(s.emailProviderConfig?.gmailEmail ?? '');
 
       // Follow-Up Queue triggers
       if (s.followupTriggerConfig) {
@@ -1185,6 +1209,7 @@ export default function SettingsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Not connected (dev mode)</SelectItem>
+                    <SelectItem value="gmail">Google / Gmail</SelectItem>
                     <SelectItem value="resend">Resend</SelectItem>
                     <SelectItem value="sendgrid">SendGrid</SelectItem>
                     <SelectItem value="mailgun">Mailgun</SelectItem>
@@ -1193,7 +1218,38 @@ export default function SettingsPage() {
                 </Select>
               </div>
 
-              {emailProvider && emailProvider !== 'smtp' && (
+              {emailProvider === 'gmail' && (
+                <div className="rounded-lg border p-4 space-y-3 bg-muted/20">
+                  <p className="text-sm text-muted-foreground">
+                    Sign in with the Google account you want to send from — no API key or password needed. Transactional emails (estimates, invoices, reminders) will be sent from that account.
+                  </p>
+                  {gmailConnected ? (
+                    <div className="flex items-center justify-between gap-3 rounded-lg border bg-background p-3">
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-emerald-500/10 text-emerald-700 border-transparent gap-1">
+                          <CheckCircle className="w-3 h-3" /> Connected
+                        </Badge>
+                        <span className="text-sm font-medium">{gmailEmail}</span>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive"
+                        disabled={disconnectGmail.isPending}
+                        onClick={() => disconnectGmail.mutate()}
+                      >
+                        Disconnect
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button variant="outline" onClick={handleGmailConnect} disabled={gmailAuthorizeUrl.isFetching} className="gap-2">
+                      <Mail className="w-4 h-4" /> {gmailAuthorizeUrl.isFetching ? 'Redirecting...' : 'Connect Google Account'}
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {emailProvider && emailProvider !== 'smtp' && emailProvider !== 'gmail' && (
                 <div className="rounded-lg border p-4 space-y-3 bg-muted/20">
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium">API Key</label>
@@ -1279,7 +1335,7 @@ export default function SettingsPage() {
               <div className="flex items-center gap-2">
                 {(settings as any)?.emailProvider ? (
                   <Badge className="bg-emerald-500/10 text-emerald-700 border-transparent gap-1">
-                    <CheckCircle className="w-3 h-3" /> Connected — {(settings as any).emailProvider}
+                    <CheckCircle className="w-3 h-3" /> Connected — {(settings as any).emailProvider === 'gmail' ? 'Google / Gmail' : (settings as any).emailProvider}
                   </Badge>
                 ) : (
                   <Badge variant="outline" className="text-muted-foreground gap-1">
@@ -1288,6 +1344,7 @@ export default function SettingsPage() {
                 )}
               </div>
 
+              {emailProvider !== 'gmail' && (
               <Button
                 variant="outline"
                 disabled={updateSettings.isPending}
@@ -1314,6 +1371,7 @@ export default function SettingsPage() {
               >
                 Save Email Provider
               </Button>
+              )}
             </CardContent>
           </Card>
 

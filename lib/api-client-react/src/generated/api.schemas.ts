@@ -4165,6 +4165,10 @@ export type ApplyBlueprintTemplateBody = {
   propertyId?: number;
 };
 
+export type GetGmailAuthorizeUrl200 = {
+  url: string;
+};
+
 export type ListChemicalApplicationsParams = {
 startDate?: string;
 endDate?: string;

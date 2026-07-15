@@ -6,9 +6,10 @@
 
 import { logger } from "./logger";
 import nodemailer from "nodemailer";
+import { sendViaGmail } from "./gmailProvider";
 
 export interface EmailProviderConfig {
-  provider: "smtp" | "sendgrid" | "mailgun" | "resend" | null;
+  provider: "smtp" | "sendgrid" | "mailgun" | "resend" | "gmail" | null;
   config: Record<string, string>;
   fromAddress: string | null;
 }
@@ -138,6 +139,13 @@ export async function sendEmail(
     const domain = config["domain"] ?? "";
     if (!apiKey || !domain) return { success: false, error: "Mailgun API key and domain required" };
     return sendViaMailgun(apiKey, domain, from, to, subject, body);
+  }
+
+  if (provider === "gmail") {
+    const refreshToken = config["gmailRefreshToken"] ?? "";
+    const gmailEmail = config["gmailEmail"] ?? "";
+    if (!refreshToken || !gmailEmail) return { success: false, error: "Gmail is not connected — connect a Google account in Settings" };
+    return sendViaGmail(refreshToken, gmailEmail, to, subject, body);
   }
 
   if (provider === "smtp") {

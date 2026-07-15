@@ -124,3 +124,27 @@ describe("sendEmail — Resend/SendGrid/Mailgun", () => {
     expect(result.error).toMatch(/domain/i);
   });
 });
+
+describe("sendEmail — Gmail", () => {
+  it("returns failure when Gmail is not connected (no refresh token)", async () => {
+    const result = await sendEmail(
+      { provider: "gmail", config: {}, fromAddress: null },
+      "to@example.com",
+      "Subject",
+      "Body"
+    );
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/not connected/i);
+  });
+
+  it("returns failure when connected account email is missing", async () => {
+    const result = await sendEmail(
+      { provider: "gmail", config: { gmailRefreshToken: "rt-123" }, fromAddress: null },
+      "to@example.com",
+      "Subject",
+      "Body"
+    );
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/not connected/i);
+  });
+});

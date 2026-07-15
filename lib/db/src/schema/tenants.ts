@@ -47,9 +47,14 @@ export const tenantsTable = pgTable("tenants", {
   phonePlatform: text("phone_platform"),
   /** JSONB: platform-specific credentials/config (API keys etc.) */
   phonePlatformConfig: jsonb("phone_platform_config").default("{}"),
-  /** Email sending provider: 'smtp' | 'sendgrid' | 'mailgun' | 'resend' | null */
+  /** Email sending provider: 'smtp' | 'sendgrid' | 'mailgun' | 'resend' | 'gmail' | null */
   emailProvider: text("email_provider"),
-  /** JSONB: provider-specific config (API key, from address, SMTP host etc.) */
+  /**
+   * JSONB: provider-specific config (API key, from address, SMTP host etc.).
+   * For 'gmail': { gmailEmail: string (connected account), gmailRefreshToken: string,
+   * gmailOAuthNonce/gmailOAuthNonceExpiresAt/gmailOAuthUserId: transient CSRF binding for the
+   * in-flight OAuth authorization-code request, cleared once the callback consumes it }.
+   */
   emailProviderConfig: jsonb("email_provider_config").default("{}"),
   // ── Integration Extensions ───────────────────────────────────────────────
   /**

@@ -3505,6 +3505,20 @@ export const UpdateTenantSettingsResponse = zod.object({
 
 
 /**
+ * @summary Build the Gmail (Google) OAuth authorization URL for connecting a send-only account
+ */
+export const GetGmailAuthorizeUrlResponse = zod.object({
+  "url": zod.string()
+})
+
+
+/**
+ * @summary Disconnect the tenant's connected Gmail account
+ */
+export const DisconnectGmailResponse = zod.void()
+
+
+/**
  * @summary List all users in the tenant
  */
 export const ListUsersResponseItem = zod.object({

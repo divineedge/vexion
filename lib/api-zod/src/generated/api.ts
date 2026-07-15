@@ -6875,8 +6875,10 @@ export const GetPlansDashboardResponse = zod.object({
 export const ListRecurringTemplatesResponseItem = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
-  "customerId": zod.number(),
+  "customerId": zod.number().nullish(),
   "customerName": zod.string().nullish(),
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string().nullish(),
   "name": zod.string(),
   "lineItems": zod.array(zod.object({
   "description": zod.string(),
@@ -6884,8 +6886,9 @@ export const ListRecurringTemplatesResponseItem = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })),
+  "billingMode": zod.enum(['static', 'completed_work']),
   "billingCycleDay": zod.number(),
-  "billingCycleType": zod.enum(['monthly', 'weekly']),
+  "billingCycleType": zod.enum(['daily', 'weekly', 'monthly', 'bi_monthly']),
   "nextBillingDate": zod.string(),
   "isActive": zod.boolean(),
   "lastGeneratedAt": zod.string().nullish(),
@@ -6900,7 +6903,8 @@ export const ListRecurringTemplatesResponse = zod.array(ListRecurringTemplatesRe
  * @summary Create a recurring invoice template
  */
 export const CreateRecurringTemplateBody = zod.object({
-  "customerId": zod.number(),
+  "customerId": zod.number().optional(),
+  "serviceId": zod.number().optional(),
   "name": zod.string(),
   "lineItems": zod.array(zod.object({
   "description": zod.string(),
@@ -6908,8 +6912,9 @@ export const CreateRecurringTemplateBody = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional(),
+  "billingMode": zod.enum(['static', 'completed_work']).optional(),
   "billingCycleDay": zod.number().optional(),
-  "billingCycleType": zod.enum(['monthly', 'weekly']).optional(),
+  "billingCycleType": zod.enum(['daily', 'weekly', 'monthly', 'bi_monthly']).optional(),
   "nextBillingDate": zod.string(),
   "isActive": zod.boolean().optional(),
   "notes": zod.string().optional()
@@ -6918,8 +6923,10 @@ export const CreateRecurringTemplateBody = zod.object({
 export const CreateRecurringTemplateResponse = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
-  "customerId": zod.number(),
+  "customerId": zod.number().nullish(),
   "customerName": zod.string().nullish(),
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string().nullish(),
   "name": zod.string(),
   "lineItems": zod.array(zod.object({
   "description": zod.string(),
@@ -6927,8 +6934,9 @@ export const CreateRecurringTemplateResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })),
+  "billingMode": zod.enum(['static', 'completed_work']),
   "billingCycleDay": zod.number(),
-  "billingCycleType": zod.enum(['monthly', 'weekly']),
+  "billingCycleType": zod.enum(['daily', 'weekly', 'monthly', 'bi_monthly']),
   "nextBillingDate": zod.string(),
   "isActive": zod.boolean(),
   "lastGeneratedAt": zod.string().nullish(),
@@ -6948,8 +6956,10 @@ export const GetRecurringTemplateParams = zod.object({
 export const GetRecurringTemplateResponse = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
-  "customerId": zod.number(),
+  "customerId": zod.number().nullish(),
   "customerName": zod.string().nullish(),
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string().nullish(),
   "name": zod.string(),
   "lineItems": zod.array(zod.object({
   "description": zod.string(),
@@ -6957,8 +6967,9 @@ export const GetRecurringTemplateResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })),
+  "billingMode": zod.enum(['static', 'completed_work']),
   "billingCycleDay": zod.number(),
-  "billingCycleType": zod.enum(['monthly', 'weekly']),
+  "billingCycleType": zod.enum(['daily', 'weekly', 'monthly', 'bi_monthly']),
   "nextBillingDate": zod.string(),
   "isActive": zod.boolean(),
   "lastGeneratedAt": zod.string().nullish(),
@@ -6976,6 +6987,8 @@ export const UpdateRecurringTemplateParams = zod.object({
 })
 
 export const UpdateRecurringTemplateBody = zod.object({
+  "customerId": zod.number().nullish(),
+  "serviceId": zod.number().nullish(),
   "name": zod.string().optional(),
   "lineItems": zod.array(zod.object({
   "description": zod.string(),
@@ -6983,8 +6996,9 @@ export const UpdateRecurringTemplateBody = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional(),
+  "billingMode": zod.enum(['static', 'completed_work']).optional(),
   "billingCycleDay": zod.number().optional(),
-  "billingCycleType": zod.enum(['monthly', 'weekly']).optional(),
+  "billingCycleType": zod.enum(['daily', 'weekly', 'monthly', 'bi_monthly']).optional(),
   "nextBillingDate": zod.string().optional(),
   "isActive": zod.boolean().optional(),
   "notes": zod.string().optional()
@@ -6993,8 +7007,10 @@ export const UpdateRecurringTemplateBody = zod.object({
 export const UpdateRecurringTemplateResponse = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
-  "customerId": zod.number(),
+  "customerId": zod.number().nullish(),
   "customerName": zod.string().nullish(),
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string().nullish(),
   "name": zod.string(),
   "lineItems": zod.array(zod.object({
   "description": zod.string(),
@@ -7002,8 +7018,9 @@ export const UpdateRecurringTemplateResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })),
+  "billingMode": zod.enum(['static', 'completed_work']),
   "billingCycleDay": zod.number(),
-  "billingCycleType": zod.enum(['monthly', 'weekly']),
+  "billingCycleType": zod.enum(['daily', 'weekly', 'monthly', 'bi_monthly']),
   "nextBillingDate": zod.string(),
   "isActive": zod.boolean(),
   "lastGeneratedAt": zod.string().nullish(),
@@ -7032,7 +7049,8 @@ export const RunRecurringTemplateNowParams = zod.object({
 
 export const RunRecurringTemplateNowResponse = zod.object({
   "success": zod.boolean(),
-  "invoiceId": zod.number()
+  "invoiceId": zod.number().nullable(),
+  "invoiceIds": zod.array(zod.number())
 })
 
 
@@ -7062,8 +7080,10 @@ export const GetBillingAutomationStatusResponse = zod.object({
   "templates": zod.array(zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
-  "customerId": zod.number(),
+  "customerId": zod.number().nullish(),
   "customerName": zod.string().nullish(),
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string().nullish(),
   "name": zod.string(),
   "lineItems": zod.array(zod.object({
   "description": zod.string(),
@@ -7071,8 +7091,9 @@ export const GetBillingAutomationStatusResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })),
+  "billingMode": zod.enum(['static', 'completed_work']),
   "billingCycleDay": zod.number(),
-  "billingCycleType": zod.enum(['monthly', 'weekly']),
+  "billingCycleType": zod.enum(['daily', 'weekly', 'monthly', 'bi_monthly']),
   "nextBillingDate": zod.string(),
   "isActive": zod.boolean(),
   "lastGeneratedAt": zod.string().nullish(),

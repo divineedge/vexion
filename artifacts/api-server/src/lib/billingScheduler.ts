@@ -2,22 +2,36 @@
  * Billing Scheduler
  * Runs daily and handles two automation pipelines:
  *   1. Recurring Invoice Templates — generate invoices for templates whose
- *      nextBillingDate is today or earlier.
+ *      nextBillingDate is today or earlier. Templates in 'static' billingMode
+ *      bill the same hand-entered line items every cycle; templates in
+ *      'completed_work' mode build line items from the customer's/service's
+ *      jobs completed since the template's last billing run.
  *   2. Email Queue — send pending billing emails with retry logic (max 3 attempts).
  */
 
 import { db, recurringInvoiceTemplatesTable, billingEmailQueueTable, invoicesTable, customersTable, tenantsTable, jobsTable } from "@workspace/db";
-import { eq, and, lte, sql } from "drizzle-orm";
+import type { RecurringInvoiceTemplate } from "@workspace/db";
+import { eq, and, lte, sql, inArray } from "drizzle-orm";
 import { logger } from "./logger";
 import { sendEmail } from "./emailProvider";
 
 const MAX_EMAIL_ATTEMPTS = 3;
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+type BillingLineItem = { description: string; quantity: number; unitPrice: number; total: number };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function todayDateString(): string {
   const d = new Date();
   return d.toISOString().slice(0, 10); // "yyyy-mm-dd"
+}
+
+function addDay(dateStr: string): string {
+  const d = new Date(dateStr + "T12:00:00Z");
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
 }
 
 function addMonth(dateStr: string): string {
@@ -39,6 +53,7 @@ function addBiMonth(dateStr: string): string {
 }
 
 function nextBillingDate(current: string, cycleType: string): string {
+  if (cycleType === "daily") return addDay(current);
   if (cycleType === "weekly") return addWeek(current);
   if (cycleType === "bi_monthly") return addBiMonth(current);
   return addMonth(current);
@@ -48,19 +63,175 @@ function generateInvoiceNumber(): string {
   return `INV-${Date.now().toString().slice(-8)}`;
 }
 
+/**
+ * Builds invoice line items for a 'completed_work' template from a specific customer's
+ * jobs completed since the template's last billing run (or since it was created, if it
+ * has never run). Matching jobs are constrained to the template's serviceId when set.
+ * Only jobs not already tied to another invoice are eligible, so work is never double-billed.
+ */
+async function collectCompletedWorkForCustomer(
+  tx: Tx,
+  tenantId: number,
+  customerId: number,
+  serviceId: number | null,
+  periodStart: Date,
+  periodEnd: Date,
+): Promise<{ lineItems: BillingLineItem[]; jobIds: number[] }> {
+  const jobs = await tx
+    .select()
+    .from(jobsTable)
+    .where(
+      and(
+        eq(jobsTable.tenantId, tenantId),
+        eq(jobsTable.customerId, customerId),
+        eq(jobsTable.status, "completed"),
+        sql`${jobsTable.completedAt} IS NOT NULL`,
+        sql`${jobsTable.completedAt} > ${periodStart}`,
+        sql`${jobsTable.completedAt} <= ${periodEnd}`,
+        sql`${jobsTable.invoiceId} IS NULL`,
+        serviceId != null ? eq(jobsTable.serviceId, serviceId) : sql`true`,
+      ),
+    );
+
+  const lineItems: BillingLineItem[] = jobs.map(job => ({
+    description: job.title,
+    quantity: 1,
+    unitPrice: job.totalAmount,
+    total: job.totalAmount,
+  }));
+
+  return { lineItems, jobIds: jobs.map(j => j.id) };
+}
+
+/** Distinct customers with qualifying completed work for a service-only-scoped template (no customerId set). */
+async function findCustomersWithCompletedWork(
+  tx: Tx,
+  tenantId: number,
+  serviceId: number,
+  periodStart: Date,
+  periodEnd: Date,
+): Promise<number[]> {
+  const rows = await tx
+    .selectDistinct({ customerId: jobsTable.customerId })
+    .from(jobsTable)
+    .where(
+      and(
+        eq(jobsTable.tenantId, tenantId),
+        eq(jobsTable.serviceId, serviceId),
+        eq(jobsTable.status, "completed"),
+        sql`${jobsTable.completedAt} IS NOT NULL`,
+        sql`${jobsTable.completedAt} > ${periodStart}`,
+        sql`${jobsTable.completedAt} <= ${periodEnd}`,
+        sql`${jobsTable.invoiceId} IS NULL`,
+        sql`${jobsTable.customerId} IS NOT NULL`,
+      ),
+    );
+  return rows.map(r => r.customerId).filter((id): id is number => id != null);
+}
+
+/**
+ * Generates a single invoice for one customer under the given template, using either the
+ * template's static line items or completed-work line items depending on billingMode.
+ * Returns null if there was nothing to bill (only possible in 'completed_work' mode).
+ */
+async function generateInvoiceForCustomer(
+  tx: Tx,
+  template: RecurringInvoiceTemplate,
+  customerId: number,
+  taxRate: number,
+  periodStart: Date,
+  periodEnd: Date,
+): Promise<number | null> {
+  let lineItems: BillingLineItem[];
+  let jobIds: number[] = [];
+
+  if (template.billingMode === "completed_work") {
+    const result = await collectCompletedWorkForCustomer(tx, template.tenantId, customerId, template.serviceId, periodStart, periodEnd);
+    if (result.lineItems.length === 0) return null;
+    lineItems = result.lineItems;
+    jobIds = result.jobIds;
+  } else {
+    lineItems = (template.lineItems as BillingLineItem[]) ?? [];
+  }
+
+  const subtotal = lineItems.reduce((sum, li) => sum + li.total, 0);
+  const tax = subtotal * (taxRate / 100);
+  const total = subtotal + tax;
+  const invoiceNum = generateInvoiceNumber();
+
+  const [invoice] = await tx
+    .insert(invoicesTable)
+    .values({
+      tenantId: template.tenantId,
+      invoiceNumber: invoiceNum,
+      customerId,
+      status: "sent",
+      subtotal,
+      tax,
+      total,
+      lineItems,
+      notes: template.notes ?? null,
+      generatedFromTemplateId: template.id,
+      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // net-30
+    })
+    .returning();
+
+  if (jobIds.length > 0) {
+    await tx.update(jobsTable).set({ invoiceId: invoice.id }).where(inArray(jobsTable.id, jobIds));
+  }
+
+  await tx.insert(billingEmailQueueTable).values({
+    tenantId: template.tenantId,
+    invoiceId: invoice.id,
+    status: "pending",
+    attempts: 0,
+  });
+
+  return invoice.id;
+}
+
+/** Runs one due template inside a transaction: generates 1..N invoices (N>1 only for service-only scope) and advances the schedule. */
+async function generateDueTemplate(tx: Tx, template: RecurringInvoiceTemplate): Promise<number[]> {
+  const [tenant] = await tx
+    .select({ taxRate: tenantsTable.taxRate })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, template.tenantId));
+  const taxRate = tenant?.taxRate ?? 0;
+
+  const periodStart = template.lastGeneratedAt ?? template.createdAt;
+  const periodEnd = new Date();
+
+  const invoiceIds: number[] = [];
+
+  if (template.customerId != null) {
+    const invoiceId = await generateInvoiceForCustomer(tx, template, template.customerId, taxRate, periodStart, periodEnd);
+    if (invoiceId != null) invoiceIds.push(invoiceId);
+  } else if (template.serviceId != null) {
+    // Service-only scope: bill every customer who has qualifying completed work this period.
+    const customerIds = await findCustomersWithCompletedWork(tx, template.tenantId, template.serviceId, periodStart, periodEnd);
+    for (const customerId of customerIds) {
+      const invoiceId = await generateInvoiceForCustomer(tx, template, customerId, taxRate, periodStart, periodEnd);
+      if (invoiceId != null) invoiceIds.push(invoiceId);
+    }
+  }
+
+  const nextDate = nextBillingDate(template.nextBillingDate, template.billingCycleType);
+  await tx
+    .update(recurringInvoiceTemplatesTable)
+    .set({ nextBillingDate: nextDate, lastGeneratedAt: periodEnd })
+    .where(eq(recurringInvoiceTemplatesTable.id, template.id));
+
+  return invoiceIds;
+}
+
 // ── 1. Process recurring templates ───────────────────────────────────────────
 
 async function processRecurringTemplates() {
   const today = todayDateString();
 
   const templates = await db
-    .select({
-      template: recurringInvoiceTemplatesTable,
-      customerEmail: customersTable.email,
-      customerName: customersTable.name,
-    })
+    .select()
     .from(recurringInvoiceTemplatesTable)
-    .leftJoin(customersTable, eq(recurringInvoiceTemplatesTable.customerId, customersTable.id))
     .where(
       and(
         eq(recurringInvoiceTemplatesTable.isActive, true),
@@ -70,62 +241,16 @@ async function processRecurringTemplates() {
 
   let generated = 0;
 
-  for (const { template, customerEmail, customerName } of templates) {
+  for (const template of templates) {
     try {
       await db.transaction(async tx => {
-        const lineItems = (template.lineItems as Array<{
-          description: string; quantity: number; unitPrice: number; total: number;
-        }>) ?? [];
-        const subtotal = lineItems.reduce((sum, li) => sum + li.total, 0);
-
-        // Fetch tenant for tax rate
-        const [tenant] = await tx
-          .select({ taxRate: tenantsTable.taxRate })
-          .from(tenantsTable)
-          .where(eq(tenantsTable.id, template.tenantId));
-        const taxRate = tenant?.taxRate ?? 0;
-        const tax = subtotal * (taxRate / 100);
-        const total = subtotal + tax;
-
-        const invoiceNum = generateInvoiceNumber();
-
-        const [invoice] = await tx
-          .insert(invoicesTable)
-          .values({
-            tenantId: template.tenantId,
-            invoiceNumber: invoiceNum,
-            customerId: template.customerId,
-            status: "sent",
-            subtotal,
-            tax,
-            total,
-            lineItems: template.lineItems,
-            notes: template.notes ?? null,
-            generatedFromTemplateId: template.id,
-            dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // net-30
-          })
-          .returning();
-
-        // Enqueue email
-        await tx.insert(billingEmailQueueTable).values({
-          tenantId: template.tenantId,
-          invoiceId: invoice.id,
-          status: "pending",
-          attempts: 0,
-        });
-
-        // Advance next billing date
-        const nextDate = nextBillingDate(template.nextBillingDate, template.billingCycleType);
-        await tx
-          .update(recurringInvoiceTemplatesTable)
-          .set({ nextBillingDate: nextDate, lastGeneratedAt: new Date() })
-          .where(eq(recurringInvoiceTemplatesTable.id, template.id));
-
-        generated++;
-        logger.info(
-          { templateId: template.id, invoiceId: invoice.id, customerId: template.customerId },
-          "Generated recurring invoice",
-        );
+        const invoiceIds = await generateDueTemplate(tx, template);
+        generated += invoiceIds.length;
+        if (invoiceIds.length > 0) {
+          logger.info({ templateId: template.id, invoiceIds, customerId: template.customerId }, "Generated recurring invoice(s)");
+        } else {
+          logger.info({ templateId: template.id }, "Recurring template due but had nothing to bill; schedule advanced");
+        }
       });
     } catch (err) {
       logger.error({ err, templateId: template.id }, "Failed to generate recurring invoice");
@@ -289,11 +414,11 @@ export async function previewDueTemplates(tenantId: number) {
 
   return due.map(({ template, customerName }) => {
     const lineItems = (template.lineItems as Array<{ quantity: number; unitPrice: number }>) ?? [];
-    const subtotal = lineItems.reduce((s, li) => s + li.quantity * li.unitPrice, 0);
+    const subtotal = template.billingMode === "completed_work" ? null : lineItems.reduce((s, li) => s + li.quantity * li.unitPrice, 0);
     return {
       templateId: template.id,
       templateName: template.name,
-      customerName: customerName ?? "Unknown",
+      customerName: customerName ?? (template.serviceId != null ? "Multiple (per completed work)" : "Unknown"),
       nextBillingDate: template.nextBillingDate,
       estimatedAmount: subtotal,
     };
@@ -307,7 +432,7 @@ export async function runAllDueTemplatesNow(tenantId: number) {
   for (const item of due) {
     try {
       const result = await runTemplateNow(item.templateId, tenantId);
-      results.push({ templateId: item.templateId, templateName: item.templateName, success: true, invoiceId: result.invoiceId });
+      results.push({ templateId: item.templateId, templateName: item.templateName, success: true, invoiceId: result.invoiceId ?? undefined });
     } catch (err) {
       results.push({ templateId: item.templateId, templateName: item.templateName, success: false, error: err instanceof Error ? err.message : "Unknown error" });
     }
@@ -329,16 +454,11 @@ export function startBillingScheduler() {
   interval.unref();
 }
 
-/** Manually trigger a single recurring template. Used by the "Generate Now" API. */
-export async function runTemplateNow(templateId: number, tenantId: number): Promise<{ invoiceId: number }> {
-  const [row] = await db
-    .select({
-      template: recurringInvoiceTemplatesTable,
-      customerEmail: customersTable.email,
-      customerName: customersTable.name,
-    })
+/** Manually trigger a single recurring template. Used by the "Generate Now" API. Does not advance nextBillingDate. */
+export async function runTemplateNow(templateId: number, tenantId: number): Promise<{ invoiceId: number | null; invoiceIds: number[] }> {
+  const [template] = await db
+    .select()
     .from(recurringInvoiceTemplatesTable)
-    .leftJoin(customersTable, eq(recurringInvoiceTemplatesTable.customerId, customersTable.id))
     .where(
       and(
         eq(recurringInvoiceTemplatesTable.id, templateId),
@@ -346,63 +466,51 @@ export async function runTemplateNow(templateId: number, tenantId: number): Prom
       ),
     );
 
-  if (!row) throw new Error("Template not found");
-
-  const { template } = row;
-
-  const lineItems = (template.lineItems as Array<{
-    description: string; quantity: number; unitPrice: number; total: number;
-  }>) ?? [];
-  const subtotal = lineItems.reduce((sum, li) => sum + li.total, 0);
+  if (!template) throw new Error("Template not found");
 
   const [tenant] = await db
     .select({ taxRate: tenantsTable.taxRate })
     .from(tenantsTable)
     .where(eq(tenantsTable.id, tenantId));
   const taxRate = tenant?.taxRate ?? 0;
-  const tax = subtotal * (taxRate / 100);
-  const total = subtotal + tax;
 
-  const invoiceNum = generateInvoiceNumber();
+  const periodStart = template.lastGeneratedAt ?? template.createdAt;
+  const periodEnd = new Date();
 
-  let invoiceId!: number;
+  const invoiceIds: number[] = [];
+
   await db.transaction(async tx => {
-    const [invoice] = await tx
-      .insert(invoicesTable)
-      .values({
-        tenantId,
-        invoiceNumber: invoiceNum,
-        customerId: template.customerId,
-        status: "sent",
-        subtotal,
-        tax,
-        total,
-        lineItems: template.lineItems,
-        notes: template.notes ?? null,
-        generatedFromTemplateId: template.id,
-        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      })
-      .returning();
+    if (template.customerId != null) {
+      const invoiceId = await generateInvoiceForCustomer(tx, template, template.customerId, taxRate, periodStart, periodEnd);
+      if (invoiceId != null) invoiceIds.push(invoiceId);
+    } else if (template.serviceId != null) {
+      const customerIds = await findCustomersWithCompletedWork(tx, template.tenantId, template.serviceId, periodStart, periodEnd);
+      for (const customerId of customerIds) {
+        const invoiceId = await generateInvoiceForCustomer(tx, template, customerId, taxRate, periodStart, periodEnd);
+        if (invoiceId != null) invoiceIds.push(invoiceId);
+      }
+    }
 
-    invoiceId = invoice.id;
-
-    await tx.insert(billingEmailQueueTable).values({
-      tenantId,
-      invoiceId: invoice.id,
-      status: "pending",
-      attempts: 0,
-    });
-
-    await tx
-      .update(recurringInvoiceTemplatesTable)
-      .set({ lastGeneratedAt: new Date() })
-      .where(eq(recurringInvoiceTemplatesTable.id, template.id));
+    if (invoiceIds.length > 0) {
+      await tx
+        .update(recurringInvoiceTemplatesTable)
+        .set({ lastGeneratedAt: periodEnd })
+        .where(eq(recurringInvoiceTemplatesTable.id, template.id));
+    }
   });
 
-  // Process email queue immediately for this invoice
+  if (invoiceIds.length === 0) {
+    throw new Error(
+      template.billingMode === "completed_work"
+        ? "No completed work found to bill for this period"
+        : "Nothing to bill",
+    );
+  }
+
+  // Process email queue immediately for these invoices
   await processEmailQueue();
 
-  return { invoiceId };
+  return { invoiceId: invoiceIds[0], invoiceIds };
 }
 
 /** Enqueue an auto-invoice email for immediate delivery. */

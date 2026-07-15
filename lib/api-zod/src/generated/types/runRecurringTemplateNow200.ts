@@ -8,5 +8,7 @@
 
 export type RunRecurringTemplateNow200 = {
   success: boolean;
-  invoiceId: number;
+  /** @nullable */
+  invoiceId: number | null;
+  invoiceIds: number[];
 };

@@ -10,6 +10,8 @@ export type CreateRecurringTemplateInputBillingCycleType = typeof CreateRecurrin
 
 
 export const CreateRecurringTemplateInputBillingCycleType = {
-  monthly: 'monthly',
+  daily: 'daily',
   weekly: 'weekly',
+  monthly: 'monthly',
+  bi_monthly: 'bi_monthly',
 } as const;

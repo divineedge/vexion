@@ -4651,12 +4651,16 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [success, invoiceId]
+                required: [success, invoiceId, invoiceIds]
                 properties:
                   success:
                     type: boolean
                   invoiceId:
-                    type: integer
+                    type: ["integer", "null"]
+                  invoiceIds:
+                    type: array
+                    items:
+                      type: integer
 
   /billing/email-queue/{id}/retry:
     post:
@@ -10155,15 +10159,19 @@ components:
 
     RecurringInvoiceTemplate:
       type: object
-      required: [id, tenantId, customerId, name, lineItems, billingCycleDay, billingCycleType, nextBillingDate, isActive, createdAt, updatedAt]
+      required: [id, tenantId, name, lineItems, billingMode, billingCycleDay, billingCycleType, nextBillingDate, isActive, createdAt, updatedAt]
       properties:
         id:
           type: integer
         tenantId:
           type: integer
         customerId:
-          type: integer
+          type: ["integer", "null"]
         customerName:
+          type: ["string", "null"]
+        serviceId:
+          type: ["integer", "null"]
+        serviceName:
           type: ["string", "null"]
         name:
           type: string
@@ -10171,11 +10179,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/BillingLineItem"
+        billingMode:
+          type: string
+          enum: [static, completed_work]
         billingCycleDay:
           type: integer
         billingCycleType:
           type: string
-          enum: [monthly, weekly]
+          enum: [daily, weekly, monthly, bi_monthly]
         nextBillingDate:
           type: string
         isActive:
@@ -10191,9 +10202,11 @@ components:
 
     CreateRecurringTemplateInput:
       type: object
-      required: [customerId, name, nextBillingDate]
+      required: [name, nextBillingDate]
       properties:
         customerId:
+          type: integer
+        serviceId:
           type: integer
         name:
           type: string
@@ -10201,11 +10214,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/BillingLineItem"
+        billingMode:
+          type: string
+          enum: [static, completed_work]
         billingCycleDay:
           type: integer
         billingCycleType:
           type: string
-          enum: [monthly, weekly]
+          enum: [daily, weekly, monthly, bi_monthly]
         nextBillingDate:
           type: string
         isActive:
@@ -10216,17 +10232,24 @@ components:
     UpdateRecurringTemplateInput:
       type: object
       properties:
+        customerId:
+          type: ["integer", "null"]
+        serviceId:
+          type: ["integer", "null"]
         name:
           type: string
         lineItems:
           type: array
           items:
             $ref: "#/components/schemas/BillingLineItem"
+        billingMode:
+          type: string
+          enum: [static, completed_work]
         billingCycleDay:
           type: integer
         billingCycleType:
           type: string
-          enum: [monthly, weekly]
+          enum: [daily, weekly, monthly, bi_monthly]
         nextBillingDate:
           type: string
         isActive:

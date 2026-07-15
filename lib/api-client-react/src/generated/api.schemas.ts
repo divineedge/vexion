@@ -3645,22 +3645,38 @@ export interface BillingQueueStats {
   failed: number;
 }
 
+export type RecurringInvoiceTemplateBillingMode = typeof RecurringInvoiceTemplateBillingMode[keyof typeof RecurringInvoiceTemplateBillingMode];
+
+
+export const RecurringInvoiceTemplateBillingMode = {
+  static: 'static',
+  completed_work: 'completed_work',
+} as const;
+
 export type RecurringInvoiceTemplateBillingCycleType = typeof RecurringInvoiceTemplateBillingCycleType[keyof typeof RecurringInvoiceTemplateBillingCycleType];
 
 
 export const RecurringInvoiceTemplateBillingCycleType = {
-  monthly: 'monthly',
+  daily: 'daily',
   weekly: 'weekly',
+  monthly: 'monthly',
+  bi_monthly: 'bi_monthly',
 } as const;
 
 export interface RecurringInvoiceTemplate {
   id: number;
   tenantId: number;
-  customerId: number;
+  /** @nullable */
+  customerId?: number | null;
   /** @nullable */
   customerName?: string | null;
+  /** @nullable */
+  serviceId?: number | null;
+  /** @nullable */
+  serviceName?: string | null;
   name: string;
   lineItems: BillingLineItem[];
+  billingMode: RecurringInvoiceTemplateBillingMode;
   billingCycleDay: number;
   billingCycleType: RecurringInvoiceTemplateBillingCycleType;
   nextBillingDate: string;
@@ -3673,18 +3689,30 @@ export interface RecurringInvoiceTemplate {
   updatedAt: string;
 }
 
+export type CreateRecurringTemplateInputBillingMode = typeof CreateRecurringTemplateInputBillingMode[keyof typeof CreateRecurringTemplateInputBillingMode];
+
+
+export const CreateRecurringTemplateInputBillingMode = {
+  static: 'static',
+  completed_work: 'completed_work',
+} as const;
+
 export type CreateRecurringTemplateInputBillingCycleType = typeof CreateRecurringTemplateInputBillingCycleType[keyof typeof CreateRecurringTemplateInputBillingCycleType];
 
 
 export const CreateRecurringTemplateInputBillingCycleType = {
-  monthly: 'monthly',
+  daily: 'daily',
   weekly: 'weekly',
+  monthly: 'monthly',
+  bi_monthly: 'bi_monthly',
 } as const;
 
 export interface CreateRecurringTemplateInput {
-  customerId: number;
+  customerId?: number;
+  serviceId?: number;
   name: string;
   lineItems?: BillingLineItem[];
+  billingMode?: CreateRecurringTemplateInputBillingMode;
   billingCycleDay?: number;
   billingCycleType?: CreateRecurringTemplateInputBillingCycleType;
   nextBillingDate: string;
@@ -3692,17 +3720,32 @@ export interface CreateRecurringTemplateInput {
   notes?: string;
 }
 
+export type UpdateRecurringTemplateInputBillingMode = typeof UpdateRecurringTemplateInputBillingMode[keyof typeof UpdateRecurringTemplateInputBillingMode];
+
+
+export const UpdateRecurringTemplateInputBillingMode = {
+  static: 'static',
+  completed_work: 'completed_work',
+} as const;
+
 export type UpdateRecurringTemplateInputBillingCycleType = typeof UpdateRecurringTemplateInputBillingCycleType[keyof typeof UpdateRecurringTemplateInputBillingCycleType];
 
 
 export const UpdateRecurringTemplateInputBillingCycleType = {
-  monthly: 'monthly',
+  daily: 'daily',
   weekly: 'weekly',
+  monthly: 'monthly',
+  bi_monthly: 'bi_monthly',
 } as const;
 
 export interface UpdateRecurringTemplateInput {
+  /** @nullable */
+  customerId?: number | null;
+  /** @nullable */
+  serviceId?: number | null;
   name?: string;
   lineItems?: BillingLineItem[];
+  billingMode?: UpdateRecurringTemplateInputBillingMode;
   billingCycleDay?: number;
   billingCycleType?: UpdateRecurringTemplateInputBillingCycleType;
   nextBillingDate?: string;
@@ -4219,7 +4262,9 @@ export type CancelPlanVisit200 = {
 
 export type RunRecurringTemplateNow200 = {
   success: boolean;
-  invoiceId: number;
+  /** @nullable */
+  invoiceId: number | null;
+  invoiceIds: number[];
 };
 
 export type SyncBankTransactions200 = {

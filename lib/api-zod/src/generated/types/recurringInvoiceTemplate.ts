@@ -7,15 +7,22 @@
  */
 import type { BillingLineItem } from './billingLineItem';
 import type { RecurringInvoiceTemplateBillingCycleType } from './recurringInvoiceTemplateBillingCycleType';
+import type { RecurringInvoiceTemplateBillingMode } from './recurringInvoiceTemplateBillingMode';
 
 export interface RecurringInvoiceTemplate {
   id: number;
   tenantId: number;
-  customerId: number;
+  /** @nullable */
+  customerId?: number | null;
   /** @nullable */
   customerName?: string | null;
+  /** @nullable */
+  serviceId?: number | null;
+  /** @nullable */
+  serviceName?: string | null;
   name: string;
   lineItems: BillingLineItem[];
+  billingMode: RecurringInvoiceTemplateBillingMode;
   billingCycleDay: number;
   billingCycleType: RecurringInvoiceTemplateBillingCycleType;
   nextBillingDate: string;

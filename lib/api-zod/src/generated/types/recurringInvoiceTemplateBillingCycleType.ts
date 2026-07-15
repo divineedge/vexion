@@ -10,6 +10,8 @@ export type RecurringInvoiceTemplateBillingCycleType = typeof RecurringInvoiceTe
 
 
 export const RecurringInvoiceTemplateBillingCycleType = {
-  monthly: 'monthly',
+  daily: 'daily',
   weekly: 'weekly',
+  monthly: 'monthly',
+  bi_monthly: 'bi_monthly',
 } as const;

@@ -15,6 +15,13 @@
       "when": 1783732847148,
       "tag": "0001_add_recurring_billing",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784427007000,
+      "tag": "0002_add_service_scoping_and_billing_mode",
+      "breakpoints": true
     }
   ]
 }

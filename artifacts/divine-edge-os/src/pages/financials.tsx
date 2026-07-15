@@ -19,9 +19,10 @@ import {
   useDismissStopServiceFlag,
   useGetTenantSettings, getGetTenantSettingsQueryKey,
   useCreateInvoice,
+  customFetch,
 } from '@workspace/api-client-react';
 import type { RecurringInvoiceTemplate, BillingLineItem, StopServiceFlag } from '@workspace/api-client-react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -61,6 +62,13 @@ const EMAIL_STATUS_COLORS: Record<string, string> = {
 // ── Recurring Template Sheet ──────────────────────────────────────────────────
 
 type LineItemRow = BillingLineItem;
+type BillingCycleType = 'daily' | 'weekly' | 'monthly';
+type BillingMode = 'static' | 'completed_work';
+
+interface ServiceOption {
+  id: number;
+  name: string;
+}
 
 interface TemplateSheetProps {
   open: boolean;
@@ -74,9 +82,17 @@ function TemplateSheet({ open, onClose, editing, customers }: TemplateSheetProps
   const createTemplate = useCreateRecurringTemplate();
   const updateTemplate = useUpdateRecurringTemplate();
 
+  const { data: services } = useQuery<ServiceOption[]>({
+    queryKey: ['services', 'recurring-template-picker'],
+    queryFn: () => customFetch<ServiceOption[]>('/api/services?activeOnly=true'),
+    enabled: open,
+  });
+
   const [customerId, setCustomerId] = useState('');
+  const [serviceId, setServiceId] = useState('');
   const [name, setName] = useState('');
-  const [billingCycleType, setBillingCycleType] = useState<'monthly' | 'weekly'>('monthly');
+  const [billingMode, setBillingMode] = useState<BillingMode>('static');
+  const [billingCycleType, setBillingCycleType] = useState<BillingCycleType>('monthly');
   const [billingCycleDay, setBillingCycleDay] = useState('1');
   const [nextBillingDate, setNextBillingDate] = useState('');
   const [isActive, setIsActive] = useState(true);
@@ -85,9 +101,11 @@ function TemplateSheet({ open, onClose, editing, customers }: TemplateSheetProps
 
   React.useEffect(() => {
     if (editing) {
-      setCustomerId(String(editing.customerId));
+      setCustomerId(editing.customerId != null ? String(editing.customerId) : '');
+      setServiceId(editing.serviceId != null ? String(editing.serviceId) : '');
       setName(editing.name);
-      setBillingCycleType(editing.billingCycleType as 'monthly' | 'weekly');
+      setBillingMode((editing.billingMode as BillingMode) ?? 'static');
+      setBillingCycleType(editing.billingCycleType as BillingCycleType);
       setBillingCycleDay(String(editing.billingCycleDay));
       setNextBillingDate(editing.nextBillingDate);
       setIsActive(editing.isActive);
@@ -96,7 +114,9 @@ function TemplateSheet({ open, onClose, editing, customers }: TemplateSheetProps
       setLineItems(items.length > 0 ? items : [{ description: '', quantity: 1, unitPrice: 0, total: 0 }]);
     } else {
       setCustomerId('');
+      setServiceId('');
       setName('');
+      setBillingMode('static');
       setBillingCycleType('monthly');
       setBillingCycleDay('1');
       setNextBillingDate('');
@@ -118,19 +138,29 @@ function TemplateSheet({ open, onClose, editing, customers }: TemplateSheetProps
   const subtotal = lineItems.reduce((s, li) => s + li.total, 0);
 
   const handleSave = () => {
-    if (!customerId || !name || !nextBillingDate) {
-      toast.error('Customer, name, and next billing date are required');
+    if (!name || !nextBillingDate) {
+      toast.error('Name and next billing date are required');
+      return;
+    }
+    if (!customerId && !serviceId) {
+      toast.error('Scope the template to a customer, a service, or both');
+      return;
+    }
+    if (billingMode === 'static' && !customerId) {
+      toast.error('Static line-item templates require a customer');
       return;
     }
     const payload = {
-      customerId: parseInt(customerId, 10),
+      customerId: customerId ? parseInt(customerId, 10) : undefined,
+      serviceId: serviceId ? parseInt(serviceId, 10) : undefined,
       name,
+      billingMode,
       billingCycleType,
       billingCycleDay: parseInt(billingCycleDay, 10),
       nextBillingDate,
       isActive,
       notes: notes || undefined,
-      lineItems,
+      lineItems: billingMode === 'static' ? lineItems : [],
     };
 
     const invalidate = () => {
@@ -141,7 +171,7 @@ function TemplateSheet({ open, onClose, editing, customers }: TemplateSheetProps
 
     if (editing) {
       updateTemplate.mutate(
-        { id: editing.id, data: payload },
+        { id: editing.id, data: { ...payload, customerId: customerId ? parseInt(customerId, 10) : null, serviceId: serviceId ? parseInt(serviceId, 10) : null } },
         { onSuccess: () => { toast.success('Template updated'); invalidate(); }, onError: () => toast.error('Failed to update') },
       );
     } else {
@@ -163,45 +193,82 @@ function TemplateSheet({ open, onClose, editing, customers }: TemplateSheetProps
         </SheetHeader>
 
         <div className="space-y-4 pb-6">
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Customer <span className="text-destructive">*</span></label>
-            <Select value={customerId} onValueChange={setCustomerId}>
-              <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
-              <SelectContent>
-                {customers.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">
+                Customer {billingMode === 'static' && <span className="text-destructive">*</span>}
+              </label>
+              <Select value={customerId || '__none__'} onValueChange={v => setCustomerId(v === '__none__' ? '' : v)}>
+                <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— None —</SelectItem>
+                  {customers.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Service</label>
+              <Select value={serviceId || '__none__'} onValueChange={v => setServiceId(v === '__none__' ? '' : v)}>
+                <SelectTrigger><SelectValue placeholder="Select service" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— None —</SelectItem>
+                  {(services ?? []).map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+          <p className="text-xs text-muted-foreground -mt-2">
+            Scope to a customer, a service, or both. Service-only templates bill every customer with qualifying completed work.
+          </p>
 
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Template Name <span className="text-destructive">*</span></label>
             <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Monthly Lawn Maintenance" />
           </div>
 
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Billing Source</label>
+            <Select value={billingMode} onValueChange={v => setBillingMode(v as BillingMode)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="static">Fixed line items (hand-entered)</SelectItem>
+                <SelectItem value="completed_work">Bill from completed work</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {billingMode === 'static'
+                ? 'Bills the same line items below every cycle.'
+                : 'Builds the invoice from jobs completed since the last billing run, instead of static line items.'}
+            </p>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Billing Cycle</label>
-              <Select value={billingCycleType} onValueChange={v => setBillingCycleType(v as 'monthly' | 'weekly')}>
+              <Select value={billingCycleType} onValueChange={v => setBillingCycleType(v as BillingCycleType)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="monthly">Monthly</SelectItem>
+                  <SelectItem value="daily">Daily</SelectItem>
                   <SelectItem value="weekly">Weekly</SelectItem>
+                  <SelectItem value="monthly">Monthly</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Day of {billingCycleType === 'monthly' ? 'Month' : 'Week'}</label>
-              <Input
-                type="number"
-                min={billingCycleType === 'monthly' ? 1 : 0}
-                max={billingCycleType === 'monthly' ? 28 : 6}
-                value={billingCycleDay}
-                onChange={e => setBillingCycleDay(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                {billingCycleType === 'monthly' ? '1–28 (day of month)' : '0=Sun, 1=Mon … 6=Sat'}
-              </p>
-            </div>
+            {billingCycleType !== 'daily' && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Day of {billingCycleType === 'monthly' ? 'Month' : 'Week'}</label>
+                <Input
+                  type="number"
+                  min={billingCycleType === 'monthly' ? 1 : 0}
+                  max={billingCycleType === 'monthly' ? 28 : 6}
+                  value={billingCycleDay}
+                  onChange={e => setBillingCycleDay(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {billingCycleType === 'monthly' ? '1–28 (day of month)' : '0=Sun, 1=Mon … 6=Sat'}
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -211,61 +278,68 @@ function TemplateSheet({ open, onClose, editing, customers }: TemplateSheetProps
 
           <Separator />
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium">Line Items</label>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs gap-1"
-                onClick={() => setLineItems(p => [...p, { description: '', quantity: 1, unitPrice: 0, total: 0 }])}
-              >
-                <Plus className="w-3 h-3" /> Add Line
-              </Button>
-            </div>
+          {billingMode === 'static' ? (
             <div className="space-y-2">
-              {lineItems.map((li, i) => (
-                <div key={i} className="grid grid-cols-12 gap-1.5 items-center text-sm">
-                  <Input
-                    className="col-span-5 h-8 text-xs"
-                    placeholder="Description"
-                    value={li.description}
-                    onChange={e => updateLineItem(i, 'description', e.target.value)}
-                  />
-                  <Input
-                    className="col-span-2 h-8 text-xs"
-                    type="number"
-                    min={1}
-                    placeholder="Qty"
-                    value={li.quantity}
-                    onChange={e => updateLineItem(i, 'quantity', parseFloat(e.target.value) || 0)}
-                  />
-                  <Input
-                    className="col-span-3 h-8 text-xs"
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    placeholder="Unit price"
-                    value={li.unitPrice}
-                    onChange={e => updateLineItem(i, 'unitPrice', parseFloat(e.target.value) || 0)}
-                  />
-                  <span className="col-span-1 text-xs text-right font-medium">${li.total.toFixed(0)}</span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="col-span-1 h-7 w-7 text-muted-foreground hover:text-destructive"
-                    onClick={() => setLineItems(p => p.filter((_, j) => j !== i))}
-                    disabled={lineItems.length === 1}
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium">Line Items</label>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs gap-1"
+                  onClick={() => setLineItems(p => [...p, { description: '', quantity: 1, unitPrice: 0, total: 0 }])}
+                >
+                  <Plus className="w-3 h-3" /> Add Line
+                </Button>
+              </div>
+              <div className="space-y-2">
+                {lineItems.map((li, i) => (
+                  <div key={i} className="grid grid-cols-12 gap-1.5 items-center text-sm">
+                    <Input
+                      className="col-span-5 h-8 text-xs"
+                      placeholder="Description"
+                      value={li.description}
+                      onChange={e => updateLineItem(i, 'description', e.target.value)}
+                    />
+                    <Input
+                      className="col-span-2 h-8 text-xs"
+                      type="number"
+                      min={1}
+                      placeholder="Qty"
+                      value={li.quantity}
+                      onChange={e => updateLineItem(i, 'quantity', parseFloat(e.target.value) || 0)}
+                    />
+                    <Input
+                      className="col-span-3 h-8 text-xs"
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      placeholder="Unit price"
+                      value={li.unitPrice}
+                      onChange={e => updateLineItem(i, 'unitPrice', parseFloat(e.target.value) || 0)}
+                    />
+                    <span className="col-span-1 text-xs text-right font-medium">${li.total.toFixed(0)}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="col-span-1 h-7 w-7 text-muted-foreground hover:text-destructive"
+                      onClick={() => setLineItems(p => p.filter((_, j) => j !== i))}
+                      disabled={lineItems.length === 1}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
+                ))}
+                <div className="flex justify-end text-sm font-semibold text-right pr-8">
+                  Subtotal: ${subtotal.toFixed(2)}
                 </div>
-              ))}
-              <div className="flex justify-end text-sm font-semibold text-right pr-8">
-                Subtotal: ${subtotal.toFixed(2)}
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+              Line items aren't entered here — each invoice will be built automatically from the completed jobs
+              matching this template's scope since the last billing run.
+            </div>
+          )}
 
           <Separator />
 
@@ -569,12 +643,17 @@ export default function FinancialsPage() {
   const handleRunNow = (id: number) => {
     runNow.mutate({ id }, {
       onSuccess: (data) => {
-        toast.success(`Invoice #${(data as { invoiceId: number }).invoiceId} generated`);
+        const invoiceIds = (data as { invoiceIds: number[] }).invoiceIds ?? [];
+        toast.success(
+          invoiceIds.length > 1
+            ? `${invoiceIds.length} invoices generated`
+            : `Invoice #${invoiceIds[0]} generated`,
+        );
         qc.invalidateQueries({ queryKey: getGetBillingAutomationStatusQueryKey() });
         qc.invalidateQueries({ queryKey: getListInvoicesQueryKey() });
         qc.invalidateQueries({ queryKey: getGetFinancialsSummaryQueryKey() });
       },
-      onError: () => toast.error('Failed to generate invoice'),
+      onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to generate invoice'),
     });
   };
 
@@ -732,7 +811,8 @@ export default function FinancialsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Template</TableHead>
-                    <TableHead>Customer</TableHead>
+                    <TableHead>Scope</TableHead>
+                    <TableHead>Source</TableHead>
                     <TableHead>Cycle</TableHead>
                     <TableHead>Next Run</TableHead>
                     <TableHead>Status</TableHead>
@@ -742,19 +822,34 @@ export default function FinancialsPage() {
                 </TableHeader>
                 <TableBody>
                   {templatesLoading ? (
-                    <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Loading templates...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading templates...</TableCell></TableRow>
                   ) : (templates ?? []).length === 0 ? (
-                    <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No recurring templates. Create one to automate billing.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No recurring templates. Create one to automate billing.</TableCell></TableRow>
                   ) : (
                     (templates ?? []).map(t => {
                       const lineItems = (t.lineItems ?? []) as Array<{ quantity: number; unitPrice: number }>;
                       const subtotal = lineItems.reduce((s, li) => s + li.quantity * li.unitPrice, 0);
+                      const isCompletedWork = t.billingMode === 'completed_work';
                       return (
                         <TableRow key={t.id}>
                           <TableCell className="font-medium">{t.name}</TableCell>
-                          <TableCell className="text-muted-foreground">{t.customerName}</TableCell>
+                          <TableCell className="text-muted-foreground text-sm">
+                            {t.customerName ?? (t.serviceName ? null : '—')}
+                            {t.customerName && t.serviceName && ' · '}
+                            {t.serviceName}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              className={isCompletedWork
+                                ? 'bg-blue-100 text-blue-800 border-transparent'
+                                : 'bg-slate-100 text-slate-600 border-transparent'}
+                              variant="outline"
+                            >
+                              {isCompletedWork ? 'Completed Work' : 'Static'}
+                            </Badge>
+                          </TableCell>
                           <TableCell className="text-sm text-muted-foreground capitalize">
-                            {t.billingCycleType} · day {t.billingCycleDay}
+                            {t.billingCycleType}{t.billingCycleType !== 'daily' ? ` · day ${t.billingCycleDay}` : ''}
                           </TableCell>
                           <TableCell className="text-sm">
                             <div className="flex items-center gap-1.5">
@@ -772,7 +867,7 @@ export default function FinancialsPage() {
                               {t.isActive ? 'Active' : 'Paused'}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-right font-medium">${subtotal.toFixed(2)}</TableCell>
+                          <TableCell className="text-right font-medium">{isCompletedWork ? '—' : `${subtotal.toFixed(2)}`}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
                               <Button

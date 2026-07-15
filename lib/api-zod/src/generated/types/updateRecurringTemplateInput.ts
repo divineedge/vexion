@@ -7,10 +7,16 @@
  */
 import type { BillingLineItem } from './billingLineItem';
 import type { UpdateRecurringTemplateInputBillingCycleType } from './updateRecurringTemplateInputBillingCycleType';
+import type { UpdateRecurringTemplateInputBillingMode } from './updateRecurringTemplateInputBillingMode';
 
 export interface UpdateRecurringTemplateInput {
+  /** @nullable */
+  customerId?: number | null;
+  /** @nullable */
+  serviceId?: number | null;
   name?: string;
   lineItems?: BillingLineItem[];
+  billingMode?: UpdateRecurringTemplateInputBillingMode;
   billingCycleDay?: number;
   billingCycleType?: UpdateRecurringTemplateInputBillingCycleType;
   nextBillingDate?: string;

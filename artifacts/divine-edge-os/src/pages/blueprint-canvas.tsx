@@ -9,14 +9,15 @@ import {
   useListBlueprints, getListBlueprintsQueryKey,
   customFetch,
 } from '@workspace/api-client-react';
-import type { EstimatedPart } from '@workspace/api-client-react';
+import type { EstimatedPart, InventoryItem } from '@workspace/api-client-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
   ArrowLeft, Save, MousePointer2, PlusCircle, Minus, Trash2, Calculator, Ruler,
   ChevronDown, TreeDeciduous, Mountain, Waves, Hash, Layers, SprayCan, Link2,
   Wand2, Shapes, Sparkles, X, Check, ZoomIn, ZoomOut, Maximize, Square, HelpCircle, Library,
-  Upload, FileText, Undo2, Shrub, Flower2, Sprout, Grid3x3, Milestone, BrickWall,
+  Upload, FileText, Undo2, Shrub, Flower2, Sprout, Grid3x3, Milestone, BrickWall, AlertTriangle,
+  PackageCheck,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useQueryClient } from '@tanstack/react-query';
@@ -39,14 +40,19 @@ import 'leaflet/dist/leaflet.css';
 type PointElementType =
   | 'node' | 'sprinkler' | 'tree' | 'largeRock' | 'dryRiverBed'
   | 'gravel_1in' | 'gravel_2in' | 'gravel_3in' | 'gravel_4in' | 'trench'
-  | 'canopyTree' | 'evergreenShrub' | 'perennialFlowers' | 'turf' | 'paver';
+  | 'canopyTree' | 'evergreenShrub' | 'perennialFlowers' | 'paver';
 
 /** Ground-cover material types drawn as a bounded area (polygon) rather than a single point. */
 type AreaElementType =
   | 'dryRiverBed' | 'gravel_1in' | 'gravel_2in' | 'gravel_3in' | 'gravel_4in' | 'largeRockBed'
-  | 'patio' | 'walkway' | 'mulchBed' | 'retainingWall';
+  | 'patio' | 'walkway' | 'mulchBed' | 'retainingWall' | 'turf';
 
-/** Default fill depth (inches) per ground-cover area type — drives the cubic-yard estimate; staff can override per-area. */
+/** Area types quantified by raw coverage (sq ft of material laid down) rather than fill volume — sod/turf
+ * is sold and installed by the square foot, not by cubic yards of depth like gravel or mulch. */
+const COVERAGE_AREA_TYPES = new Set<AreaElementType>(['turf']);
+
+/** Default fill depth (inches) per ground-cover area type — drives the cubic-yard estimate; staff can override per-area.
+ * Coverage-based types (see COVERAGE_AREA_TYPES) ignore depth entirely. */
 function defaultDepthInches(elementType: AreaElementType): number {
   switch (elementType) {
     case 'gravel_1in': return 1;
@@ -59,6 +65,7 @@ function defaultDepthInches(elementType: AreaElementType): number {
     case 'patio': return 4;
     case 'walkway': return 4;
     case 'retainingWall': return 8;
+    case 'turf': return 0;
     default: return 3;
   }
 }
@@ -114,35 +121,100 @@ type ZoneMaterial = { elementType: PointElementType | AreaElementType | LineElem
 /** A user-drawn "needs design" area on the satellite map, with the materials AI should use inside it. */
 type AiZone = { id: string; label: string; polygon: { x: number; y: number }[]; materials: ZoneMaterial[] };
 
-/** Point-placeable fixture types. Ground cover (gravel/dry river bed) and trenches are areas/lines — see AREA_PALETTE below. */
-const POINT_PALETTE: { type: PointElementType; label: string; icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; color: string }[] = [
+/**
+ * Point-placeable fixture types. Ground cover (gravel/dry river bed) and trenches are areas/lines — see AREA_PALETTE below.
+ * `inventoryCategory` narrows the "Linked Inventory Item" picker to the matching inventory category (see inventory.ts
+ * `category` field) so staff pick from a short, relevant parts list instead of the whole catalog.
+ */
+const POINT_PALETTE: { type: PointElementType; label: string; icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; color: string; inventoryCategory?: string }[] = [
   { type: 'node', label: 'Generic Point', icon: PlusCircle, color: 'hsl(var(--muted-foreground))' },
-  { type: 'sprinkler', label: 'Sprinkler', icon: SprayCan, color: '#38bdf8' },
-  { type: 'tree', label: 'Tree', icon: TreeDeciduous, color: '#16a34a' },
-  { type: 'largeRock', label: 'Large Rock', icon: Mountain, color: '#78716c' },
-  { type: 'canopyTree', label: 'Canopy Tree', icon: TreeDeciduous, color: '#15803d' },
-  { type: 'evergreenShrub', label: 'Evergreen Shrub', icon: Shrub, color: '#166534' },
-  { type: 'perennialFlowers', label: 'Perennial Flowers', icon: Flower2, color: '#db2777' },
-  { type: 'turf', label: 'Turf / Sod', icon: Sprout, color: '#65a30d' },
-  { type: 'paver', label: 'Paver', icon: Grid3x3, color: '#a8a29e' },
+  { type: 'sprinkler', label: 'Sprinkler', icon: SprayCan, color: '#38bdf8', inventoryCategory: 'Sprinkler Heads' },
+  { type: 'tree', label: 'Tree', icon: TreeDeciduous, color: '#16a34a', inventoryCategory: 'Landscape' },
+  { type: 'largeRock', label: 'Large Rock', icon: Mountain, color: '#78716c', inventoryCategory: 'Landscape' },
+  { type: 'canopyTree', label: 'Canopy Tree', icon: TreeDeciduous, color: '#15803d', inventoryCategory: 'Landscape' },
+  { type: 'evergreenShrub', label: 'Evergreen Shrub', icon: Shrub, color: '#166534', inventoryCategory: 'Landscape' },
+  { type: 'perennialFlowers', label: 'Perennial Flowers', icon: Flower2, color: '#db2777', inventoryCategory: 'Landscape' },
+  { type: 'paver', label: 'Paver', icon: Grid3x3, color: '#a8a29e', inventoryCategory: 'Landscape' },
 ];
 
 /** Ground-cover area types — drawn as a bounded polygon (sq ft), not a single dot. */
-const AREA_PALETTE: { type: AreaElementType; label: string; icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; color: string }[] = [
-  { type: 'dryRiverBed', label: 'Dry River Bed', icon: Waves, color: '#0891b2' },
-  { type: 'gravel_1in', label: 'Gravel (1")', icon: Layers, color: '#d6b98c' },
-  { type: 'gravel_2in', label: 'Gravel (2")', icon: Layers, color: '#c9a876' },
-  { type: 'gravel_3in', label: 'Gravel (3")', icon: Layers, color: '#bb9660' },
-  { type: 'gravel_4in', label: 'Gravel (4")', icon: Layers, color: '#ad844a' },
-  { type: 'largeRockBed', label: 'Large Rock (Bed)', icon: Mountain, color: '#78716c' },
-  { type: 'patio', label: 'Patio', icon: Square, color: '#94a3b8' },
-  { type: 'walkway', label: 'Walkway', icon: Milestone, color: '#cbd5e1' },
-  { type: 'mulchBed', label: 'Mulch Bed', icon: Sprout, color: '#92400e' },
-  { type: 'retainingWall', label: 'Retaining Wall', icon: BrickWall, color: '#57534e' },
+const AREA_PALETTE: { type: AreaElementType; label: string; icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; color: string; inventoryCategory?: string }[] = [
+  { type: 'dryRiverBed', label: 'Dry River Bed', icon: Waves, color: '#0891b2', inventoryCategory: 'Landscape' },
+  { type: 'gravel_1in', label: 'Gravel (1")', icon: Layers, color: '#d6b98c', inventoryCategory: 'Landscape' },
+  { type: 'gravel_2in', label: 'Gravel (2")', icon: Layers, color: '#c9a876', inventoryCategory: 'Landscape' },
+  { type: 'gravel_3in', label: 'Gravel (3")', icon: Layers, color: '#bb9660', inventoryCategory: 'Landscape' },
+  { type: 'gravel_4in', label: 'Gravel (4")', icon: Layers, color: '#ad844a', inventoryCategory: 'Landscape' },
+  { type: 'largeRockBed', label: 'Large Rock (Bed)', icon: Mountain, color: '#78716c', inventoryCategory: 'Landscape' },
+  { type: 'patio', label: 'Patio', icon: Square, color: '#94a3b8', inventoryCategory: 'Concrete' },
+  { type: 'walkway', label: 'Walkway', icon: Milestone, color: '#cbd5e1', inventoryCategory: 'Concrete' },
+  { type: 'mulchBed', label: 'Mulch Bed', icon: Sprout, color: '#92400e', inventoryCategory: 'Landscape' },
+  { type: 'retainingWall', label: 'Retaining Wall', icon: BrickWall, color: '#57534e', inventoryCategory: 'Concrete' },
+  { type: 'turf', label: 'Turf / Sod', icon: Sprout, color: '#65a30d', inventoryCategory: 'Landscape' },
 ];
 
 function areaElementMeta(elementType: AreaElementType) {
   return AREA_PALETTE.find(a => a.type === elementType) ?? AREA_PALETTE[0];
+}
+
+/** Pipes/trenches on the canvas draw from the "Pipe & Fittings" inventory category. */
+const LINE_INVENTORY_CATEGORY = 'Pipe & Fittings';
+
+/** Narrows the full "available for blueprint" list down to the category relevant for this element type,
+ * so staff pick from a handful of relevant parts instead of the whole catalog. Falls back to the full
+ * list if nothing in inventory is tagged with that category yet, rather than showing a dead-end empty picker. */
+function filteredInventoryItems(items: InventoryItem[] | undefined, category: string | undefined): InventoryItem[] {
+  if (!items) return [];
+  if (!category) return items;
+  const matches = items.filter(i => i.category === category);
+  return matches.length > 0 ? matches : items;
+}
+
+/**
+ * Shared "Linked Inventory Item" control used in the point/line/area property panels. Beyond just letting
+ * staff pick a SKU, it surfaces what's actually in stock and what the part is/how it's used — pulled
+ * straight from the inventory item's on-hand quantity, low-stock flag, and description — so staff don't
+ * have to tab over to the Inventory page to know what they have or what a part is for.
+ */
+function InventoryLinkField({
+  items, category, value, onChange,
+}: {
+  items: InventoryItem[] | undefined;
+  category?: string;
+  value: number | null | undefined;
+  onChange: (id: number | null) => void;
+}) {
+  const options = filteredInventoryItems(items, category);
+  const selected = value != null ? items?.find(i => i.id === value) : undefined;
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs flex items-center gap-1"><Link2 className="w-3 h-3" /> Linked Inventory Item</Label>
+      <Select value={value != null ? String(value) : 'none'} onValueChange={v => onChange(v === 'none' ? null : Number(v))}>
+        <SelectTrigger className="h-8 w-56"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="none">None</SelectItem>
+          {options.map(item => (
+            <SelectItem key={item.id} value={String(item.id)}>
+              {item.name} · {item.sku}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {selected && (
+        <div className="max-w-[16rem] space-y-0.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Badge variant={selected.isLowStock ? 'destructive' : 'outline'} className="text-[10px] px-1.5 py-0 gap-1">
+              {selected.isLowStock ? <AlertTriangle className="w-3 h-3" /> : <PackageCheck className="w-3 h-3" />}
+              {selected.quantity} {selected.unit ?? 'each'} on hand
+            </Badge>
+            {selected.isLowStock && <span className="text-[10px] text-destructive">Below reorder point — order more</span>}
+          </div>
+          {selected.description && (
+            <p className="text-[11px] text-muted-foreground leading-snug">{selected.description}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -150,10 +222,10 @@ function areaElementMeta(elementType: AreaElementType) {
  * ground-cover areas, and the trench line — AI generation places each as the right element kind
  * (point, area, or line) even though they're all picked from one flat "materials" list here.
  */
-const ZONE_MATERIAL_PALETTE: { type: PointElementType | AreaElementType | LineElementType; label: string; icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; color: string }[] = [
+const ZONE_MATERIAL_PALETTE: { type: PointElementType | AreaElementType | LineElementType; label: string; icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; color: string; inventoryCategory?: string }[] = [
   ...POINT_PALETTE.filter(p => p.type !== 'node'),
   ...AREA_PALETTE,
-  { type: 'trench', label: 'Trench (numbered line)', icon: Hash, color: '#f97316' },
+  { type: 'trench', label: 'Trench (numbered line)', icon: Hash, color: '#f97316', inventoryCategory: LINE_INVENTORY_CATEGORY },
 ];
 
 const SPRINKLER_HEAD_TYPES = ['Rotor', 'Spray', 'Drip / Micro', 'Bubbler', 'MP Rotator'];
@@ -1725,8 +1797,15 @@ export default function BlueprintCanvasPage() {
                   <SelectTrigger className="h-8 w-48"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">None</SelectItem>
-                    {(blueprintInventoryItems ?? []).map(item => (
-                      <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>
+                    {filteredInventoryItems(
+                      blueprintInventoryItems,
+                      multiSelect.kind === 'line'
+                        ? LINE_INVENTORY_CATEGORY
+                        : multiSelect.kind === 'area'
+                          ? areaElementMeta(multiSelect.elementType as AreaElementType).inventoryCategory
+                          : pointElementMeta(multiSelect.elementType as PointElementType).inventoryCategory,
+                    ).map(item => (
+                      <SelectItem key={item.id} value={String(item.id)}>{item.name} · {item.sku}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -1797,21 +1876,12 @@ export default function BlueprintCanvasPage() {
                     </Select>
                   </div>
                 )}
-                <div className="space-y-1">
-                  <Label className="text-xs flex items-center gap-1"><Link2 className="w-3 h-3" /> Linked Inventory Item</Label>
-                  <Select
-                    value={pt.inventoryItemId != null ? String(pt.inventoryItemId) : 'none'}
-                    onValueChange={v => updatePoint({ inventoryItemId: v === 'none' ? null : Number(v) })}
-                  >
-                    <SelectTrigger className="h-8 w-48"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {(blueprintInventoryItems ?? []).map(item => (
-                        <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <InventoryLinkField
+                  items={blueprintInventoryItems}
+                  category={pointElementMeta(pt.elementType).inventoryCategory}
+                  value={pt.inventoryItemId}
+                  onChange={id => updatePoint({ inventoryItemId: id })}
+                />
               </div>
             );
           })()}
@@ -1857,21 +1927,12 @@ export default function BlueprintCanvasPage() {
                     <Input className="h-8 w-36" value={ln.label ?? ''} onChange={e => updateLine({ label: e.target.value })} />
                   </div>
                 )}
-                <div className="space-y-1">
-                  <Label className="text-xs flex items-center gap-1"><Link2 className="w-3 h-3" /> Linked Inventory Item</Label>
-                  <Select
-                    value={ln.inventoryItemId != null ? String(ln.inventoryItemId) : 'none'}
-                    onValueChange={v => updateLine({ inventoryItemId: v === 'none' ? null : Number(v) })}
-                  >
-                    <SelectTrigger className="h-8 w-48"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {(blueprintInventoryItems ?? []).map(item => (
-                        <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <InventoryLinkField
+                  items={blueprintInventoryItems}
+                  category={LINE_INVENTORY_CATEGORY}
+                  value={ln.inventoryItemId}
+                  onChange={id => updateLine({ inventoryItemId: id })}
+                />
               </div>
             );
           })()}
@@ -1879,6 +1940,7 @@ export default function BlueprintCanvasPage() {
             const area = areas.find(a => a.id === selectedAreaId);
             if (!area) return null;
             const meta = areaElementMeta(area.elementType);
+            const isCoverage = COVERAGE_AREA_TYPES.has(area.elementType);
             const sqFt = scalePxPerFt ? pxAreaToSqFt(polygonAreaPx(area.polygon), scalePxPerFt) : null;
             const depthInches = area.depthInches ?? defaultDepthInches(area.elementType);
             const cubicYards = sqFt !== null ? (sqFt * (depthInches / 12)) / 27 : null;
@@ -1891,7 +1953,9 @@ export default function BlueprintCanvasPage() {
                   {sqFt !== null ? (
                     <>
                       <Badge variant="outline" className="text-xs">{sqFt.toLocaleString(undefined, { maximumFractionDigits: 1 })} sq ft</Badge>
-                      <Badge variant="outline" className="text-xs">{cubicYards!.toLocaleString(undefined, { maximumFractionDigits: 2 })} cu yd</Badge>
+                      {!isCoverage && (
+                        <Badge variant="outline" className="text-xs">{cubicYards!.toLocaleString(undefined, { maximumFractionDigits: 2 })} cu yd</Badge>
+                      )}
                     </>
                   ) : (
                     <Badge variant="outline" className="text-xs text-muted-foreground">Calibrate for sq ft</Badge>
@@ -1901,29 +1965,22 @@ export default function BlueprintCanvasPage() {
                   <Label className="text-xs">Label</Label>
                   <Input className="h-8 w-36" value={area.label ?? ''} placeholder="Optional label" onChange={e => updateArea({ label: e.target.value })} />
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Depth (in)</Label>
-                  <Input
-                    type="number" min={0.5} step={0.5} className="h-8 w-20"
-                    value={depthInches}
-                    onChange={e => updateArea({ depthInches: Number(e.target.value) || 0 })}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs flex items-center gap-1"><Link2 className="w-3 h-3" /> Linked Inventory Item</Label>
-                  <Select
-                    value={area.inventoryItemId != null ? String(area.inventoryItemId) : 'none'}
-                    onValueChange={v => updateArea({ inventoryItemId: v === 'none' ? null : Number(v) })}
-                  >
-                    <SelectTrigger className="h-8 w-48"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
-                      {(blueprintInventoryItems ?? []).map(item => (
-                        <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {!isCoverage && (
+                  <div className="space-y-1">
+                    <Label className="text-xs">Depth (in)</Label>
+                    <Input
+                      type="number" min={0.5} step={0.5} className="h-8 w-20"
+                      value={depthInches}
+                      onChange={e => updateArea({ depthInches: Number(e.target.value) || 0 })}
+                    />
+                  </div>
+                )}
+                <InventoryLinkField
+                  items={blueprintInventoryItems}
+                  category={meta.inventoryCategory}
+                  value={area.inventoryItemId}
+                  onChange={id => updateArea({ inventoryItemId: id })}
+                />
               </div>
             );
           })()}
@@ -2305,10 +2362,15 @@ export default function BlueprintCanvasPage() {
 
                 {estimateResult && estimateResult.parts.length > 0 && (
                   <div className="space-y-2 pt-4 border-t">
-                    <p className="text-sm font-medium">Parts Breakdown</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium">Parts Breakdown</p>
+                      {estimateResult.parts.some(p => p.orderNeeded) && (
+                        <Badge variant="destructive" className="text-[10px] gap-1"><AlertTriangle className="w-3 h-3" /> Order needed</Badge>
+                      )}
+                    </div>
                     <div className="space-y-1.5">
                       {estimateResult.parts.map(part => (
-                        <div key={part.inventoryItemId} className="flex items-center justify-between text-xs">
+                        <div key={part.inventoryItemId} className="flex items-center justify-between text-xs gap-2">
                           <div className="min-w-0">
                             <p className="truncate font-medium">{part.name}</p>
                             <p className="text-muted-foreground">
@@ -2319,8 +2381,14 @@ export default function BlueprintCanvasPage() {
                                 </span>
                               )}
                             </p>
+                            {part.warehouseStock !== undefined && (
+                              <p className={`mt-0.5 ${part.orderNeeded ? 'text-destructive' : 'text-muted-foreground'}`}>
+                                {part.warehouseStock.toLocaleString(undefined, { maximumFractionDigits: 1 })} on hand
+                                {part.orderNeeded && ' · order more'}
+                              </p>
+                            )}
                           </div>
-                          <p className="font-medium shrink-0 ml-2">${part.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                          <p className="font-medium shrink-0">${part.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                         </div>
                       ))}
                     </div>
@@ -2425,8 +2493,8 @@ export default function BlueprintCanvasPage() {
                             <SelectTrigger className="h-7 w-48 text-xs"><SelectValue placeholder="Inventory item (optional)" /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="none">No specific item</SelectItem>
-                              {(blueprintInventoryItems ?? []).map(item => (
-                                <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>
+                              {filteredInventoryItems(blueprintInventoryItems, p.inventoryCategory).map(item => (
+                                <SelectItem key={item.id} value={String(item.id)}>{item.name} · {item.sku}</SelectItem>
                               ))}
                             </SelectContent>
                           </Select>

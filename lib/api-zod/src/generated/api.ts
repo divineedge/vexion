@@ -2902,7 +2902,9 @@ export const ListBlueprintsResponseItem = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number(),
   "unit": zod.string().optional().describe('Unit the quantity is expressed in (e.g. each, ft) for parts derived from drawn canvas elements.'),
-  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).')
+  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).'),
+  "warehouseStock": zod.number().optional().describe('Current on-hand quantity for this inventory item, so staff can see what they have without leaving the estimate.'),
+  "orderNeeded": zod.boolean().optional().describe('True when the quantity needed for this blueprint exceeds what\'s currently on hand.')
 })),
   "subtotal": zod.number(),
   "overageAmount": zod.number(),
@@ -2959,7 +2961,9 @@ export const CreateBlueprintResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number(),
   "unit": zod.string().optional().describe('Unit the quantity is expressed in (e.g. each, ft) for parts derived from drawn canvas elements.'),
-  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).')
+  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).'),
+  "warehouseStock": zod.number().optional().describe('Current on-hand quantity for this inventory item, so staff can see what they have without leaving the estimate.'),
+  "orderNeeded": zod.boolean().optional().describe('True when the quantity needed for this blueprint exceeds what\'s currently on hand.')
 })),
   "subtotal": zod.number(),
   "overageAmount": zod.number(),
@@ -3005,7 +3009,9 @@ export const GetBlueprintResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number(),
   "unit": zod.string().optional().describe('Unit the quantity is expressed in (e.g. each, ft) for parts derived from drawn canvas elements.'),
-  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).')
+  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).'),
+  "warehouseStock": zod.number().optional().describe('Current on-hand quantity for this inventory item, so staff can see what they have without leaving the estimate.'),
+  "orderNeeded": zod.boolean().optional().describe('True when the quantity needed for this blueprint exceeds what\'s currently on hand.')
 })),
   "subtotal": zod.number(),
   "overageAmount": zod.number(),
@@ -3062,7 +3068,9 @@ export const UpdateBlueprintResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number(),
   "unit": zod.string().optional().describe('Unit the quantity is expressed in (e.g. each, ft) for parts derived from drawn canvas elements.'),
-  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).')
+  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).'),
+  "warehouseStock": zod.number().optional().describe('Current on-hand quantity for this inventory item, so staff can see what they have without leaving the estimate.'),
+  "orderNeeded": zod.boolean().optional().describe('True when the quantity needed for this blueprint exceeds what\'s currently on hand.')
 })),
   "subtotal": zod.number(),
   "overageAmount": zod.number(),
@@ -3099,7 +3107,9 @@ export const CalculateBlueprintEstimateResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number(),
   "unit": zod.string().optional().describe('Unit the quantity is expressed in (e.g. each, ft) for parts derived from drawn canvas elements.'),
-  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).')
+  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).'),
+  "warehouseStock": zod.number().optional().describe('Current on-hand quantity for this inventory item, so staff can see what they have without leaving the estimate.'),
+  "orderNeeded": zod.boolean().optional().describe('True when the quantity needed for this blueprint exceeds what\'s currently on hand.')
 })),
   "subtotal": zod.number(),
   "overageAmount": zod.number(),
@@ -3146,7 +3156,9 @@ export const GenerateBlueprintFromAiResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number(),
   "unit": zod.string().optional().describe('Unit the quantity is expressed in (e.g. each, ft) for parts derived from drawn canvas elements.'),
-  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).')
+  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).'),
+  "warehouseStock": zod.number().optional().describe('Current on-hand quantity for this inventory item, so staff can see what they have without leaving the estimate.'),
+  "orderNeeded": zod.boolean().optional().describe('True when the quantity needed for this blueprint exceeds what\'s currently on hand.')
 })),
   "subtotal": zod.number(),
   "overageAmount": zod.number(),
@@ -3214,7 +3226,9 @@ export const GenerateBlueprintAiZonesResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number(),
   "unit": zod.string().optional().describe('Unit the quantity is expressed in (e.g. each, ft) for parts derived from drawn canvas elements.'),
-  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).')
+  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).'),
+  "warehouseStock": zod.number().optional().describe('Current on-hand quantity for this inventory item, so staff can see what they have without leaving the estimate.'),
+  "orderNeeded": zod.boolean().optional().describe('True when the quantity needed for this blueprint exceeds what\'s currently on hand.')
 })),
   "subtotal": zod.number(),
   "overageAmount": zod.number(),
@@ -3256,7 +3270,9 @@ export const ListBlueprintTemplatesResponseItem = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number(),
   "unit": zod.string().optional().describe('Unit the quantity is expressed in (e.g. each, ft) for parts derived from drawn canvas elements.'),
-  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).')
+  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).'),
+  "warehouseStock": zod.number().optional().describe('Current on-hand quantity for this inventory item, so staff can see what they have without leaving the estimate.'),
+  "orderNeeded": zod.boolean().optional().describe('True when the quantity needed for this blueprint exceeds what\'s currently on hand.')
 })),
   "subtotal": zod.number(),
   "overageAmount": zod.number(),
@@ -3308,7 +3324,9 @@ export const ApplyBlueprintTemplateResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number(),
   "unit": zod.string().optional().describe('Unit the quantity is expressed in (e.g. each, ft) for parts derived from drawn canvas elements.'),
-  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).')
+  "source": zod.string().optional().describe('Where this line came from: \'canvas\' (linked to a placed palette element) or \'manual\' (added via Suggested Parts).'),
+  "warehouseStock": zod.number().optional().describe('Current on-hand quantity for this inventory item, so staff can see what they have without leaving the estimate.'),
+  "orderNeeded": zod.boolean().optional().describe('True when the quantity needed for this blueprint exceeds what\'s currently on hand.')
 })),
   "subtotal": zod.number(),
   "overageAmount": zod.number(),

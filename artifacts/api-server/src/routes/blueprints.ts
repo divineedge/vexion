@@ -47,7 +47,12 @@ const AREA_DEFAULT_DEPTH_INCHES: Record<string, number> = {
   gravel_4in: 4,
   dryRiverBed: 3,
   largeRockBed: 4,
+  turf: 0,
 };
+
+/** Area types quantified by raw sq ft of coverage (sod/turf) rather than fill volume — mirrors the
+ * frontend's COVERAGE_AREA_TYPES. Depth is meaningless for these, so they skip the cubic-yard math. */
+const COVERAGE_AREA_TYPES = new Set(["turf"]);
 interface NormalizedCanvasData {
   points: NormalizedCanvasPoint[];
   lines: NormalizedCanvasLine[];
@@ -485,10 +490,20 @@ router.post("/blueprints/:id/estimate", async (req, res): Promise<void> => {
 
   // Ground-cover areas (gravel, dry river bed, large rock) are quantified by real-world cubic yards
   // (sq ft x fill depth), not point count or bare sq ft — a 4" gravel bed needs 4x the material of a 1" bed.
+  // Coverage areas (turf/sod) are the exception: they're sold and installed by the sq ft laid down, so
+  // depth doesn't factor in at all.
   for (const area of areas) {
     if (area.inventoryItemId == null) continue;
     const pxArea = polygonAreaPx(area.polygon);
     const sqFt = scale ? pxArea / (scale * scale) : 0;
+    const isCoverage = COVERAGE_AREA_TYPES.has(area.elementType ?? "");
+    if (isCoverage) {
+      const entry = derived.get(area.inventoryItemId) ?? { quantity: 0, unit: scale ? "sq ft" : "each", source: "canvas" };
+      if (scale) entry.unit = "sq ft";
+      entry.quantity += scale ? sqFt : 1;
+      derived.set(area.inventoryItemId, entry);
+      continue;
+    }
     const depthInches = area.depthInches ?? AREA_DEFAULT_DEPTH_INCHES[area.elementType ?? ""] ?? 3;
     const cubicYards = (sqFt * (depthInches / 12)) / 27;
     const entry = derived.get(area.inventoryItemId) ?? { quantity: 0, unit: scale ? "cu yd" : "each", source: "canvas" };
@@ -516,6 +531,8 @@ router.post("/blueprints/:id/estimate", async (req, res): Promise<void> => {
     total: number;
     unit: string;
     source: string;
+    warehouseStock: number;
+    orderNeeded: boolean;
   }>;
 
   if (derived.size > 0) {
@@ -526,6 +543,7 @@ router.post("/blueprints/:id/estimate", async (req, res): Promise<void> => {
       const item = itemMap.get(inventoryItemId);
       const unitPrice = item?.markedUpPrice ?? item?.unitPrice ?? 0;
       const quantity = Math.round(info.quantity * 100) / 100;
+      const warehouseStock = item?.quantity ?? 0;
       return {
         inventoryItemId,
         name: item?.name ?? `Item #${inventoryItemId}`,
@@ -534,20 +552,30 @@ router.post("/blueprints/:id/estimate", async (req, res): Promise<void> => {
         total: quantity * unitPrice,
         unit: info.unit,
         source: info.source,
+        warehouseStock,
+        // Only meaningful for "each"/count-style parts (fixtures, pipe length) — bulk fill materials
+        // (cu yd, sq ft) aren't tracked as discrete warehouse stock the same way, so don't flag those.
+        orderNeeded: (info.unit === "each" || info.unit === "ft") && warehouseStock < quantity,
       };
     });
   } else {
     // No labeled/linked elements and no manual parts: derive a rough estimate from canvas element counts
     const items = await db.select().from(inventoryItemsTable).where(eq(inventoryItemsTable.tenantId, tenantId)).limit(5);
-    parts = items.slice(0, Math.min(items.length, Math.max(1, nodeCount + lineCount))).map((item, idx) => ({
-      inventoryItemId: item.id,
-      name: item.name,
-      quantity: (idx === 0 ? nodeCount || 1 : lineCount || 1) * 1.0,
-      unitPrice: item.markedUpPrice || item.unitPrice,
-      total: ((idx === 0 ? nodeCount || 1 : lineCount || 1)) * (item.markedUpPrice || item.unitPrice),
-      unit: "each",
-      source: "generic",
-    }));
+    parts = items.slice(0, Math.min(items.length, Math.max(1, nodeCount + lineCount))).map((item, idx) => {
+      const quantity = (idx === 0 ? nodeCount || 1 : lineCount || 1) * 1.0;
+      const warehouseStock = item.quantity ?? 0;
+      return {
+        inventoryItemId: item.id,
+        name: item.name,
+        quantity,
+        unitPrice: item.markedUpPrice || item.unitPrice,
+        total: quantity * (item.markedUpPrice || item.unitPrice),
+        unit: "each",
+        source: "generic",
+        warehouseStock,
+        orderNeeded: warehouseStock < quantity,
+      };
+    });
   }
 
   const subtotal = parts.reduce((s, p) => s + p.total, 0);
@@ -645,7 +673,7 @@ interface GeneratedZoneArea {
 }
 
 /** Ground-cover materials that draw as a bounded polygon area instead of scattered points. */
-const AREA_MATERIAL_TYPES = new Set(["dryRiverBed", "gravel_1in", "gravel_2in", "gravel_3in", "gravel_4in", "largeRockBed"]);
+const AREA_MATERIAL_TYPES = new Set(["dryRiverBed", "gravel_1in", "gravel_2in", "gravel_3in", "gravel_4in", "largeRockBed", "turf"]);
 
 /** Ray-casting point-in-polygon test. */
 function pointInPolygon(px: number, py: number, polygon: AiZonePointInput[]): boolean {

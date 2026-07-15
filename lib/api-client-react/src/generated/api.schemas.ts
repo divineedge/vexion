@@ -1945,6 +1945,10 @@ export interface EstimatedPart {
   unit?: string;
   /** Where this line came from: 'canvas' (linked to a placed palette element) or 'manual' (added via Suggested Parts). */
   source?: string;
+  /** Current on-hand quantity for this inventory item, so staff can see what they have without leaving the estimate. */
+  warehouseStock?: number;
+  /** True when the quantity needed for this blueprint exceeds what's currently on hand. */
+  orderNeeded?: boolean;
 }
 
 export type BlueprintEstimateMeasurements = { [key: string]: unknown };

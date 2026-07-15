@@ -26,7 +26,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, DraftingCompass, Percent, Package, AlertTriangle, Trash2, Wand2, Library, CopyPlus } from 'lucide-react';
+import { Plus, DraftingCompass, Percent, Package, AlertTriangle, Trash2, Wand2, Library, CopyPlus, Upload, FileText, Loader2 } from 'lucide-react';
 import { useLocation } from 'wouter';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -74,6 +74,77 @@ export default function BlueprintsPage() {
         onError: () => toast.error('Failed to create blueprint'),
       },
     );
+  };
+
+  // Upload PDF dialog
+  const [pdfUploadOpen, setPdfUploadOpen] = useState(false);
+  const [pdfName, setPdfName] = useState('');
+  const [pdfPropertyId, setPdfPropertyId] = useState('');
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [pdfUploading, setPdfUploading] = useState(false);
+  const { data: pdfProperties } = useListProperties({}, { query: { enabled: pdfUploadOpen, queryKey: getListPropertiesQueryKey({}) } });
+
+  const handlePdfFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.type !== 'application/pdf') { toast.error('Only PDF files are allowed'); e.target.value = ''; return; }
+    if (file.size > 25 * 1024 * 1024) { toast.error('PDF too large. Max 25 MB allowed.'); e.target.value = ''; return; }
+    setPdfFile(file);
+    if (!pdfName.trim()) setPdfName(file.name.replace(/\.pdf$/i, ''));
+  };
+
+  const handleUploadPdfBlueprint = async () => {
+    if (!pdfFile) { toast.error('Choose a PDF file'); return; }
+    if (!pdfName.trim()) { toast.error('Name is required'); return; }
+
+    setPdfUploading(true);
+    try {
+      const { uploadURL, objectPath } = await customFetch<{ uploadURL: string; objectPath: string }>(
+        '/api/storage/uploads/request-url',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: pdfFile.name, size: pdfFile.size, contentType: pdfFile.type }),
+        },
+      );
+
+      const uploadRes = await fetch(uploadURL, {
+        method: 'PUT',
+        body: pdfFile,
+        headers: { 'Content-Type': pdfFile.type },
+      });
+      if (!uploadRes.ok) throw new Error('Upload to storage failed');
+
+      createBlueprint.mutate(
+        {
+          data: {
+            name: pdfName.trim(),
+            mode: 'general',
+            propertyId: pdfPropertyId ? parseInt(pdfPropertyId, 10) : undefined,
+            sourceType: 'pdf',
+            pdfObjectPath: objectPath,
+            pdfFileName: pdfFile.name,
+            pdfSizeBytes: pdfFile.size,
+          },
+        },
+        {
+          onSuccess: (bp) => {
+            toast.success('Blueprint created from PDF');
+            qc.invalidateQueries({ queryKey: getListBlueprintsQueryKey() });
+            setPdfUploadOpen(false);
+            setPdfName('');
+            setPdfPropertyId('');
+            setPdfFile(null);
+            setLocation(`/blueprints/${bp.id}`);
+          },
+          onError: () => toast.error('Failed to create blueprint'),
+        },
+      );
+    } catch {
+      toast.error('Upload failed');
+    } finally {
+      setPdfUploading(false);
+    }
   };
 
   // Inline P4P edit state: blueprintId → draft value
@@ -240,6 +311,9 @@ export default function BlueprintsPage() {
           </Button>
           <Button variant="outline" className="gap-2" onClick={() => setAiDialogOpen(true)}>
             <Wand2 className="w-4 h-4" /> Generate with AI
+          </Button>
+          <Button variant="outline" className="gap-2" onClick={() => setPdfUploadOpen(true)}>
+            <Upload className="w-4 h-4" /> Upload PDF
           </Button>
           <Button className="gap-2" onClick={() => setNewBpOpen(true)}>
             <Plus className="w-4 h-4" /> New Blueprint
@@ -430,6 +504,58 @@ export default function BlueprintsPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Upload PDF Dialog */}
+      <Dialog open={pdfUploadOpen} onOpenChange={open => { setPdfUploadOpen(open); if (!open) { setPdfName(''); setPdfPropertyId(''); setPdfFile(null); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><FileText className="w-5 h-5" /> Upload PDF Blueprint</DialogTitle>
+            <DialogDescription>
+              Already have a design as a PDF (e.g. from a surveyor)? Upload it to view inline instead of redrawing it. This is view-only — it can't be edited on the drawing canvas.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">PDF File <span className="text-destructive">*</span></label>
+              {pdfFile ? (
+                <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/20">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                    <span className="text-sm truncate">{pdfFile.name}</span>
+                  </div>
+                  <Button size="sm" variant="ghost" onClick={() => setPdfFile(null)}>Change</Button>
+                </div>
+              ) : (
+                <label className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-center cursor-pointer hover:bg-muted/30 transition-colors">
+                  <Upload className="w-6 h-6 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Click to choose a PDF (max 25 MB)</span>
+                  <input type="file" accept="application/pdf" className="hidden" onChange={handlePdfFileSelect} />
+                </label>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Name <span className="text-destructive">*</span></label>
+              <Input value={pdfName} onChange={e => setPdfName(e.target.value)} placeholder="e.g. Smith Property Survey" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Property (optional)</label>
+              <Select value={pdfPropertyId || '__none__'} onValueChange={v => setPdfPropertyId(v === '__none__' ? '' : v)}>
+                <SelectTrigger><SelectValue placeholder="Link to a property" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">No property</SelectItem>
+                  {pdfProperties?.map(p => (<SelectItem key={p.id} value={String(p.id)}>{p.address}</SelectItem>))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPdfUploadOpen(false)}>Cancel</Button>
+            <Button onClick={handleUploadPdfBlueprint} disabled={pdfUploading || createBlueprint.isPending} className="gap-2">
+              {pdfUploading || createBlueprint.isPending ? (<><Loader2 className="w-4 h-4 animate-spin" /> Uploading...</>) : (<><Upload className="w-4 h-4" /> Upload & Create</>)}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Template Browser Sheet */}
       <Sheet open={templateBrowserOpen} onOpenChange={setTemplateBrowserOpen}>
         <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
@@ -572,7 +698,11 @@ function BlueprintCard({ bp, globalPct, p4pEditing, p4pOpen, setP4pEditing, setP
         className="h-32 bg-muted flex items-center justify-center border-b group-hover:bg-primary/5 transition-colors cursor-pointer relative"
         onClick={() => setLocation(`/blueprints/${bp.id}`)}
       >
-        <DraftingCompass className="w-12 h-12 text-muted-foreground group-hover:text-primary/40 transition-colors" />
+        {bp.sourceType === 'pdf' ? (
+          <FileText className="w-12 h-12 text-muted-foreground group-hover:text-primary/40 transition-colors" />
+        ) : (
+          <DraftingCompass className="w-12 h-12 text-muted-foreground group-hover:text-primary/40 transition-colors" />
+        )}
         {isTemplate && (
           <Badge variant="outline" className="absolute top-2 right-2 text-primary border-primary/40 text-[10px]">Template</Badge>
         )}
@@ -581,7 +711,11 @@ function BlueprintCard({ bp, globalPct, p4pEditing, p4pOpen, setP4pEditing, setP
       <CardContent className="p-5 flex-1 flex flex-col gap-2">
         <div className="flex justify-between items-start cursor-pointer" onClick={() => setLocation(`/blueprints/${bp.id}`)}>
           <h3 className="font-semibold text-lg line-clamp-1 group-hover:text-primary transition-colors">{bp.name}</h3>
-          <Badge variant="outline" className="capitalize text-[10px] shrink-0 ml-2">{bp.mode}</Badge>
+          {bp.sourceType === 'pdf' ? (
+            <Badge variant="outline" className="text-[10px] shrink-0 ml-2 gap-1"><FileText className="w-2.5 h-2.5" /> PDF</Badge>
+          ) : (
+            <Badge variant="outline" className="capitalize text-[10px] shrink-0 ml-2">{bp.mode}</Badge>
+          )}
         </div>
 
         <p className="text-xs text-muted-foreground mt-auto">

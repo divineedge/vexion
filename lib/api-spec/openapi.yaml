@@ -8093,6 +8093,19 @@ components:
           description: "Real-world scale calibration: pixels per foot on the canvas"
         aiGenerationPrompt:
           type: ["string", "null"]
+        sourceType:
+          type: string
+          enum: [canvas, pdf]
+          description: "'canvas' = drawn/AI-generated on the SVG canvas; 'pdf' = view-only import of an uploaded PDF design."
+        pdfObjectPath:
+          type: ["string", "null"]
+          description: "Object storage path for the uploaded PDF. Only set when sourceType is 'pdf'."
+        pdfFileName:
+          type: ["string", "null"]
+          description: "Original uploaded file name, for display."
+        pdfSignedUrl:
+          type: ["string", "null"]
+          description: "Short-lived signed URL for viewing the uploaded PDF inline. Only set when sourceType is 'pdf'."
         createdAt:
           type: string
 
@@ -8115,6 +8128,19 @@ components:
           type: boolean
         templateId:
           type: integer
+        sourceType:
+          type: string
+          enum: [canvas, pdf]
+          description: "Defaults to 'canvas'. Set to 'pdf' to create a view-only blueprint from an uploaded PDF."
+        pdfObjectPath:
+          type: string
+          description: "Object storage path returned from the upload flow. Required when sourceType is 'pdf'."
+        pdfFileName:
+          type: string
+          description: "Original uploaded file name, for display."
+        pdfSizeBytes:
+          type: integer
+          description: "Uploaded PDF size in bytes. Required when sourceType is 'pdf'."
 
     BlueprintUpdate:
       type: object

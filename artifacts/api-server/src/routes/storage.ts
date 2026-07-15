@@ -75,10 +75,21 @@ router.post(
       // the sole source of truth for "which tenant owns this object" — later
       // requests (e.g. PATCH /settings publishing it as a public logo) must
       // verify this owner stamp before granting any additional visibility.
-      await objectStorageService.trySetObjectEntityAclPolicy(objectPath, {
-        owner: String(tenantId),
-        visibility: 'private',
-      });
+      //
+      // The object itself doesn't exist yet at this point (the client hasn't
+      // PUT the file to `uploadURL` yet), so setting its ACL necessarily fails
+      // with ObjectNotFoundError. That's expected here — day-to-day read
+      // authorization for uploaded files is enforced via the mediaAttachments
+      // row (see GET /storage/read-url and /storage/objects/*), not this ACL —
+      // so a failed best-effort stamp must not block minting the upload URL.
+      try {
+        await objectStorageService.trySetObjectEntityAclPolicy(objectPath, {
+          owner: String(tenantId),
+          visibility: 'private',
+        });
+      } catch (aclError) {
+        if (!(aclError instanceof ObjectNotFoundError)) throw aclError;
+      }
 
       res.json(
         RequestUploadUrlResponse.parse({

@@ -2890,6 +2890,10 @@ export const ListBlueprintsResponseItem = zod.object({
   "templateId": zod.number().nullish().describe('The template this blueprint was created from, if any'),
   "scalePxPerFt": zod.number().nullish().describe('Real-world scale calibration: pixels per foot on the canvas'),
   "aiGenerationPrompt": zod.string().nullish(),
+  "sourceType": zod.enum(['canvas', 'pdf']).optional().describe('\'canvas\' = drawn\/AI-generated on the SVG canvas; \'pdf\' = view-only import of an uploaded PDF design.'),
+  "pdfObjectPath": zod.string().nullish().describe('Object storage path for the uploaded PDF. Only set when sourceType is \'pdf\'.'),
+  "pdfFileName": zod.string().nullish().describe('Original uploaded file name, for display.'),
+  "pdfSignedUrl": zod.string().nullish().describe('Short-lived signed URL for viewing the uploaded PDF inline. Only set when sourceType is \'pdf\'.'),
   "createdAt": zod.string()
 })
 export const ListBlueprintsResponse = zod.array(ListBlueprintsResponseItem)
@@ -2905,7 +2909,11 @@ export const CreateBlueprintBody = zod.object({
   "propertyId": zod.number().optional(),
   "overageBufferPercent": zod.number().optional(),
   "isTemplate": zod.boolean().optional(),
-  "templateId": zod.number().optional()
+  "templateId": zod.number().optional(),
+  "sourceType": zod.enum(['canvas', 'pdf']).optional().describe('Defaults to \'canvas\'. Set to \'pdf\' to create a view-only blueprint from an uploaded PDF.'),
+  "pdfObjectPath": zod.string().optional().describe('Object storage path returned from the upload flow. Required when sourceType is \'pdf\'.'),
+  "pdfFileName": zod.string().optional().describe('Original uploaded file name, for display.'),
+  "pdfSizeBytes": zod.number().optional().describe('Uploaded PDF size in bytes. Required when sourceType is \'pdf\'.')
 })
 
 export const CreateBlueprintResponse = zod.object({
@@ -2923,6 +2931,10 @@ export const CreateBlueprintResponse = zod.object({
   "templateId": zod.number().nullish().describe('The template this blueprint was created from, if any'),
   "scalePxPerFt": zod.number().nullish().describe('Real-world scale calibration: pixels per foot on the canvas'),
   "aiGenerationPrompt": zod.string().nullish(),
+  "sourceType": zod.enum(['canvas', 'pdf']).optional().describe('\'canvas\' = drawn\/AI-generated on the SVG canvas; \'pdf\' = view-only import of an uploaded PDF design.'),
+  "pdfObjectPath": zod.string().nullish().describe('Object storage path for the uploaded PDF. Only set when sourceType is \'pdf\'.'),
+  "pdfFileName": zod.string().nullish().describe('Original uploaded file name, for display.'),
+  "pdfSignedUrl": zod.string().nullish().describe('Short-lived signed URL for viewing the uploaded PDF inline. Only set when sourceType is \'pdf\'.'),
   "createdAt": zod.string()
 })
 
@@ -2949,6 +2961,10 @@ export const GetBlueprintResponse = zod.object({
   "templateId": zod.number().nullish().describe('The template this blueprint was created from, if any'),
   "scalePxPerFt": zod.number().nullish().describe('Real-world scale calibration: pixels per foot on the canvas'),
   "aiGenerationPrompt": zod.string().nullish(),
+  "sourceType": zod.enum(['canvas', 'pdf']).optional().describe('\'canvas\' = drawn\/AI-generated on the SVG canvas; \'pdf\' = view-only import of an uploaded PDF design.'),
+  "pdfObjectPath": zod.string().nullish().describe('Object storage path for the uploaded PDF. Only set when sourceType is \'pdf\'.'),
+  "pdfFileName": zod.string().nullish().describe('Original uploaded file name, for display.'),
+  "pdfSignedUrl": zod.string().nullish().describe('Short-lived signed URL for viewing the uploaded PDF inline. Only set when sourceType is \'pdf\'.'),
   "createdAt": zod.string()
 })
 
@@ -2983,6 +2999,10 @@ export const UpdateBlueprintResponse = zod.object({
   "templateId": zod.number().nullish().describe('The template this blueprint was created from, if any'),
   "scalePxPerFt": zod.number().nullish().describe('Real-world scale calibration: pixels per foot on the canvas'),
   "aiGenerationPrompt": zod.string().nullish(),
+  "sourceType": zod.enum(['canvas', 'pdf']).optional().describe('\'canvas\' = drawn\/AI-generated on the SVG canvas; \'pdf\' = view-only import of an uploaded PDF design.'),
+  "pdfObjectPath": zod.string().nullish().describe('Object storage path for the uploaded PDF. Only set when sourceType is \'pdf\'.'),
+  "pdfFileName": zod.string().nullish().describe('Original uploaded file name, for display.'),
+  "pdfSignedUrl": zod.string().nullish().describe('Short-lived signed URL for viewing the uploaded PDF inline. Only set when sourceType is \'pdf\'.'),
   "createdAt": zod.string()
 })
 
@@ -3046,6 +3066,10 @@ export const GenerateBlueprintFromAiResponse = zod.object({
   "templateId": zod.number().nullish().describe('The template this blueprint was created from, if any'),
   "scalePxPerFt": zod.number().nullish().describe('Real-world scale calibration: pixels per foot on the canvas'),
   "aiGenerationPrompt": zod.string().nullish(),
+  "sourceType": zod.enum(['canvas', 'pdf']).optional().describe('\'canvas\' = drawn\/AI-generated on the SVG canvas; \'pdf\' = view-only import of an uploaded PDF design.'),
+  "pdfObjectPath": zod.string().nullish().describe('Object storage path for the uploaded PDF. Only set when sourceType is \'pdf\'.'),
+  "pdfFileName": zod.string().nullish().describe('Original uploaded file name, for display.'),
+  "pdfSignedUrl": zod.string().nullish().describe('Short-lived signed URL for viewing the uploaded PDF inline. Only set when sourceType is \'pdf\'.'),
   "createdAt": zod.string()
 })
 
@@ -3093,6 +3117,10 @@ export const GenerateBlueprintAiZonesResponse = zod.object({
   "templateId": zod.number().nullish().describe('The template this blueprint was created from, if any'),
   "scalePxPerFt": zod.number().nullish().describe('Real-world scale calibration: pixels per foot on the canvas'),
   "aiGenerationPrompt": zod.string().nullish(),
+  "sourceType": zod.enum(['canvas', 'pdf']).optional().describe('\'canvas\' = drawn\/AI-generated on the SVG canvas; \'pdf\' = view-only import of an uploaded PDF design.'),
+  "pdfObjectPath": zod.string().nullish().describe('Object storage path for the uploaded PDF. Only set when sourceType is \'pdf\'.'),
+  "pdfFileName": zod.string().nullish().describe('Original uploaded file name, for display.'),
+  "pdfSignedUrl": zod.string().nullish().describe('Short-lived signed URL for viewing the uploaded PDF inline. Only set when sourceType is \'pdf\'.'),
   "createdAt": zod.string()
 })
 
@@ -3115,6 +3143,10 @@ export const ListBlueprintTemplatesResponseItem = zod.object({
   "templateId": zod.number().nullish().describe('The template this blueprint was created from, if any'),
   "scalePxPerFt": zod.number().nullish().describe('Real-world scale calibration: pixels per foot on the canvas'),
   "aiGenerationPrompt": zod.string().nullish(),
+  "sourceType": zod.enum(['canvas', 'pdf']).optional().describe('\'canvas\' = drawn\/AI-generated on the SVG canvas; \'pdf\' = view-only import of an uploaded PDF design.'),
+  "pdfObjectPath": zod.string().nullish().describe('Object storage path for the uploaded PDF. Only set when sourceType is \'pdf\'.'),
+  "pdfFileName": zod.string().nullish().describe('Original uploaded file name, for display.'),
+  "pdfSignedUrl": zod.string().nullish().describe('Short-lived signed URL for viewing the uploaded PDF inline. Only set when sourceType is \'pdf\'.'),
   "createdAt": zod.string()
 })
 export const ListBlueprintTemplatesResponse = zod.array(ListBlueprintTemplatesResponseItem)
@@ -3147,6 +3179,10 @@ export const ApplyBlueprintTemplateResponse = zod.object({
   "templateId": zod.number().nullish().describe('The template this blueprint was created from, if any'),
   "scalePxPerFt": zod.number().nullish().describe('Real-world scale calibration: pixels per foot on the canvas'),
   "aiGenerationPrompt": zod.string().nullish(),
+  "sourceType": zod.enum(['canvas', 'pdf']).optional().describe('\'canvas\' = drawn\/AI-generated on the SVG canvas; \'pdf\' = view-only import of an uploaded PDF design.'),
+  "pdfObjectPath": zod.string().nullish().describe('Object storage path for the uploaded PDF. Only set when sourceType is \'pdf\'.'),
+  "pdfFileName": zod.string().nullish().describe('Original uploaded file name, for display.'),
+  "pdfSignedUrl": zod.string().nullish().describe('Short-lived signed URL for viewing the uploaded PDF inline. Only set when sourceType is \'pdf\'.'),
   "createdAt": zod.string()
 })
 

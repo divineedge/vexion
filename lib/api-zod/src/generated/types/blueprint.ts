@@ -7,6 +7,7 @@
  */
 import type { BlueprintCanvasData } from './blueprintCanvasData';
 import type { BlueprintMode } from './blueprintMode';
+import type { BlueprintSourceType } from './blueprintSourceType';
 import type { BlueprintSuggestedPartsItem } from './blueprintSuggestedPartsItem';
 
 export interface Blueprint {
@@ -37,5 +38,22 @@ export interface Blueprint {
   scalePxPerFt?: number | null;
   /** @nullable */
   aiGenerationPrompt?: string | null;
+  /** 'canvas' = drawn/AI-generated on the SVG canvas; 'pdf' = view-only import of an uploaded PDF design. */
+  sourceType?: BlueprintSourceType;
+  /**
+     * Object storage path for the uploaded PDF. Only set when sourceType is 'pdf'.
+     * @nullable
+     */
+  pdfObjectPath?: string | null;
+  /**
+     * Original uploaded file name, for display.
+     * @nullable
+     */
+  pdfFileName?: string | null;
+  /**
+     * Short-lived signed URL for viewing the uploaded PDF inline. Only set when sourceType is 'pdf'.
+     * @nullable
+     */
+  pdfSignedUrl?: string | null;
   createdAt: string;
 }

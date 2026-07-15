@@ -20,3 +20,4 @@
 - [Line items CSV convention](line-items-csv-convention.md) — jobs/estimates lineItems packed into one "Line Items" cell via key=value|... mini-syntax; reuse, don't reinvent
 - [Quo (quo.com) API integration](quo-openphone-integration.md) — Quo = rebranded OpenPhone; same data model but a different svix-style webhook signing scheme
 - [Blueprint canvas element data model](blueprint-canvas-data-model.md) — canvasData stays untyped jsonb; extend frontend unions only; reuse scalePxPerFt for any length calc; estimate merges canvas-linked + manual parts
+- [Object storage mint-time ACL](object-storage-mint-time-acl.md) — POST /storage/uploads/request-url's ACL stamp always throws ObjectNotFoundError (object not uploaded yet); catch it there, don't let it 500 the whole upload flow

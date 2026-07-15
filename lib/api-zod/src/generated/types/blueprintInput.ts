@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { BlueprintInputMode } from './blueprintInputMode';
+import type { BlueprintInputSourceType } from './blueprintInputSourceType';
 
 export interface BlueprintInput {
   name: string;
@@ -15,4 +16,12 @@ export interface BlueprintInput {
   overageBufferPercent?: number;
   isTemplate?: boolean;
   templateId?: number;
+  /** Defaults to 'canvas'. Set to 'pdf' to create a view-only blueprint from an uploaded PDF. */
+  sourceType?: BlueprintInputSourceType;
+  /** Object storage path returned from the upload flow. Required when sourceType is 'pdf'. */
+  pdfObjectPath?: string;
+  /** Original uploaded file name, for display. */
+  pdfFileName?: string;
+  /** Uploaded PDF size in bytes. Required when sourceType is 'pdf'. */
+  pdfSizeBytes?: number;
 }

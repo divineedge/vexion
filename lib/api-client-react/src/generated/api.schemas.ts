@@ -1924,6 +1924,17 @@ export type BlueprintCanvasData = { [key: string]: unknown };
 
 export type BlueprintSuggestedPartsItem = { [key: string]: unknown };
 
+/**
+ * 'canvas' = drawn/AI-generated on the SVG canvas; 'pdf' = view-only import of an uploaded PDF design.
+ */
+export type BlueprintSourceType = typeof BlueprintSourceType[keyof typeof BlueprintSourceType];
+
+
+export const BlueprintSourceType = {
+  canvas: 'canvas',
+  pdf: 'pdf',
+} as const;
+
 export interface Blueprint {
   id: number;
   tenantId: number;
@@ -1952,6 +1963,23 @@ export interface Blueprint {
   scalePxPerFt?: number | null;
   /** @nullable */
   aiGenerationPrompt?: string | null;
+  /** 'canvas' = drawn/AI-generated on the SVG canvas; 'pdf' = view-only import of an uploaded PDF design. */
+  sourceType?: BlueprintSourceType;
+  /**
+     * Object storage path for the uploaded PDF. Only set when sourceType is 'pdf'.
+     * @nullable
+     */
+  pdfObjectPath?: string | null;
+  /**
+     * Original uploaded file name, for display.
+     * @nullable
+     */
+  pdfFileName?: string | null;
+  /**
+     * Short-lived signed URL for viewing the uploaded PDF inline. Only set when sourceType is 'pdf'.
+     * @nullable
+     */
+  pdfSignedUrl?: string | null;
   createdAt: string;
 }
 
@@ -1965,6 +1993,17 @@ export const BlueprintInputMode = {
   general: 'general',
 } as const;
 
+/**
+ * Defaults to 'canvas'. Set to 'pdf' to create a view-only blueprint from an uploaded PDF.
+ */
+export type BlueprintInputSourceType = typeof BlueprintInputSourceType[keyof typeof BlueprintInputSourceType];
+
+
+export const BlueprintInputSourceType = {
+  canvas: 'canvas',
+  pdf: 'pdf',
+} as const;
+
 export interface BlueprintInput {
   name: string;
   mode: BlueprintInputMode;
@@ -1973,6 +2012,14 @@ export interface BlueprintInput {
   overageBufferPercent?: number;
   isTemplate?: boolean;
   templateId?: number;
+  /** Defaults to 'canvas'. Set to 'pdf' to create a view-only blueprint from an uploaded PDF. */
+  sourceType?: BlueprintInputSourceType;
+  /** Object storage path returned from the upload flow. Required when sourceType is 'pdf'. */
+  pdfObjectPath?: string;
+  /** Original uploaded file name, for display. */
+  pdfFileName?: string;
+  /** Uploaded PDF size in bytes. Required when sourceType is 'pdf'. */
+  pdfSizeBytes?: number;
 }
 
 export type BlueprintUpdateCanvasData = { [key: string]: unknown };

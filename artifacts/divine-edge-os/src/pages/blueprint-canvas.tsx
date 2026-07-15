@@ -801,6 +801,49 @@ export default function BlueprintCanvasPage() {
   if (isLoading) return <div className="p-8 text-center">Loading...</div>;
   if (!blueprint && !isLoading) return <div className="p-8 text-center">Blueprint not found.</div>;
 
+  // Uploaded-PDF blueprints are a view-only import — show the PDF inline instead of the drawing canvas.
+  // None of the drawing/estimate/AI tooling below applies to them.
+  if (blueprint?.sourceType === 'pdf') {
+    const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+    const pdfViewUrl = blueprint.pdfSignedUrl ?? (blueprint.pdfObjectPath ? `${base}/api/storage${blueprint.pdfObjectPath}` : null);
+    return (
+      <div className="h-[calc(100vh-8rem)] flex flex-col gap-4 animate-in fade-in duration-500">
+        <div className="flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="icon" onClick={() => setLocation('/blueprints')}>
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold tracking-tight">{blueprint.name}</h1>
+                <Badge variant="outline" className="uppercase text-[10px] gap-1">PDF</Badge>
+              </div>
+              {blueprint.pdfFileName && (
+                <p className="text-xs text-muted-foreground mt-0.5">{blueprint.pdfFileName}</p>
+              )}
+            </div>
+          </div>
+          {pdfViewUrl && (
+            <Button variant="outline" asChild className="gap-2">
+              <a href={pdfViewUrl} target="_blank" rel="noopener noreferrer" download={blueprint.pdfFileName ?? undefined}>
+                Download
+              </a>
+            </Button>
+          )}
+        </div>
+        <Card className="flex-1 overflow-hidden shadow-md">
+          {pdfViewUrl ? (
+            <iframe src={pdfViewUrl} title={blueprint.name} className="w-full h-full border-0" />
+          ) : (
+            <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+              Unable to load this PDF right now.
+            </div>
+          )}
+        </Card>
+      </div>
+    );
+  }
+
   const isIrrigation = blueprint?.mode === 'irrigation';
   const hasSatelliteBackdrop = !!satelliteImage && !satelliteFailed;
   // Against a busy satellite photo, the default muted/border tones are nearly invisible — switch to

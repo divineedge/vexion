@@ -1,15 +1,26 @@
 import { Router, type IRouter } from "express";
-import { db, blueprintsTable, inventoryItemsTable } from "@workspace/db";
+import { db, blueprintsTable, inventoryItemsTable, mediaAttachmentsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
-import { getTenantId } from "../lib/tenantHelper";
+import { getTenantId, getUserId } from "../lib/tenantHelper";
+import { ObjectStorageService } from "../lib/objectStorage";
 
 const router: IRouter = Router();
+const objectStorageService = new ObjectStorageService();
 
-function formatBlueprint(b: typeof blueprintsTable.$inferSelect) {
+async function formatBlueprint(b: typeof blueprintsTable.$inferSelect) {
+  let pdfSignedUrl: string | null = null;
+  if (b.pdfObjectPath) {
+    try {
+      pdfSignedUrl = await objectStorageService.generateSignedReadUrl(b.pdfObjectPath);
+    } catch {
+      // Non-fatal: signed URL generation can fail in local dev without sidecar; frontend falls back to the proxy route.
+    }
+  }
   return {
     ...b,
     canvasData: (b.canvasData as object) ?? {},
     createdAt: b.createdAt.toISOString(),
+    pdfSignedUrl,
   };
 }
 
@@ -23,7 +34,7 @@ router.get("/blueprints/templates", async (req, res): Promise<void> => {
     .from(blueprintsTable)
     .where(and(eq(blueprintsTable.tenantId, tenantId), eq(blueprintsTable.isTemplate, true)))
     .orderBy(blueprintsTable.createdAt);
-  res.json(rows.map(formatBlueprint));
+  res.json(await Promise.all(rows.map(formatBlueprint)));
 });
 
 // POST /blueprints/generate-ai — heuristic layout generation based on description/mode/dimensions
@@ -64,7 +75,7 @@ router.post("/blueprints/generate-ai", async (req, res): Promise<void> => {
     .where(eq(blueprintsTable.id, bp.id))
     .returning();
 
-  res.json(formatBlueprint(updated));
+  res.json(await formatBlueprint(updated));
 });
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
@@ -72,13 +83,23 @@ router.post("/blueprints/generate-ai", async (req, res): Promise<void> => {
 router.get("/blueprints", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const rows = await db.select().from(blueprintsTable).where(eq(blueprintsTable.tenantId, tenantId)).orderBy(blueprintsTable.createdAt);
-  res.json(rows.map(formatBlueprint));
+  res.json(await Promise.all(rows.map(formatBlueprint)));
 });
 
 router.post("/blueprints", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { name, mode, jobId, propertyId, overageBufferPercent, isTemplate, templateId } = req.body;
+  const userId = getUserId(req);
+  const {
+    name, mode, jobId, propertyId, overageBufferPercent, isTemplate, templateId,
+    sourceType, pdfObjectPath, pdfFileName, pdfSizeBytes,
+  } = req.body;
   if (!name || !mode) { res.status(400).json({ error: "name and mode required" }); return; }
+
+  const isPdfSource = sourceType === "pdf";
+  if (isPdfSource && (!pdfObjectPath || !pdfSizeBytes)) {
+    res.status(400).json({ error: "pdfObjectPath and pdfSizeBytes are required when sourceType is 'pdf'" });
+    return;
+  }
 
   const [bp] = await db.insert(blueprintsTable).values({
     tenantId,
@@ -89,9 +110,29 @@ router.post("/blueprints", async (req, res): Promise<void> => {
     overageBufferPercent: overageBufferPercent ?? 10,
     isTemplate: isTemplate === true || isTemplate === "true",
     templateId: templateId ? parseInt(templateId, 10) : null,
+    sourceType: isPdfSource ? "pdf" : "canvas",
+    pdfObjectPath: isPdfSource ? pdfObjectPath : null,
+    pdfFileName: isPdfSource ? (pdfFileName ?? null) : null,
   }).returning();
 
-  res.status(201).json(formatBlueprint(bp));
+  // Uploaded-PDF blueprints need a media_attachments row so the object-serving
+  // routes (GET /storage/objects, GET /storage/read-url) can verify tenant ownership.
+  if (isPdfSource) {
+    await db.insert(mediaAttachmentsTable).values({
+      tenantId,
+      entityType: "blueprint",
+      entityId: bp.id,
+      fileKey: pdfObjectPath,
+      fileUrl: pdfObjectPath,
+      mimeType: "application/pdf",
+      sizeBytes: Number(pdfSizeBytes),
+      caption: pdfFileName ?? null,
+      isCover: false,
+      createdBy: userId,
+    });
+  }
+
+  res.status(201).json(await formatBlueprint(bp));
 });
 
 router.get("/blueprints/:id", async (req, res): Promise<void> => {
@@ -101,7 +142,7 @@ router.get("/blueprints/:id", async (req, res): Promise<void> => {
 
   const [bp] = await db.select().from(blueprintsTable).where(and(eq(blueprintsTable.id, id), eq(blueprintsTable.tenantId, tenantId)));
   if (!bp) { res.status(404).json({ error: "Not found" }); return; }
-  res.json(formatBlueprint(bp));
+  res.json(await formatBlueprint(bp));
 });
 
 router.patch("/blueprints/:id", async (req, res): Promise<void> => {
@@ -120,7 +161,7 @@ router.patch("/blueprints/:id", async (req, res): Promise<void> => {
 
   const [updated] = await db.update(blueprintsTable).set(updates).where(and(eq(blueprintsTable.id, id), eq(blueprintsTable.tenantId, tenantId))).returning();
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
-  res.json(formatBlueprint(updated));
+  res.json(await formatBlueprint(updated));
 });
 
 // ─── Suggested Parts ──────────────────────────────────────────────────────────
@@ -408,7 +449,7 @@ router.post("/blueprints/:id/apply-template", async (req, res): Promise<void> =>
     })
     .returning();
 
-  res.json(formatBlueprint(newBp));
+  res.json(await formatBlueprint(newBp));
 });
 
 // ─── Zone-Scoped AI Generation ────────────────────────────────────────────────
@@ -646,7 +687,7 @@ router.post("/blueprints/:id/generate-ai-zones", async (req, res): Promise<void>
     .where(eq(blueprintsTable.id, id))
     .returning();
 
-  res.json(formatBlueprint(updated));
+  res.json(await formatBlueprint(updated));
 });
 
 // ─── Heuristic AI Layout Generator ───────────────────────────────────────────

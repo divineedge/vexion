@@ -27,6 +27,12 @@ export const blueprintsTable = pgTable("blueprints", {
   scalePxPerFt: real("scale_px_per_ft"),
   /** AI-assisted generation: the free-text description the user gave (if any) to auto-generate this layout. */
   aiGenerationPrompt: text("ai_generation_prompt"),
+  /** 'canvas' = drawn/AI-generated on the SVG canvas (default); 'pdf' = view-only import of an existing PDF design. */
+  sourceType: text("source_type").notNull().default("canvas"),
+  /** Object storage path for the uploaded PDF. Only set when sourceType === 'pdf'. */
+  pdfObjectPath: text("pdf_object_path"),
+  /** Original uploaded file name, for display. */
+  pdfFileName: text("pdf_file_name"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

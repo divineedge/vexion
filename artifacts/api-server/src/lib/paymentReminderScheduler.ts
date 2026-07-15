@@ -18,12 +18,15 @@ import { sendEmail, type EmailProviderConfig } from "./emailProvider";
 interface ReminderRule {
   offsetDays: number;
   label: string;
+  /** Per-rule channel selection. Omitted on rules created before this feature — falls back to the tenant's legacy global channel setting. */
+  channels?: string[];
 }
 
 async function processTenant(tenant: typeof tenantsTable.$inferSelect) {
   const now = new Date();
   const schedule = (tenant.paymentReminderSchedule as ReminderRule[]) ?? [];
-  const channels = (tenant.paymentReminderChannels as string[]) ?? ["email"];
+  // Legacy tenant-wide default, used only for rules that predate per-rule channels.
+  const legacyChannels = (tenant.paymentReminderChannels as string[]) ?? ["email"];
 
   const unpaidInvoices = await db
     .select({ invoice: invoicesTable, customer: customersTable })
@@ -48,6 +51,7 @@ async function processTenant(tenant: typeof tenantsTable.$inferSelect) {
       .sort((a, b) => b.offsetDays - a.offsetDays)[0];
 
     if (dueRule) {
+      const channels = dueRule.channels && dueRule.channels.length > 0 ? dueRule.channels : legacyChannels;
       const delivered = await sendPaymentReminder({ tenant, customer, invoice, rule: dueRule, channels });
       // Only record the offset as "sent" once at least one channel actually
       // delivered. A transient provider failure must NOT be marked sent —

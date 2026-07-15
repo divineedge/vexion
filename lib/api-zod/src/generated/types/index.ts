@@ -244,6 +244,7 @@ export * from './measurementZone';
 export * from './mediaAttachment';
 export * from './pauseSeriesInput';
 export * from './paymentReminderRule';
+export * from './paymentReminderRuleChannelsItem';
 export * from './paymentStanding';
 export * from './paymentStandingStatus';
 export * from './plan';

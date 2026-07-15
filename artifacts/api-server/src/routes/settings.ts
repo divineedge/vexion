@@ -75,7 +75,15 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     invoiceFooterText: tenant.invoiceFooterText ?? null,
     // Payment Reminders & Stop-Service
     paymentRemindersEnabled: tenant.paymentRemindersEnabled ?? false,
-    paymentReminderSchedule: (tenant.paymentReminderSchedule as { offsetDays: number; label: string }[]) ?? [],
+    // Rules created before per-rule channels don't have a `channels` field yet — surface
+    // the tenant's legacy global channel setting as each such rule's effective default so
+    // the Settings UI shows/edits the same channels the scheduler will actually use.
+    paymentReminderSchedule: (
+      (tenant.paymentReminderSchedule as { offsetDays: number; label: string; channels?: string[] }[]) ?? []
+    ).map(rule => ({
+      ...rule,
+      channels: rule.channels && rule.channels.length > 0 ? rule.channels : ((tenant.paymentReminderChannels as string[]) ?? ["email"]),
+    })),
     paymentReminderChannels: (tenant.paymentReminderChannels as string[]) ?? ["email"],
     stopServiceRuleEnabled: tenant.stopServiceRuleEnabled ?? false,
     stopServiceThresholdDays: tenant.stopServiceThresholdDays ?? 30,

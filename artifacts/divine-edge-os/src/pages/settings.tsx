@@ -2254,10 +2254,10 @@ export default function SettingsPage() {
                 <Switch checked={paymentRemindersEnabled} onCheckedChange={setPaymentRemindersEnabled} />
               </div>
 
-              {/* Channels */}
+              {/* Default channels for newly-added rules */}
               <div className="space-y-2">
-                <p className="text-sm font-medium">Reminder Channels</p>
-                <p className="text-xs text-muted-foreground">Choose how reminders are sent to customers.</p>
+                <p className="text-sm font-medium">Default Channels</p>
+                <p className="text-xs text-muted-foreground">Used as the starting selection for new rules below. Each rule's channels can be customized individually.</p>
                 <div className="flex items-center gap-6 mt-2">
                   <div className="flex items-center gap-2">
                     <Checkbox
@@ -2301,7 +2301,7 @@ export default function SettingsPage() {
                     size="sm"
                     variant="outline"
                     className="gap-1.5 h-8 text-xs"
-                    onClick={() => setPaymentReminderSchedule(prev => [...prev, { offsetDays: 3, label: 'Reminder' }])}
+                    onClick={() => setPaymentReminderSchedule(prev => [...prev, { offsetDays: 3, label: 'Reminder', channels: paymentReminderChannels.length > 0 ? [...paymentReminderChannels] : ['email'] }])}
                   >
                     <Plus className="w-3.5 h-3.5" /> Add Rule
                   </Button>
@@ -2344,6 +2344,43 @@ export default function SettingsPage() {
                             prev.map((r, i) => i === idx ? { ...r, label: e.target.value } : r)
                           )}
                         />
+                      </div>
+                      <div className="space-y-0.5">
+                        <label className="text-xs text-muted-foreground">Channels</label>
+                        <div className="flex items-center gap-3 h-8">
+                          <div className="flex items-center gap-1.5">
+                            <Checkbox
+                              id={`rule-${idx}-email`}
+                              checked={(rule.channels ?? []).includes('email')}
+                              onCheckedChange={v => setPaymentReminderSchedule(prev =>
+                                prev.map((r, i) => {
+                                  if (i !== idx) return r;
+                                  const current = r.channels ?? [];
+                                  return { ...r, channels: v ? [...current.filter(c => c !== 'email'), 'email'] : current.filter(c => c !== 'email') };
+                                })
+                              )}
+                            />
+                            <label htmlFor={`rule-${idx}-email`} className="text-sm cursor-pointer flex items-center gap-1">
+                              <Mail className="w-3.5 h-3.5" /> Email
+                            </label>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <Checkbox
+                              id={`rule-${idx}-sms`}
+                              checked={(rule.channels ?? []).includes('sms')}
+                              onCheckedChange={v => setPaymentReminderSchedule(prev =>
+                                prev.map((r, i) => {
+                                  if (i !== idx) return r;
+                                  const current = r.channels ?? [];
+                                  return { ...r, channels: v ? [...current.filter(c => c !== 'sms'), 'sms'] : current.filter(c => c !== 'sms') };
+                                })
+                              )}
+                            />
+                            <label htmlFor={`rule-${idx}-sms`} className="text-sm cursor-pointer flex items-center gap-1">
+                              <MessageSquare className="w-3.5 h-3.5" /> SMS
+                            </label>
+                          </div>
+                        </div>
                       </div>
                       <Button
                         variant="ghost"

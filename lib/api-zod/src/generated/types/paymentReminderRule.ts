@@ -5,9 +5,12 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { PaymentReminderRuleChannelsItem } from './paymentReminderRuleChannelsItem';
 
 export interface PaymentReminderRule {
   /** Negative = days before due date, positive = days overdue */
   offsetDays: number;
   label: string;
+  /** Channels this rule sends through. Falls back to the tenant's legacy paymentReminderChannels default when omitted (pre-migration rules). */
+  channels?: PaymentReminderRuleChannelsItem[];
 }

@@ -71,11 +71,16 @@ export const tenantsTable = pgTable("tenants", {
   invoiceFooterText: text("invoice_footer_text"),
   // ── Payment Reminders & Stop-Service Rule ────────────────────────────────
   paymentRemindersEnabled: boolean("payment_reminders_enabled").notNull().default(false),
-  /** Array of { offsetDays: number, label: string }. Negative = before due date, positive = overdue. */
+  /**
+   * Array of { offsetDays: number, label: string, channels?: ('sms'|'email')[] }.
+   * Negative = before due date, positive = overdue. `channels` is per-rule; rules
+   * created before the per-rule channel feature omit it and fall back to the
+   * legacy tenant-wide `paymentReminderChannels` default at send time.
+   */
   paymentReminderSchedule: jsonb("payment_reminder_schedule").default(
-    '[{"offsetDays":-3,"label":"3 days before due"},{"offsetDays":0,"label":"On due date"},{"offsetDays":7,"label":"7 days overdue"},{"offsetDays":14,"label":"14 days overdue"}]',
+    '[{"offsetDays":-3,"label":"3 days before due","channels":["email"]},{"offsetDays":0,"label":"On due date","channels":["email"]},{"offsetDays":7,"label":"7 days overdue","channels":["email"]},{"offsetDays":14,"label":"14 days overdue","channels":["email"]}]',
   ),
-  /** Array of 'sms' | 'email' */
+  /** Legacy tenant-wide default, array of 'sms' | 'email'. Kept as the fallback for reminder rules that predate per-rule channels. */
   paymentReminderChannels: jsonb("payment_reminder_channels").default('["email"]'),
   /** Off by default — flags recurring customers for office review instead of auto-pausing */
   stopServiceRuleEnabled: boolean("stop_service_rule_enabled").notNull().default(false),

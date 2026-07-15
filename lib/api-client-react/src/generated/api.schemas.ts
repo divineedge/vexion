@@ -2186,10 +2186,20 @@ export interface CustomerFieldConfig {
   isBuiltIn: boolean;
 }
 
+export type PaymentReminderRuleChannelsItem = typeof PaymentReminderRuleChannelsItem[keyof typeof PaymentReminderRuleChannelsItem];
+
+
+export const PaymentReminderRuleChannelsItem = {
+  sms: 'sms',
+  email: 'email',
+} as const;
+
 export interface PaymentReminderRule {
   /** Negative = days before due date, positive = days overdue */
   offsetDays: number;
   label: string;
+  /** Channels this rule sends through. Falls back to the tenant's legacy paymentReminderChannels default when omitted (pre-migration rules). */
+  channels?: PaymentReminderRuleChannelsItem[];
 }
 
 export interface FollowupTriggerRule {

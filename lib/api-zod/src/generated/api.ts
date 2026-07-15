@@ -3323,7 +3323,8 @@ export const GetTenantSettingsResponse = zod.object({
   "paymentRemindersEnabled": zod.boolean().optional(),
   "paymentReminderSchedule": zod.array(zod.object({
   "offsetDays": zod.number().describe('Negative = days before due date, positive = days overdue'),
-  "label": zod.string()
+  "label": zod.string(),
+  "channels": zod.array(zod.enum(['sms', 'email'])).optional().describe('Channels this rule sends through. Falls back to the tenant\'s legacy paymentReminderChannels default when omitted (pre-migration rules).')
 })).optional(),
   "paymentReminderChannels": zod.array(zod.enum(['sms', 'email'])).optional(),
   "stopServiceRuleEnabled": zod.boolean().optional(),
@@ -3404,7 +3405,8 @@ export const UpdateTenantSettingsBody = zod.object({
   "paymentRemindersEnabled": zod.boolean().optional(),
   "paymentReminderSchedule": zod.array(zod.object({
   "offsetDays": zod.number().describe('Negative = days before due date, positive = days overdue'),
-  "label": zod.string()
+  "label": zod.string(),
+  "channels": zod.array(zod.enum(['sms', 'email'])).optional().describe('Channels this rule sends through. Falls back to the tenant\'s legacy paymentReminderChannels default when omitted (pre-migration rules).')
 })).optional(),
   "paymentReminderChannels": zod.array(zod.enum(['sms', 'email'])).optional(),
   "stopServiceRuleEnabled": zod.boolean().optional(),
@@ -3465,7 +3467,8 @@ export const UpdateTenantSettingsResponse = zod.object({
   "paymentRemindersEnabled": zod.boolean().optional(),
   "paymentReminderSchedule": zod.array(zod.object({
   "offsetDays": zod.number().describe('Negative = days before due date, positive = days overdue'),
-  "label": zod.string()
+  "label": zod.string(),
+  "channels": zod.array(zod.enum(['sms', 'email'])).optional().describe('Channels this rule sends through. Falls back to the tenant\'s legacy paymentReminderChannels default when omitted (pre-migration rules).')
 })).optional(),
   "paymentReminderChannels": zod.array(zod.enum(['sms', 'email'])).optional(),
   "stopServiceRuleEnabled": zod.boolean().optional(),

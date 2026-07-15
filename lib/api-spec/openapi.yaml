@@ -8679,6 +8679,12 @@ components:
           description: "Negative = days before due date, positive = days overdue"
         label:
           type: string
+        channels:
+          type: array
+          description: "Channels this rule sends through. Falls back to the tenant's legacy paymentReminderChannels default when omitted (pre-migration rules)."
+          items:
+            type: string
+            enum: [sms, email]
 
     TenantSettingsUpdate:
       type: object

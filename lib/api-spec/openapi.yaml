@@ -2020,6 +2020,41 @@ paths:
               schema:
                 $ref: "#/components/schemas/Blueprint"
 
+  /blueprints/{id}/generate-ai-zones:
+    post:
+      operationId: generateBlueprintAiZones
+      tags: [blueprints]
+      summary: AI-assisted layout generation scoped to specific hand-drawn zones and chosen materials
+      description: >-
+        Generates elements only within the given zone polygons (canvas px coordinates), using only the
+        selected materials/fixtures per zone, and merges the result into the blueprint's existing canvas —
+        everything outside the zones is left untouched.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [zones]
+              properties:
+                zones:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/AiZoneInput"
+      responses:
+        "200":
+          description: Blueprint with the zone-scoped AI-generated elements merged into its canvas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Blueprint"
+
   /blueprints/templates:
     get:
       operationId: listBlueprintTemplates
@@ -8137,6 +8172,47 @@ components:
         source:
           type: string
           description: "Where this line came from: 'canvas' (linked to a placed palette element) or 'manual' (added via Suggested Parts)."
+
+    AiZonePoint:
+      type: object
+      required: [x, y]
+      properties:
+        x:
+          type: number
+        y:
+          type: number
+
+    AiZoneMaterial:
+      type: object
+      required: [elementType]
+      properties:
+        elementType:
+          type: string
+          description: "Fixture/material palette type (e.g. sprinkler, tree, gravel_2in) to place within this zone."
+        inventoryItemId:
+          type: ["integer", "null"]
+          description: "Optional linked inventory item; generated elements of this type will carry this link."
+        pipeType:
+          type: ["string", "null"]
+          description: "When elementType is sprinkler, the pipe class/size used to connect heads to the supply line."
+
+    AiZoneInput:
+      type: object
+      required: [id, polygon, materials]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        polygon:
+          type: array
+          minItems: 3
+          items:
+            $ref: "#/components/schemas/AiZonePoint"
+        materials:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiZoneMaterial"
 
     TenantSettings:
       type: object

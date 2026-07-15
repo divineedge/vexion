@@ -3051,6 +3051,53 @@ export const GenerateBlueprintFromAiResponse = zod.object({
 
 
 /**
+ * Generates elements only within the given zone polygons (canvas px coordinates), using only the selected materials/fixtures per zone, and merges the result into the blueprint's existing canvas — everything outside the zones is left untouched.
+ * @summary AI-assisted layout generation scoped to specific hand-drawn zones and chosen materials
+ */
+export const GenerateBlueprintAiZonesParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const generateBlueprintAiZonesBodyZonesItemPolygonMin = 3;
+
+
+
+export const GenerateBlueprintAiZonesBody = zod.object({
+  "zones": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string().optional(),
+  "polygon": zod.array(zod.object({
+  "x": zod.number(),
+  "y": zod.number()
+})).min(generateBlueprintAiZonesBodyZonesItemPolygonMin),
+  "materials": zod.array(zod.object({
+  "elementType": zod.string().describe('Fixture\/material palette type (e.g. sprinkler, tree, gravel_2in) to place within this zone.'),
+  "inventoryItemId": zod.number().nullish().describe('Optional linked inventory item; generated elements of this type will carry this link.'),
+  "pipeType": zod.string().nullish().describe('When elementType is sprinkler, the pipe class\/size used to connect heads to the supply line.')
+}))
+}))
+})
+
+export const GenerateBlueprintAiZonesResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "mode": zod.enum(['irrigation', 'concrete', 'landscape', 'general']),
+  "jobId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "canvasData": zod.record(zod.string(), zod.unknown()).optional(),
+  "overageBufferPercent": zod.number().optional(),
+  "totalEstimate": zod.number().nullish(),
+  "suggestedParts": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "isTemplate": zod.boolean().optional().describe('True = reusable business design-rule template, not tied to a job\/property'),
+  "templateId": zod.number().nullish().describe('The template this blueprint was created from, if any'),
+  "scalePxPerFt": zod.number().nullish().describe('Real-world scale calibration: pixels per foot on the canvas'),
+  "aiGenerationPrompt": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
  * @summary List reusable business design-rule templates
  */
 export const ListBlueprintTemplatesResponseItem = zod.object({

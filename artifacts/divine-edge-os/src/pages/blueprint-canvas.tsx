@@ -5,6 +5,7 @@ import {
   useUpdateBlueprint, useCalculateBlueprintEstimate,
   useGetProperty, getGetPropertyQueryKey,
   useListInventoryItems, getListInventoryItemsQueryKey,
+  useGenerateBlueprintAiZones,
 } from '@workspace/api-client-react';
 import type { EstimatedPart } from '@workspace/api-client-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import {
   ArrowLeft, Save, MousePointer2, PlusCircle, Minus, Trash2, Calculator, Ruler,
   ChevronDown, TreeDeciduous, Mountain, Waves, Hash, Layers, SprayCan, Link2,
+  Wand2, Shapes, Sparkles, X, Check, ZoomIn, ZoomOut, Maximize, Square,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useQueryClient } from '@tanstack/react-query';
@@ -21,14 +23,23 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 
-/** Specific fixture/material types placeable as points on the canvas, beyond the plain generic point. */
+/**
+ * Specific fixture/material types placeable as points on the canvas, beyond the plain generic point.
+ * 'dryRiverBed'/'gravel_*' and 'trench' remain in this union only so legacy blueprints saved before the
+ * area/line rework still render correctly — new placements of those types go through AREA_PALETTE / the
+ * trench line tool instead (see AreaElementType and the 'trench' LineElementType below).
+ */
 type PointElementType =
   | 'node' | 'sprinkler' | 'tree' | 'largeRock' | 'dryRiverBed'
   | 'gravel_1in' | 'gravel_2in' | 'gravel_3in' | 'gravel_4in' | 'trench';
 
+/** Ground-cover material types drawn as a bounded area (polygon) rather than a single point. */
+type AreaElementType = 'dryRiverBed' | 'gravel_1in' | 'gravel_2in' | 'gravel_3in' | 'gravel_4in';
+
 /** Specific types for line segments, beyond the plain generic edge. */
-type LineElementType = 'edge' | 'pipe';
+type LineElementType = 'edge' | 'pipe' | 'trench';
 
 type Point = {
   id: string; x: number; y: number;
@@ -40,6 +51,8 @@ type Point = {
   sprinklerHeadType?: string;
   /** Optional link to a flagged inventory item so materials can be pulled straight from inventory. */
   inventoryItemId?: number | null;
+  /** Coverage radius in feet, only meaningful when elementType === 'sprinkler'. Drawn as a translucent circle. */
+  coverageRadiusFt?: number | null;
 };
 
 type Line = {
@@ -48,28 +61,73 @@ type Line = {
   elementType?: LineElementType;
   /** Pipe class/size, only meaningful when elementType === 'pipe'. */
   pipeType?: string;
+  /** Free-text label, e.g. auto-numbered "Trench 1", "Trench 2"... only meaningful when elementType === 'trench'. */
+  label?: string;
   /** Optional link to a flagged inventory item; quantity pulled is the real-world length in feet. */
   inventoryItemId?: number | null;
 };
 
-type CanvasData = { points: Point[], lines: Line[] };
+/** A bounded ground-cover area (gravel, dry river bed, etc.) — quantity is derived from its sq ft, not a point count. */
+type Area = {
+  id: string;
+  elementType: AreaElementType;
+  polygon: { x: number; y: number }[];
+  label?: string;
+  /** Optional link to a flagged inventory item; quantity pulled is the real-world area in sq ft. */
+  inventoryItemId?: number | null;
+};
 
-type ToolMode = 'select' | 'addNode' | 'addLine' | 'delete' | 'calibrate';
+type CanvasData = { points: Point[], lines: Line[], areas?: Area[] };
 
+type ToolMode = 'select' | 'addNode' | 'addLine' | 'addArea' | 'delete' | 'calibrate' | 'zone';
+
+/** A material/fixture chosen for a zone: either a generic palette type or one tied to a specific inventory item. */
+type ZoneMaterial = { elementType: PointElementType; inventoryItemId: number | null; pipeType?: string };
+
+/** A user-drawn "needs design" area on the satellite map, with the materials AI should use inside it. */
+type AiZone = { id: string; label: string; polygon: { x: number; y: number }[]; materials: ZoneMaterial[] };
+
+/** Point-placeable fixture types. Ground cover (gravel/dry river bed) and trenches are areas/lines — see AREA_PALETTE below. */
 const POINT_PALETTE: { type: PointElementType; label: string; icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; color: string }[] = [
   { type: 'node', label: 'Generic Point', icon: PlusCircle, color: 'hsl(var(--muted-foreground))' },
   { type: 'sprinkler', label: 'Sprinkler', icon: SprayCan, color: '#38bdf8' },
   { type: 'tree', label: 'Tree', icon: TreeDeciduous, color: '#16a34a' },
   { type: 'largeRock', label: 'Large Rock', icon: Mountain, color: '#78716c' },
+];
+
+/** Ground-cover area types — drawn as a bounded polygon (sq ft), not a single dot. */
+const AREA_PALETTE: { type: AreaElementType; label: string; icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; color: string }[] = [
   { type: 'dryRiverBed', label: 'Dry River Bed', icon: Waves, color: '#0891b2' },
   { type: 'gravel_1in', label: 'Gravel (1")', icon: Layers, color: '#d6b98c' },
   { type: 'gravel_2in', label: 'Gravel (2")', icon: Layers, color: '#c9a876' },
   { type: 'gravel_3in', label: 'Gravel (3")', icon: Layers, color: '#bb9660' },
   { type: 'gravel_4in', label: 'Gravel (4")', icon: Layers, color: '#ad844a' },
-  { type: 'trench', label: 'Trench (numbered)', icon: Hash, color: '#f97316' },
+];
+
+function areaElementMeta(elementType: AreaElementType) {
+  return AREA_PALETTE.find(a => a.type === elementType) ?? AREA_PALETTE[0];
+}
+
+/**
+ * Full set of materials selectable per AI zone: point fixtures (excluding the plain generic point),
+ * ground-cover areas, and the trench line — AI generation places each as the right element kind
+ * (point, area, or line) even though they're all picked from one flat "materials" list here.
+ */
+const ZONE_MATERIAL_PALETTE: { type: PointElementType; label: string; icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; color: string }[] = [
+  ...POINT_PALETTE.filter(p => p.type !== 'node'),
+  ...AREA_PALETTE,
+  { type: 'trench', label: 'Trench (numbered line)', icon: Hash, color: '#f97316' },
 ];
 
 const SPRINKLER_HEAD_TYPES = ['Rotor', 'Spray', 'Drip / Micro', 'Bubbler', 'MP Rotator'];
+
+/** Typical coverage radius (feet) by sprinkler head type, used as the default when a head is placed. */
+const DEFAULT_SPRINKLER_RADIUS_FT: Record<string, number> = {
+  Rotor: 25, Spray: 12, 'Drip / Micro': 3, Bubbler: 2, 'MP Rotator': 20,
+};
+
+/** Distinct outline colors cycled across drawn AI design zones so multiple zones stay visually distinguishable. */
+const ZONE_COLORS = ['#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899'];
 
 const PIPE_TYPES = [
   'PVC Sch40 1/2"', 'PVC Sch40 3/4"', 'PVC Sch40 1"',
@@ -90,7 +148,7 @@ function lineLengthFt(p1: { x: number; y: number } | undefined, p2: { x: number;
 }
 
 /** Shoelace formula — area of a polygon from ordered vertices (px²) */
-function polygonAreaPx(pts: Point[]): number {
+function polygonAreaPx(pts: { x: number; y: number }[]): number {
   if (pts.length < 3) return 0;
   let area = 0;
   for (let i = 0; i < pts.length; i++) {
@@ -208,13 +266,21 @@ export default function BlueprintCanvasPage() {
   const satelliteBuiltRef = useRef(false);
   const autoScaleAppliedRef = useRef(false);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  // Only true once the component has actually unmounted — NOT once per re-render. The container keeps
+  // resizing for a bit after mount (e.g. sidebar layout settling), which changes `containerSize` and would
+  // otherwise re-run the satellite-build effect below on every tick; using a per-effect-run `cancelled` local
+  // there caused each new run's cleanup to cancel the one in-flight image request before it could ever resolve.
+  const unmountedRef = useRef(false);
+  useEffect(() => () => { unmountedRef.current = true; }, []);
 
   const [tool, setTool] = useState<ToolMode>('select');
   const [points, setPoints] = useState<Point[]>([]);
   const [lines, setLines] = useState<Line[]>([]);
+  const [areas, setAreas] = useState<Area[]>([]);
   
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
   const [selectedLineId, setSelectedLineId] = useState<string | null>(null);
+  const [selectedAreaId, setSelectedAreaId] = useState<string | null>(null);
   
   const [draggingPointId, setDraggingPointId] = useState<string | null>(null);
   const [drawingLineStartId, setDrawingLineStartId] = useState<string | null>(null);
@@ -224,8 +290,57 @@ export default function BlueprintCanvasPage() {
   const [pendingPointType, setPendingPointType] = useState<PointElementType>('node');
   const [pendingLineType, setPendingLineType] = useState<LineElementType>('edge');
   const [pendingPipeType, setPendingPipeType] = useState<string>(PIPE_TYPES[0]);
+  const [pendingAreaType, setPendingAreaType] = useState<AreaElementType>('gravel_1in');
   const [pointPaletteOpen, setPointPaletteOpen] = useState(false);
   const [linePaletteOpen, setLinePaletteOpen] = useState(false);
+  const [areaPaletteOpen, setAreaPaletteOpen] = useState(false);
+
+  // ── Area (ground-cover polygon) drawing ─────────────────────────────────────
+  const [areaDraftPoints, setAreaDraftPoints] = useState<{ x: number; y: number }[]>([]);
+
+  const startAreaDrawing = (type: AreaElementType) => {
+    setPendingAreaType(type);
+    setTool('addArea');
+    setAreaDraftPoints([]);
+    setDrawingLineStartId(null);
+    setAreaPaletteOpen(false);
+  };
+
+  const cancelAreaDrawing = () => {
+    setTool('select');
+    setAreaDraftPoints([]);
+  };
+
+  const finishAreaDrawing = () => {
+    if (areaDraftPoints.length < 3) return;
+    const newArea: Area = { id: `a_${Date.now()}`, elementType: pendingAreaType, polygon: areaDraftPoints };
+    setAreas(prev => [...prev, newArea]);
+    setAreaDraftPoints([]);
+    setTool('select');
+    setSelectedAreaId(newArea.id);
+    toast.success(`${areaElementMeta(pendingAreaType).label} area added`);
+  };
+
+  // ── Pan & zoom ───────────────────────────────────────────────────────────────
+  const [viewTransform, setViewTransform] = useState({ x: 0, y: 0, k: 1 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panStartRef = useRef<{ clientX: number; clientY: number; tx: number; ty: number } | null>(null);
+
+  const zoomBy = (factor: number, center?: { x: number; y: number }) => {
+    setViewTransform(prev => {
+      const newK = Math.min(8, Math.max(0.2, prev.k * factor));
+      const cx = center?.x ?? containerSize.width / 2;
+      const cy = center?.y ?? containerSize.height / 2;
+      const logicalX = (cx - prev.x) / prev.k;
+      const logicalY = (cy - prev.y) / prev.k;
+      return { x: cx - logicalX * newK, y: cy - logicalY * newK, k: newK };
+    });
+  };
+  const resetView = () => setViewTransform({ x: 0, y: 0, k: 1 });
+
+  // ── Delete tool: drag a box to bulk-delete everything inside it ─────────────
+  const [deleteBoxStart, setDeleteBoxStart] = useState<{ x: number; y: number } | null>(null);
+  const [deleteBoxEnd, setDeleteBoxEnd] = useState<{ x: number; y: number } | null>(null);
 
   // Inventory items flagged as usable in the Blueprint canvas palette, for linking placed elements.
   const { data: blueprintInventoryItems } = useListInventoryItems(
@@ -237,8 +352,8 @@ export default function BlueprintCanvasPage() {
   const [estimateResult, setEstimateResult] = useState<{ parts: EstimatedPart[]; subtotal: number; overageAmount: number; total: number } | null>(null);
 
   const nextTrenchNumber = useMemo(
-    () => points.filter(p => p.elementType === 'trench').length + 1,
-    [points],
+    () => lines.filter(l => l.elementType === 'trench').length + 1,
+    [lines],
   );
 
   // ── Calibration state ────────────────────────────────────────────────────────
@@ -248,12 +363,119 @@ export default function BlueprintCanvasPage() {
   const [calibFeetInput, setCalibFeetInput] = useState('');
   const [scalePxPerFt, setScalePxPerFt] = useState<number | null>(null);
 
+  // ── AI zone-based design workflow ────────────────────────────────────────────
+  // Zones are a planning aid only (not saved to canvasData) — they exist to scope AI generation
+  // to specific areas with specific materials, then get cleared once the design is placed.
+  const [aiZones, setAiZones] = useState<AiZone[]>([]);
+  const [zoneDraftPoints, setZoneDraftPoints] = useState<{ x: number; y: number }[]>([]);
+  const [materialsDialogOpen, setMaterialsDialogOpen] = useState(false);
+  const [editingZoneId, setEditingZoneId] = useState<string | null>(null); // null while defining a brand-new zone
+  const [pendingZonePolygon, setPendingZonePolygon] = useState<{ x: number; y: number }[] | null>(null);
+  const [zoneLabelDraft, setZoneLabelDraft] = useState('');
+  const [zoneMaterialsDraft, setZoneMaterialsDraft] = useState<ZoneMaterial[]>([]);
+  const generateAiZones = useGenerateBlueprintAiZones();
+
+  const startZoneDrawing = () => {
+    setTool('zone');
+    setZoneDraftPoints([]);
+    setDrawingLineStartId(null);
+  };
+
+  const cancelZoneDrawing = () => {
+    setTool('select');
+    setZoneDraftPoints([]);
+  };
+
+  const finishZoneDrawing = () => {
+    if (zoneDraftPoints.length < 3) return;
+    setPendingZonePolygon(zoneDraftPoints);
+    setEditingZoneId(null);
+    setZoneLabelDraft(`Zone ${aiZones.length + 1}`);
+    setZoneMaterialsDraft([]);
+    setMaterialsDialogOpen(true);
+    setZoneDraftPoints([]);
+    setTool('select');
+  };
+
+  const openEditZoneMaterials = (zone: AiZone) => {
+    setEditingZoneId(zone.id);
+    setPendingZonePolygon(zone.polygon);
+    setZoneLabelDraft(zone.label);
+    setZoneMaterialsDraft(zone.materials);
+    setMaterialsDialogOpen(true);
+  };
+
+  const toggleZoneMaterial = (elementType: PointElementType, checked: boolean) => {
+    setZoneMaterialsDraft(prev =>
+      checked
+        ? [...prev, { elementType, inventoryItemId: null, pipeType: elementType === 'sprinkler' ? PIPE_TYPES[0] : undefined }]
+        : prev.filter(m => m.elementType !== elementType)
+    );
+  };
+
+  const updateZoneMaterial = (elementType: PointElementType, patch: Partial<ZoneMaterial>) => {
+    setZoneMaterialsDraft(prev => prev.map(m => m.elementType === elementType ? { ...m, ...patch } : m));
+  };
+
+  const saveZoneMaterials = () => {
+    if (!pendingZonePolygon) return;
+    if (zoneMaterialsDraft.length === 0) { toast.error('Pick at least one material for this zone'); return; }
+    if (editingZoneId) {
+      setAiZones(zones => zones.map(z => z.id === editingZoneId ? { ...z, label: zoneLabelDraft || z.label, materials: zoneMaterialsDraft } : z));
+      toast.success('Zone materials updated');
+    } else {
+      const newZone: AiZone = {
+        id: `zone_${Date.now()}`,
+        label: zoneLabelDraft || `Zone ${aiZones.length + 1}`,
+        polygon: pendingZonePolygon,
+        materials: zoneMaterialsDraft,
+      };
+      setAiZones(zones => [...zones, newZone]);
+      toast.success('Zone added — draw another or generate the design');
+    }
+    setMaterialsDialogOpen(false);
+    setPendingZonePolygon(null);
+    setEditingZoneId(null);
+  };
+
+  const removeZone = (zoneId: string) => setAiZones(zones => zones.filter(z => z.id !== zoneId));
+
+  const handleGenerateAiZones = () => {
+    if (aiZones.length === 0) return;
+    generateAiZones.mutate(
+      {
+        id,
+        data: {
+          zones: aiZones.map(z => ({
+            id: z.id,
+            label: z.label,
+            polygon: z.polygon,
+            materials: z.materials.map(m => ({ elementType: m.elementType, inventoryItemId: m.inventoryItemId, pipeType: m.pipeType ?? null })),
+          })),
+        },
+      },
+      {
+        onSuccess: (updated) => {
+          const data = (updated.canvasData ?? {}) as unknown as CanvasData;
+          setPoints(data.points ?? []);
+          setLines(data.lines ?? []);
+          setAreas(data.areas ?? []);
+          setAiZones([]);
+          toast.success(`AI design generated for ${aiZones.length} zone${aiZones.length > 1 ? 's' : ''}`);
+          queryClient.invalidateQueries({ queryKey: getGetBlueprintQueryKey(id) });
+        },
+        onError: () => toast.error('Failed to generate AI design for the selected zones'),
+      },
+    );
+  };
+
   // Init canvas data and scale from blueprint
   useEffect(() => {
     if (blueprint?.canvasData) {
       const data = blueprint.canvasData as unknown as CanvasData;
       if (data.points) setPoints(data.points);
       if (data.lines) setLines(data.lines);
+      if (data.areas) setAreas(data.areas);
     }
     if (blueprint?.scalePxPerFt != null) {
       setScalePxPerFt(blueprint.scalePxPerFt);
@@ -269,6 +491,9 @@ export default function BlueprintCanvasPage() {
   }, [blueprint?.id, blueprint?.propertyId]);
 
   // Track the canvas container's pixel size so we can size/frame the satellite image to match.
+  // The container <div> only mounts once `isLoading` flips false (it's behind an early-return while
+  // the blueprint is loading), so this can't be a mount-once ([]) effect — it re-runs whenever
+  // `isLoading` changes so it attaches the observer once the real container element actually exists.
   useEffect(() => {
     const container = canvasContainerRef.current;
     if (!container) return;
@@ -277,7 +502,29 @@ export default function BlueprintCanvasPage() {
     const observer = new ResizeObserver(update);
     observer.observe(container);
     return () => observer.disconnect();
-  }, []);
+  }, [isLoading]);
+
+  // Wheel-to-zoom on the canvas. Attached as a native (non-passive) listener so we can preventDefault
+  // and stop the page from scrolling; the container only exists once `isLoading` flips false (same
+  // mount-timing quirk as the ResizeObserver above), so this re-runs on that dependency too.
+  useEffect(() => {
+    const container = canvasContainerRef.current;
+    if (!container) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = container.getBoundingClientRect();
+      const center = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+      setViewTransform(prev => {
+        const newK = Math.min(8, Math.max(0.2, prev.k * factor));
+        const logicalX = (center.x - prev.x) / prev.k;
+        const logicalY = (center.y - prev.y) / prev.k;
+        return { x: center.x - logicalX * newK, y: center.y - logicalY * newK, k: newK };
+      });
+    };
+    container.addEventListener('wheel', onWheel, { passive: false });
+    return () => container.removeEventListener('wheel', onWheel);
+  }, [isLoading]);
 
   // Build the satellite backdrop once we know the property's location and the canvas's pixel size.
   // Falls back silently to the blank/grid canvas when there's no property, no coordinates, or the imagery can't be found.
@@ -290,10 +537,9 @@ export default function BlueprintCanvasPage() {
     if (!widthPx || !heightPx) return;
 
     satelliteBuiltRef.current = true;
-    let cancelled = false;
     const aspect = widthPx / heightPx;
     resolveSatelliteImage(property.lat, property.lng, aspect).then((built) => {
-      if (cancelled) return;
+      if (unmountedRef.current) return;
       if (!built) {
         setSatelliteFailed(true);
         return;
@@ -320,7 +566,6 @@ export default function BlueprintCanvasPage() {
         }
       }
     });
-    return () => { cancelled = true; };
   }, [blueprint?.propertyId, property, containerSize]);
 
   const handleSatelliteImageError = useCallback(() => {
@@ -328,13 +573,18 @@ export default function BlueprintCanvasPage() {
     setSatelliteImage(null);
   }, []);
 
+  // Converts a screen mouse event into *logical* canvas coordinates — i.e. inverts both the SVG's own
+  // screen transform (getScreenCTM) and the pan/zoom view transform applied to the drawable <g>, so every
+  // point/line/area keeps storing coordinates in one stable space regardless of how the view is panned/zoomed.
   const getCoordinates = (e: MouseEvent) => {
     if (!svgRef.current) return { x: 0, y: 0 };
     const CTM = svgRef.current.getScreenCTM();
     if (!CTM) return { x: 0, y: 0 };
+    const svgX = (e.clientX - CTM.e) / CTM.a;
+    const svgY = (e.clientY - CTM.f) / CTM.d;
     return {
-      x: (e.clientX - CTM.e) / CTM.a,
-      y: (e.clientY - CTM.f) / CTM.d
+      x: (svgX - viewTransform.x) / viewTransform.k,
+      y: (svgY - viewTransform.y) / viewTransform.k,
     };
   };
 
@@ -343,12 +593,15 @@ export default function BlueprintCanvasPage() {
     
     if (tool === 'addNode') {
       const newPoint: Point = { id: `p_${Date.now()}`, x: coords.x, y: coords.y, elementType: pendingPointType };
-      if (pendingPointType === 'trench') newPoint.label = `Trench ${nextTrenchNumber}`;
-      if (pendingPointType === 'sprinkler') newPoint.sprinklerHeadType = SPRINKLER_HEAD_TYPES[0];
+      if (pendingPointType === 'sprinkler') {
+        newPoint.sprinklerHeadType = SPRINKLER_HEAD_TYPES[0];
+        newPoint.coverageRadiusFt = DEFAULT_SPRINKLER_RADIUS_FT[SPRINKLER_HEAD_TYPES[0]];
+      }
       setPoints([...points, newPoint]);
     } else if (tool === 'select') {
       setSelectedPointId(null);
       setSelectedLineId(null);
+      setSelectedAreaId(null);
     } else if (tool === 'calibrate') {
       if (!calibStart) {
         setCalibStart(coords);
@@ -357,20 +610,75 @@ export default function BlueprintCanvasPage() {
         setCalibEnd(coords);
         setCalibDialogOpen(true);
       }
+    } else if (tool === 'zone') {
+      setZoneDraftPoints(pts => [...pts, coords]);
+    } else if (tool === 'addArea') {
+      setAreaDraftPoints(pts => [...pts, coords]);
+    }
+  };
+
+  // Background-only mousedown (pointer-events:none on the grid/satellite means clicks on empty canvas
+  // target the <svg> itself) — starts a pan drag in Select mode, or a delete-box drag in Delete mode.
+  const handleSvgMouseDown = (e: MouseEvent) => {
+    const target = e.target as SVGElement;
+    if (target.tagName.toLowerCase() !== 'svg') return;
+    if (tool === 'select') {
+      setIsPanning(true);
+      panStartRef.current = { clientX: e.clientX, clientY: e.clientY, tx: viewTransform.x, ty: viewTransform.y };
+    } else if (tool === 'delete') {
+      const coords = getCoordinates(e);
+      setDeleteBoxStart(coords);
+      setDeleteBoxEnd(coords);
     }
   };
 
   const handleSvgMouseMove = (e: MouseEvent) => {
+    if (isPanning && panStartRef.current) {
+      const dx = e.clientX - panStartRef.current.clientX;
+      const dy = e.clientY - panStartRef.current.clientY;
+      setViewTransform(prev => ({ ...prev, x: panStartRef.current!.tx + dx, y: panStartRef.current!.ty + dy }));
+      return;
+    }
+
     const coords = getCoordinates(e);
     setMousePos(coords);
 
     if (draggingPointId && tool === 'select') {
       setPoints(points.map(p => p.id === draggingPointId ? { ...p, x: coords.x, y: coords.y } : p));
     }
+    if (deleteBoxStart && tool === 'delete') {
+      setDeleteBoxEnd(coords);
+    }
   };
 
   const handleSvgMouseUp = () => {
     setDraggingPointId(null);
+    setIsPanning(false);
+    panStartRef.current = null;
+
+    if (deleteBoxStart && deleteBoxEnd) {
+      const x1 = Math.min(deleteBoxStart.x, deleteBoxEnd.x), x2 = Math.max(deleteBoxStart.x, deleteBoxEnd.x);
+      const y1 = Math.min(deleteBoxStart.y, deleteBoxEnd.y), y2 = Math.max(deleteBoxStart.y, deleteBoxEnd.y);
+      // Require the drag to cover a meaningful area so an ordinary click-to-delete-one-element isn't
+      // accidentally reinterpreted as an (empty) box delete.
+      if (x2 - x1 > 4 || y2 - y1 > 4) {
+        const inBox = (px: number, py: number) => px >= x1 && px <= x2 && py >= y1 && py <= y2;
+        const deletedPointIds = points.filter(p => inBox(p.x, p.y)).map(p => p.id);
+        const deletedAreaIds = areas.filter(a => a.polygon.some(v => inBox(v.x, v.y))).map(a => a.id);
+        const deletedLineIds = lines
+          .filter(l => deletedPointIds.includes(l.startId) || deletedPointIds.includes(l.endId))
+          .map(l => l.id);
+        const count = deletedPointIds.length + deletedAreaIds.length + deletedLineIds.length;
+        if (count > 0) {
+          setPoints(pts => pts.filter(p => !deletedPointIds.includes(p.id)));
+          setLines(ls => ls.filter(l => !deletedLineIds.includes(l.id) && !deletedPointIds.includes(l.startId) && !deletedPointIds.includes(l.endId)));
+          setAreas(ars => ars.filter(a => !deletedAreaIds.includes(a.id)));
+          toast.success(`Deleted ${count} item${count > 1 ? 's' : ''}`);
+        }
+      }
+    }
+    setDeleteBoxStart(null);
+    setDeleteBoxEnd(null);
   };
 
   const handlePointClick = (e: MouseEvent, pointId: string) => {
@@ -379,6 +687,7 @@ export default function BlueprintCanvasPage() {
     if (tool === 'select') {
       setSelectedPointId(pointId);
       setSelectedLineId(null);
+      setSelectedAreaId(null);
     } else if (tool === 'delete') {
       setPoints(points.filter(p => p.id !== pointId));
       setLines(lines.filter(l => l.startId !== pointId && l.endId !== pointId));
@@ -388,6 +697,7 @@ export default function BlueprintCanvasPage() {
       } else if (drawingLineStartId !== pointId) {
         const newLine: Line = { id: `l_${Date.now()}`, startId: drawingLineStartId, endId: pointId, elementType: pendingLineType };
         if (pendingLineType === 'pipe') newLine.pipeType = pendingPipeType;
+        if (pendingLineType === 'trench') newLine.label = `Trench ${nextTrenchNumber}`;
         setLines([...lines, newLine]);
         setDrawingLineStartId(null);
       }
@@ -395,6 +705,7 @@ export default function BlueprintCanvasPage() {
   };
 
   const handlePointMouseDown = (e: MouseEvent, pointId: string) => {
+    e.stopPropagation();
     if (tool === 'select') {
       setDraggingPointId(pointId);
     }
@@ -405,13 +716,25 @@ export default function BlueprintCanvasPage() {
     if (tool === 'select') {
       setSelectedLineId(lineId);
       setSelectedPointId(null);
+      setSelectedAreaId(null);
     } else if (tool === 'delete') {
       setLines(lines.filter(l => l.id !== lineId));
     }
   };
 
+  const handleAreaClick = (e: MouseEvent, areaId: string) => {
+    e.stopPropagation();
+    if (tool === 'select') {
+      setSelectedAreaId(areaId);
+      setSelectedPointId(null);
+      setSelectedLineId(null);
+    } else if (tool === 'delete') {
+      setAreas(areas.filter(a => a.id !== areaId));
+    }
+  };
+
   const handleSave = () => {
-    const canvasData = { points, lines };
+    const canvasData = { points, lines, areas };
     const updateData: Record<string, unknown> = { canvasData };
     if (scalePxPerFt != null) updateData.scalePxPerFt = scalePxPerFt;
     updateBlueprint.mutate({ id, data: updateData as Parameters<typeof updateBlueprint.mutate>[0]['data'] }, {
@@ -465,12 +788,15 @@ export default function BlueprintCanvasPage() {
         } else if (selectedLineId) {
           setLines(ls => ls.filter(l => l.id !== selectedLineId));
           setSelectedLineId(null);
+        } else if (selectedAreaId) {
+          setAreas(ars => ars.filter(a => a.id !== selectedAreaId));
+          setSelectedAreaId(null);
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedPointId, selectedLineId]);
+  }, [selectedPointId, selectedLineId, selectedAreaId]);
 
   if (isLoading) return <div className="p-8 text-center">Loading...</div>;
   if (!blueprint && !isLoading) return <div className="p-8 text-center">Blueprint not found.</div>;
@@ -580,11 +906,57 @@ export default function BlueprintCanvasPage() {
                     </button>
                   ))}
                 </div>
+                <div className="border-t pt-2">
+                  <button
+                    className={`w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted text-left ${pendingLineType === 'trench' ? 'bg-muted' : ''}`}
+                    onClick={() => { setPendingLineType('trench'); setTool('addLine'); setLinePaletteOpen(false); }}
+                  >
+                    <Hash className="w-4 h-4" style={{ color: '#f97316' }} /> Trench (numbered, real-world length auto-calculated)
+                  </button>
+                </div>
+              </PopoverContent>
+            </Popover>
+            <Popover open={areaPaletteOpen} onOpenChange={setAreaPaletteOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant={tool === 'addArea' ? 'default' : 'ghost'}
+                  size="sm"
+                  className="gap-1"
+                  title="Add ground-cover area (gravel, dry river bed)"
+                  onClick={() => { setAreaPaletteOpen(true); }}
+                >
+                  <Square className="w-4 h-4" style={{ color: areaElementMeta(pendingAreaType).color }} />
+                  <span className="text-[10px] max-w-[5.5rem] truncate">{areaElementMeta(pendingAreaType).label}</span>
+                  <ChevronDown className="w-3 h-3" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-1" align="start">
+                <p className="text-xs text-muted-foreground px-2 py-1">Draws a bounded area (sq ft), not a single dot</p>
+                {AREA_PALETTE.map(a => (
+                  <button
+                    key={a.type}
+                    className={`w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted text-left ${pendingAreaType === a.type ? 'bg-muted' : ''}`}
+                    onClick={() => startAreaDrawing(a.type)}
+                  >
+                    <a.icon className="w-4 h-4" style={{ color: a.color }} />
+                    {a.label}
+                  </button>
+                ))}
               </PopoverContent>
             </Popover>
             <div className="w-px h-6 bg-border mx-1" />
-            <Button variant={tool === 'delete' ? 'destructive' : 'ghost'} size="sm" onClick={() => { setTool('delete'); setDrawingLineStartId(null); }} title="Delete">
+            <Button variant={tool === 'delete' ? 'destructive' : 'ghost'} size="sm" onClick={() => { setTool('delete'); setDrawingLineStartId(null); }} title="Delete (click an item, or drag a box to delete multiple)">
               <Trash2 className="w-4 h-4" />
+            </Button>
+            <div className="w-px h-6 bg-border mx-1" />
+            <Button variant="ghost" size="sm" onClick={() => zoomBy(1.25)} title="Zoom in">
+              <ZoomIn className="w-4 h-4" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => zoomBy(1 / 1.25)} title="Zoom out">
+              <ZoomOut className="w-4 h-4" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={resetView} title="Reset pan/zoom">
+              <Maximize className="w-4 h-4" />
             </Button>
             <div className="w-px h-6 bg-border mx-1" />
             <Button
@@ -597,12 +969,100 @@ export default function BlueprintCanvasPage() {
               <Ruler className="w-4 h-4" />
               {scalePxPerFt ? <span className="text-[10px]">{scalePxPerFt.toFixed(1)} px/ft</span> : <span className="text-[10px]">Calibrate</span>}
             </Button>
+            <div className="w-px h-6 bg-border mx-1" />
+            <Button
+              variant={tool === 'zone' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={startZoneDrawing}
+              title="Draw a zone to AI-design (satellite map recommended)"
+              className="gap-1"
+            >
+              <Shapes className="w-4 h-4" />
+              <span className="text-[10px]">Draw AI Zone</span>
+            </Button>
+            {aiZones.length > 0 && (
+              <Button
+                size="sm"
+                className="gap-1"
+                onClick={handleGenerateAiZones}
+                disabled={generateAiZones.isPending}
+                title="Generate AI design for the drawn zones"
+              >
+                <Wand2 className="w-4 h-4" />
+                <span className="text-[10px]">{generateAiZones.isPending ? 'Generating...' : `Generate (${aiZones.length})`}</span>
+              </Button>
+            )}
             <span className="ml-auto text-xs text-muted-foreground mr-2 capitalize">
               {tool === 'calibrate' && !calibStart ? 'Click first point of reference line' :
                tool === 'calibrate' && calibStart ? 'Click second point of reference line' :
+               tool === 'zone' ? `Click to add zone vertices (${zoneDraftPoints.length})` :
+               tool === 'addArea' ? `Click to add area vertices (${areaDraftPoints.length})` :
+               tool === 'delete' ? 'Click an item, or drag a box, to delete' :
+               tool === 'select' ? 'Drag empty space to pan, scroll to zoom' :
                `Mode: ${tool.replace(/([A-Z])/g, ' $1')}`}
             </span>
           </div>
+
+          {/* Zone drawing overlay controls */}
+          {tool === 'zone' && (
+            <div className="border-b p-2 flex items-center gap-3 bg-amber-500/10">
+              <Shapes className="w-4 h-4 text-amber-600 shrink-0" />
+              <p className="text-xs text-amber-700 dark:text-amber-400 flex-1">
+                Click the map to trace the area that needs designing ({zoneDraftPoints.length} point{zoneDraftPoints.length === 1 ? '' : 's'}). Close the shape with at least 3 points.
+              </p>
+              {zoneDraftPoints.length >= 3 && (
+                <Button size="sm" className="h-7 gap-1" onClick={finishZoneDrawing}>
+                  <Check className="w-3.5 h-3.5" /> Finish Zone
+                </Button>
+              )}
+              <Button size="sm" variant="outline" className="h-7 gap-1" onClick={cancelZoneDrawing}>
+                <X className="w-3.5 h-3.5" /> Cancel
+              </Button>
+            </div>
+          )}
+
+          {/* Area drawing overlay controls */}
+          {tool === 'addArea' && (
+            <div className="border-b p-2 flex items-center gap-3" style={{ backgroundColor: `${areaElementMeta(pendingAreaType).color}1a` }}>
+              <Square className="w-4 h-4 shrink-0" style={{ color: areaElementMeta(pendingAreaType).color }} />
+              <p className="text-xs flex-1" style={{ color: areaElementMeta(pendingAreaType).color }}>
+                Click to trace the {areaElementMeta(pendingAreaType).label} area ({areaDraftPoints.length} point{areaDraftPoints.length === 1 ? '' : 's'}). Close the shape with at least 3 points.
+              </p>
+              {areaDraftPoints.length >= 3 && (
+                <Button size="sm" className="h-7 gap-1" onClick={finishAreaDrawing}>
+                  <Check className="w-3.5 h-3.5" /> Finish Area
+                </Button>
+              )}
+              <Button size="sm" variant="outline" className="h-7 gap-1" onClick={cancelAreaDrawing}>
+                <X className="w-3.5 h-3.5" /> Cancel
+              </Button>
+            </div>
+          )}
+
+          {/* AI zones list */}
+          {aiZones.length > 0 && (
+            <div className="border-b p-2 flex flex-wrap items-center gap-2 bg-primary/5">
+              <Sparkles className="w-4 h-4 text-primary shrink-0" />
+              {aiZones.map((zone, i) => (
+                <Badge
+                  key={zone.id}
+                  variant="outline"
+                  className="gap-1.5 pl-2 pr-1 py-1 cursor-pointer hover:border-primary/60"
+                  style={{ borderColor: ZONE_COLORS[i % ZONE_COLORS.length] }}
+                  onClick={() => openEditZoneMaterials(zone)}
+                >
+                  <span style={{ color: ZONE_COLORS[i % ZONE_COLORS.length] }}>{zone.label}</span>
+                  <span className="text-muted-foreground">· {zone.materials.length} material{zone.materials.length === 1 ? '' : 's'}</span>
+                  <button
+                    className="ml-1 rounded-full hover:bg-destructive/20 hover:text-destructive p-0.5"
+                    onClick={(e) => { e.stopPropagation(); removeZone(zone.id); }}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          )}
 
           {/* Selected element details */}
           {tool === 'select' && selectedPointId && (() => {
@@ -672,16 +1132,27 @@ export default function BlueprintCanvasPage() {
                 <div className="space-y-1">
                   <Label className="text-xs">Type</Label>
                   <Select
-                    value={ln.elementType === 'pipe' ? (ln.pipeType ?? PIPE_TYPES[0]) : 'edge'}
-                    onValueChange={v => v === 'edge' ? updateLine({ elementType: 'edge', pipeType: undefined }) : updateLine({ elementType: 'pipe', pipeType: v })}
+                    value={ln.elementType === 'pipe' ? (ln.pipeType ?? PIPE_TYPES[0]) : ln.elementType === 'trench' ? 'trench' : 'edge'}
+                    onValueChange={v => {
+                      if (v === 'edge') updateLine({ elementType: 'edge', pipeType: undefined, label: undefined });
+                      else if (v === 'trench') updateLine({ elementType: 'trench', pipeType: undefined, label: ln.label ?? `Trench ${nextTrenchNumber}` });
+                      else updateLine({ elementType: 'pipe', pipeType: v, label: undefined });
+                    }}
                   >
                     <SelectTrigger className="h-8 w-44"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="edge">Generic Edge</SelectItem>
+                      <SelectItem value="trench">Trench</SelectItem>
                       {PIPE_TYPES.map(pt => <SelectItem key={pt} value={pt}>{pt}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
+                {ln.elementType === 'trench' && (
+                  <div className="space-y-1">
+                    <Label className="text-xs">Label</Label>
+                    <Input className="h-8 w-36" value={ln.label ?? ''} onChange={e => updateLine({ label: e.target.value })} />
+                  </div>
+                )}
                 <div className="space-y-1">
                   <Label className="text-xs flex items-center gap-1"><Link2 className="w-3 h-3" /> Linked Inventory Item</Label>
                   <Select
@@ -700,13 +1171,53 @@ export default function BlueprintCanvasPage() {
               </div>
             );
           })()}
+          {tool === 'select' && selectedAreaId && (() => {
+            const area = areas.find(a => a.id === selectedAreaId);
+            if (!area) return null;
+            const meta = areaElementMeta(area.elementType);
+            const sqFt = scalePxPerFt ? pxAreaToSqFt(polygonAreaPx(area.polygon), scalePxPerFt) : null;
+            const updateArea = (patch: Partial<Area>) => setAreas(ars => ars.map(a => a.id === area.id ? { ...a, ...patch } : a));
+            return (
+              <div className="border-b p-3 flex flex-wrap items-end gap-3 bg-muted/10">
+                <div className="flex items-center gap-1.5">
+                  <meta.icon className="w-4 h-4" style={{ color: meta.color }} />
+                  <span className="text-sm font-medium">{meta.label}</span>
+                  {sqFt !== null ? (
+                    <Badge variant="outline" className="text-xs">{sqFt.toLocaleString(undefined, { maximumFractionDigits: 1 })} sq ft</Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-xs text-muted-foreground">Calibrate for sq ft</Badge>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Label</Label>
+                  <Input className="h-8 w-36" value={area.label ?? ''} placeholder="Optional label" onChange={e => updateArea({ label: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs flex items-center gap-1"><Link2 className="w-3 h-3" /> Linked Inventory Item</Label>
+                  <Select
+                    value={area.inventoryItemId != null ? String(area.inventoryItemId) : 'none'}
+                    onValueChange={v => updateArea({ inventoryItemId: v === 'none' ? null : Number(v) })}
+                  >
+                    <SelectTrigger className="h-8 w-48"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {(blueprintInventoryItems ?? []).map(item => (
+                        <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Canvas */}
-          <div ref={canvasContainerRef} className="flex-1 bg-gray-50 dark:bg-zinc-950 relative overflow-hidden cursor-crosshair">
+          <div ref={canvasContainerRef} className={`flex-1 bg-gray-50 dark:bg-zinc-950 relative overflow-hidden ${isPanning ? 'cursor-grabbing' : tool === 'select' ? 'cursor-grab' : 'cursor-crosshair'}`}>
             <svg
               ref={svgRef}
               className="w-full h-full"
               onClick={handleSvgClick}
+              onMouseDown={handleSvgMouseDown}
               onMouseMove={handleSvgMouseMove}
               onMouseUp={handleSvgMouseUp}
               onMouseLeave={handleSvgMouseUp}
@@ -716,6 +1227,12 @@ export default function BlueprintCanvasPage() {
                   <path d="M 40 0 L 0 0 0 40" fill="none" stroke="hsl(var(--border))" strokeWidth="0.5" strokeOpacity="0.5"/>
                 </pattern>
               </defs>
+              {satelliteImage && !satelliteFailed && (
+                <text x={8} y={18} fontSize={10} fontFamily="monospace" fill="white" fillOpacity={0.85} pointerEvents="none">SATELLITE</text>
+              )}
+
+              {/* Everything below pans/zooms together; the SATELLITE HUD label above stays fixed. */}
+              <g transform={`translate(${viewTransform.x}, ${viewTransform.y}) scale(${viewTransform.k})`}>
               {satelliteImage && !satelliteFailed ? (
                 <image
                   href={satelliteImage.url}
@@ -729,10 +1246,75 @@ export default function BlueprintCanvasPage() {
                 <rect width="100%" height="100%" fill="url(#grid-pattern)" pointerEvents="none" />
               )}
 
-              {satelliteImage && !satelliteFailed && (
-                <text x={8} y={18} fontSize={10} fontFamily="monospace" fill="white" fillOpacity={0.85} pointerEvents="none">SATELLITE</text>
+              {/* Ground-cover areas (gravel, dry river bed) */}
+              {areas.map(area => {
+                const meta = areaElementMeta(area.elementType);
+                const isSelected = selectedAreaId === area.id;
+                const pathD = `M ${area.polygon.map(p => `${p.x},${p.y}`).join(' L ')} Z`;
+                const cx = area.polygon.reduce((s, p) => s + p.x, 0) / area.polygon.length;
+                const cy = area.polygon.reduce((s, p) => s + p.y, 0) / area.polygon.length;
+                const sqFt = scalePxPerFt ? pxAreaToSqFt(polygonAreaPx(area.polygon), scalePxPerFt) : null;
+                return (
+                  <g key={area.id}>
+                    <path
+                      d={pathD}
+                      fill={meta.color}
+                      fillOpacity={isSelected ? 0.45 : 0.3}
+                      stroke={isSelected ? 'hsl(var(--destructive))' : meta.color}
+                      strokeWidth={isSelected ? 3 : 2}
+                      className="cursor-pointer"
+                      onClick={(e) => handleAreaClick(e, area.id)}
+                    />
+                    <text x={cx} y={cy} fontSize={10} textAnchor="middle" fill={meta.color} className="font-medium" pointerEvents="none" style={{ paintOrder: 'stroke', stroke: 'white', strokeWidth: 3 }}>
+                      {area.label ?? meta.label}{sqFt !== null ? ` · ${sqFt.toLocaleString(undefined, { maximumFractionDigits: 0 })} sq ft` : ''}
+                    </text>
+                  </g>
+                );
+              })}
+
+              {/* In-progress area drawing preview */}
+              {tool === 'addArea' && areaDraftPoints.length > 0 && (
+                <>
+                  <path
+                    d={`M ${areaDraftPoints.map(p => `${p.x},${p.y}`).join(' L ')}${areaDraftPoints.length >= 3 ? ` L ${mousePos.x},${mousePos.y} Z` : ` L ${mousePos.x},${mousePos.y}`}`}
+                    fill={areaDraftPoints.length >= 3 ? areaElementMeta(pendingAreaType).color : 'none'}
+                    fillOpacity={0.25}
+                    stroke={areaElementMeta(pendingAreaType).color}
+                    strokeWidth={2}
+                    strokeDasharray="6 3"
+                    pointerEvents="none"
+                  />
+                  {areaDraftPoints.map((p, i) => (
+                    <circle key={i} cx={p.x} cy={p.y} r={4} fill={areaElementMeta(pendingAreaType).color} pointerEvents="none" />
+                  ))}
+                </>
               )}
-              
+
+              {/* Sprinkler coverage radius previews */}
+              {points.filter(p => p.elementType === 'sprinkler' && p.coverageRadiusFt && scalePxPerFt).map(p => (
+                <circle
+                  key={`radius_${p.id}`}
+                  cx={p.x} cy={p.y}
+                  r={(p.coverageRadiusFt ?? 0) * (scalePxPerFt ?? 0)}
+                  fill="#38bdf8" fillOpacity={0.08}
+                  stroke="#38bdf8" strokeOpacity={0.35} strokeWidth={1} strokeDasharray="3 3"
+                  pointerEvents="none"
+                />
+              ))}
+
+              {/* Delete-box drag preview */}
+              {tool === 'delete' && deleteBoxStart && deleteBoxEnd && (
+                <rect
+                  x={Math.min(deleteBoxStart.x, deleteBoxEnd.x)}
+                  y={Math.min(deleteBoxStart.y, deleteBoxEnd.y)}
+                  width={Math.abs(deleteBoxEnd.x - deleteBoxStart.x)}
+                  height={Math.abs(deleteBoxEnd.y - deleteBoxStart.y)}
+                  fill="hsl(var(--destructive))" fillOpacity={0.1}
+                  stroke="hsl(var(--destructive))" strokeWidth={1.5} strokeDasharray="4 3"
+                  pointerEvents="none"
+                />
+              )}
+
               {/* Lines */}
               {lines.map(line => {
                 const p1 = points.find(p => p.id === line.startId);
@@ -740,6 +1322,7 @@ export default function BlueprintCanvasPage() {
                 if (!p1 || !p2) return null;
                 const isSelected = selectedLineId === line.id;
                 const isPipe = line.elementType === 'pipe';
+                const isTrench = line.elementType === 'trench';
                 const lengthFt = lineLengthFt(p1, p2, scalePxPerFt);
                 const midX = (p1.x + p2.x) / 2;
                 const midY = (p1.y + p2.y) / 2;
@@ -747,9 +1330,9 @@ export default function BlueprintCanvasPage() {
                   <g key={line.id}>
                     <line
                       x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-                      stroke={isSelected ? 'hsl(var(--destructive))' : isPipe ? '#0ea5e9' : lineColor}
-                      strokeWidth={isSelected ? 4 : isPipe ? 3 : 2}
-                      strokeDasharray={isPipe ? undefined : undefined}
+                      stroke={isSelected ? 'hsl(var(--destructive))' : isPipe ? '#0ea5e9' : isTrench ? '#f97316' : lineColor}
+                      strokeWidth={isSelected ? 4 : isPipe ? 3 : isTrench ? 4 : 2}
+                      strokeDasharray={isTrench ? '8 4' : undefined}
                       className="cursor-pointer transition-colors"
                       onClick={(e) => handleLineClick(e, line.id)}
                     />
@@ -763,6 +1346,19 @@ export default function BlueprintCanvasPage() {
                         className="font-medium"
                       >
                         {line.pipeType}{lengthFt !== null ? ` · ${lengthFt.toFixed(1)} ft` : ''}
+                      </text>
+                    )}
+                    {isTrench && (
+                      <text
+                        x={midX} y={midY - 6}
+                        fontSize={10}
+                        textAnchor="middle"
+                        fill={isSelected ? 'hsl(var(--destructive))' : '#c2410c'}
+                        pointerEvents="none"
+                        className="font-medium"
+                        style={{ paintOrder: 'stroke', stroke: 'white', strokeWidth: 3 }}
+                      >
+                        {line.label ?? 'Trench'}{lengthFt !== null ? ` · ${lengthFt.toFixed(1)} ft` : ''}
                       </text>
                     )}
                   </g>
@@ -807,6 +1403,40 @@ export default function BlueprintCanvasPage() {
                 </>
               )}
 
+              {/* Saved AI design zones */}
+              {aiZones.map((zone, i) => {
+                const color = ZONE_COLORS[i % ZONE_COLORS.length];
+                const pathD = `M ${zone.polygon.map(p => `${p.x},${p.y}`).join(' L ')} Z`;
+                const cx = zone.polygon.reduce((s, p) => s + p.x, 0) / zone.polygon.length;
+                const cy = zone.polygon.reduce((s, p) => s + p.y, 0) / zone.polygon.length;
+                return (
+                  <g key={zone.id} pointerEvents="none">
+                    <path d={pathD} fill={color} fillOpacity={0.15} stroke={color} strokeWidth={2} strokeDasharray="6 3" />
+                    <text x={cx} y={cy} fontSize={11} textAnchor="middle" fill={color} className="font-semibold" style={{ paintOrder: 'stroke', stroke: 'white', strokeWidth: 3 }}>
+                      {zone.label}
+                    </text>
+                  </g>
+                );
+              })}
+
+              {/* In-progress zone drawing preview */}
+              {tool === 'zone' && zoneDraftPoints.length > 0 && (
+                <>
+                  <path
+                    d={`M ${zoneDraftPoints.map(p => `${p.x},${p.y}`).join(' L ')}${zoneDraftPoints.length >= 3 ? ` L ${mousePos.x},${mousePos.y} Z` : ` L ${mousePos.x},${mousePos.y}`}`}
+                    fill={zoneDraftPoints.length >= 3 ? '#f59e0b' : 'none'}
+                    fillOpacity={0.15}
+                    stroke="#f59e0b"
+                    strokeWidth={2}
+                    strokeDasharray="6 3"
+                    pointerEvents="none"
+                  />
+                  {zoneDraftPoints.map((p, i) => (
+                    <circle key={i} cx={p.x} cy={p.y} r={4} fill="#f59e0b" pointerEvents="none" />
+                  ))}
+                </>
+              )}
+
               {/* Nodes */}
               {points.map(point => {
                 const isSelected = selectedPointId === point.id;
@@ -836,6 +1466,7 @@ export default function BlueprintCanvasPage() {
                   </g>
                 );
               })}
+              </g>
             </svg>
           </div>
         </Card>
@@ -859,6 +1490,20 @@ export default function BlueprintCanvasPage() {
                   <p className="text-sm font-semibold">
                     Area: {totalAreaSqFt.toLocaleString(undefined, { maximumFractionDigits: 1 })} sq ft
                   </p>
+                )}
+                {areas.length > 0 && (
+                  <div className="pt-1 space-y-0.5">
+                    {areas.map(a => {
+                      const meta = areaElementMeta(a.elementType);
+                      const sqFt = pxAreaToSqFt(polygonAreaPx(a.polygon), scalePxPerFt);
+                      return (
+                        <p key={a.id} className="text-xs flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: meta.color }} />
+                          {a.label ?? meta.label}: {sqFt !== null ? sqFt.toLocaleString(undefined, { maximumFractionDigits: 1 }) : '—'} sq ft
+                        </p>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
             )}
@@ -952,6 +1597,76 @@ export default function BlueprintCanvasPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => { setCalibDialogOpen(false); setCalibStart(null); setCalibEnd(null); }}>Cancel</Button>
             <Button onClick={handleConfirmCalibration}>Apply Scale</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Zone materials dialog — pick which fixtures/materials AI should use inside this zone */}
+      <Dialog open={materialsDialogOpen} onOpenChange={open => { if (!open) { setMaterialsDialogOpen(false); setPendingZonePolygon(null); setEditingZoneId(null); } }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Wand2 className="w-5 h-5" /> {editingZoneId ? 'Edit Zone Materials' : 'Choose Materials for This Zone'}</DialogTitle>
+            <DialogDescription>
+              AI will only place these materials inside the drawn area — the rest of the property is left untouched.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Zone Label</Label>
+              <Input value={zoneLabelDraft} onChange={e => setZoneLabelDraft(e.target.value)} placeholder="e.g. Front Bed" />
+            </div>
+            <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+              {ZONE_MATERIAL_PALETTE.map(p => {
+                const material = zoneMaterialsDraft.find(m => m.elementType === p.type);
+                const checked = !!material;
+                return (
+                  <div key={p.type} className={`rounded-md border p-2.5 space-y-2 transition-colors ${checked ? 'border-primary/50 bg-primary/5' : ''}`}>
+                    <div className="flex items-center gap-2">
+                      <Checkbox checked={checked} onCheckedChange={(v) => toggleZoneMaterial(p.type, v === true)} id={`mat-${p.type}`} />
+                      <label htmlFor={`mat-${p.type}`} className="flex items-center gap-1.5 text-sm font-medium cursor-pointer flex-1">
+                        <p.icon className="w-4 h-4" style={{ color: p.color }} /> {p.label}
+                      </label>
+                    </div>
+                    {checked && (
+                      <div className="pl-6 flex flex-wrap items-center gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <Link2 className="w-3 h-3 text-muted-foreground" />
+                          <Select
+                            value={material?.inventoryItemId != null ? String(material.inventoryItemId) : 'none'}
+                            onValueChange={v => updateZoneMaterial(p.type, { inventoryItemId: v === 'none' ? null : Number(v) })}
+                          >
+                            <SelectTrigger className="h-7 w-48 text-xs"><SelectValue placeholder="Inventory item (optional)" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">No specific item</SelectItem>
+                              {(blueprintInventoryItems ?? []).map(item => (
+                                <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {p.type === 'sprinkler' && (
+                          <Select
+                            value={material?.pipeType ?? PIPE_TYPES[0]}
+                            onValueChange={v => updateZoneMaterial(p.type, { pipeType: v })}
+                          >
+                            <SelectTrigger className="h-7 w-40 text-xs"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {PIPE_TYPES.map(pt => <SelectItem key={pt} value={pt}>{pt}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setMaterialsDialogOpen(false); setPendingZonePolygon(null); setEditingZoneId(null); }}>Cancel</Button>
+            <Button onClick={saveZoneMaterials} className="gap-2">
+              <Check className="w-4 h-4" /> {editingZoneId ? 'Save Changes' : 'Add Zone'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

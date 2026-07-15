@@ -98,6 +98,7 @@ import type {
   FollowupQueueItem,
   FollowupQueueItemContext,
   FollowupTriggerConfig,
+  GenerateBlueprintAiZonesBody,
   GenerateBlueprintFromAiBody,
   GeocodeResult,
   GeofencePinUpdate,
@@ -7642,6 +7643,79 @@ export const useGenerateBlueprintFromAi = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getGenerateBlueprintFromAiMutationOptions(options));
+    }
+
+export const getGenerateBlueprintAiZonesUrl = (id: number,) => {
+
+
+
+
+  return `/api/blueprints/${id}/generate-ai-zones`
+}
+
+/**
+ * Generates elements only within the given zone polygons (canvas px coordinates), using only the selected materials/fixtures per zone, and merges the result into the blueprint's existing canvas — everything outside the zones is left untouched.
+ * @summary AI-assisted layout generation scoped to specific hand-drawn zones and chosen materials
+ */
+export const generateBlueprintAiZones = async (id: number,
+    generateBlueprintAiZonesBody: GenerateBlueprintAiZonesBody, options?: RequestInit): Promise<Blueprint> => {
+
+  return customFetch<Blueprint>(getGenerateBlueprintAiZonesUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(generateBlueprintAiZonesBody)
+  }
+);}
+
+
+
+
+
+export const getGenerateBlueprintAiZonesMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateBlueprintAiZones>>, TError,{id: number;data: BodyType<GenerateBlueprintAiZonesBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateBlueprintAiZones>>, TError,{id: number;data: BodyType<GenerateBlueprintAiZonesBody>}, TContext> => {
+
+const mutationKey = ['generateBlueprintAiZones'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateBlueprintAiZones>>, {id: number;data: BodyType<GenerateBlueprintAiZonesBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  generateBlueprintAiZones(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateBlueprintAiZonesMutationResult = NonNullable<Awaited<ReturnType<typeof generateBlueprintAiZones>>>
+    export type GenerateBlueprintAiZonesMutationBody = BodyType<GenerateBlueprintAiZonesBody>
+    export type GenerateBlueprintAiZonesMutationError = ErrorType<unknown>
+
+    /**
+ * @summary AI-assisted layout generation scoped to specific hand-drawn zones and chosen materials
+ */
+export const useGenerateBlueprintAiZones = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateBlueprintAiZones>>, TError,{id: number;data: BodyType<GenerateBlueprintAiZonesBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateBlueprintAiZones>>,
+        TError,
+        {id: number;data: BodyType<GenerateBlueprintAiZonesBody>},
+        TContext
+      > => {
+      return useMutation(getGenerateBlueprintAiZonesMutationOptions(options));
     }
 
 export const getListBlueprintTemplatesUrl = () => {

@@ -230,9 +230,26 @@ interface CanvasLineEl {
   pipeType?: string;
   inventoryItemId?: number | null;
 }
+interface CanvasAreaEl {
+  id: string;
+  elementType?: string;
+  polygon: { x: number; y: number }[];
+  inventoryItemId?: number | null;
+}
 
 function pxDistance(a: CanvasPointEl, b: CanvasPointEl): number {
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+}
+
+/** Shoelace formula — polygon area in the canvas's raw px^2 units. */
+function polygonAreaPx(poly: { x: number; y: number }[]): number {
+  if (!Array.isArray(poly) || poly.length < 3) return 0;
+  let sum = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const j = (i + 1) % poly.length;
+    sum += poly[i].x * poly[j].y - poly[j].x * poly[i].y;
+  }
+  return Math.abs(sum) / 2;
 }
 
 router.post("/blueprints/:id/estimate", async (req, res): Promise<void> => {
@@ -243,9 +260,10 @@ router.post("/blueprints/:id/estimate", async (req, res): Promise<void> => {
   const [bp] = await db.select().from(blueprintsTable).where(and(eq(blueprintsTable.id, id), eq(blueprintsTable.tenantId, tenantId)));
   if (!bp) { res.status(404).json({ error: "Not found" }); return; }
 
-  const canvas = (bp.canvasData as { nodes?: unknown[]; lines?: CanvasLineEl[]; points?: CanvasPointEl[] }) ?? {};
+  const canvas = (bp.canvasData as { nodes?: unknown[]; lines?: CanvasLineEl[]; points?: CanvasPointEl[]; areas?: CanvasAreaEl[] }) ?? {};
   const points = canvas.points ?? [];
   const lines = canvas.lines ?? [];
+  const areas = canvas.areas ?? [];
   const pointById = new Map(points.map(p => [p.id, p]));
   const nodeCount = canvas.nodes?.length ?? points.length ?? 0;
   const lineCount = lines.length;
@@ -275,6 +293,17 @@ router.post("/blueprints/:id/estimate", async (req, res): Promise<void> => {
     if (scale) entry.unit = "ft";
     entry.quantity += scale ? lengthFt : 1;
     derived.set(line.inventoryItemId, entry);
+  }
+
+  // Ground-cover areas (gravel, dry river bed) are quantified by real-world sq ft, not point count.
+  for (const area of areas) {
+    if (area.inventoryItemId == null) continue;
+    const pxArea = polygonAreaPx(area.polygon);
+    const sqFt = scale ? pxArea / (scale * scale) : 0;
+    const entry = derived.get(area.inventoryItemId) ?? { quantity: 0, unit: scale ? "sq ft" : "each", source: "canvas" };
+    if (scale) entry.unit = "sq ft";
+    entry.quantity += scale ? sqFt : 1;
+    derived.set(area.inventoryItemId, entry);
   }
 
   // ── Merge in manually-tagged Suggested Parts (additive by inventoryItemId) ─
@@ -380,6 +409,244 @@ router.post("/blueprints/:id/apply-template", async (req, res): Promise<void> =>
     .returning();
 
   res.json(formatBlueprint(newBp));
+});
+
+// ─── Zone-Scoped AI Generation ────────────────────────────────────────────────
+// Extends the heuristic generator: instead of drafting a whole new blueprint from a free-text
+// description, this places elements only inside user-drawn zone polygons (already in the same
+// px coordinate space as the canvas), using only the materials the user picked for that zone —
+// then merges the result into the blueprint's *existing* canvasData. Everything else is untouched.
+
+interface AiZonePointInput { x: number; y: number }
+interface AiZoneMaterialInput { elementType: string; inventoryItemId?: number | null; pipeType?: string | null }
+interface AiZoneInput { id: string; label?: string; polygon: AiZonePointInput[]; materials: AiZoneMaterialInput[] }
+
+interface GeneratedZonePoint {
+  id: string;
+  x: number;
+  y: number;
+  /** Omitted for plain anchor points (e.g. trench path vertices) — those render as generic dots. */
+  elementType?: string;
+  label?: string;
+  sprinklerHeadType?: string;
+  inventoryItemId?: number | null;
+}
+interface GeneratedZoneLine {
+  id: string;
+  startId: string;
+  endId: string;
+  elementType: string;
+  pipeType?: string;
+  label?: string;
+  inventoryItemId?: number | null;
+}
+interface GeneratedZoneArea {
+  id: string;
+  elementType: string;
+  polygon: AiZonePointInput[];
+  inventoryItemId?: number | null;
+}
+
+/** Ground-cover materials that draw as a bounded polygon area instead of scattered points. */
+const AREA_MATERIAL_TYPES = new Set(["dryRiverBed", "gravel_1in", "gravel_2in", "gravel_3in", "gravel_4in"]);
+
+/** Ray-casting point-in-polygon test. */
+function pointInPolygon(px: number, py: number, polygon: AiZonePointInput[]): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x, yi = polygon[i].y;
+    const xj = polygon[j].x, yj = polygon[j].y;
+    const intersects = yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+/** Every polygon-interior point on a regular grid at the given spacing, capped to avoid runaway counts. */
+function scatterGridInPolygon(polygon: AiZonePointInput[], spacing: number, maxPoints: number): { x: number; y: number }[] {
+  const xs = polygon.map(p => p.x);
+  const ys = polygon.map(p => p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const out: { x: number; y: number }[] = [];
+  for (let y = minY + spacing / 2; y <= maxY && out.length < maxPoints; y += spacing) {
+    for (let x = minX + spacing / 2; x <= maxX && out.length < maxPoints; x += spacing) {
+      if (pointInPolygon(x, y, polygon)) out.push({ x, y });
+    }
+  }
+  return out;
+}
+
+/** Spacing (px) tuned per material so denser fixtures (gravel) pack tighter than sparse ones (trees). */
+function spacingForElementType(elementType: string, scalePxPerFt: number | null | undefined): number {
+  const ft = scalePxPerFt && scalePxPerFt > 0 ? scalePxPerFt : 18; // fallback: ~18px/ft-ish visual default
+  const spacingFt: Record<string, number> = {
+    sprinkler: 12,
+    tree: 15,
+    largeRock: 10,
+    dryRiverBed: 8,
+    gravel_1in: 6,
+    gravel_2in: 6,
+    gravel_3in: 6,
+    gravel_4in: 6,
+    trench: 6,
+    node: 10,
+  };
+  const spacing = (spacingFt[elementType] ?? 10) * ft;
+  return Math.max(24, Math.min(spacing, 220));
+}
+
+function generateZoneElements(
+  zone: AiZoneInput,
+  scalePxPerFt: number | null | undefined,
+  nextTrenchNumberRef: { value: number },
+  idPrefix: string,
+): { points: GeneratedZonePoint[]; lines: GeneratedZoneLine[]; areas: GeneratedZoneArea[] } {
+  const points: GeneratedZonePoint[] = [];
+  const lines: GeneratedZoneLine[] = [];
+  const areas: GeneratedZoneArea[] = [];
+  let idx = 0;
+  const nextId = () => `${idPrefix}_p${idx++}`;
+  const MAX_PLACEMENTS_PER_MATERIAL = 40;
+
+  for (const material of zone.materials) {
+    if (material.elementType === "edge" || material.elementType === "pipe") continue; // lines are derived, not directly selectable
+
+    // Ground cover (gravel/dry river bed): the whole zone becomes one area, quantified by sq ft, not a scatter of dots.
+    if (AREA_MATERIAL_TYPES.has(material.elementType)) {
+      areas.push({
+        id: `${idPrefix}_a${areas.length}`,
+        elementType: material.elementType,
+        polygon: zone.polygon,
+        inventoryItemId: material.inventoryItemId ?? null,
+      });
+      continue;
+    }
+
+    const spacing = spacingForElementType(material.elementType, scalePxPerFt);
+    const cells = scatterGridInPolygon(zone.polygon, spacing, MAX_PLACEMENTS_PER_MATERIAL);
+    if (cells.length === 0) continue;
+
+    if (material.elementType === "trench") {
+      // Chain plain anchor points along the grid order and connect consecutive ones with a single
+      // labeled trench *line* — the trench reads as one continuous line, not a row of labeled dots.
+      const placed: GeneratedZonePoint[] = cells.map((c) => {
+        const p: GeneratedZonePoint = { id: nextId(), x: c.x, y: c.y };
+        points.push(p);
+        return p;
+      });
+      const trenchLabel = `Trench ${nextTrenchNumberRef.value++}`;
+      for (let i = 0; i < placed.length - 1; i++) {
+        lines.push({
+          id: `${idPrefix}_l${lines.length}`,
+          startId: placed[i].id,
+          endId: placed[i + 1].id,
+          elementType: "trench",
+          label: trenchLabel,
+          inventoryItemId: material.inventoryItemId ?? null,
+        });
+      }
+      continue;
+    }
+
+    if (material.elementType === "sprinkler") {
+      const placed: GeneratedZonePoint[] = cells.map((c) => {
+        const p: GeneratedZonePoint = {
+          id: nextId(),
+          x: c.x,
+          y: c.y,
+          elementType: "sprinkler",
+          sprinklerHeadType: "Rotor",
+          inventoryItemId: material.inventoryItemId ?? null,
+        };
+        points.push(p);
+        return p;
+      });
+      // If a pipe type was chosen, run a supply line through the heads (nearest-neighbor chain from the first head).
+      if (material.pipeType && placed.length > 1) {
+        const remaining = [...placed.slice(1)];
+        let current = placed[0];
+        while (remaining.length > 0) {
+          let nearestIdx = 0;
+          let nearestDist = Infinity;
+          remaining.forEach((cand, i) => {
+            const d = (cand.x - current.x) ** 2 + (cand.y - current.y) ** 2;
+            if (d < nearestDist) { nearestDist = d; nearestIdx = i; }
+          });
+          const next = remaining.splice(nearestIdx, 1)[0];
+          lines.push({ id: `${idPrefix}_l${lines.length}`, startId: current.id, endId: next.id, elementType: "pipe", pipeType: material.pipeType ?? undefined });
+          current = next;
+        }
+      }
+      continue;
+    }
+
+    // Generic scatter (tree, largeRock, dryRiverBed, gravel_*, node)
+    cells.forEach((c) => {
+      points.push({
+        id: nextId(),
+        x: c.x,
+        y: c.y,
+        elementType: material.elementType,
+        inventoryItemId: material.inventoryItemId ?? null,
+      });
+    });
+  }
+
+  return { points, lines, areas };
+}
+
+router.post("/blueprints/:id/generate-ai-zones", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+
+  const { zones } = req.body as { zones?: AiZoneInput[] };
+  if (!Array.isArray(zones) || zones.length === 0) {
+    res.status(400).json({ error: "zones array (at least one zone) is required" });
+    return;
+  }
+  for (const zone of zones) {
+    if (!Array.isArray(zone.polygon) || zone.polygon.length < 3) {
+      res.status(400).json({ error: `Zone ${zone.id ?? "?"} needs a polygon with at least 3 vertices` });
+      return;
+    }
+  }
+
+  const [bp] = await db.select().from(blueprintsTable).where(and(eq(blueprintsTable.id, id), eq(blueprintsTable.tenantId, tenantId)));
+  if (!bp) { res.status(404).json({ error: "Not found" }); return; }
+
+  const existing = (bp.canvasData as { points?: GeneratedZonePoint[]; lines?: GeneratedZoneLine[]; areas?: GeneratedZoneArea[] }) ?? {};
+  const existingPoints = existing.points ?? [];
+  const existingLines = existing.lines ?? [];
+  const existingAreas = existing.areas ?? [];
+
+  const nextTrenchNumberRef = { value: existingLines.filter((l) => l.elementType === "trench").length + 1 };
+  const newPoints: GeneratedZonePoint[] = [];
+  const newLines: GeneratedZoneLine[] = [];
+  const newAreas: GeneratedZoneArea[] = [];
+
+  zones.forEach((zone, zoneIdx) => {
+    const idPrefix = `aiz_${Date.now()}_${zoneIdx}`;
+    const generated = generateZoneElements(zone, bp.scalePxPerFt, nextTrenchNumberRef, idPrefix);
+    newPoints.push(...generated.points);
+    newLines.push(...generated.lines);
+    newAreas.push(...generated.areas);
+  });
+
+  const mergedCanvasData = {
+    points: [...existingPoints, ...newPoints],
+    lines: [...existingLines, ...newLines],
+    areas: [...existingAreas, ...newAreas],
+  };
+
+  const [updated] = await db
+    .update(blueprintsTable)
+    .set({ canvasData: mergedCanvasData as typeof blueprintsTable.$inferInsert["canvasData"] })
+    .where(eq(blueprintsTable.id, id))
+    .returning();
+
+  res.json(formatBlueprint(updated));
 });
 
 // ─── Heuristic AI Layout Generator ───────────────────────────────────────────

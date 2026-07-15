@@ -2009,6 +2009,34 @@ export interface BlueprintEstimate {
   measurements?: BlueprintEstimateMeasurements;
 }
 
+export interface AiZonePoint {
+  x: number;
+  y: number;
+}
+
+export interface AiZoneMaterial {
+  /** Fixture/material palette type (e.g. sprinkler, tree, gravel_2in) to place within this zone. */
+  elementType: string;
+  /**
+     * Optional linked inventory item; generated elements of this type will carry this link.
+     * @nullable
+     */
+  inventoryItemId?: number | null;
+  /**
+     * When elementType is sprinkler, the pipe class/size used to connect heads to the supply line.
+     * @nullable
+     */
+  pipeType?: string | null;
+}
+
+export interface AiZoneInput {
+  id: string;
+  label?: string;
+  /** @minItems 3 */
+  polygon: AiZonePoint[];
+  materials: AiZoneMaterial[];
+}
+
 /**
  * Whether job duration is displayed/entered in minutes or hours
  */
@@ -4026,6 +4054,10 @@ export type GenerateBlueprintFromAiBody = {
   mode: GenerateBlueprintFromAiBodyMode;
   propertyId?: number;
   name?: string;
+};
+
+export type GenerateBlueprintAiZonesBody = {
+  zones: AiZoneInput[];
 };
 
 export type ApplyBlueprintTemplateBody = {

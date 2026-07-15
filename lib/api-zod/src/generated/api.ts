@@ -3047,6 +3047,7 @@ export const UpdateBlueprintBody = zod.object({
   "overageBufferPercent": zod.number().optional(),
   "scalePxPerFt": zod.number().optional(),
   "suggestedParts": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "isArchived": zod.boolean().optional().describe('Set to false to un-archive a blueprint that was archived automatically (e.g. when its job was completed or its estimate was declined).'),
   "pdfObjectPath": zod.string().optional().describe('Set together with pdfFileName\/pdfSizeBytes to replace the source PDF on a pdf-sourced blueprint.'),
   "pdfFileName": zod.string().nullish(),
   "pdfSizeBytes": zod.number().optional()

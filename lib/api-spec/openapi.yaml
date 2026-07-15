@@ -8324,6 +8324,9 @@ components:
           items:
             type: object
             additionalProperties: true
+        isArchived:
+          type: boolean
+          description: Set to false to un-archive a blueprint that was archived automatically (e.g. when its job was completed or its estimate was declined).
         pdfObjectPath:
           type: string
           description: Set together with pdfFileName/pdfSizeBytes to replace the source PDF on a pdf-sourced blueprint.

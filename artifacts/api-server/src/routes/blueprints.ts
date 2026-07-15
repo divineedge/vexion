@@ -264,7 +264,7 @@ router.patch("/blueprints/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const { name, canvasData, overageBufferPercent, p4pPercentage, isTemplate, scalePxPerFt, pdfObjectPath, pdfFileName, pdfSizeBytes } = req.body;
+  const { name, canvasData, overageBufferPercent, p4pPercentage, isTemplate, scalePxPerFt, isArchived, pdfObjectPath, pdfFileName, pdfSizeBytes } = req.body;
   const updates: Partial<typeof blueprintsTable.$inferInsert> = {};
   if (name) updates.name = name;
   if (canvasData !== undefined) updates.canvasData = canvasData as typeof blueprintsTable.$inferInsert["canvasData"];
@@ -272,6 +272,11 @@ router.patch("/blueprints/:id", async (req, res): Promise<void> => {
   if (p4pPercentage !== undefined) updates.p4pPercentage = p4pPercentage === null ? null : parseFloat(p4pPercentage);
   if (isTemplate !== undefined) updates.isTemplate = isTemplate === true || isTemplate === "true";
   if (scalePxPerFt !== undefined) updates.scalePxPerFt = scalePxPerFt === null ? null : parseFloat(scalePxPerFt);
+  // Explicit unarchive: clearing isArchived also clears the timestamp so the blueprint re-enters the main list.
+  if (isArchived === false || isArchived === "false") {
+    updates.isArchived = false;
+    updates.archivedAt = null;
+  }
   // Replacing the source PDF on a pdf-sourced blueprint — pdfObjectPath/pdfFileName/pdfSizeBytes always
   // come together from a fresh upload, so only accept the swap when both required fields are present.
   const isPdfReplace = pdfObjectPath !== undefined && pdfSizeBytes !== undefined;

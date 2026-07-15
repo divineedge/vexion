@@ -16,6 +16,7 @@ import {
   useGetRepairLogSummary, getGetRepairLogSummaryQueryKey,
   useDeleteRepairLog,
   useListUsers, getListUsersQueryKey,
+  useUpdateBlueprint,
   customFetch,
 } from '@workspace/api-client-react';
 import type { MeasurementZone, Quote } from '@workspace/api-client-react';
@@ -38,7 +39,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import {
   ArrowLeft, Edit, MapPin, Navigation, Calendar, Save, GitMerge,
   AlertTriangle, Clock, ChevronDown, Check, ArrowRight, Satellite,
-  Calculator, ExternalLink, Copy, Ruler, Images, DraftingCompass, Archive,
+  Calculator, ExternalLink, Copy, Ruler, Images, DraftingCompass, Archive, ArchiveRestore,
   Wrench, Plus, Trash2, DollarSign, TrendingUp, BarChart3,
 } from 'lucide-react';
 import MediaGallery from '@/components/media/MediaGallery';
@@ -148,6 +149,21 @@ export default function PropertyDetailPage() {
   const updateGeofence = useUpdateGeofencePin();
   const transferProperty = useTransferProperty();
   const updateMeasurements = useUpdatePropertyMeasurements();
+  const updateBlueprint = useUpdateBlueprint();
+
+  const handleUnarchiveBlueprint = (e: React.MouseEvent, bpId: number) => {
+    e.stopPropagation();
+    updateBlueprint.mutate(
+      { id: bpId, data: { isArchived: false } },
+      {
+        onSuccess: () => {
+          toast.success('Blueprint restored');
+          qc.invalidateQueries({ queryKey: getListBlueprintsQueryKey({ propertyId: id, includeArchived: true } as Parameters<typeof useListBlueprints>[0]) });
+        },
+        onError: () => toast.error('Failed to restore blueprint'),
+      },
+    );
+  };
 
   React.useEffect(() => {
     if (property) {
@@ -678,6 +694,7 @@ export default function PropertyDetailPage() {
                     <TableHead>Status</TableHead>
                     <TableHead>Created</TableHead>
                     <TableHead className="text-right">Estimate</TableHead>
+                    <TableHead />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -704,11 +721,24 @@ export default function PropertyDetailPage() {
                       <TableCell className="text-right font-medium">
                         {bp.totalEstimate != null ? `${bp.totalEstimate.toLocaleString()}` : '—'}
                       </TableCell>
+                      <TableCell className="text-right">
+                        {bp.isArchived && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5 text-xs h-7"
+                            disabled={updateBlueprint.isPending}
+                            onClick={e => handleUnarchiveBlueprint(e, bp.id)}
+                          >
+                            <ArchiveRestore className="w-3 h-3" /> Unarchive
+                          </Button>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
                   {!propertyBlueprints?.length && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
+                      <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
                         <DraftingCompass className="w-8 h-8 mx-auto mb-2 opacity-30" />
                         No blueprints created for this property yet.
                       </TableCell>

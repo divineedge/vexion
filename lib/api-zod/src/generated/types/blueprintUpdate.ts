@@ -14,6 +14,8 @@ export interface BlueprintUpdate {
   overageBufferPercent?: number;
   scalePxPerFt?: number;
   suggestedParts?: BlueprintUpdateSuggestedPartsItem[];
+  /** Set to false to un-archive a blueprint that was archived automatically (e.g. when its job was completed or its estimate was declined). */
+  isArchived?: boolean;
   /** Set together with pdfFileName/pdfSizeBytes to replace the source PDF on a pdf-sourced blueprint. */
   pdfObjectPath?: string;
   pdfFileName?: string | null;

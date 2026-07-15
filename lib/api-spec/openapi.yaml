@@ -5740,6 +5740,88 @@ paths:
               schema:
                 $ref: "#/components/schemas/FollowupTriggerConfig"
 
+  /repair-logs:
+    get:
+      operationId: listRepairLogs
+      tags: [repairLogs]
+      summary: List repair logs (filter by propertyId, jobId, elementId, blueprintId)
+      parameters:
+        - { name: propertyId, in: query, schema: { type: integer } }
+        - { name: jobId, in: query, schema: { type: integer } }
+        - { name: elementId, in: query, schema: { type: string } }
+        - { name: blueprintId, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: Repair logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RepairLog"
+    post:
+      operationId: createRepairLog
+      tags: [repairLogs]
+      summary: Log a repair or replacement on a property element
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RepairLogInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepairLog"
+
+  /repair-logs/summary:
+    get:
+      operationId: getRepairLogSummary
+      tags: [repairLogs]
+      summary: Property-level repair cost summary with year-over-year breakdown
+      parameters:
+        - { name: propertyId, in: query, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepairLogSummary"
+
+  /repair-logs/{id}:
+    patch:
+      operationId: updateRepairLog
+      tags: [repairLogs]
+      summary: Update a repair log
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RepairLogInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepairLog"
+    delete:
+      operationId: deleteRepairLog
+      tags: [repairLogs]
+      summary: Delete a repair log
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204":
+          description: Deleted
+
 components:
   schemas:
 
@@ -10748,6 +10830,83 @@ components:
         status: { type: string }
         rejectionReason: { type: string }
         claim: { type: boolean }
+
+    RepairLog:
+      type: object
+      required: [id, tenantId, propertyId, componentType, partsCost, laborCost, totalCost, performedAt, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        propertyId: { type: integer }
+        jobId: { type: ["integer", "null"] }
+        blueprintId: { type: ["integer", "null"] }
+        elementId: { type: ["string", "null"] }
+        componentType: { type: string }
+        replacedWhat: { type: ["string", "null"] }
+        replacedWithName: { type: ["string", "null"] }
+        replacedWithInventoryItemId: { type: ["integer", "null"] }
+        nozzleBrand: { type: ["string", "null"] }
+        nozzleType: { type: ["string", "null"] }
+        nozzleGpm: { type: ["number", "null"] }
+        nozzleRadiusFt: { type: ["number", "null"] }
+        nozzleArcDegrees: { type: ["number", "null"] }
+        partsCost: { type: number }
+        laborCost: { type: number }
+        totalCost: { type: number }
+        notes: { type: ["string", "null"] }
+        performedByUserId: { type: ["integer", "null"] }
+        performedByName: { type: ["string", "null"] }
+        performedAt: { type: string }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+
+    RepairLogInput:
+      type: object
+      required: [propertyId, componentType]
+      properties:
+        propertyId: { type: integer }
+        jobId: { type: integer }
+        blueprintId: { type: integer }
+        elementId: { type: string }
+        componentType: { type: string }
+        replacedWhat: { type: string }
+        replacedWithName: { type: string }
+        replacedWithInventoryItemId: { type: integer }
+        nozzleBrand: { type: string }
+        nozzleType: { type: string }
+        nozzleGpm: { type: number }
+        nozzleRadiusFt: { type: number }
+        nozzleArcDegrees: { type: number }
+        partsCost: { type: number }
+        laborCost: { type: number }
+        notes: { type: string }
+        performedByUserId: { type: integer }
+        performedAt: { type: string }
+
+    RepairLogSummary:
+      type: object
+      required: [totalPartsCost, totalLaborCost, totalCost, count, byComponentType, byYear]
+      properties:
+        totalPartsCost: { type: number }
+        totalLaborCost: { type: number }
+        totalCost: { type: number }
+        count: { type: integer }
+        byComponentType:
+          type: array
+          items:
+            type: object
+            properties:
+              componentType: { type: string }
+              totalCost: { type: number }
+              count: { type: integer }
+        byYear:
+          type: array
+          items:
+            type: object
+            properties:
+              year: { type: integer }
+              totalCost: { type: number }
+              count: { type: integer }
 
     TaskNotification:
       type: object

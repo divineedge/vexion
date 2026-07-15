@@ -11,6 +11,11 @@ import {
   useGetTenantSettings,
   useListPropertyMedia, getListPropertyMediaQueryKey,
   useListBlueprints, getListBlueprintsQueryKey,
+  useListRepairLogs, getListRepairLogsQueryKey,
+  useCreateRepairLog,
+  useGetRepairLogSummary, getGetRepairLogSummaryQueryKey,
+  useDeleteRepairLog,
+  useListUsers, getListUsersQueryKey,
   customFetch,
 } from '@workspace/api-client-react';
 import type { MeasurementZone, Quote } from '@workspace/api-client-react';
@@ -24,6 +29,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
@@ -32,6 +39,7 @@ import {
   ArrowLeft, Edit, MapPin, Navigation, Calendar, Save, GitMerge,
   AlertTriangle, Clock, ChevronDown, Check, ArrowRight, Satellite,
   Calculator, ExternalLink, Copy, Ruler, Images, DraftingCompass, Archive,
+  Wrench, Plus, Trash2, DollarSign, TrendingUp, BarChart3,
 } from 'lucide-react';
 import MediaGallery from '@/components/media/MediaGallery';
 import { toast } from 'sonner';
@@ -80,6 +88,16 @@ export default function PropertyDetailPage() {
   const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
   const [savingMeasurements, setSavingMeasurements] = useState(false);
 
+  // ── Repair log state ──────────────────────────────────────────────────────
+  const [repairDialogOpen, setRepairDialogOpen] = useState(false);
+  const [repairFilterElementId, setRepairFilterElementId] = useState<string | null>(null);
+  const EMPTY_REPAIR = {
+    componentType: 'sprinkler', replacedWhat: '', replacedWithName: '',
+    nozzleBrand: '', nozzleType: '', nozzleGpm: '', nozzleRadiusFt: '', nozzleArcDegrees: '',
+    partsCost: '', laborCost: '', notes: '', performedAt: '',
+  };
+  const [repairForm, setRepairForm] = useState(EMPTY_REPAIR);
+
   const { data: property, isLoading } = useGetProperty(id, {
     query: { enabled: !!id, queryKey: getGetPropertyQueryKey(id) },
   });
@@ -104,6 +122,21 @@ export default function PropertyDetailPage() {
     { query: { enabled: !!id, queryKey: getListBlueprintsQueryKey({ propertyId: id, includeArchived: true } as Parameters<typeof useListBlueprints>[0]) } },
   );
   const { data: tenantSettings } = useGetTenantSettings();
+
+  // ── Repair log data ────────────────────────────────────────────────────
+  const repairLogsQuery = { propertyId: id } as Parameters<typeof useListRepairLogs>[0];
+  const { data: repairLogs, refetch: refetchRepairLogs } = useListRepairLogs(repairLogsQuery, {
+    query: { enabled: !!id, queryKey: getListRepairLogsQueryKey(repairLogsQuery) },
+  });
+  const { data: repairSummary } = useGetRepairLogSummary(
+    { propertyId: id } as Parameters<typeof useGetRepairLogSummary>[0],
+    { query: { enabled: !!id, queryKey: getGetRepairLogSummaryQueryKey({ propertyId: id } as Parameters<typeof useGetRepairLogSummary>[0]) } },
+  );
+  const { data: allUsers } = useListUsers({
+    query: { queryKey: getListUsersQueryKey() },
+  });
+  const createRepairLog = useCreateRepairLog();
+  const deleteRepairLog = useDeleteRepairLog();
 
   const preferredAreaUnit = (tenantSettings?.preferredAreaUnit as 'sqft' | 'acres') ?? 'sqft';
   const defaultZoneLabels: string[] = (tenantSettings?.measurementZoneLabels as string[]) ?? [
@@ -341,6 +374,9 @@ export default function PropertyDetailPage() {
           </TabsTrigger>
           <TabsTrigger value="media" className="gap-1.5">
             <Images className="w-4 h-4" /> Media ({propertyMedia?.length ?? 0})
+          </TabsTrigger>
+          <TabsTrigger value="repairs" className="gap-1.5">
+            <Wrench className="w-4 h-4" /> Repairs ({repairLogs?.length ?? 0})
           </TabsTrigger>
           <TabsTrigger value="history">Ownership History</TabsTrigger>
         </TabsList>
@@ -770,7 +806,240 @@ export default function PropertyDetailPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* ── Repairs tab ── */}
+        <TabsContent value="repairs" className="focus-visible:outline-none space-y-4">
+          {/* Summary cards */}
+          {repairSummary && (
+            <div className="grid grid-cols-3 gap-3">
+              <Card>
+                <CardContent className="pt-4 pb-3">
+                  <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1"><DollarSign className="w-3.5 h-3.5" /> Total Spent</div>
+                  <p className="text-2xl font-bold">${repairSummary.totalCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                  <p className="text-xs text-muted-foreground">{repairSummary.count} repair{repairSummary.count !== 1 ? 's' : ''}</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 pb-3">
+                  <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1"><TrendingUp className="w-3.5 h-3.5" /> Parts Cost</div>
+                  <p className="text-2xl font-bold">${repairSummary.totalPartsCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                  <p className="text-xs text-muted-foreground">Labor: ${repairSummary.totalLaborCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4 pb-3">
+                  <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1"><BarChart3 className="w-3.5 h-3.5" /> This Year</div>
+                  <p className="text-2xl font-bold">
+                    ${(repairSummary.byYear?.find(y => y.year === new Date().getFullYear())?.totalCost ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    vs. ${(repairSummary.byYear?.find(y => y.year === new Date().getFullYear() - 1)?.totalCost ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} last year
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Header with Log Repair button */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-medium">Repair History</h3>
+              {repairFilterElementId && (
+                <Badge variant="secondary" className="gap-1 text-xs cursor-pointer" onClick={() => setRepairFilterElementId(null)}>
+                  Element: {repairFilterElementId} ✕
+                </Badge>
+              )}
+            </div>
+            <Button size="sm" className="gap-1.5" onClick={() => { setRepairForm(EMPTY_REPAIR); setRepairDialogOpen(true); }}>
+              <Plus className="w-3.5 h-3.5" /> Log Repair
+            </Button>
+          </div>
+
+          {/* Repair log table */}
+          <Card>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Component</TableHead>
+                  <TableHead>Replaced</TableHead>
+                  <TableHead>With</TableHead>
+                  <TableHead className="text-right">Cost</TableHead>
+                  <TableHead className="w-8" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(repairFilterElementId
+                  ? repairLogs?.filter(r => r.elementId === repairFilterElementId)
+                  : repairLogs
+                )?.map(r => (
+                  <TableRow key={r.id} className="cursor-pointer hover:bg-muted/40" onClick={() => setRepairFilterElementId(r.elementId ?? null)}>
+                    <TableCell className="text-sm">{new Date(r.performedAt).toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="capitalize text-xs">{r.componentType}</Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{r.replacedWhat ?? '—'}</TableCell>
+                    <TableCell className="text-sm">
+                      {r.replacedWithName ?? '—'}
+                      {r.nozzleBrand && <span className="text-xs text-muted-foreground ml-1">({r.nozzleBrand})</span>}
+                    </TableCell>
+                    <TableCell className="text-right font-medium text-sm">${r.totalCost.toFixed(2)}</TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                        onClick={e => {
+                          e.stopPropagation();
+                          if (!window.confirm('Delete this repair log?')) return;
+                          deleteRepairLog.mutate({ id: r.id }, {
+                            onSuccess: () => { toast.success('Repair log deleted'); refetchRepairLogs(); },
+                            onError: () => toast.error('Failed to delete'),
+                          });
+                        }}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {!repairLogs?.length && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                      No repairs logged yet. Click "Log Repair" to record the first one.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </Card>
+        </TabsContent>
       </Tabs>
+
+      {/* ── Log Repair Dialog ── */}
+      <Dialog open={repairDialogOpen} onOpenChange={setRepairDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Wrench className="w-4 h-4" /> Log Irrigation Repair</DialogTitle>
+            <DialogDescription>Record a repair or replacement made on this property's irrigation system.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1 col-span-2">
+                <Label className="text-xs">Component Type</Label>
+                <Select value={repairForm.componentType} onValueChange={v => setRepairForm(f => ({ ...f, componentType: v }))}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sprinkler">Sprinkler Head</SelectItem>
+                    <SelectItem value="valve">Valve / Valve Box</SelectItem>
+                    <SelectItem value="controller">Controller</SelectItem>
+                    <SelectItem value="pipe">Pipe / Lateral Line</SelectItem>
+                    <SelectItem value="fitting">Fitting / Coupler</SelectItem>
+                    <SelectItem value="backflow">Backflow Preventer</SelectItem>
+                    <SelectItem value="wiring">Wiring</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1 col-span-2">
+                <Label className="text-xs">What was replaced / repaired?</Label>
+                <Input className="h-9" placeholder="e.g. Broken rotor head, leaking valve body" value={repairForm.replacedWhat} onChange={e => setRepairForm(f => ({ ...f, replacedWhat: e.target.value }))} />
+              </div>
+              <div className="space-y-1 col-span-2">
+                <Label className="text-xs">Replaced with (name / model)</Label>
+                <Input className="h-9" placeholder="e.g. Hunter PGP Ultra, Rain Bird 5000" value={repairForm.replacedWithName} onChange={e => setRepairForm(f => ({ ...f, replacedWithName: e.target.value }))} />
+              </div>
+            </div>
+            {(repairForm.componentType === 'sprinkler') && (
+              <div className="rounded-lg border p-3 space-y-3 bg-muted/20">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Nozzle Details (optional)</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Brand</Label>
+                    <Input className="h-8" placeholder="Hunter, Rain Bird…" value={repairForm.nozzleBrand} onChange={e => setRepairForm(f => ({ ...f, nozzleBrand: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Type</Label>
+                    <Select value={repairForm.nozzleType} onValueChange={v => setRepairForm(f => ({ ...f, nozzleType: v }))}>
+                      <SelectTrigger className="h-8"><SelectValue placeholder="Type" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="rotor">Rotor</SelectItem>
+                        <SelectItem value="popup">Popup / Fixed Spray</SelectItem>
+                        <SelectItem value="drip">Drip</SelectItem>
+                        <SelectItem value="bubbler">Bubbler</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">GPM</Label>
+                    <Input type="number" step="0.01" className="h-8" placeholder="0.00" value={repairForm.nozzleGpm} onChange={e => setRepairForm(f => ({ ...f, nozzleGpm: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Radius (ft)</Label>
+                    <Input type="number" step="0.5" className="h-8" placeholder="12" value={repairForm.nozzleRadiusFt} onChange={e => setRepairForm(f => ({ ...f, nozzleRadiusFt: e.target.value }))} />
+                  </div>
+                </div>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Parts Cost ($)</Label>
+                <Input type="number" step="0.01" min="0" className="h-9" placeholder="0.00" value={repairForm.partsCost} onChange={e => setRepairForm(f => ({ ...f, partsCost: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Labor Cost ($)</Label>
+                <Input type="number" step="0.01" min="0" className="h-9" placeholder="0.00" value={repairForm.laborCost} onChange={e => setRepairForm(f => ({ ...f, laborCost: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Date Performed</Label>
+                <Input type="date" className="h-9" value={repairForm.performedAt} onChange={e => setRepairForm(f => ({ ...f, performedAt: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Performed By</Label>
+                <Select value="" onValueChange={() => {}}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Any staff" /></SelectTrigger>
+                  <SelectContent>
+                    {allUsers?.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1 col-span-2">
+                <Label className="text-xs">Notes</Label>
+                <Textarea className="text-sm" rows={2} placeholder="Describe what was done…" value={repairForm.notes} onChange={e => setRepairForm(f => ({ ...f, notes: e.target.value }))} />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRepairDialogOpen(false)}>Cancel</Button>
+            <Button disabled={createRepairLog.isPending} onClick={() => {
+              createRepairLog.mutate({
+                data: {
+                  propertyId: id,
+                  componentType: repairForm.componentType,
+                  replacedWhat: repairForm.replacedWhat || undefined,
+                  replacedWithName: repairForm.replacedWithName || undefined,
+                  nozzleBrand: repairForm.nozzleBrand || undefined,
+                  nozzleType: repairForm.nozzleType || undefined,
+                  nozzleGpm: repairForm.nozzleGpm ? Number(repairForm.nozzleGpm) : undefined,
+                  nozzleRadiusFt: repairForm.nozzleRadiusFt ? Number(repairForm.nozzleRadiusFt) : undefined,
+                  partsCost: Number(repairForm.partsCost) || 0,
+                  laborCost: Number(repairForm.laborCost) || 0,
+                  notes: repairForm.notes || undefined,
+                  performedAt: repairForm.performedAt ? new Date(repairForm.performedAt).toISOString() : new Date().toISOString(),
+                },
+              }, {
+                onSuccess: () => {
+                  toast.success('Repair logged');
+                  setRepairDialogOpen(false);
+                  setRepairForm(EMPTY_REPAIR);
+                  refetchRepairLogs();
+                  qc.invalidateQueries({ queryKey: getGetRepairLogSummaryQueryKey({ propertyId: id } as Parameters<typeof useGetRepairLogSummary>[0]) });
+                },
+                onError: () => toast.error('Failed to log repair'),
+              });
+            }}>
+              {createRepairLog.isPending ? 'Saving…' : 'Log Repair'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Property Sheet */}
       <Sheet open={editing} onOpenChange={setEditing}>

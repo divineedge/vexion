@@ -45,6 +45,7 @@ import taskBundlesRouter from "./taskBundles";
 import followupQueueRouter from "./followupQueue";
 import importBatchesRouter from "./importBatches";
 import employeeHistoryRouter from "./employeeHistory";
+import repairLogsRouter from "./repairLogs";
 
 const router: IRouter = Router();
 
@@ -94,5 +95,6 @@ router.use(taskBundlesRouter);
 router.use(followupQueueRouter);
 router.use(importBatchesRouter);
 router.use(employeeHistoryRouter);
+router.use(repairLogsRouter);
 
 export default router;

@@ -8757,3 +8757,185 @@ export const UpdateFollowupTriggerConfigResponse = zod.object({
 })
 
 
+/**
+ * @summary List repair logs (filter by propertyId, jobId, elementId, blueprintId)
+ */
+export const ListRepairLogsQueryParams = zod.object({
+  "propertyId": zod.coerce.number().optional(),
+  "jobId": zod.coerce.number().optional(),
+  "elementId": zod.coerce.string().optional(),
+  "blueprintId": zod.coerce.number().optional()
+})
+
+export const ListRepairLogsResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "propertyId": zod.number(),
+  "jobId": zod.number().nullish(),
+  "blueprintId": zod.number().nullish(),
+  "elementId": zod.string().nullish(),
+  "componentType": zod.string(),
+  "replacedWhat": zod.string().nullish(),
+  "replacedWithName": zod.string().nullish(),
+  "replacedWithInventoryItemId": zod.number().nullish(),
+  "nozzleBrand": zod.string().nullish(),
+  "nozzleType": zod.string().nullish(),
+  "nozzleGpm": zod.number().nullish(),
+  "nozzleRadiusFt": zod.number().nullish(),
+  "nozzleArcDegrees": zod.number().nullish(),
+  "partsCost": zod.number(),
+  "laborCost": zod.number(),
+  "totalCost": zod.number(),
+  "notes": zod.string().nullish(),
+  "performedByUserId": zod.number().nullish(),
+  "performedByName": zod.string().nullish(),
+  "performedAt": zod.string(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListRepairLogsResponse = zod.array(ListRepairLogsResponseItem)
+
+
+/**
+ * @summary Log a repair or replacement on a property element
+ */
+export const CreateRepairLogBody = zod.object({
+  "propertyId": zod.number(),
+  "jobId": zod.number().optional(),
+  "blueprintId": zod.number().optional(),
+  "elementId": zod.string().optional(),
+  "componentType": zod.string(),
+  "replacedWhat": zod.string().optional(),
+  "replacedWithName": zod.string().optional(),
+  "replacedWithInventoryItemId": zod.number().optional(),
+  "nozzleBrand": zod.string().optional(),
+  "nozzleType": zod.string().optional(),
+  "nozzleGpm": zod.number().optional(),
+  "nozzleRadiusFt": zod.number().optional(),
+  "nozzleArcDegrees": zod.number().optional(),
+  "partsCost": zod.number().optional(),
+  "laborCost": zod.number().optional(),
+  "notes": zod.string().optional(),
+  "performedByUserId": zod.number().optional(),
+  "performedAt": zod.string().optional()
+})
+
+export const CreateRepairLogResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "propertyId": zod.number(),
+  "jobId": zod.number().nullish(),
+  "blueprintId": zod.number().nullish(),
+  "elementId": zod.string().nullish(),
+  "componentType": zod.string(),
+  "replacedWhat": zod.string().nullish(),
+  "replacedWithName": zod.string().nullish(),
+  "replacedWithInventoryItemId": zod.number().nullish(),
+  "nozzleBrand": zod.string().nullish(),
+  "nozzleType": zod.string().nullish(),
+  "nozzleGpm": zod.number().nullish(),
+  "nozzleRadiusFt": zod.number().nullish(),
+  "nozzleArcDegrees": zod.number().nullish(),
+  "partsCost": zod.number(),
+  "laborCost": zod.number(),
+  "totalCost": zod.number(),
+  "notes": zod.string().nullish(),
+  "performedByUserId": zod.number().nullish(),
+  "performedByName": zod.string().nullish(),
+  "performedAt": zod.string(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Property-level repair cost summary with year-over-year breakdown
+ */
+export const GetRepairLogSummaryQueryParams = zod.object({
+  "propertyId": zod.coerce.number()
+})
+
+export const GetRepairLogSummaryResponse = zod.object({
+  "totalPartsCost": zod.number(),
+  "totalLaborCost": zod.number(),
+  "totalCost": zod.number(),
+  "count": zod.number(),
+  "byComponentType": zod.array(zod.object({
+  "componentType": zod.string().optional(),
+  "totalCost": zod.number().optional(),
+  "count": zod.number().optional()
+})),
+  "byYear": zod.array(zod.object({
+  "year": zod.number().optional(),
+  "totalCost": zod.number().optional(),
+  "count": zod.number().optional()
+}))
+})
+
+
+/**
+ * @summary Update a repair log
+ */
+export const UpdateRepairLogParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateRepairLogBody = zod.object({
+  "propertyId": zod.number(),
+  "jobId": zod.number().optional(),
+  "blueprintId": zod.number().optional(),
+  "elementId": zod.string().optional(),
+  "componentType": zod.string(),
+  "replacedWhat": zod.string().optional(),
+  "replacedWithName": zod.string().optional(),
+  "replacedWithInventoryItemId": zod.number().optional(),
+  "nozzleBrand": zod.string().optional(),
+  "nozzleType": zod.string().optional(),
+  "nozzleGpm": zod.number().optional(),
+  "nozzleRadiusFt": zod.number().optional(),
+  "nozzleArcDegrees": zod.number().optional(),
+  "partsCost": zod.number().optional(),
+  "laborCost": zod.number().optional(),
+  "notes": zod.string().optional(),
+  "performedByUserId": zod.number().optional(),
+  "performedAt": zod.string().optional()
+})
+
+export const UpdateRepairLogResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "propertyId": zod.number(),
+  "jobId": zod.number().nullish(),
+  "blueprintId": zod.number().nullish(),
+  "elementId": zod.string().nullish(),
+  "componentType": zod.string(),
+  "replacedWhat": zod.string().nullish(),
+  "replacedWithName": zod.string().nullish(),
+  "replacedWithInventoryItemId": zod.number().nullish(),
+  "nozzleBrand": zod.string().nullish(),
+  "nozzleType": zod.string().nullish(),
+  "nozzleGpm": zod.number().nullish(),
+  "nozzleRadiusFt": zod.number().nullish(),
+  "nozzleArcDegrees": zod.number().nullish(),
+  "partsCost": zod.number(),
+  "laborCost": zod.number(),
+  "totalCost": zod.number(),
+  "notes": zod.string().nullish(),
+  "performedByUserId": zod.number().nullish(),
+  "performedByName": zod.string().nullish(),
+  "performedAt": zod.string(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a repair log
+ */
+export const DeleteRepairLogParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteRepairLogResponse = zod.void()
+
+

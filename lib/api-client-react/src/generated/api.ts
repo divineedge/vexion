@@ -110,6 +110,7 @@ import type {
   GetJobProfitabilityReportParams,
   GetPlStatementReportParams,
   GetQuickBooksAuthorizeUrl200,
+  GetRepairLogSummaryParams,
   GetRouteDayDetailParams,
   GetRoutesDashboardParams,
   GetSalesTaxReportParams,
@@ -150,6 +151,7 @@ import type {
   ListInvoicesParams,
   ListJobsParams,
   ListPropertiesParams,
+  ListRepairLogsParams,
   ListReviewRequestsParams,
   ListRouteTemplatesParams,
   ListShrinkageReportsParams,
@@ -195,6 +197,9 @@ import type {
   QuoteWithProperty,
   RecurringInvoiceTemplate,
   RecurringSeries,
+  RepairLog,
+  RepairLogInput,
+  RepairLogSummary,
   RescheduleOnceInput,
   RescheduleOnceResult,
   ResequenceRouteInput,
@@ -21752,5 +21757,387 @@ export const useUpdateFollowupTriggerConfig = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpdateFollowupTriggerConfigMutationOptions(options));
+    }
+
+export const getListRepairLogsUrl = (params?: ListRepairLogsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/repair-logs?${stringifiedParams}` : `/api/repair-logs`
+}
+
+/**
+ * @summary List repair logs (filter by propertyId, jobId, elementId, blueprintId)
+ */
+export const listRepairLogs = async (params?: ListRepairLogsParams, options?: RequestInit): Promise<RepairLog[]> => {
+
+  return customFetch<RepairLog[]>(getListRepairLogsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListRepairLogsQueryKey = (params?: ListRepairLogsParams,) => {
+    return [
+    `/api/repair-logs`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListRepairLogsQueryOptions = <TData = Awaited<ReturnType<typeof listRepairLogs>>, TError = ErrorType<unknown>>(params?: ListRepairLogsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRepairLogs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListRepairLogsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listRepairLogs>>> = ({ signal }) => listRepairLogs(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listRepairLogs>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListRepairLogsQueryResult = NonNullable<Awaited<ReturnType<typeof listRepairLogs>>>
+export type ListRepairLogsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List repair logs (filter by propertyId, jobId, elementId, blueprintId)
+ */
+
+export function useListRepairLogs<TData = Awaited<ReturnType<typeof listRepairLogs>>, TError = ErrorType<unknown>>(
+ params?: ListRepairLogsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRepairLogs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListRepairLogsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateRepairLogUrl = () => {
+
+
+
+
+  return `/api/repair-logs`
+}
+
+/**
+ * @summary Log a repair or replacement on a property element
+ */
+export const createRepairLog = async (repairLogInput: RepairLogInput, options?: RequestInit): Promise<RepairLog> => {
+
+  return customFetch<RepairLog>(getCreateRepairLogUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(repairLogInput)
+  }
+);}
+
+
+
+
+
+export const getCreateRepairLogMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createRepairLog>>, TError,{data: BodyType<RepairLogInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createRepairLog>>, TError,{data: BodyType<RepairLogInput>}, TContext> => {
+
+const mutationKey = ['createRepairLog'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createRepairLog>>, {data: BodyType<RepairLogInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createRepairLog(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateRepairLogMutationResult = NonNullable<Awaited<ReturnType<typeof createRepairLog>>>
+    export type CreateRepairLogMutationBody = BodyType<RepairLogInput>
+    export type CreateRepairLogMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Log a repair or replacement on a property element
+ */
+export const useCreateRepairLog = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createRepairLog>>, TError,{data: BodyType<RepairLogInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createRepairLog>>,
+        TError,
+        {data: BodyType<RepairLogInput>},
+        TContext
+      > => {
+      return useMutation(getCreateRepairLogMutationOptions(options));
+    }
+
+export const getGetRepairLogSummaryUrl = (params: GetRepairLogSummaryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/repair-logs/summary?${stringifiedParams}` : `/api/repair-logs/summary`
+}
+
+/**
+ * @summary Property-level repair cost summary with year-over-year breakdown
+ */
+export const getRepairLogSummary = async (params: GetRepairLogSummaryParams, options?: RequestInit): Promise<RepairLogSummary> => {
+
+  return customFetch<RepairLogSummary>(getGetRepairLogSummaryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRepairLogSummaryQueryKey = (params?: GetRepairLogSummaryParams,) => {
+    return [
+    `/api/repair-logs/summary`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetRepairLogSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getRepairLogSummary>>, TError = ErrorType<unknown>>(params: GetRepairLogSummaryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRepairLogSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRepairLogSummaryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRepairLogSummary>>> = ({ signal }) => getRepairLogSummary(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRepairLogSummary>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRepairLogSummaryQueryResult = NonNullable<Awaited<ReturnType<typeof getRepairLogSummary>>>
+export type GetRepairLogSummaryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Property-level repair cost summary with year-over-year breakdown
+ */
+
+export function useGetRepairLogSummary<TData = Awaited<ReturnType<typeof getRepairLogSummary>>, TError = ErrorType<unknown>>(
+ params: GetRepairLogSummaryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRepairLogSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRepairLogSummaryQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateRepairLogUrl = (id: number,) => {
+
+
+
+
+  return `/api/repair-logs/${id}`
+}
+
+/**
+ * @summary Update a repair log
+ */
+export const updateRepairLog = async (id: number,
+    repairLogInput: RepairLogInput, options?: RequestInit): Promise<RepairLog> => {
+
+  return customFetch<RepairLog>(getUpdateRepairLogUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(repairLogInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateRepairLogMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRepairLog>>, TError,{id: number;data: BodyType<RepairLogInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateRepairLog>>, TError,{id: number;data: BodyType<RepairLogInput>}, TContext> => {
+
+const mutationKey = ['updateRepairLog'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateRepairLog>>, {id: number;data: BodyType<RepairLogInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateRepairLog(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateRepairLogMutationResult = NonNullable<Awaited<ReturnType<typeof updateRepairLog>>>
+    export type UpdateRepairLogMutationBody = BodyType<RepairLogInput>
+    export type UpdateRepairLogMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update a repair log
+ */
+export const useUpdateRepairLog = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRepairLog>>, TError,{id: number;data: BodyType<RepairLogInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateRepairLog>>,
+        TError,
+        {id: number;data: BodyType<RepairLogInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateRepairLogMutationOptions(options));
+    }
+
+export const getDeleteRepairLogUrl = (id: number,) => {
+
+
+
+
+  return `/api/repair-logs/${id}`
+}
+
+/**
+ * @summary Delete a repair log
+ */
+export const deleteRepairLog = async (id: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteRepairLogUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteRepairLogMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteRepairLog>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteRepairLog>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteRepairLog'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteRepairLog>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteRepairLog(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteRepairLogMutationResult = NonNullable<Awaited<ReturnType<typeof deleteRepairLog>>>
+
+    export type DeleteRepairLogMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a repair log
+ */
+export const useDeleteRepairLog = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteRepairLog>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteRepairLog>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteRepairLogMutationOptions(options));
     }
 

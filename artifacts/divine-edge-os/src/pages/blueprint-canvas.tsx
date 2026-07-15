@@ -18,7 +18,7 @@ import {
   ChevronDown, TreeDeciduous, Mountain, Waves, Hash, Layers, SprayCan, Link2,
   Wand2, Shapes, Sparkles, X, Check, ZoomIn, ZoomOut, Maximize, Square, HelpCircle, Library,
   Upload, FileText, Undo2, Shrub, Flower2, Sprout, Grid3x3, Milestone, BrickWall, AlertTriangle,
-  PackageCheck,
+  PackageCheck, GitFork, Cpu, Droplets,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useQueryClient } from '@tanstack/react-query';
@@ -43,7 +43,8 @@ import 'leaflet/dist/leaflet.css';
  * trench line tool instead (see AreaElementType and the 'trench' LineElementType below).
  */
 type PointElementType =
-  | 'node' | 'sprinkler' | 'tree' | 'largeRock' | 'dryRiverBed'
+  | 'node' | 'sprinkler' | 'valve' | 'controller'
+  | 'tree' | 'largeRock' | 'dryRiverBed'
   | 'gravel_1in' | 'gravel_2in' | 'gravel_3in' | 'gravel_4in' | 'trench'
   | 'canopyTree' | 'evergreenShrub' | 'perennialFlowers';
 
@@ -90,6 +91,19 @@ type Point = {
   inventoryItemId?: number | null;
   /** Coverage radius in feet, only meaningful when elementType === 'sprinkler'. Drawn as a translucent circle. */
   coverageRadiusFt?: number | null;
+  // ── Nozzle detail — stored per-head so repair history and design specs are always element-accurate ──
+  /** Manufacturer brand of the installed nozzle, e.g. "Hunter", "Rain Bird", "Toro". */
+  nozzleBrand?: string | null;
+  /** Nozzle category: rotor = gear-driven; popup = fixed-spray popup body; drip/bubbler/other */
+  nozzleType?: 'rotor' | 'popup' | 'drip' | 'bubbler' | 'other' | null;
+  /** Rated flow in gallons per minute at operating pressure. */
+  nozzleGpm?: number | null;
+  /** Throw radius in feet. When set, overrides coverageRadiusFt for the drawn circle. */
+  nozzleRadiusFt?: number | null;
+  /** Arc in degrees (e.g. 90, 180, 270, 360). */
+  nozzleArcDegrees?: number | null;
+  /** For popup nozzles: the specific inventory SKU of the nozzle insert (different part from the body). */
+  nozzleInventoryItemId?: number | null;
 };
 
 type Line = {
@@ -133,7 +147,9 @@ type AiZone = { id: string; label: string; polygon: { x: number; y: number }[]; 
  */
 const POINT_PALETTE: { type: PointElementType; label: string; icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; color: string; inventoryCategory?: string }[] = [
   { type: 'node', label: 'Generic Point', icon: PlusCircle, color: 'hsl(var(--muted-foreground))' },
-  { type: 'sprinkler', label: 'Sprinkler', icon: SprayCan, color: '#38bdf8', inventoryCategory: 'Sprinkler Heads' },
+  { type: 'sprinkler', label: 'Sprinkler Head', icon: SprayCan, color: '#38bdf8', inventoryCategory: 'Sprinkler Heads' },
+  { type: 'valve', label: 'Valve / Valve Box', icon: GitFork, color: '#f59e0b', inventoryCategory: 'Irrigation' },
+  { type: 'controller', label: 'Controller', icon: Cpu, color: '#8b5cf6', inventoryCategory: 'Irrigation' },
   { type: 'tree', label: 'Tree', icon: TreeDeciduous, color: '#16a34a', inventoryCategory: 'Landscape' },
   { type: 'largeRock', label: 'Large Rock', icon: Mountain, color: '#78716c', inventoryCategory: 'Landscape' },
   { type: 'canopyTree', label: 'Canopy Tree', icon: TreeDeciduous, color: '#15803d', inventoryCategory: 'Landscape' },
@@ -1884,14 +1900,60 @@ export default function BlueprintCanvasPage() {
                   </div>
                 )}
                 {pt.elementType === 'sprinkler' && (
+                  <>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Head Type</Label>
+                      <Select value={pt.sprinklerHeadType ?? SPRINKLER_HEAD_TYPES[0]} onValueChange={v => updatePoint({ sprinklerHeadType: v, nozzleType: v === 'Rotor' || v === 'MP Rotator' ? 'rotor' : v === 'Drip / Micro' ? 'drip' : v === 'Bubbler' ? 'bubbler' : 'popup' })}>
+                        <SelectTrigger className="h-8 w-36"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {SPRINKLER_HEAD_TYPES.map(h => <SelectItem key={h} value={h}>{h}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {/* ── Nozzle detail ────────────────────────────────────── */}
+                    <div className="space-y-1">
+                      <Label className="text-xs flex items-center gap-1"><Droplets className="w-3 h-3 text-sky-500" /> Nozzle Brand</Label>
+                      <Input className="h-8 w-32" placeholder="e.g. Hunter" value={pt.nozzleBrand ?? ''} onChange={e => updatePoint({ nozzleBrand: e.target.value || null })} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">GPM</Label>
+                      <Input type="number" step="0.01" min="0" className="h-8 w-24" placeholder="0.00" value={pt.nozzleGpm ?? ''} onChange={e => updatePoint({ nozzleGpm: e.target.value ? Number(e.target.value) : null, coverageRadiusFt: pt.nozzleRadiusFt ?? pt.coverageRadiusFt ?? null })} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Radius (ft)</Label>
+                      <Input type="number" step="0.5" min="0" className="h-8 w-24" placeholder="12" value={pt.nozzleRadiusFt ?? pt.coverageRadiusFt ?? ''} onChange={e => { const v = e.target.value ? Number(e.target.value) : null; updatePoint({ nozzleRadiusFt: v, coverageRadiusFt: v }); }} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Arc (°)</Label>
+                      <Select value={pt.nozzleArcDegrees != null ? String(pt.nozzleArcDegrees) : 'custom'} onValueChange={v => updatePoint({ nozzleArcDegrees: v !== 'custom' ? Number(v) : null })}>
+                        <SelectTrigger className="h-8 w-24"><SelectValue placeholder="Arc" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="90">90°</SelectItem>
+                          <SelectItem value="180">180°</SelectItem>
+                          <SelectItem value="270">270°</SelectItem>
+                          <SelectItem value="360">360° full</SelectItem>
+                          <SelectItem value="custom">Custom</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {/* For popup nozzles: link the nozzle insert as a separate inventory SKU */}
+                    {(pt.nozzleType === 'popup' || pt.sprinklerHeadType === 'Spray') && (
+                      <div className="space-y-1">
+                        <Label className="text-xs flex items-center gap-1"><Droplets className="w-3 h-3 text-sky-500" /> Nozzle Insert (inventory)</Label>
+                        <InventoryLinkField
+                          items={blueprintInventoryItems}
+                          category="Sprinkler Heads"
+                          value={pt.nozzleInventoryItemId}
+                          onChange={id => updatePoint({ nozzleInventoryItemId: id })}
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
+                {(pt.elementType === 'valve' || pt.elementType === 'controller') && (
                   <div className="space-y-1">
-                    <Label className="text-xs">Head Type</Label>
-                    <Select value={pt.sprinklerHeadType ?? SPRINKLER_HEAD_TYPES[0]} onValueChange={v => updatePoint({ sprinklerHeadType: v })}>
-                      <SelectTrigger className="h-8 w-36"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {SPRINKLER_HEAD_TYPES.map(h => <SelectItem key={h} value={h}>{h}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <Label className="text-xs">Label</Label>
+                    <Input className="h-8 w-36" value={pt.label ?? ''} placeholder={pt.elementType === 'valve' ? 'Zone 1 Valve' : 'Zone Controller'} onChange={e => updatePoint({ label: e.target.value })} />
                   </div>
                 )}
                 <InventoryLinkField

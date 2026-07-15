@@ -24,6 +24,8 @@ import {
   useSkipNextOccurrence,
   usePauseRecurringSeries,
   useCancelRecurringSeries,
+  useCreateRepairLog,
+  useListRepairLogs, getListRepairLogsQueryKey,
 } from '@workspace/api-client-react';
 import MediaGallery from '@/components/media/MediaGallery';
 import { JobFormFields, EMPTY_JOB, buildRecurrenceRule, type NewJobForm } from '@/components/jobs/JobFormFields';
@@ -43,7 +45,7 @@ import {
   ChevronLeft, ChevronRight, Clock, MapPin, User, Calendar,
   DollarSign, ClipboardList, Plus, Users, FlaskConical, Trash2, AlertTriangle,
   Bell, BellOff, Send, Package, Search, Images, RefreshCw, Pause, Play, X,
-  SkipForward, ListEnd,
+  SkipForward, ListEnd, Wrench,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -94,6 +96,19 @@ export default function SchedulePage() {
     targetPest: '', applicationMethod: '', windSpeed: '', windDirection: '',
     temperature: '', applicatorLicenseNumber: '', notes: '', appliedAt: '',
   });
+
+  // Repair log state
+  const [repairFormOpen, setRepairFormOpen] = useState(false);
+  const EMPTY_SCHED_REPAIR = {
+    componentType: 'sprinkler', replacedWhat: '', replacedWithName: '',
+    partsCost: '', laborCost: '', notes: '', performedAt: '',
+  };
+  const [schedRepairForm, setSchedRepairForm] = useState(EMPTY_SCHED_REPAIR);
+  const createRepairLog = useCreateRepairLog();
+  const { data: jobRepairLogs } = useListRepairLogs(
+    { jobId: selectedJobId! } as Parameters<typeof useListRepairLogs>[0],
+    { query: { enabled: selectedJobId != null, queryKey: getListRepairLogsQueryKey({ jobId: selectedJobId! } as Parameters<typeof useListRepairLogs>[0]) } },
+  );
 
   const assigneeId = isTechnician && user ? user.id : undefined;
 
@@ -807,6 +822,43 @@ export default function SchedulePage() {
                   )}
                 </div>
 
+                {/* Irrigation Repairs */}
+                {(selectedJob as any).propertyId && (
+                  <>
+                    <Separator />
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1.5">
+                          <Wrench className="w-3.5 h-3.5" /> Irrigation Repairs
+                        </p>
+                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => { setSchedRepairForm(EMPTY_SCHED_REPAIR); setRepairFormOpen(true); }}>
+                          <Plus className="w-3 h-3" /> Log Repair
+                        </Button>
+                      </div>
+                      {jobRepairLogs && jobRepairLogs.length > 0 ? (
+                        <div className="rounded-lg border divide-y text-sm">
+                          {jobRepairLogs.map(r => (
+                            <div key={r.id} className="px-3 py-2.5">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <Badge variant="outline" className="capitalize text-xs mr-2">{r.componentType}</Badge>
+                                  <span className="font-medium">{r.replacedWithName ?? r.replacedWhat ?? 'Repair'}</span>
+                                </div>
+                                <span className="font-semibold text-xs">${r.totalCost.toFixed(2)}</span>
+                              </div>
+                              {r.replacedWhat && <p className="text-xs text-muted-foreground mt-0.5">Replaced: {r.replacedWhat}</p>}
+                              {r.notes && <p className="text-xs text-muted-foreground mt-0.5">{r.notes}</p>}
+                              <p className="text-xs text-muted-foreground mt-1">{new Date(r.performedAt).toLocaleDateString()}{r.performedByName ? ` · ${r.performedByName}` : ''}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground py-1">No repairs logged on this job.</p>
+                      )}
+                    </div>
+                  </>
+                )}
+
                 {/* Chemical Applications */}
                 <Separator />
                 <div className="space-y-2">
@@ -1204,6 +1256,85 @@ export default function SchedulePage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* ── Log Repair Dialog (from job sheet) ── */}
+      <Dialog open={repairFormOpen} onOpenChange={setRepairFormOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Wrench className="w-4 h-4" /> Log Irrigation Repair</DialogTitle>
+            <DialogDescription>Record a repair made on this job's property.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Component Type</label>
+              <Select value={schedRepairForm.componentType} onValueChange={v => setSchedRepairForm(f => ({ ...f, componentType: v }))}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sprinkler">Sprinkler Head</SelectItem>
+                  <SelectItem value="valve">Valve / Valve Box</SelectItem>
+                  <SelectItem value="controller">Controller</SelectItem>
+                  <SelectItem value="pipe">Pipe / Lateral Line</SelectItem>
+                  <SelectItem value="fitting">Fitting / Coupler</SelectItem>
+                  <SelectItem value="backflow">Backflow Preventer</SelectItem>
+                  <SelectItem value="wiring">Wiring</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">What was repaired / replaced?</label>
+              <Input className="h-9" placeholder="e.g. Broken rotor head, leaking valve" value={schedRepairForm.replacedWhat} onChange={e => setSchedRepairForm(f => ({ ...f, replacedWhat: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Replaced with (name / model)</label>
+              <Input className="h-9" placeholder="e.g. Hunter PGP Ultra" value={schedRepairForm.replacedWithName} onChange={e => setSchedRepairForm(f => ({ ...f, replacedWithName: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Parts Cost ($)</label>
+                <Input type="number" step="0.01" min="0" className="h-9" placeholder="0.00" value={schedRepairForm.partsCost} onChange={e => setSchedRepairForm(f => ({ ...f, partsCost: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Labor Cost ($)</label>
+                <Input type="number" step="0.01" min="0" className="h-9" placeholder="0.00" value={schedRepairForm.laborCost} onChange={e => setSchedRepairForm(f => ({ ...f, laborCost: e.target.value }))} />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Notes</label>
+              <Textarea rows={2} placeholder="Additional notes…" value={schedRepairForm.notes} onChange={e => setSchedRepairForm(f => ({ ...f, notes: e.target.value }))} />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setRepairFormOpen(false)}>Cancel</Button>
+            <Button disabled={createRepairLog.isPending} onClick={() => {
+              if (!selectedJobId || !(selectedJob as any).propertyId) return;
+              createRepairLog.mutate({
+                data: {
+                  propertyId: (selectedJob as any).propertyId as number,
+                  jobId: selectedJobId,
+                  componentType: schedRepairForm.componentType,
+                  replacedWhat: schedRepairForm.replacedWhat || undefined,
+                  replacedWithName: schedRepairForm.replacedWithName || undefined,
+                  partsCost: Number(schedRepairForm.partsCost) || 0,
+                  laborCost: Number(schedRepairForm.laborCost) || 0,
+                  notes: schedRepairForm.notes || undefined,
+                  performedAt: new Date().toISOString(),
+                },
+              }, {
+                onSuccess: () => {
+                  toast.success('Repair logged');
+                  setRepairFormOpen(false);
+                  setSchedRepairForm(EMPTY_SCHED_REPAIR);
+                  qc.invalidateQueries({ queryKey: getListRepairLogsQueryKey({ jobId: selectedJobId! } as Parameters<typeof useListRepairLogs>[0]) });
+                },
+                onError: () => toast.error('Failed to log repair'),
+              });
+            }}>
+              {createRepairLog.isPending ? 'Saving…' : 'Log Repair'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={pauseDialogRootId !== null} onOpenChange={(open) => { if (!open) { setPauseDialogRootId(null); setPauseResumeAt(''); } }}>
         <DialogContent>

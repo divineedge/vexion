@@ -4118,6 +4118,89 @@ export interface UpdateTaskInput {
   claim?: boolean;
 }
 
+export interface RepairLog {
+  id: number;
+  tenantId: number;
+  propertyId: number;
+  /** @nullable */
+  jobId?: number | null;
+  /** @nullable */
+  blueprintId?: number | null;
+  /** @nullable */
+  elementId?: string | null;
+  componentType: string;
+  /** @nullable */
+  replacedWhat?: string | null;
+  /** @nullable */
+  replacedWithName?: string | null;
+  /** @nullable */
+  replacedWithInventoryItemId?: number | null;
+  /** @nullable */
+  nozzleBrand?: string | null;
+  /** @nullable */
+  nozzleType?: string | null;
+  /** @nullable */
+  nozzleGpm?: number | null;
+  /** @nullable */
+  nozzleRadiusFt?: number | null;
+  /** @nullable */
+  nozzleArcDegrees?: number | null;
+  partsCost: number;
+  laborCost: number;
+  totalCost: number;
+  /** @nullable */
+  notes?: string | null;
+  /** @nullable */
+  performedByUserId?: number | null;
+  /** @nullable */
+  performedByName?: string | null;
+  performedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RepairLogInput {
+  propertyId: number;
+  jobId?: number;
+  blueprintId?: number;
+  elementId?: string;
+  componentType: string;
+  replacedWhat?: string;
+  replacedWithName?: string;
+  replacedWithInventoryItemId?: number;
+  nozzleBrand?: string;
+  nozzleType?: string;
+  nozzleGpm?: number;
+  nozzleRadiusFt?: number;
+  nozzleArcDegrees?: number;
+  partsCost?: number;
+  laborCost?: number;
+  notes?: string;
+  performedByUserId?: number;
+  performedAt?: string;
+}
+
+export type RepairLogSummaryByComponentTypeItem = {
+  componentType?: string;
+  totalCost?: number;
+  count?: number;
+};
+
+export type RepairLogSummaryByYearItem = {
+  year?: number;
+  totalCost?: number;
+  count?: number;
+};
+
+export interface RepairLogSummary {
+  totalPartsCost: number;
+  totalLaborCost: number;
+  totalCost: number;
+  count: number;
+  byComponentType: RepairLogSummaryByComponentTypeItem[];
+  byYear: RepairLogSummaryByYearItem[];
+}
+
 export interface TaskNotification {
   id: number;
   tenantId: number;
@@ -4411,5 +4494,16 @@ triggerType?: string;
  * 'open' (default) or 'resolved'
  */
 status?: string;
+};
+
+export type ListRepairLogsParams = {
+propertyId?: number;
+jobId?: number;
+elementId?: string;
+blueprintId?: number;
+};
+
+export type GetRepairLogSummaryParams = {
+propertyId: number;
 };
 

@@ -10,6 +10,7 @@ import {
   useUpdateRecurringTemplate,
   useDeleteRecurringTemplate,
   useRunRecurringTemplateNow,
+  usePreviewRecurringTemplateBilling, getPreviewRecurringTemplateBillingQueryKey,
   useGetBillingAutomationStatus, getGetBillingAutomationStatusQueryKey,
   useRetryBillingEmail,
   useListCustomers, getListCustomersQueryKey,
@@ -21,7 +22,7 @@ import {
   useCreateInvoice,
   customFetch,
 } from '@workspace/api-client-react';
-import type { RecurringInvoiceTemplate, BillingLineItem, StopServiceFlag } from '@workspace/api-client-react';
+import type { RecurringInvoiceTemplate, BillingLineItem, StopServiceFlag, BillingPreviewGroup } from '@workspace/api-client-react';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
 import { Card, CardContent } from '@/components/ui/card';
@@ -39,7 +40,7 @@ import { toast } from 'sonner';
 import {
   Plus, ArrowUpRight, DollarSign, Clock, FileText, CheckCircle, Calendar,
   User, ChevronDown, Package, RefreshCw, Play, Pause, Mail, MailCheck, MailX, Trash2, Pencil,
-  Building2, ShieldAlert, Check, X, Phone, Globe,
+  Building2, ShieldAlert, Check, X, Phone, Globe, Eye,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAuth } from '@/contexts/AuthContext';
@@ -527,6 +528,116 @@ function CreateInvoiceSheet({ open, onClose, customers }: CreateInvoiceSheetProp
   );
 }
 
+// ── Preview Billing Dialog ──────────────────────────────────────────────────────
+
+interface PreviewBillingDialogProps {
+  templateId: number | null;
+  templateName: string | null;
+  onClose: () => void;
+  onGenerate: (excludeJobIds: number[]) => void;
+  isGenerating: boolean;
+}
+
+function PreviewBillingDialog({ templateId, templateName, onClose, onGenerate, isGenerating }: PreviewBillingDialogProps) {
+  const [excludedJobIds, setExcludedJobIds] = useState<Set<number>>(new Set());
+
+  const { data: preview, isLoading } = usePreviewRecurringTemplateBilling(templateId!, {
+    query: { enabled: templateId != null, queryKey: getPreviewRecurringTemplateBillingQueryKey(templateId!) },
+  });
+
+  React.useEffect(() => {
+    setExcludedJobIds(new Set());
+  }, [templateId]);
+
+  const toggleJob = (jobId: number) => {
+    setExcludedJobIds(prev => {
+      const next = new Set(prev);
+      if (next.has(jobId)) next.delete(jobId); else next.add(jobId);
+      return next;
+    });
+  };
+
+  const groups = (preview?.groups ?? []) as BillingPreviewGroup[];
+  const includedTotal = groups.reduce(
+    (sum, g) => sum + g.jobs.filter(j => !excludedJobIds.has(j.id)).reduce((s, j) => s + j.totalAmount, 0),
+    0,
+  );
+  const totalJobCount = groups.reduce((sum, g) => sum + g.jobs.length, 0);
+  const includedJobCount = totalJobCount - excludedJobIds.size;
+
+  return (
+    <Dialog open={templateId != null} onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Preview: {templateName}</DialogTitle>
+          <DialogDescription>
+            Completed jobs that would be billed if you generate this invoice now. Uncheck a job to leave it out of this run.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="max-h-[50vh] overflow-y-auto space-y-4">
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground py-8 text-center">Loading preview...</p>
+          ) : totalJobCount === 0 ? (
+            <p className="text-sm text-muted-foreground py-8 text-center">No completed jobs are waiting to be billed for this template right now.</p>
+          ) : (
+            groups.map(group => (
+              <div key={group.customerId} className="rounded-lg border">
+                <div className="flex items-center justify-between bg-muted/40 px-3 py-2 border-b">
+                  <span className="text-sm font-medium">{group.customerName}</span>
+                  <span className="text-sm text-muted-foreground">
+                    ${group.jobs.filter(j => !excludedJobIds.has(j.id)).reduce((s, j) => s + j.totalAmount, 0).toFixed(2)}
+                  </span>
+                </div>
+                <div className="divide-y">
+                  {group.jobs.map(job => {
+                    const excluded = excludedJobIds.has(job.id);
+                    return (
+                      <label
+                        key={job.id}
+                        className={`flex items-center gap-3 px-3 py-2 text-sm cursor-pointer ${excluded ? 'opacity-50' : ''}`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-input"
+                          checked={!excluded}
+                          onChange={() => toggleJob(job.id)}
+                        />
+                        <span className="flex-1">{job.title}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {format(new Date(job.completedAt), 'MMM d, yyyy')}
+                        </span>
+                        <span className="w-20 text-right font-medium">${job.totalAmount.toFixed(2)}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {totalJobCount > 0 && (
+          <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-sm font-semibold">
+            <span>{includedJobCount} of {totalJobCount} job{totalJobCount === 1 ? '' : 's'} included</span>
+            <span>Total: ${includedTotal.toFixed(2)}</span>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button
+            onClick={() => onGenerate([...excludedJobIds])}
+            disabled={isGenerating || isLoading || includedJobCount === 0}
+          >
+            {isGenerating ? 'Generating...' : `Generate Invoice${groups.length > 1 ? 's' : ''}`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function FinancialsPage() {
@@ -538,6 +649,7 @@ export default function FinancialsPage() {
   const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<RecurringInvoiceTemplate | null>(null);
   const [approvingFlag, setApprovingFlag] = useState<StopServiceFlag | null>(null);
+  const [previewTemplate, setPreviewTemplate] = useState<{ id: number; name: string } | null>(null);
 
   const { data: summary } = useGetFinancialsSummary({ query: { queryKey: getGetFinancialsSummaryQueryKey() } });
   const { data: invoices, isLoading } = useListInvoices({}, { query: { queryKey: getListInvoicesQueryKey({}) } });
@@ -640,8 +752,8 @@ export default function FinancialsPage() {
     });
   };
 
-  const handleRunNow = (id: number) => {
-    runNow.mutate({ id }, {
+  const handleRunNow = (id: number, excludeJobIds?: number[]) => {
+    runNow.mutate({ id, data: excludeJobIds && excludeJobIds.length > 0 ? { excludeJobIds } : undefined }, {
       onSuccess: (data) => {
         const invoiceIds = (data as { invoiceIds: number[] }).invoiceIds ?? [];
         toast.success(
@@ -652,6 +764,7 @@ export default function FinancialsPage() {
         qc.invalidateQueries({ queryKey: getGetBillingAutomationStatusQueryKey() });
         qc.invalidateQueries({ queryKey: getListInvoicesQueryKey() });
         qc.invalidateQueries({ queryKey: getGetFinancialsSummaryQueryKey() });
+        setPreviewTemplate(null);
       },
       onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to generate invoice'),
     });
@@ -870,16 +983,28 @@ export default function FinancialsPage() {
                           <TableCell className="text-right font-medium">{isCompletedWork ? '—' : `${subtotal.toFixed(2)}`}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-muted-foreground hover:text-primary"
-                                title="Generate now"
-                                onClick={() => handleRunNow(t.id)}
-                                disabled={runNow.isPending}
-                              >
-                                <Play className="w-3.5 h-3.5" />
-                              </Button>
+                              {isCompletedWork ? (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-muted-foreground hover:text-primary"
+                                  title="Preview jobs to be billed"
+                                  onClick={() => setPreviewTemplate({ id: t.id, name: t.name })}
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-muted-foreground hover:text-primary"
+                                  title="Generate now"
+                                  onClick={() => handleRunNow(t.id)}
+                                  disabled={runNow.isPending}
+                                >
+                                  <Play className="w-3.5 h-3.5" />
+                                </Button>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -1338,6 +1463,15 @@ export default function FinancialsPage() {
         open={createInvoiceOpen}
         onClose={() => setCreateInvoiceOpen(false)}
         customers={customerOptions}
+      />
+
+      {/* Preview Billing Dialog */}
+      <PreviewBillingDialog
+        templateId={previewTemplate?.id ?? null}
+        templateName={previewTemplate?.name ?? null}
+        onClose={() => setPreviewTemplate(null)}
+        onGenerate={(excludeJobIds) => { if (previewTemplate) handleRunNow(previewTemplate.id, excludeJobIds); }}
+        isGenerating={runNow.isPending}
       />
     </div>
   );

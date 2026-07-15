@@ -7061,10 +7061,43 @@ export const RunRecurringTemplateNowParams = zod.object({
   "id": zod.coerce.number()
 })
 
+export const RunRecurringTemplateNowBody = zod.object({
+  "excludeJobIds": zod.array(zod.number()).optional().describe('Job ids to leave out of this run (e.g. excluded by staff after reviewing the preview).')
+})
+
 export const RunRecurringTemplateNowResponse = zod.object({
   "success": zod.boolean(),
   "invoiceId": zod.number().nullable(),
   "invoiceIds": zod.array(zod.number())
+})
+
+
+/**
+ * @summary Preview which completed jobs would be billed if this template ran now
+ */
+export const PreviewRecurringTemplateBillingParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const PreviewRecurringTemplateBillingResponse = zod.object({
+  "templateId": zod.number(),
+  "templateName": zod.string(),
+  "billingMode": zod.enum(['static', 'completed_work']),
+  "periodStart": zod.string().nullish(),
+  "periodEnd": zod.string().nullish(),
+  "groups": zod.array(zod.object({
+  "customerId": zod.number(),
+  "customerName": zod.string(),
+  "jobs": zod.array(zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "completedAt": zod.string(),
+  "totalAmount": zod.number(),
+  "serviceId": zod.number().nullish()
+})),
+  "subtotal": zod.number()
+})),
+  "total": zod.number()
 })
 
 

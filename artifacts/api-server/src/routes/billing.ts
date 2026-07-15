@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, recurringInvoiceTemplatesTable, billingEmailQueueTable, invoicesTable, customersTable, servicesTable } from "@workspace/db";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { getTenantId } from "../lib/tenantHelper";
-import { runTemplateNow } from "../lib/billingScheduler";
+import { runTemplateNow, previewTemplateBilling } from "../lib/billingScheduler";
 
 const router: IRouter = Router();
 
@@ -238,13 +238,34 @@ router.delete("/billing/recurring-templates/:id", async (req, res): Promise<void
 router.post("/billing/recurring-templates/:id/run-now", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(req.params.id, 10);
+  const { excludeJobIds } = req.body ?? {};
+
+  if (excludeJobIds !== undefined && (!Array.isArray(excludeJobIds) || excludeJobIds.some((v: unknown) => typeof v !== "number"))) {
+    res.status(400).json({ error: "excludeJobIds must be an array of job ids" });
+    return;
+  }
 
   try {
-    const result = await runTemplateNow(id, tenantId);
+    const result = await runTemplateNow(id, tenantId, excludeJobIds ?? []);
     res.json({ success: true, invoiceId: result.invoiceId, invoiceIds: result.invoiceIds });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     res.status(400).json({ error: msg });
+  }
+});
+
+// ── Preview completed-work billing before it goes out ─────────────────────────
+
+router.get("/billing/recurring-templates/:id/preview", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const id = parseInt(req.params.id, 10);
+
+  try {
+    const preview = await previewTemplateBilling(id, tenantId);
+    res.json(preview);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(404).json({ error: msg });
   }
 });
 

@@ -4670,6 +4670,12 @@ paths:
           required: true
           schema:
             type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RunRecurringTemplateNowInput"
       responses:
         "200":
           description: Invoice generated
@@ -4687,6 +4693,25 @@ paths:
                     type: array
                     items:
                       type: integer
+
+  /billing/recurring-templates/{id}/preview:
+    get:
+      operationId: previewRecurringTemplateBilling
+      tags: [billing]
+      summary: Preview which completed jobs would be billed if this template ran now
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Preview of jobs and totals that would be billed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingPreview"
 
   /billing/email-queue/{id}/retry:
     post:
@@ -10182,6 +10207,67 @@ components:
           type: integer
         failed:
           type: integer
+
+    RunRecurringTemplateNowInput:
+      type: object
+      properties:
+        excludeJobIds:
+          type: array
+          items:
+            type: integer
+          description: Job ids to leave out of this run (e.g. excluded by staff after reviewing the preview).
+
+    BillingPreviewJob:
+      type: object
+      required: [id, title, completedAt, totalAmount]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        completedAt:
+          type: string
+        totalAmount:
+          type: number
+        serviceId:
+          type: ["integer", "null"]
+
+    BillingPreviewGroup:
+      type: object
+      required: [customerId, customerName, jobs, subtotal]
+      properties:
+        customerId:
+          type: integer
+        customerName:
+          type: string
+        jobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillingPreviewJob"
+        subtotal:
+          type: number
+
+    BillingPreview:
+      type: object
+      required: [templateId, templateName, billingMode, groups, total]
+      properties:
+        templateId:
+          type: integer
+        templateName:
+          type: string
+        billingMode:
+          type: string
+          enum: [static, completed_work]
+        periodStart:
+          type: ["string", "null"]
+        periodEnd:
+          type: ["string", "null"]
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillingPreviewGroup"
+        total:
+          type: number
 
     RecurringInvoiceTemplate:
       type: object

@@ -3645,6 +3645,47 @@ export interface BillingQueueStats {
   failed: number;
 }
 
+export interface RunRecurringTemplateNowInput {
+  /** Job ids to leave out of this run (e.g. excluded by staff after reviewing the preview). */
+  excludeJobIds?: number[];
+}
+
+export interface BillingPreviewJob {
+  id: number;
+  title: string;
+  completedAt: string;
+  totalAmount: number;
+  /** @nullable */
+  serviceId?: number | null;
+}
+
+export interface BillingPreviewGroup {
+  customerId: number;
+  customerName: string;
+  jobs: BillingPreviewJob[];
+  subtotal: number;
+}
+
+export type BillingPreviewBillingMode = typeof BillingPreviewBillingMode[keyof typeof BillingPreviewBillingMode];
+
+
+export const BillingPreviewBillingMode = {
+  static: 'static',
+  completed_work: 'completed_work',
+} as const;
+
+export interface BillingPreview {
+  templateId: number;
+  templateName: string;
+  billingMode: BillingPreviewBillingMode;
+  /** @nullable */
+  periodStart?: string | null;
+  /** @nullable */
+  periodEnd?: string | null;
+  groups: BillingPreviewGroup[];
+  total: number;
+}
+
 export type RecurringInvoiceTemplateBillingMode = typeof RecurringInvoiceTemplateBillingMode[keyof typeof RecurringInvoiceTemplateBillingMode];
 
 

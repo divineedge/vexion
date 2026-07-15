@@ -11,13 +11,15 @@
 
 import { db, recurringInvoiceTemplatesTable, billingEmailQueueTable, invoicesTable, customersTable, tenantsTable, jobsTable } from "@workspace/db";
 import type { RecurringInvoiceTemplate } from "@workspace/db";
-import { eq, and, lte, sql, inArray } from "drizzle-orm";
+import { eq, and, lte, sql, inArray, notInArray } from "drizzle-orm";
 import { logger } from "./logger";
 import { sendEmail } from "./emailProvider";
 
 const MAX_EMAIL_ATTEMPTS = 3;
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+/** Either an active transaction or the plain db handle — read helpers below accept both so previews can run outside a transaction. */
+type Queryable = Tx | typeof db;
 
 type BillingLineItem = { description: string; quantity: number; unitPrice: number; total: number };
 
@@ -70,12 +72,13 @@ function generateInvoiceNumber(): string {
  * Only jobs not already tied to another invoice are eligible, so work is never double-billed.
  */
 async function collectCompletedWorkForCustomer(
-  tx: Tx,
+  tx: Queryable,
   tenantId: number,
   customerId: number,
   serviceId: number | null,
   periodStart: Date,
   periodEnd: Date,
+  excludeJobIds: number[] = [],
 ): Promise<{ lineItems: BillingLineItem[]; jobIds: number[] }> {
   const jobs = await tx
     .select()
@@ -90,6 +93,7 @@ async function collectCompletedWorkForCustomer(
         sql`${jobsTable.completedAt} <= ${periodEnd}`,
         sql`${jobsTable.invoiceId} IS NULL`,
         serviceId != null ? eq(jobsTable.serviceId, serviceId) : sql`true`,
+        excludeJobIds.length > 0 ? notInArray(jobsTable.id, excludeJobIds) : sql`true`,
       ),
     );
 
@@ -105,7 +109,7 @@ async function collectCompletedWorkForCustomer(
 
 /** Distinct customers with qualifying completed work for a service-only-scoped template (no customerId set). */
 async function findCustomersWithCompletedWork(
-  tx: Tx,
+  tx: Queryable,
   tenantId: number,
   serviceId: number,
   periodStart: Date,
@@ -135,18 +139,19 @@ async function findCustomersWithCompletedWork(
  * Returns null if there was nothing to bill (only possible in 'completed_work' mode).
  */
 async function generateInvoiceForCustomer(
-  tx: Tx,
+  tx: Queryable,
   template: RecurringInvoiceTemplate,
   customerId: number,
   taxRate: number,
   periodStart: Date,
   periodEnd: Date,
+  excludeJobIds: number[] = [],
 ): Promise<number | null> {
   let lineItems: BillingLineItem[];
   let jobIds: number[] = [];
 
   if (template.billingMode === "completed_work") {
-    const result = await collectCompletedWorkForCustomer(tx, template.tenantId, customerId, template.serviceId, periodStart, periodEnd);
+    const result = await collectCompletedWorkForCustomer(tx, template.tenantId, customerId, template.serviceId, periodStart, periodEnd, excludeJobIds);
     if (result.lineItems.length === 0) return null;
     lineItems = result.lineItems;
     jobIds = result.jobIds;
@@ -454,8 +459,12 @@ export function startBillingScheduler() {
   interval.unref();
 }
 
-/** Manually trigger a single recurring template. Used by the "Generate Now" API. Does not advance nextBillingDate. */
-export async function runTemplateNow(templateId: number, tenantId: number): Promise<{ invoiceId: number | null; invoiceIds: number[] }> {
+/**
+ * Manually trigger a single recurring template. Used by the "Generate Now" API. Does not advance nextBillingDate.
+ * `excludeJobIds` lets staff drop specific completed jobs from this run (surfaced via the "Preview" action);
+ * only meaningful for 'completed_work' templates.
+ */
+export async function runTemplateNow(templateId: number, tenantId: number, excludeJobIds: number[] = []): Promise<{ invoiceId: number | null; invoiceIds: number[] }> {
   const [template] = await db
     .select()
     .from(recurringInvoiceTemplatesTable)
@@ -481,12 +490,12 @@ export async function runTemplateNow(templateId: number, tenantId: number): Prom
 
   await db.transaction(async tx => {
     if (template.customerId != null) {
-      const invoiceId = await generateInvoiceForCustomer(tx, template, template.customerId, taxRate, periodStart, periodEnd);
+      const invoiceId = await generateInvoiceForCustomer(tx, template, template.customerId, taxRate, periodStart, periodEnd, excludeJobIds);
       if (invoiceId != null) invoiceIds.push(invoiceId);
     } else if (template.serviceId != null) {
       const customerIds = await findCustomersWithCompletedWork(tx, template.tenantId, template.serviceId, periodStart, periodEnd);
       for (const customerId of customerIds) {
-        const invoiceId = await generateInvoiceForCustomer(tx, template, customerId, taxRate, periodStart, periodEnd);
+        const invoiceId = await generateInvoiceForCustomer(tx, template, customerId, taxRate, periodStart, periodEnd, excludeJobIds);
         if (invoiceId != null) invoiceIds.push(invoiceId);
       }
     }
@@ -511,6 +520,88 @@ export async function runTemplateNow(templateId: number, tenantId: number): Prom
   await processEmailQueue();
 
   return { invoiceId: invoiceIds[0], invoiceIds };
+}
+
+/**
+ * Preview which completed jobs a 'completed_work' template would bill if run right now, grouped by customer,
+ * without generating anything or mutating jobs/invoices. Surfaces per-job detail so staff can exclude a
+ * miscategorized or duplicate job (via runTemplateNow's excludeJobIds) before triggering the real run.
+ * For 'static' templates (nothing job-based to preview) this returns an empty group list.
+ */
+export async function previewTemplateBilling(templateId: number, tenantId: number) {
+  const [template] = await db
+    .select()
+    .from(recurringInvoiceTemplatesTable)
+    .where(
+      and(
+        eq(recurringInvoiceTemplatesTable.id, templateId),
+        eq(recurringInvoiceTemplatesTable.tenantId, tenantId),
+      ),
+    );
+
+  if (!template) throw new Error("Template not found");
+
+  if (template.billingMode !== "completed_work") {
+    return { templateId: template.id, templateName: template.name, billingMode: template.billingMode, periodStart: null, periodEnd: null, groups: [], total: 0 };
+  }
+
+  const periodStart = template.lastGeneratedAt ?? template.createdAt;
+  const periodEnd = new Date();
+
+  const customerIds: number[] = template.customerId != null
+    ? [template.customerId]
+    : template.serviceId != null
+      ? await findCustomersWithCompletedWork(db, template.tenantId, template.serviceId, periodStart, periodEnd)
+      : [];
+
+  const groups: Array<{ customerId: number; customerName: string; jobs: Array<{ id: number; title: string; completedAt: string; totalAmount: number; serviceId: number | null }>; subtotal: number }> = [];
+
+  for (const customerId of customerIds) {
+    const jobs = await db
+      .select()
+      .from(jobsTable)
+      .where(
+        and(
+          eq(jobsTable.tenantId, tenantId),
+          eq(jobsTable.customerId, customerId),
+          eq(jobsTable.status, "completed"),
+          sql`${jobsTable.completedAt} IS NOT NULL`,
+          sql`${jobsTable.completedAt} > ${periodStart}`,
+          sql`${jobsTable.completedAt} <= ${periodEnd}`,
+          sql`${jobsTable.invoiceId} IS NULL`,
+          template.serviceId != null ? eq(jobsTable.serviceId, template.serviceId) : sql`true`,
+        ),
+      );
+
+    if (jobs.length === 0) continue;
+
+    const [customer] = await db.select({ name: customersTable.name }).from(customersTable).where(eq(customersTable.id, customerId));
+
+    groups.push({
+      customerId,
+      customerName: customer?.name ?? "Unknown",
+      jobs: jobs.map(j => ({
+        id: j.id,
+        title: j.title,
+        completedAt: j.completedAt!.toISOString(),
+        totalAmount: j.totalAmount,
+        serviceId: j.serviceId,
+      })),
+      subtotal: jobs.reduce((sum, j) => sum + j.totalAmount, 0),
+    });
+  }
+
+  const total = groups.reduce((sum, g) => sum + g.subtotal, 0);
+
+  return {
+    templateId: template.id,
+    templateName: template.name,
+    billingMode: template.billingMode,
+    periodStart: periodStart.toISOString(),
+    periodEnd: periodEnd.toISOString(),
+    groups,
+    total,
+  };
 }
 
 /** Enqueue an auto-invoice email for immediate delivery. */

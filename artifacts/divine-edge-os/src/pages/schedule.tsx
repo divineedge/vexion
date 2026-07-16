@@ -128,6 +128,7 @@ export default function SchedulePage() {
     const iv = setInterval(update, 1000);
     return () => clearInterval(iv);
   }, [activeJobTimer?.id]);
+  const [clockOutJobId, setClockOutJobId] = useState<number | null>(null);
 
   const assigneeId = isTechnician && user ? user.id : undefined;
 
@@ -737,7 +738,7 @@ export default function SchedulePage() {
                         className="border-amber-300 text-amber-700 hover:bg-amber-100 gap-1.5 h-8"
                         disabled={stopSubTimer.isPending}
                         onClick={() => stopSubTimer.mutate({ id: activeJobTimer.id }, {
-                          onSuccess: () => { toast.success('Clocked out'); qc.invalidateQueries({ queryKey: getListSubTimersQueryKey() }); },
+                          onSuccess: () => { qc.invalidateQueries({ queryKey: getListSubTimersQueryKey() }); setClockOutJobId(selectedJobId); },
                           onError: () => toast.error('Failed to clock out'),
                         })}
                       >
@@ -1390,6 +1391,33 @@ export default function SchedulePage() {
               });
             }}>
               {createRepairLog.isPending ? 'Saving…' : 'Log Repair'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Mark complete after clock-out */}
+      <Dialog open={clockOutJobId !== null} onOpenChange={open => { if (!open) setClockOutJobId(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Mark Job Complete?</DialogTitle>
+            <DialogDescription>You've clocked out. Do you want to mark this job as completed?</DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => { toast.success('Clocked out'); setClockOutJobId(null); }}>Not yet</Button>
+            <Button onClick={() => {
+              if (!clockOutJobId) return;
+              updateJob.mutate({ id: clockOutJobId, data: { status: 'completed' } }, {
+                onSuccess: () => {
+                  toast.success('Job marked complete');
+                  qc.invalidateQueries({ queryKey: getGetJobQueryKey(clockOutJobId) });
+                  qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                  setClockOutJobId(null);
+                },
+                onError: () => toast.error('Failed to update job'),
+              });
+            }} disabled={updateJob.isPending}>
+              {updateJob.isPending ? 'Saving…' : 'Mark Complete'}
             </Button>
           </div>
         </DialogContent>

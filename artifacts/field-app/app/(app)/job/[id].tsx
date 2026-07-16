@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Platform,
+  Alert,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,6 +18,7 @@ import {
   useGetJob, useListJobChemicalApplications,
   useListSubTimers, useStartSubTimer, useStopSubTimer,
   useGetMasterClock, useStartMasterClock, useStopMasterClock,
+  useUpdateJob,
 } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 
@@ -74,6 +76,7 @@ export default function JobDetailScreen() {
   const stopSubTimer = useStopSubTimer();
   const startMasterClock = useStartMasterClock();
   const stopMasterClock = useStopMasterClock();
+  const updateJob = useUpdateJob();
   const activeJobTimer = subTimers?.find(t => t.isActive && t.jobId === jobId) ?? null;
   const [liveSeconds, setLiveSeconds] = useState(0);
   useEffect(() => {
@@ -217,7 +220,25 @@ export default function JobDetailScreen() {
               onPress={async () => {
                 await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                 if (activeJobTimer) {
-                  stopSubTimer.mutate({ id: activeJobTimer.id }, { onSuccess: () => refetchSubTimers() });
+                  stopSubTimer.mutate({ id: activeJobTimer.id }, {
+                    onSuccess: () => {
+                      refetchSubTimers();
+                      Alert.alert(
+                        'Mark Job Complete?',
+                        'Do you want to mark this job as completed?',
+                        [
+                          { text: 'Not yet', style: 'cancel' },
+                          {
+                            text: 'Mark Complete',
+                            onPress: () => updateJob.mutate(
+                              { id: jobId, data: { status: 'completed' } },
+                              { onSuccess: () => refetchJob() },
+                            ),
+                          },
+                        ],
+                      );
+                    },
+                  });
                 } else {
                   startSubTimer.mutate(
                     { data: { label: (job as any).title, type: 'job', jobId } },

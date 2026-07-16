@@ -13,6 +13,7 @@ import {
   useGetTenantSettings, getGetTenantSettingsQueryKey,
   useListSubTimers, getListSubTimersQueryKey,
   useStartSubTimer, useStopSubTimer,
+  useUpdateJob, getListJobsQueryKey as getJobsQueryKey,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
@@ -89,6 +90,8 @@ export default function RoutesDashboardPage() {
   const { data: subTimers } = useListSubTimers({ query: { queryKey: getListSubTimersQueryKey() } });
   const startSubTimer = useStartSubTimer();
   const stopSubTimer = useStopSubTimer();
+  const updateJob = useUpdateJob();
+  const [clockOutJobId, setClockOutJobId] = useState<number | null>(null);
 
   const resequence = useResequenceRoute();
   const updateJobRoute = useUpdateJobRoute();
@@ -360,7 +363,9 @@ export default function RoutesDashboardPage() {
                   <p className="text-sm text-muted-foreground py-8 text-center border rounded-lg border-dashed">No stops scheduled for this day.</p>
                 ) : (
                   <div className="rounded-lg border divide-y">
-                    {detail.stops.map((stop, idx) => (
+                    {[...detail.stops]
+                      .sort((a, b) => (a.status === 'completed' ? 1 : 0) - (b.status === 'completed' ? 1 : 0))
+                      .map((stop, idx) => (
                       <div key={stop.jobId} className="p-3 space-y-1.5">
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-2">
@@ -398,7 +403,7 @@ export default function RoutesDashboardPage() {
                                 className="h-6 text-xs gap-1 text-amber-600 hover:text-amber-700"
                                 disabled={stopSubTimer.isPending}
                                 onClick={() => stopSubTimer.mutate({ id: activeTimer.id }, {
-                                  onSuccess: () => { toast.success('Clocked out'); qc.invalidateQueries({ queryKey: getListSubTimersQueryKey() }); },
+                                  onSuccess: () => { qc.invalidateQueries({ queryKey: getListSubTimersQueryKey() }); setClockOutJobId(stop.jobId); },
                                   onError: () => toast.error('Failed to clock out'),
                                 })}
                               >
@@ -449,6 +454,33 @@ export default function RoutesDashboardPage() {
             <Button variant="outline" onClick={() => setRescheduleJobId(null)}>Cancel</Button>
             <Button onClick={handleReschedule} disabled={!rescheduleDate || rescheduleOnce.isPending}>
               {rescheduleOnce.isPending ? 'Rescheduling...' : 'Reschedule & Apply Fee'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Mark complete after clock-out */}
+      <Dialog open={clockOutJobId !== null} onOpenChange={open => { if (!open) setClockOutJobId(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Mark Job Complete?</DialogTitle>
+            <DialogDescription>You've clocked out. Do you want to mark this job as completed?</DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => { toast.success('Clocked out'); setClockOutJobId(null); }}>Not yet</Button>
+            <Button onClick={() => {
+              if (!clockOutJobId) return;
+              updateJob.mutate({ id: clockOutJobId, data: { status: 'completed' } }, {
+                onSuccess: () => {
+                  toast.success('Job marked complete');
+                  qc.invalidateQueries({ queryKey: getGetRouteDayDetailQueryKey(dayDetail?.routeTemplateId ?? 0, { date: dayDetail?.date ?? '' }) });
+                  qc.invalidateQueries({ queryKey: getJobsQueryKey() });
+                  setClockOutJobId(null);
+                },
+                onError: () => toast.error('Failed to update job'),
+              });
+            }} disabled={updateJob.isPending}>
+              {updateJob.isPending ? 'Saving…' : 'Mark Complete'}
             </Button>
           </div>
         </DialogContent>

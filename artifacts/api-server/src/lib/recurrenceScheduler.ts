@@ -21,7 +21,7 @@ import { sql } from "drizzle-orm";
 import { logger } from "./logger";
 import { nthOccurrenceAfterRoot, type RecurrenceRule } from "./recurrenceEngine";
 
-const LOOKAHEAD_DAYS = parseInt(process.env.RECURRENCE_LOOKAHEAD_DAYS ?? "7", 10);
+const LOOKAHEAD_DAYS = parseInt(process.env.RECURRENCE_LOOKAHEAD_DAYS ?? "60", 10);
 
 /** Off-season pause: auto-resume any paused series root whose resumeAt date has arrived. */
 async function processAutoResume() {

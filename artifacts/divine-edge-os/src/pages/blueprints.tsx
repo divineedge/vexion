@@ -31,7 +31,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, DraftingCompass, Percent, Package, AlertTriangle, Trash2, Wand2, Library, CopyPlus, Upload, FileText, Loader2, Calculator } from 'lucide-react';
+import { Plus, DraftingCompass, Percent, Package, AlertTriangle, Trash2, Wand2, Library, CopyPlus, Upload, FileText, Loader2, Calculator, Archive } from 'lucide-react';
 import { useLocation } from 'wouter';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -209,6 +209,23 @@ export default function BlueprintsPage() {
     );
   };
 
+  // ── Archive blueprint ─────────────────────────────────────────────────────────
+  const [archiveTarget, setArchiveTarget] = useState<{ id: number; name: string } | null>(null);
+  const handleArchiveBlueprint = () => {
+    if (!archiveTarget) return;
+    updateBlueprint.mutate(
+      { id: archiveTarget.id, data: { isArchived: true } as any },
+      {
+        onSuccess: () => {
+          toast.success(`"${archiveTarget.name}" archived`);
+          qc.invalidateQueries({ queryKey: getListBlueprintsQueryKey() });
+          setArchiveTarget(null);
+        },
+        onError: () => toast.error('Failed to archive blueprint'),
+      },
+    );
+  };
+
   const handleApplyTemplate = () => {
     if (!applyingTemplateId) return;
     applyTemplate.mutate(
@@ -321,9 +338,9 @@ export default function BlueprintsPage() {
     );
   };
 
-  // All blueprints (non-templates shown in main list, but user can tab)
-  const instanceBlueprints = (blueprints ?? []).filter(bp => !(bp as any).isTemplate);
-  const templateBlueprints = (blueprints ?? []).filter(bp => (bp as any).isTemplate);
+  // All blueprints (non-templates shown in main list, but user can tab); archived excluded
+  const instanceBlueprints = (blueprints ?? []).filter(bp => !(bp as any).isTemplate && !(bp as any).isArchived);
+  const templateBlueprints = (blueprints ?? []).filter(bp => (bp as any).isTemplate && !(bp as any).isArchived);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -359,7 +376,7 @@ export default function BlueprintsPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {isLoading ? (
               <div className="col-span-full text-center py-12 text-muted-foreground">Loading blueprints...</div>
-            ) : instanceBlueprints.map((bp) => <BlueprintCard key={bp.id} bp={bp} globalPct={globalPct} p4pEditing={p4pEditing} p4pOpen={p4pOpen} setP4pEditing={setP4pEditing} setP4pOpen={setP4pOpen} saveP4p={saveP4p} updateBlueprint={updateBlueprint} setSuggestedPartsBpId={setSuggestedPartsBpId} setSuggestedPartsOpen={setSuggestedPartsOpen} setEstimateViewBp={setEstimateViewBp} setEstimateViewOpen={setEstimateViewOpen} canManageOffice={canManageOffice} setLocation={setLocation} handleToggleTemplate={handleToggleTemplate} setDeleteTarget={setDeleteTarget} />)}
+            ) : instanceBlueprints.map((bp) => <BlueprintCard key={bp.id} bp={bp} globalPct={globalPct} p4pEditing={p4pEditing} p4pOpen={p4pOpen} setP4pEditing={setP4pEditing} setP4pOpen={setP4pOpen} saveP4p={saveP4p} updateBlueprint={updateBlueprint} setSuggestedPartsBpId={setSuggestedPartsBpId} setSuggestedPartsOpen={setSuggestedPartsOpen} setEstimateViewBp={setEstimateViewBp} setEstimateViewOpen={setEstimateViewOpen} canManageOffice={canManageOffice} setLocation={setLocation} handleToggleTemplate={handleToggleTemplate} setDeleteTarget={setDeleteTarget} setArchiveTarget={setArchiveTarget} />)}
             {!isLoading && instanceBlueprints.length === 0 && (
               <div className="col-span-full text-center py-12 border-2 border-dashed rounded-xl text-muted-foreground">
                 No blueprints yet. Create one or apply a template.
@@ -373,7 +390,7 @@ export default function BlueprintsPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {isLoading ? (
               <div className="col-span-full text-center py-12 text-muted-foreground">Loading...</div>
-            ) : templateBlueprints.map((bp) => <BlueprintCard key={bp.id} bp={bp} globalPct={globalPct} p4pEditing={p4pEditing} p4pOpen={p4pOpen} setP4pEditing={setP4pEditing} setP4pOpen={setP4pOpen} saveP4p={saveP4p} updateBlueprint={updateBlueprint} setSuggestedPartsBpId={setSuggestedPartsBpId} setSuggestedPartsOpen={setSuggestedPartsOpen} setEstimateViewBp={setEstimateViewBp} setEstimateViewOpen={setEstimateViewOpen} canManageOffice={canManageOffice} setLocation={setLocation} handleToggleTemplate={handleToggleTemplate} setDeleteTarget={setDeleteTarget}
+            ) : templateBlueprints.map((bp) => <BlueprintCard key={bp.id} bp={bp} globalPct={globalPct} p4pEditing={p4pEditing} p4pOpen={p4pOpen} setP4pEditing={setP4pEditing} setP4pOpen={setP4pOpen} saveP4p={saveP4p} updateBlueprint={updateBlueprint} setSuggestedPartsBpId={setSuggestedPartsBpId} setSuggestedPartsOpen={setSuggestedPartsOpen} setEstimateViewBp={setEstimateViewBp} setEstimateViewOpen={setEstimateViewOpen} canManageOffice={canManageOffice} setLocation={setLocation} handleToggleTemplate={handleToggleTemplate} setDeleteTarget={setDeleteTarget} setArchiveTarget={setArchiveTarget}
               extraAction={
                 <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs h-7 mt-1"
                   onClick={e => { e.stopPropagation(); setApplyingTemplateId(bp.id); setApplyDialogOpen(true); }}>
@@ -749,6 +766,27 @@ export default function BlueprintsPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Archive confirmation */}
+      <AlertDialog open={!!archiveTarget} onOpenChange={open => { if (!open) setArchiveTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Archive "{archiveTarget?.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This blueprint will be hidden from the main Blueprints list. It stays linked to its property and can be restored from the property detail page.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleArchiveBlueprint}
+              disabled={updateBlueprint.isPending}
+            >
+              {updateBlueprint.isPending ? 'Archiving...' : 'Archive'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Delete confirmation */}
       <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
         <AlertDialogContent>
@@ -793,10 +831,11 @@ interface BlueprintCardProps {
   setLocation: (path: string) => void;
   handleToggleTemplate: (bpId: number, current: boolean) => void;
   setDeleteTarget: (target: { id: number; name: string } | null) => void;
+  setArchiveTarget: (target: { id: number; name: string } | null) => void;
   extraAction?: React.ReactNode;
 }
 
-function BlueprintCard({ bp, globalPct, p4pEditing, p4pOpen, setP4pEditing, setP4pOpen, saveP4p, updateBlueprint, setSuggestedPartsBpId, setSuggestedPartsOpen, setEstimateViewBp, setEstimateViewOpen, canManageOffice, setLocation, handleToggleTemplate, setDeleteTarget, extraAction }: BlueprintCardProps) {
+function BlueprintCard({ bp, globalPct, p4pEditing, p4pOpen, setP4pEditing, setP4pOpen, saveP4p, updateBlueprint, setSuggestedPartsBpId, setSuggestedPartsOpen, setEstimateViewBp, setEstimateViewOpen, canManageOffice, setLocation, handleToggleTemplate, setDeleteTarget, setArchiveTarget, extraAction }: BlueprintCardProps) {
   const bpPct = bp.p4pPercentage as number | null | undefined;
   const hasOverride = bpPct != null;
   const displayPct = hasOverride ? bpPct : globalPct;
@@ -817,13 +856,24 @@ function BlueprintCard({ bp, globalPct, p4pEditing, p4pOpen, setP4pEditing, setP
           <Badge variant="outline" className="absolute top-2 right-2 text-primary border-primary/40 text-[10px]">Template</Badge>
         )}
         {canManageOffice && (
-          <Button
-            variant="ghost" size="icon"
-            className="absolute top-2 left-2 h-7 w-7 bg-background/80 backdrop-blur-sm text-muted-foreground hover:text-destructive hover:bg-background opacity-0 group-hover:opacity-100 transition-opacity"
-            onClick={e => { e.stopPropagation(); setDeleteTarget({ id: bp.id, name: bp.name }); }}
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </Button>
+          <div className="absolute top-2 left-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <Button
+              variant="ghost" size="icon"
+              className="h-7 w-7 bg-background/80 backdrop-blur-sm text-muted-foreground hover:text-amber-600 hover:bg-background"
+              title="Archive blueprint"
+              onClick={e => { e.stopPropagation(); setArchiveTarget({ id: bp.id, name: bp.name }); }}
+            >
+              <Archive className="w-3.5 h-3.5" />
+            </Button>
+            <Button
+              variant="ghost" size="icon"
+              className="h-7 w-7 bg-background/80 backdrop-blur-sm text-muted-foreground hover:text-destructive hover:bg-background"
+              title="Delete blueprint"
+              onClick={e => { e.stopPropagation(); setDeleteTarget({ id: bp.id, name: bp.name }); }}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </Button>
+          </div>
         )}
       </div>
 

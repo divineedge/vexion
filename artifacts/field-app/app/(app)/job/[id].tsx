@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,11 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useGetJob, useListJobChemicalApplications } from '@workspace/api-client-react';
+import {
+  useGetJob, useListJobChemicalApplications,
+  useListSubTimers, useStartSubTimer, useStopSubTimer,
+  useGetMasterClock, useStartMasterClock, useStopMasterClock,
+} from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 
 type BreakdownItem = {
@@ -64,6 +68,21 @@ export default function JobDetailScreen() {
     refetch: refetchApps,
     isFetching,
   } = useListJobChemicalApplications(jobId);
+  const { data: subTimers, refetch: refetchSubTimers } = useListSubTimers();
+  const { data: masterClock, refetch: refetchMasterClock } = useGetMasterClock();
+  const startSubTimer = useStartSubTimer();
+  const stopSubTimer = useStopSubTimer();
+  const startMasterClock = useStartMasterClock();
+  const stopMasterClock = useStopMasterClock();
+  const activeJobTimer = subTimers?.find(t => t.isActive && t.jobId === jobId) ?? null;
+  const [liveSeconds, setLiveSeconds] = useState(0);
+  useEffect(() => {
+    if (!activeJobTimer) { setLiveSeconds(0); return; }
+    const update = () => setLiveSeconds(Math.floor((Date.now() - new Date(activeJobTimer.startedAt).getTime()) / 1000));
+    update();
+    const iv = setInterval(update, 1000);
+    return () => clearInterval(iv);
+  }, [activeJobTimer?.id]);
 
   const isLoading = jobLoading || appsLoading;
 
@@ -144,6 +163,78 @@ export default function JobDetailScreen() {
             <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
               {formatDate((job as { scheduledAt: string }).scheduledAt)}
             </Text>
+          </View>
+        </View>
+
+        {/* Clock in / out card */}
+        <View style={[styles.clockCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 14 }]}>Time Tracking</Text>
+
+          {/* Day clock (master) */}
+          <View style={styles.clockRow}>
+            <View>
+              <Text style={[styles.clockLabel, { color: colors.mutedForeground }]}>Day Clock</Text>
+              <Text style={[styles.clockValue, { color: masterClock?.isClockedIn ? colors.primary : colors.mutedForeground }]}>
+                {masterClock?.isClockedIn ? 'Clocked in for the day' : 'Not clocked in'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.clockBtn, { backgroundColor: masterClock?.isClockedIn ? '#ef444418' : colors.primary + '18' }]}
+              onPress={async () => {
+                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                if (masterClock?.isClockedIn) {
+                  stopMasterClock.mutate(undefined, { onSuccess: () => refetchMasterClock() });
+                } else {
+                  startMasterClock.mutate(undefined, { onSuccess: () => refetchMasterClock() });
+                }
+              }}
+            >
+              <Ionicons
+                name={masterClock?.isClockedIn ? 'stop-circle-outline' : 'play-circle-outline'}
+                size={18}
+                color={masterClock?.isClockedIn ? '#ef4444' : colors.primary}
+              />
+              <Text style={[styles.clockBtnText, { color: masterClock?.isClockedIn ? '#ef4444' : colors.primary }]}>
+                {masterClock?.isClockedIn ? 'Clock Out' : 'Clock In'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={[styles.clockDivider, { backgroundColor: colors.border }]} />
+
+          {/* Job sub-timer */}
+          <View style={styles.clockRow}>
+            <View>
+              <Text style={[styles.clockLabel, { color: colors.mutedForeground }]}>Job Timer</Text>
+              <Text style={[styles.clockValue, { color: activeJobTimer ? '#f59e0b' : colors.mutedForeground }]}>
+                {activeJobTimer
+                  ? `${Math.floor(liveSeconds / 3600)}h ${String(Math.floor((liveSeconds % 3600) / 60)).padStart(2, '0')}m ${String(liveSeconds % 60).padStart(2, '0')}s`
+                  : 'Not started'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.clockBtn, { backgroundColor: activeJobTimer ? '#f59e0b18' : colors.primary + '18' }]}
+              onPress={async () => {
+                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                if (activeJobTimer) {
+                  stopSubTimer.mutate({ id: activeJobTimer.id }, { onSuccess: () => refetchSubTimers() });
+                } else {
+                  startSubTimer.mutate(
+                    { data: { label: (job as any).title, type: 'job', jobId } },
+                    { onSuccess: () => refetchSubTimers() },
+                  );
+                }
+              }}
+            >
+              <Ionicons
+                name={activeJobTimer ? 'stop-circle-outline' : 'timer-outline'}
+                size={18}
+                color={activeJobTimer ? '#f59e0b' : colors.primary}
+              />
+              <Text style={[styles.clockBtnText, { color: activeJobTimer ? '#f59e0b' : colors.primary }]}>
+                {activeJobTimer ? 'Stop Timer' : 'Start Timer'}
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -332,6 +423,43 @@ const styles = StyleSheet.create({
   },
   productName: { fontFamily: 'Inter_500Medium', fontSize: 14, marginBottom: 2 },
   breakdownDetail: { fontFamily: 'Inter_400Regular', fontSize: 13 },
+  clockCard: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+  },
+  clockRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  clockLabel: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  clockValue: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 15,
+  },
+  clockBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  clockBtnText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
+  },
+  clockDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginVertical: 12,
+  },
   fabContainer: {
     position: 'absolute',
     bottom: 0,

@@ -11,6 +11,8 @@ import {
   useListCustomers, getListCustomersQueryKey,
   useListUsers, getListUsersQueryKey,
   useGetTenantSettings, getGetTenantSettingsQueryKey,
+  useListSubTimers, getListSubTimersQueryKey,
+  useStartSubTimer, useStopSubTimer,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
@@ -25,7 +27,7 @@ import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronRight, MapPinned, Route as RouteIcon, ArrowUp, ArrowDown,
-  Wand2, Clock, User, Building, CalendarClock, Plus,
+  Wand2, Clock, User, Building, CalendarClock, Plus, Play, Square, Timer,
 } from 'lucide-react';
 import { startOfWeek, addWeeks, subWeeks, format, addDays } from 'date-fns';
 import { JobFormFields, EMPTY_JOB, buildRecurrenceRule, type NewJobForm } from '@/components/jobs/JobFormFields';
@@ -82,6 +84,11 @@ export default function RoutesDashboardPage() {
     { query: { enabled: !!dayDetail, queryKey: getListJobsQueryKey({ startDate: dayDetail?.date, endDate: dayDetailEndDate }) } },
   );
   const unassignedJobsForDay = (dayJobs ?? []).filter(j => j.routeTemplateId !== dayDetail?.routeTemplateId);
+
+  // Sub-timer (clock in/out per stop)
+  const { data: subTimers } = useListSubTimers({ query: { queryKey: getListSubTimersQueryKey() } });
+  const startSubTimer = useStartSubTimer();
+  const stopSubTimer = useStopSubTimer();
 
   const resequence = useResequenceRoute();
   const updateJobRoute = useUpdateJobRoute();
@@ -383,6 +390,34 @@ export default function RoutesDashboardPage() {
                           <Button variant="ghost" size="sm" className="h-6 text-xs gap-1 text-muted-foreground" onClick={() => { setRescheduleJobId(stop.jobId); setRescheduleDate(detail.date); }}>
                             <CalendarClock className="w-3.5 h-3.5" /> Reschedule
                           </Button>
+                          {(() => {
+                            const activeTimer = subTimers?.find(t => t.isActive && t.jobId === stop.jobId);
+                            return activeTimer ? (
+                              <Button
+                                variant="ghost" size="sm"
+                                className="h-6 text-xs gap-1 text-amber-600 hover:text-amber-700"
+                                disabled={stopSubTimer.isPending}
+                                onClick={() => stopSubTimer.mutate({ id: activeTimer.id }, {
+                                  onSuccess: () => { toast.success('Clocked out'); qc.invalidateQueries({ queryKey: getListSubTimersQueryKey() }); },
+                                  onError: () => toast.error('Failed to clock out'),
+                                })}
+                              >
+                                <Square className="w-3 h-3 fill-amber-600" /> Clock Out
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="ghost" size="sm"
+                                className="h-6 text-xs gap-1 text-muted-foreground"
+                                disabled={startSubTimer.isPending}
+                                onClick={() => startSubTimer.mutate({ data: { label: stop.title, type: 'job', jobId: stop.jobId } }, {
+                                  onSuccess: () => { toast.success('Clocked in'); qc.invalidateQueries({ queryKey: getListSubTimersQueryKey() }); },
+                                  onError: () => toast.error('Failed to clock in'),
+                                })}
+                              >
+                                <Play className="w-3.5 h-3.5" /> Clock In
+                              </Button>
+                            );
+                          })()}
                           <Button variant="ghost" size="sm" className="h-6 text-xs ml-auto text-destructive hover:text-destructive" onClick={() => handleRemoveStop(stop.jobId)}>
                             Remove
                           </Button>

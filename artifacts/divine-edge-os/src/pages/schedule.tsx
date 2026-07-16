@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import {
   useListJobs, getListJobsQueryKey,
@@ -26,6 +26,8 @@ import {
   useCancelRecurringSeries,
   useCreateRepairLog,
   useListRepairLogs, getListRepairLogsQueryKey,
+  useListSubTimers, getListSubTimersQueryKey,
+  useStartSubTimer, useStopSubTimer,
 } from '@workspace/api-client-react';
 import MediaGallery from '@/components/media/MediaGallery';
 import { JobFormFields, EMPTY_JOB, buildRecurrenceRule, type NewJobForm } from '@/components/jobs/JobFormFields';
@@ -45,7 +47,7 @@ import {
   ChevronLeft, ChevronRight, Clock, MapPin, User, Calendar,
   DollarSign, ClipboardList, Plus, Users, FlaskConical, Trash2, AlertTriangle,
   Bell, BellOff, Send, Package, Search, Images, RefreshCw, Pause, Play, X,
-  SkipForward, ListEnd, Wrench,
+  SkipForward, ListEnd, Wrench, Square, Timer,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -109,6 +111,23 @@ export default function SchedulePage() {
     { jobId: selectedJobId! } as Parameters<typeof useListRepairLogs>[0],
     { query: { enabled: selectedJobId != null, queryKey: getListRepairLogsQueryKey({ jobId: selectedJobId! } as Parameters<typeof useListRepairLogs>[0]) } },
   );
+
+  // Sub-timer (clock in/out on job)
+  const { data: subTimers } = useListSubTimers({ query: { queryKey: getListSubTimersQueryKey() } });
+  const startSubTimer = useStartSubTimer();
+  const stopSubTimer = useStopSubTimer();
+  const activeJobTimer = React.useMemo(
+    () => subTimers?.find(t => t.isActive && t.jobId === selectedJobId) ?? null,
+    [subTimers, selectedJobId],
+  );
+  const [liveJobSeconds, setLiveJobSeconds] = useState(0);
+  useEffect(() => {
+    if (!activeJobTimer) { setLiveJobSeconds(0); return; }
+    const update = () => setLiveJobSeconds(Math.floor((Date.now() - new Date(activeJobTimer.startedAt).getTime()) / 1000));
+    update();
+    const iv = setInterval(update, 1000);
+    return () => clearInterval(iv);
+  }, [activeJobTimer?.id]);
 
   const assigneeId = isTechnician && user ? user.id : undefined;
 
@@ -698,6 +717,46 @@ export default function SchedulePage() {
                     </div>
                   </>
                 )}
+
+                {/* Clock in / out */}
+                <Separator />
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1.5">
+                    <Timer className="w-3.5 h-3.5" /> Time on Job
+                  </p>
+                  {activeJobTimer ? (
+                    <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+                      <div>
+                        <p className="text-sm font-semibold text-amber-800 tabular-nums">
+                          {Math.floor(liveJobSeconds / 3600)}h {String(Math.floor((liveJobSeconds % 3600) / 60)).padStart(2, '0')}m {String(liveJobSeconds % 60).padStart(2, '0')}s
+                        </p>
+                        <p className="text-xs text-amber-600">Clocked in</p>
+                      </div>
+                      <Button
+                        size="sm" variant="outline"
+                        className="border-amber-300 text-amber-700 hover:bg-amber-100 gap-1.5 h-8"
+                        disabled={stopSubTimer.isPending}
+                        onClick={() => stopSubTimer.mutate({ id: activeJobTimer.id }, {
+                          onSuccess: () => { toast.success('Clocked out'); qc.invalidateQueries({ queryKey: getListSubTimersQueryKey() }); },
+                          onError: () => toast.error('Failed to clock out'),
+                        })}
+                      >
+                        <Square className="w-3 h-3 fill-amber-700" /> Clock Out
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      size="sm" variant="outline" className="gap-1.5"
+                      disabled={startSubTimer.isPending}
+                      onClick={() => startSubTimer.mutate({ data: { label: (selectedJob as any)?.title ?? `Job #${selectedJobId}`, type: 'job', jobId: selectedJobId! } }, {
+                        onSuccess: () => { toast.success('Clocked in'); qc.invalidateQueries({ queryKey: getListSubTimersQueryKey() }); },
+                        onError: () => toast.error('Failed to clock in'),
+                      })}
+                    >
+                      <Play className="w-3.5 h-3.5" /> Clock In to Job
+                    </Button>
+                  )}
+                </div>
 
                 {/* Parts used on job */}
                 <Separator />

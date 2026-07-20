@@ -48,7 +48,32 @@ export default function LoginScreen() {
       await signIn(result.token, userData);
       router.replace('/(app)/jobs');
     } catch (err: unknown) {
-      setError('Invalid email. Please try again.');
+      let message = 'Invalid email. Please try again.';
+      if (err && typeof err === 'object') {
+        // Network/timeout — fetch throws a TypeError when the request never completes
+        if (err instanceof TypeError) {
+          message = "Can't reach the server — check your connection.";
+        } else if ('status' in err) {
+          const status = (err as { status: number }).status;
+          if (status === 401) {
+            message = 'Invalid email. Please try again.';
+          } else if (status >= 500) {
+            message = 'Server error, please try again.';
+          }
+        } else if ('response' in err) {
+          // Axios-style error with a response object
+          const response = (err as { response?: { status?: number } }).response;
+          const status = response?.status ?? 0;
+          if (status === 401) {
+            message = 'Invalid email. Please try again.';
+          } else if (status >= 500) {
+            message = 'Server error, please try again.';
+          } else if (status === 0 || !status) {
+            message = "Can't reach the server — check your connection.";
+          }
+        }
+      }
+      setError(message);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
   };

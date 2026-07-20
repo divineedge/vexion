@@ -753,6 +753,15 @@ export default function SchedulePage() {
                       </Badge>
                     </div>
                   )}
+                  {(selectedJob as any).planId && (
+                    <div className="col-span-2 space-y-1">
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Service Plan</p>
+                      <div className="flex items-center gap-2 text-sm">
+                        <ClipboardList className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <span>{(selectedJob as any).planName ?? `Plan #${(selectedJob as any).planId}`}</span>
+                      </div>
+                    </div>
+                  )}
                   {selectedJob.totalAmount != null && selectedJob.totalAmount > 0 && (
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Total</p>

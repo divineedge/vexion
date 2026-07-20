@@ -3,7 +3,7 @@ import {
   db, planTemplatesTable, customerPlansTable, jobsTable, customersTable,
   propertiesTable, usersTable, invoicesTable, activityLogTable, tenantsTable,
 } from "@workspace/db";
-import { eq, and, sql, gt, ne, inArray } from "drizzle-orm";
+import { eq, and, sql, gt, ne, inArray, isNotNull, isNull } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import {
@@ -433,9 +433,33 @@ router.patch("/customer-plans/:id", async (req, res): Promise<void> => {
   // Cancelling a plan cancels all future scheduled visits; pausing leaves existing
   // visits on the calendar but stops the job-generation worker from adding new ones.
   if (status === "cancelled") {
+    // Cancel all scheduled plan visits (direct planId links)
     await db.update(jobsTable)
       .set({ status: "cancelled", cancelReason: "Plan cancelled" })
       .where(and(eq(jobsTable.tenantId, tenantId), eq(jobsTable.planId, id), eq(jobsTable.status, "scheduled")));
+
+    // Cancel recurring series roots linked to this plan, and all their scheduled child instances
+    const seriesRoots = await db
+      .select({ id: jobsTable.id })
+      .from(jobsTable)
+      .where(and(
+        eq(jobsTable.tenantId, tenantId),
+        eq(jobsTable.planId, id),
+        isNotNull(jobsTable.recurrenceRule),
+        isNull(jobsTable.recurrenceParentId),
+      ));
+
+    if (seriesRoots.length > 0) {
+      const rootIds = seriesRoots.map(r => r.id);
+      // Cancel all scheduled child occurrences whose parent is one of these roots
+      await db.update(jobsTable)
+        .set({ status: "cancelled", cancelReason: "Plan cancelled" })
+        .where(and(
+          eq(jobsTable.tenantId, tenantId),
+          inArray(jobsTable.recurrenceParentId, rootIds),
+          eq(jobsTable.status, "scheduled"),
+        ));
+    }
   }
 
   await db.insert(activityLogTable).values({

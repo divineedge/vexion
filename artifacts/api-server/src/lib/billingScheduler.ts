@@ -11,7 +11,7 @@
 
 import { db, recurringInvoiceTemplatesTable, billingEmailQueueTable, invoicesTable, customersTable, tenantsTable, jobsTable } from "@workspace/db";
 import type { RecurringInvoiceTemplate } from "@workspace/db";
-import { eq, and, lte, sql, inArray, notInArray, isNull } from "drizzle-orm";
+import { eq, and, lte, sql, inArray, notInArray, isNull, asc, min } from "drizzle-orm";
 import { logger } from "./logger";
 import { sendEmail } from "./emailProvider";
 import crypto from "crypto";
@@ -100,6 +100,12 @@ function generateInvoiceNumber(): string {
  * has never run). Matching jobs are constrained to the template's serviceId when set.
  * Only jobs not already tied to another invoice are eligible, so work is never double-billed.
  */
+/**
+ * @param excludeHeld  When true (nightly scheduler default) jobs with holdFromBilling=true
+ *                     are silently skipped. Pass false for manual "Generate Now" runs so that
+ *                     staff-controlled excludeJobIds remain the only gate — a held job that
+ *                     staff explicitly leave checked in the preview should still be billed.
+ */
 async function collectCompletedWorkForCustomer(
   tx: Queryable,
   tenantId: number,
@@ -108,6 +114,7 @@ async function collectCompletedWorkForCustomer(
   periodStart: Date,
   periodEnd: Date,
   excludeJobIds: number[] = [],
+  excludeHeld = true,
 ): Promise<{ lineItems: BillingLineItem[]; jobIds: number[] }> {
   const jobs = await tx
     .select()
@@ -123,6 +130,7 @@ async function collectCompletedWorkForCustomer(
         sql`${jobsTable.invoiceId} IS NULL`,
         serviceId != null ? eq(jobsTable.serviceId, serviceId) : sql`true`,
         excludeJobIds.length > 0 ? notInArray(jobsTable.id, excludeJobIds) : sql`true`,
+        excludeHeld ? eq(jobsTable.holdFromBilling, false) : sql`true`,
       ),
     );
 
@@ -136,13 +144,19 @@ async function collectCompletedWorkForCustomer(
   return { lineItems, jobIds: jobs.map(j => j.id) };
 }
 
-/** Distinct customers with qualifying completed work for a service-only-scoped template (no customerId set). */
+/**
+ * Distinct customers with qualifying completed work for a service-only-scoped template.
+ * @param excludeHeld  When true (default, used by the nightly run) customers whose only
+ *                     qualifying jobs are on hold are omitted. Pass false for the preview
+ *                     so staff can see and toggle held jobs before the run.
+ */
 async function findCustomersWithCompletedWork(
   tx: Queryable,
   tenantId: number,
   serviceId: number,
   periodStart: Date,
   periodEnd: Date,
+  excludeHeld = true,
 ): Promise<number[]> {
   const rows = await tx
     .selectDistinct({ customerId: jobsTable.customerId })
@@ -157,6 +171,8 @@ async function findCustomersWithCompletedWork(
         sql`${jobsTable.completedAt} <= ${periodEnd}`,
         sql`${jobsTable.invoiceId} IS NULL`,
         sql`${jobsTable.customerId} IS NOT NULL`,
+        // Skip customers whose only qualifying jobs are on hold (nightly run only).
+        excludeHeld ? eq(jobsTable.holdFromBilling, false) : sql`true`,
       ),
     );
   return rows.map(r => r.customerId).filter((id): id is number => id != null);
@@ -180,6 +196,7 @@ async function generateInvoiceForCustomer(
   periodEnd: Date,
   excludeJobIds: number[] = [],
   billingDate?: string,
+  excludeHeld = true,
 ): Promise<number | null> {
   // ── Per-customer idempotency check ───────────────────────────────────────
   // When billingDate is set (scheduler runs only; manual runTemplateNow omits it),
@@ -216,7 +233,7 @@ async function generateInvoiceForCustomer(
   let jobIds: number[] = [];
 
   if (template.billingMode === "completed_work") {
-    const result = await collectCompletedWorkForCustomer(tx, template.tenantId, customerId, template.serviceId, periodStart, periodEnd, excludeJobIds);
+    const result = await collectCompletedWorkForCustomer(tx, template.tenantId, customerId, template.serviceId, periodStart, periodEnd, excludeJobIds, excludeHeld);
     if (result.lineItems.length === 0) return null;
 
     // Atomically claim the found jobs. A concurrent process racing the same
@@ -266,7 +283,9 @@ async function generateInvoiceForCustomer(
     .returning();
 
   if (jobIds.length > 0) {
-    await tx.update(jobsTable).set({ invoiceId: invoice.id }).where(inArray(jobsTable.id, jobIds));
+    // Clear holdFromBilling now that the job has actually been billed — the hold
+    // was a "skip me in the *next* run" signal, not a permanent exclusion.
+    await tx.update(jobsTable).set({ invoiceId: invoice.id, holdFromBilling: false }).where(inArray(jobsTable.id, jobIds));
   }
 
   await tx.insert(billingEmailQueueTable).values({
@@ -318,23 +337,61 @@ async function generateDueTemplate(tx: Tx, template: RecurringInvoiceTemplate): 
 
   if (template.customerId != null) {
     // Per-customer idempotency is handled inside generateInvoiceForCustomer using billingDate.
-    const invoiceId = await generateInvoiceForCustomer(tx, template, template.customerId, taxRate, periodStart, periodEnd, [], today);
+    // excludeHeld=true: the nightly run respects the per-job hold flag set by staff.
+    const invoiceId = await generateInvoiceForCustomer(tx, template, template.customerId, taxRate, periodStart, periodEnd, [], today, true);
     if (invoiceId != null) invoiceIds.push(invoiceId);
   } else if (template.serviceId != null) {
     // Service-only scope: bill every customer who has qualifying completed work this period.
     // Each customer is checked individually so a partial prior run can continue
     // billing remaining customers without re-billing those already invoiced.
-    const customerIds = await findCustomersWithCompletedWork(tx, template.tenantId, template.serviceId, periodStart, periodEnd);
+    // excludeHeld=true in both calls so held jobs are skipped during the unattended run.
+    const customerIds = await findCustomersWithCompletedWork(tx, template.tenantId, template.serviceId, periodStart, periodEnd, true);
     for (const customerId of customerIds) {
-      const invoiceId = await generateInvoiceForCustomer(tx, template, customerId, taxRate, periodStart, periodEnd, [], today);
+      const invoiceId = await generateInvoiceForCustomer(tx, template, customerId, taxRate, periodStart, periodEnd, [], today, true);
       if (invoiceId != null) invoiceIds.push(invoiceId);
     }
   }
 
+  // ── Cap lastGeneratedAt to avoid permanently losing held jobs ────────────
+  // If any jobs in this period are held, advancing lastGeneratedAt all the way
+  // to periodEnd would push them outside the next run's window (completedAt >
+  // lastGeneratedAt).  Find the earliest held+unbilled job's completedAt and
+  // cap the advancement to 1 ms before it, so the job re-enters the window
+  // once its hold is released.
+  const [earliestHeld] = await tx
+    .select({ completedAt: min(jobsTable.completedAt) })
+    .from(jobsTable)
+    .where(
+      and(
+        eq(jobsTable.tenantId, template.tenantId),
+        eq(jobsTable.status, "completed"),
+        eq(jobsTable.holdFromBilling, true),
+        isNull(jobsTable.invoiceId),
+        sql`${jobsTable.completedAt} IS NOT NULL`,
+        sql`${jobsTable.completedAt} > ${periodStart}`,
+        sql`${jobsTable.completedAt} <= ${periodEnd}`,
+        template.customerId != null ? eq(jobsTable.customerId, template.customerId) : sql`true`,
+        template.serviceId != null ? eq(jobsTable.serviceId, template.serviceId) : sql`true`,
+      ),
+    );
+
+  let effectiveLastGeneratedAt = periodEnd;
+  if (earliestHeld?.completedAt != null) {
+    const cap = new Date(earliestHeld.completedAt.getTime() - 1);
+    if (cap < effectiveLastGeneratedAt) {
+      effectiveLastGeneratedAt = cap;
+      logger.info(
+        { templateId: template.id, heldJobCompletedAt: earliestHeld.completedAt, cap },
+        "Held job(s) found in period — capping lastGeneratedAt so they remain billable after release",
+      );
+    }
+  }
+  // ── End cap logic ─────────────────────────────────────────────────────────
+
   const nextDate = nextBillingDate(template.nextBillingDate, template.billingCycleType);
   await tx
     .update(recurringInvoiceTemplatesTable)
-    .set({ nextBillingDate: nextDate, lastGeneratedAt: periodEnd })
+    .set({ nextBillingDate: nextDate, lastGeneratedAt: effectiveLastGeneratedAt })
     .where(eq(recurringInvoiceTemplatesTable.id, template.id));
 
   return invoiceIds;
@@ -614,12 +671,15 @@ export async function runTemplateNow(templateId: number, tenantId: number, exclu
 
   await db.transaction(async tx => {
     if (template.customerId != null) {
-      const invoiceId = await generateInvoiceForCustomer(tx, template, template.customerId, taxRate, periodStart, periodEnd, excludeJobIds);
+      // excludeHeld=false: manual "Generate Now" respects only the staff-selected excludeJobIds;
+      // a held job that staff leave checked in the preview should still be billed.
+      const invoiceId = await generateInvoiceForCustomer(tx, template, template.customerId, taxRate, periodStart, periodEnd, excludeJobIds, undefined, false);
       if (invoiceId != null) invoiceIds.push(invoiceId);
     } else if (template.serviceId != null) {
-      const customerIds = await findCustomersWithCompletedWork(tx, template.tenantId, template.serviceId, periodStart, periodEnd);
+      // excludeHeld=false so all customers with qualifying work appear; staff-selected excludeJobIds gate individual jobs.
+      const customerIds = await findCustomersWithCompletedWork(tx, template.tenantId, template.serviceId, periodStart, periodEnd, false);
       for (const customerId of customerIds) {
-        const invoiceId = await generateInvoiceForCustomer(tx, template, customerId, taxRate, periodStart, periodEnd, excludeJobIds);
+        const invoiceId = await generateInvoiceForCustomer(tx, template, customerId, taxRate, periodStart, periodEnd, excludeJobIds, undefined, false);
         if (invoiceId != null) invoiceIds.push(invoiceId);
       }
     }
@@ -675,10 +735,10 @@ export async function previewTemplateBilling(templateId: number, tenantId: numbe
   const customerIds: number[] = template.customerId != null
     ? [template.customerId]
     : template.serviceId != null
-      ? await findCustomersWithCompletedWork(db, template.tenantId, template.serviceId, periodStart, periodEnd)
+      ? await findCustomersWithCompletedWork(db, template.tenantId, template.serviceId, periodStart, periodEnd, false)
       : [];
 
-  const groups: Array<{ customerId: number; customerName: string; jobs: Array<{ id: number; title: string; completedAt: string; totalAmount: number; serviceId: number | null }>; subtotal: number }> = [];
+  const groups: Array<{ customerId: number; customerName: string; jobs: Array<{ id: number; title: string; completedAt: string; totalAmount: number; serviceId: number | null; holdFromBilling: boolean }>; subtotal: number }> = [];
 
   for (const customerId of customerIds) {
     const jobs = await db
@@ -751,6 +811,7 @@ export async function previewTemplateBilling(templateId: number, tenantId: numbe
           duplicate: duplicateJobIds.has(j.id) || undefined,
           outlier: outlierJobIds.has(j.id) || undefined,
         },
+        holdFromBilling: j.holdFromBilling,
       })),
       subtotal: jobs.reduce((sum, j) => sum + j.totalAmount, 0),
     });

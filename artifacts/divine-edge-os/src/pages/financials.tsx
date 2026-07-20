@@ -20,9 +20,10 @@ import {
   useDismissStopServiceFlag,
   useGetTenantSettings, getGetTenantSettingsQueryKey,
   useCreateInvoice,
+  useUpdateJob,
   customFetch,
 } from '@workspace/api-client-react';
-import type { RecurringInvoiceTemplate, BillingLineItem, StopServiceFlag, BillingPreviewGroup } from '@workspace/api-client-react';
+import type { RecurringInvoiceTemplate, BillingLineItem, StopServiceFlag, BillingPreviewGroup, BillingPreviewJob } from '@workspace/api-client-react';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
 import { Card, CardContent } from '@/components/ui/card';
@@ -540,13 +541,19 @@ interface PreviewBillingDialogProps {
 
 function PreviewBillingDialog({ templateId, templateName, onClose, onGenerate, isGenerating }: PreviewBillingDialogProps) {
   const [excludedJobIds, setExcludedJobIds] = useState<Set<number>>(new Set());
+  // Jobs whose holdFromBilling flag is being toggled right now (optimistic loading state)
+  const [pendingHolds, setPendingHolds] = useState<Set<number>>(new Set());
+  const qc = useQueryClient();
 
   const { data: preview, isLoading } = usePreviewRecurringTemplateBilling(templateId!, {
     query: { enabled: templateId != null, queryKey: getPreviewRecurringTemplateBillingQueryKey(templateId!) },
   });
 
+  const { mutateAsync: updateJob } = useUpdateJob();
+
   React.useEffect(() => {
     setExcludedJobIds(new Set());
+    setPendingHolds(new Set());
   }, [templateId]);
 
   const toggleJob = (jobId: number) => {
@@ -555,6 +562,18 @@ function PreviewBillingDialog({ templateId, templateName, onClose, onGenerate, i
       if (next.has(jobId)) next.delete(jobId); else next.add(jobId);
       return next;
     });
+  };
+
+  /** Toggle the persistent DB hold for overnight billing. */
+  const toggleHold = async (jobId: number, currentHeld: boolean) => {
+    setPendingHolds(prev => new Set(prev).add(jobId));
+    try {
+      await updateJob({ id: jobId, data: { holdFromBilling: !currentHeld } });
+      // Refresh preview so the badge reflects the new state
+      qc.invalidateQueries({ queryKey: getPreviewRecurringTemplateBillingQueryKey(templateId!) });
+    } finally {
+      setPendingHolds(prev => { const n = new Set(prev); n.delete(jobId); return n; });
+    }
   };
 
   const groups = (preview?.groups ?? []) as BillingPreviewGroup[];
@@ -574,7 +593,7 @@ function PreviewBillingDialog({ templateId, templateName, onClose, onGenerate, i
         <DialogHeader>
           <DialogTitle>Preview: {templateName}</DialogTitle>
           <DialogDescription>
-            Completed jobs that would be billed if you generate this invoice now. Uncheck a job to leave it out of this run.
+            Completed jobs that would be billed if you generate this invoice now. Uncheck a job to leave it out of this run, or use "Hold" to keep it out of the automatic overnight run too.
           </DialogDescription>
         </DialogHeader>
 
@@ -612,31 +631,48 @@ function PreviewBillingDialog({ templateId, templateName, onClose, onGenerate, i
                       isDuplicate ? 'Possible duplicate — another job for this service was completed within 30 minutes' : '',
                       isOutlier ? 'Unusual amount — this job\'s total is well outside the typical range for this customer' : '',
                     ].filter(Boolean).join('\n');
+                    const held = job.holdFromBilling ?? false;
+                    const isPending = pendingHolds.has(job.id);
                     return (
-                      <label
+                      <div
                         key={job.id}
-                        className={`flex items-center gap-3 px-3 py-2 text-sm cursor-pointer ${excluded ? 'opacity-50' : ''} ${isFlagged && !excluded ? 'bg-amber-50/60' : ''}`}
+                        className={`flex items-center gap-3 px-3 py-2 text-sm ${excluded ? 'opacity-50' : ''} ${isFlagged && !excluded ? 'bg-amber-50/60' : ''}`}
                       >
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 rounded border-input"
-                          checked={!excluded}
-                          onChange={() => toggleJob(job.id)}
-                        />
-                        <span className="flex-1">{job.title}</span>
-                        {isFlagged && (
-                          <span title={flagTooltip} className="flex items-center gap-1 text-amber-600 shrink-0">
-                            <AlertTriangle className="w-3.5 h-3.5" />
-                            <span className="text-xs font-medium">
-                              {isDuplicate && isOutlier ? 'Duplicate · Outlier' : isDuplicate ? 'Duplicate' : 'Outlier'}
+                        <label className="flex items-center gap-3 flex-1 cursor-pointer min-w-0">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-input shrink-0"
+                            checked={!excluded}
+                            onChange={() => toggleJob(job.id)}
+                          />
+                          <span className="flex-1 truncate">{job.title}</span>
+                          {isFlagged && (
+                            <span title={flagTooltip} className="flex items-center gap-1 text-amber-600 shrink-0">
+                              <AlertTriangle className="w-3.5 h-3.5" />
+                              <span className="text-xs font-medium">
+                                {isDuplicate && isOutlier ? 'Duplicate · Outlier' : isDuplicate ? 'Duplicate' : 'Outlier'}
+                              </span>
                             </span>
+                          )}
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">
+                            {format(new Date(job.completedAt), 'MMM d, yyyy')}
                           </span>
-                        )}
-                        <span className="text-xs text-muted-foreground">
-                          {format(new Date(job.completedAt), 'MMM d, yyyy')}
-                        </span>
-                        <span className="w-20 text-right font-medium">${job.totalAmount.toFixed(2)}</span>
-                      </label>
+                          <span className="w-20 text-right font-medium">${job.totalAmount.toFixed(2)}</span>
+                        </label>
+                        <button
+                          type="button"
+                          disabled={isPending}
+                          onClick={() => toggleHold(job.id, held)}
+                          title={held ? 'This job is held from the overnight billing run — click to release' : 'Hold this job out of the automatic overnight billing run'}
+                          className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+                            held
+                              ? 'bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-300'
+                              : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                          } disabled:opacity-50`}
+                        >
+                          {isPending ? '…' : held ? 'Held' : 'Hold'}
+                        </button>
+                      </div>
                     );
                   })}
                 </div>

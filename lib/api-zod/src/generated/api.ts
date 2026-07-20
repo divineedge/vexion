@@ -1018,6 +1018,7 @@ export const ListJobsResponseItem = zod.object({
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
+  "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
   "createdAt": zod.string()
 })
 export const ListJobsResponse = zod.array(ListJobsResponseItem)
@@ -1111,6 +1112,7 @@ export const CreateJobResponse = zod.object({
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
+  "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
   "createdAt": zod.string()
 })
 
@@ -1181,6 +1183,7 @@ export const GetJobResponse = zod.object({
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
+  "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
   "createdAt": zod.string()
 })
 
@@ -1213,7 +1216,8 @@ export const UpdateJobBody = zod.object({
   "endDate": zod.string().optional().describe('ISO date string; used when endCondition is on_date')
 }).optional(),
   "editScope": zod.enum(['this', 'forward', 'all']).optional().describe('Scope of the edit for recurring jobs'),
-  "smsReminderEnabled": zod.boolean().optional().describe('Enable or disable SMS reminder for this job')
+  "smsReminderEnabled": zod.boolean().optional().describe('Enable or disable SMS reminder for this job'),
+  "holdFromBilling": zod.boolean().optional().describe('When true, exclude this job from the next automatic overnight billing run')
 })
 
 export const UpdateJobResponse = zod.object({
@@ -1275,6 +1279,7 @@ export const UpdateJobResponse = zod.object({
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
+  "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
   "createdAt": zod.string()
 })
 
@@ -1385,6 +1390,7 @@ export const SkipNextOccurrenceResponse = zod.object({
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
+  "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
   "createdAt": zod.string()
 })
 
@@ -1460,6 +1466,7 @@ export const PauseRecurringSeriesResponse = zod.object({
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
+  "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
   "createdAt": zod.string()
 })
 
@@ -1544,6 +1551,7 @@ export const CompleteJobResponse = zod.object({
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
+  "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
   "createdAt": zod.string()
 })
 
@@ -1636,6 +1644,7 @@ export const AddJobPartResponse = zod.object({
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
+  "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
   "createdAt": zod.string()
 })
 
@@ -1707,6 +1716,7 @@ export const RemoveJobPartResponse = zod.object({
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
+  "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
   "createdAt": zod.string()
 })
 
@@ -7722,7 +7732,8 @@ export const PreviewRecurringTemplateBillingResponse = zod.object({
   "title": zod.string(),
   "completedAt": zod.string(),
   "totalAmount": zod.number(),
-  "serviceId": zod.number().nullish()
+  "serviceId": zod.number().nullish(),
+  "holdFromBilling": zod.boolean().optional().describe('When true, this job is held from the next automatic overnight billing run')
 })),
   "subtotal": zod.number()
 })),

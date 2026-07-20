@@ -423,7 +423,7 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const { title, description, status, priority, assigneeId, crewId, scheduledAt, estimatedDuration, recurrenceRule, editScope, smsReminderEnabled } = req.body;
+  const { title, description, status, priority, assigneeId, crewId, scheduledAt, estimatedDuration, recurrenceRule, editScope, smsReminderEnabled, holdFromBilling } = req.body;
 
   // Fetch current job to check if it's a recurring instance
   const [currentJob] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
@@ -439,6 +439,7 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
     ...(scheduledAt !== undefined && { scheduledAt: new Date(scheduledAt) }),
     ...(estimatedDuration !== undefined && { estimatedDuration }),
     ...(smsReminderEnabled !== undefined && { smsReminderEnabled: smsReminderEnabled === true || smsReminderEnabled === "true" }),
+    ...(holdFromBilling !== undefined && { holdFromBilling: holdFromBilling === true || holdFromBilling === "true" }),
   };
 
   // Handle "forward" or "all" scope: update the root series template

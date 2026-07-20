@@ -1243,6 +1243,8 @@ export interface Job {
   originalScheduledDate?: string | null;
   /** When true, the scheduler sends an SMS reminder to the customer before this job */
   smsReminderEnabled?: boolean;
+  /** When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed. */
+  holdFromBilling?: boolean;
   createdAt: string;
 }
 
@@ -1336,6 +1338,8 @@ export interface JobUpdate {
   editScope?: JobUpdateEditScope;
   /** Enable or disable SMS reminder for this job */
   smsReminderEnabled?: boolean;
+  /** When true, exclude this job from the next automatic overnight billing run */
+  holdFromBilling?: boolean;
 }
 
 export interface CrewMember {
@@ -3563,82 +3567,6 @@ export interface PortalProperty {
   notes?: string | null;
 }
 
-export type PortalPlanBillingCycle = typeof PortalPlanBillingCycle[keyof typeof PortalPlanBillingCycle];
-
-export const PortalPlanBillingCycle = {
-  monthly: 'monthly',
-  quarterly: 'quarterly',
-  annual: 'annual',
-  custom: 'custom',
-} as const;
-
-export type PortalPlanStatus = typeof PortalPlanStatus[keyof typeof PortalPlanStatus];
-
-export const PortalPlanStatus = {
-  active: 'active',
-  paused: 'paused',
-  cancelled: 'cancelled',
-  pending_renewal: 'pending_renewal',
-} as const;
-
-export interface PortalPlanServiceState {
-  serviceId?: number;
-  serviceName?: string;
-  frequencyDays?: number;
-  /** @nullable */
-  lastScheduledAt?: string | null;
-}
-
-export interface PortalPlan {
-  id: number;
-  templateName: string;
-  startDate: string;
-  endDate: string;
-  billingCycle: PortalPlanBillingCycle;
-  /** @nullable */
-  customCycleDays?: number | null;
-  billingPrice: number;
-  autoRenew: boolean;
-  status: PortalPlanStatus;
-  nextBillingDate: string;
-  /** @nullable */
-  lastBilledAt?: string | null;
-  /** @nullable */
-  propertyAddress?: string | null;
-  serviceState: PortalPlanServiceState[];
-  createdAt: string;
-}
-
-export interface PortalPlanVisit {
-  id: number;
-  title: string;
-  status: string;
-  scheduledAt: string;
-  /** @nullable */
-  assigneeName?: string | null;
-}
-
-export interface PortalPlanBillingEntry {
-  id: number;
-  invoiceNumber: string;
-  status: string;
-  total: number;
-  /** @nullable */
-  dueDate?: string | null;
-  /** @nullable */
-  paidAt?: string | null;
-  createdAt: string;
-}
-
-export interface PortalPlanDetail extends PortalPlan {
-  visits: PortalPlanVisit[];
-  billingHistory: PortalPlanBillingEntry[];
-}
-
-export interface PortalUpdatePlanInput {
-  autoRenew: boolean;
-}
-
 export type PortalAlertType = typeof PortalAlertType[keyof typeof PortalAlertType];
 
 
@@ -3919,6 +3847,8 @@ export interface BillingPreviewJob {
     duplicate?: boolean;
     outlier?: boolean;
   };
+  /** When true, this job is held from the next automatic overnight billing run */
+  holdFromBilling?: boolean;
 }
 
 export interface BillingPreviewGroup {

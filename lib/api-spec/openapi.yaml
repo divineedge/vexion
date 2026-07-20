@@ -7567,6 +7567,9 @@ components:
         smsReminderEnabled:
           type: boolean
           description: "When true, the scheduler sends an SMS reminder to the customer before this job"
+        holdFromBilling:
+          type: boolean
+          description: "When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed."
         createdAt:
           type: string
 
@@ -7675,6 +7678,9 @@ components:
         smsReminderEnabled:
           type: boolean
           description: "Enable or disable SMS reminder for this job"
+        holdFromBilling:
+          type: boolean
+          description: "When true, exclude this job from the next automatic overnight billing run"
 
     Crew:
       type: object
@@ -10976,6 +10982,9 @@ components:
             outlier:
               type: boolean
               description: This job's amount is more than 2.5 standard deviations from the group mean (requires ≥3 jobs)
+        holdFromBilling:
+          type: boolean
+          description: "When true, this job is held from the next automatic overnight billing run"
 
     BillingPreviewGroup:
       type: object

@@ -86,5 +86,7 @@ export interface Job {
   originalScheduledDate?: string | null;
   /** When true, the scheduler sends an SMS reminder to the customer before this job */
   smsReminderEnabled?: boolean;
+  /** When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed. */
+  holdFromBilling?: boolean;
   createdAt: string;
 }

@@ -67,6 +67,13 @@ export const jobsTable = pgTable("jobs", {
   // ── Non-recurring invoicing ───────────────────────────────────────────────
   /** Set true when this (non-recurring) job completed and is waiting to be swept into a weekly batch invoice. */
   pendingWeeklyInvoice: boolean("pending_weekly_invoice").notNull().default(false),
+  /**
+   * When true, this job is excluded from the next automatic overnight billing run
+   * (processRecurringTemplates / generateDueTemplate).  Staff can set this flag
+   * ahead of time from the job detail view or the billing preview dialog.
+   * The flag is automatically cleared once the job is actually billed (invoiceId set).
+   */
+  holdFromBilling: boolean("hold_from_billing").notNull().default(false),
 
   // ── Routing (Divisions & Route Templates) ────────────────────────────────
   /** FK to route_templates — which recurring route slot this job belongs to */

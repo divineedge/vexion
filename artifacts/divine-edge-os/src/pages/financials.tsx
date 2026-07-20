@@ -40,7 +40,7 @@ import { toast } from 'sonner';
 import {
   Plus, ArrowUpRight, DollarSign, Clock, FileText, CheckCircle, Calendar,
   User, ChevronDown, Package, RefreshCw, Play, Pause, Mail, MailCheck, MailX, Trash2, Pencil,
-  Building2, ShieldAlert, Check, X, Phone, Globe, Eye,
+  Building2, ShieldAlert, Check, X, Phone, Globe, Eye, AlertTriangle,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAuth } from '@/contexts/AuthContext';
@@ -565,6 +565,9 @@ function PreviewBillingDialog({ templateId, templateName, onClose, onGenerate, i
   const totalJobCount = groups.reduce((sum, g) => sum + g.jobs.length, 0);
   const includedJobCount = totalJobCount - excludedJobIds.size;
 
+  const flaggedJobs = groups.flatMap(g => g.jobs).filter(j => j.flags?.duplicate || j.flags?.outlier);
+  const flagCount = flaggedJobs.length;
+
   return (
     <Dialog open={templateId != null} onOpenChange={o => { if (!o) onClose(); }}>
       <DialogContent className="max-w-2xl">
@@ -574,6 +577,16 @@ function PreviewBillingDialog({ templateId, templateName, onClose, onGenerate, i
             Completed jobs that would be billed if you generate this invoice now. Uncheck a job to leave it out of this run.
           </DialogDescription>
         </DialogHeader>
+
+        {flagCount > 0 && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-500" />
+            <span>
+              <span className="font-semibold">{flagCount} job{flagCount === 1 ? '' : 's'} flagged</span> — review highlighted rows before billing.
+              Flags are advisory only; you can still include flagged jobs.
+            </span>
+          </div>
+        )}
 
         <div className="max-h-[50vh] overflow-y-auto space-y-4">
           {isLoading ? (
@@ -592,10 +605,17 @@ function PreviewBillingDialog({ templateId, templateName, onClose, onGenerate, i
                 <div className="divide-y">
                   {group.jobs.map(job => {
                     const excluded = excludedJobIds.has(job.id);
+                    const isDuplicate = job.flags?.duplicate;
+                    const isOutlier = job.flags?.outlier;
+                    const isFlagged = isDuplicate || isOutlier;
+                    const flagTooltip = [
+                      isDuplicate ? 'Possible duplicate — another job for this service was completed within 30 minutes' : '',
+                      isOutlier ? 'Unusual amount — this job\'s total is well outside the typical range for this customer' : '',
+                    ].filter(Boolean).join('\n');
                     return (
                       <label
                         key={job.id}
-                        className={`flex items-center gap-3 px-3 py-2 text-sm cursor-pointer ${excluded ? 'opacity-50' : ''}`}
+                        className={`flex items-center gap-3 px-3 py-2 text-sm cursor-pointer ${excluded ? 'opacity-50' : ''} ${isFlagged && !excluded ? 'bg-amber-50/60' : ''}`}
                       >
                         <input
                           type="checkbox"
@@ -604,6 +624,14 @@ function PreviewBillingDialog({ templateId, templateName, onClose, onGenerate, i
                           onChange={() => toggleJob(job.id)}
                         />
                         <span className="flex-1">{job.title}</span>
+                        {isFlagged && (
+                          <span title={flagTooltip} className="flex items-center gap-1 text-amber-600 shrink-0">
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            <span className="text-xs font-medium">
+                              {isDuplicate && isOutlier ? 'Duplicate · Outlier' : isDuplicate ? 'Duplicate' : 'Outlier'}
+                            </span>
+                          </span>
+                        )}
                         <span className="text-xs text-muted-foreground">
                           {format(new Date(job.completedAt), 'MMM d, yyyy')}
                         </span>

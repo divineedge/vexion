@@ -701,6 +701,43 @@ export async function previewTemplateBilling(templateId: number, tenantId: numbe
 
     const [customer] = await db.select({ name: customersTable.name }).from(customersTable).where(eq(customersTable.id, customerId));
 
+    // ── Heuristic flags ─────────────────────────────────────────────────
+    // Duplicate: two jobs in this group share the same serviceId and were
+    // completed within 30 minutes of each other — likely the same work logged twice.
+    const DUPLICATE_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
+    const duplicateJobIds = new Set<number>();
+    for (let a = 0; a < jobs.length; a++) {
+      for (let b = a + 1; b < jobs.length; b++) {
+        const jobA = jobs[a];
+        const jobB = jobs[b];
+        if (
+          jobA.serviceId != null &&
+          jobA.serviceId === jobB.serviceId &&
+          Math.abs(jobA.completedAt!.getTime() - jobB.completedAt!.getTime()) <= DUPLICATE_WINDOW_MS
+        ) {
+          duplicateJobIds.add(jobA.id);
+          duplicateJobIds.add(jobB.id);
+        }
+      }
+    }
+
+    // Outlier: job amount is >2.5 std deviations from the group mean.
+    // Only applied when the group has ≥3 jobs (fewer jobs don't give a meaningful baseline).
+    const outlierJobIds = new Set<number>();
+    if (jobs.length >= 3) {
+      const amounts = jobs.map(j => j.totalAmount);
+      const mean = amounts.reduce((s, v) => s + v, 0) / amounts.length;
+      const variance = amounts.reduce((s, v) => s + (v - mean) ** 2, 0) / amounts.length;
+      const stdDev = Math.sqrt(variance);
+      if (stdDev > 0) {
+        for (const j of jobs) {
+          if (Math.abs(j.totalAmount - mean) > 2.5 * stdDev) {
+            outlierJobIds.add(j.id);
+          }
+        }
+      }
+    }
+
     groups.push({
       customerId,
       customerName: customer?.name ?? "Unknown",
@@ -710,6 +747,10 @@ export async function previewTemplateBilling(templateId: number, tenantId: numbe
         completedAt: j.completedAt!.toISOString(),
         totalAmount: j.totalAmount,
         serviceId: j.serviceId,
+        flags: {
+          duplicate: duplicateJobIds.has(j.id) || undefined,
+          outlier: outlierJobIds.has(j.id) || undefined,
+        },
       })),
       subtotal: jobs.reduce((sum, j) => sum + j.totalAmount, 0),
     });

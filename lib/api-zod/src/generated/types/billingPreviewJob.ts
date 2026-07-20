@@ -13,4 +13,8 @@ export interface BillingPreviewJob {
   totalAmount: number;
   /** @nullable */
   serviceId?: number | null;
+  flags?: {
+    duplicate?: boolean;
+    outlier?: boolean;
+  };
 }

@@ -10967,6 +10967,15 @@ components:
           type: number
         serviceId:
           type: ["integer", "null"]
+        flags:
+          type: object
+          properties:
+            duplicate:
+              type: boolean
+              description: Another job in this billing group has the same service and was completed within 30 minutes
+            outlier:
+              type: boolean
+              description: This job's amount is more than 2.5 standard deviations from the group mean (requires ≥3 jobs)
 
     BillingPreviewGroup:
       type: object

@@ -3672,84 +3672,6 @@ export interface PortalAlert {
   createdAt: string;
 }
 
-export type PortalPlanBillingCycle = typeof PortalPlanBillingCycle[keyof typeof PortalPlanBillingCycle];
-
-
-export const PortalPlanBillingCycle = {
-  monthly: 'monthly',
-  quarterly: 'quarterly',
-  annual: 'annual',
-  custom: 'custom',
-} as const;
-
-export type PortalPlanStatus = typeof PortalPlanStatus[keyof typeof PortalPlanStatus];
-
-
-export const PortalPlanStatus = {
-  active: 'active',
-  paused: 'paused',
-  cancelled: 'cancelled',
-  pending_renewal: 'pending_renewal',
-} as const;
-
-export type PortalPlanServiceStateItem = {
-  serviceId?: number;
-  serviceName?: string;
-  frequencyDays?: number;
-  /** @nullable */
-  lastScheduledAt?: string | null;
-};
-
-export interface PortalPlan {
-  id: number;
-  templateName: string;
-  startDate: string;
-  endDate: string;
-  billingCycle: PortalPlanBillingCycle;
-  /** @nullable */
-  customCycleDays?: number | null;
-  billingPrice: number;
-  autoRenew: boolean;
-  status: PortalPlanStatus;
-  nextBillingDate: string;
-  /** @nullable */
-  lastBilledAt?: string | null;
-  /** @nullable */
-  propertyAddress: string | null;
-  serviceState: PortalPlanServiceStateItem[];
-  createdAt: string;
-}
-
-export interface PortalPlanVisit {
-  id: number;
-  title: string;
-  status: string;
-  scheduledAt: string;
-  /** @nullable */
-  assigneeName?: string | null;
-}
-
-export interface PortalPlanBillingEntry {
-  id: number;
-  invoiceNumber: string;
-  status: string;
-  total: number;
-  /** @nullable */
-  dueDate?: string | null;
-  /** @nullable */
-  paidAt?: string | null;
-  createdAt: string;
-}
-
-export type PortalPlanDetail = PortalPlan & {
-  visits: PortalPlanVisit[];
-  billingHistory: PortalPlanBillingEntry[];
-};
-
-export interface PortalUpdatePlanInput {
-  autoRenew: boolean;
-}
-
 export type PortalAlertResponseAction = typeof PortalAlertResponseAction[keyof typeof PortalAlertResponseAction];
 
 
@@ -3993,6 +3915,10 @@ export interface BillingPreviewJob {
   totalAmount: number;
   /** @nullable */
   serviceId?: number | null;
+  flags?: {
+    duplicate?: boolean;
+    outlier?: boolean;
+  };
 }
 
 export interface BillingPreviewGroup {
@@ -4851,135 +4777,7 @@ elementId?: string;
 blueprintId?: number;
 };
 
-export interface PortalPlanServiceStateItem {
-  serviceId: number;
-  serviceName: string;
-  frequencyDays: number;
-  /** @nullable */
-  lastScheduledAt?: string | null;
-}
-
-export interface PortalPlan {
-  id: number;
-  templateName: string;
-  startDate: string;
-  endDate: string;
-  billingCycle: 'monthly' | 'quarterly' | 'annual' | 'custom';
-  /** @nullable */
-  customCycleDays?: number | null;
-  billingPrice: number;
-  autoRenew: boolean;
-  status: 'active' | 'paused' | 'cancelled' | 'pending_renewal';
-  nextBillingDate: string;
-  /** @nullable */
-  lastBilledAt?: string | null;
-  /** @nullable */
-  propertyAddress?: string | null;
-  serviceState: PortalPlanServiceStateItem[];
-  createdAt: string;
-}
-
-export interface PortalPlanVisit {
-  id: number;
-  title: string;
-  status: string;
-  scheduledAt: string;
-  /** @nullable */
-  assigneeName?: string | null;
-}
-
-export interface PortalPlanBillingEntry {
-  id: number;
-  invoiceNumber: string;
-  status: string;
-  total: number;
-  /** @nullable */
-  dueDate?: string | null;
-  /** @nullable */
-  paidAt?: string | null;
-  createdAt: string;
-}
-
-export interface PortalPlanDetail extends PortalPlan {
-  visits: PortalPlanVisit[];
-  billingHistory: PortalPlanBillingEntry[];
-}
-
-export interface PortalUpdatePlanInput {
-  autoRenew: boolean;
-}
-
 export type GetRepairLogSummaryParams = {
 propertyId: number;
 };
 
-export type PortalPlanBillingCycle = typeof PortalPlanBillingCycle[keyof typeof PortalPlanBillingCycle];
-
-// eslint-disable-next-line @typescript-eslint/no-redeclare
-export const PortalPlanBillingCycle = {
-  monthly: 'monthly',
-  quarterly: 'quarterly',
-  annual: 'annual',
-  custom: 'custom',
-} as const;
-
-export type PortalPlanStatus = typeof PortalPlanStatus[keyof typeof PortalPlanStatus];
-
-// eslint-disable-next-line @typescript-eslint/no-redeclare
-export const PortalPlanStatus = {
-  active: 'active',
-  paused: 'paused',
-  cancelled: 'cancelled',
-  pending_renewal: 'pending_renewal',
-} as const;
-
-export type PortalPlanServiceState = {
-  serviceId?: number;
-  serviceName?: string;
-  frequencyDays?: number;
-  lastScheduledAt?: string | null;
-};
-
-export type PortalPlan = {
-  id: number;
-  templateName: string;
-  startDate: string;
-  endDate: string;
-  billingCycle: PortalPlanBillingCycle;
-  customCycleDays?: number | null;
-  billingPrice: number;
-  autoRenew: boolean;
-  status: PortalPlanStatus;
-  nextBillingDate: string;
-  lastBilledAt?: string | null;
-  propertyAddress?: string | null;
-  serviceState: PortalPlanServiceState[];
-  createdAt: string;
-};
-
-export type PortalPlanVisit = {
-  id: number;
-  title: string;
-  status: string;
-  scheduledAt: string;
-  assigneeName?: string | null;
-};
-
-export type PortalPlanBillingEntry = {
-  id: number;
-  invoiceNumber: string;
-  status: string;
-  total: number;
-  dueDate?: string | null;
-  paidAt?: string | null;
-  createdAt: string;
-};
-
-export type PortalPlanDetail = PortalPlan & {
-  visits: PortalPlanVisit[];
-  billingHistory: PortalPlanBillingEntry[];
-};
-
-export type PortalUpdatePlanInput = {
-  autoRenew: boolean;
-};

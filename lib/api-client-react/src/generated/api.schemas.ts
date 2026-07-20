@@ -4625,3 +4625,43 @@ export type GetRepairLogSummaryParams = {
 propertyId: number;
 };
 
+
+export type PortalPlan = {
+  id: number;
+  templateName: string;
+  startDate: string;
+  endDate: string;
+  billingCycle: string;
+  customCycleDays: number | null;
+  billingPrice: number;
+  autoRenew: boolean;
+  status: string;
+  nextBillingDate: string | null;
+  lastBilledAt: string | null;
+  propertyAddress: string | null;
+  serviceState: unknown[];
+  createdAt: string;
+};
+
+export type PortalPlanDetail = PortalPlan & {
+  visits: {
+    id: number;
+    title: string;
+    status: string;
+    scheduledAt: string;
+    assigneeName: string | null;
+  }[];
+  billingHistory: {
+    id: number;
+    invoiceNumber: string | null;
+    status: string;
+    total: number;
+    dueDate: string | null;
+    paidAt: string | null;
+    createdAt: string;
+  }[];
+};
+
+export type PortalUpdatePlanInput = {
+  autoRenew: boolean;
+};

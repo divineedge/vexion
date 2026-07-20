@@ -43,6 +43,13 @@
       "when": 1753056000000,
       "tag": "0005_add_video_compressed_to_media_attachments",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1753056001000,
+      "tag": "0006_add_invoice_billing_date",
+      "breakpoints": true
     }
   ]
 }

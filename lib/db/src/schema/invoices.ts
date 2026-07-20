@@ -1,4 +1,5 @@
-import { pgTable, text, serial, timestamp, integer, real, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, jsonb, uniqueIndex, date } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -24,6 +25,14 @@ export const invoicesTable = pgTable("invoices", {
   stripePaymentUrl: text("stripe_payment_url"),
   /** FK to recurring_invoice_templates when this invoice was auto-generated */
   generatedFromTemplateId: integer("generated_from_template_id"),
+  /**
+   * Calendar date (UTC) of the billing cycle that produced this invoice.
+   * Set to today when the scheduler auto-generates from a recurring template.
+   * Combined with generatedFromTemplateId and customerId it forms a unique
+   * key that prevents the scheduler from billing the same template+customer
+   * twice on the same day.
+   */
+  billingDate: date("billing_date"),
   /** Lob letter id once a "Print & Mail" request has been sent */
   lobLetterId: text("lob_letter_id"),
   /** Lob delivery status: 'requested' | 'mailed' | 'delivered' | 'returned' | 'failed' */
@@ -32,7 +41,18 @@ export const invoicesTable = pgTable("invoices", {
   paymentRemindersSent: jsonb("payment_reminders_sent").default("[]"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
-});
+}, (table) => [
+  /**
+   * Unique index preventing the billing scheduler from inserting a second invoice
+   * for the same recurring template + customer on the same billing date.
+   * billingDate is set to today (UTC) by the scheduler on every auto-generated
+   * invoice. This is a partial index — only rows where generatedFromTemplateId
+   * is not null participate, so manually created invoices are never affected.
+   */
+  uniqueIndex("invoices_template_customer_billing_date_uidx")
+    .on(table.generatedFromTemplateId, table.customerId, table.billingDate)
+    .where(sql`generated_from_template_id IS NOT NULL AND billing_date IS NOT NULL`),
+]);
 
 export const insertInvoiceSchema = createInsertSchema(invoicesTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertInvoice = z.infer<typeof insertInvoiceSchema>;

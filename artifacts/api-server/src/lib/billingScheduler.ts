@@ -147,7 +147,39 @@ async function generateInvoiceForCustomer(
   periodStart: Date,
   periodEnd: Date,
   excludeJobIds: number[] = [],
+  billingDate?: string,
 ): Promise<number | null> {
+  // ── Per-customer idempotency check ───────────────────────────────────────
+  // When billingDate is set (scheduler runs only; manual runTemplateNow omits it),
+  // verify no invoice for this exact (template, customer, billingDate) tuple exists.
+  // This lets a partial run—where the server crashed after billing some customers
+  // but before advancing nextBillingDate—safely resume: already-billed customers
+  // are skipped individually while remaining ones are processed normally.
+  // The DB unique index on (generated_from_template_id, customer_id, billing_date)
+  // provides the final hard stop for any race that slips past this check.
+  if (billingDate != null) {
+    const [existing] = await tx
+      .select({ id: invoicesTable.id })
+      .from(invoicesTable)
+      .where(
+        and(
+          eq(invoicesTable.generatedFromTemplateId, template.id),
+          eq(invoicesTable.customerId, customerId),
+          eq(invoicesTable.billingDate, billingDate),
+        ),
+      )
+      .limit(1);
+
+    if (existing) {
+      logger.info(
+        { templateId: template.id, customerId, billingDate, existingInvoiceId: existing.id },
+        "Invoice already generated for this template+customer+date; skipping duplicate",
+      );
+      return null;
+    }
+  }
+  // ── End per-customer idempotency check ───────────────────────────────────
+
   let lineItems: BillingLineItem[];
   let jobIds: number[] = [];
 
@@ -178,6 +210,7 @@ async function generateInvoiceForCustomer(
       lineItems,
       notes: template.notes ?? null,
       generatedFromTemplateId: template.id,
+      billingDate: billingDate ?? null,
       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // net-30
     })
     .returning();
@@ -198,6 +231,30 @@ async function generateInvoiceForCustomer(
 
 /** Runs one due template inside a transaction: generates 1..N invoices (N>1 only for service-only scope) and advances the schedule. */
 async function generateDueTemplate(tx: Tx, template: RecurringInvoiceTemplate): Promise<number[]> {
+  // ── Concurrent-process guard ─────────────────────────────────────────────
+  // Lock the template row so that if two scheduler processes start at the same
+  // moment only one proceeds at a time. After acquiring the lock, re-read
+  // nextBillingDate: if another process already advanced it past today while we
+  // were waiting, bail out immediately — the work is done.
+  const [locked] = await tx
+    .select({
+      id: recurringInvoiceTemplatesTable.id,
+      nextBillingDate: recurringInvoiceTemplatesTable.nextBillingDate,
+    })
+    .from(recurringInvoiceTemplatesTable)
+    .where(eq(recurringInvoiceTemplatesTable.id, template.id))
+    .for("update");
+
+  if (!locked) return []; // row was deleted between the outer SELECT and the lock
+
+  const today = todayDateString();
+  if (locked.nextBillingDate > today) {
+    // Another process already advanced the schedule while we were waiting.
+    logger.info({ templateId: template.id }, "Recurring template already processed by concurrent run; skipping");
+    return [];
+  }
+  // ── End concurrent-process guard ─────────────────────────────────────────
+
   const [tenant] = await tx
     .select({ taxRate: tenantsTable.taxRate })
     .from(tenantsTable)
@@ -210,13 +267,16 @@ async function generateDueTemplate(tx: Tx, template: RecurringInvoiceTemplate): 
   const invoiceIds: number[] = [];
 
   if (template.customerId != null) {
-    const invoiceId = await generateInvoiceForCustomer(tx, template, template.customerId, taxRate, periodStart, periodEnd);
+    // Per-customer idempotency is handled inside generateInvoiceForCustomer using billingDate.
+    const invoiceId = await generateInvoiceForCustomer(tx, template, template.customerId, taxRate, periodStart, periodEnd, [], today);
     if (invoiceId != null) invoiceIds.push(invoiceId);
   } else if (template.serviceId != null) {
     // Service-only scope: bill every customer who has qualifying completed work this period.
+    // Each customer is checked individually so a partial prior run can continue
+    // billing remaining customers without re-billing those already invoiced.
     const customerIds = await findCustomersWithCompletedWork(tx, template.tenantId, template.serviceId, periodStart, periodEnd);
     for (const customerId of customerIds) {
-      const invoiceId = await generateInvoiceForCustomer(tx, template, customerId, taxRate, periodStart, periodEnd);
+      const invoiceId = await generateInvoiceForCustomer(tx, template, customerId, taxRate, periodStart, periodEnd, [], today);
       if (invoiceId != null) invoiceIds.push(invoiceId);
     }
   }

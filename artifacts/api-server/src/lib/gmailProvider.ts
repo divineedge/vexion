@@ -118,9 +118,14 @@ async function refreshAccessToken(refreshToken: string): Promise<{ accessToken?:
 }
 
 /** Minimal RFC 2822 message builder — plain text only, matching the rest of the email abstraction. */
-function buildRawMessage(from: string, to: string, subject: string, body: string): string {
+function buildRawMessage(from: string, to: string, subject: string, body: string, displayName?: string): string {
+  // Format as "Display Name <address>" when a friendly name is provided.
+  // RFC 5321: if the display name contains special characters or spaces, wrap it in quotes.
+  const fromHeader = displayName
+    ? `"${displayName.replace(/"/g, '\\"')}" <${from}>`
+    : from;
   const message = [
-    `From: ${from}`,
+    `From: ${fromHeader}`,
     `To: ${to}`,
     `Subject: ${subject}`,
     "MIME-Version: 1.0",
@@ -137,6 +142,7 @@ export async function sendViaGmail(
   to: string,
   subject: string,
   body: string,
+  displayName?: string,
 ): Promise<SendEmailResult> {
   if (!refreshToken) return { success: false, error: "Gmail is not connected — connect a Google account in Settings" };
 
@@ -147,7 +153,8 @@ export async function sendViaGmail(
     // Gmail always sends "From" as the authenticated account regardless of the header value
     // unless the address is a verified send-as alias, so we always pass the connected account's
     // own address rather than any tenant-configured "from" override.
-    const raw = buildRawMessage(fromEmail, to, subject, body);
+    // The display name (e.g. "Mike's Lawn Care") is accepted by Gmail and shown to recipients.
+    const raw = buildRawMessage(fromEmail, to, subject, body, displayName);
     const res = await fetch(GMAIL_SEND_URL, {
       method: "POST",
       headers: {

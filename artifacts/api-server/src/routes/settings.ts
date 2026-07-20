@@ -71,6 +71,7 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
       // Gmail OAuth — never expose the refresh token, just whether/who is connected
       gmailConnected: !!emailProviderConfig["gmailRefreshToken"],
       gmailEmail: emailProviderConfig["gmailEmail"] ?? "",
+      gmailSenderName: emailProviderConfig["gmailSenderName"] ?? "",
     },
     // Business Profile
     businessPhone: tenant.businessPhone ?? null,
@@ -275,6 +276,8 @@ router.patch("/settings", async (req, res): Promise<void> => {
     if (incoming["smtpPort"]) merged["smtpPort"] = incoming["smtpPort"];
     if (incoming["smtpUser"]) merged["smtpUser"] = incoming["smtpUser"];
     if (incoming["smtpPass"] && !incoming["smtpPass"].startsWith("••")) merged["smtpPass"] = incoming["smtpPass"];
+    // Gmail sender display name — save empty string as deletion (no name = bare address)
+    if ("gmailSenderName" in incoming) merged["gmailSenderName"] = incoming["gmailSenderName"] ?? "";
     updates.emailProviderConfig = merged;
   }
   if (routeExceptionFee !== undefined) updates.routeExceptionFee = parseFloat(routeExceptionFee);

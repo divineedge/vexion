@@ -136,6 +136,7 @@ export default function SettingsPage() {
   const [smtpPass, setSmtpPass] = useState('');
   const [gmailConnected, setGmailConnected] = useState(false);
   const [gmailEmail, setGmailEmail] = useState('');
+  const [gmailSenderName, setGmailSenderName] = useState('');
 
   // Maps & measurement
   const [defaultGeofenceRadius, setDefaultGeofenceRadius] = useState('100');
@@ -266,6 +267,7 @@ export default function SettingsPage() {
       setSmtpPass(s.emailProviderConfig?.smtpPass ?? '');
       setGmailConnected(!!s.emailProviderConfig?.gmailConnected);
       setGmailEmail(s.emailProviderConfig?.gmailEmail ?? '');
+      setGmailSenderName((s.emailProviderConfig as any)?.gmailSenderName ?? '');
 
       // Follow-Up Queue triggers
       if (s.followupTriggerConfig) {
@@ -1249,6 +1251,31 @@ export default function SettingsPage() {
                       <Mail className="w-4 h-4" /> {gmailAuthorizeUrl.isFetching ? 'Redirecting...' : 'Connect Google Account'}
                     </Button>
                   )}
+                  <div className="space-y-1.5 pt-1">
+                    <label className="text-sm font-medium">Sender Display Name</label>
+                    <Input
+                      placeholder="e.g. Mike's Lawn Care"
+                      value={gmailSenderName}
+                      onChange={e => setGmailSenderName(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Customers will see "Mike's Lawn Care &lt;{gmailEmail || 'you@gmail.com'}&gt;" instead of just your email address. Leave blank to show only the address.
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={updateSettings.isPending}
+                    onClick={() => updateSettings.mutate(
+                      { data: { emailProvider: 'gmail', emailProviderConfig: { gmailSenderName } } as any },
+                      {
+                        onSuccess: () => { toast.success('Gmail sender name saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
+                        onError: () => toast.error('Failed to save'),
+                      }
+                    )}
+                  >
+                    Save Sender Name
+                  </Button>
                 </div>
               )}
 

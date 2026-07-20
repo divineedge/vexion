@@ -144,8 +144,9 @@ export async function sendEmail(
   if (provider === "gmail") {
     const refreshToken = config["gmailRefreshToken"] ?? "";
     const gmailEmail = config["gmailEmail"] ?? "";
+    const gmailSenderName = config["gmailSenderName"] ?? "";
     if (!refreshToken || !gmailEmail) return { success: false, error: "Gmail is not connected — connect a Google account in Settings" };
-    return sendViaGmail(refreshToken, gmailEmail, to, subject, body);
+    return sendViaGmail(refreshToken, gmailEmail, to, subject, body, gmailSenderName || undefined);
   }
 
   if (provider === "smtp") {

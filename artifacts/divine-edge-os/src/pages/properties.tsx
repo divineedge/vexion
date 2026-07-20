@@ -11,7 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, Plus, MapPin, Navigation } from 'lucide-react';
+import { Search, Plus, Navigation } from 'lucide-react';
+import PropertyThumbnail from '@/components/media/PropertyThumbnail';
 import { useLocation } from 'wouter';
 import { useDebounce } from '@/hooks/use-debounce';
 import { Badge } from '@/components/ui/badge';
@@ -148,7 +149,7 @@ export default function PropertiesPage() {
                   >
                     <TableCell>
                       <div className="flex items-start gap-2">
-                        <MapPin className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        <PropertyThumbnail profilePhotoUrl={(property as any).profilePhotoUrl} />
                         <div>
                           <div className="font-medium">{property.address}</div>
                           <div className="text-xs text-muted-foreground">{property.city}, {property.state} {property.zip}</div>

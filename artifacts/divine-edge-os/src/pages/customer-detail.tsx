@@ -26,11 +26,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import {
-  ArrowLeft, Building, Phone, Mail, Edit, Plus, Calendar, MapPin,
+  ArrowLeft, Building, Phone, Mail, Edit, Plus, Calendar,
   Save, X, User, FileText, Tag, DollarSign, Home, Briefcase, Megaphone, AlertTriangle, Link,
   MessageSquare, Send, PhoneOff, MailMinus, ChevronRight, PlayCircle,
 } from 'lucide-react';
 import CustomerAvatar from '@/components/media/CustomerAvatar';
+import PropertyThumbnail from '@/components/media/PropertyThumbnail';
 import CustomerPlansTab from '@/components/customer/CustomerPlansTab';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -547,7 +548,7 @@ export default function CustomerDetailPage() {
                       <TableRow key={p.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setLocation(`/properties/${p.id}`)}>
                         <TableCell>
                           <div className="flex items-start gap-2">
-                            <MapPin className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                            <PropertyThumbnail profilePhotoUrl={(p as any).profilePhotoUrl} />
                             <div>
                               <div className="font-medium">{p.address}</div>
                               <div className="text-xs text-muted-foreground">{[p.city, p.state, p.zip].filter(Boolean).join(', ')}</div>

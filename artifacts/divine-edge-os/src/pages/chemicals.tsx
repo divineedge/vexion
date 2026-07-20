@@ -38,6 +38,21 @@ export default function ChemicalsReportPage() {
     window.print();
   };
 
+  const handleExportCSV = () => {
+    const base = `${window.location.origin}/api/chemical-applications/export`;
+    const qs = new URLSearchParams();
+    if (startDate) qs.set('startDate', startDate);
+    if (endDate) qs.set('endDate', endDate);
+    if (applicatorId && applicatorId !== 'all') qs.set('applicatorId', applicatorId);
+    const url = qs.toString() ? `${base}?${qs}` : base;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
   const SIGNAL_COLORS: Record<string, string> = {
     CAUTION: 'bg-yellow-100 text-yellow-800 border-yellow-200',
     WARNING: 'bg-orange-100 text-orange-800 border-orange-200',
@@ -54,9 +69,14 @@ export default function ChemicalsReportPage() {
           </h1>
           <p className="text-muted-foreground mt-1">Complete application history for state compliance reporting.</p>
         </div>
-        <Button variant="outline" onClick={handleExportPDF} className="gap-2 print:hidden">
-          <Download className="w-4 h-4" /> Export PDF
-        </Button>
+        <div className="flex gap-2 print:hidden">
+          <Button variant="outline" onClick={handleExportCSV} className="gap-2">
+            <Download className="w-4 h-4" /> Export CSV
+          </Button>
+          <Button variant="outline" onClick={handleExportPDF} className="gap-2">
+            <Download className="w-4 h-4" /> Export PDF
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}

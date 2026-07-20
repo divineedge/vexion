@@ -461,6 +461,99 @@ router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> =
   });
 });
 
+// ─── Chemical Applications CSV Export ─────────────────────────────────────────
+
+router.get("/chemical-applications/export", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const { startDate, endDate, applicatorId } = req.query as Record<string, string>;
+
+  const rows = await db
+    .select({
+      app: chemicalApplicationsTable,
+      jobTitle: jobsTable.title,
+      propertyAddress: propertiesTable.address,
+    })
+    .from(chemicalApplicationsTable)
+    .leftJoin(jobsTable, eq(chemicalApplicationsTable.jobId, jobsTable.id))
+    .leftJoin(propertiesTable, eq(jobsTable.propertyId, propertiesTable.id))
+    .where(and(
+      eq(chemicalApplicationsTable.tenantId, tenantId),
+      startDate ? gte(chemicalApplicationsTable.appliedAt, new Date(startDate)) : undefined,
+      endDate ? lte(chemicalApplicationsTable.appliedAt, new Date(endDate)) : undefined,
+      applicatorId ? eq(chemicalApplicationsTable.applicatorId, parseInt(applicatorId, 10)) : undefined,
+    ) as ReturnType<typeof and>)
+    .orderBy(desc(chemicalApplicationsTable.appliedAt));
+
+  // CSV helpers
+  const esc = (v: unknown): string => {
+    if (v == null) return '';
+    const s = String(v);
+    if (s.includes(',') || s.includes('"') || s.includes('\n')) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+
+  type BreakdownItem = {
+    productName?: string | null;
+    epaRegNumber?: string | null;
+    activeIngredients?: string | null;
+    amountApplied?: number | null;
+    unit?: string | null;
+    ratePerAcre?: number | null;
+    ratePer1000Sqft?: number | null;
+  };
+
+  const headers = [
+    'Application ID', 'Applied At', 'Job', 'Property Address',
+    'Mixture / Product', 'Volume Applied', 'Volume Unit',
+    'Target Pest', 'Application Method',
+    'Wind Speed (mph)', 'Wind Direction', 'Temperature (°F)',
+    'Applicator Name', 'Applicator License #', 'Notes',
+    'Breakdown (Product | EPA Reg # | Active Ingredients | Amount Applied | Rate/Acre | Rate/1000sqft)',
+  ];
+
+  const dataRows = rows.map(r => {
+    const app = r.app;
+    const jobLabel = app.jobId == null
+      ? 'job deleted'
+      : (r.jobTitle ?? `Job #${app.jobId}`);
+
+    const breakdown = (app.breakdown as BreakdownItem[] | null) ?? [];
+    const breakdownStr = breakdown.map(b =>
+      [b.productName, b.epaRegNumber, b.activeIngredients,
+       b.amountApplied != null ? `${b.amountApplied} ${b.unit ?? ''}`.trim() : '',
+       b.ratePerAcre != null ? `${b.ratePerAcre}/ac` : '',
+       b.ratePer1000Sqft != null ? `${b.ratePer1000Sqft}/1ksqft` : '',
+      ].map(v => v ?? '').join(' | ')
+    ).join('; ');
+
+    return [
+      app.id,
+      app.appliedAt.toISOString(),
+      jobLabel,
+      r.propertyAddress ?? '',
+      app.mixtureName ?? app.productName ?? '',
+      app.volumeApplied,
+      app.volumeUnit,
+      app.targetPest ?? '',
+      app.applicationMethod ?? '',
+      app.windSpeed ?? '',
+      app.windDirection ?? '',
+      app.temperature ?? '',
+      app.applicatorName ?? '',
+      app.applicatorLicenseNumber ?? '',
+      app.notes ?? '',
+      breakdownStr,
+    ].map(esc).join(',');
+  });
+
+  const csv = [headers.map(esc).join(','), ...dataRows].join('\r\n');
+
+  const filename = `chemical-applications-${new Date().toISOString().slice(0, 10)}.csv`;
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send('\uFEFF' + csv); // BOM for Excel compatibility
+});
+
 router.delete("/chemical-applications/:id", requireOfficeRole, async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);

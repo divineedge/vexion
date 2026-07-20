@@ -38,6 +38,8 @@ export const adminNavSections: NavSection[] = [
   {
     id: 'people-jobs',
     label: 'People & Jobs',
+    /** Visible to all office-level roles and crew managers; hidden from technicians via flat nav */
+    roles: ['canManageOffice', 'isCrewManager'],
     items: [
       { name: 'Dashboard',      href: '/dashboard',      icon: LayoutDashboard },
       { name: 'Customers',      href: '/customers',      icon: Users },
@@ -56,6 +58,8 @@ export const adminNavSections: NavSection[] = [
   {
     id: 'field-ops',
     label: 'Field Ops',
+    /** Crew managers need full Field Ops access (Crews, Efficiency, P4P Payroll, etc.) */
+    roles: ['canManageOffice', 'isCrewManager'],
     items: [
       { name: 'Crews',          href: '/crews',          icon: UserCheck },
       { name: 'Routes',         href: '/routes',         icon: Map },

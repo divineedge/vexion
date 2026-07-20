@@ -90,6 +90,7 @@ import type {
   EquipmentFuelLogInput,
   EquipmentInput,
   EquipmentLedger,
+  EquipmentLinkedPart,
   EquipmentMaintenance,
   EquipmentMaintenanceInput,
   Estimate,
@@ -12130,6 +12131,83 @@ export function useListEquipmentTasks<TData = Awaited<ReturnType<typeof listEqui
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListEquipmentTasksQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetEquipmentLinkedPartsUrl = (id: number,) => {
+
+
+
+
+  return `/api/equipment/${id}/linked-parts`
+}
+
+/**
+ * @summary List inventory items linked to this equipment via task bundle items (parts used in checks)
+ */
+export const getEquipmentLinkedParts = async (id: number, options?: RequestInit): Promise<EquipmentLinkedPart[]> => {
+
+  return customFetch<EquipmentLinkedPart[]>(getGetEquipmentLinkedPartsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetEquipmentLinkedPartsQueryKey = (id: number,) => {
+    return [
+    `/api/equipment/${id}/linked-parts`
+    ] as const;
+    }
+
+
+export const getGetEquipmentLinkedPartsQueryOptions = <TData = Awaited<ReturnType<typeof getEquipmentLinkedParts>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEquipmentLinkedParts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetEquipmentLinkedPartsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getEquipmentLinkedParts>>> = ({ signal }) => getEquipmentLinkedParts(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getEquipmentLinkedParts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetEquipmentLinkedPartsQueryResult = NonNullable<Awaited<ReturnType<typeof getEquipmentLinkedParts>>>
+export type GetEquipmentLinkedPartsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List inventory items linked to this equipment via task bundle items (parts used in checks)
+ */
+
+export function useGetEquipmentLinkedParts<TData = Awaited<ReturnType<typeof getEquipmentLinkedParts>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEquipmentLinkedParts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetEquipmentLinkedPartsQueryOptions(id,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

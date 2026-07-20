@@ -19,8 +19,10 @@ import {
   useListEquipmentTasks, getListEquipmentTasksQueryKey,
   useGetEquipmentLedger, getGetEquipmentLedgerQueryKey,
   useListTasks, getListTasksQueryKey,
+  useGetEquipmentLinkedParts, getGetEquipmentLinkedPartsQueryKey,
+  useCreateTask,
 } from '@workspace/api-client-react';
-import type { Equipment, EquipmentMaintenance, EquipmentFuelLog } from '@workspace/api-client-react';
+import type { Equipment, EquipmentMaintenance, EquipmentFuelLog, EquipmentLinkedPart } from '@workspace/api-client-react';
 import { Link } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
@@ -41,7 +43,7 @@ import MediaGallery from '@/components/media/MediaGallery';
 import {
   Wrench, Plus, Trash2, AlertTriangle, TrendingUp, Fuel, Clock, DollarSign,
   ChevronRight, ChevronDown, X, CheckCircle2, BarChart3, Archive, Paperclip,
-  Eye, Gauge, RotateCcw,
+  Eye, Gauge, RotateCcw, ShoppingCart, PackageSearch, AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -659,6 +661,143 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
   );
 }
 
+// ── Reorder Suggestion Sheet ──────────────────────────────────────────────────
+
+function ReorderSuggestionSheet({
+  equipmentId,
+  equipmentName,
+  open,
+  onClose,
+}: {
+  equipmentId: number | null;
+  equipmentName: string;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const { data: parts, isLoading } = useGetEquipmentLinkedParts(
+    equipmentId ?? 0,
+    { query: { enabled: open && equipmentId != null, queryKey: getGetEquipmentLinkedPartsQueryKey(equipmentId ?? 0) } },
+  );
+  const createTask = useCreateTask();
+  const [createdIds, setCreatedIds] = React.useState<Set<number>>(new Set());
+
+  const handleReorder = (part: EquipmentLinkedPart) => {
+    createTask.mutate({
+      data: {
+        title: `Reorder: ${part.name} (SKU: ${part.sku})`,
+        description: `Stock level: ${part.quantity} ${part.unit} (reorder point: ${part.reorderPoint}). Flagged via equipment concern check on "${equipmentName}". ${part.checkLabels.length > 0 ? `Related checks: ${part.checkLabels.join(', ')}.` : ''}`,
+        taskType: 'custom',
+        priority: part.isLowStock ? 'high' : 'normal',
+        assignedToRole: 'admin_office',
+        contextType: 'equipment',
+        contextId: equipmentId!,
+      },
+    }, {
+      onSuccess: (task) => {
+        toast.success(`Reorder task created for ${part.name}`);
+        setCreatedIds(prev => new Set(prev).add(part.id));
+        qc.invalidateQueries({ queryKey: getListTasksQueryKey() });
+        qc.invalidateQueries({ queryKey: getListEquipmentTasksQueryKey(equipmentId!) });
+      },
+      onError: () => toast.error('Failed to create reorder task'),
+    });
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={v => { if (!v) { onClose(); setCreatedIds(new Set()); } }}>
+      <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+        <SheetHeader className="mb-4">
+          <SheetTitle className="flex items-center gap-2">
+            <ShoppingCart className="w-5 h-5 text-amber-600" />
+            Reorder Suggestions
+          </SheetTitle>
+          <SheetDescription>
+            Parts linked to <span className="font-medium text-foreground">{equipmentName}</span> via Daily Task checks.
+            Create a reorder task for any item that needs restocking.
+          </SheetDescription>
+        </SheetHeader>
+
+        {isLoading && (
+          <p className="text-sm text-muted-foreground text-center py-8">Loading linked parts…</p>
+        )}
+
+        {!isLoading && parts && parts.length === 0 && (
+          <div className="flex flex-col items-center gap-3 py-10 text-center">
+            <PackageSearch className="w-10 h-10 text-muted-foreground" />
+            <div>
+              <p className="font-medium text-sm">No linked parts found</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Link inventory items to this equipment's Daily Task checks to get reorder suggestions automatically.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {parts && parts.length > 0 && (
+          <div className="space-y-3">
+            {parts.map(part => (
+              <div
+                key={part.id}
+                className={`rounded-lg border p-4 space-y-3 ${part.isLowStock ? 'border-amber-500/40 bg-amber-500/5' : ''}`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm truncate">{part.name}</p>
+                    <p className="text-xs text-muted-foreground">SKU: {part.sku}{part.category ? ` · ${part.category}` : ''}</p>
+                    {part.checkLabels.length > 0 && (
+                      <p className="text-xs text-muted-foreground mt-0.5">Checks: {part.checkLabels.join(', ')}</p>
+                    )}
+                  </div>
+                  {part.isLowStock && (
+                    <Badge variant="outline" className="text-[10px] border-amber-500/60 text-amber-700 dark:text-amber-400 shrink-0 gap-1">
+                      <AlertCircle className="w-3 h-3" /> Low Stock
+                    </Badge>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div className="rounded bg-muted/50 px-2 py-1.5 text-center">
+                    <p className="text-muted-foreground">In Stock</p>
+                    <p className={`font-semibold mt-0.5 ${part.isLowStock ? 'text-amber-700 dark:text-amber-400' : ''}`}>
+                      {part.quantity} {part.unit}
+                    </p>
+                  </div>
+                  <div className="rounded bg-muted/50 px-2 py-1.5 text-center">
+                    <p className="text-muted-foreground">Reorder At</p>
+                    <p className="font-semibold mt-0.5">{part.reorderPoint} {part.unit}</p>
+                  </div>
+                  <div className="rounded bg-muted/50 px-2 py-1.5 text-center">
+                    <p className="text-muted-foreground">Sell Price</p>
+                    <p className="font-semibold mt-0.5">{fmt$(part.unitPrice)}</p>
+                  </div>
+                </div>
+
+                {createdIds.has(part.id) ? (
+                  <div className="flex items-center gap-2 text-xs text-green-600 dark:text-green-400 font-medium">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Reorder task created
+                  </div>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant={part.isLowStock ? 'default' : 'outline'}
+                    className="w-full gap-2"
+                    onClick={() => handleReorder(part)}
+                    disabled={createTask.isPending}
+                  >
+                    <ShoppingCart className="w-3.5 h-3.5" />
+                    Create Reorder Task
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 // ── Main Equipment Page ────────────────────────────────────────────────────────
 
 export default function EquipmentPage() {
@@ -684,6 +823,10 @@ export default function EquipmentPage() {
   const concernParams = { scope: 'all' as const, contextType: 'equipment', status: 'open' };
   const { data: concernTasksRaw } = useListTasks(concernParams, { query: { queryKey: getListTasksQueryKey(concernParams) } });
   const concernTasks = concernTasksRaw?.filter(t => t.taskType === 'equipment_concern');
+
+  // Reorder suggestion sheet state
+  const [reorderEquipmentId, setReorderEquipmentId] = useState<number | null>(null);
+  const reorderEquipment = equipment?.find(e => e.id === reorderEquipmentId) ?? null;
 
   const selectedEquipment = equipment?.find(e => e.id === selectedId) ?? null;
 
@@ -821,11 +964,23 @@ export default function EquipmentPage() {
             <p className="text-sm font-semibold">
               {concernTasks.length} equipment concern{concernTasks.length > 1 ? 's' : ''} flagged for procurement — Watch status, not failed
             </p>
-            <div className="mt-2 space-y-1">
+            <div className="mt-2 space-y-2">
               {concernTasks.map(t => (
                 <div key={t.id} className="text-xs flex items-center justify-between gap-2">
                   <span className="truncate">{t.title}</span>
-                  <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-700 dark:text-amber-400 shrink-0">Concern</Badge>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-700 dark:text-amber-400">Concern</Badge>
+                    {t.contextId != null && (
+                      <button
+                        type="button"
+                        onClick={() => setReorderEquipmentId(t.contextId!)}
+                        className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded border border-amber-500/40 hover:bg-amber-500/20 transition-colors"
+                      >
+                        <ShoppingCart className="w-2.5 h-2.5" />
+                        Suggest Reorder
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -1014,6 +1169,14 @@ export default function EquipmentPage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Reorder suggestion sheet — opened from the concern banner */}
+      <ReorderSuggestionSheet
+        equipmentId={reorderEquipmentId}
+        equipmentName={reorderEquipment?.name ?? ''}
+        open={reorderEquipmentId != null}
+        onClose={() => setReorderEquipmentId(null)}
+      />
     </div>
   );
 }

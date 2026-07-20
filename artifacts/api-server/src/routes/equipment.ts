@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, equipmentTable, equipmentMaintenanceTable, equipmentFuelLogsTable, equipmentReadingLogsTable, tenantsTable, usersTable, jobsTable } from "@workspace/db";
-import { eq, and, desc, sum, isNull, isNotNull, or, gte, lte, ilike } from "drizzle-orm";
+import { db, equipmentTable, equipmentMaintenanceTable, equipmentFuelLogsTable, equipmentReadingLogsTable, tenantsTable, usersTable, jobsTable, taskBundlesItemsTable, inventoryItemsTable } from "@workspace/db";
+import { eq, and, desc, sum, isNull, isNotNull, inArray, or, gte, lte, ilike } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isOwnerRole } from "../lib/roles";
 import {
@@ -759,6 +759,77 @@ router.get("/equipment/:id/ledger", async (req, res): Promise<void> => {
       records: maintRecords.map(m => ({ ...m, createdAt: m.createdAt.toISOString(), updatedAt: m.updatedAt.toISOString() })),
     },
   });
+});
+
+// ─── Linked Parts via task bundle items ──────────────────────────────────────
+// Returns inventory items linked to this equipment through any task bundle item
+// that has both linkedEquipmentId and linkedInventoryItemId set. These are the
+// "likely parts" staff would need to reorder when a Concern-Watch check fires.
+
+router.get("/equipment/:id/linked-parts", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const equipmentId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+  const owned = await requireEquipmentOwnership(equipmentId, tenantId, res);
+  if (!owned) return;
+
+  const linkedRows = await db
+    .select({
+      inventoryItemId: taskBundlesItemsTable.linkedInventoryItemId,
+      checkLabel: taskBundlesItemsTable.label,
+    })
+    .from(taskBundlesItemsTable)
+    .where(and(
+      eq(taskBundlesItemsTable.tenantId, tenantId),
+      eq(taskBundlesItemsTable.linkedEquipmentId, equipmentId),
+      isNotNull(taskBundlesItemsTable.linkedInventoryItemId),
+    ));
+
+  if (linkedRows.length === 0) { res.json([]); return; }
+
+  // Collect all check labels per inventory item (one item can appear in multiple checks)
+  const itemIdToLabels = new Map<number, string[]>();
+  for (const row of linkedRows) {
+    if (row.inventoryItemId == null) continue;
+    const labels = itemIdToLabels.get(row.inventoryItemId) ?? [];
+    if (!labels.includes(row.checkLabel)) labels.push(row.checkLabel);
+    itemIdToLabels.set(row.inventoryItemId, labels);
+  }
+
+  const inventoryItemIds = Array.from(itemIdToLabels.keys());
+  const [tenant] = await db.select({ defaultMarkupPct: tenantsTable.defaultMarkupPct }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  const tenantMarkupPct = tenant?.defaultMarkupPct ?? 20;
+
+  const invItems = await db.select().from(inventoryItemsTable)
+    .where(and(
+      eq(inventoryItemsTable.tenantId, tenantId),
+      inArray(inventoryItemsTable.id, inventoryItemIds),
+    ));
+
+  const result = invItems.map(i => {
+    const costPrice = i.unitPrice;
+    const sellPrice = i.markedUpPrice;
+    const markup = costPrice > 0 ? Math.round(((sellPrice / costPrice) - 1) * 100 * 100) / 100 : tenantMarkupPct;
+    return {
+      id: i.id,
+      tenantId: i.tenantId,
+      name: i.name,
+      sku: i.sku,
+      description: i.description,
+      category: i.category,
+      unitPrice: sellPrice,
+      markupPct: markup,
+      markedUpPrice: sellPrice,
+      quantity: i.quantity,
+      reorderPoint: i.reorderPoint,
+      unit: i.unit,
+      isLowStock: i.quantity <= i.reorderPoint,
+      availableForBlueprint: i.availableForBlueprint,
+      createdAt: i.createdAt.toISOString(),
+      checkLabels: itemIdToLabels.get(i.id) ?? [],
+    };
+  });
+
+  res.json(result);
 });
 
 export default router;

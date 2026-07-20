@@ -3286,6 +3286,29 @@ paths:
                 items:
                   $ref: "#/components/schemas/InternalTask"
 
+  /equipment/{id}/linked-parts:
+    get:
+      operationId: getEquipmentLinkedParts
+      tags: [equipment]
+      summary: List inventory items linked to this equipment via task bundle items (parts used in checks)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Linked parts list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EquipmentLinkedPart"
+        "404":
+          description: Equipment not found
+
   /notifications:
     get:
       operationId: listNotifications
@@ -7683,6 +7706,46 @@ components:
         reason:
           type: string
 
+    EquipmentLinkedPart:
+      type: object
+      required: [id, tenantId, name, sku, unitPrice, quantity, reorderPoint, unit, isLowStock, checkLabels, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        name:
+          type: string
+        sku:
+          type: string
+        description:
+          type: ["string", "null"]
+        category:
+          type: ["string", "null"]
+        unitPrice:
+          type: number
+        markupPct:
+          type: number
+        markedUpPrice:
+          type: number
+        quantity:
+          type: integer
+        reorderPoint:
+          type: integer
+        unit:
+          type: string
+        isLowStock:
+          type: boolean
+        availableForBlueprint:
+          type: boolean
+        createdAt:
+          type: string
+        checkLabels:
+          type: array
+          items:
+            type: string
+          description: "Bundle item labels (check names) that link this part to the equipment"
+
     InventoryItem:
       type: object
       required: [id, tenantId, name, sku, unitPrice, quantity, createdAt]
@@ -9975,8 +10038,6 @@ components:
           type: integer
         tenantId:
           type: integer
-        jobId:
-          type: ["integer", "null"]
         date:
           type: string
         gallons:

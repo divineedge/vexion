@@ -1370,6 +1370,28 @@ export interface StockAdjustmentInput {
   reason?: string;
 }
 
+export interface EquipmentLinkedPart {
+  id: number;
+  tenantId: number;
+  name: string;
+  sku: string;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  category?: string | null;
+  unitPrice: number;
+  markupPct?: number;
+  markedUpPrice?: number;
+  quantity: number;
+  reorderPoint: number;
+  unit: string;
+  isLowStock: boolean;
+  availableForBlueprint?: boolean;
+  createdAt: string;
+  /** Bundle item labels (check names) that link this part to the equipment */
+  checkLabels: string[];
+}
+
 export interface InventoryItem {
   id: number;
   tenantId: number;
@@ -3181,13 +3203,16 @@ export interface EquipmentFuelLog {
   id: number;
   equipmentId: number;
   tenantId: number;
-  /** @nullable */
-  jobId?: number | null;
   date: string;
   gallons: number;
   cost: number;
   /** @nullable */
   odometerReading?: number | null;
+  /**
+     * Optional link to the job this fuel was consumed for. When set, the Job Profitability report attributes this cost directly to that job rather than spreading it across all jobs.
+     * @nullable
+     */
+  jobId?: number | null;
   createdAt: string;
 }
 
@@ -3196,6 +3221,7 @@ export interface EquipmentFuelLogInput {
   gallons: number;
   cost?: number;
   odometerReading?: number;
+  /** Optional job to attribute this fuel cost to. Improves per-job fuel cost accuracy in the Job Profitability report. */
   jobId?: number;
 }
 
@@ -3547,6 +3573,84 @@ export interface PortalAlert {
   /** @nullable */
   photoUrl?: string | null;
   createdAt: string;
+}
+
+export type PortalPlanBillingCycle = typeof PortalPlanBillingCycle[keyof typeof PortalPlanBillingCycle];
+
+
+export const PortalPlanBillingCycle = {
+  monthly: 'monthly',
+  quarterly: 'quarterly',
+  annual: 'annual',
+  custom: 'custom',
+} as const;
+
+export type PortalPlanStatus = typeof PortalPlanStatus[keyof typeof PortalPlanStatus];
+
+
+export const PortalPlanStatus = {
+  active: 'active',
+  paused: 'paused',
+  cancelled: 'cancelled',
+  pending_renewal: 'pending_renewal',
+} as const;
+
+export type PortalPlanServiceStateItem = {
+  serviceId?: number;
+  serviceName?: string;
+  frequencyDays?: number;
+  /** @nullable */
+  lastScheduledAt?: string | null;
+};
+
+export interface PortalPlan {
+  id: number;
+  templateName: string;
+  startDate: string;
+  endDate: string;
+  billingCycle: PortalPlanBillingCycle;
+  /** @nullable */
+  customCycleDays?: number | null;
+  billingPrice: number;
+  autoRenew: boolean;
+  status: PortalPlanStatus;
+  nextBillingDate: string;
+  /** @nullable */
+  lastBilledAt?: string | null;
+  /** @nullable */
+  propertyAddress: string | null;
+  serviceState: PortalPlanServiceStateItem[];
+  createdAt: string;
+}
+
+export interface PortalPlanVisit {
+  id: number;
+  title: string;
+  status: string;
+  scheduledAt: string;
+  /** @nullable */
+  assigneeName?: string | null;
+}
+
+export interface PortalPlanBillingEntry {
+  id: number;
+  invoiceNumber: string;
+  status: string;
+  total: number;
+  /** @nullable */
+  dueDate?: string | null;
+  /** @nullable */
+  paidAt?: string | null;
+  createdAt: string;
+}
+
+export type PortalPlanDetail = PortalPlan & {
+  visits: PortalPlanVisit[];
+  billingHistory: PortalPlanBillingEntry[];
+};
+
+export interface PortalUpdatePlanInput {
+  autoRenew: boolean;
 }
 
 export type PortalAlertResponseAction = typeof PortalAlertResponseAction[keyof typeof PortalAlertResponseAction];

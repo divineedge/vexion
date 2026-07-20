@@ -228,6 +228,7 @@ export default function RoutesDashboardPage() {
         customerId: newJob.customerId ? parseInt(newJob.customerId, 10) : undefined,
         assigneeId: newJob.assigneeId ? parseInt(newJob.assigneeId, 10) : undefined,
         recurrenceRule,
+        smsReminderEnabled: newJob.smsReminderEnabled,
       },
     }, {
       onSuccess: (job) => {

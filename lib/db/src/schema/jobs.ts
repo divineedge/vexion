@@ -43,6 +43,8 @@ export const jobsTable = pgTable("jobs", {
   jobParts: jsonb("job_parts").default("[]"),
   /** Reminder tracking: {sent7d: boolean, sent24h: boolean, sentAt7d: string|null, sentAt24h: string|null} */
   remindersSent: jsonb("reminders_sent").default("{}"),
+  /** When true, the scheduler sends an SMS reminder to the customer before this job. Staff opt-in per job at scheduling time. */
+  smsReminderEnabled: boolean("sms_reminder_enabled").notNull().default(false),
 
   // ── Recurrence ────────────────────────────────────────────────────────────
   /**

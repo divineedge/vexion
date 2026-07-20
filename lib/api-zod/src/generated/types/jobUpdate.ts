@@ -22,4 +22,6 @@ export interface JobUpdate {
   recurrenceRule?: RecurrenceRule;
   /** Scope of the edit for recurring jobs */
   editScope?: JobUpdateEditScope;
+  /** Enable or disable SMS reminder for this job */
+  smsReminderEnabled?: boolean;
 }

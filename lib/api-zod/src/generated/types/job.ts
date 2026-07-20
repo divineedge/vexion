@@ -84,5 +84,7 @@ export interface Job {
   isOneTimeReschedule?: boolean;
   /** @nullable */
   originalScheduledDate?: string | null;
+  /** When true, the scheduler sends an SMS reminder to the customer before this job */
+  smsReminderEnabled?: boolean;
   createdAt: string;
 }

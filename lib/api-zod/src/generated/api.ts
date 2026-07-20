@@ -1017,6 +1017,7 @@ export const ListJobsResponseItem = zod.object({
   "sequenceOrder": zod.number().nullish(),
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
+  "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "createdAt": zod.string()
 })
 export const ListJobsResponse = zod.array(ListJobsResponseItem)
@@ -1047,7 +1048,8 @@ export const CreateJobBody = zod.object({
   "endCondition": zod.enum(['never', 'after', 'on_date']),
   "endAfter": zod.number().optional().describe('Used when endCondition is after'),
   "endDate": zod.string().optional().describe('ISO date string; used when endCondition is on_date')
-}).optional()
+}).optional(),
+  "smsReminderEnabled": zod.boolean().optional().describe('Enable SMS reminder for this job')
 })
 
 export const CreateJobResponse = zod.object({
@@ -1108,6 +1110,7 @@ export const CreateJobResponse = zod.object({
   "sequenceOrder": zod.number().nullish(),
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
+  "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "createdAt": zod.string()
 })
 
@@ -1177,6 +1180,7 @@ export const GetJobResponse = zod.object({
   "sequenceOrder": zod.number().nullish(),
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
+  "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "createdAt": zod.string()
 })
 
@@ -1208,7 +1212,8 @@ export const UpdateJobBody = zod.object({
   "endAfter": zod.number().optional().describe('Used when endCondition is after'),
   "endDate": zod.string().optional().describe('ISO date string; used when endCondition is on_date')
 }).optional(),
-  "editScope": zod.enum(['this', 'forward', 'all']).optional().describe('Scope of the edit for recurring jobs')
+  "editScope": zod.enum(['this', 'forward', 'all']).optional().describe('Scope of the edit for recurring jobs'),
+  "smsReminderEnabled": zod.boolean().optional().describe('Enable or disable SMS reminder for this job')
 })
 
 export const UpdateJobResponse = zod.object({
@@ -1269,6 +1274,7 @@ export const UpdateJobResponse = zod.object({
   "sequenceOrder": zod.number().nullish(),
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
+  "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "createdAt": zod.string()
 })
 
@@ -1378,6 +1384,7 @@ export const SkipNextOccurrenceResponse = zod.object({
   "sequenceOrder": zod.number().nullish(),
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
+  "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "createdAt": zod.string()
 })
 
@@ -1452,6 +1459,7 @@ export const PauseRecurringSeriesResponse = zod.object({
   "sequenceOrder": zod.number().nullish(),
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
+  "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "createdAt": zod.string()
 })
 
@@ -1535,6 +1543,7 @@ export const CompleteJobResponse = zod.object({
   "sequenceOrder": zod.number().nullish(),
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
+  "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "createdAt": zod.string()
 })
 
@@ -1626,6 +1635,7 @@ export const AddJobPartResponse = zod.object({
   "sequenceOrder": zod.number().nullish(),
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
+  "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "createdAt": zod.string()
 })
 
@@ -1696,6 +1706,7 @@ export const RemoveJobPartResponse = zod.object({
   "sequenceOrder": zod.number().nullish(),
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
+  "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "createdAt": zod.string()
 })
 
@@ -6651,6 +6662,7 @@ export const ListVisitsResponseItem = zod.object({
   "outcomeNotes": zod.string().nullish(),
   "convertedToEstimateId": zod.number().nullish(),
   "convertedToJobId": zod.number().nullish(),
+  "smsReminderEnabled": zod.boolean().optional().describe('When true, an SMS reminder will be sent before this visit'),
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
@@ -6670,7 +6682,8 @@ export const CreateVisitBody = zod.object({
   "visitMode": zod.enum(['scheduled', 'drop_by', 'drive_by']).optional(),
   "purpose": zod.string(),
   "notes": zod.string().optional(),
-  "scheduledAt": zod.string().optional()
+  "scheduledAt": zod.string().optional(),
+  "smsReminderEnabled": zod.boolean().optional().describe('Enable SMS reminder for this visit')
 })
 
 export const CreateVisitResponse = zod.object({
@@ -6687,6 +6700,7 @@ export const CreateVisitResponse = zod.object({
   "outcomeNotes": zod.string().nullish(),
   "convertedToEstimateId": zod.number().nullish(),
   "convertedToJobId": zod.number().nullish(),
+  "smsReminderEnabled": zod.boolean().optional().describe('When true, an SMS reminder will be sent before this visit'),
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
@@ -6716,6 +6730,7 @@ export const GetVisitResponse = zod.object({
   "outcomeNotes": zod.string().nullish(),
   "convertedToEstimateId": zod.number().nullish(),
   "convertedToJobId": zod.number().nullish(),
+  "smsReminderEnabled": zod.boolean().optional().describe('When true, an SMS reminder will be sent before this visit'),
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
@@ -6736,7 +6751,8 @@ export const UpdateVisitBody = zod.object({
   "visitMode": zod.enum(['scheduled', 'drop_by', 'drive_by']).optional(),
   "purpose": zod.string().optional(),
   "notes": zod.string().optional(),
-  "scheduledAt": zod.string().optional()
+  "scheduledAt": zod.string().optional(),
+  "smsReminderEnabled": zod.boolean().optional().describe('Enable or disable SMS reminder for this visit')
 })
 
 export const UpdateVisitResponse = zod.object({
@@ -6753,6 +6769,7 @@ export const UpdateVisitResponse = zod.object({
   "outcomeNotes": zod.string().nullish(),
   "convertedToEstimateId": zod.number().nullish(),
   "convertedToJobId": zod.number().nullish(),
+  "smsReminderEnabled": zod.boolean().optional().describe('When true, an SMS reminder will be sent before this visit'),
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
@@ -6796,6 +6813,7 @@ export const CompleteVisitResponse = zod.object({
   "outcomeNotes": zod.string().nullish(),
   "convertedToEstimateId": zod.number().nullish(),
   "convertedToJobId": zod.number().nullish(),
+  "smsReminderEnabled": zod.boolean().optional().describe('When true, an SMS reminder will be sent before this visit'),
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),

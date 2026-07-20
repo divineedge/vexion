@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -21,6 +21,8 @@ export const visitsTable = pgTable("visits", {
   outcomeNotes: text("outcome_notes"),
   convertedToEstimateId: integer("converted_to_estimate_id"),
   convertedToJobId: integer("converted_to_job_id"),
+  /** When true, an SMS reminder should be sent to the customer before this visit. Staff opt-in at scheduling time. */
+  smsReminderEnabled: boolean("sms_reminder_enabled").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

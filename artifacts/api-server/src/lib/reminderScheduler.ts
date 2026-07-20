@@ -136,8 +136,8 @@ async function sendReminder(params: {
   const results: string[] = [];
   const failures: string[] = [];
 
-  // Send SMS if customer has a phone and hasn't opted out
-  if (customer.phone && !customer.smsOptOut) {
+  // Send SMS if customer has a phone, hasn't opted out globally, and this job has SMS reminders enabled
+  if (customer.phone && !customer.smsOptOut && job.smsReminderEnabled) {
     const smsBody = buildReminderSmsBody({
       customerName: customer.name.split(" ")[0] ?? customer.name,
       jobTitle: job.title,

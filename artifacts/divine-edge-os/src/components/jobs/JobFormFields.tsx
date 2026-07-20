@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, MessageSquare } from 'lucide-react';
 
 export type NewJobForm = {
   title: string;
@@ -24,6 +24,7 @@ export type NewJobForm = {
   recurrenceEndCondition: string;
   recurrenceEndAfter: string;
   recurrenceEndDate: string;
+  smsReminderEnabled: boolean;
 };
 
 export const EMPTY_JOB: NewJobForm = {
@@ -44,6 +45,7 @@ export const EMPTY_JOB: NewJobForm = {
   recurrenceEndCondition: 'never',
   recurrenceEndAfter: '12',
   recurrenceEndDate: '',
+  smsReminderEnabled: false,
 };
 
 export const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -167,6 +169,25 @@ export function JobFormFields({ form, setForm, customers, users, durationUnit, s
           value={form.description}
           onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
         />
+      </div>
+
+      <Separator />
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <label className="text-sm font-medium flex items-center gap-1.5">
+              <MessageSquare className="w-3.5 h-3.5 text-primary" /> SMS Reminder
+            </label>
+            <p className="text-xs text-muted-foreground">Send customer an SMS before this job (respects their opt-out).</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setForm(f => ({ ...f, smsReminderEnabled: !f.smsReminderEnabled }))}
+            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${form.smsReminderEnabled ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+          >
+            <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${form.smsReminderEnabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
+          </button>
+        </div>
       </div>
 
       {showRecurrence && (

@@ -6357,6 +6357,9 @@ components:
           type: ["integer", "null"]
         convertedToJobId:
           type: ["integer", "null"]
+        smsReminderEnabled:
+          type: boolean
+          description: "When true, an SMS reminder will be sent before this visit"
         customerName:
           type: ["string", "null"]
         assigneeName:
@@ -6387,6 +6390,9 @@ components:
           type: string
         scheduledAt:
           type: string
+        smsReminderEnabled:
+          type: boolean
+          description: "Enable SMS reminder for this visit"
 
     UpdateVisitInput:
       type: object
@@ -6402,6 +6408,9 @@ components:
           type: string
         scheduledAt:
           type: string
+        smsReminderEnabled:
+          type: boolean
+          description: "Enable or disable SMS reminder for this visit"
 
     EstimateTemplate:
       type: object
@@ -7527,6 +7536,9 @@ components:
           type: boolean
         originalScheduledDate:
           type: ["string", "null"]
+        smsReminderEnabled:
+          type: boolean
+          description: "When true, the scheduler sends an SMS reminder to the customer before this job"
         createdAt:
           type: string
 
@@ -7601,6 +7613,9 @@ components:
           type: integer
         recurrenceRule:
           $ref: "#/components/schemas/RecurrenceRule"
+        smsReminderEnabled:
+          type: boolean
+          description: "Enable SMS reminder for this job"
 
     JobUpdate:
       type: object
@@ -7629,6 +7644,9 @@ components:
           type: string
           enum: [this, forward, all]
           description: "Scope of the edit for recurring jobs"
+        smsReminderEnabled:
+          type: boolean
+          description: "Enable or disable SMS reminder for this job"
 
     Crew:
       type: object

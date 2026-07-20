@@ -62,7 +62,7 @@ router.get("/visits", async (req, res): Promise<void> => {
 // ── CREATE ────────────────────────────────────────────────────────────────────
 router.post("/visits", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { customerId, propertyId, assigneeId, visitMode, purpose, notes, scheduledAt } = req.body;
+  const { customerId, propertyId, assigneeId, visitMode, purpose, notes, scheduledAt, smsReminderEnabled } = req.body;
 
   if (!purpose) {
     res.status(400).json({ error: "purpose is required" });
@@ -78,6 +78,7 @@ router.post("/visits", async (req, res): Promise<void> => {
     purpose,
     notes: notes ?? null,
     scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+    smsReminderEnabled: smsReminderEnabled === true || smsReminderEnabled === "true",
   }).returning();
 
   res.status(201).json(formatVisit(visit));
@@ -109,7 +110,7 @@ router.get("/visits/:id", async (req, res): Promise<void> => {
 router.patch("/visits/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(req.params.id, 10);
-  const { assigneeId, visitMode, purpose, notes, scheduledAt } = req.body;
+  const { assigneeId, visitMode, purpose, notes, scheduledAt, smsReminderEnabled } = req.body;
 
   const updateData: Partial<typeof visitsTable.$inferInsert> = {};
   if (assigneeId !== undefined) updateData.assigneeId = assigneeId ? parseInt(assigneeId, 10) : null;
@@ -117,6 +118,7 @@ router.patch("/visits/:id", async (req, res): Promise<void> => {
   if (purpose) updateData.purpose = purpose;
   if (notes !== undefined) updateData.notes = notes;
   if (scheduledAt !== undefined) updateData.scheduledAt = scheduledAt ? new Date(scheduledAt) : null;
+  if (smsReminderEnabled !== undefined) updateData.smsReminderEnabled = smsReminderEnabled === true || smsReminderEnabled === "true";
 
   const [updated] = await db.update(visitsTable)
     .set(updateData)

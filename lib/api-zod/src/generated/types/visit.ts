@@ -30,6 +30,8 @@ export interface Visit {
   convertedToEstimateId?: number | null;
   /** @nullable */
   convertedToJobId?: number | null;
+  /** When true, an SMS reminder will be sent before this visit */
+  smsReminderEnabled?: boolean;
   /** @nullable */
   customerName?: string | null;
   /** @nullable */

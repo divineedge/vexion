@@ -236,6 +236,7 @@ function formatJob(
     sequenceOrder: j.sequenceOrder ?? null,
     isOneTimeReschedule: !!j.isOneTimeReschedule,
     originalScheduledDate: j.originalScheduledDate?.toISOString() ?? null,
+    smsReminderEnabled: j.smsReminderEnabled ?? false,
   };
 }
 
@@ -369,7 +370,7 @@ router.get("/jobs/series", async (req, res): Promise<void> => {
 router.post("/jobs", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
-  const { title, description, status, priority, customerId, propertyId, assigneeId, crewId, scheduledAt, estimatedDuration, blueprintId, recurrenceRule } = req.body;
+  const { title, description, status, priority, customerId, propertyId, assigneeId, crewId, scheduledAt, estimatedDuration, blueprintId, recurrenceRule, smsReminderEnabled } = req.body;
 
   if (!title || !scheduledAt) {
     res.status(400).json({ error: "title and scheduledAt are required" });
@@ -390,6 +391,7 @@ router.post("/jobs", async (req, res): Promise<void> => {
     scheduledAt: new Date(scheduledAt),
     estimatedDuration: estimatedDuration ?? null,
     recurrenceRule: recurrenceRule ?? null,
+    smsReminderEnabled: smsReminderEnabled === true || smsReminderEnabled === "true",
   }).returning();
 
   await db.insert(activityLogTable).values({ tenantId, userId, type: "job_created", message: `Job "${title}" created`, entityId: job.id });
@@ -421,7 +423,7 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const { title, description, status, priority, assigneeId, crewId, scheduledAt, estimatedDuration, recurrenceRule, editScope } = req.body;
+  const { title, description, status, priority, assigneeId, crewId, scheduledAt, estimatedDuration, recurrenceRule, editScope, smsReminderEnabled } = req.body;
 
   // Fetch current job to check if it's a recurring instance
   const [currentJob] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
@@ -436,6 +438,7 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
     ...(crewId !== undefined && { crewId: crewId ? parseInt(crewId, 10) : null }),
     ...(scheduledAt !== undefined && { scheduledAt: new Date(scheduledAt) }),
     ...(estimatedDuration !== undefined && { estimatedDuration }),
+    ...(smsReminderEnabled !== undefined && { smsReminderEnabled: smsReminderEnabled === true || smsReminderEnabled === "true" }),
   };
 
   // Handle "forward" or "all" scope: update the root series template

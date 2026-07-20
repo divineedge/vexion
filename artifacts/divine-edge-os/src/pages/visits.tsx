@@ -56,6 +56,7 @@ export default function VisitsPage() {
     purpose: '',
     notes: '',
     scheduledAt: '',
+    smsReminderEnabled: false,
   });
 
   const { data: visits, isLoading } = useListVisits({}, { query: { queryKey: getListVisitsQueryKey({}) } });
@@ -86,13 +87,14 @@ export default function VisitsPage() {
         purpose: form.purpose,
         notes: form.notes || undefined,
         scheduledAt: form.scheduledAt || undefined,
+        smsReminderEnabled: form.smsReminderEnabled,
       },
     }, {
       onSuccess: (v) => {
         toast.success('Visit created');
         invalidate();
         setCreateOpen(false);
-        setForm({ customerId: '', propertyId: '', assigneeId: '', visitMode: 'scheduled', purpose: '', notes: '', scheduledAt: '' });
+        setForm({ customerId: '', propertyId: '', assigneeId: '', visitMode: 'scheduled', purpose: '', notes: '', scheduledAt: '', smsReminderEnabled: false });
         setSelectedId(v.id);
       },
       onError: () => toast.error('Failed to create visit'),
@@ -264,6 +266,20 @@ export default function VisitsPage() {
             </div>
 
             <Separator />
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="text-sm font-medium">SMS Reminder</label>
+                <p className="text-xs text-muted-foreground">Send customer an SMS before this visit.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setForm(f => ({ ...f, smsReminderEnabled: !f.smsReminderEnabled }))}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${form.smsReminderEnabled ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+              >
+                <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${form.smsReminderEnabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
+              </button>
+            </div>
+
             <div className="flex gap-3 justify-end">
               <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
               <Button onClick={handleCreate} disabled={createVisit.isPending}>

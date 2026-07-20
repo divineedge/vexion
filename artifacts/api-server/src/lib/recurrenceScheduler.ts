@@ -108,6 +108,7 @@ async function processRecurring() {
           totalAmount: root.totalAmount,
           recurrenceParentId: root.id,
           recurrenceIndex: currentCount,
+          smsReminderEnabled: root.smsReminderEnabled,
         });
 
         didGenerate = true;
@@ -215,6 +216,7 @@ export async function runRecurrenceForTenantNow(tenantId: number) {
           totalAmount: root.totalAmount,
           recurrenceParentId: root.id,
           recurrenceIndex: currentCount,
+          smsReminderEnabled: root.smsReminderEnabled,
         }).returning({ id: jobsTable.id });
         newJobId = inserted.id;
       });

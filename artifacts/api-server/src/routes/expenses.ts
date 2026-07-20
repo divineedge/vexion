@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, expenseEntriesTable, vendorsTable } from "@workspace/db";
+import { db, expenseEntriesTable, vendorsTable, mediaAttachmentsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
@@ -111,6 +111,91 @@ router.delete("/expenses/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   await db.delete(expenseEntriesTable).where(and(eq(expenseEntriesTable.id, id), eq(expenseEntriesTable.tenantId, tenantId)));
   res.sendStatus(204);
+});
+
+/**
+ * POST /expenses/:id/receipt
+ * Registers the uploaded receipt file as a media_attachments record (required
+ * for /storage/read-url ownership verification) and updates the expense's receiptUrl.
+ */
+router.post("/expenses/:id/receipt", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  if (!(await isAdminRole(tenantId, userId))) { res.status(403).json({ error: "Restricted to owner/admin roles" }); return; }
+
+  const id = parseInt(req.params.id, 10);
+  const [expense] = await db.select({ id: expenseEntriesTable.id })
+    .from(expenseEntriesTable)
+    .where(and(eq(expenseEntriesTable.id, id), eq(expenseEntriesTable.tenantId, tenantId)))
+    .limit(1);
+  if (!expense) { res.status(404).json({ error: "Expense not found" }); return; }
+
+  const { fileKey, mimeType, sizeBytes } = req.body as { fileKey?: string; mimeType?: string; sizeBytes?: number };
+  if (!fileKey || !mimeType || !sizeBytes) {
+    res.status(400).json({ error: "fileKey, mimeType, sizeBytes are required" }); return;
+  }
+  const isImage = mimeType.startsWith("image/");
+  const isPdf = mimeType === "application/pdf";
+  if (!isImage && !isPdf) {
+    res.status(400).json({ error: "Only images and PDFs are allowed for receipts" }); return;
+  }
+
+  // Remove any prior media attachment for this expense's receipt
+  await db.delete(mediaAttachmentsTable).where(and(
+    eq(mediaAttachmentsTable.tenantId, tenantId),
+    eq(mediaAttachmentsTable.entityType, "expense"),
+    eq(mediaAttachmentsTable.entityId, id),
+  ));
+
+  await db.insert(mediaAttachmentsTable).values({
+    tenantId,
+    entityType: "expense",
+    entityId: id,
+    fileKey,
+    fileUrl: fileKey,
+    mimeType,
+    sizeBytes: Number(sizeBytes),
+    caption: null,
+    isCover: false,
+    createdBy: userId,
+  });
+
+  const [updated] = await db.update(expenseEntriesTable)
+    .set({ receiptUrl: fileKey })
+    .where(and(eq(expenseEntriesTable.id, id), eq(expenseEntriesTable.tenantId, tenantId)))
+    .returning();
+
+  res.json(fmt(updated));
+});
+
+/**
+ * DELETE /expenses/:id/receipt
+ * Removes the receipt attachment and clears receiptUrl on the expense.
+ */
+router.delete("/expenses/:id/receipt", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  if (!(await isAdminRole(tenantId, userId))) { res.status(403).json({ error: "Restricted to owner/admin roles" }); return; }
+
+  const id = parseInt(req.params.id, 10);
+  const [expense] = await db.select({ id: expenseEntriesTable.id })
+    .from(expenseEntriesTable)
+    .where(and(eq(expenseEntriesTable.id, id), eq(expenseEntriesTable.tenantId, tenantId)))
+    .limit(1);
+  if (!expense) { res.status(404).json({ error: "Expense not found" }); return; }
+
+  await db.delete(mediaAttachmentsTable).where(and(
+    eq(mediaAttachmentsTable.tenantId, tenantId),
+    eq(mediaAttachmentsTable.entityType, "expense"),
+    eq(mediaAttachmentsTable.entityId, id),
+  ));
+
+  const [updated] = await db.update(expenseEntriesTable)
+    .set({ receiptUrl: null })
+    .where(and(eq(expenseEntriesTable.id, id), eq(expenseEntriesTable.tenantId, tenantId)))
+    .returning();
+
+  res.json(fmt(updated));
 });
 
 export default router;

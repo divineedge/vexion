@@ -1,9 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import {
   useListVendors, getListVendorsQueryKey,
   useCreateVendor, useUpdateVendor, useDeleteVendor,
   useListExpenses, getListExpensesQueryKey,
   useCreateExpense, useUpdateExpense, useDeleteExpense,
+  customFetch,
 } from '@workspace/api-client-react';
 import type { Vendor, ExpenseEntry } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -16,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, Building2, Receipt, Download } from 'lucide-react';
+import { Plus, Pencil, Trash2, Building2, Receipt, Download, Paperclip, ExternalLink, X, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { downloadCsv } from '@/lib/csvExport';
 
@@ -27,6 +28,18 @@ function currentMonthRange() {
   const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
   const end = now.toISOString().slice(0, 10);
   return { start, end };
+}
+
+/** Fetches a short-lived signed URL for a private object and opens it in a new tab. */
+async function openReceipt(objectPath: string) {
+  try {
+    const { signedUrl } = await customFetch<{ signedUrl: string }>(
+      `/api/storage/read-url?objectPath=${encodeURIComponent(objectPath)}`,
+    );
+    window.open(signedUrl, '_blank', 'noopener,noreferrer');
+  } catch {
+    toast.error('Could not open receipt');
+  }
 }
 
 export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
@@ -83,6 +96,7 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
       category: e.category,
       amount: e.amount,
       description: e.description ?? '',
+      receipt: e.receiptUrl ? 'yes' : 'no',
     })));
   };
 
@@ -181,6 +195,7 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
                 <TableHead>Category</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
+                <TableHead className="w-10"></TableHead>
                 {canEdit && <TableHead className="text-right">Actions</TableHead>}
               </TableRow>
             </TableHeader>
@@ -192,6 +207,19 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
                   <TableCell><Badge variant="secondary" className="font-normal">{e.category}</Badge></TableCell>
                   <TableCell className="text-muted-foreground truncate max-w-[240px]">{e.description ?? '—'}</TableCell>
                   <TableCell className="text-right font-medium">${e.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
+                  <TableCell>
+                    {e.receiptUrl && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                        title="View receipt"
+                        onClick={() => openReceipt(e.receiptUrl!)}
+                      >
+                        <Paperclip className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
+                  </TableCell>
                   {canEdit && (
                     <TableCell className="text-right">
                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingExpense(e); setExpenseSheetOpen(true); }}>
@@ -205,7 +233,7 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
                 </TableRow>
               ))}
               {expenses.length === 0 && (
-                <TableRow><TableCell colSpan={canEdit ? 6 : 5} className="text-center text-muted-foreground py-8">No expenses logged yet.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={canEdit ? 7 : 6} className="text-center text-muted-foreground py-8">No expenses logged yet.</TableCell></TableRow>
               )}
             </TableBody>
           </Table>
@@ -240,14 +268,55 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
           <ExpenseForm
             editing={editingExpense}
             vendors={vendors}
-            onSubmit={async (values) => {
+            onSubmit={async (values, receiptFile) => {
+              let receiptObjectPath: string | undefined;
+
+              // Upload the receipt first so we have the objectPath ready for the expense record
+              if (receiptFile) {
+                const { uploadURL, objectPath } = await customFetch<{ uploadURL: string; objectPath: string }>(
+                  '/api/storage/uploads/request-url',
+                  {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: receiptFile.name, size: receiptFile.size, contentType: receiptFile.type }),
+                  },
+                );
+                const uploadRes = await fetch(uploadURL, {
+                  method: 'PUT',
+                  body: receiptFile,
+                  headers: { 'Content-Type': receiptFile.type },
+                });
+                if (!uploadRes.ok) throw new Error('Receipt upload failed');
+                receiptObjectPath = objectPath;
+              }
+
+              let saved: ExpenseEntry;
               if (editingExpense) {
-                await updateExpense.mutateAsync({ id: editingExpense.id, data: values });
+                saved = await updateExpense.mutateAsync({
+                  id: editingExpense.id,
+                  data: { ...values, ...(receiptObjectPath !== undefined ? { receiptUrl: receiptObjectPath } : {}) },
+                });
                 toast.success('Expense updated');
               } else {
-                await createExpense.mutateAsync({ data: values });
+                saved = await createExpense.mutateAsync({
+                  data: { ...values, ...(receiptObjectPath !== undefined ? { receiptUrl: receiptObjectPath } : {}) },
+                });
                 toast.success('Expense logged');
               }
+
+              // Register the receipt as a media attachment so /storage/read-url can verify ownership
+              if (receiptFile && receiptObjectPath) {
+                await customFetch(`/api/expenses/${saved.id}/receipt`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    fileKey: receiptObjectPath,
+                    mimeType: receiptFile.type,
+                    sizeBytes: receiptFile.size,
+                  }),
+                });
+              }
+
               invalidateExpenses();
               setExpenseSheetOpen(false);
             }}
@@ -301,27 +370,46 @@ function VendorForm({ editing, onSubmit }: { editing: Vendor | null; onSubmit: (
 function ExpenseForm({ editing, vendors, onSubmit }: {
   editing: ExpenseEntry | null;
   vendors: Vendor[];
-  onSubmit: (values: { vendorId?: number; date: string; amount: number; category: string; description?: string }) => Promise<void>;
+  onSubmit: (
+    values: { vendorId?: number; date: string; amount: number; category: string; description?: string },
+    receiptFile: File | null,
+  ) => Promise<void>;
 }) {
   const [vendorId, setVendorId] = useState<string>(editing?.vendorId ? String(editing.vendorId) : '');
   const [date, setDate] = useState(editing?.date ?? new Date().toISOString().slice(0, 10));
   const [amount, setAmount] = useState(editing ? String(editing.amount) : '');
   const [category, setCategory] = useState(editing?.category ?? 'other');
   const [description, setDescription] = useState(editing?.description ?? '');
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const existingReceiptUrl = editing?.receiptUrl ?? null;
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const allowed = file.type.startsWith('image/') || file.type === 'application/pdf';
+    if (!allowed) { toast.error('Only images (JPG, PNG, etc.) and PDFs are allowed'); e.target.value = ''; return; }
+    if (file.size > 20 * 1024 * 1024) { toast.error('File too large — maximum 20 MB'); e.target.value = ''; return; }
+    setReceiptFile(file);
+  };
 
   const handleSave = async () => {
     const amt = parseFloat(amount);
     if (!date || !amt || amt <= 0) { toast.error('Enter a valid date and amount'); return; }
     setSaving(true);
     try {
-      await onSubmit({
-        vendorId: vendorId ? parseInt(vendorId, 10) : undefined,
-        date,
-        amount: amt,
-        category,
-        description: description.trim() || undefined,
-      });
+      await onSubmit(
+        {
+          vendorId: vendorId ? parseInt(vendorId, 10) : undefined,
+          date,
+          amount: amt,
+          category,
+          description: description.trim() || undefined,
+        },
+        receiptFile,
+      );
     } finally {
       setSaving(false);
     }
@@ -360,7 +448,60 @@ function ExpenseForm({ editing, vendors, onSubmit }: {
         <label className="text-sm font-medium">Description</label>
         <Textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} />
       </div>
-      <Button className="w-full" onClick={handleSave} disabled={saving}>{editing ? 'Save Changes' : 'Log Expense'}</Button>
+
+      {/* Receipt upload */}
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium">Receipt (optional)</label>
+        {receiptFile ? (
+          <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm bg-muted/40">
+            <Paperclip className="w-4 h-4 text-muted-foreground shrink-0" />
+            <span className="truncate flex-1">{receiptFile.name}</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 shrink-0"
+              onClick={() => { setReceiptFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+            >
+              <X className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        ) : existingReceiptUrl && !receiptFile ? (
+          <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm bg-muted/40">
+            <Paperclip className="w-4 h-4 text-muted-foreground shrink-0" />
+            <span className="truncate flex-1 text-muted-foreground">Receipt attached</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 shrink-0"
+              title="View receipt"
+              onClick={() => openReceipt(existingReceiptUrl)}
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        ) : null}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,application/pdf"
+          className="hidden"
+          onChange={handleFileChange}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-2 w-full"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <Paperclip className="w-4 h-4" />
+          {receiptFile || existingReceiptUrl ? 'Replace Receipt' : 'Attach Receipt'}
+        </Button>
+      </div>
+
+      <Button className="w-full" onClick={handleSave} disabled={saving}>
+        {saving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{receiptFile ? 'Uploading…' : 'Saving…'}</> : (editing ? 'Save Changes' : 'Log Expense')}
+      </Button>
     </div>
   );
 }

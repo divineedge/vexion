@@ -32,6 +32,7 @@ import {
   useDeleteJob,
   useListRouteTemplates, getListRouteTemplatesQueryKey,
   useUpdateJobRoute,
+  useListProperties, getListPropertiesQueryKey,
 } from '@workspace/api-client-react';
 import MediaGallery from '@/components/media/MediaGallery';
 import { JobFormFields, EMPTY_JOB, buildRecurrenceRule, type NewJobForm } from '@/components/jobs/JobFormFields';
@@ -175,6 +176,22 @@ export default function SchedulePage() {
     query: { enabled: createOpen, queryKey: getListCustomersQueryKey({}) },
   });
 
+  const selectedCustomerIdNum = newJob.customerId ? parseInt(newJob.customerId, 10) : undefined;
+  const { data: customerProperties } = useListProperties(
+    { customerId: selectedCustomerIdNum },
+    { query: { enabled: createOpen && !!selectedCustomerIdNum, queryKey: getListPropertiesQueryKey({ customerId: selectedCustomerIdNum }) } },
+  );
+
+  // Auto-select when the customer has exactly one property
+  useEffect(() => {
+    if (!customerProperties) return;
+    if (customerProperties.length === 1) {
+      setNewJob(f => ({ ...f, propertyId: String(customerProperties[0].id) }));
+    } else {
+      setNewJob(f => ({ ...f, propertyId: '' }));
+    }
+  }, [customerProperties]);
+
   const { data: users } = useListUsers({
     query: { enabled: createOpen, queryKey: getListUsersQueryKey() },
   });
@@ -298,6 +315,7 @@ export default function SchedulePage() {
         estimatedDuration: durationMins,
         priority: newJob.priority as 'low' | 'normal' | 'high' | 'urgent',
         customerId: newJob.customerId ? parseInt(newJob.customerId, 10) : undefined,
+        propertyId: newJob.propertyId ? parseInt(newJob.propertyId, 10) : undefined,
         assigneeId: newJob.assigneeId ? parseInt(newJob.assigneeId, 10) : undefined,
         recurrenceRule,
         smsReminderEnabled: newJob.smsReminderEnabled,
@@ -554,6 +572,7 @@ export default function SchedulePage() {
               form={newJob}
               setForm={setNewJob}
               customers={customers?.items ?? []}
+              properties={customerProperties ?? []}
               users={users ?? []}
               durationUnit={durationUnit}
             />

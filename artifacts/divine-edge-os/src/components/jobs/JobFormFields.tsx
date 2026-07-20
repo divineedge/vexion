@@ -13,6 +13,7 @@ export type NewJobForm = {
   estimatedDuration: string;
   priority: string;
   customerId: string;
+  propertyId: string;
   assigneeId: string;
   recurring: boolean;
   recurrencePattern: string;
@@ -34,6 +35,7 @@ export const EMPTY_JOB: NewJobForm = {
   estimatedDuration: '',
   priority: 'normal',
   customerId: '',
+  propertyId: '',
   assigneeId: '',
   recurring: false,
   recurrencePattern: 'weekly',
@@ -85,6 +87,8 @@ export interface JobFormFieldsProps {
   form: NewJobForm;
   setForm: React.Dispatch<React.SetStateAction<NewJobForm>>;
   customers: { id: number; name: string }[];
+  /** Properties for the selected customer. Pass an empty array when none are loaded yet. */
+  properties: { id: number; address: string }[];
   users: { id: number; name: string; role: string }[];
   durationUnit: string;
   /** Show the "Make Recurring" section. Defaults to true. */
@@ -96,7 +100,7 @@ export interface JobFormFieldsProps {
  * page's "New Job" sheet and any other entry point (e.g. Routes' "New Job" action) that needs
  * to create a job with the same details.
  */
-export function JobFormFields({ form, setForm, customers, users, durationUnit, showRecurrence = true }: JobFormFieldsProps) {
+export function JobFormFields({ form, setForm, customers, properties, users, durationUnit, showRecurrence = true }: JobFormFieldsProps) {
   return (
     <>
       <div className="space-y-1.5">
@@ -137,7 +141,10 @@ export function JobFormFields({ form, setForm, customers, users, durationUnit, s
 
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Customer</label>
-        <Select value={form.customerId} onValueChange={v => setForm(f => ({ ...f, customerId: v }))}>
+        <Select
+          value={form.customerId}
+          onValueChange={v => setForm(f => ({ ...f, customerId: v, propertyId: '' }))}
+        >
           <SelectTrigger><SelectValue placeholder="Select customer..." /></SelectTrigger>
           <SelectContent>
             {customers.map(c => (
@@ -146,6 +153,20 @@ export function JobFormFields({ form, setForm, customers, users, durationUnit, s
           </SelectContent>
         </Select>
       </div>
+
+      {form.customerId && properties.length > 0 && (
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">Property</label>
+          <Select value={form.propertyId} onValueChange={v => setForm(f => ({ ...f, propertyId: v }))}>
+            <SelectTrigger><SelectValue placeholder="Select property..." /></SelectTrigger>
+            <SelectContent>
+              {properties.map(p => (
+                <SelectItem key={p.id} value={String(p.id)}>{p.address}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Assign To</label>

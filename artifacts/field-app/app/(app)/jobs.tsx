@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -13,11 +13,13 @@ import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useQueries } from '@tanstack/react-query';
 import {
   useListJobs,
   useGetMasterClock,
   useStartMasterClock,
   useStopMasterClock,
+  getGetRouteDayDetailQueryOptions,
 } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
@@ -34,6 +36,15 @@ type Job = {
   priority?: string | null;
   recurrenceDescription?: string | null;
   recurrenceParentId?: number | null;
+  routeTemplateId?: number | null;
+  sequenceOrder?: number | null;
+};
+
+type RouteStopInfo = {
+  sequenceOrder: number;
+  driveMinutesFromPrev: number;
+  routeTemplateName: string;
+  totalStops: number;
 };
 
 function statusColor(status: string, colors: ReturnType<typeof useColors>): string {
@@ -63,16 +74,25 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-function priorityIcon(priority?: string | null): string {
-  switch (priority) {
-    case 'urgent': return 'alert-circle';
-    case 'high': return 'arrow-up-circle';
-    case 'low': return 'arrow-down-circle';
-    default: return 'remove-circle-outline';
-  }
+function formatDriveTime(minutes: number): string {
+  if (minutes < 1) return '< 1 min drive';
+  if (minutes < 60) return `${Math.round(minutes)} min drive`;
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  return m > 0 ? `${h}h ${m}m drive` : `${h}h drive`;
 }
 
-function JobCard({ job, onPress, colors }: { job: Job; onPress: () => void; colors: ReturnType<typeof useColors> }) {
+function JobCard({
+  job,
+  onPress,
+  colors,
+  routeStopInfo,
+}: {
+  job: Job;
+  onPress: () => void;
+  colors: ReturnType<typeof useColors>;
+  routeStopInfo?: RouteStopInfo;
+}) {
   const sc = statusColor(job.status, colors);
   const isRecurring = !!(job.recurrenceDescription || job.recurrenceParentId);
   return (
@@ -82,40 +102,64 @@ function JobCard({ job, onPress, colors }: { job: Job; onPress: () => void; colo
       activeOpacity={0.8}
       testID={`job-card-${job.id}`}
     >
-      <View style={styles.cardLeft}>
-        <View style={[styles.statusDot, { backgroundColor: sc }]} />
-        <View style={styles.cardBody}>
-          <Text style={[styles.jobTitle, { color: colors.foreground }]} numberOfLines={1}>
-            {job.title}
-          </Text>
-          {isRecurring ? (
-            <View style={[styles.recurringBadge, { backgroundColor: colors.primary + '18' }]}>
-              <Text style={[styles.recurringBadgeText, { color: colors.primary }]}>
-                ↻ {job.recurrenceDescription ?? 'Recurring'}
-              </Text>
-            </View>
-          ) : null}
-          {job.propertyAddress ? (
-            <View style={styles.metaRow}>
-              <Ionicons name="location-outline" size={13} color={colors.mutedForeground} />
-              <Text style={[styles.metaText, { color: colors.mutedForeground }]} numberOfLines={1}>
-                {job.propertyAddress}
-              </Text>
-            </View>
-          ) : null}
-          <View style={styles.metaRow}>
-            <Ionicons name="calendar-outline" size={13} color={colors.mutedForeground} />
-            <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
-              {formatDate(job.scheduledAt)}
+      {/* Route stop header row */}
+      {routeStopInfo ? (
+        <View style={[styles.routeStopHeader, { borderBottomColor: colors.border }]}>
+          <View style={[styles.stopNumberBadge, { backgroundColor: colors.primary }]}>
+            <Text style={styles.stopNumberText}>
+              {routeStopInfo.sequenceOrder} / {routeStopInfo.totalStops}
             </Text>
           </View>
+          <Text style={[styles.routeNameText, { color: colors.mutedForeground }]} numberOfLines={1}>
+            {routeStopInfo.routeTemplateName}
+          </Text>
+          {routeStopInfo.driveMinutesFromPrev > 0 ? (
+            <View style={[styles.driveChip, { backgroundColor: colors.mutedForeground + '18' }]}>
+              <Ionicons name="car-outline" size={11} color={colors.mutedForeground} />
+              <Text style={[styles.driveChipText, { color: colors.mutedForeground }]}>
+                {formatDriveTime(routeStopInfo.driveMinutesFromPrev)}
+              </Text>
+            </View>
+          ) : null}
         </View>
-      </View>
-      <View style={styles.cardRight}>
-        <View style={[styles.statusBadge, { backgroundColor: sc + '22' }]}>
-          <Text style={[styles.statusText, { color: sc }]}>{statusLabel(job.status)}</Text>
+      ) : null}
+
+      <View style={styles.cardMain}>
+        <View style={styles.cardLeft}>
+          <View style={[styles.statusDot, { backgroundColor: sc }]} />
+          <View style={styles.cardBody}>
+            <Text style={[styles.jobTitle, { color: colors.foreground }]} numberOfLines={1}>
+              {job.title}
+            </Text>
+            {isRecurring ? (
+              <View style={[styles.recurringBadge, { backgroundColor: colors.primary + '18' }]}>
+                <Text style={[styles.recurringBadgeText, { color: colors.primary }]}>
+                  ↻ {job.recurrenceDescription ?? 'Recurring'}
+                </Text>
+              </View>
+            ) : null}
+            {job.propertyAddress ? (
+              <View style={styles.metaRow}>
+                <Ionicons name="location-outline" size={13} color={colors.mutedForeground} />
+                <Text style={[styles.metaText, { color: colors.mutedForeground }]} numberOfLines={1}>
+                  {job.propertyAddress}
+                </Text>
+              </View>
+            ) : null}
+            <View style={styles.metaRow}>
+              <Ionicons name="calendar-outline" size={13} color={colors.mutedForeground} />
+              <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
+                {formatDate(job.scheduledAt)}
+              </Text>
+            </View>
+          </View>
         </View>
-        <Ionicons name="chevron-forward" size={18} color={colors.mutedForeground} style={{ marginTop: 8 }} />
+        <View style={styles.cardRight}>
+          <View style={[styles.statusBadge, { backgroundColor: sc + '22' }]}>
+            <Text style={[styles.statusText, { color: sc }]}>{statusLabel(job.status)}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.mutedForeground} style={{ marginTop: 8 }} />
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -180,6 +224,68 @@ export default function JobsScreen() {
   }, [isError, reportNetworkStatus, getCachedJobs]);
 
   const displayJobs: Job[] = (isError ? cachedJobs : (jobs as Job[] | undefined)) ?? [];
+
+  // Collect unique (routeTemplateId, date) pairs from jobs that belong to a route
+  const routeQueries = useMemo(() => {
+    const seen = new Map<string, { id: number; date: string }>();
+    for (const job of displayJobs) {
+      if (job.routeTemplateId != null) {
+        const date = job.scheduledAt.slice(0, 10);
+        const key = `${job.routeTemplateId}::${date}`;
+        if (!seen.has(key)) {
+          seen.set(key, { id: job.routeTemplateId, date });
+        }
+      }
+    }
+    return Array.from(seen.values());
+  }, [displayJobs]);
+
+  // Batch-fetch route day detail for every unique route+date in the job list
+  const routeDayResults = useQueries({
+    queries: routeQueries.map(({ id, date }) =>
+      getGetRouteDayDetailQueryOptions(id, { date })
+    ),
+  });
+
+  // Build a jobId → RouteStopInfo lookup from all fetched route day details
+  const routeStopMap = useMemo(() => {
+    const map = new Map<number, RouteStopInfo>();
+    for (const result of routeDayResults) {
+      const detail = result.data;
+      if (!detail) continue;
+      const totalStops = detail.stops.length;
+      for (const stop of detail.stops) {
+        map.set(stop.jobId, {
+          sequenceOrder: stop.sequenceOrder,
+          driveMinutesFromPrev: stop.driveMinutesFromPrev,
+          routeTemplateName: detail.routeTemplateName,
+          totalStops,
+        });
+      }
+    }
+    return map;
+  }, [routeDayResults]);
+
+  // Sort: route jobs for today sorted by sequenceOrder first, then everything else
+  const sortedJobs = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const routeToday: Job[] = [];
+    const rest: Job[] = [];
+    for (const job of displayJobs) {
+      const isToday = job.scheduledAt.slice(0, 10) === today;
+      if (isToday && routeStopMap.has(job.id)) {
+        routeToday.push(job);
+      } else {
+        rest.push(job);
+      }
+    }
+    routeToday.sort((a, b) => {
+      const aOrder = routeStopMap.get(a.id)?.sequenceOrder ?? 999;
+      const bOrder = routeStopMap.get(b.id)?.sequenceOrder ?? 999;
+      return aOrder - bOrder;
+    });
+    return [...routeToday, ...rest];
+  }, [displayJobs, routeStopMap]);
 
   const handleJobPress = useCallback(async (id: number) => {
     await Haptics.selectionAsync();
@@ -293,17 +399,22 @@ export default function JobsScreen() {
         </View>
       ) : (
         <FlatList
-          data={displayJobs}
+          data={sortedJobs}
           keyExtractor={(item) => String(item.id)}
           renderItem={({ item }) => (
-            <JobCard job={item} onPress={() => handleJobPress(item.id)} colors={colors} />
+            <JobCard
+              job={item}
+              onPress={() => handleJobPress(item.id)}
+              colors={colors}
+              routeStopInfo={routeStopMap.get(item.id)}
+            />
           )}
           contentContainerStyle={[
             styles.list,
             { paddingBottom: bottomPad },
-            displayJobs.length === 0 && styles.listEmpty,
+            sortedJobs.length === 0 && styles.listEmpty,
           ]}
-          scrollEnabled={displayJobs.length > 0}
+          scrollEnabled={sortedJobs.length > 0}
           refreshControl={
             <RefreshControl
               refreshing={isFetching && !isLoading}
@@ -409,13 +520,52 @@ const styles = StyleSheet.create({
   list: { paddingHorizontal: 16, paddingTop: 12 },
   listEmpty: { flex: 1 },
   card: {
+    borderWidth: 1,
+    borderRadius: 12,
+    marginBottom: 10,
+    overflow: 'hidden',
+  },
+  routeStopHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderBottomWidth: 1,
+  },
+  stopNumberBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 5,
+  },
+  stopNumberText: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 11,
+    color: '#ffffff',
+    letterSpacing: 0.3,
+  },
+  routeNameText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    flex: 1,
+  },
+  driveChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 5,
+  },
+  driveChipText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 11,
+  },
+  cardMain: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderWidth: 1,
-    borderRadius: 12,
     padding: 16,
-    marginBottom: 10,
   },
   cardLeft: { flexDirection: 'row', alignItems: 'flex-start', flex: 1, gap: 12 },
   statusDot: {

@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-import { CheckCircle2, XCircle, MapPin, Ruler, DollarSign, Clock, AlertTriangle, Package } from 'lucide-react';
+import { CheckCircle2, XCircle, MapPin, Ruler, DollarSign, Clock, AlertTriangle, Package, LayoutGrid } from 'lucide-react';
 import { customFetch } from '@workspace/api-client-react';
 
 interface BlueprintMaterialPart {
@@ -27,9 +27,21 @@ interface BlueprintMaterials {
   computedAt: string | null;
 }
 
+interface BlueprintZone {
+  label: string;
+  areaSqft: number | null;
+  color: string | null;
+}
+
+interface BlueprintZones {
+  zones: BlueprintZone[];
+  totalAreaSqft: number | null;
+}
+
 interface PublicQuote {
   id: number;
   token: string;
+  blueprintId: number | null;
   serviceName: string;
   serviceDescription: string | null;
   selectedZoneLabels: string[];
@@ -52,6 +64,7 @@ interface PublicQuote {
     customerName: string | null;
   } | null;
   blueprintMaterials: BlueprintMaterials | null;
+  blueprintZones: BlueprintZones | null;
   createdAt: string;
 }
 
@@ -183,8 +196,49 @@ export default function QuotePublicPage() {
           </Card>
         )}
 
-        {/* Measurement zones */}
-        {quote.selectedZoneLabels.length > 0 && (
+        {/* Blueprint zone summary — shown when the quote was generated from a site plan */}
+        {quote.blueprintZones && quote.blueprintZones.zones.length > 0 ? (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <LayoutGrid className="w-4 h-4 text-primary" /> Site Plan Summary
+              </CardTitle>
+              <CardDescription>
+                This quote was built from a drawn site plan. The zones and measurements below are what your price is based on — please verify they match your property before approving.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-0">
+                {quote.blueprintZones.zones.map(zone => (
+                  <div key={zone.label} className="flex items-center justify-between py-2 border-b last:border-0">
+                    <div className="flex items-center gap-2">
+                      {zone.color && (
+                        <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: zone.color }} />
+                      )}
+                      <span className="font-medium text-sm">{zone.label}</span>
+                    </div>
+                    {zone.areaSqft != null ? (
+                      <span className="text-sm text-muted-foreground">
+                        {zone.areaSqft.toLocaleString(undefined, { maximumFractionDigits: 0 })} sqft
+                      </span>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">—</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {quote.blueprintZones.totalAreaSqft != null && (
+                <div className="flex items-center justify-between pt-3 font-semibold text-sm border-t mt-1">
+                  <span className="flex items-center gap-1.5">
+                    <Ruler className="w-3.5 h-3.5 text-muted-foreground" /> Total Area
+                  </span>
+                  <span>{quote.blueprintZones.totalAreaSqft.toLocaleString(undefined, { maximumFractionDigits: 0 })} sqft</span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        ) : quote.selectedZoneLabels.length > 0 ? (
+          /* Fallback for non-blueprint quotes that still have zone labels */
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
@@ -193,7 +247,7 @@ export default function QuotePublicPage() {
               <CardDescription>These areas are included in this quote's pricing.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-2">
+              <div className="space-y-0">
                 {quote.selectedZoneLabels.map(label => {
                   const zone = quote.property?.measurementPolygons.find(z => z.label === label);
                   return (
@@ -211,7 +265,7 @@ export default function QuotePublicPage() {
                   );
                 })}
                 {quote.totalAreaSqft && (
-                  <div className="flex items-center justify-between pt-2 font-semibold text-sm">
+                  <div className="flex items-center justify-between pt-3 font-semibold text-sm border-t mt-1">
                     <span>Total Area</span>
                     <span>{quote.totalAreaSqft.toLocaleString(undefined, { maximumFractionDigits: 0 })} sqft</span>
                   </div>
@@ -219,7 +273,7 @@ export default function QuotePublicPage() {
               </div>
             </CardContent>
           </Card>
-        )}
+        ) : null}
 
         {/* Price card */}
         <Card className="border-primary/30 bg-primary/5">

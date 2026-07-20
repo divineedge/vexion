@@ -150,6 +150,26 @@ router.get("/quotes/:token", async (req, res): Promise<void> => {
       }
     : null;
 
+  // Build a blueprint-specific zone summary when the quote is linked to a blueprint and has
+  // selected zone labels. Cross-reference the labels against the property's measurement polygons
+  // to surface per-zone areas, so customers can verify the measurements match their property.
+  type MeasurementPolygon = { id: string; label: string; areaSqft: number; enabled: boolean; color: string };
+  const polygons = (row.property?.measurementPolygons as MeasurementPolygon[] | null) ?? [];
+  const zoneLabels = (q.selectedZoneLabels as string[]) ?? [];
+  const blueprintZones = q.blueprintId && zoneLabels.length > 0
+    ? {
+        zones: zoneLabels.map(label => {
+          const poly = polygons.find(p => p.label === label);
+          return {
+            label,
+            areaSqft: poly?.areaSqft ?? null,
+            color: poly?.color ?? null,
+          };
+        }),
+        totalAreaSqft: q.totalAreaSqft ?? null,
+      }
+    : null;
+
   res.json({
     ...formatQuote(q),
     property: row.property ? {
@@ -166,6 +186,7 @@ router.get("/quotes/:token", async (req, res): Promise<void> => {
     } : null,
     expired: !!expired,
     blueprintMaterials,
+    blueprintZones,
   });
 });
 

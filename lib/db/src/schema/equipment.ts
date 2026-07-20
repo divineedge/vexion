@@ -78,7 +78,7 @@ export const equipmentFuelLogsTable = pgTable("equipment_fuel_logs", {
   equipmentId: integer("equipment_id").notNull().references(() => equipmentTable.id),
   tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
   /** Optional: job this fill was incurred on. When set, the profitability report attributes the cost directly to that job instead of splitting evenly. */
-  jobId: integer("job_id"),
+  jobId: integer("job_id").references(() => jobsTable.id, { onDelete: "set null" }),
   date: text("date").notNull(), // ISO date YYYY-MM-DD
   /** Gallons added */
   gallons: real("gallons").notNull(),

@@ -9,8 +9,23 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-import { CheckCircle2, XCircle, MapPin, Ruler, DollarSign, Clock, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, XCircle, MapPin, Ruler, DollarSign, Clock, AlertTriangle, Package } from 'lucide-react';
 import { customFetch } from '@workspace/api-client-react';
+
+interface BlueprintMaterialPart {
+  name: string;
+  quantity: number;
+  unit: string;
+  total: number;
+}
+
+interface BlueprintMaterials {
+  parts: BlueprintMaterialPart[];
+  subtotal: number;
+  overageAmount: number;
+  total: number;
+  computedAt: string | null;
+}
 
 interface PublicQuote {
   id: number;
@@ -36,6 +51,7 @@ interface PublicQuote {
     serviceableAreaSqft: number | null;
     customerName: string | null;
   } | null;
+  blueprintMaterials: BlueprintMaterials | null;
   createdAt: string;
 }
 
@@ -219,6 +235,55 @@ export default function QuotePublicPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Materials breakdown — shown when the quote is linked to a blueprint with a computed estimate */}
+        {quote.blueprintMaterials && quote.blueprintMaterials.parts.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Package className="w-4 h-4 text-primary" /> Materials Included
+              </CardTitle>
+              {quote.blueprintMaterials.computedAt && (
+                <p className="text-xs text-muted-foreground">
+                  Based on drawn site plan · estimated {new Date(quote.blueprintMaterials.computedAt).toLocaleDateString()}
+                </p>
+              )}
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-0">
+                {quote.blueprintMaterials.parts.map((part, i) => (
+                  <div key={i} className="flex items-center justify-between py-2 border-b last:border-0">
+                    <div>
+                      <p className="text-sm font-medium">{part.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {part.quantity % 1 === 0 ? part.quantity : part.quantity.toFixed(2)} {part.unit}
+                      </p>
+                    </div>
+                    <span className="text-sm font-medium">
+                      ${part.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 space-y-1 text-sm border-t pt-3">
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Materials subtotal</span>
+                  <span>${quote.blueprintMaterials.subtotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                </div>
+                {quote.blueprintMaterials.overageAmount > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Overage buffer</span>
+                    <span>${quote.blueprintMaterials.overageAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-semibold pt-1">
+                  <span>Materials total</span>
+                  <span>${quote.blueprintMaterials.total.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Response section */}
         {isResponded ? (

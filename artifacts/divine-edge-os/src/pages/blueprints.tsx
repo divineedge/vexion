@@ -31,7 +31,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, DraftingCompass, Percent, Package, AlertTriangle, Trash2, Wand2, Library, CopyPlus, Upload, FileText, Loader2, Calculator, Archive } from 'lucide-react';
+import { Plus, DraftingCompass, Percent, Package, AlertTriangle, Trash2, Wand2, Library, CopyPlus, Upload, FileText, Loader2, Calculator, Archive, ShoppingCart } from 'lucide-react';
 import { useLocation } from 'wouter';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -510,7 +510,7 @@ export default function BlueprintsPage() {
           </DialogHeader>
 
           {estimateViewBp?.lastEstimate && (
-            <div className="space-y-3">
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -521,17 +521,36 @@ export default function BlueprintsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {estimateViewBp.lastEstimate.parts.map((part: any) => (
-                    <TableRow key={part.inventoryItemId}>
-                      <TableCell>
-                        <div className="font-medium text-sm">{part.name}</div>
-                        <div className="text-xs text-muted-foreground">{part.source}</div>
-                      </TableCell>
-                      <TableCell className="text-right">{part.quantity} {part.unit}</TableCell>
-                      <TableCell className="text-right">${part.unitPrice.toLocaleString()}</TableCell>
-                      <TableCell className="text-right font-medium">${part.total.toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
-                    </TableRow>
-                  ))}
+                  {estimateViewBp.lastEstimate.parts.map((part: any) => {
+                    const sourceLabel: Record<string, string> = {
+                      canvas: 'Drawn element',
+                      manual: 'Suggested part',
+                      'canvas+manual': 'Drawn + suggested',
+                      generic: 'Generic estimate',
+                    };
+                    return (
+                      <TableRow key={part.inventoryItemId}>
+                        <TableCell>
+                          <div className="font-medium text-sm">{part.name}</div>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-xs text-muted-foreground">{sourceLabel[part.source] ?? part.source}</span>
+                            {part.orderNeeded && (
+                              <Badge variant="destructive" className="gap-1 text-[10px] px-1.5 py-0 h-4">
+                                <ShoppingCart className="w-2.5 h-2.5" /> Order
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right text-sm">
+                          {typeof part.quantity === 'number' && part.quantity % 1 !== 0
+                            ? part.quantity.toFixed(2)
+                            : part.quantity}{' '}{part.unit}
+                        </TableCell>
+                        <TableCell className="text-right text-sm">${(part.unitPrice ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
+                        <TableCell className="text-right font-medium text-sm">${(part.total ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
               <div className="border-t pt-3 space-y-1 text-sm">
@@ -540,7 +559,7 @@ export default function BlueprintsPage() {
                   <span>${estimateViewBp.lastEstimate.subtotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="flex justify-between text-muted-foreground">
-                  <span>Overage Buffer</span>
+                  <span>Overage Buffer ({estimateViewBp.overageBufferPercent ?? 10}%)</span>
                   <span>${estimateViewBp.lastEstimate.overageAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="flex justify-between font-semibold text-base pt-1">
@@ -548,6 +567,12 @@ export default function BlueprintsPage() {
                   <span>${estimateViewBp.lastEstimate.total.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
                 </div>
               </div>
+              {estimateViewBp.lastEstimate.parts.some((p: any) => p.orderNeeded) && (
+                <div className="flex items-start gap-2 rounded-md bg-destructive/10 text-destructive px-3 py-2 text-xs">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>Some parts are below the quantity needed. Check warehouse stock before scheduling.</span>
+                </div>
+              )}
             </div>
           )}
         </DialogContent>

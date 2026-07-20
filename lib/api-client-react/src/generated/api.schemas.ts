@@ -4842,41 +4842,71 @@ export type GetRepairLogSummaryParams = {
 propertyId: number;
 };
 
+export type PortalPlanBillingCycle = typeof PortalPlanBillingCycle[keyof typeof PortalPlanBillingCycle];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const PortalPlanBillingCycle = {
+  monthly: 'monthly',
+  quarterly: 'quarterly',
+  annual: 'annual',
+  custom: 'custom',
+} as const;
+
+export type PortalPlanStatus = typeof PortalPlanStatus[keyof typeof PortalPlanStatus];
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const PortalPlanStatus = {
+  active: 'active',
+  paused: 'paused',
+  cancelled: 'cancelled',
+  pending_renewal: 'pending_renewal',
+} as const;
+
+export type PortalPlanServiceState = {
+  serviceId?: number;
+  serviceName?: string;
+  frequencyDays?: number;
+  lastScheduledAt?: string | null;
+};
 
 export type PortalPlan = {
   id: number;
   templateName: string;
   startDate: string;
   endDate: string;
-  billingCycle: string;
-  customCycleDays: number | null;
+  billingCycle: PortalPlanBillingCycle;
+  customCycleDays?: number | null;
   billingPrice: number;
   autoRenew: boolean;
+  status: PortalPlanStatus;
+  nextBillingDate: string;
+  lastBilledAt?: string | null;
+  propertyAddress?: string | null;
+  serviceState: PortalPlanServiceState[];
+  createdAt: string;
+};
+
+export type PortalPlanVisit = {
+  id: number;
+  title: string;
   status: string;
-  nextBillingDate: string | null;
-  lastBilledAt: string | null;
-  propertyAddress: string | null;
-  serviceState: unknown[];
+  scheduledAt: string;
+  assigneeName?: string | null;
+};
+
+export type PortalPlanBillingEntry = {
+  id: number;
+  invoiceNumber: string;
+  status: string;
+  total: number;
+  dueDate?: string | null;
+  paidAt?: string | null;
   createdAt: string;
 };
 
 export type PortalPlanDetail = PortalPlan & {
-  visits: {
-    id: number;
-    title: string;
-    status: string;
-    scheduledAt: string;
-    assigneeName: string | null;
-  }[];
-  billingHistory: {
-    id: number;
-    invoiceNumber: string | null;
-    status: string;
-    total: number;
-    dueDate: string | null;
-    paidAt: string | null;
-    createdAt: string;
-  }[];
+  visits: PortalPlanVisit[];
+  billingHistory: PortalPlanBillingEntry[];
 };
 
 export type PortalUpdatePlanInput = {

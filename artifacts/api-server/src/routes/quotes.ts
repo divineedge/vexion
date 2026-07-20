@@ -117,10 +117,12 @@ router.get("/quotes/:token", async (req, res): Promise<void> => {
       quote: quotesTable,
       property: propertiesTable,
       customerName: customersTable.name,
+      blueprintLastEstimate: blueprintsTable.lastEstimate,
     })
     .from(quotesTable)
     .leftJoin(propertiesTable, eq(quotesTable.propertyId, propertiesTable.id))
     .leftJoin(customersTable, eq(propertiesTable.customerId, customersTable.id))
+    .leftJoin(blueprintsTable, eq(quotesTable.blueprintId, blueprintsTable.id))
     .where(eq(quotesTable.token, token));
 
   if (!row) { res.status(404).json({ error: "Quote not found" }); return; }
@@ -128,6 +130,25 @@ router.get("/quotes/:token", async (req, res): Promise<void> => {
   const q = row.quote;
   const now = new Date();
   const expired = q.expiresAt && q.expiresAt < now;
+
+  // Include the persisted materials breakdown from the linked blueprint (if any).
+  // Customers see name, quantity, unit, and total — cost price details are excluded.
+  type EstimatePart = { inventoryItemId: number; name: string; quantity: number; unitPrice: number; total: number; unit?: string; source?: string };
+  const rawEstimate = row.blueprintLastEstimate as { parts?: EstimatePart[]; subtotal?: number; overageAmount?: number; total?: number; computedAt?: string } | null;
+  const blueprintMaterials = rawEstimate?.parts?.length
+    ? {
+        parts: rawEstimate.parts.map(p => ({
+          name: p.name,
+          quantity: p.quantity,
+          unit: p.unit ?? "each",
+          total: p.total,
+        })),
+        subtotal: rawEstimate.subtotal ?? 0,
+        overageAmount: rawEstimate.overageAmount ?? 0,
+        total: rawEstimate.total ?? 0,
+        computedAt: rawEstimate.computedAt ?? null,
+      }
+    : null;
 
   res.json({
     ...formatQuote(q),
@@ -144,6 +165,7 @@ router.get("/quotes/:token", async (req, res): Promise<void> => {
       customerName: row.customerName ?? null,
     } : null,
     expired: !!expired,
+    blueprintMaterials,
   });
 });
 

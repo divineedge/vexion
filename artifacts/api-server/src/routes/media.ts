@@ -4,8 +4,75 @@ import { mediaAttachmentsTable, propertiesTable, jobsTable, customersTable, equi
 import { eq, and } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { tmpdir } from "os";
+import { join } from "path";
+import { randomUUID } from "crypto";
+import { createWriteStream, unlinkSync, statSync, readFileSync } from "fs";
+import { spawn } from "child_process";
+import { pipeline } from "stream/promises";
 
 const objectStorageService = new ObjectStorageService();
+
+// ── Video compression helpers ─────────────────────────────────────────────────
+
+/**
+ * Download a GCS object to a temp file, transcode to 720p H.264 MP4 via ffmpeg,
+ * then upload the compressed version back (overwriting the original key).
+ *
+ * Returns { compressed: true, sizeBytes } on success, or { compressed: false } if
+ * ffmpeg is unavailable or transcoding fails.
+ */
+async function compressVideo(
+  fileKey: string,
+): Promise<{ compressed: true; sizeBytes: number } | { compressed: false }> {
+  const id = randomUUID();
+  const tmpIn = join(tmpdir(), `video-in-${id}`);
+  const tmpOut = join(tmpdir(), `video-out-${id}.mp4`);
+  try {
+    // --- 1. Download from GCS using the same path resolution as ObjectStorageService ---
+    const gcsFile = await objectStorageService.getObjectEntityFile(fileKey);
+
+    const nodeStream = gcsFile.createReadStream();
+    await pipeline(nodeStream, createWriteStream(tmpIn));
+
+    // --- 2. Transcode with ffmpeg ---
+    const compressed = await new Promise<boolean>((resolve) => {
+      const ff = spawn(
+        "ffmpeg",
+        [
+          "-i", tmpIn,
+          "-vf", "scale=-2:min(720\\,ih)",  // cap at 720p, keep aspect
+          "-c:v", "libx264",
+          "-crf", "28",
+          "-preset", "fast",
+          "-c:a", "aac",
+          "-b:a", "128k",
+          "-movflags", "+faststart",         // moov atom at front → instant play
+          "-y",
+          tmpOut,
+        ],
+        { stdio: "ignore" },
+      );
+      ff.on("error", () => resolve(false));
+      ff.on("close", (code) => resolve(code === 0));
+    });
+
+    if (!compressed) return { compressed: false };
+
+    // --- 3. Upload back to GCS (same key, overwrite) ---
+    const newBytes = statSync(tmpOut).size;
+    const buf = readFileSync(tmpOut);
+    await gcsFile.save(buf, { contentType: "video/mp4", resumable: false });
+
+    return { compressed: true, sizeBytes: newBytes };
+  } catch {
+    return { compressed: false };
+  } finally {
+    for (const f of [tmpIn, tmpOut]) {
+      try { unlinkSync(f); } catch { /* ignore */ }
+    }
+  }
+}
 
 async function withSignedUrls(
   rows: (typeof mediaAttachmentsTable.$inferSelect)[],
@@ -86,16 +153,26 @@ router.post("/properties/:id/media", async (req: Request, res: Response): Promis
       ));
   }
 
+  let finalSizeBytes = Number(sizeBytes);
+  let videoCompressed: boolean | null = null;
+
+  if (isVideo) {
+    const result = await compressVideo(fileKey);
+    videoCompressed = result.compressed;
+    if (result.compressed) finalSizeBytes = result.sizeBytes;
+  }
+
   const [attachment] = await db.insert(mediaAttachmentsTable).values({
     tenantId,
     entityType: "property",
     entityId: propertyId,
     fileKey,
     fileUrl,
-    mimeType,
-    sizeBytes: Number(sizeBytes),
+    mimeType: (isVideo && videoCompressed) ? "video/mp4" : mimeType,
+    sizeBytes: finalSizeBytes,
     caption: caption ?? null,
     isCover: isCover ?? false,
+    videoCompressed,
     createdBy: userId,
   }).returning();
 
@@ -189,16 +266,26 @@ router.post("/jobs/:id/media", async (req: Request, res: Response): Promise<void
     return;
   }
 
+  let finalSizeBytes = Number(sizeBytes);
+  let videoCompressed: boolean | null = null;
+
+  if (isVideo) {
+    const result = await compressVideo(fileKey);
+    videoCompressed = result.compressed;
+    if (result.compressed) finalSizeBytes = result.sizeBytes;
+  }
+
   const [attachment] = await db.insert(mediaAttachmentsTable).values({
     tenantId,
     entityType: "job",
     entityId: jobId,
     fileKey,
     fileUrl,
-    mimeType,
-    sizeBytes: Number(sizeBytes),
+    mimeType: (isVideo && videoCompressed) ? "video/mp4" : mimeType,
+    sizeBytes: finalSizeBytes,
     caption: caption ?? null,
     isCover: false,
+    videoCompressed,
     createdBy: userId,
   }).returning();
 

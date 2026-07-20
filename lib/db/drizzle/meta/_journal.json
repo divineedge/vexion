@@ -29,6 +29,20 @@
       "when": 1752609600000,
       "tag": "0003_add_blueprint_id_to_quotes",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1753000000000,
+      "tag": "0004_add_source_to_media_attachments",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1753056000000,
+      "tag": "0005_add_video_compressed_to_media_attachments",
+      "breakpoints": true
     }
   ]
 }

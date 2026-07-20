@@ -16,6 +16,11 @@ export const mediaAttachmentsTable = pgTable("media_attachments", {
   caption: text("caption"),
   /** Marks the property cover photo */
   isCover: boolean("is_cover").notNull().default(false),
+  /**
+   * For video attachments: true = server compressed to 720p H.264 before storing,
+   * false = stored as-is (ffmpeg unavailable), null = not a video.
+   */
+  videoCompressed: boolean("video_compressed"),
   createdBy: integer("created_by"),
   /** 'staff' (uploaded by a staff member) | 'customer' (uploaded via the customer portal) */
   source: text("source"),

@@ -19,6 +19,8 @@ interface MediaItem {
   caption?: string | null;
   isCover: boolean;
   createdAt: string;
+  /** null = not a video; true = server-compressed to 720p; false = stored as-is */
+  videoCompressed?: boolean | null;
 }
 
 interface MediaGalleryProps {
@@ -228,7 +230,15 @@ export default function MediaGallery({
                 {isVideo ? (
                   <div className="w-full h-full flex items-center justify-center bg-slate-800">
                     <Video className="w-8 h-8 text-white opacity-70" />
-                    <Badge className="absolute bottom-2 left-2 text-xs" variant="secondary">Video</Badge>
+                    <div className="absolute bottom-2 left-2 flex gap-1">
+                      <Badge className="text-xs" variant="secondary">Video</Badge>
+                      {item.videoCompressed === true && (
+                        <Badge className="text-xs bg-emerald-600 text-white border-transparent">720p</Badge>
+                      )}
+                      {item.videoCompressed === false && (
+                        <Badge className="text-xs bg-amber-500 text-white border-transparent" title="Original quality — compression unavailable">Original</Badge>
+                      )}
+                    </div>
                   </div>
                 ) : isPdf ? (
                   <div className="w-full h-full flex items-center justify-center bg-slate-100">

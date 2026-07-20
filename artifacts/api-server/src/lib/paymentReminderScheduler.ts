@@ -15,14 +15,30 @@ import { logger } from "./logger";
 import { sendSms, type SmsProviderConfig } from "./smsProvider";
 import { sendEmail, type EmailProviderConfig } from "./emailProvider";
 
-interface ReminderRule {
+export interface ReminderRule {
   offsetDays: number;
   label: string;
   /** Per-rule channel selection. Omitted on rules created before this feature — falls back to the tenant's legacy global channel setting. */
   channels?: string[];
 }
 
-async function processTenant(tenant: typeof tenantsTable.$inferSelect) {
+/**
+ * Picks the single highest-offset rule that (a) has been crossed (daysFromDue >= offsetDays)
+ * and (b) has not yet been recorded as sent. Returns undefined when no rule qualifies.
+ * Exported for unit testing.
+ */
+export function pickDueRule(
+  schedule: ReminderRule[],
+  daysFromDue: number,
+  alreadySent: number[],
+): ReminderRule | undefined {
+  return schedule
+    .filter(r => daysFromDue >= r.offsetDays && !alreadySent.includes(r.offsetDays))
+    .sort((a, b) => b.offsetDays - a.offsetDays)[0];
+}
+
+/** @internal exported for integration tests only */
+export async function processTenant(tenant: typeof tenantsTable.$inferSelect) {
   const now = new Date();
   const schedule = (tenant.paymentReminderSchedule as ReminderRule[]) ?? [];
   // Legacy tenant-wide default, used only for rules that predate per-rule channels.

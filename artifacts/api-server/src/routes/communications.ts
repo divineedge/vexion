@@ -239,7 +239,17 @@ router.post("/communications/webhook", async (req, res): Promise<void> => {
     // OpenPhone webhook — verify HMAC-SHA256 against the webhook secret.
     // Use the raw request bytes to avoid normalization differences after JSON parse.
     const rawBody = ((req as unknown as { rawBody?: Buffer }).rawBody ?? Buffer.alloc(0)).toString("utf8");
-    const toNumber = (payload["to"] ?? "") as string;
+
+    // For SMS events the "to" number is top-level. For call events (call.completed,
+    // call.recording.completed) it is nested under data.object.to[0].phoneNumber or
+    // data.object.call.to[0].phoneNumber. Try all three locations so call webhooks
+    // are not rejected during signature verification before parsing even starts.
+    const opObject = (payload["data"] as Record<string, unknown> | undefined)?.["object"] as Record<string, unknown> | undefined;
+    const opCallObj = (opObject?.["call"] as Record<string, unknown> | undefined);
+    const opToArr = (opObject?.["to"] ?? opCallObj?.["to"] ?? []) as Array<Record<string, string>>;
+    const toNumber = ((payload["to"] ?? "") as string)
+      || (opToArr[0]?.["phoneNumber"] ?? "");
+
     const matchingTenants = toNumber
       ? await db.select().from(tenantsTable).where(
           or(
@@ -247,7 +257,9 @@ router.post("/communications/webhook", async (req, res): Promise<void> => {
             eq(tenantsTable.marketingPhoneNumber, toNumber),
           ),
         )
-      : [];
+      // No "to" found in any known location — fall back to all OpenPhone tenants
+      // (same strategy Quo uses) so we can still verify the signature.
+      : await db.select().from(tenantsTable).where(eq(tenantsTable.phonePlatform, "openphone"));
 
     const verified = matchingTenants.some(t => {
       const cfg = (t.phonePlatformConfig as Record<string, string>) ?? {};
@@ -274,24 +286,41 @@ router.post("/communications/webhook", async (req, res): Promise<void> => {
 
   // ---- Call events (missed call / voicemail) ---------------------------
   // Twilio voice status callbacks use CallStatus ('no-answer' | 'busy' | 'failed')
-  // and optionally RecordingUrl when a voicemail was left. OpenPhone sends a
-  // `type` field like 'call.completed' / 'call.recording.completed' with the
-  // call status nested under `data.object`.
+  // and optionally RecordingUrl when a voicemail was left.
+  //
+  // OpenPhone / Quo sends two relevant event types:
+  //   - call.completed  → data.object.{ status, from, to:[{phoneNumber}] }
+  //                       status === "missed" means a missed call
+  //   - call.recording.completed → data.object.{ url, call:{ from, to:[{phoneNumber}] } }
+  //                       any recording on a completed call is treated as a voicemail
+  //
+  // IMPORTANT: OpenPhone does NOT have a separate "call.missed" event type.
+  // Missed calls arrive as call.completed with status:"missed".
+  // For call events, from/to are nested under data.object (not top-level).
   const twilioCallStatus = (payload["CallStatus"] ?? "") as string;
   const twilioRecordingUrl = (payload["RecordingUrl"] ?? "") as string;
   const openPhoneEventType = (payload["type"] ?? "") as string;
   const openPhoneObject = (payload["data"] as Record<string, unknown> | undefined)?.["object"] as Record<string, unknown> | undefined;
   const openPhoneCallStatus = (openPhoneObject?.["status"] ?? "") as string;
-  const hasOpenPhoneVoicemail = openPhoneEventType.includes("voicemail") || openPhoneEventType.includes("recording");
+  // call.recording.completed nests the call details one level deeper
+  const openPhoneRecordingCallObject = (openPhoneObject?.["call"] as Record<string, unknown> | undefined);
 
   const isMissedCall = ["no-answer", "busy", "failed"].includes(twilioCallStatus)
-    || openPhoneCallStatus === "missed"
-    || openPhoneEventType === "call.missed";
-  const isVoicemail = !!twilioRecordingUrl || hasOpenPhoneVoicemail;
+    || (openPhoneEventType === "call.completed" && openPhoneCallStatus === "missed");
+  // Any recording on a completed call is treated as a voicemail drop
+  const isVoicemail = !!twilioRecordingUrl
+    || openPhoneEventType === "call.recording.completed";
 
   if (isMissedCall || isVoicemail) {
-    const callFrom = from || ((payload["From"] ?? "") as string);
-    const callTo = to || ((payload["To"] ?? "") as string);
+    // For OpenPhone/Quo call events, from/to are nested under data.object (or
+    // data.object.call for recording events), NOT at the top level of the payload.
+    // Fall back to Twilio-style top-level From/To last.
+    const openPhoneFrom = (openPhoneObject?.["from"] ?? openPhoneRecordingCallObject?.["from"] ?? "") as string;
+    const openPhoneToArr = (openPhoneObject?.["to"] ?? openPhoneRecordingCallObject?.["to"] ?? []) as Array<Record<string, string>>;
+    const openPhoneTo = openPhoneToArr[0]?.["phoneNumber"] ?? "";
+
+    const callFrom = openPhoneFrom || from || ((payload["From"] ?? "") as string);
+    const callTo = openPhoneTo || to || ((payload["To"] ?? "") as string);
 
     const tenants = await db
       .select()

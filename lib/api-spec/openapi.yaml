@@ -3863,6 +3863,48 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/MediaAttachment'
+    post:
+      tags: [portal]
+      operationId: portalAddPropertyMedia
+      summary: Upload a customer photo for a property (portal)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalAddMediaInput'
+      responses:
+        '201':
+          description: Media attachment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaAttachment'
+
+  /portal/storage/uploads/request-url:
+    post:
+      tags: [portal]
+      operationId: portalRequestUploadUrl
+      summary: Request a presigned upload URL (portal customers)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadUrlRequest'
+      responses:
+        '200':
+          description: Presigned upload URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadUrlResponse'
 
   # ESTIMATES
   /estimates:
@@ -10310,6 +10352,9 @@ components:
           type: boolean
         createdBy:
           type: ["integer", "null"]
+        source:
+          type: ["string", "null"]
+          description: "'staff' for staff-uploaded media, 'customer' for customer portal uploads"
         createdAt:
           type: string
 
@@ -10329,6 +10374,21 @@ components:
           type: string
         isCover:
           type: boolean
+
+    PortalAddMediaInput:
+      type: object
+      required: [fileKey, fileUrl, mimeType, sizeBytes]
+      properties:
+        fileKey:
+          type: string
+        fileUrl:
+          type: string
+        mimeType:
+          type: string
+        sizeBytes:
+          type: integer
+        caption:
+          type: string
 
     SetProfilePhotoInput:
       type: object

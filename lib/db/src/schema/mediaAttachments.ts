@@ -17,6 +17,8 @@ export const mediaAttachmentsTable = pgTable("media_attachments", {
   /** Marks the property cover photo */
   isCover: boolean("is_cover").notNull().default(false),
   createdBy: integer("created_by"),
+  /** 'staff' (uploaded by a staff member) | 'customer' (uploaded via the customer portal) */
+  source: text("source"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

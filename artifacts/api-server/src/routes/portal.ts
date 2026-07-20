@@ -10,6 +10,39 @@ import { logger } from "../lib/logger";
 const router: IRouter = Router();
 
 // ---------------------------------------------------------------------------
+// Upload-intent registry
+// Tracks objectPaths minted by /portal/storage/uploads/request-url so the
+// subsequent /portal/property/:id/media POST can verify the caller is the
+// same tenant that minted the URL. Entries expire after 15 minutes (matching
+// the presigned upload URL TTL) and are consumed on first use.
+// ---------------------------------------------------------------------------
+
+interface UploadIntent {
+  tenantId: number;
+  expiresAt: number; // ms epoch
+}
+
+const uploadIntents = new Map<string, UploadIntent>();
+
+function registerUploadIntent(objectPath: string, tenantId: number): void {
+  uploadIntents.set(objectPath, { tenantId, expiresAt: Date.now() + 15 * 60 * 1000 });
+  // Opportunistically sweep expired entries to prevent unbounded growth
+  const now = Date.now();
+  for (const [key, intent] of uploadIntents) {
+    if (intent.expiresAt <= now) uploadIntents.delete(key);
+  }
+}
+
+function consumeUploadIntent(objectPath: string, tenantId: number): boolean {
+  const intent = uploadIntents.get(objectPath);
+  if (!intent) return false;
+  if (intent.expiresAt <= Date.now()) { uploadIntents.delete(objectPath); return false; }
+  if (intent.tenantId !== tenantId) return false;
+  uploadIntents.delete(objectPath); // one-time use
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -567,6 +600,130 @@ router.post("/portal/service-requests", requirePortalAuth, async (req: any, res)
   })();
 
   res.status(201).json(formatPortalJob(job, propertyAddress));
+});
+
+// ---------------------------------------------------------------------------
+// POST /portal/storage/uploads/request-url
+// ---------------------------------------------------------------------------
+router.post("/portal/storage/uploads/request-url", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalTenantId } = req.portalLocals as PortalLocals;
+  const { name, size, contentType } = req.body as { name?: string; size?: number; contentType?: string };
+
+  if (!name || !size || !contentType) {
+    res.status(400).json({ error: "name, size, and contentType are required" });
+    return;
+  }
+
+  if (!contentType.startsWith("image/")) {
+    res.status(400).json({ error: "Only image uploads are allowed from the portal" });
+    return;
+  }
+
+  const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
+  if (size > MAX_SIZE) {
+    res.status(400).json({ error: "File size must not exceed 10 MB" });
+    return;
+  }
+
+  try {
+    const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+    const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
+
+    // Record the intent BEFORE returning the URL so the subsequent media POST
+    // can verify this tenant is the one that minted the path.
+    registerUploadIntent(objectPath, portalTenantId);
+
+    // Stamp tenant ownership at mint time (best-effort — object doesn't exist yet)
+    try {
+      await objectStorageService.trySetObjectEntityAclPolicy(objectPath, {
+        owner: String(portalTenantId),
+        visibility: "private",
+      });
+    } catch {
+      // Non-fatal: ObjectNotFoundError is expected before the PUT completes
+    }
+
+    res.json({ uploadURL, objectPath, metadata: { name, size, contentType } });
+  } catch (err) {
+    logger.error({ err }, "Error generating portal upload URL");
+    res.status(500).json({ error: "Failed to generate upload URL" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /portal/property/:id/media
+// ---------------------------------------------------------------------------
+router.post("/portal/property/:id/media", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+  const propertyId = Number(req.params.id);
+
+  // Verify property belongs to this customer
+  const [property] = await db
+    .select({ id: propertiesTable.id })
+    .from(propertiesTable)
+    .where(and(
+      eq(propertiesTable.id, propertyId),
+      eq(propertiesTable.tenantId, portalTenantId),
+      eq(propertiesTable.customerId, portalCustomerId),
+    ))
+    .limit(1);
+
+  if (!property) {
+    res.status(404).json({ error: "Property not found" });
+    return;
+  }
+
+  const { fileKey, fileUrl, mimeType, sizeBytes, caption } = req.body as {
+    fileKey?: string; fileUrl?: string; mimeType?: string;
+    sizeBytes?: number; caption?: string;
+  };
+
+  if (!fileKey || !fileUrl || !mimeType || !sizeBytes) {
+    res.status(400).json({ error: "fileKey, fileUrl, mimeType, sizeBytes are required" });
+    return;
+  }
+
+  if (!mimeType.startsWith("image/")) {
+    res.status(400).json({ error: "Only image uploads are allowed from the portal" });
+    return;
+  }
+
+  const MAX_SIZE = 10 * 1024 * 1024;
+  if (Number(sizeBytes) > MAX_SIZE) {
+    res.status(400).json({ error: "File size must not exceed 10 MB" });
+    return;
+  }
+
+  // Normalize the fileKey (client may send the raw GCS URL or the /objects/... path)
+  const normalizedFileKey = objectStorageService.normalizeObjectEntityPath(fileKey);
+
+  // Verify this objectPath was minted by this tenant's portal upload session.
+  // consumeUploadIntent is one-time-use and checks tenantId, preventing cross-tenant
+  // object registration and replay attacks.
+  if (!consumeUploadIntent(normalizedFileKey, portalTenantId)) {
+    logger.warn({ portalTenantId, fileKey: normalizedFileKey }, "Portal media POST: fileKey not found in upload intents — possible cross-tenant or stale upload attempt");
+    res.status(403).json({ error: "Upload not authorized. Please retry the upload." });
+    return;
+  }
+
+  const [attachment] = await db
+    .insert(mediaAttachmentsTable)
+    .values({
+      tenantId: portalTenantId,
+      entityType: "property",
+      entityId: propertyId,
+      fileKey: normalizedFileKey,
+      fileUrl: normalizedFileKey,
+      mimeType,
+      sizeBytes: Number(sizeBytes),
+      caption: caption ?? null,
+      isCover: false,
+      createdBy: null,
+      source: "customer",
+    })
+    .returning();
+
+  res.status(201).json(attachment);
 });
 
 // ---------------------------------------------------------------------------

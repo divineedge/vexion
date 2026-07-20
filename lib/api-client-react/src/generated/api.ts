@@ -170,6 +170,7 @@ import type {
   Plan,
   PlanTemplate,
   PlansDashboard,
+  PortalAddMediaInput,
   PortalAlert,
   PortalAlertResponse,
   PortalAuthResponse,
@@ -14288,6 +14289,149 @@ export function usePortalListPropertyMedia<TData = Awaited<ReturnType<typeof por
 
 
 
+
+export const getPortalAddPropertyMediaUrl = (id: number,) => {
+
+
+
+
+  return `/api/portal/property/${id}/media`
+}
+
+/**
+ * @summary Upload a customer photo for a property (portal)
+ */
+export const portalAddPropertyMedia = async (id: number,
+    portalAddMediaInput: PortalAddMediaInput, options?: RequestInit): Promise<MediaAttachment> => {
+
+  return customFetch<MediaAttachment>(getPortalAddPropertyMediaUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(portalAddMediaInput)
+  }
+);}
+
+
+
+
+
+export const getPortalAddPropertyMediaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalAddPropertyMedia>>, TError,{id: number;data: BodyType<PortalAddMediaInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof portalAddPropertyMedia>>, TError,{id: number;data: BodyType<PortalAddMediaInput>}, TContext> => {
+
+const mutationKey = ['portalAddPropertyMedia'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof portalAddPropertyMedia>>, {id: number;data: BodyType<PortalAddMediaInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  portalAddPropertyMedia(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PortalAddPropertyMediaMutationResult = NonNullable<Awaited<ReturnType<typeof portalAddPropertyMedia>>>
+    export type PortalAddPropertyMediaMutationBody = BodyType<PortalAddMediaInput>
+    export type PortalAddPropertyMediaMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Upload a customer photo for a property (portal)
+ */
+export const usePortalAddPropertyMedia = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalAddPropertyMedia>>, TError,{id: number;data: BodyType<PortalAddMediaInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof portalAddPropertyMedia>>,
+        TError,
+        {id: number;data: BodyType<PortalAddMediaInput>},
+        TContext
+      > => {
+      return useMutation(getPortalAddPropertyMediaMutationOptions(options));
+    }
+
+export const getPortalRequestUploadUrlUrl = () => {
+
+
+
+
+  return `/api/portal/storage/uploads/request-url`
+}
+
+/**
+ * @summary Request a presigned upload URL (portal customers)
+ */
+export const portalRequestUploadUrl = async (uploadUrlRequest: UploadUrlRequest, options?: RequestInit): Promise<UploadUrlResponse> => {
+
+  return customFetch<UploadUrlResponse>(getPortalRequestUploadUrlUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(uploadUrlRequest)
+  }
+);}
+
+
+
+
+
+export const getPortalRequestUploadUrlMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalRequestUploadUrl>>, TError,{data: BodyType<UploadUrlRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof portalRequestUploadUrl>>, TError,{data: BodyType<UploadUrlRequest>}, TContext> => {
+
+const mutationKey = ['portalRequestUploadUrl'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof portalRequestUploadUrl>>, {data: BodyType<UploadUrlRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  portalRequestUploadUrl(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PortalRequestUploadUrlMutationResult = NonNullable<Awaited<ReturnType<typeof portalRequestUploadUrl>>>
+    export type PortalRequestUploadUrlMutationBody = BodyType<UploadUrlRequest>
+    export type PortalRequestUploadUrlMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Request a presigned upload URL (portal customers)
+ */
+export const usePortalRequestUploadUrl = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalRequestUploadUrl>>, TError,{data: BodyType<UploadUrlRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof portalRequestUploadUrl>>,
+        TError,
+        {data: BodyType<UploadUrlRequest>},
+        TContext
+      > => {
+      return useMutation(getPortalRequestUploadUrlMutationOptions(options));
+    }
 
 export const getListEstimatesUrl = (params?: ListEstimatesParams,) => {
   const normalizedParams = new URLSearchParams();

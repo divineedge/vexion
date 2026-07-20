@@ -20,5 +20,10 @@ export interface MediaAttachment {
   isCover: boolean;
   /** @nullable */
   createdBy?: number | null;
+  /**
+     * 'staff' for staff-uploaded media, 'customer' for customer portal uploads
+     * @nullable
+     */
+  source?: string | null;
   createdAt: string;
 }

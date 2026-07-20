@@ -3651,6 +3651,11 @@ export interface MediaAttachment {
   isCover: boolean;
   /** @nullable */
   createdBy?: number | null;
+  /**
+     * 'staff' for staff-uploaded media, 'customer' for customer portal uploads
+     * @nullable
+     */
+  source?: string | null;
   createdAt: string;
 }
 
@@ -3661,6 +3666,14 @@ export interface AddMediaInput {
   sizeBytes: number;
   caption?: string;
   isCover?: boolean;
+}
+
+export interface PortalAddMediaInput {
+  fileKey: string;
+  fileUrl: string;
+  mimeType: string;
+  sizeBytes: number;
+  caption?: string;
 }
 
 export interface SetProfilePhotoInput {

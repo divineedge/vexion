@@ -5591,6 +5591,7 @@ export const ListPropertyMediaResponseItem = zod.object({
   "caption": zod.string().nullish(),
   "isCover": zod.boolean(),
   "createdBy": zod.number().nullish(),
+  "source": zod.string().nullish().describe('\'staff\' for staff-uploaded media, \'customer\' for customer portal uploads'),
   "createdAt": zod.string()
 })
 export const ListPropertyMediaResponse = zod.array(ListPropertyMediaResponseItem)
@@ -5624,6 +5625,7 @@ export const AddPropertyMediaResponse = zod.object({
   "caption": zod.string().nullish(),
   "isCover": zod.boolean(),
   "createdBy": zod.number().nullish(),
+  "source": zod.string().nullish().describe('\'staff\' for staff-uploaded media, \'customer\' for customer portal uploads'),
   "createdAt": zod.string()
 })
 
@@ -5674,6 +5676,7 @@ export const ListJobMediaResponseItem = zod.object({
   "caption": zod.string().nullish(),
   "isCover": zod.boolean(),
   "createdBy": zod.number().nullish(),
+  "source": zod.string().nullish().describe('\'staff\' for staff-uploaded media, \'customer\' for customer portal uploads'),
   "createdAt": zod.string()
 })
 export const ListJobMediaResponse = zod.array(ListJobMediaResponseItem)
@@ -5707,6 +5710,7 @@ export const AddJobMediaResponse = zod.object({
   "caption": zod.string().nullish(),
   "isCover": zod.boolean(),
   "createdBy": zod.number().nullish(),
+  "source": zod.string().nullish().describe('\'staff\' for staff-uploaded media, \'customer\' for customer portal uploads'),
   "createdAt": zod.string()
 })
 
@@ -5741,6 +5745,7 @@ export const ListEquipmentMaintenanceMediaResponseItem = zod.object({
   "caption": zod.string().nullish(),
   "isCover": zod.boolean(),
   "createdBy": zod.number().nullish(),
+  "source": zod.string().nullish().describe('\'staff\' for staff-uploaded media, \'customer\' for customer portal uploads'),
   "createdAt": zod.string()
 })
 export const ListEquipmentMaintenanceMediaResponse = zod.array(ListEquipmentMaintenanceMediaResponseItem)
@@ -5774,6 +5779,7 @@ export const AddEquipmentMaintenanceMediaResponse = zod.object({
   "caption": zod.string().nullish(),
   "isCover": zod.boolean(),
   "createdBy": zod.number().nullish(),
+  "source": zod.string().nullish().describe('\'staff\' for staff-uploaded media, \'customer\' for customer portal uploads'),
   "createdAt": zod.string()
 })
 
@@ -5824,9 +5830,62 @@ export const PortalListPropertyMediaResponseItem = zod.object({
   "caption": zod.string().nullish(),
   "isCover": zod.boolean(),
   "createdBy": zod.number().nullish(),
+  "source": zod.string().nullish().describe('\'staff\' for staff-uploaded media, \'customer\' for customer portal uploads'),
   "createdAt": zod.string()
 })
 export const PortalListPropertyMediaResponse = zod.array(PortalListPropertyMediaResponseItem)
+
+
+/**
+ * @summary Upload a customer photo for a property (portal)
+ */
+export const PortalAddPropertyMediaParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const PortalAddPropertyMediaBody = zod.object({
+  "fileKey": zod.string(),
+  "fileUrl": zod.string(),
+  "mimeType": zod.string(),
+  "sizeBytes": zod.number(),
+  "caption": zod.string().optional()
+})
+
+export const PortalAddPropertyMediaResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "entityType": zod.string(),
+  "entityId": zod.number(),
+  "fileKey": zod.string(),
+  "fileUrl": zod.string(),
+  "mimeType": zod.string(),
+  "sizeBytes": zod.number(),
+  "caption": zod.string().nullish(),
+  "isCover": zod.boolean(),
+  "createdBy": zod.number().nullish(),
+  "source": zod.string().nullish().describe('\'staff\' for staff-uploaded media, \'customer\' for customer portal uploads'),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Request a presigned upload URL (portal customers)
+ */
+
+
+
+
+
+export const PortalRequestUploadUrlBody = zod.object({
+  "name": zod.string().min(1),
+  "size": zod.number().min(1),
+  "contentType": zod.string().min(1)
+})
+
+export const PortalRequestUploadUrlResponse = zod.object({
+  "uploadURL": zod.string(),
+  "objectPath": zod.string()
+})
 
 
 /**

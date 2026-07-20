@@ -2,7 +2,8 @@ import { usePortalListProperties } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, Home, Building2, TreeDeciduous } from "lucide-react";
+import { MapPin, Home, Building2, TreeDeciduous, ChevronRight } from "lucide-react";
+import { Link } from "wouter";
 
 export default function Properties() {
   const { data: properties, isLoading } = usePortalListProperties();
@@ -27,35 +28,39 @@ export default function Properties() {
           Array(3).fill(0).map((_, i) => <Skeleton key={i} className="h-48 w-full rounded-xl" />)
         ) : properties && properties.length > 0 ? (
           properties.map(property => (
-            <Card key={property.id} className="shadow-sm hover-elevate transition-all overflow-hidden border-border/50">
-              <div className="h-24 bg-muted relative">
-                {/* Fallback pattern for map/property image */}
-                <div className="absolute inset-0 opacity-[0.03] bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-foreground to-transparent bg-[length:16px_16px]"></div>
-                <div className="absolute -bottom-6 left-6 p-3 bg-card border rounded-xl shadow-sm">
-                  {getPropertyIcon(property.type)}
+            <Link key={property.id} href={`/properties/${property.id}`}>
+              <Card className="shadow-sm hover-elevate transition-all overflow-hidden border-border/50 cursor-pointer hover:border-primary/40 hover:shadow-md">
+                <div className="h-24 bg-muted relative">
+                  <div className="absolute inset-0 opacity-[0.03] bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-foreground to-transparent bg-[length:16px_16px]"></div>
+                  <div className="absolute -bottom-6 left-6 p-3 bg-card border rounded-xl shadow-sm">
+                    {getPropertyIcon(property.type)}
+                  </div>
                 </div>
-              </div>
-              <CardHeader className="pt-10 pb-4">
-                <CardTitle className="text-lg line-clamp-1">{property.address}</CardTitle>
-                <CardDescription className="flex items-center gap-1">
-                  <MapPin className="w-3.5 h-3.5" />
-                  {[property.city, property.state, property.zip].filter(Boolean).join(', ')}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex gap-2 mt-2">
-                  <Badge variant="secondary" className="bg-secondary/50">
-                    {property.type || "Standard"} Property
-                  </Badge>
-                </div>
-                {property.notes && (
-                  <p className="text-sm text-muted-foreground mt-4 line-clamp-2">
-                    <span className="font-medium block text-foreground mb-1">Notes:</span>
-                    {property.notes}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+                <CardHeader className="pt-10 pb-4">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg line-clamp-1">{property.address}</CardTitle>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  </div>
+                  <CardDescription className="flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5" />
+                    {[property.city, property.state, property.zip].filter(Boolean).join(', ')}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex gap-2 mt-2">
+                    <Badge variant="secondary" className="bg-secondary/50">
+                      {property.type || "Standard"} Property
+                    </Badge>
+                  </div>
+                  {property.notes && (
+                    <p className="text-sm text-muted-foreground mt-4 line-clamp-2">
+                      <span className="font-medium block text-foreground mb-1">Notes:</span>
+                      {property.notes}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </Link>
           ))
         ) : (
           <div className="col-span-full">

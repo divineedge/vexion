@@ -22,6 +22,4 @@ export interface JobInput {
   estimatedDuration?: number;
   blueprintId?: number;
   recurrenceRule?: RecurrenceRule;
-  /** Enable SMS reminder for this job */
-  smsReminderEnabled?: boolean;
 }

@@ -27,8 +27,4 @@ export interface FollowupQueueItem {
   resolvedByUserId?: number | null;
   /** @nullable */
   communicationNote?: string | null;
-  /** @nullable */
-  assignedToUserId?: number | null;
-  /** @nullable */
-  assignedToUserName?: string | null;
 }

@@ -13,10 +13,4 @@ export interface BillingPreviewJob {
   totalAmount: number;
   /** @nullable */
   serviceId?: number | null;
-  flags?: {
-    duplicate?: boolean;
-    outlier?: boolean;
-  };
-  /** When true, this job is held from the next automatic overnight billing run */
-  holdFromBilling?: boolean;
 }

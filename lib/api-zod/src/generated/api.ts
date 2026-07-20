@@ -1017,8 +1017,6 @@ export const ListJobsResponseItem = zod.object({
   "sequenceOrder": zod.number().nullish(),
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
-  "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
-  "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
   "createdAt": zod.string()
 })
 export const ListJobsResponse = zod.array(ListJobsResponseItem)
@@ -1049,8 +1047,7 @@ export const CreateJobBody = zod.object({
   "endCondition": zod.enum(['never', 'after', 'on_date']),
   "endAfter": zod.number().optional().describe('Used when endCondition is after'),
   "endDate": zod.string().optional().describe('ISO date string; used when endCondition is on_date')
-}).optional(),
-  "smsReminderEnabled": zod.boolean().optional().describe('Enable SMS reminder for this job')
+}).optional()
 })
 
 export const CreateJobResponse = zod.object({
@@ -1111,8 +1108,6 @@ export const CreateJobResponse = zod.object({
   "sequenceOrder": zod.number().nullish(),
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
-  "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
-  "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
   "createdAt": zod.string()
 })
 
@@ -1182,8 +1177,6 @@ export const GetJobResponse = zod.object({
   "sequenceOrder": zod.number().nullish(),
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
-  "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
-  "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
   "createdAt": zod.string()
 })
 
@@ -1215,9 +1208,7 @@ export const UpdateJobBody = zod.object({
   "endAfter": zod.number().optional().describe('Used when endCondition is after'),
   "endDate": zod.string().optional().describe('ISO date string; used when endCondition is on_date')
 }).optional(),
-  "editScope": zod.enum(['this', 'forward', 'all']).optional().describe('Scope of the edit for recurring jobs'),
-  "smsReminderEnabled": zod.boolean().optional().describe('Enable or disable SMS reminder for this job'),
-  "holdFromBilling": zod.boolean().optional().describe('When true, exclude this job from the next automatic overnight billing run')
+  "editScope": zod.enum(['this', 'forward', 'all']).optional().describe('Scope of the edit for recurring jobs')
 })
 
 export const UpdateJobResponse = zod.object({
@@ -1278,8 +1269,6 @@ export const UpdateJobResponse = zod.object({
   "sequenceOrder": zod.number().nullish(),
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
-  "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
-  "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
   "createdAt": zod.string()
 })
 
@@ -1389,8 +1378,6 @@ export const SkipNextOccurrenceResponse = zod.object({
   "sequenceOrder": zod.number().nullish(),
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
-  "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
-  "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
   "createdAt": zod.string()
 })
 
@@ -1465,8 +1452,6 @@ export const PauseRecurringSeriesResponse = zod.object({
   "sequenceOrder": zod.number().nullish(),
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
-  "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
-  "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
   "createdAt": zod.string()
 })
 
@@ -1550,8 +1535,6 @@ export const CompleteJobResponse = zod.object({
   "sequenceOrder": zod.number().nullish(),
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
-  "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
-  "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
   "createdAt": zod.string()
 })
 
@@ -1643,8 +1626,6 @@ export const AddJobPartResponse = zod.object({
   "sequenceOrder": zod.number().nullish(),
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
-  "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
-  "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
   "createdAt": zod.string()
 })
 
@@ -1715,8 +1696,6 @@ export const RemoveJobPartResponse = zod.object({
   "sequenceOrder": zod.number().nullish(),
   "isOneTimeReschedule": zod.boolean().optional(),
   "originalScheduledDate": zod.string().nullish(),
-  "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
-  "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
   "createdAt": zod.string()
 })
 
@@ -2342,7 +2321,6 @@ export const ListInvoicesResponseItem = zod.object({
   "stripePaymentUrl": zod.string().nullish(),
   "lobLetterId": zod.string().nullish(),
   "lobStatus": zod.string().nullish(),
-  "publicToken": zod.string().nullish(),
   "createdAt": zod.string()
 })
 export const ListInvoicesResponse = zod.array(ListInvoicesResponseItem)
@@ -2387,7 +2365,6 @@ export const CreateInvoiceResponse = zod.object({
   "stripePaymentUrl": zod.string().nullish(),
   "lobLetterId": zod.string().nullish(),
   "lobStatus": zod.string().nullish(),
-  "publicToken": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -2423,7 +2400,6 @@ export const GetInvoiceResponse = zod.object({
   "stripePaymentUrl": zod.string().nullish(),
   "lobLetterId": zod.string().nullish(),
   "lobStatus": zod.string().nullish(),
-  "publicToken": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -2465,7 +2441,6 @@ export const UpdateInvoiceResponse = zod.object({
   "stripePaymentUrl": zod.string().nullish(),
   "lobLetterId": zod.string().nullish(),
   "lobStatus": zod.string().nullish(),
-  "publicToken": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -2501,7 +2476,6 @@ export const CreateInvoiceFromJobResponse = zod.object({
   "stripePaymentUrl": zod.string().nullish(),
   "lobLetterId": zod.string().nullish(),
   "lobStatus": zod.string().nullish(),
-  "publicToken": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -4548,11 +4522,11 @@ export const ListEquipmentFuelLogsResponseItem = zod.object({
   "id": zod.number(),
   "equipmentId": zod.number(),
   "tenantId": zod.number(),
+  "jobId": zod.number().nullish(),
   "date": zod.string(),
   "gallons": zod.number(),
   "cost": zod.number(),
   "odometerReading": zod.number().nullish(),
-  "jobId": zod.number().nullish().describe('Optional link to the job this fuel was consumed for. When set, the Job Profitability report attributes this cost directly to that job rather than spreading it across all jobs.'),
   "createdAt": zod.string()
 })
 export const ListEquipmentFuelLogsResponse = zod.array(ListEquipmentFuelLogsResponseItem)
@@ -4570,18 +4544,18 @@ export const CreateEquipmentFuelLogBody = zod.object({
   "gallons": zod.number(),
   "cost": zod.number().optional(),
   "odometerReading": zod.number().optional(),
-  "jobId": zod.number().optional().describe('Optional job to attribute this fuel cost to. Improves per-job fuel cost accuracy in the Job Profitability report.')
+  "jobId": zod.number().optional()
 })
 
 export const CreateEquipmentFuelLogResponse = zod.object({
   "id": zod.number(),
   "equipmentId": zod.number(),
   "tenantId": zod.number(),
+  "jobId": zod.number().nullish(),
   "date": zod.string(),
   "gallons": zod.number(),
   "cost": zod.number(),
   "odometerReading": zod.number().nullish(),
-  "jobId": zod.number().nullish().describe('Optional link to the job this fuel was consumed for. When set, the Job Profitability report attributes this cost directly to that job rather than spreading it across all jobs.'),
   "createdAt": zod.string()
 })
 
@@ -4619,11 +4593,11 @@ export const GetEquipmentLedgerResponse = zod.object({
   "id": zod.number(),
   "equipmentId": zod.number(),
   "tenantId": zod.number(),
+  "jobId": zod.number().nullish(),
   "date": zod.string(),
   "gallons": zod.number(),
   "cost": zod.number(),
   "odometerReading": zod.number().nullish(),
-  "jobId": zod.number().nullish().describe('Optional link to the job this fuel was consumed for. When set, the Job Profitability report attributes this cost directly to that job rather than spreading it across all jobs.'),
   "createdAt": zod.string()
 }))
 }),
@@ -5253,34 +5227,6 @@ export const ListEquipmentTasksResponseItem = zod.object({
   "updatedAt": zod.string()
 })
 export const ListEquipmentTasksResponse = zod.array(ListEquipmentTasksResponseItem)
-
-
-/**
- * @summary List inventory items linked to this equipment via task bundle items (parts used in checks)
- */
-export const GetEquipmentLinkedPartsParams = zod.object({
-  "id": zod.coerce.number()
-})
-
-export const GetEquipmentLinkedPartsResponseItem = zod.object({
-  "id": zod.number(),
-  "tenantId": zod.number(),
-  "name": zod.string(),
-  "sku": zod.string(),
-  "description": zod.string().nullish(),
-  "category": zod.string().nullish(),
-  "unitPrice": zod.number(),
-  "markupPct": zod.number().optional(),
-  "markedUpPrice": zod.number().optional(),
-  "quantity": zod.number(),
-  "reorderPoint": zod.number(),
-  "unit": zod.string(),
-  "isLowStock": zod.boolean(),
-  "availableForBlueprint": zod.boolean().optional(),
-  "createdAt": zod.string(),
-  "checkLabels": zod.array(zod.string()).describe('Bundle item labels (check names) that link this part to the equipment')
-})
-export const GetEquipmentLinkedPartsResponse = zod.array(GetEquipmentLinkedPartsResponseItem)
 
 
 /**
@@ -6018,114 +5964,6 @@ export const PortalAddPropertyMediaResponse = zod.object({
 
 
 /**
- * @summary List the current customer's service plans
- */
-export const PortalListPlansResponseItem = zod.object({
-  "id": zod.number(),
-  "templateName": zod.string(),
-  "startDate": zod.string(),
-  "endDate": zod.string(),
-  "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']),
-  "customCycleDays": zod.number().nullish(),
-  "billingPrice": zod.number(),
-  "autoRenew": zod.boolean(),
-  "status": zod.enum(['active', 'paused', 'cancelled', 'pending_renewal']),
-  "nextBillingDate": zod.string(),
-  "lastBilledAt": zod.string().nullish(),
-  "propertyAddress": zod.string().nullable(),
-  "serviceState": zod.array(zod.object({
-  "serviceId": zod.number().optional(),
-  "serviceName": zod.string().optional(),
-  "frequencyDays": zod.number().optional(),
-  "lastScheduledAt": zod.string().nullish()
-})),
-  "createdAt": zod.string()
-})
-export const PortalListPlansResponse = zod.array(PortalListPlansResponseItem)
-
-
-/**
- * @summary Get a single service plan with visits and billing history
- */
-export const PortalGetPlanParams = zod.object({
-  "id": zod.coerce.number()
-})
-
-export const PortalGetPlanResponse = zod.object({
-  "id": zod.number(),
-  "templateName": zod.string(),
-  "startDate": zod.string(),
-  "endDate": zod.string(),
-  "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']),
-  "customCycleDays": zod.number().nullish(),
-  "billingPrice": zod.number(),
-  "autoRenew": zod.boolean(),
-  "status": zod.enum(['active', 'paused', 'cancelled', 'pending_renewal']),
-  "nextBillingDate": zod.string(),
-  "lastBilledAt": zod.string().nullish(),
-  "propertyAddress": zod.string().nullable(),
-  "serviceState": zod.array(zod.object({
-  "serviceId": zod.number().optional(),
-  "serviceName": zod.string().optional(),
-  "frequencyDays": zod.number().optional(),
-  "lastScheduledAt": zod.string().nullish()
-})),
-  "createdAt": zod.string()
-}).and(zod.object({
-  "visits": zod.array(zod.object({
-  "id": zod.number(),
-  "title": zod.string(),
-  "status": zod.string(),
-  "scheduledAt": zod.string(),
-  "assigneeName": zod.string().nullish()
-})),
-  "billingHistory": zod.array(zod.object({
-  "id": zod.number(),
-  "invoiceNumber": zod.string(),
-  "status": zod.string(),
-  "total": zod.number(),
-  "dueDate": zod.string().nullish(),
-  "paidAt": zod.string().nullish(),
-  "createdAt": zod.string()
-}))
-}))
-
-
-/**
- * @summary Toggle auto-renew on a service plan
- */
-export const PortalUpdatePlanParams = zod.object({
-  "id": zod.coerce.number()
-})
-
-export const PortalUpdatePlanBody = zod.object({
-  "autoRenew": zod.boolean()
-})
-
-export const PortalUpdatePlanResponse = zod.object({
-  "id": zod.number(),
-  "templateName": zod.string(),
-  "startDate": zod.string(),
-  "endDate": zod.string(),
-  "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']),
-  "customCycleDays": zod.number().nullish(),
-  "billingPrice": zod.number(),
-  "autoRenew": zod.boolean(),
-  "status": zod.enum(['active', 'paused', 'cancelled', 'pending_renewal']),
-  "nextBillingDate": zod.string(),
-  "lastBilledAt": zod.string().nullish(),
-  "propertyAddress": zod.string().nullable(),
-  "serviceState": zod.array(zod.object({
-  "serviceId": zod.number().optional(),
-  "serviceName": zod.string().optional(),
-  "frequencyDays": zod.number().optional(),
-  "lastScheduledAt": zod.string().nullish()
-})),
-  "createdAt": zod.string()
-})
-
-
-/**
  * @summary Request a presigned upload URL (portal customers)
  */
 
@@ -6466,53 +6304,6 @@ export const ConvertEstimateToJobResponse = zod.object({
 
 
 /**
- * @summary Get public invoice by token (no auth)
- */
-export const GetPublicInvoiceParams = zod.object({
-  "token": zod.coerce.string()
-})
-
-export const GetPublicInvoiceResponse = zod.object({
-  "id": zod.number(),
-  "tenantId": zod.number(),
-  "invoiceNumber": zod.string(),
-  "customerId": zod.number(),
-  "customerName": zod.string().nullish(),
-  "jobId": zod.number().nullish(),
-  "status": zod.enum(['draft', 'sent', 'paid', 'overdue', 'cancelled']),
-  "subtotal": zod.number(),
-  "tax": zod.number(),
-  "total": zod.number(),
-  "dueDate": zod.string().nullish(),
-  "paidAt": zod.string().nullish(),
-  "notes": zod.string().nullish(),
-  "lineItems": zod.array(zod.object({
-  "id": zod.number(),
-  "description": zod.string(),
-  "quantity": zod.number(),
-  "unitPrice": zod.number(),
-  "total": zod.number()
-})).optional(),
-  "stripePaymentUrl": zod.string().nullish(),
-  "lobLetterId": zod.string().nullish(),
-  "lobStatus": zod.string().nullish(),
-  "publicToken": zod.string().nullish(),
-  "createdAt": zod.string()
-}).and(zod.object({
-  "businessProfile": zod.object({
-  "companyName": zod.string().nullish(),
-  "logoUrl": zod.string().nullish(),
-  "tagline": zod.string().nullish(),
-  "phone": zod.string().nullish(),
-  "email": zod.string().nullish(),
-  "website": zod.string().nullish(),
-  "address": zod.string().nullish(),
-  "invoiceFooterText": zod.string().nullish()
-}).optional()
-}))
-
-
-/**
  * @summary Get public estimate by approval token (no auth)
  */
 export const GetPublicEstimateParams = zod.object({
@@ -6672,7 +6463,6 @@ export const ListVisitsResponseItem = zod.object({
   "outcomeNotes": zod.string().nullish(),
   "convertedToEstimateId": zod.number().nullish(),
   "convertedToJobId": zod.number().nullish(),
-  "smsReminderEnabled": zod.boolean().optional().describe('When true, an SMS reminder will be sent before this visit'),
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
@@ -6692,8 +6482,7 @@ export const CreateVisitBody = zod.object({
   "visitMode": zod.enum(['scheduled', 'drop_by', 'drive_by']).optional(),
   "purpose": zod.string(),
   "notes": zod.string().optional(),
-  "scheduledAt": zod.string().optional(),
-  "smsReminderEnabled": zod.boolean().optional().describe('Enable SMS reminder for this visit')
+  "scheduledAt": zod.string().optional()
 })
 
 export const CreateVisitResponse = zod.object({
@@ -6710,7 +6499,6 @@ export const CreateVisitResponse = zod.object({
   "outcomeNotes": zod.string().nullish(),
   "convertedToEstimateId": zod.number().nullish(),
   "convertedToJobId": zod.number().nullish(),
-  "smsReminderEnabled": zod.boolean().optional().describe('When true, an SMS reminder will be sent before this visit'),
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
@@ -6740,7 +6528,6 @@ export const GetVisitResponse = zod.object({
   "outcomeNotes": zod.string().nullish(),
   "convertedToEstimateId": zod.number().nullish(),
   "convertedToJobId": zod.number().nullish(),
-  "smsReminderEnabled": zod.boolean().optional().describe('When true, an SMS reminder will be sent before this visit'),
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
@@ -6761,8 +6548,7 @@ export const UpdateVisitBody = zod.object({
   "visitMode": zod.enum(['scheduled', 'drop_by', 'drive_by']).optional(),
   "purpose": zod.string().optional(),
   "notes": zod.string().optional(),
-  "scheduledAt": zod.string().optional(),
-  "smsReminderEnabled": zod.boolean().optional().describe('Enable or disable SMS reminder for this visit')
+  "scheduledAt": zod.string().optional()
 })
 
 export const UpdateVisitResponse = zod.object({
@@ -6779,7 +6565,6 @@ export const UpdateVisitResponse = zod.object({
   "outcomeNotes": zod.string().nullish(),
   "convertedToEstimateId": zod.number().nullish(),
   "convertedToJobId": zod.number().nullish(),
-  "smsReminderEnabled": zod.boolean().optional().describe('When true, an SMS reminder will be sent before this visit'),
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
@@ -6823,7 +6608,6 @@ export const CompleteVisitResponse = zod.object({
   "outcomeNotes": zod.string().nullish(),
   "convertedToEstimateId": zod.number().nullish(),
   "convertedToJobId": zod.number().nullish(),
-  "smsReminderEnabled": zod.boolean().optional().describe('When true, an SMS reminder will be sent before this visit'),
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
@@ -7732,8 +7516,7 @@ export const PreviewRecurringTemplateBillingResponse = zod.object({
   "title": zod.string(),
   "completedAt": zod.string(),
   "totalAmount": zod.number(),
-  "serviceId": zod.number().nullish(),
-  "holdFromBilling": zod.boolean().optional().describe('When true, this job is held from the next automatic overnight billing run')
+  "serviceId": zod.number().nullish()
 })),
   "subtotal": zod.number()
 })),
@@ -8232,7 +8015,6 @@ export const PrintMailInvoiceResponse = zod.object({
   "stripePaymentUrl": zod.string().nullish(),
   "lobLetterId": zod.string().nullish(),
   "lobStatus": zod.string().nullish(),
-  "publicToken": zod.string().nullish(),
   "createdAt": zod.string()
 })
 

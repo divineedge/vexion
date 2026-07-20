@@ -149,6 +149,51 @@ router.post("/properties/import/commit", importUpload.single("file"), async (req
   await handleImportCommit(req, res, getTenantId(req), propertiesImportExportConfig);
 });
 
+// ---------------------------------------------------------------------------
+// Geocoding helper
+// ---------------------------------------------------------------------------
+
+interface GeocodeResult {
+  lat: number;
+  lng: number;
+  boundaryPolygon: [number, number][] | null;
+}
+
+async function geocodeAddress(address: string, city?: string | null, state?: string | null, zip?: string | null): Promise<GeocodeResult | null> {
+  const fullAddress = [address, city, state, zip].filter(Boolean).join(", ");
+  try {
+    const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(fullAddress)}`;
+    const response = await fetch(nominatimUrl, {
+      headers: { "User-Agent": "DivineEdgeOS/1.0" },
+    });
+    const results = await response.json() as Array<{ lat: string; lon: string; boundingbox: string[] }>;
+    if (!results || results.length === 0) return null;
+
+    const result = results[0];
+    const lat = parseFloat(result.lat);
+    const lng = parseFloat(result.lon);
+    const bb = result.boundingbox; // [minLat, maxLat, minLon, maxLon]
+
+    let boundaryPolygon: [number, number][] | null = null;
+    if (bb && bb.length === 4) {
+      const minLat = parseFloat(bb[0]);
+      const maxLat = parseFloat(bb[1]);
+      const minLng = parseFloat(bb[2]);
+      const maxLng = parseFloat(bb[3]);
+      boundaryPolygon = [
+        [minLat, minLng],
+        [minLat, maxLng],
+        [maxLat, maxLng],
+        [maxLat, minLng],
+      ];
+    }
+
+    return { lat, lng, boundaryPolygon };
+  } catch {
+    return null;
+  }
+}
+
 function formatProperty(p: typeof propertiesTable.$inferSelect, customerName?: string | null) {
   return {
     ...p,
@@ -222,6 +267,31 @@ router.post("/properties", async (req, res): Promise<void> => {
     return;
   }
 
+  // Auto-geocode when lat/lng not explicitly provided
+  let resolvedLat: number | null = lat ?? null;
+  let resolvedLng: number | null = lng ?? null;
+  let seedPolygons: unknown[] | null = null;
+
+  if (resolvedLat == null || resolvedLng == null) {
+    const geo = await geocodeAddress(address, city, state, zip);
+    if (geo) {
+      resolvedLat = geo.lat;
+      resolvedLng = geo.lng;
+      if (geo.boundaryPolygon) {
+        seedPolygons = [
+          {
+            id: "boundary",
+            label: "Suggested Boundary",
+            vertices: geo.boundaryPolygon,
+            areaSqft: 0,
+            enabled: true,
+            color: "#3B82F6",
+          },
+        ];
+      }
+    }
+  }
+
   const [property] = await db.insert(propertiesTable).values({
     tenantId,
     customerId: parseInt(customerId, 10),
@@ -229,10 +299,11 @@ router.post("/properties", async (req, res): Promise<void> => {
     city: city ?? null,
     state: state ?? null,
     zip: zip ?? null,
-    lat: lat ?? null,
-    lng: lng ?? null,
+    lat: resolvedLat,
+    lng: resolvedLng,
     notes: notes ?? null,
     type: type ?? null,
+    ...(seedPolygons ? { measurementPolygons: seedPolygons } : {}),
   }).returning();
 
   res.status(201).json(formatProperty(property));
@@ -259,17 +330,58 @@ router.patch("/properties/:id", async (req, res): Promise<void> => {
   const id = parseInt(rawId, 10);
 
   const { address, city, state, zip, lat, lng, notes, type, measurementPolygons, serviceableAreaSqft, size, sizeUnit } = req.body;
+
+  // Auto-geocode when address fields change and lat/lng not explicitly provided
+  const addressChanged = address !== undefined || city !== undefined || state !== undefined || zip !== undefined;
+  const latLngExplicit = lat !== undefined || lng !== undefined;
+
+  let resolvedLat: number | undefined = lat;
+  let resolvedLng: number | undefined = lng;
+  let resolvedPolygons: unknown[] | undefined = measurementPolygons;
+
+  if (addressChanged && !latLngExplicit) {
+    // Fetch current property to build full address string
+    const [current] = await db.select().from(propertiesTable)
+      .where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId)));
+    if (!current) { res.status(404).json({ error: "Not found" }); return; }
+
+    const effectiveAddress = address ?? current.address;
+    const effectiveCity = city !== undefined ? city : current.city;
+    const effectiveState = state !== undefined ? state : current.state;
+    const effectiveZip = zip !== undefined ? zip : current.zip;
+
+    const geo = await geocodeAddress(effectiveAddress, effectiveCity, effectiveState, effectiveZip);
+    if (geo) {
+      resolvedLat = geo.lat;
+      resolvedLng = geo.lng;
+      // Seed boundary polygon only when polygons are currently empty and not being explicitly set
+      const existingPolygons = (current.measurementPolygons as unknown[]) ?? [];
+      if (existingPolygons.length === 0 && measurementPolygons === undefined && geo.boundaryPolygon) {
+        resolvedPolygons = [
+          {
+            id: "boundary",
+            label: "Suggested Boundary",
+            vertices: geo.boundaryPolygon,
+            areaSqft: 0,
+            enabled: true,
+            color: "#3B82F6",
+          },
+        ];
+      }
+    }
+  }
+
   const [updated] = await db.update(propertiesTable)
     .set({
       ...(address && { address }),
       ...(city !== undefined && { city }),
       ...(state !== undefined && { state }),
       ...(zip !== undefined && { zip }),
-      ...(lat !== undefined && { lat }),
-      ...(lng !== undefined && { lng }),
+      ...(resolvedLat !== undefined && { lat: resolvedLat }),
+      ...(resolvedLng !== undefined && { lng: resolvedLng }),
       ...(notes !== undefined && { notes }),
       ...(type !== undefined && { type }),
-      ...(measurementPolygons !== undefined && { measurementPolygons }),
+      ...(resolvedPolygons !== undefined && { measurementPolygons: resolvedPolygons }),
       ...(serviceableAreaSqft !== undefined && { serviceableAreaSqft }),
       ...(size !== undefined && { size }),
       ...(sizeUnit !== undefined && { sizeUnit }),
@@ -313,44 +425,13 @@ router.get("/properties/:id/geocode", async (req, res): Promise<void> => {
     .where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId)));
   if (!property) { res.status(404).json({ error: "Not found" }); return; }
 
-  const fullAddress = [property.address, property.city, property.state, property.zip].filter(Boolean).join(", ");
-
-  try {
-    const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(fullAddress)}`;
-    const response = await fetch(nominatimUrl, {
-      headers: { "User-Agent": "DivineEdgeOS/1.0" },
-    });
-    const results = await response.json() as Array<{ lat: string; lon: string; boundingbox: string[] }>;
-
-    if (!results || results.length === 0) {
-      res.status(404).json({ error: "Address not found" });
-      return;
-    }
-
-    const result = results[0];
-    const lat = parseFloat(result.lat);
-    const lng = parseFloat(result.lon);
-    const bb = result.boundingbox; // [minLat, maxLat, minLon, maxLon]
-
-    // Build a rough parcel boundary polygon from the bounding box as a starting point
-    let boundaryPolygon = null;
-    if (bb && bb.length === 4) {
-      const minLat = parseFloat(bb[0]);
-      const maxLat = parseFloat(bb[1]);
-      const minLng = parseFloat(bb[2]);
-      const maxLng = parseFloat(bb[3]);
-      boundaryPolygon = [
-        [minLat, minLng],
-        [minLat, maxLng],
-        [maxLat, maxLng],
-        [maxLat, minLng],
-      ];
-    }
-
-    res.json({ lat, lng, boundaryPolygon });
-  } catch (err) {
-    res.status(502).json({ error: "Geocoding service unavailable" });
+  const geo = await geocodeAddress(property.address, property.city, property.state, property.zip);
+  if (!geo) {
+    res.status(404).json({ error: "Address not found" });
+    return;
   }
+
+  res.json({ lat: geo.lat, lng: geo.lng, boundaryPolygon: geo.boundaryPolygon });
 });
 
 router.delete("/properties/:id", async (req, res): Promise<void> => {

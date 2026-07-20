@@ -9,7 +9,7 @@ import { adminNavSections, techNavItems } from './navConfig';
 import { SidebarSection } from './SidebarSection';
 import { Breadcrumb } from './Breadcrumb';
 import { NotificationBell } from '@/components/tasks/NotificationBell';
-import { useListTasks, getListTasksQueryKey, useListFollowupQueueItems, getListFollowupQueueItemsQueryKey } from '@workspace/api-client-react';
+import { useListTasks, getListTasksQueryKey, useListFollowupQueueItems, getListFollowupQueueItemsQueryKey, useListStopServiceFlags, getListStopServiceFlagsQueryKey } from '@workspace/api-client-react';
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, logout, isTechnician, isCrewManager, canManageOffice } = useAuth();
@@ -26,7 +26,17 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { status: 'open' },
     { query: { enabled: isAuthenticated, refetchInterval: 60000, queryKey: getListFollowupQueueItemsQueryKey({ status: 'open' }) } },
   );
-  const badgeCounts: Record<string, number> = { '/tasks': myOpenTaskCount, '/followup-queue': openFollowups.length };
+
+  const { data: pendingStopFlags = [] } = useListStopServiceFlags(
+    { status: 'pending' },
+    { query: { enabled: isAuthenticated && canManageOffice, refetchInterval: 60000, queryKey: getListStopServiceFlagsQueryKey({ status: 'pending' }) } },
+  );
+
+  const badgeCounts: Record<string, number> = {
+    '/tasks': myOpenTaskCount,
+    '/followup-queue': openFollowups.length,
+    '/financials': pendingStopFlags.length,
+  };
 
   useEffect(() => {
     if (!isAuthenticated && location !== '/login') {

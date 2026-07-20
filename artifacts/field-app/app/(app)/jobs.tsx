@@ -21,6 +21,7 @@ import {
 } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
+import { useOffline } from '@/contexts/OfflineContext';
 
 type Job = {
   id: number;
@@ -114,11 +115,15 @@ export default function JobsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, signOut } = useAuth();
+  const { isOffline, reportNetworkStatus, cacheJobs, getCachedJobs } = useOffline();
+
+  const [cachedJobs, setCachedJobs] = useState<Job[] | null>(null);
 
   const { data: jobs, isLoading, isError, refetch, isFetching } = useListJobs(
     user?.role === 'technician' ? { assigneeId: user.id } : undefined
   );
 
+  // Master clock (day clock banner) — from Task #42
   const { data: masterClock, refetch: refetchMasterClock } = useGetMasterClock();
   const startMasterClock = useStartMasterClock();
   const stopMasterClock = useStopMasterClock();
@@ -146,6 +151,26 @@ export default function JobsScreen() {
     }
   }, [masterClock?.isClockedIn, startMasterClock, stopMasterClock, refetchMasterClock]);
 
+  // When jobs load successfully, cache them and mark online
+  useEffect(() => {
+    if (jobs) {
+      reportNetworkStatus(false);
+      cacheJobs(jobs as unknown[]);
+    }
+  }, [jobs, reportNetworkStatus, cacheJobs]);
+
+  // When the query errors, try to load from cache and mark offline
+  useEffect(() => {
+    if (isError) {
+      reportNetworkStatus(true);
+      getCachedJobs().then((cached) => {
+        if (cached) setCachedJobs(cached as Job[]);
+      });
+    }
+  }, [isError, reportNetworkStatus, getCachedJobs]);
+
+  const displayJobs: Job[] = (isError ? cachedJobs : (jobs as Job[] | undefined)) ?? [];
+
   const handleJobPress = useCallback(async (id: number) => {
     await Haptics.selectionAsync();
     router.push(`/(app)/job/${id}`);
@@ -171,6 +196,9 @@ export default function JobsScreen() {
     ? `${elapsedHours}h ${String(elapsedMins).padStart(2, '0')}m`
     : '';
 
+  const showOfflineBanner = isOffline && isError;
+  const showEmptyError = isError && !cachedJobs;
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* User greeting bar */}
@@ -180,7 +208,7 @@ export default function JobsScreen() {
             {user?.name || 'Field Staff'}
           </Text>
           <Text style={[styles.greetingRole, { color: colors.mutedForeground }]}>
-            {user?.role ?? 'technician'} · {jobs?.length ?? 0} jobs
+            {user?.role ?? 'technician'} · {displayJobs.length} jobs
           </Text>
         </View>
         <View style={styles.headerActions}>
@@ -232,12 +260,20 @@ export default function JobsScreen() {
         </View>
       </TouchableOpacity>
 
+      {/* Offline banner */}
+      {showOfflineBanner && (
+        <View style={[styles.offlineBanner, { backgroundColor: '#92400e' }]}>
+          <Ionicons name="cloud-offline-outline" size={15} color="#fef3c7" />
+          <Text style={styles.offlineBannerText}>No connection · Showing cached data</Text>
+        </View>
+      )}
+
       {isLoading ? (
         <View style={styles.centered}>
           <ActivityIndicator color={colors.primary} size="large" />
           <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>Loading jobs…</Text>
         </View>
-      ) : isError ? (
+      ) : showEmptyError ? (
         <View style={styles.centered}>
           <Ionicons name="wifi-outline" size={48} color={colors.mutedForeground} />
           <Text style={[styles.emptyTitle, { color: colors.foreground }]}>Couldn't load jobs</Text>
@@ -247,7 +283,7 @@ export default function JobsScreen() {
         </View>
       ) : (
         <FlatList
-          data={(jobs as Job[]) ?? []}
+          data={displayJobs}
           keyExtractor={(item) => String(item.id)}
           renderItem={({ item }) => (
             <JobCard job={item} onPress={() => handleJobPress(item.id)} colors={colors} />
@@ -255,9 +291,9 @@ export default function JobsScreen() {
           contentContainerStyle={[
             styles.list,
             { paddingBottom: bottomPad },
-            (!jobs || jobs.length === 0) && styles.listEmpty,
+            displayJobs.length === 0 && styles.listEmpty,
           ]}
-          scrollEnabled={!!(jobs && jobs.length > 0)}
+          scrollEnabled={displayJobs.length > 0}
           refreshControl={
             <RefreshControl
               refreshing={isFetching && !isLoading}
@@ -302,6 +338,53 @@ const styles = StyleSheet.create({
   },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   headerBtn: { padding: 6 },
+  clockBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  clockBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  clockDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  clockBannerLabel: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
+  },
+  clockToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 7,
+  },
+  clockToggleText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+  },
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 7,
+    paddingHorizontal: 16,
+  },
+  offlineBannerText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
+    color: '#fef3c7',
+  },
   centered: {
     flex: 1,
     alignItems: 'center',
@@ -356,40 +439,6 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   statusText: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 12,
-  },
-  clockBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-  },
-  clockBannerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  clockDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  clockBannerLabel: {
-    fontFamily: 'Inter_500Medium',
-    fontSize: 13,
-  },
-  clockToggleBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 7,
-  },
-  clockToggleText: {
     fontFamily: 'Inter_500Medium',
     fontSize: 12,
   },

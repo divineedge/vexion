@@ -15,6 +15,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { setBaseUrl } from '@workspace/api-client-react';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { OfflineProvider } from '@/contexts/OfflineContext';
 
 // Set the API base URL so Expo (outside the proxy) can reach the API server.
 if (process.env.EXPO_PUBLIC_DOMAIN) {
@@ -57,7 +58,9 @@ export default function RootLayout() {
           <GestureHandlerRootView style={{ flex: 1 }}>
             <KeyboardProvider>
               <AuthProvider>
-                <RootLayoutNav />
+                <OfflineProvider>
+                  <RootLayoutNav />
+                </OfflineProvider>
               </AuthProvider>
             </KeyboardProvider>
           </GestureHandlerRootView>

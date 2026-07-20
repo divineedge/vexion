@@ -21,6 +21,7 @@ import {
   useUpdateJob,
 } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
+import { useOffline } from '@/contexts/OfflineContext';
 
 type BreakdownItem = {
   productName?: string | null;
@@ -62,11 +63,16 @@ export default function JobDetailScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const jobId = Number(id);
+  const { isOffline, reportNetworkStatus, cacheJob, getCachedJob, cacheApplications, getCachedApplications } = useOffline();
 
-  const { data: job, isLoading: jobLoading, refetch: refetchJob } = useGetJob(jobId);
+  const [cachedJob, setCachedJob] = useState<unknown | null>(null);
+  const [cachedApps, setCachedApps] = useState<ChemApp[] | null>(null);
+
+  const { data: job, isLoading: jobLoading, isError: jobError, refetch: refetchJob } = useGetJob(jobId);
   const {
     data: applications,
     isLoading: appsLoading,
+    isError: appsError,
     refetch: refetchApps,
     isFetching,
   } = useListJobChemicalApplications(jobId);
@@ -87,6 +93,43 @@ export default function JobDetailScreen() {
     return () => clearInterval(iv);
   }, [activeJobTimer?.id]);
 
+  // Cache job on successful fetch
+  useEffect(() => {
+    if (job) {
+      reportNetworkStatus(false);
+      cacheJob(jobId, job);
+    }
+  }, [job, jobId, reportNetworkStatus, cacheJob]);
+
+  // Load cached job when fetch fails
+  useEffect(() => {
+    if (jobError) {
+      reportNetworkStatus(true);
+      getCachedJob(jobId).then((cached) => {
+        if (cached) setCachedJob(cached);
+      });
+    }
+  }, [jobError, jobId, reportNetworkStatus, getCachedJob]);
+
+  // Cache applications on successful fetch
+  useEffect(() => {
+    if (applications) {
+      cacheApplications(jobId, applications as unknown[]);
+    }
+  }, [applications, jobId, cacheApplications]);
+
+  // Load cached applications when fetch fails
+  useEffect(() => {
+    if (appsError) {
+      getCachedApplications(jobId).then((cached) => {
+        if (cached) setCachedApps(cached as ChemApp[]);
+      });
+    }
+  }, [appsError, jobId, getCachedApplications]);
+
+  const displayJob = jobError ? cachedJob : job;
+  const displayApps: ChemApp[] = (appsError ? cachedApps : (applications as ChemApp[] | undefined)) ?? [];
+
   const isLoading = jobLoading || appsLoading;
 
   const handleLogApplication = useCallback(async () => {
@@ -101,6 +144,8 @@ export default function JobDetailScreen() {
 
   const bottomPad = insets.bottom + (Platform.OS === 'web' ? 34 : 0) + 100;
 
+  const showOfflineBanner = isOffline && (jobError || appsError);
+
   if (isLoading) {
     return (
       <View style={[styles.centered, { backgroundColor: colors.background }]}>
@@ -109,10 +154,18 @@ export default function JobDetailScreen() {
     );
   }
 
-  if (!job) {
+  if (!displayJob) {
     return (
       <View style={[styles.centered, { backgroundColor: colors.background }]}>
-        <Text style={[styles.errorText, { color: colors.destructive }]}>Job not found</Text>
+        <Ionicons name="wifi-outline" size={48} color={colors.mutedForeground} />
+        <Text style={[styles.errorText, { color: colors.mutedForeground }]}>
+          {jobError ? 'No connection and no cached data' : 'Job not found'}
+        </Text>
+        {jobError && (
+          <TouchableOpacity style={[styles.retryBtn, { borderColor: colors.border }]} onPress={refetch}>
+            <Text style={[styles.retryText, { color: colors.primary }]}>Try Again</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   }
@@ -124,10 +177,18 @@ export default function JobDetailScreen() {
     cancelled: colors.statusCancelled,
     on_hold: colors.statusOnHold,
   };
-  const statusColor = statusMap[(job as { status: string }).status] ?? colors.mutedForeground;
+  const statusColor = statusMap[(displayJob as { status: string }).status] ?? colors.mutedForeground;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Offline banner */}
+      {showOfflineBanner && (
+        <View style={[styles.offlineBanner, { backgroundColor: '#92400e' }]}>
+          <Ionicons name="cloud-offline-outline" size={15} color="#fef3c7" />
+          <Text style={styles.offlineBannerText}>No connection · Showing cached data</Text>
+        </View>
+      )}
+
       <ScrollView
         contentContainerStyle={{ paddingBottom: bottomPad }}
         refreshControl={
@@ -138,133 +199,135 @@ export default function JobDetailScreen() {
         {/* Job info card */}
         <View style={[styles.jobCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.jobHeader}>
-            <Text style={[styles.jobTitle, { color: colors.foreground }]}>{(job as { title: string }).title}</Text>
+            <Text style={[styles.jobTitle, { color: colors.foreground }]}>{(displayJob as { title: string }).title}</Text>
             <View style={[styles.statusBadge, { backgroundColor: statusColor + '22' }]}>
               <Text style={[styles.statusText, { color: statusColor }]}>
-                {(job as { status: string }).status.replace('_', ' ')}
+                {(displayJob as { status: string }).status.replace('_', ' ')}
               </Text>
             </View>
           </View>
-          {(job as { propertyAddress?: string | null }).propertyAddress ? (
+          {(displayJob as { propertyAddress?: string | null }).propertyAddress ? (
             <View style={styles.infoRow}>
               <Ionicons name="location-outline" size={15} color={colors.mutedForeground} />
               <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
-                {(job as { propertyAddress: string }).propertyAddress}
+                {(displayJob as { propertyAddress: string }).propertyAddress}
               </Text>
             </View>
           ) : null}
-          {(job as { customerName?: string | null }).customerName ? (
+          {(displayJob as { customerName?: string | null }).customerName ? (
             <View style={styles.infoRow}>
               <Ionicons name="person-outline" size={15} color={colors.mutedForeground} />
               <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
-                {(job as { customerName: string }).customerName}
+                {(displayJob as { customerName: string }).customerName}
               </Text>
             </View>
           ) : null}
           <View style={styles.infoRow}>
             <Ionicons name="calendar-outline" size={15} color={colors.mutedForeground} />
             <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
-              {formatDate((job as { scheduledAt: string }).scheduledAt)}
+              {formatDate((displayJob as { scheduledAt: string }).scheduledAt)}
             </Text>
           </View>
         </View>
 
-        {/* Clock in / out card */}
-        <View style={[styles.clockCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 14 }]}>Time Tracking</Text>
+        {/* Clock in / out card — hidden when offline since timers require network */}
+        {!isOffline && (
+          <View style={[styles.clockCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 14 }]}>Time Tracking</Text>
 
-          {/* Day clock (master) */}
-          <View style={styles.clockRow}>
-            <View>
-              <Text style={[styles.clockLabel, { color: colors.mutedForeground }]}>Day Clock</Text>
-              <Text style={[styles.clockValue, { color: masterClock?.isClockedIn ? colors.primary : colors.mutedForeground }]}>
-                {masterClock?.isClockedIn ? 'Clocked in for the day' : 'Not clocked in'}
-              </Text>
+            {/* Day clock (master) */}
+            <View style={styles.clockRow}>
+              <View>
+                <Text style={[styles.clockLabel, { color: colors.mutedForeground }]}>Day Clock</Text>
+                <Text style={[styles.clockValue, { color: masterClock?.isClockedIn ? colors.primary : colors.mutedForeground }]}>
+                  {masterClock?.isClockedIn ? 'Clocked in for the day' : 'Not clocked in'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.clockBtn, { backgroundColor: masterClock?.isClockedIn ? '#ef444418' : colors.primary + '18' }]}
+                onPress={async () => {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  if (masterClock?.isClockedIn) {
+                    stopMasterClock.mutate(undefined, { onSuccess: () => refetchMasterClock() });
+                  } else {
+                    startMasterClock.mutate(undefined, { onSuccess: () => refetchMasterClock() });
+                  }
+                }}
+              >
+                <Ionicons
+                  name={masterClock?.isClockedIn ? 'stop-circle-outline' : 'play-circle-outline'}
+                  size={18}
+                  color={masterClock?.isClockedIn ? '#ef4444' : colors.primary}
+                />
+                <Text style={[styles.clockBtnText, { color: masterClock?.isClockedIn ? '#ef4444' : colors.primary }]}>
+                  {masterClock?.isClockedIn ? 'Clock Out' : 'Clock In'}
+                </Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              style={[styles.clockBtn, { backgroundColor: masterClock?.isClockedIn ? '#ef444418' : colors.primary + '18' }]}
-              onPress={async () => {
-                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                if (masterClock?.isClockedIn) {
-                  stopMasterClock.mutate(undefined, { onSuccess: () => refetchMasterClock() });
-                } else {
-                  startMasterClock.mutate(undefined, { onSuccess: () => refetchMasterClock() });
-                }
-              }}
-            >
-              <Ionicons
-                name={masterClock?.isClockedIn ? 'stop-circle-outline' : 'play-circle-outline'}
-                size={18}
-                color={masterClock?.isClockedIn ? '#ef4444' : colors.primary}
-              />
-              <Text style={[styles.clockBtnText, { color: masterClock?.isClockedIn ? '#ef4444' : colors.primary }]}>
-                {masterClock?.isClockedIn ? 'Clock Out' : 'Clock In'}
-              </Text>
-            </TouchableOpacity>
-          </View>
 
-          <View style={[styles.clockDivider, { backgroundColor: colors.border }]} />
+            <View style={[styles.clockDivider, { backgroundColor: colors.border }]} />
 
-          {/* Job sub-timer */}
-          <View style={styles.clockRow}>
-            <View>
-              <Text style={[styles.clockLabel, { color: colors.mutedForeground }]}>Job Timer</Text>
-              <Text style={[styles.clockValue, { color: activeJobTimer ? '#f59e0b' : colors.mutedForeground }]}>
-                {activeJobTimer
-                  ? `${Math.floor(liveSeconds / 3600)}h ${String(Math.floor((liveSeconds % 3600) / 60)).padStart(2, '0')}m ${String(liveSeconds % 60).padStart(2, '0')}s`
-                  : 'Not started'}
-              </Text>
+            {/* Job sub-timer */}
+            <View style={styles.clockRow}>
+              <View>
+                <Text style={[styles.clockLabel, { color: colors.mutedForeground }]}>Job Timer</Text>
+                <Text style={[styles.clockValue, { color: activeJobTimer ? '#f59e0b' : colors.mutedForeground }]}>
+                  {activeJobTimer
+                    ? `${Math.floor(liveSeconds / 3600)}h ${String(Math.floor((liveSeconds % 3600) / 60)).padStart(2, '0')}m ${String(liveSeconds % 60).padStart(2, '0')}s`
+                    : 'Not started'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.clockBtn, { backgroundColor: activeJobTimer ? '#f59e0b18' : colors.primary + '18' }]}
+                onPress={async () => {
+                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  if (activeJobTimer) {
+                    stopSubTimer.mutate({ id: activeJobTimer.id }, {
+                      onSuccess: () => {
+                        refetchSubTimers();
+                        Alert.alert(
+                          'Mark Job Complete?',
+                          'Do you want to mark this job as completed?',
+                          [
+                            { text: 'Not yet', style: 'cancel' },
+                            {
+                              text: 'Mark Complete',
+                              onPress: () => updateJob.mutate(
+                                { id: jobId, data: { status: 'completed' } },
+                                { onSuccess: () => refetchJob() },
+                              ),
+                            },
+                          ],
+                        );
+                      },
+                    });
+                  } else {
+                    startSubTimer.mutate(
+                      { data: { label: (displayJob as any).title, type: 'job', jobId } },
+                      { onSuccess: () => refetchSubTimers() },
+                    );
+                  }
+                }}
+              >
+                <Ionicons
+                  name={activeJobTimer ? 'stop-circle-outline' : 'timer-outline'}
+                  size={18}
+                  color={activeJobTimer ? '#f59e0b' : colors.primary}
+                />
+                <Text style={[styles.clockBtnText, { color: activeJobTimer ? '#f59e0b' : colors.primary }]}>
+                  {activeJobTimer ? 'Stop Timer' : 'Start Timer'}
+                </Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              style={[styles.clockBtn, { backgroundColor: activeJobTimer ? '#f59e0b18' : colors.primary + '18' }]}
-              onPress={async () => {
-                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                if (activeJobTimer) {
-                  stopSubTimer.mutate({ id: activeJobTimer.id }, {
-                    onSuccess: () => {
-                      refetchSubTimers();
-                      Alert.alert(
-                        'Mark Job Complete?',
-                        'Do you want to mark this job as completed?',
-                        [
-                          { text: 'Not yet', style: 'cancel' },
-                          {
-                            text: 'Mark Complete',
-                            onPress: () => updateJob.mutate(
-                              { id: jobId, data: { status: 'completed' } },
-                              { onSuccess: () => refetchJob() },
-                            ),
-                          },
-                        ],
-                      );
-                    },
-                  });
-                } else {
-                  startSubTimer.mutate(
-                    { data: { label: (job as any).title, type: 'job', jobId } },
-                    { onSuccess: () => refetchSubTimers() },
-                  );
-                }
-              }}
-            >
-              <Ionicons
-                name={activeJobTimer ? 'stop-circle-outline' : 'timer-outline'}
-                size={18}
-                color={activeJobTimer ? '#f59e0b' : colors.primary}
-              />
-              <Text style={[styles.clockBtnText, { color: activeJobTimer ? '#f59e0b' : colors.primary }]}>
-                {activeJobTimer ? 'Stop Timer' : 'Start Timer'}
-              </Text>
-            </TouchableOpacity>
           </View>
-        </View>
+        )}
 
         {/* Applications section */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
             Chemical Applications
           </Text>
-          {!applications || (applications as ChemApp[]).length === 0 ? (
+          {displayApps.length === 0 ? (
             <View style={[styles.emptyCard, { backgroundColor: colors.muted, borderColor: colors.border }]}>
               <Ionicons name="flask-outline" size={32} color={colors.mutedForeground} />
               <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
@@ -272,14 +335,14 @@ export default function JobDetailScreen() {
               </Text>
             </View>
           ) : (
-            (applications as ChemApp[]).map((app) => (
+            displayApps.map((app) => (
               <AppCard key={app.id} app={app} colors={colors} />
             ))
           )}
         </View>
       </ScrollView>
 
-      {/* Log Application FAB */}
+      {/* Log Application FAB — disabled offline */}
       <View
         style={[
           styles.fabContainer,
@@ -287,13 +350,13 @@ export default function JobDetailScreen() {
         ]}
       >
         <TouchableOpacity
-          style={[styles.fab, { backgroundColor: colors.primary }]}
-          onPress={handleLogApplication}
-          activeOpacity={0.85}
+          style={[styles.fab, { backgroundColor: isOffline ? colors.mutedForeground : colors.primary }]}
+          onPress={isOffline ? undefined : handleLogApplication}
+          activeOpacity={isOffline ? 1 : 0.85}
           testID="log-application-button"
         >
-          <Ionicons name="add-circle-outline" size={22} color="#ffffff" />
-          <Text style={styles.fabText}>Log Application</Text>
+          <Ionicons name={isOffline ? 'cloud-offline-outline' : 'add-circle-outline'} size={22} color="#ffffff" />
+          <Text style={styles.fabText}>{isOffline ? 'Offline' : 'Log Application'}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -358,8 +421,32 @@ function AppCard({ app, colors }: { app: ChemApp; colors: ReturnType<typeof useC
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   errorText: { fontFamily: 'Inter_400Regular', fontSize: 16 },
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 7,
+    paddingHorizontal: 16,
+  },
+  offlineBannerText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
+    color: '#fef3c7',
+  },
+  retryBtn: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    marginTop: 4,
+  },
+  retryText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 14,
+  },
   jobCard: {
     margin: 16,
     borderRadius: 12,

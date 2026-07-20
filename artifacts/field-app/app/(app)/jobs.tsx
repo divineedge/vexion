@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,12 @@ import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useListJobs } from '@workspace/api-client-react';
+import {
+  useListJobs,
+  useGetMasterClock,
+  useStartMasterClock,
+  useStopMasterClock,
+} from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -114,6 +119,33 @@ export default function JobsScreen() {
     user?.role === 'technician' ? { assigneeId: user.id } : undefined
   );
 
+  const { data: masterClock, refetch: refetchMasterClock } = useGetMasterClock();
+  const startMasterClock = useStartMasterClock();
+  const stopMasterClock = useStopMasterClock();
+
+  // Live elapsed time for the day clock
+  const [clockedInSeconds, setClockedInSeconds] = useState(0);
+  useEffect(() => {
+    if (!masterClock?.isClockedIn || !masterClock?.clockedInAt) {
+      setClockedInSeconds(0);
+      return;
+    }
+    const update = () =>
+      setClockedInSeconds(Math.floor((Date.now() - new Date(masterClock.clockedInAt as string).getTime()) / 1000));
+    update();
+    const iv = setInterval(update, 1000);
+    return () => clearInterval(iv);
+  }, [masterClock?.isClockedIn, masterClock?.clockedInAt]);
+
+  const handleClockToggle = useCallback(async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (masterClock?.isClockedIn) {
+      stopMasterClock.mutate(undefined, { onSuccess: () => refetchMasterClock() });
+    } else {
+      startMasterClock.mutate(undefined, { onSuccess: () => refetchMasterClock() });
+    }
+  }, [masterClock?.isClockedIn, startMasterClock, stopMasterClock, refetchMasterClock]);
+
   const handleJobPress = useCallback(async (id: number) => {
     await Haptics.selectionAsync();
     router.push(`/(app)/job/${id}`);
@@ -131,6 +163,13 @@ export default function JobsScreen() {
   }, []);
 
   const bottomPad = insets.bottom + (Platform.OS === 'web' ? 34 : 0) + 16;
+
+  const isClockedIn = masterClock?.isClockedIn ?? false;
+  const elapsedHours = Math.floor(clockedInSeconds / 3600);
+  const elapsedMins = Math.floor((clockedInSeconds % 3600) / 60);
+  const elapsedLabel = clockedInSeconds > 0
+    ? `${elapsedHours}h ${String(elapsedMins).padStart(2, '0')}m`
+    : '';
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -157,6 +196,41 @@ export default function JobsScreen() {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Day clock banner */}
+      <TouchableOpacity
+        style={[
+          styles.clockBanner,
+          {
+            backgroundColor: isClockedIn ? colors.primary + '14' : colors.card,
+            borderBottomColor: colors.border,
+          },
+        ]}
+        onPress={handleClockToggle}
+        activeOpacity={0.75}
+        testID="master-clock-banner"
+      >
+        <View style={styles.clockBannerLeft}>
+          <View style={[styles.clockDot, { backgroundColor: isClockedIn ? colors.primary : colors.mutedForeground }]} />
+          <Text style={[styles.clockBannerLabel, { color: isClockedIn ? colors.primary : colors.mutedForeground }]}>
+            {isClockedIn
+              ? elapsedLabel
+                ? `Clocked in · ${elapsedLabel}`
+                : 'Clocked in for the day'
+              : 'Not clocked in'}
+          </Text>
+        </View>
+        <View style={[styles.clockToggleBtn, { backgroundColor: isClockedIn ? '#ef444418' : colors.primary + '18' }]}>
+          <Ionicons
+            name={isClockedIn ? 'stop-circle-outline' : 'play-circle-outline'}
+            size={16}
+            color={isClockedIn ? '#ef4444' : colors.primary}
+          />
+          <Text style={[styles.clockToggleText, { color: isClockedIn ? '#ef4444' : colors.primary }]}>
+            {isClockedIn ? 'Clock Out' : 'Clock In'}
+          </Text>
+        </View>
+      </TouchableOpacity>
 
       {isLoading ? (
         <View style={styles.centered}>
@@ -282,6 +356,40 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   statusText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+  },
+  clockBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  clockBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  clockDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  clockBannerLabel: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
+  },
+  clockToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 7,
+  },
+  clockToggleText: {
     fontFamily: 'Inter_500Medium',
     fontSize: 12,
   },

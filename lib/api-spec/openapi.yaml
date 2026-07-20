@@ -3390,6 +3390,27 @@ paths:
                 items:
                   $ref: "#/components/schemas/PortalInvoice"
 
+  /portal/invoices/{id}:
+    get:
+      operationId: portalGetInvoice
+      tags: [portal]
+      summary: Get a single invoice for the portal customer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Invoice detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalInvoice"
+        "404":
+          description: Invoice not found
+
   /portal/properties:
     get:
       operationId: portalListProperties

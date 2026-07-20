@@ -8,6 +8,7 @@ import Login from '@/pages/login';
 import Home from '@/pages/home';
 import Jobs from '@/pages/jobs';
 import Invoices from '@/pages/invoices';
+import InvoiceDetail from '@/pages/invoice-detail';
 import Properties from '@/pages/properties';
 import PropertyDetail from '@/pages/property-detail';
 import Alerts from '@/pages/alerts';
@@ -46,6 +47,9 @@ function Router() {
       </Route>
       <Route path="/invoices">
         <AppShell><Invoices /></AppShell>
+      </Route>
+      <Route path="/invoices/:id">
+        <AppShell><InvoiceDetail /></AppShell>
       </Route>
       <Route path="/properties">
         <AppShell><Properties /></AppShell>

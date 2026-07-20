@@ -12661,6 +12661,83 @@ export function usePortalListInvoices<TData = Awaited<ReturnType<typeof portalLi
 
 
 
+export const getPortalGetInvoiceUrl = (id: number,) => {
+
+
+
+
+  return `/api/portal/invoices/${id}`
+}
+
+/**
+ * @summary Get a single invoice for the portal customer
+ */
+export const portalGetInvoice = async (id: number, options?: RequestInit): Promise<PortalInvoice> => {
+
+  return customFetch<PortalInvoice>(getPortalGetInvoiceUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getPortalGetInvoiceQueryKey = (id: number,) => {
+    return [
+    `/api/portal/invoices/${id}`
+    ] as const;
+    }
+
+
+export const getPortalGetInvoiceQueryOptions = <TData = Awaited<ReturnType<typeof portalGetInvoice>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof portalGetInvoice>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getPortalGetInvoiceQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof portalGetInvoice>>> = ({ signal }) => portalGetInvoice(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof portalGetInvoice>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type PortalGetInvoiceQueryResult = NonNullable<Awaited<ReturnType<typeof portalGetInvoice>>>
+export type PortalGetInvoiceQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a single invoice for the portal customer
+ */
+
+export function usePortalGetInvoice<TData = Awaited<ReturnType<typeof portalGetInvoice>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof portalGetInvoice>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getPortalGetInvoiceQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getPortalListPropertiesUrl = () => {
 
 

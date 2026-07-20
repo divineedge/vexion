@@ -5352,6 +5352,41 @@ export const PortalListInvoicesResponse = zod.array(PortalListInvoicesResponseIt
 
 
 /**
+ * @summary Get a single invoice for the portal customer
+ */
+export const PortalGetInvoiceParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const PortalGetInvoiceResponse = zod.object({
+  "id": zod.number(),
+  "invoiceNumber": zod.string(),
+  "status": zod.string(),
+  "subtotal": zod.number().optional(),
+  "tax": zod.number().optional(),
+  "total": zod.number(),
+  "dueDate": zod.string().nullish(),
+  "paidAt": zod.string().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "inventoryItemId": zod.number().nullish(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional(),
+  "jobParts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional(),
+  "createdAt": zod.string()
+})
+
+
+/**
  * @summary List all properties for the portal customer
  */
 export const PortalListPropertiesResponseItem = zod.object({

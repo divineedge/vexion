@@ -396,6 +396,33 @@ router.get("/portal/invoices", requirePortalAuth, async (req: any, res): Promise
 });
 
 // ---------------------------------------------------------------------------
+// GET /portal/invoices/:id
+// ---------------------------------------------------------------------------
+router.get("/portal/invoices/:id", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+  const invoiceId = parseInt(req.params.id, 10);
+
+  const [invoice] = await db
+    .select()
+    .from(invoicesTable)
+    .where(
+      and(
+        eq(invoicesTable.id, invoiceId),
+        eq(invoicesTable.customerId, portalCustomerId),
+        eq(invoicesTable.tenantId, portalTenantId),
+      ),
+    )
+    .limit(1);
+
+  if (!invoice) {
+    res.status(404).json({ error: "Invoice not found" });
+    return;
+  }
+
+  res.json(formatPortalInvoice(invoice));
+});
+
+// ---------------------------------------------------------------------------
 // GET /portal/properties
 // ---------------------------------------------------------------------------
 router.get("/portal/properties", requirePortalAuth, async (req: any, res): Promise<void> => {

@@ -4,6 +4,8 @@ import {
   useUpdateCustomer,
   useListProperties, getListPropertiesQueryKey,
   useListJobs, getListJobsQueryKey,
+  useListEstimates, getListEstimatesQueryKey,
+  useListVisits, getListVisitsQueryKey,
   useGetTenantSettings, getGetTenantSettingsQueryKey,
   useGetCustomerPortalLink, getGetCustomerPortalLinkQueryKey,
   useListCustomerMessages, getListCustomerMessagesQueryKey,
@@ -26,9 +28,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import {
-  ArrowLeft, Building, Phone, Mail, Edit, Plus, Calendar,
+  ArrowLeft, Building, Phone, Mail, Edit, Plus, Calendar, MapPin,
   Save, X, User, FileText, Tag, DollarSign, Home, Briefcase, Megaphone, AlertTriangle, Link,
-  MessageSquare, Send, PhoneOff, MailMinus, ChevronRight, PlayCircle,
+  MessageSquare, Send, PhoneOff, MailMinus, ChevronRight, PlayCircle, ClipboardList, Eye,
 } from 'lucide-react';
 import CustomerAvatar from '@/components/media/CustomerAvatar';
 import PropertyThumbnail from '@/components/media/PropertyThumbnail';
@@ -111,6 +113,14 @@ export default function CustomerDetailPage() {
   const { data: jobs } = useListJobs(
     { customerId: id },
     { query: { enabled: !!id, queryKey: getListJobsQueryKey({ customerId: id }) } },
+  );
+  const { data: estimates } = useListEstimates(
+    { customerId: id },
+    { query: { enabled: !!id, queryKey: getListEstimatesQueryKey({ customerId: id }) } },
+  );
+  const { data: visits } = useListVisits(
+    { customerId: id },
+    { query: { enabled: !!id, queryKey: getListVisitsQueryKey({ customerId: id }) } },
   );
   const { data: settings } = useGetTenantSettings({
     query: { queryKey: getGetTenantSettingsQueryKey() },
@@ -381,6 +391,7 @@ export default function CustomerDetailPage() {
       <Tabs defaultValue="overview" className="w-full">
         <TabsList className="mb-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="timeline">Timeline</TabsTrigger>
           <TabsTrigger value="properties">Properties ({properties?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="jobs">Jobs ({jobs?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="messages">Messages ({messages?.length ?? 0})</TabsTrigger>
@@ -506,6 +517,184 @@ export default function CustomerDetailPage() {
                 <CardHeader><CardTitle className="text-base">Additional Information</CardTitle></CardHeader>
                 <CardContent className="space-y-3 text-sm">
                   {customFields.map(f => cfVals[f.key] && <Row key={f.key} label={f.label} value={cfVals[f.key]} />)}
+                </CardContent>
+              </Card>
+            );
+          })()}
+        </TabsContent>
+
+        {/* Timeline tab */}
+        <TabsContent value="timeline" className="focus-visible:outline-none">
+          {(() => {
+            type TimelineItem =
+              | { kind: 'job'; date: Date; id: number; title: string; status: string; amount: number | null; propertyAddress: string | null }
+              | { kind: 'estimate'; date: Date; id: number; status: string; total: number | null; sentAt: string | null; approvedAt: string | null; propertyAddress: string | null }
+              | { kind: 'visit'; date: Date; id: number; purpose: string; completedAt: string | null; outcomeNotes: string | null; propertyAddress: string | null };
+
+            const items: TimelineItem[] = [
+              ...(jobs ?? []).map(j => ({
+                kind: 'job' as const,
+                date: new Date(j.scheduledAt),
+                id: j.id,
+                title: j.title,
+                status: j.status,
+                amount: j.totalAmount ?? null,
+                propertyAddress: (j as any).propertyAddress ?? null,
+              })),
+              ...(estimates ?? []).map(e => ({
+                kind: 'estimate' as const,
+                date: new Date(e.sentAt ?? e.createdAt),
+                id: e.id,
+                status: e.status,
+                total: e.total ?? null,
+                sentAt: e.sentAt ?? null,
+                approvedAt: e.approvedAt ?? null,
+                propertyAddress: (e as any).propertyAddress ?? null,
+              })),
+              ...(visits ?? []).map(v => ({
+                kind: 'visit' as const,
+                date: new Date((v as any).scheduledAt ?? v.createdAt),
+                id: v.id,
+                purpose: v.purpose,
+                completedAt: (v as any).completedAt ?? null,
+                outcomeNotes: (v as any).outcomeNotes ?? null,
+                propertyAddress: (v as any).propertyAddress ?? null,
+              })),
+            ].sort((a, b) => b.date.getTime() - a.date.getTime());
+
+            const ESTIMATE_STATUS_COLORS: Record<string, string> = {
+              draft: 'bg-gray-100 text-gray-600 border-transparent',
+              sent: 'bg-blue-100 text-blue-700 border-transparent',
+              approved: 'bg-emerald-100 text-emerald-700 border-transparent',
+              declined: 'bg-red-100 text-red-600 border-transparent',
+              expired: 'bg-amber-100 text-amber-700 border-transparent',
+            };
+            const VISIT_STATUS_COLORS: Record<string, string> = {
+              completed: 'bg-emerald-100 text-emerald-700 border-transparent',
+              pending: 'bg-amber-100 text-amber-700 border-transparent',
+            };
+
+            if (!items.length) {
+              return (
+                <Card>
+                  <CardContent className="py-16 text-center text-muted-foreground">
+                    <Calendar className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                    <p>No activity recorded for this customer yet.</p>
+                  </CardContent>
+                </Card>
+              );
+            }
+
+            return (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Customer Timeline</CardTitle>
+                  <CardDescription>All jobs, estimates, and visits in chronological order.</CardDescription>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="relative">
+                    {items.map((item, idx) => (
+                      <div key={`${item.kind}-${item.id}`} className="flex gap-4 px-6 py-4 hover:bg-muted/30 transition-colors border-b last:border-b-0">
+                        {/* Icon column */}
+                        <div className="shrink-0 flex flex-col items-center gap-1 pt-0.5">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                            item.kind === 'job' ? 'bg-violet-100 text-violet-600' :
+                            item.kind === 'estimate' ? 'bg-blue-100 text-blue-600' :
+                            'bg-amber-100 text-amber-600'
+                          }`}>
+                            {item.kind === 'job' && <Briefcase className="w-4 h-4" />}
+                            {item.kind === 'estimate' && <ClipboardList className="w-4 h-4" />}
+                            {item.kind === 'visit' && <Eye className="w-4 h-4" />}
+                          </div>
+                          {idx < items.length - 1 && <div className="w-px flex-1 bg-border mt-1" style={{ minHeight: 16 }} />}
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 min-w-0 pb-1">
+                          <div className="flex items-start justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                {item.kind === 'job' ? 'Job' : item.kind === 'estimate' ? 'Estimate' : 'Visit'}
+                              </span>
+                              {item.kind === 'job' && (
+                                <Badge className={`capitalize text-xs ${STATUS_COLORS[item.status] ?? ''}`}>
+                                  {item.status.replace(/_/g, ' ')}
+                                </Badge>
+                              )}
+                              {item.kind === 'estimate' && (
+                                <Badge className={`capitalize text-xs ${ESTIMATE_STATUS_COLORS[item.status] ?? ''}`}>
+                                  {item.status}
+                                </Badge>
+                              )}
+                              {item.kind === 'visit' && (
+                                <Badge className={`text-xs ${item.completedAt ? VISIT_STATUS_COLORS.completed : VISIT_STATUS_COLORS.pending}`}>
+                                  {item.completedAt ? 'Completed' : 'Pending'}
+                                </Badge>
+                              )}
+                            </div>
+                            <span className="text-xs text-muted-foreground shrink-0">
+                              {item.date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                            </span>
+                          </div>
+
+                          <p className="text-sm font-medium mt-0.5 truncate">
+                            {item.kind === 'job' && item.title}
+                            {item.kind === 'estimate' && (
+                              <>Estimate #{item.id}{item.total != null ? ` — ${item.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : ''}</>
+                            )}
+                            {item.kind === 'visit' && item.purpose}
+                          </p>
+
+                          <div className="flex items-center gap-3 mt-1 flex-wrap">
+                            {item.propertyAddress && (
+                              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                <MapPin className="w-3 h-3" />{item.propertyAddress}
+                              </span>
+                            )}
+                            {item.kind === 'estimate' && item.sentAt && (
+                              <span className="text-xs text-muted-foreground">
+                                Sent {new Date(item.sentAt).toLocaleDateString()}
+                              </span>
+                            )}
+                            {item.kind === 'estimate' && item.approvedAt && (
+                              <span className="text-xs text-emerald-600">
+                                Approved {new Date(item.approvedAt).toLocaleDateString()}
+                              </span>
+                            )}
+                            {item.kind === 'job' && item.amount != null && (
+                              <span className="text-xs font-medium text-muted-foreground">
+                                ${item.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              </span>
+                            )}
+                            {item.kind === 'visit' && item.outcomeNotes && (
+                              <span className="text-xs text-muted-foreground truncate max-w-xs" title={item.outcomeNotes}>
+                                {item.outcomeNotes}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Link button */}
+                        <div className="shrink-0 flex items-center">
+                          {item.kind === 'job' && (
+                            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setLocation(`/jobs/${item.id}`)}>
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                          {item.kind === 'estimate' && (
+                            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setLocation(`/estimates?customerId=${id}`)}>
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                          {item.kind === 'visit' && (
+                            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setLocation(`/visits?customerId=${id}`)}>
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </CardContent>
               </Card>
             );

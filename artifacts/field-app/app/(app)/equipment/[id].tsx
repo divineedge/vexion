@@ -24,6 +24,12 @@ type Equipment = {
   currentMiles?: number | null;
   totalFuelCost: number;
   costPerHour?: number | null;
+  maintenanceDue: boolean;
+  nextServiceDueDate?: string | null;
+  nextServiceDueHours?: number | null;
+  nextServiceDueMiles?: number | null;
+  hoursUntilService?: number | null;
+  milesUntilService?: number | null;
 };
 
 type FuelLog = {
@@ -51,6 +57,79 @@ function StatBox({
     <View style={[styles.statBox, { backgroundColor: colors.muted }]}>
       <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{label}</Text>
       <Text style={[styles.statValue, { color: colors.foreground }]}>{value}</Text>
+    </View>
+  );
+}
+
+function MaintenanceBanner({
+  eq,
+  colors,
+}: {
+  eq: Equipment;
+  colors: ReturnType<typeof useColors>;
+}) {
+  const isOverdue = eq.maintenanceDue;
+  const hoursRemaining = eq.hoursUntilService;
+  const milesRemaining = eq.milesUntilService;
+
+  // Near-due: within 10 hours or 50 miles
+  const isNearDueHours = !isOverdue && hoursRemaining != null && hoursRemaining <= 10;
+  const isNearDueMiles = !isOverdue && milesRemaining != null && milesRemaining <= 50;
+  const isNearDue = isNearDueHours || isNearDueMiles;
+
+  if (!isOverdue && !isNearDue) return null;
+
+  const bgColor = isOverdue ? '#fef2f2' : '#fffbeb';
+  const borderColor = isOverdue ? '#fca5a5' : '#fcd34d';
+  const iconColor = isOverdue ? '#ef4444' : '#f59e0b';
+  const textColor = isOverdue ? '#991b1b' : '#92400e';
+
+  const lines: string[] = [];
+  if (isOverdue) {
+    lines.push('Maintenance is overdue — notify the office.');
+  } else {
+    lines.push('Service coming up soon.');
+  }
+
+  if (hoursRemaining != null) {
+    if (hoursRemaining < 0) {
+      lines.push(`${Math.abs(Math.floor(hoursRemaining))} hrs past due (hours)`);
+    } else {
+      lines.push(`${Math.ceil(hoursRemaining)} hrs until next service`);
+    }
+  }
+  if (milesRemaining != null) {
+    if (milesRemaining < 0) {
+      lines.push(`${Math.abs(Math.floor(milesRemaining))} mi past due (miles)`);
+    } else {
+      lines.push(`${Math.ceil(milesRemaining)} mi until next service`);
+    }
+  }
+  if (eq.nextServiceDueDate) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (eq.nextServiceDueDate <= today) {
+      lines.push(`Date threshold: ${formatDate(eq.nextServiceDueDate)} (passed)`);
+    } else {
+      lines.push(`Date threshold: ${formatDate(eq.nextServiceDueDate)}`);
+    }
+  }
+
+  return (
+    <View style={[styles.banner, { backgroundColor: bgColor, borderColor }]}>
+      <Ionicons name={isOverdue ? 'alert-circle' : 'warning'} size={20} color={iconColor} />
+      <View style={styles.bannerBody}>
+        {lines.map((line, i) => (
+          <Text
+            key={i}
+            style={[
+              i === 0 ? styles.bannerTitle : styles.bannerLine,
+              { color: textColor },
+            ]}
+          >
+            {line}
+          </Text>
+        ))}
+      </View>
     </View>
   );
 }
@@ -111,6 +190,11 @@ export default function EquipmentDetailScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
+        {/* Maintenance warning banner */}
+        <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+          <MaintenanceBanner eq={eq} colors={colors} />
+        </View>
+
         {/* Equipment info card */}
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.title, { color: colors.foreground }]}>{eq.name}</Text>
@@ -126,6 +210,82 @@ export default function EquipmentDetailScreen() {
             <StatBox label="Total Fuel Cost" value={`$${eq.totalFuelCost.toFixed(2)}`} colors={colors} />
           </View>
         </View>
+
+        {/* Next service info */}
+        {(eq.nextServiceDueHours != null || eq.nextServiceDueMiles != null || eq.nextServiceDueDate) && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Next Scheduled Service</Text>
+            <View style={[styles.serviceCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              {eq.nextServiceDueHours != null && (
+                <View style={styles.serviceRow}>
+                  <Ionicons name="time-outline" size={16} color={colors.mutedForeground} />
+                  <Text style={[styles.serviceLabel, { color: colors.mutedForeground }]}>Hours threshold</Text>
+                  <Text style={[styles.serviceValue, { color: colors.foreground }]}>
+                    {eq.nextServiceDueHours.toLocaleString()} hrs
+                  </Text>
+                </View>
+              )}
+              {eq.nextServiceDueMiles != null && (
+                <View style={styles.serviceRow}>
+                  <Ionicons name="speedometer-outline" size={16} color={colors.mutedForeground} />
+                  <Text style={[styles.serviceLabel, { color: colors.mutedForeground }]}>Miles threshold</Text>
+                  <Text style={[styles.serviceValue, { color: colors.foreground }]}>
+                    {eq.nextServiceDueMiles.toLocaleString()} mi
+                  </Text>
+                </View>
+              )}
+              {eq.nextServiceDueDate && (
+                <View style={styles.serviceRow}>
+                  <Ionicons name="calendar-outline" size={16} color={colors.mutedForeground} />
+                  <Text style={[styles.serviceLabel, { color: colors.mutedForeground }]}>Date</Text>
+                  <Text style={[styles.serviceValue, { color: colors.foreground }]}>
+                    {formatDate(eq.nextServiceDueDate)}
+                  </Text>
+                </View>
+              )}
+              {eq.hoursUntilService != null && (
+                <View style={[styles.serviceRow, styles.serviceRowHighlight]}>
+                  <Ionicons
+                    name={eq.hoursUntilService < 0 ? 'alert-circle-outline' : 'checkmark-circle-outline'}
+                    size={16}
+                    color={eq.hoursUntilService < 0 ? '#ef4444' : '#22c55e'}
+                  />
+                  <Text style={[styles.serviceLabel, { color: colors.mutedForeground }]}>Hours remaining</Text>
+                  <Text
+                    style={[
+                      styles.serviceValue,
+                      { color: eq.hoursUntilService < 0 ? '#ef4444' : '#22c55e' },
+                    ]}
+                  >
+                    {eq.hoursUntilService < 0
+                      ? `${Math.abs(Math.floor(eq.hoursUntilService))} hrs overdue`
+                      : `${Math.ceil(eq.hoursUntilService)} hrs`}
+                  </Text>
+                </View>
+              )}
+              {eq.milesUntilService != null && (
+                <View style={[styles.serviceRow, styles.serviceRowHighlight]}>
+                  <Ionicons
+                    name={eq.milesUntilService < 0 ? 'alert-circle-outline' : 'checkmark-circle-outline'}
+                    size={16}
+                    color={eq.milesUntilService < 0 ? '#ef4444' : '#22c55e'}
+                  />
+                  <Text style={[styles.serviceLabel, { color: colors.mutedForeground }]}>Miles remaining</Text>
+                  <Text
+                    style={[
+                      styles.serviceValue,
+                      { color: eq.milesUntilService < 0 ? '#ef4444' : '#22c55e' },
+                    ]}
+                  >
+                    {eq.milesUntilService < 0
+                      ? `${Math.abs(Math.floor(eq.milesUntilService))} mi overdue`
+                      : `${Math.ceil(eq.milesUntilService)} mi`}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
 
         {/* Fuel log history */}
         <View style={styles.section}>
@@ -185,6 +345,18 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   errorText: { fontFamily: 'Inter_400Regular', fontSize: 16 },
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    gap: 10,
+    marginBottom: 4,
+  },
+  bannerBody: { flex: 1, gap: 2 },
+  bannerTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 13 },
+  bannerLine: { fontFamily: 'Inter_400Regular', fontSize: 12 },
   card: {
     margin: 16,
     borderRadius: 12,
@@ -214,8 +386,26 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   statValue: { fontFamily: 'Inter_700Bold', fontSize: 15 },
-  section: { paddingHorizontal: 16 },
+  section: { paddingHorizontal: 16, marginBottom: 16 },
   sectionTitle: { fontFamily: 'Inter_700Bold', fontSize: 17, marginBottom: 12 },
+  serviceCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  serviceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  serviceRowHighlight: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(0,0,0,0.08)',
+  },
+  serviceLabel: { fontFamily: 'Inter_400Regular', fontSize: 13, flex: 1 },
+  serviceValue: { fontFamily: 'Inter_600SemiBold', fontSize: 13 },
   emptyCard: {
     borderRadius: 12,
     borderWidth: 1,

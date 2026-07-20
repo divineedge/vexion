@@ -35,6 +35,33 @@ export interface Equipment {
   sellRecommended?: boolean;
   /** @nullable */
   sellReason?: string | null;
+  /**
+     * ISO date of next scheduled service (from the latest maintenance record)
+     * @nullable
+     */
+  nextServiceDueDate?: string | null;
+  /**
+     * Hour-meter reading at which next service is due
+     * @nullable
+     */
+  nextServiceDueHours?: number | null;
+  /**
+     * Mileage at which next service is due
+     * @nullable
+     */
+  nextServiceDueMiles?: number | null;
+  /** True when current hours/miles/date have reached or passed the next service threshold */
+  maintenanceDue?: boolean;
+  /**
+     * Hours remaining until next service (negative means overdue)
+     * @nullable
+     */
+  hoursUntilService?: number | null;
+  /**
+     * Miles remaining until next service (negative means overdue)
+     * @nullable
+     */
+  milesUntilService?: number | null;
   createdAt: string;
   updatedAt: string;
 }

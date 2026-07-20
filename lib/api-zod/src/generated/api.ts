@@ -4266,6 +4266,12 @@ export const ListEquipmentResponseItem = zod.object({
   "estimatedResaleValue": zod.number().nullish(),
   "sellRecommended": zod.boolean().optional(),
   "sellReason": zod.string().nullish(),
+  "nextServiceDueDate": zod.string().nullish().describe('ISO date of next scheduled service (from the latest maintenance record)'),
+  "nextServiceDueHours": zod.number().nullish().describe('Hour-meter reading at which next service is due'),
+  "nextServiceDueMiles": zod.number().nullish().describe('Mileage at which next service is due'),
+  "maintenanceDue": zod.boolean().optional().describe('True when current hours\/miles\/date have reached or passed the next service threshold'),
+  "hoursUntilService": zod.number().nullish().describe('Hours remaining until next service (negative means overdue)'),
+  "milesUntilService": zod.number().nullish().describe('Miles remaining until next service (negative means overdue)'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -4308,6 +4314,12 @@ export const CreateEquipmentResponse = zod.object({
   "estimatedResaleValue": zod.number().nullish(),
   "sellRecommended": zod.boolean().optional(),
   "sellReason": zod.string().nullish(),
+  "nextServiceDueDate": zod.string().nullish().describe('ISO date of next scheduled service (from the latest maintenance record)'),
+  "nextServiceDueHours": zod.number().nullish().describe('Hour-meter reading at which next service is due'),
+  "nextServiceDueMiles": zod.number().nullish().describe('Mileage at which next service is due'),
+  "maintenanceDue": zod.boolean().optional().describe('True when current hours\/miles\/date have reached or passed the next service threshold'),
+  "hoursUntilService": zod.number().nullish().describe('Hours remaining until next service (negative means overdue)'),
+  "milesUntilService": zod.number().nullish().describe('Miles remaining until next service (negative means overdue)'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -4340,6 +4352,12 @@ export const GetEquipmentResponse = zod.object({
   "estimatedResaleValue": zod.number().nullish(),
   "sellRecommended": zod.boolean().optional(),
   "sellReason": zod.string().nullish(),
+  "nextServiceDueDate": zod.string().nullish().describe('ISO date of next scheduled service (from the latest maintenance record)'),
+  "nextServiceDueHours": zod.number().nullish().describe('Hour-meter reading at which next service is due'),
+  "nextServiceDueMiles": zod.number().nullish().describe('Mileage at which next service is due'),
+  "maintenanceDue": zod.boolean().optional().describe('True when current hours\/miles\/date have reached or passed the next service threshold'),
+  "hoursUntilService": zod.number().nullish().describe('Hours remaining until next service (negative means overdue)'),
+  "milesUntilService": zod.number().nullish().describe('Miles remaining until next service (negative means overdue)'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -4385,6 +4403,12 @@ export const UpdateEquipmentResponse = zod.object({
   "estimatedResaleValue": zod.number().nullish(),
   "sellRecommended": zod.boolean().optional(),
   "sellReason": zod.string().nullish(),
+  "nextServiceDueDate": zod.string().nullish().describe('ISO date of next scheduled service (from the latest maintenance record)'),
+  "nextServiceDueHours": zod.number().nullish().describe('Hour-meter reading at which next service is due'),
+  "nextServiceDueMiles": zod.number().nullish().describe('Mileage at which next service is due'),
+  "maintenanceDue": zod.boolean().optional().describe('True when current hours\/miles\/date have reached or passed the next service threshold'),
+  "hoursUntilService": zod.number().nullish().describe('Hours remaining until next service (negative means overdue)'),
+  "milesUntilService": zod.number().nullish().describe('Miles remaining until next service (negative means overdue)'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })

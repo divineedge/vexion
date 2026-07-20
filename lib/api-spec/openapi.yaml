@@ -9807,6 +9807,24 @@ components:
           type: boolean
         sellReason:
           type: ["string", "null"]
+        nextServiceDueDate:
+          type: ["string", "null"]
+          description: ISO date of next scheduled service (from the latest maintenance record)
+        nextServiceDueHours:
+          type: ["number", "null"]
+          description: Hour-meter reading at which next service is due
+        nextServiceDueMiles:
+          type: ["number", "null"]
+          description: Mileage at which next service is due
+        maintenanceDue:
+          type: boolean
+          description: True when current hours/miles/date have reached or passed the next service threshold
+        hoursUntilService:
+          type: ["number", "null"]
+          description: Hours remaining until next service (negative means overdue)
+        milesUntilService:
+          type: ["number", "null"]
+          description: Miles remaining until next service (negative means overdue)
         createdAt:
           type: string
         updatedAt:

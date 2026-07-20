@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db, equipmentTable, equipmentMaintenanceTable, equipmentFuelLogsTable, equipmentReadingLogsTable, tenantsTable, usersTable, jobsTable } from "@workspace/db";
-import { eq, and, desc, sum, isNull, gte, lte, ilike } from "drizzle-orm";
+import { eq, and, desc, sum, isNull, isNotNull, or, gte, lte, ilike } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isOwnerRole } from "../lib/roles";
 import {
@@ -228,12 +228,58 @@ function computeEquipmentMetrics(
   return { costPerHour, estimatedResaleValue, sellRecommended, sellReason };
 }
 
+type MaintenanceSchedule = {
+  nextServiceDueDate: string | null;
+  nextServiceDueHours: number | null;
+  nextServiceDueMiles: number | null;
+};
+
+/** Compute maintenance-due fields from the latest maintenance schedule record. */
+function computeMaintenanceStatus(
+  row: typeof equipmentTable.$inferSelect,
+  schedule: MaintenanceSchedule | null,
+) {
+  if (!schedule) {
+    return {
+      nextServiceDueDate: null,
+      nextServiceDueHours: null,
+      nextServiceDueMiles: null,
+      maintenanceDue: false,
+      hoursUntilService: null,
+      milesUntilService: null,
+    };
+  }
+
+  const { nextServiceDueDate, nextServiceDueHours, nextServiceDueMiles } = schedule;
+  const today = new Date().toISOString().slice(0, 10);
+
+  const hoursUntilService = nextServiceDueHours != null ? nextServiceDueHours - row.currentHours : null;
+  const milesUntilService =
+    nextServiceDueMiles != null && row.currentMiles != null ? nextServiceDueMiles - row.currentMiles : null;
+
+  const dateDue = nextServiceDueDate != null && nextServiceDueDate <= today;
+  const hoursDue = hoursUntilService != null && hoursUntilService <= 0;
+  const milesDue = milesUntilService != null && milesUntilService <= 0;
+  const maintenanceDue = dateDue || hoursDue || milesDue;
+
+  return {
+    nextServiceDueDate,
+    nextServiceDueHours,
+    nextServiceDueMiles,
+    maintenanceDue,
+    hoursUntilService,
+    milesUntilService,
+  };
+}
+
 function formatEquipment(
   row: typeof equipmentTable.$inferSelect,
   repairThresholdPct: number,
   resaleThresholdPct: number,
+  schedule: MaintenanceSchedule | null = null,
 ) {
   const metrics = computeEquipmentMetrics(row, repairThresholdPct, resaleThresholdPct);
+  const maintenanceStatus = computeMaintenanceStatus(row, schedule);
   return {
     id: row.id,
     tenantId: row.tenantId,
@@ -253,7 +299,50 @@ function formatEquipment(
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     ...metrics,
+    ...maintenanceStatus,
   };
+}
+
+/**
+ * Fetch the latest maintenance record (by date desc, createdAt desc) that has
+ * at least one nextServiceDue* field set — one query per equipment call, or
+ * batched across all equipment for the list endpoint.
+ */
+async function getScheduleMap(tenantId: number): Promise<Map<number, MaintenanceSchedule>> {
+  const rows = await db
+    .select({
+      equipmentId: equipmentMaintenanceTable.equipmentId,
+      date: equipmentMaintenanceTable.date,
+      createdAt: equipmentMaintenanceTable.createdAt,
+      nextServiceDueDate: equipmentMaintenanceTable.nextServiceDueDate,
+      nextServiceDueHours: equipmentMaintenanceTable.nextServiceDueHours,
+      nextServiceDueMiles: equipmentMaintenanceTable.nextServiceDueMiles,
+    })
+    .from(equipmentMaintenanceTable)
+    .where(
+      and(
+        eq(equipmentMaintenanceTable.tenantId, tenantId),
+        or(
+          isNotNull(equipmentMaintenanceTable.nextServiceDueDate),
+          isNotNull(equipmentMaintenanceTable.nextServiceDueHours),
+          isNotNull(equipmentMaintenanceTable.nextServiceDueMiles),
+        ),
+      ),
+    )
+    .orderBy(desc(equipmentMaintenanceTable.date), desc(equipmentMaintenanceTable.createdAt));
+
+  // Keep only the first (latest) row per equipment
+  const map = new Map<number, MaintenanceSchedule>();
+  for (const r of rows) {
+    if (!map.has(r.equipmentId)) {
+      map.set(r.equipmentId, {
+        nextServiceDueDate: r.nextServiceDueDate ?? null,
+        nextServiceDueHours: r.nextServiceDueHours ?? null,
+        nextServiceDueMiles: r.nextServiceDueMiles ?? null,
+      });
+    }
+  }
+  return map;
 }
 
 async function getTenantThresholds(tenantId: number) {
@@ -275,22 +364,24 @@ router.get("/equipment", async (req, res): Promise<void> => {
   const whereClause = includeArchived
     ? eq(equipmentTable.tenantId, tenantId)
     : and(eq(equipmentTable.tenantId, tenantId), isNull(equipmentTable.archivedAt));
-  const [rows, thresholds] = await Promise.all([
+  const [rows, thresholds, scheduleMap] = await Promise.all([
     db.select().from(equipmentTable).where(whereClause).orderBy(equipmentTable.name),
     getTenantThresholds(tenantId),
+    getScheduleMap(tenantId),
   ]);
-  res.json(rows.map(r => formatEquipment(r, thresholds.repairThresholdPct, thresholds.resaleThresholdPct)));
+  res.json(rows.map(r => formatEquipment(r, thresholds.repairThresholdPct, thresholds.resaleThresholdPct, scheduleMap.get(r.id) ?? null)));
 });
 
 router.get("/equipment/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
-  const [[row], thresholds] = await Promise.all([
+  const [[row], thresholds, scheduleMap] = await Promise.all([
     db.select().from(equipmentTable).where(and(eq(equipmentTable.id, id), eq(equipmentTable.tenantId, tenantId))),
     getTenantThresholds(tenantId),
+    getScheduleMap(tenantId),
   ]);
   if (!row) { res.status(404).json({ error: "Equipment not found" }); return; }
-  res.json(formatEquipment(row, thresholds.repairThresholdPct, thresholds.resaleThresholdPct));
+  res.json(formatEquipment(row, thresholds.repairThresholdPct, thresholds.resaleThresholdPct, scheduleMap.get(row.id) ?? null));
 });
 
 router.post("/equipment", requireOfficeRole, async (req, res): Promise<void> => {

@@ -24,6 +24,9 @@ type Equipment = {
   currentMiles?: number | null;
   costPerHour?: number | null;
   isActive: boolean;
+  maintenanceDue: boolean;
+  hoursUntilService?: number | null;
+  milesUntilService?: number | null;
 };
 
 function typeIcon(type: string): keyof typeof Ionicons.glyphMap {
@@ -47,9 +50,25 @@ function EquipmentCard({
   onPress: () => void;
   colors: ReturnType<typeof useColors>;
 }) {
+  const isOverdue = item.maintenanceDue;
+  const hoursRemaining = item.hoursUntilService;
+  const milesRemaining = item.milesUntilService;
+
+  // Near-due: within 10 hours or 50 miles
+  const isNearDueHours = !isOverdue && hoursRemaining != null && hoursRemaining <= 10;
+  const isNearDueMiles = !isOverdue && milesRemaining != null && milesRemaining <= 50;
+  const isNearDue = isNearDueHours || isNearDueMiles;
+  const showWarning = isOverdue || isNearDue;
+
+  const warningColor = isOverdue ? '#ef4444' : '#f59e0b';
+
   return (
     <TouchableOpacity
-      style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
+      style={[
+        styles.card,
+        { backgroundColor: colors.card, borderColor: showWarning ? warningColor : colors.border },
+        showWarning && { borderWidth: 1.5 },
+      ]}
       onPress={onPress}
       activeOpacity={0.8}
       testID={`equipment-card-${item.id}`}
@@ -65,8 +84,26 @@ function EquipmentCard({
           {item.currentHours.toLocaleString()} hrs
           {item.costPerHour != null ? `  ·  $${item.costPerHour.toFixed(2)}/hr` : ''}
         </Text>
+        {showWarning && (
+          <View style={styles.warningRow}>
+            <Ionicons name="warning-outline" size={12} color={warningColor} />
+            <Text style={[styles.warningText, { color: warningColor }]}>
+              {isOverdue
+                ? 'Maintenance overdue'
+                : hoursRemaining != null && isNearDueHours
+                ? `Service due in ${Math.ceil(hoursRemaining)} hrs`
+                : milesRemaining != null
+                ? `Service due in ${Math.ceil(milesRemaining)} mi`
+                : 'Service due soon'}
+            </Text>
+          </View>
+        )}
       </View>
-      <Ionicons name="chevron-forward" size={18} color={colors.mutedForeground} />
+      {showWarning ? (
+        <Ionicons name="warning" size={18} color={warningColor} />
+      ) : (
+        <Ionicons name="chevron-forward" size={18} color={colors.mutedForeground} />
+      )}
     </TouchableOpacity>
   );
 }
@@ -158,6 +195,8 @@ const styles = StyleSheet.create({
   cardBody: { flex: 1 },
   name: { fontFamily: 'Inter_600SemiBold', fontSize: 15, marginBottom: 4 },
   meta: { fontFamily: 'Inter_400Regular', fontSize: 13 },
+  warningRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  warningText: { fontFamily: 'Inter_500Medium', fontSize: 11 },
   emptyWrap: {
     flex: 1,
     alignItems: 'center',

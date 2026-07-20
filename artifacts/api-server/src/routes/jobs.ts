@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable, invoicesTable, tenantsTable, blueprintsTable, chemicalApplicationsTable, customerPlansTable } from "@workspace/db";
 import { eq, and, or, sql, desc, asc, isNotNull, isNull, ne, inArray, min, gt } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
+import { getCallerRole } from "../lib/roles";
 import { nthOccurrenceAfterRoot, describeRule, type RecurrenceRule } from "../lib/recurrenceEngine";
 import { enqueueInvoiceEmail } from "../lib/billingScheduler";
 import {
@@ -273,6 +274,12 @@ router.get("/jobs", async (req, res): Promise<void> => {
 // ── Recurring series list ────────────────────────────────────────────────────
 router.get("/jobs/series", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  const callerRole = await getCallerRole(tenantId, userId);
+
+  // Technicians only see series they are directly assigned to.
+  const assigneeFilter =
+    callerRole === "technician" ? eq(jobsTable.assigneeId, userId) : undefined;
 
   const roots = await db
     .select({
@@ -290,6 +297,7 @@ router.get("/jobs/series", async (req, res): Promise<void> => {
         eq(jobsTable.tenantId, tenantId),
         isNotNull(jobsTable.recurrenceRule),
         isNull(jobsTable.recurrenceParentId),
+        assigneeFilter,
       )
     )
     .orderBy(desc(jobsTable.createdAt));
@@ -593,12 +601,26 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
 // ── Skip next occurrence ─────────────────────────────────────────────────────
 router.post("/jobs/:id/skip-next", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
+  const userId = getUserId(req);
   const id = parseInt(req.params.id, 10);
 
   // Resolve root
   const [job] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
   if (!job) { res.status(404).json({ error: "Not found" }); return; }
   const rootId = job.recurrenceParentId ?? job.id;
+
+  // Technicians may only skip series they are directly assigned to.
+  const callerRole = await getCallerRole(tenantId, userId);
+  if (callerRole === "technician") {
+    const [root] = await db
+      .select({ assigneeId: jobsTable.assigneeId })
+      .from(jobsTable)
+      .where(and(eq(jobsTable.id, rootId), eq(jobsTable.tenantId, tenantId)));
+    if (!root || root.assigneeId !== userId) {
+      res.status(403).json({ error: "Not authorized to skip this series" });
+      return;
+    }
+  }
 
   // Skip semantics (exactly one occurrence, regardless of pre-generation state):
   //

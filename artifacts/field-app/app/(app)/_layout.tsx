@@ -44,6 +44,7 @@ export default function AppLayout() {
         name="equipment-fuel/[id]"
         options={{ title: 'Log Fuel Fill', headerShown: true }}
       />
+      <Stack.Screen name="series/[id]" options={{ title: 'Recurring Series', headerShown: true }} />
     </Stack>
   );
 }

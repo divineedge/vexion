@@ -18,10 +18,124 @@ import {
   useGetJob, useListJobChemicalApplications,
   useListSubTimers, useStartSubTimer, useStopSubTimer,
   useGetMasterClock, useStartMasterClock, useStopMasterClock,
-  useUpdateJob,
+  useUpdateJob, useSkipNextOccurrence,
 } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useOffline } from '@/contexts/OfflineContext';
+
+type RecurringJob = {
+  id: number;
+  recurrenceParentId?: number | null;
+  recurrenceDescription?: string | null;
+  recurrenceIndex?: number | null;
+};
+
+function RecurringSeriesBanner({
+  job,
+  colors,
+  onSkip,
+}: {
+  job: RecurringJob;
+  colors: ReturnType<typeof useColors>;
+  onSkip: () => void;
+}) {
+  const seriesId = job.recurrenceParentId ?? job.id;
+  const occurrenceLabel =
+    job.recurrenceIndex != null ? `Occurrence #${job.recurrenceIndex + 1}` : 'Recurring Job';
+
+  return (
+    <View style={[recurringStyles.banner, { backgroundColor: colors.primary + '10', borderColor: colors.primary + '30' }]}>
+      <View style={recurringStyles.bannerTop}>
+        <View style={recurringStyles.bannerLeft}>
+          <Text style={[recurringStyles.bannerIcon, { color: colors.primary }]}>↻</Text>
+          <View>
+            <Text style={[recurringStyles.bannerLabel, { color: colors.primary }]}>Recurring Series</Text>
+            <Text style={[recurringStyles.bannerDesc, { color: colors.mutedForeground }]}>
+              {job.recurrenceDescription ?? 'Repeating job'} · {occurrenceLabel}
+            </Text>
+          </View>
+        </View>
+        <TouchableOpacity
+          style={[recurringStyles.manageBtn, { borderColor: colors.primary + '50' }]}
+          onPress={() => router.push(`/(app)/series/${seriesId}` as any)}
+          activeOpacity={0.75}
+        >
+          <Text style={[recurringStyles.manageBtnText, { color: colors.primary }]}>Manage Series</Text>
+          <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+        </TouchableOpacity>
+      </View>
+      <TouchableOpacity
+        style={[recurringStyles.skipBtn, { borderColor: '#ef4444' + '40', backgroundColor: '#ef444410' }]}
+        onPress={onSkip}
+        activeOpacity={0.75}
+      >
+        <Ionicons name="close-circle-outline" size={16} color="#ef4444" />
+        <Text style={[recurringStyles.skipBtnText, { color: '#ef4444' }]}>Skip next occurrence</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const recurringStyles = StyleSheet.create({
+  banner: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 14,
+    gap: 10,
+  },
+  bannerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  bannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  bannerIcon: {
+    fontSize: 22,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  bannerLabel: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
+    marginBottom: 2,
+  },
+  bannerDesc: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+  },
+  manageBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 7,
+    borderWidth: 1,
+  },
+  manageBtnText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+  },
+  skipBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  skipBtnText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
+  },
+});
 
 type BreakdownItem = {
   productName?: string | null;
@@ -83,6 +197,7 @@ export default function JobDetailScreen() {
   const startMasterClock = useStartMasterClock();
   const stopMasterClock = useStopMasterClock();
   const updateJob = useUpdateJob();
+  const skipOccurrence = useSkipNextOccurrence();
   const activeJobTimer = subTimers?.find(t => t.isActive && t.jobId === jobId) ?? null;
   const [liveSeconds, setLiveSeconds] = useState(0);
   useEffect(() => {
@@ -229,6 +344,31 @@ export default function JobDetailScreen() {
             </Text>
           </View>
         </View>
+
+        {/* Recurring series banner */}
+        {(job as { recurrenceDescription?: string | null; recurrenceParentId?: number | null }).recurrenceDescription || (job as { recurrenceParentId?: number | null }).recurrenceParentId ? (
+          <RecurringSeriesBanner job={job as RecurringJob} colors={colors} onSkip={() => {
+            const seriesId = (job as RecurringJob).recurrenceParentId ?? (job as RecurringJob).id;
+            Alert.alert(
+              'Skip this occurrence?',
+              'The next scheduled occurrence of this series will be skipped.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Skip Occurrence',
+                  style: 'destructive',
+                  onPress: () =>
+                    skipOccurrence.mutate({ id: seriesId }, {
+                      onSuccess: () => {
+                        refetchJob();
+                        Alert.alert('Skipped', 'The next occurrence has been skipped.');
+                      },
+                    }),
+                },
+              ],
+            );
+          }} />
+        ) : null}
 
         {/* Clock in / out card — hidden when offline since timers require network */}
         {!isOffline && (

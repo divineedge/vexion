@@ -32,6 +32,8 @@ type Job = {
   customerName?: string | null;
   assigneeName?: string | null;
   priority?: string | null;
+  recurrenceDescription?: string | null;
+  recurrenceParentId?: number | null;
 };
 
 function statusColor(status: string, colors: ReturnType<typeof useColors>): string {
@@ -72,6 +74,7 @@ function priorityIcon(priority?: string | null): string {
 
 function JobCard({ job, onPress, colors }: { job: Job; onPress: () => void; colors: ReturnType<typeof useColors> }) {
   const sc = statusColor(job.status, colors);
+  const isRecurring = !!(job.recurrenceDescription || job.recurrenceParentId);
   return (
     <TouchableOpacity
       style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
@@ -85,6 +88,13 @@ function JobCard({ job, onPress, colors }: { job: Job; onPress: () => void; colo
           <Text style={[styles.jobTitle, { color: colors.foreground }]} numberOfLines={1}>
             {job.title}
           </Text>
+          {isRecurring ? (
+            <View style={[styles.recurringBadge, { backgroundColor: colors.primary + '18' }]}>
+              <Text style={[styles.recurringBadgeText, { color: colors.primary }]}>
+                ↻ {job.recurrenceDescription ?? 'Recurring'}
+              </Text>
+            </View>
+          ) : null}
           {job.propertyAddress ? (
             <View style={styles.metaRow}>
               <Ionicons name="location-outline" size={13} color={colors.mutedForeground} />
@@ -431,6 +441,17 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     fontSize: 13,
     flex: 1,
+  },
+  recurringBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 5,
+    marginBottom: 5,
+  },
+  recurringBadgeText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 11,
   },
   cardRight: { alignItems: 'flex-end', marginLeft: 8 },
   statusBadge: {

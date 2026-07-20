@@ -1,9 +1,8 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { setDefaultHeaders } from '@workspace/api-client-react';
-import type { MockUser } from './mockUsers';
+import type { User } from '@workspace/api-client-react';
 
-
-function applyUserHeaders(u: MockUser | null) {
+function applyUserHeaders(u: User | null) {
   if (u) {
     setDefaultHeaders({
       'x-tenant-id': String(u.tenantId),
@@ -15,9 +14,9 @@ function applyUserHeaders(u: MockUser | null) {
 }
 
 interface AuthContextType {
-  user: MockUser | null;
+  user: User | null;
   isAuthenticated: boolean;
-  login: (user: MockUser) => void;
+  login: (user: User) => void;
   logout: () => void;
   isOwner: boolean;
   isManager: boolean;
@@ -34,11 +33,11 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<MockUser | null>(() => {
+  const [user, setUser] = useState<User | null>(() => {
     try {
       const stored = localStorage.getItem('divine_edge_user');
       if (!stored) return null;
-      const u: MockUser = JSON.parse(stored);
+      const u: User = JSON.parse(stored);
       applyUserHeaders(u);
       return u;
     } catch {
@@ -46,7 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   });
 
-  const login = (u: MockUser) => {
+  const login = (u: User) => {
     setUser(u);
     localStorage.setItem('divine_edge_user', JSON.stringify(u));
     applyUserHeaders(u);

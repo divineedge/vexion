@@ -547,7 +547,9 @@ export const CreatePropertyBody = zod.object({
   "lat": zod.number().optional(),
   "lng": zod.number().optional(),
   "notes": zod.string().optional(),
-  "type": zod.string().optional()
+  "type": zod.string().optional(),
+  "size": zod.number().optional().describe('Property size for chemical rate calculations'),
+  "sizeUnit": zod.string().optional().describe('Unit of property size (sqft or acres)')
 })
 
 export const CreatePropertyResponse = zod.object({

@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import crypto from "node:crypto";
+import bcrypt from "bcryptjs";
 import { db, tenantsTable, usersTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
@@ -407,12 +408,13 @@ router.post("/settings/users", async (req, res): Promise<void> => {
   const { email, name, role, password, hourlyRate, hireDate } = req.body;
   if (!email || !name || !role) { res.status(400).json({ error: "email, name, role required" }); return; }
 
+  const passwordHash = password ? await bcrypt.hash(password, 10) : "mock";
   const [user] = await db.insert(usersTable).values({
     tenantId,
     email,
     name,
     role,
-    passwordHash: password ?? "mock",
+    passwordHash,
     hourlyRate: hourlyRate !== undefined && hourlyRate !== null ? parseFloat(hourlyRate) : null,
     hireDate: hireDate ? new Date(hireDate) : null,
   }).returning();
@@ -439,10 +441,11 @@ router.patch("/settings/users/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const { name, role, isActive, assignedLocationId, hourlyRate, hireDate } = req.body;
+  const { name, role, isActive, assignedLocationId, hourlyRate, hireDate, password } = req.body;
   const updates: Partial<typeof usersTable.$inferInsert> = {};
   if (name) updates.name = name;
   if (role) updates.role = role;
+  if (password) updates.passwordHash = await bcrypt.hash(password, 10);
   if (isActive !== undefined) updates.isActive = isActive;
   if (assignedLocationId !== undefined) updates.assignedLocationId = assignedLocationId ? parseInt(String(assignedLocationId), 10) : null;
   if (hourlyRate !== undefined) updates.hourlyRate = hourlyRate === null ? null : parseFloat(hourlyRate);

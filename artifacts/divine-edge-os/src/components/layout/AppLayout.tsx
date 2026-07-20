@@ -129,7 +129,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="p-4 border-t border-sidebar-border shrink-0">
             <div className="flex items-center gap-3 w-full bg-sidebar-accent/30 p-3 rounded-lg border border-sidebar-border/50">
               <Avatar className="w-10 h-10 border border-sidebar-border shrink-0">
-                <AvatarImage src={user.avatarUrl} />
+                <AvatarImage src={user.avatarUrl ?? undefined} />
                 <AvatarFallback className="bg-sidebar-accent text-white">{userInitials}</AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">

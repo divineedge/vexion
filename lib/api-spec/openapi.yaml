@@ -6933,6 +6933,12 @@ components:
           type: string
         type:
           type: string
+        size:
+          type: number
+          description: Property size for chemical rate calculations
+        sizeUnit:
+          type: string
+          description: Unit of property size (sqft or acres)
 
     PropertyUpdate:
       type: object

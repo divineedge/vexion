@@ -146,7 +146,7 @@ export default function SettingsPage() {
 
   // Team
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: 'technician', hourlyRate: '', hireDate: '' });
+  const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: 'technician', password: '', hourlyRate: '', hireDate: '' });
   const [editUserOpen, setEditUserOpen] = useState(false);
   const [editUserForm, setEditUserForm] = useState<{ id: number; name: string; role: string; hourlyRate: string; hireDate: string } | null>(null);
 
@@ -435,6 +435,7 @@ export default function SettingsPage() {
           name: inviteForm.name,
           email: inviteForm.email,
           role: inviteForm.role,
+          password: inviteForm.password || undefined,
           hourlyRate: inviteForm.hourlyRate ? parseFloat(inviteForm.hourlyRate) : undefined,
           hireDate: inviteForm.hireDate ? new Date(inviteForm.hireDate).toISOString() : undefined,
         } as Parameters<typeof createUser.mutate>[0]['data'],
@@ -444,7 +445,7 @@ export default function SettingsPage() {
           toast.success(`${inviteForm.name} added`);
           qc.invalidateQueries({ queryKey: getListUsersQueryKey() });
           setInviteOpen(false);
-          setInviteForm({ name: '', email: '', role: 'technician', hourlyRate: '', hireDate: '' });
+          setInviteForm({ name: '', email: '', role: 'technician', password: '', hourlyRate: '', hireDate: '' });
         },
         onError: () => toast.error('Failed to add user'),
       },
@@ -1536,6 +1537,10 @@ export default function SettingsPage() {
                       <SelectItem value="technician">Technician</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Password <span className="text-muted-foreground font-normal">(required to sign in)</span></label>
+                  <Input type="password" value={inviteForm.password} onChange={e => setInviteForm(f => ({ ...f, password: e.target.value }))} placeholder="Min. 8 characters" autoComplete="new-password" />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Hourly Pay Rate</label>

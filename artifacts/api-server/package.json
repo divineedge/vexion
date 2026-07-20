@@ -14,6 +14,7 @@
     "@types/nodemailer": "^8.0.1",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
+    "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "date-fns": "^3.6.0",
@@ -27,6 +28,7 @@
     "pino-http": "^10.5.0"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^3.0.0",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",

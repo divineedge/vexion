@@ -6,6 +6,7 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 
 import LoginPage from '@/pages/login';
+import SignupPage from '@/pages/signup';
 import DashboardPage from '@/pages/dashboard';
 import CustomersPage from '@/pages/customers';
 import CustomerDetailPage from '@/pages/customer-detail';
@@ -105,6 +106,7 @@ function Router() {
       <Route path="/estimate/:token" component={EstimatePublicPage} />
       <Route path="/review/:token" component={ReviewPublicPage} />
       <Route path="/login" component={LoginPage} />
+      <Route path="/signup" component={SignupPage} />
       <Route path="/" component={() => <Redirect to="/dashboard" />} />
       <Route component={ProtectedRoutes} />
     </Switch>

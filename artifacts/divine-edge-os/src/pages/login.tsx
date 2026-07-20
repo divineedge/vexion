@@ -1,72 +1,102 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
-import { MOCK_USERS } from '@/contexts/mockUsers';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { ShieldAlert, Wrench, Briefcase } from 'lucide-react';
+import { useLogin } from '@workspace/api-client-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const { login } = useAuth();
   const [, setLocation] = useLocation();
+  const loginMutation = useLogin();
 
-  const handleLogin = (user: typeof MOCK_USERS[0]) => {
-    login(user);
-    if (user.role === 'technician') {
-      setLocation('/schedule');
-    } else {
-      setLocation('/dashboard');
-    }
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    loginMutation.mutate(
+      { data: { email, password } },
+      {
+        onSuccess: (data) => {
+          login(data.user);
+          setLocation(data.user.role === 'technician' ? '/schedule' : '/dashboard');
+        },
+        onError: () => setError('Invalid email or password. Please try again.'),
+      },
+    );
   };
-
-  const getRoleIcon = (role: string) => {
-    switch(role) {
-      case 'company_owner': return <ShieldAlert className="w-5 h-5 text-primary" />;
-      case 'office_manager': return <Briefcase className="w-5 h-5 text-blue-500" />;
-      case 'technician': return <Wrench className="w-5 h-5 text-orange-500" />;
-      default: return null;
-    }
-  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
-      <div className="w-full max-w-md text-center mb-8">
-        <div className="w-16 h-16 bg-primary rounded-2xl mx-auto mb-6 flex items-center justify-center shadow-lg shadow-primary/20">
-          <span className="text-white text-3xl font-bold">D</span>
+      <div className="w-full max-w-sm">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-primary rounded-2xl mx-auto mb-6 flex items-center justify-center shadow-lg shadow-primary/20">
+            <span className="text-white text-3xl font-bold">D</span>
+          </div>
+          <h1 className="text-3xl font-bold tracking-tight mb-2">Divine Edge OS</h1>
+          <p className="text-muted-foreground">Sign in to your account</p>
         </div>
-        <h1 className="text-3xl font-bold tracking-tight mb-2">Divine Edge OS</h1>
-        <p className="text-muted-foreground">Select a profile to enter mission control.</p>
-      </div>
 
-      <div className="w-full max-w-sm space-y-4">
-        {MOCK_USERS.map((user) => (
-          <button 
-            key={user.id} 
-            className="w-full text-left" 
-            onClick={() => handleLogin(user)}
-          >
-            <Card className="hover-elevate transition-all border-border hover:border-primary/50 group">
-              <CardContent className="p-4 flex items-center gap-4">
-                <Avatar className="w-12 h-12 border border-border group-hover:border-primary/20 transition-colors">
-                  <AvatarFallback className="bg-muted text-muted-foreground font-semibold">
-                    {user.name.split(' ').map(n => n[0]).join('')}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-foreground truncate">{user.name}</h3>
-                  <div className="flex items-center gap-2 mt-1">
-                    {getRoleIcon(user.role)}
-                    <span className="text-xs text-muted-foreground capitalize">{user.role.replace('_', ' ')}</span>
-                  </div>
+        <Card>
+          <CardContent className="p-6">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {error && (
+                <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 p-3 rounded-md">
+                  {error}
                 </div>
-                <Badge variant={user.planTier === 'enterprise' ? 'default' : user.planTier === 'professional' ? 'secondary' : 'outline'} className="uppercase text-[10px]">
-                  {user.planTier}
-                </Badge>
-              </CardContent>
-            </Card>
-          </button>
-        ))}
+              )}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Email</label>
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="you@company.com"
+                  required
+                  autoComplete="email"
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Password</label>
+                <div className="relative">
+                  <Input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowPassword(v => !v)}
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <Button type="submit" className="w-full" disabled={loginMutation.isPending}>
+                {loginMutation.isPending ? 'Signing in…' : 'Sign In'}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        <p className="text-center text-sm text-muted-foreground mt-6">
+          Don't have an account?{' '}
+          <a href="/signup" className="text-primary font-medium hover:underline">
+            Register your business
+          </a>
+        </p>
       </div>
     </div>
   );

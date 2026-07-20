@@ -847,6 +847,10 @@ export interface PropertyInput {
   lng?: number;
   notes?: string;
   type?: string;
+  /** Property size for chemical rate calculations */
+  size?: number;
+  /** Unit of property size (sqft or acres) */
+  sizeUnit?: string;
 }
 
 export interface PropertyUpdate {

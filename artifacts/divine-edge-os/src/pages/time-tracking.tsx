@@ -4,13 +4,33 @@ import {
   useStartMasterClock, useStopMasterClock,
   useListSubTimers, getListSubTimersQueryKey,
   useStopSubTimer,
-  useListTimeEntries, getListTimeEntriesQueryKey
+  useListTimeEntries, getListTimeEntriesQueryKey,
+  customFetch,
 } from '@workspace/api-client-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Clock, Play, Square, Timer, History } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
+import { Badge } from '@/components/ui/badge';
+import { Clock, Play, Square, Timer, History, ClipboardList, AlertTriangle } from 'lucide-react';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+
+interface DailyTaskEntry {
+  completionId: number;
+  bundleId: number;
+  bundleName: string | null;
+  durationSeconds: number;
+  startedAt: string;
+  completedAt: string | null;
+  hasFlags: boolean;
+}
+
+interface DailyTaskHoursResponse {
+  userId: number;
+  date: string;
+  totalSeconds: number;
+  totalMinutes: number;
+  entries: DailyTaskEntry[];
+}
 
 function formatDuration(minutes: number) {
   const h = Math.floor(minutes / 60);
@@ -28,13 +48,19 @@ function formatElapsedSeconds(seconds: number) {
 
 export default function TimeTrackingPage() {
   const queryClient = useQueryClient();
+  const today = new Date().toISOString().split('T')[0];
   
   const { data: masterClock } = useGetMasterClock({ query: { queryKey: getGetMasterClockQueryKey() }});
   const { data: subTimers } = useListSubTimers({ query: { queryKey: getListSubTimersQueryKey() }});
   const { data: todayEntries } = useListTimeEntries(
-    { date: new Date().toISOString().split('T')[0] },
-    { query: { queryKey: getListTimeEntriesQueryKey({ date: new Date().toISOString().split('T')[0] }) }}
+    { date: today },
+    { query: { queryKey: getListTimeEntriesQueryKey({ date: today }) }}
   );
+
+  const { data: dailyTaskHours } = useQuery<DailyTaskHoursResponse>({
+    queryKey: ['daily-task-hours', today],
+    queryFn: () => customFetch<DailyTaskHoursResponse>(`/api/time-tracking/daily-task-hours?date=${today}`),
+  });
 
   const startMaster = useStartMasterClock();
   const stopMaster = useStopMasterClock();
@@ -187,6 +213,74 @@ export default function TimeTrackingPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Daily Task Time ─────────────────────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <ClipboardList className="w-5 h-5" /> Daily Task Time
+            </CardTitle>
+            {(dailyTaskHours?.totalSeconds ?? 0) > 0 && (
+              <span className="text-sm font-semibold text-primary">
+                {formatDuration(dailyTaskHours?.totalMinutes ?? 0)} today
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Time spent completing Daily Task bundles — counted toward your total hours worked today.
+          </p>
+        </CardHeader>
+        <CardContent>
+          {(dailyTaskHours?.entries.length ?? 0) === 0 ? (
+            <div className="text-center py-8 text-muted-foreground text-sm border rounded-lg border-dashed">
+              No daily task runs completed today.
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Bundle</TableHead>
+                  <TableHead>Completed</TableHead>
+                  <TableHead className="text-right">Duration</TableHead>
+                  <TableHead className="text-right">Flags</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {dailyTaskHours?.entries.map(entry => (
+                  <TableRow key={entry.completionId}>
+                    <TableCell className="font-medium text-sm">{entry.bundleName ?? `Bundle #${entry.bundleId}`}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {entry.completedAt
+                        ? new Date(entry.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        : '—'}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-sm">
+                      {formatElapsedSeconds(entry.durationSeconds)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {entry.hasFlags
+                        ? <Badge variant="destructive" className="gap-1 text-xs"><AlertTriangle className="w-3 h-3" />Flagged</Badge>
+                        : <span className="text-xs text-muted-foreground">—</span>}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+              <tfoot>
+                <tr className="border-t-2">
+                  <td className="px-4 py-2 text-sm font-semibold" colSpan={2}>
+                    {dailyTaskHours?.entries.length} run{(dailyTaskHours?.entries.length ?? 0) !== 1 ? 's' : ''}
+                  </td>
+                  <td className="px-4 py-2 text-right text-sm font-bold text-primary">
+                    {formatDuration(dailyTaskHours?.totalMinutes ?? 0)}
+                  </td>
+                  <td />
+                </tr>
+              </tfoot>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

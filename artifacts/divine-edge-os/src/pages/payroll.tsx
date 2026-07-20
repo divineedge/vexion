@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Separator } from '@/components/ui/separator';
-import { DollarSign, ChevronDown, ChevronRight, Package, Wrench, Users, TrendingUp, Info } from 'lucide-react';
+import { DollarSign, ChevronDown, ChevronRight, Package, Wrench, Users, TrendingUp, Info, ClipboardList } from 'lucide-react';
 
 /* ─── Types ─────────────────────────────────────────────────────────────────── */
 
@@ -56,10 +56,48 @@ interface SummaryResponse {
   technicians: TechSummary[];
 }
 
+interface DailyTaskUserSummary {
+  userId: number;
+  userName: string | null;
+  totalSeconds: number;
+  totalMinutes: number;
+  runCount: number;
+}
+
 /* ─── Helpers ────────────────────────────────────────────────────────────────── */
 
 function fmt(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
+}
+
+function fmtMinutes(minutes: number) {
+  if (minutes === 0) return '0m';
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
+/** Convert the period selector value to dateFrom / dateTo query params. */
+function periodToRange(period: string): { dateFrom: string; dateTo: string } {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const today = fmt(now);
+
+  if (period === 'today') return { dateFrom: today, dateTo: today };
+  if (period === 'week') {
+    const start = new Date(now);
+    start.setDate(now.getDate() - now.getDay()); // Sunday
+    return { dateFrom: fmt(start), dateTo: today };
+  }
+  if (period === 'month') {
+    return { dateFrom: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`, dateTo: today };
+  }
+  // 30d (default)
+  const start = new Date(now); start.setDate(now.getDate() - 30);
+  return { dateFrom: fmt(start), dateTo: today };
 }
 
 function pctBadge(pct: number, usingGlobal: boolean) {
@@ -158,9 +196,41 @@ export default function PayrollPage() {
       ),
   });
 
+  // Admin: daily task hours per technician for the same period
+  const { dateFrom, dateTo } = periodToRange(period);
+  const { data: taskHoursSummary } = useQuery<DailyTaskUserSummary[]>({
+    queryKey: ['daily-task-hours-summary', period],
+    queryFn: () =>
+      customFetch<DailyTaskUserSummary[]>(
+        `/api/time-tracking/daily-task-hours/summary?dateFrom=${dateFrom}&dateTo=${dateTo}`,
+      ),
+    enabled: !isTechnician,
+    retry: false,
+  });
+
+  // Technician: their own daily task hours for the period
+  const { data: myTaskHours } = useQuery<DailyTaskUserSummary[]>({
+    queryKey: ['daily-task-hours-summary-self', period],
+    queryFn: () =>
+      customFetch<DailyTaskUserSummary[]>(
+        `/api/time-tracking/daily-task-hours/summary?dateFrom=${dateFrom}&dateTo=${dateTo}`,
+      ),
+    enabled: isTechnician,
+    retry: false,
+  });
+
+  const taskHoursMap = new Map((taskHoursSummary ?? []).map(t => [t.userId, t]));
+  const myTaskMinutes = isTechnician
+    ? (myTaskHours?.find(t => t.userId === user?.id)?.totalMinutes ?? 0)
+    : (selectedTechId != null ? (taskHoursMap.get(selectedTechId)?.totalMinutes ?? 0) : 0);
+  const myTaskRuns = isTechnician
+    ? (myTaskHours?.find(t => t.userId === user?.id)?.runCount ?? 0)
+    : (selectedTechId != null ? (taskHoursMap.get(selectedTechId)?.runCount ?? 0) : 0);
+
   const totalP4P = summary?.technicians.reduce((s, t) => s + t.p4pEarnings, 0) ?? 0;
   const totalNetLabor = summary?.technicians.reduce((s, t) => s + t.netLaborRevenue, 0) ?? 0;
   const totalMaterials = summary?.technicians.reduce((s, t) => s + t.totalMaterialCost, 0) ?? 0;
+  const totalTaskMinutes = Array.from(taskHoursMap.values()).reduce((s, t) => s + t.totalMinutes, 0);
 
   const myStats = isTechnician
     ? summary?.technicians.find(t => t.userId === user?.id)
@@ -230,7 +300,7 @@ export default function PayrollPage() {
 
       {/* Admin summary KPIs */}
       {!isTechnician && !selectedTechId && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <Card>
             <CardContent className="p-4 flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
@@ -275,22 +345,35 @@ export default function PayrollPage() {
               </div>
             </CardContent>
           </Card>
+          <Card>
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                <ClipboardList className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xl font-bold text-blue-700">{fmtMinutes(totalTaskMinutes)}</p>
+                <p className="text-xs text-muted-foreground">Daily Task Hours</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
       {/* Individual tech stats (when drilling in or tech viewing own) */}
-      {(myStats || (isTechnician && summaryLoading)) && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {(myStats || isTechnician) && (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           {[
             { label: 'P4P Earnings', value: myStats ? fmt(myStats.p4pEarnings) : '—', accent: 'text-emerald-700' },
             { label: 'Net Labor Revenue', value: myStats ? fmt(myStats.netLaborRevenue) : '—', accent: '' },
             { label: 'Materials Deducted', value: myStats ? fmt(myStats.totalMaterialCost) : '—', accent: 'text-amber-600' },
             { label: 'Jobs Counted', value: myStats?.jobCount ?? '—', accent: '' },
+            { label: 'Daily Task Hours', value: fmtMinutes(myTaskMinutes), accent: 'text-blue-700', sub: myTaskRuns > 0 ? `${myTaskRuns} run${myTaskRuns !== 1 ? 's' : ''}` : undefined },
           ].map(stat => (
             <Card key={stat.label}>
               <CardContent className="p-4">
                 <p className={`text-xl font-bold ${stat.accent}`}>{stat.value}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{stat.label}</p>
+                {'sub' in stat && stat.sub && <p className="text-xs text-muted-foreground">{stat.sub}</p>}
               </CardContent>
             </Card>
           ))}
@@ -302,7 +385,7 @@ export default function PayrollPage() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Technician P4P Summary</CardTitle>
-            <CardDescription>Click a technician row to drill into their job-level breakdown.</CardDescription>
+            <CardDescription>Click a technician row to drill into their job-level breakdown. Daily Task Hours are compliance/admin time, not revenue-generating.</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
@@ -314,33 +397,51 @@ export default function PayrollPage() {
                   <TableHead className="text-right">Materials Out</TableHead>
                   <TableHead className="text-right">Net Labor</TableHead>
                   <TableHead className="text-right">P4P Earnings</TableHead>
+                  <TableHead className="text-right">
+                    <span className="flex items-center justify-end gap-1">
+                      <ClipboardList className="w-3.5 h-3.5" /> Task Hours
+                    </span>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {summaryLoading ? (
-                  <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">Loading...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">Loading...</TableCell></TableRow>
                 ) : (
-                  summary?.technicians.map(t => (
-                    <TableRow
-                      key={t.userId}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => setSelectedTechId(t.userId)}
-                    >
-                      <TableCell>
-                        <p className="font-medium">{t.name}</p>
-                        <p className="text-xs text-muted-foreground capitalize">{(t.role ?? '').replace(/_/g, ' ')}</p>
-                      </TableCell>
-                      <TableCell className="text-right">{t.jobCount}</TableCell>
-                      <TableCell className="text-right">{fmt(t.totalRevenue)}</TableCell>
-                      <TableCell className="text-right text-destructive">−{fmt(t.totalMaterialCost)}</TableCell>
-                      <TableCell className="text-right font-medium">{fmt(t.netLaborRevenue)}</TableCell>
-                      <TableCell className="text-right">
-                        <span className={`font-bold ${t.p4pEarnings > 0 ? 'text-emerald-700' : 'text-muted-foreground'}`}>
-                          {fmt(t.p4pEarnings)}
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  summary?.technicians.map(t => {
+                    const taskData = taskHoursMap.get(t.userId);
+                    return (
+                      <TableRow
+                        key={t.userId}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => setSelectedTechId(t.userId)}
+                      >
+                        <TableCell>
+                          <p className="font-medium">{t.name}</p>
+                          <p className="text-xs text-muted-foreground capitalize">{(t.role ?? '').replace(/_/g, ' ')}</p>
+                        </TableCell>
+                        <TableCell className="text-right">{t.jobCount}</TableCell>
+                        <TableCell className="text-right">{fmt(t.totalRevenue)}</TableCell>
+                        <TableCell className="text-right text-destructive">−{fmt(t.totalMaterialCost)}</TableCell>
+                        <TableCell className="text-right font-medium">{fmt(t.netLaborRevenue)}</TableCell>
+                        <TableCell className="text-right">
+                          <span className={`font-bold ${t.p4pEarnings > 0 ? 'text-emerald-700' : 'text-muted-foreground'}`}>
+                            {fmt(t.p4pEarnings)}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {taskData ? (
+                            <span className="text-blue-700 font-medium text-sm">
+                              {fmtMinutes(taskData.totalMinutes)}
+                              <span className="text-xs text-muted-foreground ml-1">({taskData.runCount})</span>
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">—</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>

@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
-import { db, timeEntriesTable, subTimersTable, usersTable } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { db, timeEntriesTable, subTimersTable, usersTable, taskBundleCompletionsTable, taskBundlesTable } from "@workspace/db";
+import { eq, and, sql, gte, lte, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
+import { ADMIN_ROLES, getCallerRole } from "../lib/roles";
 
 const router: IRouter = Router();
 
@@ -148,6 +149,114 @@ router.get("/time-tracking/entries", async (req, res): Promise<void> => {
     clockedInAt: r.entry.clockedInAt.toISOString(),
     clockedOutAt: r.entry.clockedOutAt?.toISOString() ?? null,
     totalMinutes: r.entry.totalMinutes,
+  })));
+});
+
+/**
+ * GET /time-tracking/daily-task-hours
+ * Returns completed task bundle durations for the calling user for a given date (or today).
+ * Admins may pass ?userId=N to view another user's data.
+ */
+router.get("/time-tracking/daily-task-hours", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const callerId = getUserId(req);
+  const { date, userId: userIdParam } = req.query as Record<string, string | undefined>;
+
+  let targetUserId = callerId;
+  if (userIdParam) {
+    const role = await getCallerRole(tenantId, callerId);
+    if (!ADMIN_ROLES.has(role)) { res.status(403).json({ error: "Admin or office role required to view other users" }); return; }
+    targetUserId = parseInt(userIdParam, 10);
+  }
+
+  const d = date ? new Date(date) : new Date();
+  d.setHours(0, 0, 0, 0);
+  // Exclusive upper bound: < midnight of next day (not <=, to avoid including next-day records)
+  const dNext = new Date(d); dNext.setDate(d.getDate() + 1);
+
+  const rows = await db
+    .select({
+      completion: taskBundleCompletionsTable,
+      bundleName: taskBundlesTable.name,
+    })
+    .from(taskBundleCompletionsTable)
+    .leftJoin(taskBundlesTable, eq(taskBundleCompletionsTable.bundleId, taskBundlesTable.id))
+    .where(and(
+      eq(taskBundleCompletionsTable.tenantId, tenantId),
+      eq(taskBundleCompletionsTable.userId, targetUserId),
+      eq(taskBundleCompletionsTable.status, "completed"),
+      gte(taskBundleCompletionsTable.completedAt, d),
+      sql`${taskBundleCompletionsTable.completedAt} < ${dNext}`,
+    ))
+    .orderBy(desc(taskBundleCompletionsTable.completedAt));
+
+  const totalSeconds = rows.reduce((s, r) => s + (r.completion.durationSeconds ?? 0), 0);
+
+  res.json({
+    userId: targetUserId,
+    date: d.toISOString().split("T")[0],
+    totalSeconds,
+    totalMinutes: Math.round(totalSeconds / 60),
+    entries: rows.map(r => ({
+      completionId: r.completion.id,
+      bundleId: r.completion.bundleId,
+      bundleName: r.bundleName ?? null,
+      durationSeconds: r.completion.durationSeconds ?? 0,
+      startedAt: r.completion.startedAt.toISOString(),
+      completedAt: r.completion.completedAt?.toISOString() ?? null,
+      hasFlags: r.completion.hasFlags,
+    })),
+  });
+});
+
+/**
+ * GET /time-tracking/daily-task-hours/summary
+ * Returns per-user daily task hour totals for a date range.
+ * Admins see all users; non-admins see only their own data.
+ */
+router.get("/time-tracking/daily-task-hours/summary", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const callerId = getUserId(req);
+  const role = await getCallerRole(tenantId, callerId);
+  const isAdmin = ADMIN_ROLES.has(role);
+
+  const { dateFrom, dateTo } = req.query as Record<string, string | undefined>;
+
+  const conditions = [
+    eq(taskBundleCompletionsTable.tenantId, tenantId),
+    eq(taskBundleCompletionsTable.status, "completed"),
+  ];
+  // Non-admins can only see their own task hours
+  if (!isAdmin) conditions.push(eq(taskBundleCompletionsTable.userId, callerId));
+  if (dateFrom) conditions.push(gte(taskBundleCompletionsTable.completedAt, new Date(dateFrom)));
+  if (dateTo) {
+    const dt = new Date(`${dateTo}T23:59:59.999Z`);
+    conditions.push(lte(taskBundleCompletionsTable.completedAt, dt));
+  }
+
+  const rows = await db
+    .select({
+      userId: taskBundleCompletionsTable.userId,
+      totalSeconds: sql<number>`COALESCE(sum(duration_seconds),0)::int`,
+      runCount: sql<number>`count(*)::int`,
+    })
+    .from(taskBundleCompletionsTable)
+    .where(and(...conditions))
+    .groupBy(taskBundleCompletionsTable.userId);
+
+  const userIds = rows.map(r => r.userId);
+  const users = userIds.length
+    ? await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable)
+        .where(eq(usersTable.tenantId, tenantId))
+    : [];
+  const userMap = new Map(users.map(u => [u.id, u.name]));
+
+  res.json(rows.map(r => ({
+    userId: r.userId,
+    userName: userMap.get(r.userId) ?? null,
+    totalSeconds: r.totalSeconds,
+    totalMinutes: Math.round(r.totalSeconds / 60),
+    runCount: r.runCount,
   })));
 });
 

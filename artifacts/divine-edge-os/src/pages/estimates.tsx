@@ -164,7 +164,17 @@ export default function EstimatesPage() {
 
   function handleSend(id: number) {
     sendEstimate.mutate({ id }, {
-      onSuccess: () => { toast.success('Estimate sent'); invalidate(); },
+      onSuccess: (r) => {
+        const result = r as typeof r & { emailSent?: boolean; emailError?: string | null };
+        if (result.emailSent) {
+          toast.success('Estimate sent — customer emailed');
+        } else if (result.emailError) {
+          toast.warning('Estimate sent, but email failed', { description: result.emailError });
+        } else {
+          toast.success('Estimate sent');
+        }
+        invalidate();
+      },
       onError: () => toast.error('Failed to send estimate'),
     });
   }
@@ -550,6 +560,12 @@ export default function EstimatesPage() {
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Expires</p>
                       <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-muted-foreground" />{format(new Date(selectedEstimate.expiresAt), 'MMM d, yyyy')}</div>
+                    </div>
+                  )}
+                  {selectedEstimate.sentAt && (
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Emailed</p>
+                      <div className="flex items-center gap-2 text-emerald-700"><Mail className="w-4 h-4" />{format(new Date(selectedEstimate.sentAt), 'MMM d, yyyy h:mm a')}</div>
                     </div>
                   )}
                 </div>

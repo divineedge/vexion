@@ -1,8 +1,9 @@
 import { Router, type IRouter } from "express";
-import { db, estimatesTable, visitsTable, jobsTable, customersTable, propertiesTable, usersTable, tenantsTable, blueprintsTable } from "@workspace/db";
+import { db, estimatesTable, visitsTable, jobsTable, customersTable, propertiesTable, usersTable, tenantsTable, blueprintsTable, communicationsLogTable } from "@workspace/db";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { sendReviewRequest } from "../lib/reviewService";
+import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
 import { logger } from "../lib/logger";
 import crypto from "crypto";
 import {
@@ -465,7 +466,108 @@ router.post("/estimates/:id/send", async (req, res): Promise<void> => {
     .where(and(eq(estimatesTable.id, id), eq(estimatesTable.tenantId, tenantId)))
     .returning();
 
-  res.json({ ...formatEstimate(updated), approvalToken: token });
+  // ── Email the customer ─────────────────────────────────────────────────────
+  let emailSent = false;
+  let emailError: string | undefined;
+
+  try {
+    const [tenant, customer, property] = await Promise.all([
+      db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId)).then(r => r[0]),
+      updated.customerId
+        ? db.select().from(customersTable).where(eq(customersTable.id, updated.customerId)).then(r => r[0])
+        : Promise.resolve(undefined),
+      updated.propertyId
+        ? db.select({ address: propertiesTable.address }).from(propertiesTable).where(eq(propertiesTable.id, updated.propertyId)).then(r => r[0])
+        : Promise.resolve(undefined),
+    ]);
+
+    if (tenant && customer?.email && !customer.emailOptOut) {
+      const domainsEnv = process.env.REPLIT_DOMAINS;
+      const firstDomain = domainsEnv?.split(",")[0]?.trim();
+      const domain = firstDomain || process.env.REPLIT_DEV_DOMAIN;
+
+      if (domain) {
+        const approvalUrl = `https://${domain}/estimate/${token}`;
+        const companyName = tenant.name ?? "Your service provider";
+        const firstName = customer.name.split(" ")[0] ?? customer.name;
+
+        const items = (updated.lineItems as EstimateLineItem[]) ?? [];
+        const requiredItems = items.filter(i => !i.isOptional);
+        const optionalItems = items.filter(i => i.isOptional);
+
+        const formatMoney = (n: number) => `${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const expiryLine = updated.expiresAt
+          ? `This estimate expires on ${updated.expiresAt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}.`
+          : null;
+
+        const serviceLines = requiredItems.map(item => {
+          const lineTotal = item.qty * item.unitPrice * (1 + item.markup / 100) * (1 - item.discount / 100);
+          return `  • ${item.description}${item.qty !== 1 ? ` (qty ${item.qty})` : ""} — ${formatMoney(lineTotal)}`;
+        });
+        const optionalLines = optionalItems.map(item => {
+          const lineTotal = item.qty * item.unitPrice * (1 + item.markup / 100) * (1 - item.discount / 100);
+          return `  • ${item.description} — ${formatMoney(lineTotal)} (optional add-on)${item.optionalPitchLine ? `\n    ${item.optionalPitchLine}` : ""}`;
+        });
+
+        const subject = `Your estimate from ${companyName} — ${formatMoney(updated.total ?? 0)}`;
+        const body = [
+          `Hi ${firstName},`,
+          "",
+          `${companyName} has prepared an estimate for you.`,
+          "",
+          property?.address ? `Property: ${property.address}` : null,
+          "",
+          "── Services ──",
+          ...serviceLines,
+          ...(optionalLines.length > 0 ? ["", "── Optional Add-Ons ──", ...optionalLines] : []),
+          "",
+          `Total: ${formatMoney(updated.total ?? 0)}`,
+          "",
+          expiryLine,
+          "",
+          "To review and approve your estimate, visit:",
+          approvalUrl,
+          "",
+          "If you have any questions, feel free to reply to this email.",
+          "",
+          `Thank you,`,
+          companyName,
+        ].filter(l => l !== null).join("\n");
+
+        const emailProviderConfig: EmailProviderConfig = {
+          provider: (tenant.emailProvider as "smtp" | "sendgrid" | "mailgun" | "resend" | "gmail" | null) ?? null,
+          config: (tenant.emailProviderConfig as Record<string, string>) ?? {},
+          fromAddress: tenant.businessEmail ?? (tenant.emailProviderConfig as Record<string, string>)?.["fromAddress"] ?? null,
+        };
+
+        const result = await sendEmail(emailProviderConfig, customer.email, subject, body);
+        emailSent = result.success;
+        emailError = result.error;
+
+        await db.insert(communicationsLogTable).values({
+          tenantId,
+          customerId: customer.id,
+          direction: "outbound",
+          channel: "email",
+          toAddress: customer.email,
+          subject,
+          body,
+          status: result.success ? "sent" : "failed",
+          externalId: result.externalId ?? null,
+          errorNote: result.error ?? null,
+          messageType: "manual",
+        });
+      } else {
+        emailError = "No public domain configured (REPLIT_DOMAINS/REPLIT_DEV_DOMAIN unset)";
+        logger.warn({ estimateId: id, tenantId }, "Cannot email estimate: no public domain configured");
+      }
+    }
+  } catch (err) {
+    emailError = String(err);
+    logger.error({ err, estimateId: id, tenantId }, "Failed to send estimate email");
+  }
+
+  res.json({ ...formatEstimate(updated), approvalToken: token, emailSent, emailError: emailError ?? null });
 });
 
 // ── CONVERT TO JOB ────────────────────────────────────────────────────────────

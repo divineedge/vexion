@@ -15,5 +15,10 @@ export interface EquipmentFuelLog {
   cost: number;
   /** @nullable */
   odometerReading?: number | null;
+  /**
+     * Optional link to the job this fuel was consumed for. When set, the Job Profitability report attributes this cost directly to that job rather than spreading it across all jobs.
+     * @nullable
+     */
+  jobId?: number | null;
   createdAt: string;
 }

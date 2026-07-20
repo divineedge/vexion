@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, equipmentTable, equipmentMaintenanceTable, equipmentFuelLogsTable, equipmentReadingLogsTable, tenantsTable, usersTable } from "@workspace/db";
+import { db, equipmentTable, equipmentMaintenanceTable, equipmentFuelLogsTable, equipmentReadingLogsTable, tenantsTable, usersTable, jobsTable } from "@workspace/db";
 import { eq, and, desc, sum, isNull, gte, lte, ilike } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isOwnerRole } from "../lib/roles";
@@ -508,10 +508,21 @@ router.post("/equipment/:id/fuel-logs", async (req, res): Promise<void> => {
     return;
   }
 
-  const { date, gallons, cost, odometerReading } = req.body;
+  const { date, gallons, cost, odometerReading, jobId } = req.body;
   if (!date || gallons == null) { res.status(400).json({ error: "date and gallons are required" }); return; }
 
   const parsedCost = cost != null ? parseFloat(cost) : 0;
+
+  // Validate jobId belongs to this tenant before storing to prevent cross-tenant linkage
+  let parsedJobId: number | null = null;
+  if (jobId != null) {
+    parsedJobId = parseInt(jobId, 10);
+    const [job] = await db
+      .select({ id: jobsTable.id })
+      .from(jobsTable)
+      .where(and(eq(jobsTable.id, parsedJobId), eq(jobsTable.tenantId, tenantId)));
+    if (!job) { res.status(404).json({ error: "Job not found" }); return; }
+  }
 
   const [row] = await db.insert(equipmentFuelLogsTable).values({
     equipmentId,
@@ -520,6 +531,7 @@ router.post("/equipment/:id/fuel-logs", async (req, res): Promise<void> => {
     gallons: parseFloat(gallons),
     cost: parsedCost,
     odometerReading: odometerReading != null ? parseFloat(odometerReading) : null,
+    jobId: parsedJobId,
   }).returning();
 
   // Recalculate fuel cost total — scoped by BOTH equipmentId AND tenantId

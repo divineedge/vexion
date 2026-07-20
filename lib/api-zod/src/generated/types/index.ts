@@ -17,7 +17,7 @@ export * from './agingInvoicesReportBuckets';
 export * from './aiZoneInput';
 export * from './aiZoneMaterial';
 export * from './aiZonePoint';
-export * from './applyBlueprintTemplateBody';
+// applyBlueprintTemplateBody excluded — zod const exported from api.ts
 export * from './authResponse';
 export * from './bankTransaction';
 export * from './bankTransactionStatus';
@@ -62,7 +62,7 @@ export * from './bulkArchiveTasks200';
 export * from './bulkArchiveTasksInput';
 export * from './cancelPlanVisit200';
 export * from './cancelPlanVisitInput';
-export * from './cancelRecurringSeriesParams';
+// cancelRecurringSeriesParams excluded — zod const exported from api.ts
 export * from './cancelSeriesScope';
 export * from './capacitySummary';
 export * from './categoryCount';
@@ -97,7 +97,7 @@ export * from './createPlanTemplateInputBillingCycle';
 export * from './createRecurringTemplateInput';
 export * from './createRecurringTemplateInputBillingCycleType';
 export * from './createRecurringTemplateInputBillingMode';
-export * from './createTaskFromQuoCallBody';
+// createTaskFromQuoCallBody excluded — zod const exported from api.ts
 export * from './createTaskInput';
 export * from './createVendorInput';
 export * from './createVisitInput';
@@ -174,17 +174,20 @@ export * from './followupTriggerConfig';
 export * from './followupTriggerConfigMissedCall';
 export * from './followupTriggerConfigUnansweredEmail';
 export * from './followupTriggerRule';
+// generateBlueprintAiZonesBody excluded — zod const exported from api.ts
+// generateBlueprintFromAiBody excluded — zod const exported from api.ts
+export * from './generateBlueprintFromAiBodyMode';
 export * from './geocodeResult';
 export * from './geofencePinUpdate';
 export * from './getDevToolsEnvironment200';
 export * from './getEmployeeRevenueReportParams';
-export * from './getEquipmentLedgerParams';
+// getEquipmentLedgerParams excluded — zod const exported from api.ts
 export * from './getGmailAuthorizeUrl200';
 export * from './getJobProfitabilityReportParams';
 export * from './getPlStatementReportParams';
 export * from './getQuickBooksAuthorizeUrl200';
 export * from './getRepairLogSummaryParams';
-export * from './getRouteDayDetailParams';
+// getRouteDayDetailParams excluded — zod const exported from api.ts
 export * from './getRoutesDashboardParams';
 export * from './getSalesTaxReportParams';
 export * from './healthStatus';

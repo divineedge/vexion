@@ -4502,6 +4502,7 @@ export const ListEquipmentFuelLogsResponseItem = zod.object({
   "gallons": zod.number(),
   "cost": zod.number(),
   "odometerReading": zod.number().nullish(),
+  "jobId": zod.number().nullish().describe('Optional link to the job this fuel was consumed for. When set, the Job Profitability report attributes this cost directly to that job rather than spreading it across all jobs.'),
   "createdAt": zod.string()
 })
 export const ListEquipmentFuelLogsResponse = zod.array(ListEquipmentFuelLogsResponseItem)
@@ -4518,7 +4519,8 @@ export const CreateEquipmentFuelLogBody = zod.object({
   "date": zod.string(),
   "gallons": zod.number(),
   "cost": zod.number().optional(),
-  "odometerReading": zod.number().optional()
+  "odometerReading": zod.number().optional(),
+  "jobId": zod.number().optional().describe('Optional job to attribute this fuel cost to. Improves per-job fuel cost accuracy in the Job Profitability report.')
 })
 
 export const CreateEquipmentFuelLogResponse = zod.object({
@@ -4529,6 +4531,7 @@ export const CreateEquipmentFuelLogResponse = zod.object({
   "gallons": zod.number(),
   "cost": zod.number(),
   "odometerReading": zod.number().nullish(),
+  "jobId": zod.number().nullish().describe('Optional link to the job this fuel was consumed for. When set, the Job Profitability report attributes this cost directly to that job rather than spreading it across all jobs.'),
   "createdAt": zod.string()
 })
 
@@ -4570,6 +4573,7 @@ export const GetEquipmentLedgerResponse = zod.object({
   "gallons": zod.number(),
   "cost": zod.number(),
   "odometerReading": zod.number().nullish(),
+  "jobId": zod.number().nullish().describe('Optional link to the job this fuel was consumed for. When set, the Job Profitability report attributes this cost directly to that job rather than spreading it across all jobs.'),
   "createdAt": zod.string()
 }))
 }),

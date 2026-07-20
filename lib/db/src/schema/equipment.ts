@@ -2,6 +2,7 @@ import { pgTable, text, serial, timestamp, integer, real, boolean } from "drizzl
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
+import { jobsTable } from "./jobs";
 
 // ── Equipment ─────────────────────────────────────────────────────────────────
 
@@ -83,6 +84,12 @@ export const equipmentFuelLogsTable = pgTable("equipment_fuel_logs", {
   cost: real("cost").notNull().default(0),
   /** Odometer reading at fill (hours for equipment, miles for vehicles) */
   odometerReading: real("odometer_reading"),
+  /**
+   * Optional link to the job this fuel was consumed for.
+   * When set, the Job Profitability report uses the actual per-job sum instead
+   * of the even-split approximation. Null means "fleet overhead / unassigned".
+   */
+  jobId: integer("job_id").references(() => jobsTable.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

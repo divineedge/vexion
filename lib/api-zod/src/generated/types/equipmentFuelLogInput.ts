@@ -11,4 +11,6 @@ export interface EquipmentFuelLogInput {
   gallons: number;
   cost?: number;
   odometerReading?: number;
+  /** Optional job to attribute this fuel cost to. Improves per-job fuel cost accuracy in the Job Profitability report. */
+  jobId?: number;
 }

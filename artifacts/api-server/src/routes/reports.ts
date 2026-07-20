@@ -3,14 +3,15 @@
  * and the sales tax tracker. All queries are tenant-scoped and cached for up to 1 hour
  * (see reportsCache.ts) to avoid re-running expensive aggregate queries on every page view.
  *
- * Cost/allocation assumptions (documented since the schema has no direct job↔fuel link):
+ * Cost/allocation assumptions:
  *   - Parts cost uses the marked-up sell price recorded on the job at completion time
  *     (jobs.job_parts[].total) — the same figure used elsewhere in the app (P4P engine).
  *   - Labor cost is the P4P payout pool: max(0, jobRevenue - partsCost) × p4pPct/100,
  *     using the job's blueprint override or the tenant's master P4P percentage.
- *   - Equipment fuel has no per-job linkage in the schema, so fuel cost is allocated
- *     evenly across jobs completed within the selected range (total fleet fuel spend
- *     in range ÷ number of jobs in range).
+ *   - Equipment fuel: when a fuel log has a job_id link the cost is attributed directly
+ *     to that job. Unlinked fuel logs (job_id IS NULL) are split evenly across jobs in
+ *     the range that have no directly-linked fuel. Jobs with linked fuel absorb no share
+ *     of unlinked fuel, preserving a clean split between attributed and overhead fuel.
  */
 
 import { Router, type IRouter } from "express";
@@ -108,16 +109,35 @@ router.get("/reports/job-profitability", async (req, res): Promise<void> => {
     };
     const jobs = (rows.rows as Row[]);
 
-    // Fleet-wide fuel spend in range, allocated evenly across jobs in range (see module doc).
-    const fuelAggRows = (await db.execute(sql`
-      SELECT COALESCE(SUM(cost), 0)::float AS total
+    // Fuel allocation: linked logs go directly to their job; unlinked logs are
+    // split evenly across jobs that have no linked fuel (see module doc).
+    const fuelByJobRows = (await db.execute(sql`
+      SELECT job_id, COALESCE(SUM(cost), 0)::float AS total
       FROM equipment_fuel_logs
       WHERE tenant_id = ${tenantId}
         AND date >= ${startDate.toISOString().slice(0, 10)}
         AND date <= ${endDate.toISOString().slice(0, 10)}
-    `)).rows as { total: number }[];
-    const totalFuelCost = fuelAggRows[0] ? Number(fuelAggRows[0].total) : 0;
-    const fuelPerJob = jobs.length > 0 ? totalFuelCost / jobs.length : 0;
+      GROUP BY job_id
+    `)).rows as { job_id: number | null; total: number }[];
+
+    // Build per-job fuel map (for linked logs) and collect unlinked total.
+    // Fuel linked to a job NOT in this report's result set (e.g. job outside date range
+    // or filtered out) is folded into the unlinked pool so no cost is silently dropped.
+    const jobIdSet = new Set(jobs.map(j => j.id));
+    const linkedFuelByJob = new Map<number, number>();
+    let unlinkedFuelTotal = 0;
+    for (const row of fuelByJobRows) {
+      if (row.job_id != null && jobIdSet.has(row.job_id)) {
+        linkedFuelByJob.set(row.job_id, Number(row.total));
+      } else {
+        // null job_id = fleet overhead; non-null but not in result set = out-of-range job
+        unlinkedFuelTotal += Number(row.total);
+      }
+    }
+
+    // Jobs with no directly-linked fuel share the unlinked overhead evenly
+    const jobsWithNoLinkedFuel = jobs.filter(j => !linkedFuelByJob.has(j.id));
+    const unlinkedFuelPerJob = jobsWithNoLinkedFuel.length > 0 ? unlinkedFuelTotal / jobsWithNoLinkedFuel.length : 0;
 
     const results = jobs.map(j => {
       const revenue = j.invoice_total != null ? Number(j.invoice_total) : Number(j.total_amount ?? 0);
@@ -125,7 +145,8 @@ router.get("/reports/job-profitability", async (req, res): Promise<void> => {
       const p4pPct = j.blueprint_p4p_pct != null ? Number(j.blueprint_p4p_pct) : globalPct;
       const netLaborRevenue = Math.max(0, revenue - partsCost);
       const laborCost = Math.round((netLaborRevenue * p4pPct / 100) * 100) / 100;
-      const fuelCost = Math.round(fuelPerJob * 100) / 100;
+      const rawFuelCost = linkedFuelByJob.has(j.id) ? linkedFuelByJob.get(j.id)! : unlinkedFuelPerJob;
+      const fuelCost = Math.round(rawFuelCost * 100) / 100;
       const netProfit = Math.round((revenue - partsCost - laborCost - fuelCost) * 100) / 100;
       const marginPct = revenue > 0 ? Math.round((netProfit / revenue) * 1000) / 10 : 0;
       return {

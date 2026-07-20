@@ -9854,6 +9854,9 @@ components:
           type: number
         odometerReading:
           type: ["number", "null"]
+        jobId:
+          type: ["integer", "null"]
+          description: Optional link to the job this fuel was consumed for. When set, the Job Profitability report attributes this cost directly to that job rather than spreading it across all jobs.
         createdAt:
           type: string
 
@@ -9869,6 +9872,9 @@ components:
           type: number
         odometerReading:
           type: number
+        jobId:
+          type: integer
+          description: Optional job to attribute this fuel cost to. Improves per-job fuel cost accuracy in the Job Profitability report.
 
     EquipmentLedger:
       type: object

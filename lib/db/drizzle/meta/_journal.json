@@ -57,6 +57,13 @@
       "when": 1753056002000,
       "tag": "0007_add_treated_area_to_chemical_applications",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1753056003000,
+      "tag": "0008_add_job_id_to_fuel_logs",
+      "breakpoints": true
     }
   ]
 }

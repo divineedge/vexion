@@ -17,7 +17,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Landmark, Mail, Send as SendIcon, Calculator, Wifi, WifiOff, RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
+import { Landmark, Mail, Send as SendIcon, Calculator, Wifi, WifiOff, RefreshCw, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 
 const ICONS: Record<string, React.ReactNode> = {
@@ -70,7 +70,9 @@ export default function IntegrationsGrid() {
                   <div>
                     <h3 className="font-semibold">{i.displayName}</h3>
                     <p className="text-xs text-muted-foreground">{i.description}</p>
-                    {i.connected ? (
+                    {i.connected && (i.errorCount ?? 0) >= 3 ? (
+                      <Badge variant="destructive" className="text-xs mt-1 gap-1"><AlertTriangle className="w-3 h-3" /> Needs attention</Badge>
+                    ) : i.connected ? (
                       <Badge variant="secondary" className="text-xs mt-1 gap-1"><Wifi className="w-3 h-3" /> Connected</Badge>
                     ) : (
                       <Badge variant="outline" className="text-xs mt-1 gap-1 text-muted-foreground"><WifiOff className="w-3 h-3" /> Not connected</Badge>

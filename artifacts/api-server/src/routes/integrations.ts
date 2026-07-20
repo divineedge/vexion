@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import crypto from "node:crypto";
-import { db, tenantsTable, vendorsTable, expenseEntriesTable, bankTransactionsTable, integrationSyncLogsTable } from "@workspace/db";
+import { db, tenantsTable, usersTable, vendorsTable, expenseEntriesTable, bankTransactionsTable, integrationSyncLogsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
@@ -9,11 +9,18 @@ import { testBankConnection, fetchBankTransactions, type BankSyncConfig } from "
 import { testMailchimpConnection, type MailchimpConfig } from "../lib/mailchimpProvider";
 import { testLobConnection, type LobConfig } from "../lib/lobProvider";
 import { buildQuickBooksAuthorizeUrl, exchangeQuickBooksCode, testQuickBooksConnection, type QuickBooksConfig } from "../lib/quickbooksProvider";
+import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
 const INTEGRATIONS = ["bank", "mailchimp", "lob", "quickbooks"] as const;
 type IntegrationName = typeof INTEGRATIONS[number];
+
+/** Number of consecutive failures before the owner is alerted. */
+const ALERT_THRESHOLD = 3;
+/** Minimum hours between alert emails for the same integration (rate-limit). */
+const ALERT_COOLDOWN_HOURS = 24;
 
 interface IntegrationState {
   connected: boolean;
@@ -22,8 +29,92 @@ interface IntegrationState {
   lastSyncStatus?: "success" | "error";
   errorCount: number;
   encryptedConfig?: string;
+  /** ISO timestamp of the last alert email sent for this integration. */
+  lastAlertSentAt?: string;
   /** Single-use, short-lived OAuth CSRF binding for the QuickBooks authorization-code flow. */
   pendingOAuth?: { nonce: string; userId: number; expiresAt: string };
+}
+
+/**
+ * Send an alert email to the tenant owner when an integration crosses the
+ * consecutive-failure threshold (previousErrorCount < threshold <= newErrorCount).
+ * Rate-limited to once per ALERT_COOLDOWN_HOURS.
+ *
+ * `lastAlertSentAt` is only persisted when the email is confirmed sent; a send
+ * failure leaves it unchanged so the next attempt can retry.
+ */
+async function maybeAlertOwner(
+  tenantId: number,
+  name: IntegrationName,
+  previousErrorCount: number,
+  state: IntegrationState,
+  errorMessage: string | undefined,
+): Promise<IntegrationState> {
+  // Only fire on the crossing (e.g. 2 → 3), not on every subsequent failure.
+  const crossed = previousErrorCount < ALERT_THRESHOLD && state.errorCount >= ALERT_THRESHOLD;
+  if (!crossed) return state;
+
+  // Within the cooldown window, suppress repeated alerts.
+  if (state.lastAlertSentAt) {
+    const hoursSinceLast = (Date.now() - new Date(state.lastAlertSentAt).getTime()) / 3_600_000;
+    if (hoursSinceLast < ALERT_COOLDOWN_HOURS) return state;
+  }
+
+  // Resolve owner email: prefer businessEmail on tenant, fall back to owner user.
+  const tenant = await getTenant(tenantId);
+  let ownerEmail = tenant.businessEmail ?? null;
+  if (!ownerEmail) {
+    const [ownerUser] = await db
+      .select({ email: usersTable.email })
+      .from(usersTable)
+      .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.role, "owner")))
+      .limit(1);
+    ownerEmail = ownerUser?.email ?? null;
+  }
+
+  if (!ownerEmail) {
+    logger.warn({ tenantId, integration: name }, "Integration alert: no owner email found, skipping notification");
+    return state;
+  }
+
+  const displayName = DISPLAY[name].displayName;
+  const subject = `Action required: ${displayName} integration is failing`;
+  const body = [
+    `Hi,`,
+    ``,
+    `Your ${displayName} integration has failed ${state.errorCount} time(s) in a row.`,
+    ``,
+    errorMessage ? `Last error: ${errorMessage}` : null,
+    state.lastSyncedAt ? `Last attempted: ${new Date(state.lastSyncedAt).toLocaleString()}` : null,
+    ``,
+    `Please log in to Settings → Integrations to review the sync log and reconnect or update your credentials.`,
+    ``,
+    `You will not receive another alert for this integration for ${ALERT_COOLDOWN_HOURS} hours.`,
+  ].filter(l => l !== null).join("\n");
+
+  const emailProviderConfig: EmailProviderConfig = {
+    provider: (tenant.emailProvider as EmailProviderConfig["provider"]) ?? null,
+    config: (tenant.emailProviderConfig as Record<string, string>) ?? {},
+    fromAddress: tenant.businessEmail ?? (tenant.emailProviderConfig as Record<string, string>)?.["fromAddress"] ?? null,
+  };
+
+  let sendResult: { success: boolean; error?: string } = { success: false };
+  try {
+    sendResult = await sendEmail(emailProviderConfig, ownerEmail, subject, body);
+  } catch (err) {
+    logger.error({ tenantId, integration: name, err }, "Integration alert: exception sending email");
+  }
+
+  // Only stamp lastAlertSentAt if delivery was confirmed — a failed send must not
+  // suppress the next attempt.
+  if (!sendResult.success) {
+    logger.warn({ tenantId, integration: name, error: sendResult.error }, "Integration alert: email send failed, will retry next crossing");
+    return state;
+  }
+
+  const updated: IntegrationState = { ...state, lastAlertSentAt: new Date().toISOString() };
+  await saveState(tenantId, name, updated);
+  return updated;
 }
 
 async function getTenant(tenantId: number) {
@@ -185,11 +276,15 @@ router.post("/integrations/:name/test", async (req, res): Promise<void> => {
     case "quickbooks": result = await testQuickBooksConnection(config as QuickBooksConfig); break;
   }
 
-  const newState: IntegrationState = {
+  const prevErrorCount = states[name].errorCount ?? 0;
+  const newErrorCount = result.success ? 0 : prevErrorCount + 1;
+  let newState: IntegrationState = {
     ...states[name],
     lastSyncedAt: new Date().toISOString(),
     lastSyncStatus: result.success ? "success" : "error",
-    errorCount: result.success ? 0 : (states[name].errorCount ?? 0) + 1,
+    errorCount: newErrorCount,
+    // Reset the alert cooldown on success so a new failure streak can trigger a fresh alert.
+    lastAlertSentAt: result.success ? undefined : states[name].lastAlertSentAt,
   };
   await saveState(tenantId, name, newState);
   await db.insert(integrationSyncLogsTable).values({
@@ -197,6 +292,10 @@ router.post("/integrations/:name/test", async (req, res): Promise<void> => {
     status: result.success ? "success" : "error",
     message: result.success ? "Test ping succeeded" : result.error,
   });
+
+  if (!result.success) {
+    newState = await maybeAlertOwner(tenantId, name, prevErrorCount, newState, result.error);
+  }
 
   res.json(result);
 });
@@ -228,8 +327,11 @@ router.post("/integrations/bank/sync", async (req, res): Promise<void> => {
 
   const { transactions, simulated, error } = await fetchBankTransactions(config);
   if (error) {
-    await saveState(tenantId, "bank", { ...states.bank, lastSyncedAt: new Date().toISOString(), lastSyncStatus: "error", errorCount: (states.bank.errorCount ?? 0) + 1 });
+    const prevErrorCount = states.bank.errorCount ?? 0;
+    const errState: IntegrationState = { ...states.bank, lastSyncedAt: new Date().toISOString(), lastSyncStatus: "error", errorCount: prevErrorCount + 1 };
+    await saveState(tenantId, "bank", errState);
     await db.insert(integrationSyncLogsTable).values({ tenantId, integration: "bank", action: "sync", status: "error", message: error });
+    await maybeAlertOwner(tenantId, "bank", prevErrorCount, errState, error);
     res.status(502).json({ error });
     return;
   }
@@ -246,7 +348,8 @@ router.post("/integrations/bank/sync", async (req, res): Promise<void> => {
     imported++;
   }
 
-  await saveState(tenantId, "bank", { ...states.bank, lastSyncedAt: new Date().toISOString(), lastSyncStatus: "success", errorCount: 0 });
+  // Reset errorCount and clear the alert cooldown so a future failure streak triggers a fresh alert.
+  await saveState(tenantId, "bank", { ...states.bank, lastSyncedAt: new Date().toISOString(), lastSyncStatus: "success", errorCount: 0, lastAlertSentAt: undefined });
   await db.insert(integrationSyncLogsTable).values({
     tenantId, integration: "bank", action: "sync", status: "success",
     message: `${imported} new transaction(s) pulled${simulated ? " (simulated feed — connect a live account for real data)" : ""}`,

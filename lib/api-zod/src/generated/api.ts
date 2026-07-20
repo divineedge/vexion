@@ -4522,11 +4522,11 @@ export const ListEquipmentFuelLogsResponseItem = zod.object({
   "id": zod.number(),
   "equipmentId": zod.number(),
   "tenantId": zod.number(),
+  "jobId": zod.number().nullish(),
   "date": zod.string(),
   "gallons": zod.number(),
   "cost": zod.number(),
   "odometerReading": zod.number().nullish(),
-  "jobId": zod.number().nullish().describe('Optional link to the job this fuel was consumed for. When set, the Job Profitability report attributes this cost directly to that job rather than spreading it across all jobs.'),
   "createdAt": zod.string()
 })
 export const ListEquipmentFuelLogsResponse = zod.array(ListEquipmentFuelLogsResponseItem)
@@ -4544,18 +4544,18 @@ export const CreateEquipmentFuelLogBody = zod.object({
   "gallons": zod.number(),
   "cost": zod.number().optional(),
   "odometerReading": zod.number().optional(),
-  "jobId": zod.number().optional().describe('Optional job to attribute this fuel cost to. Improves per-job fuel cost accuracy in the Job Profitability report.')
+  "jobId": zod.number().optional()
 })
 
 export const CreateEquipmentFuelLogResponse = zod.object({
   "id": zod.number(),
   "equipmentId": zod.number(),
   "tenantId": zod.number(),
+  "jobId": zod.number().nullish(),
   "date": zod.string(),
   "gallons": zod.number(),
   "cost": zod.number(),
   "odometerReading": zod.number().nullish(),
-  "jobId": zod.number().nullish().describe('Optional link to the job this fuel was consumed for. When set, the Job Profitability report attributes this cost directly to that job rather than spreading it across all jobs.'),
   "createdAt": zod.string()
 })
 
@@ -4593,11 +4593,11 @@ export const GetEquipmentLedgerResponse = zod.object({
   "id": zod.number(),
   "equipmentId": zod.number(),
   "tenantId": zod.number(),
+  "jobId": zod.number().nullish(),
   "date": zod.string(),
   "gallons": zod.number(),
   "cost": zod.number(),
   "odometerReading": zod.number().nullish(),
-  "jobId": zod.number().nullish().describe('Optional link to the job this fuel was consumed for. When set, the Job Profitability report attributes this cost directly to that job rather than spreading it across all jobs.'),
   "createdAt": zod.string()
 }))
 }),
@@ -5959,114 +5959,6 @@ export const PortalAddPropertyMediaResponse = zod.object({
   "isCover": zod.boolean(),
   "createdBy": zod.number().nullish(),
   "source": zod.string().nullish().describe('\'staff\' for staff-uploaded media, \'customer\' for customer portal uploads'),
-  "createdAt": zod.string()
-})
-
-
-/**
- * @summary List the current customer's service plans
- */
-export const PortalListPlansResponseItem = zod.object({
-  "id": zod.number(),
-  "templateName": zod.string(),
-  "startDate": zod.string(),
-  "endDate": zod.string(),
-  "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']),
-  "customCycleDays": zod.number().nullish(),
-  "billingPrice": zod.number(),
-  "autoRenew": zod.boolean(),
-  "status": zod.enum(['active', 'paused', 'cancelled', 'pending_renewal']),
-  "nextBillingDate": zod.string(),
-  "lastBilledAt": zod.string().nullish(),
-  "propertyAddress": zod.string().nullable(),
-  "serviceState": zod.array(zod.object({
-  "serviceId": zod.number().optional(),
-  "serviceName": zod.string().optional(),
-  "frequencyDays": zod.number().optional(),
-  "lastScheduledAt": zod.string().nullish()
-})),
-  "createdAt": zod.string()
-})
-export const PortalListPlansResponse = zod.array(PortalListPlansResponseItem)
-
-
-/**
- * @summary Get a single service plan with visits and billing history
- */
-export const PortalGetPlanParams = zod.object({
-  "id": zod.coerce.number()
-})
-
-export const PortalGetPlanResponse = zod.object({
-  "id": zod.number(),
-  "templateName": zod.string(),
-  "startDate": zod.string(),
-  "endDate": zod.string(),
-  "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']),
-  "customCycleDays": zod.number().nullish(),
-  "billingPrice": zod.number(),
-  "autoRenew": zod.boolean(),
-  "status": zod.enum(['active', 'paused', 'cancelled', 'pending_renewal']),
-  "nextBillingDate": zod.string(),
-  "lastBilledAt": zod.string().nullish(),
-  "propertyAddress": zod.string().nullable(),
-  "serviceState": zod.array(zod.object({
-  "serviceId": zod.number().optional(),
-  "serviceName": zod.string().optional(),
-  "frequencyDays": zod.number().optional(),
-  "lastScheduledAt": zod.string().nullish()
-})),
-  "createdAt": zod.string()
-}).and(zod.object({
-  "visits": zod.array(zod.object({
-  "id": zod.number(),
-  "title": zod.string(),
-  "status": zod.string(),
-  "scheduledAt": zod.string(),
-  "assigneeName": zod.string().nullish()
-})),
-  "billingHistory": zod.array(zod.object({
-  "id": zod.number(),
-  "invoiceNumber": zod.string(),
-  "status": zod.string(),
-  "total": zod.number(),
-  "dueDate": zod.string().nullish(),
-  "paidAt": zod.string().nullish(),
-  "createdAt": zod.string()
-}))
-}))
-
-
-/**
- * @summary Toggle auto-renew on a service plan
- */
-export const PortalUpdatePlanParams = zod.object({
-  "id": zod.coerce.number()
-})
-
-export const PortalUpdatePlanBody = zod.object({
-  "autoRenew": zod.boolean()
-})
-
-export const PortalUpdatePlanResponse = zod.object({
-  "id": zod.number(),
-  "templateName": zod.string(),
-  "startDate": zod.string(),
-  "endDate": zod.string(),
-  "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']),
-  "customCycleDays": zod.number().nullish(),
-  "billingPrice": zod.number(),
-  "autoRenew": zod.boolean(),
-  "status": zod.enum(['active', 'paused', 'cancelled', 'pending_renewal']),
-  "nextBillingDate": zod.string(),
-  "lastBilledAt": zod.string().nullish(),
-  "propertyAddress": zod.string().nullable(),
-  "serviceState": zod.array(zod.object({
-  "serviceId": zod.number().optional(),
-  "serviceName": zod.string().optional(),
-  "frequencyDays": zod.number().optional(),
-  "lastScheduledAt": zod.string().nullish()
-})),
   "createdAt": zod.string()
 })
 

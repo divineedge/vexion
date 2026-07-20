@@ -9925,6 +9925,8 @@ components:
           type: integer
         tenantId:
           type: integer
+        jobId:
+          type: ["integer", "null"]
         date:
           type: string
         gallons:

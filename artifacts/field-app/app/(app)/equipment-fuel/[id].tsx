@@ -80,8 +80,9 @@ function StyledInput({
 export default function LogFuelFillScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, jobId } = useLocalSearchParams<{ id: string; jobId?: string }>();
   const equipmentId = Number(id);
+  const linkedJobId = jobId ? Number(jobId) : null;
 
   const { data: equipment } = useGetEquipment(equipmentId);
   const eq = equipment as Equipment | undefined;
@@ -129,6 +130,7 @@ export default function LogFuelFillScreen() {
       };
       if (cost.trim()) body.cost = Number(cost);
       if (hoursReading.trim()) body.odometerReading = Number(hoursReading);
+      if (linkedJobId != null) body.jobId = linkedJobId;
 
       await createMutation.mutateAsync({ id: equipmentId, data: body });
 
@@ -154,6 +156,15 @@ export default function LogFuelFillScreen() {
           {eq ? (
             <Text style={[styles.equipmentName, { color: colors.foreground }]}>{eq.name}</Text>
           ) : null}
+
+          {linkedJobId != null && (
+            <View style={[styles.jobBanner, { backgroundColor: colors.primary + '12', borderColor: colors.primary + '30' }]}>
+              <Ionicons name="briefcase-outline" size={15} color={colors.primary} />
+              <Text style={[styles.jobBannerText, { color: colors.primary }]}>
+                Fuel cost will be attributed to this job
+              </Text>
+            </View>
+          )}
 
           <Field label="Gallons" required colors={colors}>
             <StyledInput
@@ -256,6 +267,17 @@ const styles = StyleSheet.create({
   },
   errMsg: { fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 4 },
   hintMsg: { fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 4 },
+  jobBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 16,
+  },
+  jobBannerText: { fontFamily: 'Inter_500Medium', fontSize: 13, flex: 1 },
   footer: {
     position: 'absolute',
     bottom: 0,

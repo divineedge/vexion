@@ -10,6 +10,8 @@ export interface EquipmentFuelLog {
   id: number;
   equipmentId: number;
   tenantId: number;
+  /** @nullable */
+  jobId?: number | null;
   date: string;
   gallons: number;
   cost: number;

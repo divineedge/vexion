@@ -77,6 +77,8 @@ export const equipmentFuelLogsTable = pgTable("equipment_fuel_logs", {
   id: serial("id").primaryKey(),
   equipmentId: integer("equipment_id").notNull().references(() => equipmentTable.id),
   tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
+  /** Optional: job this fill was incurred on. When set, the profitability report attributes the cost directly to that job instead of splitting evenly. */
+  jobId: integer("job_id"),
   date: text("date").notNull(), // ISO date YYYY-MM-DD
   /** Gallons added */
   gallons: real("gallons").notNull(),
@@ -84,12 +86,6 @@ export const equipmentFuelLogsTable = pgTable("equipment_fuel_logs", {
   cost: real("cost").notNull().default(0),
   /** Odometer reading at fill (hours for equipment, miles for vehicles) */
   odometerReading: real("odometer_reading"),
-  /**
-   * Optional link to the job this fuel was consumed for.
-   * When set, the Job Profitability report uses the actual per-job sum instead
-   * of the even-split approximation. Null means "fleet overhead / unassigned".
-   */
-  jobId: integer("job_id").references(() => jobsTable.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

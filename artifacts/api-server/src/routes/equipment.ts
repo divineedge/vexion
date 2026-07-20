@@ -606,27 +606,26 @@ router.post("/equipment/:id/fuel-logs", async (req, res): Promise<void> => {
   const { date, gallons, cost, odometerReading, jobId } = req.body;
   if (!date || gallons == null) { res.status(400).json({ error: "date and gallons are required" }); return; }
 
-  const parsedCost = cost != null ? parseFloat(cost) : 0;
-
-  // Validate jobId belongs to this tenant before storing to prevent cross-tenant linkage
+  // Validate jobId belongs to this tenant when provided
   let parsedJobId: number | null = null;
   if (jobId != null) {
     parsedJobId = parseInt(jobId, 10);
-    const [job] = await db
-      .select({ id: jobsTable.id })
-      .from(jobsTable)
+    if (isNaN(parsedJobId)) { res.status(400).json({ error: "jobId must be an integer" }); return; }
+    const [job] = await db.select({ id: jobsTable.id }).from(jobsTable)
       .where(and(eq(jobsTable.id, parsedJobId), eq(jobsTable.tenantId, tenantId)));
-    if (!job) { res.status(404).json({ error: "Job not found" }); return; }
+    if (!job) { res.status(400).json({ error: "jobId not found or does not belong to this tenant" }); return; }
   }
+
+  const parsedCost = cost != null ? parseFloat(cost) : 0;
 
   const [row] = await db.insert(equipmentFuelLogsTable).values({
     equipmentId,
     tenantId,
+    jobId: parsedJobId,
     date,
     gallons: parseFloat(gallons),
     cost: parsedCost,
     odometerReading: odometerReading != null ? parseFloat(odometerReading) : null,
-    jobId: parsedJobId,
   }).returning();
 
   // Recalculate fuel cost total — scoped by BOTH equipmentId AND tenantId

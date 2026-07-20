@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   Platform,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -111,14 +111,21 @@ function EquipmentCard({
 export default function EquipmentListScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  // When jobId is present, selecting equipment goes straight to the fuel-fill form
+  // with the job pre-selected (called from the job detail "Log Fuel Fill" button).
+  const { jobId } = useLocalSearchParams<{ jobId?: string }>();
 
   const { data, isLoading, isError, refetch, isFetching } = useListEquipment();
   const equipment = ((data as Equipment[] | undefined) ?? []).filter((e) => e.isActive);
 
   const handlePress = useCallback(async (id: number) => {
     await Haptics.selectionAsync();
-    router.push(`/(app)/equipment/${id}`);
-  }, []);
+    if (jobId) {
+      router.push(`/(app)/equipment-fuel/${id}?jobId=${jobId}` as any);
+    } else {
+      router.push(`/(app)/equipment/${id}`);
+    }
+  }, [jobId]);
 
   const bottomPad = insets.bottom + (Platform.OS === 'web' ? 34 : 0) + 16;
 

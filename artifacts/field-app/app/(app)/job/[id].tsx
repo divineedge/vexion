@@ -462,6 +462,32 @@ export default function JobDetailScreen() {
           </View>
         )}
 
+        {/* Equipment / Fuel section */}
+        {!isOffline && (
+          <View style={[styles.section, { marginBottom: 16 }]}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Equipment & Fuel</Text>
+            <TouchableOpacity
+              style={[styles.fuelBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={async () => {
+                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push(`/(app)/equipment?jobId=${jobId}` as any);
+              }}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.fuelBtnIcon, { backgroundColor: colors.primary + '18' }]}>
+                <Ionicons name="car-outline" size={18} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.fuelBtnLabel, { color: colors.foreground }]}>Log Fuel Fill</Text>
+                <Text style={[styles.fuelBtnSub, { color: colors.mutedForeground }]}>
+                  Select equipment · cost goes to this job
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Applications section */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
@@ -708,6 +734,23 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     marginVertical: 12,
   },
+  fuelBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    gap: 12,
+  },
+  fuelBtnIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fuelBtnLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 14 },
+  fuelBtnSub: { fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 2 },
   fabContainer: {
     position: 'absolute',
     bottom: 0,

@@ -11,7 +11,7 @@
 
 import { db, recurringInvoiceTemplatesTable, billingEmailQueueTable, invoicesTable, customersTable, tenantsTable, jobsTable } from "@workspace/db";
 import type { RecurringInvoiceTemplate } from "@workspace/db";
-import { eq, and, lte, sql, inArray, notInArray } from "drizzle-orm";
+import { eq, and, lte, sql, inArray, notInArray, isNull } from "drizzle-orm";
 import { logger } from "./logger";
 import { sendEmail } from "./emailProvider";
 
@@ -22,6 +22,29 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Queryable = Tx | typeof db;
 
 type BillingLineItem = { description: string; quantity: number; unitPrice: number; total: number };
+
+// ── Atomic claim guard ───────────────────────────────────────────────────────
+
+/**
+ * Atomically claims a set of jobs for invoicing by setting a sentinel invoiceId of -1.
+ * Only rows whose invoiceId IS NULL are updated, so a concurrent process that races
+ * to claim the same job will get rowCount = 0 for that row and skip it.
+ *
+ * Must be called inside a transaction: the sentinel value (-1) is replaced by the real
+ * invoiceId before the transaction commits, so it is never visible to external readers.
+ * If the transaction rolls back, the UPDATE rolls back too and the job stays claimable.
+ *
+ * Returns the subset of jobIds that were successfully claimed by this call.
+ */
+async function claimJobsForInvoicing(tx: Tx, jobIds: number[]): Promise<number[]> {
+  if (jobIds.length === 0) return [];
+  const claimed = await tx
+    .update(jobsTable)
+    .set({ invoiceId: -1 })
+    .where(and(inArray(jobsTable.id, jobIds), isNull(jobsTable.invoiceId)))
+    .returning({ id: jobsTable.id });
+  return claimed.map(r => r.id);
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -138,9 +161,13 @@ async function findCustomersWithCompletedWork(
  * Generates a single invoice for one customer under the given template, using either the
  * template's static line items or completed-work line items depending on billingMode.
  * Returns null if there was nothing to bill (only possible in 'completed_work' mode).
+ *
+ * For 'completed_work' mode, an atomic claim guard (claimJobsForInvoicing) locks each
+ * eligible job row before the invoice is created, preventing a concurrent scheduler run
+ * from picking up the same jobs and generating a duplicate invoice.
  */
 async function generateInvoiceForCustomer(
-  tx: Queryable,
+  tx: Tx,
   template: RecurringInvoiceTemplate,
   customerId: number,
   taxRate: number,
@@ -186,8 +213,25 @@ async function generateInvoiceForCustomer(
   if (template.billingMode === "completed_work") {
     const result = await collectCompletedWorkForCustomer(tx, template.tenantId, customerId, template.serviceId, periodStart, periodEnd, excludeJobIds);
     if (result.lineItems.length === 0) return null;
-    lineItems = result.lineItems;
-    jobIds = result.jobIds;
+
+    // Atomically claim the found jobs. A concurrent process racing the same
+    // period will get an empty claim set for any row we've already locked.
+    const claimedIds = new Set(await claimJobsForInvoicing(tx, result.jobIds));
+    // Keep only the line items whose jobs we actually claimed.
+    const filtered = result.jobIds.reduce<{ lineItems: BillingLineItem[]; jobIds: number[] }>(
+      (acc, id, i) => {
+        if (claimedIds.has(id)) {
+          acc.lineItems.push(result.lineItems[i]);
+          acc.jobIds.push(id);
+        }
+        return acc;
+      },
+      { lineItems: [], jobIds: [] },
+    );
+
+    if (filtered.lineItems.length === 0) return null;
+    lineItems = filtered.lineItems;
+    jobIds = filtered.jobIds;
   } else {
     lineItems = (template.lineItems as BillingLineItem[]) ?? [];
   }
@@ -355,7 +399,17 @@ async function processWeeklyNonRecurringInvoices() {
       const invoiceNum = generateInvoiceNumber();
 
       let invoiceId!: number;
+      let claimed = false;
       await db.transaction(async tx => {
+        // Atomically claim this job before creating the invoice. If another
+        // concurrent process already claimed it (invoiceId != null), bail out.
+        const [claimedRow] = await tx
+          .update(jobsTable)
+          .set({ invoiceId: -1 })
+          .where(and(eq(jobsTable.id, job.id), isNull(jobsTable.invoiceId)))
+          .returning({ id: jobsTable.id });
+        if (!claimedRow) return; // Already claimed — skip silently
+
         const [invoice] = await tx.insert(invoicesTable).values({
           tenantId: job.tenantId,
           invoiceNumber: invoiceNum,
@@ -369,7 +423,9 @@ async function processWeeklyNonRecurringInvoices() {
         }).returning();
         invoiceId = invoice.id;
         await tx.update(jobsTable).set({ invoiceId: invoice.id, pendingWeeklyInvoice: false }).where(eq(jobsTable.id, job.id));
+        claimed = true;
       });
+      if (!claimed) continue;
 
       if (customerEmail) await enqueueInvoiceEmail(job.tenantId, invoiceId);
       generated++;

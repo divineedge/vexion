@@ -206,3 +206,114 @@ describe("completed-work period window — consecutive runs tile the timeline", 
     expect(run2).toEqual([]);
   });
 });
+
+// ── Atomic claim guard — double-billing prevention ───────────────────────────
+//
+// The claimJobsForInvoicing helper does a conditional UPDATE WHERE invoice_id IS NULL
+// and returns the IDs it actually locked. This block simulates the concurrent-process
+// scenario in pure logic (no DB required) to confirm the filtering contract holds.
+
+type ClaimableJob = { id: number; invoiceId: number | null };
+
+/**
+ * Pure simulation of the claim step: marks jobs whose invoiceId is null,
+ * returns the IDs that were "claimed". Mirrors what claimJobsForInvoicing does in SQL.
+ */
+function simulateClaim(jobs: ClaimableJob[], candidateIds: number[]): number[] {
+  const claimed: number[] = [];
+  for (const id of candidateIds) {
+    const job = jobs.find(j => j.id === id);
+    if (job && job.invoiceId === null) {
+      job.invoiceId = -1; // sentinel — replaced by real invoiceId in the same transaction
+      claimed.push(id);
+    }
+  }
+  return claimed;
+}
+
+describe("atomic claim guard — prevents concurrent double-billing", () => {
+  it("a job with null invoiceId is claimed exactly once when two processes race", () => {
+    const jobs: ClaimableJob[] = [{ id: 1, invoiceId: null }];
+
+    // Process A selects job 1
+    const candidateIdsA = [1];
+    // Process B also selects job 1 before A commits (same null at SELECT time)
+    const candidateIdsB = [1];
+
+    // A claims first
+    const claimedA = simulateClaim(jobs, candidateIdsA);
+    expect(claimedA).toEqual([1]);
+
+    // B races in — job 1 now has sentinel (-1), so claim fails
+    const claimedB = simulateClaim(jobs, candidateIdsB);
+    expect(claimedB).toEqual([]); // B gets nothing — no duplicate invoice
+  });
+
+  it("an already-invoiced job (invoiceId != null) is never re-claimed", () => {
+    const jobs: ClaimableJob[] = [{ id: 2, invoiceId: 99 }]; // already has a real invoice
+
+    const claimed = simulateClaim(jobs, [2]);
+    expect(claimed).toEqual([]);
+    expect(jobs[0].invoiceId).toBe(99); // unchanged
+  });
+
+  it("multiple jobs are each claimed independently — partial overlap yields no duplicate", () => {
+    // Jobs 1 and 2 are eligible; job 3 was already invoiced
+    const jobs: ClaimableJob[] = [
+      { id: 1, invoiceId: null },
+      { id: 2, invoiceId: null },
+      { id: 3, invoiceId: 50 },
+    ];
+
+    // Process A claims all three candidates
+    const claimedA = simulateClaim(jobs, [1, 2, 3]);
+    expect(claimedA.sort()).toEqual([1, 2]); // job 3 skipped (already invoiced)
+
+    // Process B sees the same candidate list but arrives after A
+    const claimedB = simulateClaim(jobs, [1, 2, 3]);
+    expect(claimedB).toEqual([]); // all already claimed or invoiced
+
+    // Total claims across both processes: exactly [1, 2] — no duplicates
+    const allClaimed = [...claimedA, ...claimedB];
+    expect([...new Set(allClaimed)].sort()).toEqual([1, 2]);
+  });
+
+  it("filtering line items to claimed job ids matches the guard contract", () => {
+    // Simulate what generateInvoiceForCustomer does: collect candidates, claim a subset,
+    // then keep only line items whose job was claimed.
+    const candidateJobIds = [10, 11, 12];
+    const lineItems = [
+      { description: "Mow A", quantity: 1, unitPrice: 50, total: 50 },
+      { description: "Mow B", quantity: 1, unitPrice: 60, total: 60 },
+      { description: "Mow C", quantity: 1, unitPrice: 70, total: 70 },
+    ];
+
+    // Only jobs 10 and 12 are actually claimed (11 was snatched by a concurrent process)
+    const claimedIds = new Set([10, 12]);
+
+    const filtered = candidateJobIds.reduce<{ lineItems: typeof lineItems; jobIds: number[] }>(
+      (acc, id, i) => {
+        if (claimedIds.has(id)) {
+          acc.lineItems.push(lineItems[i]);
+          acc.jobIds.push(id);
+        }
+        return acc;
+      },
+      { lineItems: [], jobIds: [] },
+    );
+
+    expect(filtered.jobIds).toEqual([10, 12]);
+    expect(filtered.lineItems).toEqual([
+      { description: "Mow A", quantity: 1, unitPrice: 50, total: 50 },
+      { description: "Mow C", quantity: 1, unitPrice: 70, total: 70 },
+    ]);
+    // Job 11's line item ("Mow B") is excluded — it will be billed by the other process
+    expect(filtered.lineItems.find(li => li.description === "Mow B")).toBeUndefined();
+  });
+
+  it("an empty candidate list yields an empty claim set without errors", () => {
+    const jobs: ClaimableJob[] = [];
+    const claimed = simulateClaim(jobs, []);
+    expect(claimed).toEqual([]);
+  });
+});

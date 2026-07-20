@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
-import { Search, Plus, Building, Phone, Mail, Save, X, User, Tag, FileText, Home, AlertTriangle, Filter } from 'lucide-react';
+import { Search, Plus, Building, Phone, Mail, Save, X, User, Tag, FileText, Home, AlertTriangle, Filter, Zap } from 'lucide-react';
 import { useLocation } from 'wouter';
 import { useDebounce } from '@/hooks/use-debounce';
 import { toast } from 'sonner';
@@ -189,6 +189,11 @@ export default function CustomersPage() {
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <div className="font-medium">{customer.name}</div>
+                          {customer.autoInvoiceOnCompletion && (
+                            <Badge variant="outline" className="gap-1 text-emerald-700 border-emerald-300 bg-emerald-50 text-[10px] px-1.5 py-0 shrink-0">
+                              <Zap className="w-3 h-3" /> Auto-Invoice
+                            </Badge>
+                          )}
                           {failure && (
                             <Badge variant="outline" className="gap-1 text-red-600 border-red-200 text-[10px] px-1.5 py-0 shrink-0">
                               <AlertTriangle className="w-3 h-3" /> Reminder failed

@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable, mediaAttachmentsTable, tenantsTable } from "@workspace/db";
+import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable, mediaAttachmentsTable, tenantsTable, communicationsLogTable } from "@workspace/db";
 import { eq, and, gt, desc, lte, isNotNull } from "drizzle-orm";
 import { objectStorageService } from "./storage";
 import crypto from "crypto";
@@ -139,9 +139,39 @@ router.post("/portal/auth/request-otp", async (req, res): Promise<void> => {
 
   if (!emailResult.success) {
     logger.error({ to: email, error: emailResult.error }, "Failed to send portal OTP email");
+    // Log the failed attempt
+    await db.insert(communicationsLogTable).values({
+      tenantId,
+      customerId: customer.id,
+      direction: "outbound",
+      channel: "email",
+      fromAddress: emailProviderConfig.fromAddress ?? null,
+      toAddress: email.toLowerCase().trim(),
+      subject,
+      body,
+      status: "failed",
+      messageType: "portal_otp",
+    }).catch(() => { /* best-effort logging */ });
     res.status(500).json({ error: "Failed to send login code. Please try again or contact support." });
     return;
   }
+
+  // Log the sent OTP email in the communications log
+  await db.insert(communicationsLogTable).values({
+    tenantId,
+    customerId: customer.id,
+    direction: "outbound",
+    channel: "email",
+    fromAddress: emailProviderConfig.fromAddress ?? null,
+    toAddress: email.toLowerCase().trim(),
+    subject,
+    body,
+    status: "sent",
+    externalId: emailResult.externalId ?? null,
+    messageType: "portal_otp",
+  }).catch((err) => {
+    logger.warn({ err }, "Failed to write portal OTP to communications log");
+  });
 
   // Return previewOtp only in development so engineers can test without a real email service.
   const isDev = process.env.NODE_ENV !== "production";

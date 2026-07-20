@@ -10,6 +10,7 @@ import {
   useCreateInventoryLocation, useUpdateInventoryLocation, useDeleteInventoryLocation,
   useGetLocationStock, getGetLocationStockQueryKey,
   useTransferInventoryStock,
+  useGetInventoryItemByLocation, getGetInventoryItemByLocationQueryKey,
 } from '@workspace/api-client-react';
 import type { InventoryLocation } from '@workspace/api-client-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -32,6 +33,35 @@ import {
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDebounce } from '@/hooks/use-debounce';
+
+function ItemLocationSection({ inventoryItemId }: { inventoryItemId: number }) {
+  const { data: locationStock } = useGetInventoryItemByLocation(inventoryItemId, {
+    query: { queryKey: getGetInventoryItemByLocationQueryKey(inventoryItemId) },
+  });
+  if (!locationStock || locationStock.length === 0) return null;
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1.5">
+        <MapPin className="w-3.5 h-3.5" /> Stock by Location
+      </p>
+      <div className="rounded-lg border divide-y text-sm">
+        {locationStock.map(loc => (
+          <div key={loc.id} className="flex items-center justify-between px-3 py-2">
+            <div className="flex items-center gap-2 text-sm">
+              {loc.locationName?.toLowerCase().includes('trailer')
+                ? <Truck className="w-3.5 h-3.5 text-muted-foreground" />
+                : <Warehouse className="w-3.5 h-3.5 text-muted-foreground" />}
+              <span>{loc.locationName}</span>
+            </div>
+            <span className={`font-semibold ${loc.isLowStock ? 'text-destructive' : ''}`}>
+              {loc.quantity} {loc.unit}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 type ItemForm = {
   name: string;
@@ -622,6 +652,8 @@ export default function InventoryPage() {
                     <PlusCircle className="w-4 h-4" /> Adjust Stock
                   </Button>
                 )}
+
+                <ItemLocationSection inventoryItemId={selectedItem.id} />
 
                 {selectedItem.description && (
                   <>

@@ -17,6 +17,7 @@ import {
   useSendJobReminder,
   useAddJobPart, useRemoveJobPart,
   useListInventoryItems, getListInventoryItemsQueryKey,
+  useGetInventoryItemByLocation, getGetInventoryItemByLocationQueryKey,
   useListJobMedia, getListJobMediaQueryKey,
   useListEstimates, getListEstimatesQueryKey,
   useListVisits, getListVisitsQueryKey,
@@ -47,7 +48,7 @@ import {
   ChevronLeft, ChevronRight, Clock, MapPin, User, Calendar,
   DollarSign, ClipboardList, Plus, Users, FlaskConical, Trash2, AlertTriangle,
   Bell, BellOff, Send, Package, Search, Images, RefreshCw, Pause, Play, X,
-  SkipForward, ListEnd, Wrench, Square, Timer,
+  SkipForward, ListEnd, Wrench, Square, Timer, Warehouse, Truck,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -55,6 +56,28 @@ import {
   startOfWeek, endOfWeek, startOfMonth, endOfMonth,
   eachDayOfInterval, format, isSameDay, addWeeks, subWeeks, addMonths, subMonths,
 } from 'date-fns';
+
+function PartLocationBadges({ inventoryItemId }: { inventoryItemId: number }) {
+  const { data: locationStock } = useGetInventoryItemByLocation(inventoryItemId, {
+    query: { queryKey: getGetInventoryItemByLocationQueryKey(inventoryItemId) },
+  });
+  if (!locationStock || locationStock.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1 mt-0.5">
+      {locationStock.map(loc => (
+        <span
+          key={loc.id}
+          className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground bg-muted/70 rounded px-1.5 py-0.5"
+        >
+          {loc.locationName?.toLowerCase().includes('trailer')
+            ? <Truck className="w-2.5 h-2.5" />
+            : <Warehouse className="w-2.5 h-2.5" />}
+          {loc.quantity} {loc.locationName}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 const STATUS_COLORS: Record<string, string> = {
   scheduled:   'bg-blue-100 text-blue-800 border-blue-200',
@@ -848,6 +871,7 @@ export default function SchedulePage() {
                           <div className="flex-1 min-w-0">
                             <span className="font-medium truncate block">{part.name}</span>
                             <span className="text-xs text-muted-foreground">{part.quantity} × ${part.unitPrice.toFixed(2)}</span>
+                            <PartLocationBadges inventoryItemId={part.inventoryItemId} />
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="font-semibold">${part.total.toFixed(2)}</span>

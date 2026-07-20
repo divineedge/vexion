@@ -20,6 +20,8 @@ export const communicationsLogTable = pgTable("communications_log", {
   status: text("status").notNull().default("queued"),
   /** External message ID from the provider */
   externalId: text("external_id"),
+  /** Error message when status='failed' */
+  errorNote: text("error_note"),
   /** 'reminder_7d' | 'reminder_24h' | 'manual' | 'marketing' */
   messageType: text("message_type").notNull().default("manual"),
   /** Job this message is associated with, if any */

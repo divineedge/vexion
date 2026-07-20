@@ -328,6 +328,11 @@ paths:
           in: query
           schema:
             type: integer
+        - name: hasReminderFailure
+          in: query
+          schema:
+            type: boolean
+          description: "Filter to customers whose last outbound reminder failed to send"
       responses:
         "200":
           description: List of customers
@@ -6661,6 +6666,24 @@ components:
           type: string
         paymentStanding:
           $ref: "#/components/schemas/PaymentStanding"
+        lastReminderFailure:
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/ReminderFailure"
+
+    ReminderFailure:
+      type: object
+      required: [channel, errorNote, failedAt]
+      properties:
+        channel:
+          type: string
+          description: "'sms' or 'email'"
+        errorNote:
+          type: string
+          description: "Error message from the provider"
+        failedAt:
+          type: string
+          description: "ISO timestamp of the failure"
 
     PaymentStanding:
       type: object

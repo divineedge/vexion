@@ -7,6 +7,7 @@
  */
 import type { CustomerCustomFieldValues } from './customerCustomFieldValues';
 import type { PaymentStanding } from './paymentStanding';
+import type { ReminderFailure } from './reminderFailure';
 
 export interface Customer {
   id: number;
@@ -56,4 +57,5 @@ export interface Customer {
   lastYearSpend?: number | null;
   createdAt: string;
   paymentStanding?: PaymentStanding;
+  lastReminderFailure?: null | ReminderFailure;
 }

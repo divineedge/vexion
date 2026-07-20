@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
-import { Search, Plus, Building, Phone, Mail, Save, X, User, Tag, FileText, Home } from 'lucide-react';
+import { Search, Plus, Building, Phone, Mail, Save, X, User, Tag, FileText, Home, AlertTriangle, Filter } from 'lucide-react';
 import { useLocation } from 'wouter';
 import { useDebounce } from '@/hooks/use-debounce';
 import { toast } from 'sonner';
@@ -55,14 +55,21 @@ export default function CustomersPage() {
   const debouncedSearch = useDebounce(search, 300);
   const [, setLocation] = useLocation();
   const qc = useQueryClient();
+  const [reminderFailureFilter, setReminderFailureFilter] = useState(false);
 
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<FormData>(BLANK);
   const [tagInput, setTagInput] = useState('');
 
+  const queryParams = {
+    q: debouncedSearch || undefined,
+    limit: 50,
+    hasReminderFailure: reminderFailureFilter ? true : undefined,
+  };
+
   const { data, isLoading } = useListCustomers(
-    { q: debouncedSearch || undefined, limit: 50 },
-    { query: { queryKey: getListCustomersQueryKey({ q: debouncedSearch || undefined, limit: 50 }) } },
+    queryParams,
+    { query: { queryKey: getListCustomersQueryKey(queryParams) } },
   );
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
 
@@ -140,6 +147,18 @@ export default function CustomersPage() {
                 onChange={e => setSearch(e.target.value)}
               />
             </div>
+            <Button
+              variant={reminderFailureFilter ? 'default' : 'outline'}
+              size="sm"
+              className="gap-2 shrink-0"
+              onClick={() => setReminderFailureFilter(v => !v)}
+            >
+              <AlertTriangle className="w-4 h-4" />
+              Reminder Failures
+              {reminderFailureFilter && data?.total != null && (
+                <Badge variant="secondary" className="ml-1 bg-white/20 text-white border-0">{data.total}</Badge>
+              )}
+            </Button>
           </div>
           <Table>
             <TableHeader>
@@ -155,33 +174,45 @@ export default function CustomersPage() {
               {isLoading ? (
                 <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Loading customers...</TableCell></TableRow>
               ) : data?.items.length === 0 ? (
-                <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No customers found.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                  {reminderFailureFilter ? 'No customers with reminder failures found.' : 'No customers found.'}
+                </TableCell></TableRow>
               ) : (
-                data?.items.map(customer => (
-                  <TableRow
-                    key={customer.id}
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => setLocation(`/customers/${customer.id}`)}
-                  >
-                    <TableCell>
-                      <div className="font-medium">{customer.name}</div>
-                      {customer.company && <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5"><Building className="w-3 h-3" />{customer.company}</div>}
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm flex flex-col gap-0.5">
-                        <div className="flex items-center gap-2 text-muted-foreground"><Phone className="w-3 h-3" />{customer.phone}</div>
-                        <div className="flex items-center gap-2 text-muted-foreground"><Mail className="w-3 h-3" />{customer.email}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {(customer as { customerType?: string }).customerType ? (
-                        <Badge variant="secondary" className="capitalize">{(customer as { customerType?: string }).customerType}</Badge>
-                      ) : '-'}
-                    </TableCell>
-                    <TableCell><Badge variant="secondary">{customer.propertyCount || 0}</Badge></TableCell>
-                    <TableCell className="text-right font-medium">${(customer.totalSpend ?? 0).toLocaleString()}</TableCell>
-                  </TableRow>
-                ))
+                data?.items.map(customer => {
+                  const failure = (customer as any).lastReminderFailure as { channel: string; errorNote: string; failedAt: string } | null;
+                  return (
+                    <TableRow
+                      key={customer.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => setLocation(`/customers/${customer.id}`)}
+                    >
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <div className="font-medium">{customer.name}</div>
+                          {failure && (
+                            <Badge variant="outline" className="gap-1 text-red-600 border-red-200 text-[10px] px-1.5 py-0 shrink-0">
+                              <AlertTriangle className="w-3 h-3" /> Reminder failed
+                            </Badge>
+                          )}
+                        </div>
+                        {customer.company && <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5"><Building className="w-3 h-3" />{customer.company}</div>}
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm flex flex-col gap-0.5">
+                          <div className="flex items-center gap-2 text-muted-foreground"><Phone className="w-3 h-3" />{customer.phone}</div>
+                          <div className="flex items-center gap-2 text-muted-foreground"><Mail className="w-3 h-3" />{customer.email}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {(customer as { customerType?: string }).customerType ? (
+                          <Badge variant="secondary" className="capitalize">{(customer as { customerType?: string }).customerType}</Badge>
+                        ) : '-'}
+                      </TableCell>
+                      <TableCell><Badge variant="secondary">{customer.propertyCount || 0}</Badge></TableCell>
+                      <TableCell className="text-right font-medium">${(customer.totalSpend ?? 0).toLocaleString()}</TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>

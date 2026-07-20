@@ -250,7 +250,8 @@ export const GetRevenueTrendResponse = zod.array(GetRevenueTrendResponseItem)
 export const ListCustomersQueryParams = zod.object({
   "q": zod.coerce.string().optional().describe('Search query'),
   "page": zod.coerce.number().optional(),
-  "limit": zod.coerce.number().optional()
+  "limit": zod.coerce.number().optional(),
+  "hasReminderFailure": zod.coerce.boolean().optional().describe('Filter to customers whose last outbound reminder failed to send')
 })
 
 export const ListCustomersResponse = zod.object({
@@ -288,7 +289,12 @@ export const ListCustomersResponse = zod.object({
   "overdueAmount": zod.number().optional(),
   "pendingFlagId": zod.number().nullish(),
   "isServicePaused": zod.boolean().optional()
-}).optional()
+}).optional(),
+  "lastReminderFailure": zod.union([zod.null(),zod.object({
+  "channel": zod.string().describe('\'sms\' or \'email\''),
+  "errorNote": zod.string().describe('Error message from the provider'),
+  "failedAt": zod.string().describe('ISO timestamp of the failure')
+})]).optional()
 })),
   "total": zod.number(),
   "page": zod.number(),
@@ -350,7 +356,12 @@ export const CreateCustomerResponse = zod.object({
   "overdueAmount": zod.number().optional(),
   "pendingFlagId": zod.number().nullish(),
   "isServicePaused": zod.boolean().optional()
-}).optional()
+}).optional(),
+  "lastReminderFailure": zod.union([zod.null(),zod.object({
+  "channel": zod.string().describe('\'sms\' or \'email\''),
+  "errorNote": zod.string().describe('Error message from the provider'),
+  "failedAt": zod.string().describe('ISO timestamp of the failure')
+})]).optional()
 })
 
 
@@ -395,7 +406,12 @@ export const GetCustomerResponse = zod.object({
   "overdueAmount": zod.number().optional(),
   "pendingFlagId": zod.number().nullish(),
   "isServicePaused": zod.boolean().optional()
-}).optional()
+}).optional(),
+  "lastReminderFailure": zod.union([zod.null(),zod.object({
+  "channel": zod.string().describe('\'sms\' or \'email\''),
+  "errorNote": zod.string().describe('Error message from the provider'),
+  "failedAt": zod.string().describe('ISO timestamp of the failure')
+})]).optional()
 })
 
 
@@ -460,7 +476,12 @@ export const UpdateCustomerResponse = zod.object({
   "overdueAmount": zod.number().optional(),
   "pendingFlagId": zod.number().nullish(),
   "isServicePaused": zod.boolean().optional()
-}).optional()
+}).optional(),
+  "lastReminderFailure": zod.union([zod.null(),zod.object({
+  "channel": zod.string().describe('\'sms\' or \'email\''),
+  "errorNote": zod.string().describe('Error message from the provider'),
+  "failedAt": zod.string().describe('ISO timestamp of the failure')
+})]).optional()
 })
 
 
@@ -5512,7 +5533,12 @@ export const ResumeCustomerServiceResponse = zod.object({
   "overdueAmount": zod.number().optional(),
   "pendingFlagId": zod.number().nullish(),
   "isServicePaused": zod.boolean().optional()
-}).optional()
+}).optional(),
+  "lastReminderFailure": zod.union([zod.null(),zod.object({
+  "channel": zod.string().describe('\'sms\' or \'email\''),
+  "errorNote": zod.string().describe('Error message from the provider'),
+  "failedAt": zod.string().describe('ISO timestamp of the failure')
+})]).optional()
 })
 
 

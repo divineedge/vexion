@@ -158,6 +158,7 @@ async function sendReminder(params: {
       body: smsBody,
       status: smsResult.success ? "sent" : "failed",
       externalId: smsResult.externalId ?? null,
+      errorNote: smsResult.success ? null : (smsResult.error ?? "Unknown SMS error"),
       messageType,
       jobId: job.id,
     });
@@ -191,6 +192,7 @@ async function sendReminder(params: {
       body,
       status: emailResult.success ? "sent" : "failed",
       externalId: emailResult.externalId ?? null,
+      errorNote: emailResult.success ? null : (emailResult.error ?? "Unknown email error"),
       messageType,
       jobId: job.id,
     });

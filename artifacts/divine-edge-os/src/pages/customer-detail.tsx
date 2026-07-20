@@ -583,6 +583,15 @@ export default function CustomerDetailPage() {
                 <CardDescription>All sent and received SMS/email messages with this customer.</CardDescription>
               </div>
               <div className="flex items-center gap-2">
+                {(() => {
+                  const failure = (customer as any).lastReminderFailure as { channel: string; errorNote: string; failedAt: string } | null;
+                  if (!failure) return null;
+                  return (
+                    <Badge variant="outline" className="text-red-600 border-red-200 gap-1 text-xs" title={`${failure.channel.toUpperCase()} failed: ${failure.errorNote}`}>
+                      <AlertTriangle className="w-3 h-3" /> Last reminder failed ({failure.channel.toUpperCase()})
+                    </Badge>
+                  );
+                })()}
                 {(customer as any).smsOptOut && (
                   <Badge variant="outline" className="text-orange-600 border-orange-300 gap-1 text-xs">
                     <PhoneOff className="w-3 h-3" /> SMS opt-out

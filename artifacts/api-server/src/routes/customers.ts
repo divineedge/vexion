@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, customersTable, propertiesTable, jobsTable, invoicesTable, activityLogTable, propertyOwnershipHistoryTable, customerOtpSessionsTable, stopServiceFlagsTable } from "@workspace/db";
-import { eq, and, ilike, sql, desc, isNull, ne } from "drizzle-orm";
+import { db, customersTable, propertiesTable, jobsTable, invoicesTable, activityLogTable, propertyOwnershipHistoryTable, customerOtpSessionsTable, stopServiceFlagsTable, communicationsLogTable } from "@workspace/db";
+import { eq, and, ilike, sql, desc, isNull, ne, inArray } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { syncCustomerToMailchimp } from "../lib/mailchimpSync";
 import { isAdminRole } from "../lib/roles";
@@ -208,9 +208,15 @@ async function computePaymentStanding(tenantId: number, customerId: number): Pro
   };
 }
 
+type LastReminderFailure = {
+  channel: string;
+  errorNote: string;
+  failedAt: string;
+} | null;
+
 function formatCustomer(
   c: typeof customersTable.$inferSelect,
-  extras?: { propertyCount?: number; thisYearSpend?: number; lastYearSpend?: number; paymentStanding?: PaymentStanding }
+  extras?: { propertyCount?: number; thisYearSpend?: number; lastYearSpend?: number; paymentStanding?: PaymentStanding; lastReminderFailure?: LastReminderFailure }
 ) {
   return {
     id: c.id,
@@ -239,19 +245,73 @@ function formatCustomer(
     lastYearSpend: extras?.lastYearSpend ?? null,
     propertyCount: extras?.propertyCount ?? 0,
     paymentStanding: extras?.paymentStanding ?? null,
+    lastReminderFailure: extras?.lastReminderFailure ?? null,
     createdAt: c.createdAt.toISOString(),
   };
 }
 
+/**
+ * Fetch the most recent failed outbound reminder comms-log entry for each of the given customer IDs.
+ * Returns a map of customerId → LastReminderFailure.
+ */
+async function fetchLastReminderFailures(tenantId: number, customerIds: number[]): Promise<Map<number, LastReminderFailure>> {
+  if (customerIds.length === 0) return new Map();
+
+  // Use DISTINCT ON to get the latest failure per customer
+  const rows = await db.execute(sql`
+    SELECT DISTINCT ON (customer_id)
+      customer_id,
+      channel,
+      error_note,
+      created_at
+    FROM communications_log
+    WHERE tenant_id = ${tenantId}
+      AND customer_id = ANY(${sql.raw(`ARRAY[${customerIds.join(",")}]`)}::int[])
+      AND direction = 'outbound'
+      AND status = 'failed'
+      AND message_type IN ('reminder_7d', 'reminder_24h')
+    ORDER BY customer_id, created_at DESC
+  `) as unknown as { rows: Array<{ customer_id: number; channel: string; error_note: string | null; created_at: Date }> };
+
+  const map = new Map<number, LastReminderFailure>();
+  for (const row of rows.rows) {
+    map.set(row.customer_id, {
+      channel: row.channel,
+      errorNote: row.error_note ?? "Unknown error",
+      failedAt: new Date(row.created_at).toISOString(),
+    });
+  }
+  return map;
+}
+
 router.get("/customers", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { q, page = "1", limit = "20" } = req.query as Record<string, string>;
+  const { q, page = "1", limit = "20", hasReminderFailure } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page, 10));
   const limitNum = Math.min(100, parseInt(limit, 10));
   const offset = (pageNum - 1) * limitNum;
 
   const baseWhere = eq(customersTable.tenantId, tenantId);
-  const where = q ? and(baseWhere, ilike(customersTable.name, `%${q}%`)) : baseWhere;
+  let where = q ? and(baseWhere, ilike(customersTable.name, `%${q}%`)) : baseWhere;
+
+  // If filtering by reminder failure, restrict to customers that have a failed outbound reminder in comms log
+  if (hasReminderFailure === "true") {
+    const failedCustomerIds = await db
+      .selectDistinct({ customerId: communicationsLogTable.customerId })
+      .from(communicationsLogTable)
+      .where(and(
+        eq(communicationsLogTable.tenantId, tenantId),
+        eq(communicationsLogTable.direction, "outbound"),
+        eq(communicationsLogTable.status, "failed"),
+        sql`${communicationsLogTable.messageType} IN ('reminder_7d', 'reminder_24h')`,
+      ));
+    const ids = failedCustomerIds.map(r => r.customerId).filter((id): id is number => id !== null);
+    if (ids.length === 0) {
+      res.json({ items: [], total: 0, page: pageNum, limit: limitNum });
+      return;
+    }
+    where = and(where, inArray(customersTable.id, ids));
+  }
 
   const [{ count }] = await db
     .select({ count: sql<number>`count(*)::int` })
@@ -266,16 +326,22 @@ router.get("/customers", async (req, res): Promise<void> => {
     .limit(limitNum)
     .offset(offset);
 
-  const propCounts = await db
-    .select({ customerId: propertiesTable.customerId, count: sql<number>`count(*)::int` })
-    .from(propertiesTable)
-    .where(eq(propertiesTable.tenantId, tenantId))
-    .groupBy(propertiesTable.customerId);
+  const [propCounts, failureMap] = await Promise.all([
+    db
+      .select({ customerId: propertiesTable.customerId, count: sql<number>`count(*)::int` })
+      .from(propertiesTable)
+      .where(eq(propertiesTable.tenantId, tenantId))
+      .groupBy(propertiesTable.customerId),
+    fetchLastReminderFailures(tenantId, rows.map(r => r.id)),
+  ]);
 
   const propMap = Object.fromEntries(propCounts.map(p => [p.customerId, p.count]));
 
   res.json({
-    items: rows.map(c => formatCustomer(c, { propertyCount: propMap[c.id] ?? 0 })),
+    items: rows.map(c => formatCustomer(c, {
+      propertyCount: propMap[c.id] ?? 0,
+      lastReminderFailure: failureMap.get(c.id) ?? null,
+    })),
     total: count,
     page: pageNum,
     limit: limitNum,
@@ -335,6 +401,7 @@ router.get("/customers/:id", async (req, res): Promise<void> => {
     [thisYear],
     [lastYear],
     paymentStanding,
+    failureMap,
   ] = await Promise.all([
     db.select({ count: sql<number>`count(*)::int` }).from(propertiesTable)
       .where(and(eq(propertiesTable.customerId, id), eq(propertiesTable.tenantId, tenantId))),
@@ -343,6 +410,7 @@ router.get("/customers/:id", async (req, res): Promise<void> => {
     db.select({ total: sql<number>`COALESCE(sum(total),0)::float` }).from(invoicesTable)
       .where(and(eq(invoicesTable.tenantId, tenantId), eq(invoicesTable.customerId, id), eq(invoicesTable.status, "paid"), sql`created_at >= ${lastYearStart}::timestamptz AND created_at < ${lastYearEnd}::timestamptz`)),
     computePaymentStanding(tenantId, id),
+    fetchLastReminderFailures(tenantId, [id]),
   ]);
 
   res.json(formatCustomer(customer, {
@@ -350,6 +418,7 @@ router.get("/customers/:id", async (req, res): Promise<void> => {
     thisYearSpend: thisYear?.total ?? 0,
     lastYearSpend: lastYear?.total ?? 0,
     paymentStanding,
+    lastReminderFailure: failureMap.get(id) ?? null,
   }));
 });
 

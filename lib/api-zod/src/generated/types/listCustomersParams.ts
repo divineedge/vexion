@@ -13,4 +13,8 @@ export type ListCustomersParams = {
 q?: string;
 page?: number;
 limit?: number;
+/**
+ * Filter to customers whose last outbound reminder failed to send
+ */
+hasReminderFailure?: boolean;
 };

@@ -677,6 +677,15 @@ export interface PaymentStanding {
   isServicePaused?: boolean;
 }
 
+export interface ReminderFailure {
+  /** 'sms' or 'email' */
+  channel: string;
+  /** Error message from the provider */
+  errorNote: string;
+  /** ISO timestamp of the failure */
+  failedAt: string;
+}
+
 export interface Customer {
   id: number;
   tenantId: number;
@@ -725,6 +734,7 @@ export interface Customer {
   lastYearSpend?: number | null;
   createdAt: string;
   paymentStanding?: PaymentStanding;
+  lastReminderFailure?: null | ReminderFailure;
 }
 
 export type CustomerInputCustomFieldValues = {[key: string]: string};
@@ -4250,6 +4260,10 @@ export type ListCustomersParams = {
 q?: string;
 page?: number;
 limit?: number;
+/**
+ * Filter to customers whose last outbound reminder failed to send
+ */
+hasReminderFailure?: boolean;
 };
 
 export type ListPropertiesParams = {

@@ -195,6 +195,7 @@ import type {
   PropertyMeasurementUpdate,
   PropertyUpdate,
   PublicEstimate,
+  PublicInvoice,
   PublicReviewRequest,
   QuoCall,
   Quote,
@@ -15478,6 +15479,83 @@ export const useConvertEstimateToJob = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getConvertEstimateToJobMutationOptions(options));
     }
+
+export const getGetPublicInvoiceUrl = (token: string,) => {
+
+
+
+
+  return `/api/public/invoices/${token}`
+}
+
+/**
+ * @summary Get public invoice by token (no auth)
+ */
+export const getPublicInvoice = async (token: string, options?: RequestInit): Promise<PublicInvoice> => {
+
+  return customFetch<PublicInvoice>(getGetPublicInvoiceUrl(token),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPublicInvoiceQueryKey = (token: string,) => {
+    return [
+    `/api/public/invoices/${token}`
+    ] as const;
+    }
+
+
+export const getGetPublicInvoiceQueryOptions = <TData = Awaited<ReturnType<typeof getPublicInvoice>>, TError = ErrorType<void>>(token: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPublicInvoice>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPublicInvoiceQueryKey(token);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPublicInvoice>>> = ({ signal }) => getPublicInvoice(token, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: token !== null && token !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPublicInvoice>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPublicInvoiceQueryResult = NonNullable<Awaited<ReturnType<typeof getPublicInvoice>>>
+export type GetPublicInvoiceQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get public invoice by token (no auth)
+ */
+
+export function useGetPublicInvoice<TData = Awaited<ReturnType<typeof getPublicInvoice>>, TError = ErrorType<void>>(
+ token: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPublicInvoice>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPublicInvoiceQueryOptions(token,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetPublicEstimateUrl = (token: string,) => {
 

@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import crypto from "crypto";
 import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable, invoicesTable, tenantsTable, blueprintsTable, chemicalApplicationsTable, customerPlansTable } from "@workspace/db";
 import { eq, and, or, sql, desc, asc, isNotNull, isNull, ne, inArray, min, gt } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
@@ -574,6 +575,7 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
             customerId: updated.customerId!,
             jobId: updated.id,
             status: customer.email ? "sent" : "draft",
+            publicToken: customer.email ? crypto.randomBytes(32).toString("hex") : null,
             subtotal,
             tax,
             total,

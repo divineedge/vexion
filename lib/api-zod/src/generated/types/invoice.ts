@@ -34,5 +34,7 @@ export interface Invoice {
   lobLetterId?: string | null;
   /** @nullable */
   lobStatus?: string | null;
+  /** @nullable */
+  publicToken?: string | null;
   createdAt: string;
 }

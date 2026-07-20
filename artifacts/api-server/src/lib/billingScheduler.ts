@@ -14,6 +14,11 @@ import type { RecurringInvoiceTemplate } from "@workspace/db";
 import { eq, and, lte, sql, inArray, notInArray, isNull } from "drizzle-orm";
 import { logger } from "./logger";
 import { sendEmail } from "./emailProvider";
+import crypto from "crypto";
+
+function generatePublicToken(): string {
+  return crypto.randomBytes(32).toString("hex");
+}
 
 const MAX_EMAIL_ATTEMPTS = 3;
 
@@ -248,6 +253,7 @@ async function generateInvoiceForCustomer(
       invoiceNumber: invoiceNum,
       customerId,
       status: "sent",
+      publicToken: generatePublicToken(),
       subtotal,
       tax,
       total,
@@ -416,6 +422,7 @@ async function processWeeklyNonRecurringInvoices() {
           customerId: job.customerId!,
           jobId: job.id,
           status: customerEmail ? "sent" : "draft",
+          publicToken: customerEmail ? generatePublicToken() : null,
           subtotal,
           tax,
           total,

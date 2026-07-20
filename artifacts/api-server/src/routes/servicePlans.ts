@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import crypto from "crypto";
 import {
   db, planTemplatesTable, customerPlansTable, jobsTable, customersTable,
   propertiesTable, usersTable, invoicesTable, activityLogTable, tenantsTable,
@@ -611,6 +612,7 @@ export async function billPlanPeriod(tenantId: number, planId: number, userId: n
       customerId: plan.customerId,
       planId: plan.id,
       status: customer?.email ? "sent" : "draft",
+      publicToken: customer?.email ? crypto.randomBytes(32).toString("hex") : null,
       subtotal,
       tax,
       total,

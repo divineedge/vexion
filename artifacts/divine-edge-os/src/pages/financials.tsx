@@ -1313,6 +1313,41 @@ export default function FinancialsPage() {
                   </Select>
                 </div>
 
+                {/* View Public Invoice */}
+                {(selectedInvoice as any).publicToken && (
+                  <div className="flex items-center justify-between rounded-lg border p-3">
+                    <div>
+                      <p className="text-sm font-medium">Customer Invoice Link</p>
+                      <p className="text-xs text-muted-foreground">Shareable branded view for the customer</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const base = import.meta.env.BASE_URL?.replace(/\/$/, '') ?? '';
+                          const url = `${window.location.origin}${base}/invoice/${(selectedInvoice as any).publicToken}`;
+                          navigator.clipboard.writeText(url);
+                          toast.success('Link copied to clipboard');
+                        }}
+                      >
+                        Copy Link
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const base = import.meta.env.BASE_URL?.replace(/\/$/, '') ?? '';
+                          window.open(`${base}/invoice/${(selectedInvoice as any).publicToken}`, '_blank');
+                        }}
+                      >
+                        <Eye className="w-3.5 h-3.5 mr-1" />
+                        View
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Print & Mail via Lob */}
                 <div className="flex items-center justify-between rounded-lg border p-3">
                   <div>

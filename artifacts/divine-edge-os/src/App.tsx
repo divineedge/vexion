@@ -33,6 +33,7 @@ import QuoteWidgetPage from '@/pages/quote-widget';
 import EstimatesPage from '@/pages/estimates';
 import VisitsPage from '@/pages/visits';
 import EstimatePublicPage from '@/pages/estimate-public';
+import InvoicePublicPage from '@/pages/invoice-public';
 import ReviewsPage from '@/pages/reviews';
 import ReviewPublicPage from '@/pages/review-public';
 import PlansDashboardPage from '@/pages/plans-dashboard';
@@ -104,6 +105,7 @@ function Router() {
       <Route path="/quote/:token" component={QuotePublicPage} />
       <Route path="/widget/quote" component={QuoteWidgetPage} />
       <Route path="/estimate/:token" component={EstimatePublicPage} />
+      <Route path="/invoice/:token" component={InvoicePublicPage} />
       <Route path="/review/:token" component={ReviewPublicPage} />
       <Route path="/login" component={LoginPage} />
       <Route path="/signup" component={SignupPage} />

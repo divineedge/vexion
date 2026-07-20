@@ -128,6 +128,7 @@ function Calendar({
           return (
             <div
               data-slot="calendar"
+              // @ts-expect-error -- duplicate @types/react version in monorepo causes Ref type mismatch
               ref={rootRef}
               className={cn(className)}
               {...props}

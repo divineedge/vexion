@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, invoicesTable, customersTable, jobsTable, activityLogTable, tenantsTable, integrationSyncLogsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
+import crypto from "crypto";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { decryptSecretConfig } from "../lib/secretsCrypto";
@@ -161,8 +162,13 @@ function formatInvoice(i: typeof invoicesTable.$inferSelect, customerName?: stri
     dueDate: i.dueDate?.toISOString() ?? null,
     paidAt: i.paidAt?.toISOString() ?? null,
     stripePaymentUrl: i.stripePaymentUrl ?? null,
+    publicToken: i.publicToken ?? null,
     createdAt: i.createdAt.toISOString(),
   };
+}
+
+function generateInvoiceToken(): string {
+  return crypto.randomBytes(32).toString("hex");
 }
 
 router.get("/invoices/financials-summary", async (req, res): Promise<void> => {
@@ -292,6 +298,13 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
   if (notes !== undefined) updates.notes = notes;
   if (dueDate !== undefined) updates.dueDate = dueDate ? new Date(dueDate) : null;
   if (status === "paid") { updates.paidAt = new Date(); }
+  // Generate a public token the first time an invoice is sent so customers can view it via a shareable link
+  if (status === "sent") {
+    const [existing] = await db.select({ publicToken: invoicesTable.publicToken }).from(invoicesTable).where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId)));
+    if (!existing?.publicToken) {
+      updates.publicToken = generateInvoiceToken();
+    }
+  }
 
   const [updated] = await db.update(invoicesTable).set(updates).where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId))).returning();
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
@@ -383,6 +396,39 @@ router.post("/invoices/:id/print-mail", async (req, res): Promise<void> => {
     .returning();
 
   res.json(formatInvoice(updated, row.customer.name));
+});
+
+// ── PUBLIC: GET INVOICE BY TOKEN ──────────────────────────────────────────────
+router.get("/public/invoices/:token", async (req, res): Promise<void> => {
+  const { token } = req.params;
+
+  const [row] = await db
+    .select({
+      invoice: invoicesTable,
+      customerName: customersTable.name,
+    })
+    .from(invoicesTable)
+    .leftJoin(customersTable, eq(invoicesTable.customerId, customersTable.id))
+    .where(eq(invoicesTable.publicToken, token));
+
+  if (!row) { res.status(404).json({ error: "Invoice not found" }); return; }
+
+  const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, row.invoice.tenantId));
+
+  res.json({
+    ...formatInvoice(row.invoice, row.customerName),
+    publicToken: undefined, // don't expose token in response
+    businessProfile: {
+      companyName: tenant?.name ?? null,
+      logoUrl: tenant?.logoUrl ?? null,
+      tagline: tenant?.businessTagline ?? null,
+      phone: tenant?.businessPhone ?? null,
+      email: tenant?.businessEmail ?? null,
+      website: tenant?.businessWebsite ?? null,
+      address: tenant?.businessAddress ?? null,
+      invoiceFooterText: tenant?.invoiceFooterText ?? null,
+    },
+  });
 });
 
 export default router;

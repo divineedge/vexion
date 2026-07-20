@@ -85,6 +85,79 @@ export interface Estimate {
   updatedAt: string;
 }
 
+export interface PublicInvoiceBusinessProfile {
+  /** @nullable */
+  companyName?: string | null;
+  /** @nullable */
+  logoUrl?: string | null;
+  /** @nullable */
+  tagline?: string | null;
+  /** @nullable */
+  phone?: string | null;
+  /** @nullable */
+  email?: string | null;
+  /** @nullable */
+  website?: string | null;
+  /** @nullable */
+  address?: string | null;
+  /** @nullable */
+  invoiceFooterText?: string | null;
+}
+
+export type InvoiceStatus = typeof InvoiceStatus[keyof typeof InvoiceStatus];
+
+
+export const InvoiceStatus = {
+  draft: 'draft',
+  sent: 'sent',
+  paid: 'paid',
+  overdue: 'overdue',
+  cancelled: 'cancelled',
+} as const;
+
+export interface InvoiceLineItem {
+  id: number;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+}
+
+export interface Invoice {
+  id: number;
+  tenantId: number;
+  invoiceNumber: string;
+  customerId: number;
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  jobId?: number | null;
+  status: InvoiceStatus;
+  subtotal: number;
+  tax: number;
+  total: number;
+  /** @nullable */
+  dueDate?: string | null;
+  /** @nullable */
+  paidAt?: string | null;
+  /** @nullable */
+  notes?: string | null;
+  lineItems?: InvoiceLineItem[];
+  /** @nullable */
+  stripePaymentUrl?: string | null;
+  /** @nullable */
+  lobLetterId?: string | null;
+  /** @nullable */
+  lobStatus?: string | null;
+  /** @nullable */
+  publicToken?: string | null;
+  createdAt: string;
+}
+
+export type PublicInvoice = Invoice & {
+  businessProfile?: PublicInvoiceBusinessProfile;
+};
+
 export interface PublicEstimateBusinessProfile {
   /** @nullable */
   companyName?: string | null;
@@ -1364,54 +1437,6 @@ export interface InventorySummary {
   totalValue: number;
   lowStockCount: number;
   categories: CategoryCount[];
-}
-
-export type InvoiceStatus = typeof InvoiceStatus[keyof typeof InvoiceStatus];
-
-
-export const InvoiceStatus = {
-  draft: 'draft',
-  sent: 'sent',
-  paid: 'paid',
-  overdue: 'overdue',
-  cancelled: 'cancelled',
-} as const;
-
-export interface InvoiceLineItem {
-  id: number;
-  description: string;
-  quantity: number;
-  unitPrice: number;
-  total: number;
-}
-
-export interface Invoice {
-  id: number;
-  tenantId: number;
-  invoiceNumber: string;
-  customerId: number;
-  /** @nullable */
-  customerName?: string | null;
-  /** @nullable */
-  jobId?: number | null;
-  status: InvoiceStatus;
-  subtotal: number;
-  tax: number;
-  total: number;
-  /** @nullable */
-  dueDate?: string | null;
-  /** @nullable */
-  paidAt?: string | null;
-  /** @nullable */
-  notes?: string | null;
-  lineItems?: InvoiceLineItem[];
-  /** @nullable */
-  stripePaymentUrl?: string | null;
-  /** @nullable */
-  lobLetterId?: string | null;
-  /** @nullable */
-  lobStatus?: string | null;
-  createdAt: string;
 }
 
 export interface BroadcastFilter {

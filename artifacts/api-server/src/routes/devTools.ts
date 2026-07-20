@@ -5,6 +5,7 @@
  * simulation requires an explicit confirmation flag from the client.
  */
 import { Router, type IRouter, type Request, type Response } from "express";
+import crypto from "crypto";
 import { db, jobsTable, customersTable, tenantsTable, invoicesTable, activityLogTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
@@ -148,6 +149,7 @@ router.post("/dev-tools/simulate/complete-job-auto-invoice", async (req, res): P
         customerId: updated.customerId!,
         jobId: updated.id,
         status: row.customer!.email ? "sent" : "draft",
+        publicToken: row.customer!.email ? crypto.randomBytes(32).toString("hex") : null,
         subtotal, tax, total,
         lineItems: (updated.lineItems as unknown[]) ?? [],
       }).returning();

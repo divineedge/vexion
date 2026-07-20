@@ -64,6 +64,13 @@
       "when": 1753056003000,
       "tag": "0008_add_job_id_to_fuel_logs",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1753056004000,
+      "tag": "0009_add_public_token_to_invoices",
+      "breakpoints": true
     }
   ]
 }

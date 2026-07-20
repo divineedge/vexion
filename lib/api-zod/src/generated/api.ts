@@ -2321,6 +2321,7 @@ export const ListInvoicesResponseItem = zod.object({
   "stripePaymentUrl": zod.string().nullish(),
   "lobLetterId": zod.string().nullish(),
   "lobStatus": zod.string().nullish(),
+  "publicToken": zod.string().nullish(),
   "createdAt": zod.string()
 })
 export const ListInvoicesResponse = zod.array(ListInvoicesResponseItem)
@@ -2365,6 +2366,7 @@ export const CreateInvoiceResponse = zod.object({
   "stripePaymentUrl": zod.string().nullish(),
   "lobLetterId": zod.string().nullish(),
   "lobStatus": zod.string().nullish(),
+  "publicToken": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -2400,6 +2402,7 @@ export const GetInvoiceResponse = zod.object({
   "stripePaymentUrl": zod.string().nullish(),
   "lobLetterId": zod.string().nullish(),
   "lobStatus": zod.string().nullish(),
+  "publicToken": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -2441,6 +2444,7 @@ export const UpdateInvoiceResponse = zod.object({
   "stripePaymentUrl": zod.string().nullish(),
   "lobLetterId": zod.string().nullish(),
   "lobStatus": zod.string().nullish(),
+  "publicToken": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -2476,6 +2480,7 @@ export const CreateInvoiceFromJobResponse = zod.object({
   "stripePaymentUrl": zod.string().nullish(),
   "lobLetterId": zod.string().nullish(),
   "lobStatus": zod.string().nullish(),
+  "publicToken": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -6304,6 +6309,53 @@ export const ConvertEstimateToJobResponse = zod.object({
 
 
 /**
+ * @summary Get public invoice by token (no auth)
+ */
+export const GetPublicInvoiceParams = zod.object({
+  "token": zod.coerce.string()
+})
+
+export const GetPublicInvoiceResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "invoiceNumber": zod.string(),
+  "customerId": zod.number(),
+  "customerName": zod.string().nullish(),
+  "jobId": zod.number().nullish(),
+  "status": zod.enum(['draft', 'sent', 'paid', 'overdue', 'cancelled']),
+  "subtotal": zod.number(),
+  "tax": zod.number(),
+  "total": zod.number(),
+  "dueDate": zod.string().nullish(),
+  "paidAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.number(),
+  "description": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional(),
+  "stripePaymentUrl": zod.string().nullish(),
+  "lobLetterId": zod.string().nullish(),
+  "lobStatus": zod.string().nullish(),
+  "publicToken": zod.string().nullish(),
+  "createdAt": zod.string()
+}).and(zod.object({
+  "businessProfile": zod.object({
+  "companyName": zod.string().nullish(),
+  "logoUrl": zod.string().nullish(),
+  "tagline": zod.string().nullish(),
+  "phone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "website": zod.string().nullish(),
+  "address": zod.string().nullish(),
+  "invoiceFooterText": zod.string().nullish()
+}).optional()
+}))
+
+
+/**
  * @summary Get public estimate by approval token (no auth)
  */
 export const GetPublicEstimateParams = zod.object({
@@ -8015,6 +8067,7 @@ export const PrintMailInvoiceResponse = zod.object({
   "stripePaymentUrl": zod.string().nullish(),
   "lobLetterId": zod.string().nullish(),
   "lobStatus": zod.string().nullish(),
+  "publicToken": zod.string().nullish(),
   "createdAt": zod.string()
 })
 

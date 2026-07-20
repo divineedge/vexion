@@ -37,6 +37,8 @@ export const invoicesTable = pgTable("invoices", {
   lobLetterId: text("lob_letter_id"),
   /** Lob delivery status: 'requested' | 'mailed' | 'delivered' | 'returned' | 'failed' */
   lobStatus: text("lob_status"),
+  /** Token for the public no-login invoice view page, generated when the invoice is first sent */
+  publicToken: text("public_token").unique(),
   /** Array of offsetDays values (from tenant.paymentReminderSchedule) already sent for this invoice */
   paymentRemindersSent: jsonb("payment_reminders_sent").default("[]"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

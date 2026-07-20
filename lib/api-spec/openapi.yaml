@@ -4198,6 +4198,27 @@ paths:
                   total:
                     type: number
 
+  /public/invoices/{token}:
+    get:
+      operationId: getPublicInvoice
+      tags: [invoices]
+      summary: Get public invoice by token (no auth)
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Public invoice view
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicInvoice"
+        "404":
+          description: Not found
+
   /public/estimates/{token}:
     get:
       operationId: getPublicEstimate
@@ -6144,6 +6165,33 @@ components:
         updatedAt:
           type: string
 
+    PublicInvoiceBusinessProfile:
+      type: object
+      properties:
+        companyName:
+          type: ["string", "null"]
+        logoUrl:
+          type: ["string", "null"]
+        tagline:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        website:
+          type: ["string", "null"]
+        address:
+          type: ["string", "null"]
+        invoiceFooterText:
+          type: ["string", "null"]
+
+    PublicInvoice:
+      allOf:
+        - $ref: "#/components/schemas/Invoice"
+      properties:
+        businessProfile:
+          $ref: "#/components/schemas/PublicInvoiceBusinessProfile"
+
     PublicEstimateBusinessProfile:
       type: object
       properties:
@@ -7791,6 +7839,8 @@ components:
         lobLetterId:
           type: ["string", "null"]
         lobStatus:
+          type: ["string", "null"]
+        publicToken:
           type: ["string", "null"]
         createdAt:
           type: string

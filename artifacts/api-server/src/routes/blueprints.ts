@@ -47,6 +47,9 @@ const AREA_DEFAULT_DEPTH_INCHES: Record<string, number> = {
   gravel_4in: 4,
   dryRiverBed: 3,
   largeRockBed: 4,
+  mulchBed: 3,
+  patio: 4,
+  walkway: 4,
   paver: 2,
   turf: 0,
 };
@@ -701,7 +704,7 @@ interface GeneratedZoneArea {
 }
 
 /** Ground-cover materials that draw as a bounded polygon area instead of scattered points. */
-const AREA_MATERIAL_TYPES = new Set(["dryRiverBed", "gravel_1in", "gravel_2in", "gravel_3in", "gravel_4in", "largeRockBed", "paver", "turf"]);
+const AREA_MATERIAL_TYPES = new Set(["dryRiverBed", "gravel_1in", "gravel_2in", "gravel_3in", "gravel_4in", "largeRockBed", "mulchBed", "patio", "walkway", "paver", "turf"]);
 
 /** Ray-casting point-in-polygon test. */
 function pointInPolygon(px: number, py: number, polygon: AiZonePointInput[]): boolean {

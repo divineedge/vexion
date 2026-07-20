@@ -483,10 +483,15 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
 
           {/* Maintenance tab */}
           <TabsContent value="maintenance" className="space-y-3 mt-4">
-            {!isTechnician && (
+            {!isTechnician && !equipment.archivedAt && (
               <Button size="sm" className="w-full gap-2" onClick={() => setMaintOpen(true)}>
                 <Plus className="w-4 h-4" /> Log Maintenance / Repair
               </Button>
+            )}
+            {equipment.archivedAt && (
+              <p className="text-xs text-muted-foreground text-center py-2 flex items-center justify-center gap-1.5">
+                <Archive className="w-3.5 h-3.5" /> Archived — new maintenance records cannot be added
+              </p>
             )}
             {maintOpen && (
               <Card className="border-primary/30">
@@ -548,9 +553,16 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
 
           {/* Fuel tab */}
           <TabsContent value="fuel" className="space-y-3 mt-4">
-            <Button size="sm" className="w-full gap-2" onClick={() => setFuelOpen(true)}>
-              <Plus className="w-4 h-4" /> Log Fuel Fill
-            </Button>
+            {!equipment.archivedAt && (
+              <Button size="sm" className="w-full gap-2" onClick={() => setFuelOpen(true)}>
+                <Plus className="w-4 h-4" /> Log Fuel Fill
+              </Button>
+            )}
+            {equipment.archivedAt && (
+              <p className="text-xs text-muted-foreground text-center py-2 flex items-center justify-center gap-1.5">
+                <Archive className="w-3.5 h-3.5" /> Archived — new fuel fills cannot be added
+              </p>
+            )}
             {fuelOpen && (
               <Card className="border-primary/30">
                 <CardContent className="p-4 space-y-3">

@@ -398,6 +398,12 @@ router.post("/equipment/:id/maintenance", requireOfficeRole, async (req, res): P
   const owned = await requireEquipmentOwnership(equipmentId, tenantId, res);
   if (!owned) return;
 
+  // Reject new records against archived equipment
+  if (owned.archivedAt) {
+    res.status(409).json({ error: "Cannot log maintenance on archived equipment" });
+    return;
+  }
+
   const { date, description, cost, vendor, nextServiceDueDate, nextServiceDueHours, nextServiceDueMiles, partsCost, laborCost, downtimeHours } = req.body;
   if (!date || !description) { res.status(400).json({ error: "date and description are required" }); return; }
 
@@ -495,6 +501,12 @@ router.post("/equipment/:id/fuel-logs", async (req, res): Promise<void> => {
   // Verify the equipment belongs to this tenant before inserting a child record
   const owned = await requireEquipmentOwnership(equipmentId, tenantId, res);
   if (!owned) return;
+
+  // Reject new records against archived equipment
+  if (owned.archivedAt) {
+    res.status(409).json({ error: "Cannot log fuel fills on archived equipment" });
+    return;
+  }
 
   const { date, gallons, cost, odometerReading } = req.body;
   if (!date || gallons == null) { res.status(400).json({ error: "date and gallons are required" }); return; }

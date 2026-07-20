@@ -37,6 +37,8 @@ export interface InternalTask {
   completedAt?: string | null;
   /** @nullable */
   rejectionReason?: string | null;
+  /** @nullable */
+  archivedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

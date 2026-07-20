@@ -35,6 +35,8 @@ export const internalTasksTable = pgTable("internal_tasks", {
   contextId: integer("context_id"),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   rejectionReason: text("rejection_reason"),
+  /** Set when an admin soft-archives a task; archived tasks are hidden from all default list views. */
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

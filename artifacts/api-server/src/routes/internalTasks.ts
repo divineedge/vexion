@@ -3,7 +3,7 @@ import {
   db, internalTasksTable, taskNotificationsTable, usersTable,
   customersTable, jobsTable, propertiesTable, equipmentTable,
 } from "@workspace/db";
-import { eq, and, desc, or } from "drizzle-orm";
+import { eq, and, desc, or, inArray, isNull } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { ADMIN_ROLES, getCallerRole } from "../lib/roles";
 import { validateTaskAssignment, roleBucketMatches } from "../lib/taskRouting";
@@ -111,7 +111,12 @@ router.get("/tasks", async (req, res): Promise<void> => {
   const role = await getCallerRole(tenantId, userId);
   const { status, priority, assigneeId, contextType, scope } = req.query as Record<string, string>;
 
+  const { includeArchived } = req.query as Record<string, string>;
+
   let where = eq(internalTasksTable.tenantId, tenantId) as ReturnType<typeof eq>;
+  if (!includeArchived || includeArchived !== "true") {
+    where = and(where, isNull(internalTasksTable.archivedAt)) as typeof where;
+  }
   if (status) where = and(where, eq(internalTasksTable.status, status)) as typeof where;
   if (priority) where = and(where, eq(internalTasksTable.priority, priority)) as typeof where;
   if (contextType) where = and(where, eq(internalTasksTable.contextType, contextType)) as typeof where;
@@ -251,6 +256,38 @@ router.patch("/tasks/:id", async (req, res): Promise<void> => {
 
   const [enriched] = await enrichTasks(tenantId, [updated]);
   res.json(enriched);
+});
+
+router.delete("/tasks/:id", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  const role = await getCallerRole(tenantId, userId);
+  if (!ADMIN_ROLES.has(role)) { res.status(403).json({ error: "Only Admin/Office can delete tasks" }); return; }
+
+  const id = parseInt(req.params.id, 10);
+  const [task] = await db.select().from(internalTasksTable).where(and(eq(internalTasksTable.id, id), eq(internalTasksTable.tenantId, tenantId)));
+  if (!task) { res.status(404).json({ error: "Task not found" }); return; }
+
+  // Delete notifications first (FK constraint), then the task
+  await db.delete(taskNotificationsTable).where(eq(taskNotificationsTable.taskId, id));
+  await db.delete(internalTasksTable).where(eq(internalTasksTable.id, id));
+  res.status(204).end();
+});
+
+router.post("/tasks/bulk-archive", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  const role = await getCallerRole(tenantId, userId);
+  if (!ADMIN_ROLES.has(role)) { res.status(403).json({ error: "Only Admin/Office can bulk-archive tasks" }); return; }
+
+  const { ids } = req.body as { ids?: number[] };
+  if (!Array.isArray(ids) || ids.length === 0) { res.status(400).json({ error: "ids must be a non-empty array of task IDs" }); return; }
+
+  await db.update(internalTasksTable)
+    .set({ archivedAt: new Date() } as Partial<typeof internalTasksTable.$inferInsert>)
+    .where(and(eq(internalTasksTable.tenantId, tenantId), inArray(internalTasksTable.id, ids)));
+
+  res.json({ archived: ids.length });
 });
 
 // ─── Equipment maintenance task queue ───────────────────────────────────────

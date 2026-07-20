@@ -3174,6 +3174,32 @@ paths:
         "403":
           description: Assignment violates role routing rules
 
+  /tasks/bulk-archive:
+    post:
+      operationId: bulkArchiveTasks
+      tags: [tasks]
+      summary: Soft-archive a set of tasks by ID (admin/office only). Archived tasks are excluded from default list views.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkArchiveTasksInput"
+      responses:
+        "200":
+          description: Number of tasks archived
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [archived]
+                properties:
+                  archived: { type: integer }
+        "400":
+          description: Invalid input
+        "403":
+          description: Not permitted
+
   /tasks/{id}:
     get:
       operationId: getTask
@@ -3217,6 +3243,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/InternalTask"
+        "403":
+          description: Not permitted
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteTask
+      tags: [tasks]
+      summary: Permanently delete a task and its notifications (admin/office only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
         "403":
           description: Not permitted
         "404":
@@ -11012,8 +11055,17 @@ components:
         contextLabel: { type: ["string", "null"] }
         completedAt: { type: ["string", "null"] }
         rejectionReason: { type: ["string", "null"] }
+        archivedAt: { type: ["string", "null"] }
         createdAt: { type: string }
         updatedAt: { type: string }
+
+    BulkArchiveTasksInput:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          items: { type: integer }
 
     CreateTaskInput:
       type: object

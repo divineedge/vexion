@@ -37,6 +37,8 @@ import type {
   BroadcastDetail,
   BroadcastPreviewInput,
   BroadcastPreviewResult,
+  BulkArchiveTasks200,
+  BulkArchiveTasksInput,
   CancelPlanVisit200,
   CancelPlanVisitInput,
   CancelRecurringSeriesParams,
@@ -11768,6 +11770,77 @@ export const useCreateTask = <TError = ErrorType<void>,
       return useMutation(getCreateTaskMutationOptions(options));
     }
 
+export const getBulkArchiveTasksUrl = () => {
+
+
+
+
+  return `/api/tasks/bulk-archive`
+}
+
+/**
+ * @summary Soft-archive a set of tasks by ID (admin/office only). Archived tasks are excluded from default list views.
+ */
+export const bulkArchiveTasks = async (bulkArchiveTasksInput: BulkArchiveTasksInput, options?: RequestInit): Promise<BulkArchiveTasks200> => {
+
+  return customFetch<BulkArchiveTasks200>(getBulkArchiveTasksUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(bulkArchiveTasksInput)
+  }
+);}
+
+
+
+
+
+export const getBulkArchiveTasksMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkArchiveTasks>>, TError,{data: BodyType<BulkArchiveTasksInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bulkArchiveTasks>>, TError,{data: BodyType<BulkArchiveTasksInput>}, TContext> => {
+
+const mutationKey = ['bulkArchiveTasks'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bulkArchiveTasks>>, {data: BodyType<BulkArchiveTasksInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  bulkArchiveTasks(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BulkArchiveTasksMutationResult = NonNullable<Awaited<ReturnType<typeof bulkArchiveTasks>>>
+    export type BulkArchiveTasksMutationBody = BodyType<BulkArchiveTasksInput>
+    export type BulkArchiveTasksMutationError = ErrorType<void>
+
+    /**
+ * @summary Soft-archive a set of tasks by ID (admin/office only). Archived tasks are excluded from default list views.
+ */
+export const useBulkArchiveTasks = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkArchiveTasks>>, TError,{data: BodyType<BulkArchiveTasksInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bulkArchiveTasks>>,
+        TError,
+        {data: BodyType<BulkArchiveTasksInput>},
+        TContext
+      > => {
+      return useMutation(getBulkArchiveTasksMutationOptions(options));
+    }
+
 export const getGetTaskUrl = (id: number,) => {
 
 
@@ -11915,6 +11988,77 @@ export const useUpdateTask = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getUpdateTaskMutationOptions(options));
+    }
+
+export const getDeleteTaskUrl = (id: number,) => {
+
+
+
+
+  return `/api/tasks/${id}`
+}
+
+/**
+ * @summary Permanently delete a task and its notifications (admin/office only)
+ */
+export const deleteTask = async (id: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteTaskUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteTaskMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteTask>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteTask>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteTask'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteTask>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteTask(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteTaskMutationResult = NonNullable<Awaited<ReturnType<typeof deleteTask>>>
+
+    export type DeleteTaskMutationError = ErrorType<void>
+
+    /**
+ * @summary Permanently delete a task and its notifications (admin/office only)
+ */
+export const useDeleteTask = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteTask>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteTask>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteTaskMutationOptions(options));
     }
 
 export const getListEquipmentTasksUrl = (id: number,) => {

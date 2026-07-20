@@ -1,18 +1,23 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQueryClient } from '@tanstack/react-query';
-import { useUpdateTask, getListTasksQueryKey, getListEquipmentTasksQueryKey, type InternalTask } from '@workspace/api-client-react';
+import {
+  useUpdateTask, useDeleteTask,
+  getListTasksQueryKey, getListEquipmentTasksQueryKey,
+  type InternalTask,
+} from '@workspace/api-client-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { PlayCircle, CheckCircle2, XCircle, Hand, RotateCcw } from 'lucide-react';
+import { PlayCircle, CheckCircle2, XCircle, Hand, RotateCcw, Trash2 } from 'lucide-react';
 import { roleBucketMatches } from '@/lib/roleBucket';
 
 export function TaskActions({ task }: { task: InternalTask }) {
   const { user, isOwner, isManager, isDepartmentManager, isCrewManager, isTechnician } = useAuth();
   const qc = useQueryClient();
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
 
   const role = isOwner ? 'company_owner' : isManager ? 'office_manager' : isDepartmentManager ? 'department_manager' : isCrewManager ? 'crew_manager' : 'technician';
@@ -29,6 +34,13 @@ export function TaskActions({ task }: { task: InternalTask }) {
     mutation: {
       onSuccess: () => { invalidate(); toast.success('Task updated'); },
       onError: (err: any) => toast.error(err?.message ?? 'Failed to update task'),
+    },
+  });
+
+  const deleteTask = useDeleteTask({
+    mutation: {
+      onSuccess: () => { invalidate(); toast.success('Task deleted'); setDeleteOpen(false); },
+      onError: (err: any) => toast.error(err?.message ?? 'Failed to delete task'),
     },
   });
 
@@ -54,7 +66,18 @@ export function TaskActions({ task }: { task: InternalTask }) {
   }
 
   if (task.status === 'done') {
-    return <span className="text-xs text-emerald-600 font-medium">Completed</span>;
+    return (
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs text-emerald-600 font-medium">Completed</span>
+        {isAdmin && (
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={() => setDeleteOpen(true)}>
+            <Trash2 className="w-3.5 h-3.5" />
+          </Button>
+        )}
+        <DeleteDialog open={deleteOpen} onOpenChange={setDeleteOpen} taskTitle={task.title}
+          onConfirm={() => deleteTask.mutate({ id: task.id })} isPending={deleteTask.isPending} />
+      </div>
+    );
   }
 
   return (
@@ -84,6 +107,11 @@ export function TaskActions({ task }: { task: InternalTask }) {
           <RotateCcw className="w-3.5 h-3.5" /> Resubmit
         </Button>
       )}
+      {isAdmin && (
+        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={() => setDeleteOpen(true)} disabled={deleteTask.isPending}>
+          <Trash2 className="w-3.5 h-3.5" />
+        </Button>
+      )}
 
       <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
         <DialogContent className="sm:max-w-md">
@@ -98,6 +126,34 @@ export function TaskActions({ task }: { task: InternalTask }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <DeleteDialog open={deleteOpen} onOpenChange={setDeleteOpen} taskTitle={task.title}
+        onConfirm={() => deleteTask.mutate({ id: task.id })} isPending={deleteTask.isPending} />
     </div>
+  );
+}
+
+function DeleteDialog({ open, onOpenChange, taskTitle, onConfirm, isPending }: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  taskTitle: string;
+  onConfirm: () => void;
+  isPending: boolean;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Delete Task</DialogTitle>
+          <DialogDescription>
+            Permanently delete <span className="font-medium">"{taskTitle}"</span>? This cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="destructive" onClick={onConfirm} disabled={isPending}>Delete</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

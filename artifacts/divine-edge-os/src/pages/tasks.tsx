@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useListTasks, getListTasksQueryKey, type InternalTask } from '@workspace/api-client-react';
+import { useListTasks, useBulkArchiveTasks, getListTasksQueryKey, type InternalTask } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, ListTodo, Calendar, Link2 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Plus, ListTodo, Calendar, Link2, Archive } from 'lucide-react';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
 import { TaskFormDrawer } from '@/components/tasks/TaskFormDrawer';
 import { TaskActions } from '@/components/tasks/TaskActions';
 import {
@@ -23,6 +26,8 @@ export default function TasksPage() {
   const [scope, setScope] = useState<'mine' | 'all'>(isAdmin ? 'all' : 'mine');
   const [statusFilter, setStatusFilter] = useState('__open__');
   const [priorityFilter, setPriorityFilter] = useState('__all__');
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
 
   const listParams = {
     scope,
@@ -44,6 +49,43 @@ export default function TasksPage() {
     return (order[a.priority] ?? 2) - (order[b.priority] ?? 2) || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 
+  const bulkArchive = useBulkArchiveTasks({
+    mutation: {
+      onSuccess: (res) => {
+        qc.invalidateQueries({ queryKey: getListTasksQueryKey() });
+        toast.success(`${res.archived} task${res.archived === 1 ? '' : 's'} archived`);
+        setSelected(new Set());
+        setArchiveConfirmOpen(false);
+      },
+      onError: (err: any) => toast.error(err?.message ?? 'Failed to archive tasks'),
+    },
+  });
+
+  const allIds = sorted.map(t => t.id);
+  const allSelected = allIds.length > 0 && allIds.every(id => selected.has(id));
+  const someSelected = selected.size > 0;
+
+  function toggleAll() {
+    if (allSelected) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(allIds));
+    }
+  }
+
+  function toggleOne(id: number) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  // Clear selection when filter changes
+  function changeScope(v: 'mine' | 'all') { setScope(v); setSelected(new Set()); }
+  function changeStatus(v: string) { setStatusFilter(v); setSelected(new Set()); }
+  function changePriority(v: string) { setPriorityFilter(v); setSelected(new Set()); }
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -60,7 +102,7 @@ export default function TasksPage() {
         <CardContent className="p-0">
           <div className="p-4 border-b flex items-center gap-3 flex-wrap">
             {isAdmin && (
-              <Select value={scope} onValueChange={v => setScope(v as 'mine' | 'all')}>
+              <Select value={scope} onValueChange={v => changeScope(v as 'mine' | 'all')}>
                 <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Tasks</SelectItem>
@@ -68,7 +110,7 @@ export default function TasksPage() {
                 </SelectContent>
               </Select>
             )}
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <Select value={statusFilter} onValueChange={changeStatus}>
               <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__open__">Open + In Progress</SelectItem>
@@ -76,14 +118,35 @@ export default function TasksPage() {
                 {TASK_STATUSES.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+            <Select value={priorityFilter} onValueChange={changePriority}>
               <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all__">All priorities</SelectItem>
                 {TASK_PRIORITIES.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
               </SelectContent>
             </Select>
+
+            {isAdmin && someSelected && (
+              <div className="ml-auto flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">{selected.size} selected</span>
+                <Button size="sm" variant="outline" className="gap-1.5 h-8" onClick={() => setArchiveConfirmOpen(true)} disabled={bulkArchive.isPending}>
+                  <Archive className="w-3.5 h-3.5" /> Archive selected
+                </Button>
+              </div>
+            )}
           </div>
+
+          {/* Select-all bar — only for admins */}
+          {isAdmin && sorted.length > 0 && (
+            <div className="px-4 py-2 border-b bg-muted/30 flex items-center gap-2 text-xs text-muted-foreground">
+              <Checkbox
+                checked={allSelected}
+                onCheckedChange={toggleAll}
+                aria-label="Select all tasks"
+              />
+              <span>{allSelected ? 'Deselect all' : `Select all ${sorted.length}`}</span>
+            </div>
+          )}
 
           <div className="divide-y">
             {isLoading ? (
@@ -94,20 +157,58 @@ export default function TasksPage() {
                 Nothing here. Create a task to assign work to a teammate.
               </div>
             ) : (
-              sorted.map(task => <TaskRow key={task.id} task={task} />)
+              sorted.map(task => (
+                <TaskRow
+                  key={task.id}
+                  task={task}
+                  isAdmin={isAdmin}
+                  selected={selected.has(task.id)}
+                  onToggle={() => toggleOne(task.id)}
+                />
+              ))
             )}
           </div>
         </CardContent>
       </Card>
 
       <TaskFormDrawer open={createOpen} onOpenChange={setCreateOpen} />
+
+      <Dialog open={archiveConfirmOpen} onOpenChange={setArchiveConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Archive {selected.size} task{selected.size === 1 ? '' : 's'}?</DialogTitle>
+            <DialogDescription>
+              Archived tasks are hidden from all default views. You can reveal them later by filtering for archived tasks.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setArchiveConfirmOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => bulkArchive.mutate({ data: { ids: Array.from(selected) } })}
+              disabled={bulkArchive.isPending}
+            >
+              Archive
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function TaskRow({ task }: { task: InternalTask }) {
+function TaskRow({ task, isAdmin, selected, onToggle }: {
+  task: InternalTask;
+  isAdmin: boolean;
+  selected: boolean;
+  onToggle: () => void;
+}) {
   return (
-    <div className="p-4 flex items-start justify-between gap-4 flex-wrap">
+    <div className={`p-4 flex items-start gap-3 flex-wrap transition-colors ${selected ? 'bg-muted/40' : ''}`}>
+      {isAdmin && (
+        <div className="pt-0.5">
+          <Checkbox checked={selected} onCheckedChange={onToggle} aria-label={`Select task: ${task.title}`} />
+        </div>
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
           <p className="font-medium truncate">{task.title}</p>

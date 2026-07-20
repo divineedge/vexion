@@ -113,6 +113,7 @@ export const CreateTaskFromQuoCallResponse = zod.object({
   "contextLabel": zod.string().nullish(),
   "completedAt": zod.string().nullish(),
   "rejectionReason": zod.string().nullish(),
+  "archivedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -5020,6 +5021,7 @@ export const ListTasksResponseItem = zod.object({
   "contextLabel": zod.string().nullish(),
   "completedAt": zod.string().nullish(),
   "rejectionReason": zod.string().nullish(),
+  "archivedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -5060,8 +5062,21 @@ export const CreateTaskResponse = zod.object({
   "contextLabel": zod.string().nullish(),
   "completedAt": zod.string().nullish(),
   "rejectionReason": zod.string().nullish(),
+  "archivedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Soft-archive a set of tasks by ID (admin/office only). Archived tasks are excluded from default list views.
+ */
+export const BulkArchiveTasksBody = zod.object({
+  "ids": zod.array(zod.number())
+})
+
+export const BulkArchiveTasksResponse = zod.object({
+  "archived": zod.number()
 })
 
 
@@ -5091,6 +5106,7 @@ export const GetTaskResponse = zod.object({
   "contextLabel": zod.string().nullish(),
   "completedAt": zod.string().nullish(),
   "rejectionReason": zod.string().nullish(),
+  "archivedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -5136,9 +5152,20 @@ export const UpdateTaskResponse = zod.object({
   "contextLabel": zod.string().nullish(),
   "completedAt": zod.string().nullish(),
   "rejectionReason": zod.string().nullish(),
+  "archivedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
+
+
+/**
+ * @summary Permanently delete a task and its notifications (admin/office only)
+ */
+export const DeleteTaskParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteTaskResponse = zod.void()
 
 
 /**
@@ -5167,6 +5194,7 @@ export const ListEquipmentTasksResponseItem = zod.object({
   "contextLabel": zod.string().nullish(),
   "completedAt": zod.string().nullish(),
   "rejectionReason": zod.string().nullish(),
+  "archivedAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })

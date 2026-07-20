@@ -4150,8 +4150,14 @@ export interface InternalTask {
   completedAt?: string | null;
   /** @nullable */
   rejectionReason?: string | null;
+  /** @nullable */
+  archivedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface BulkArchiveTasksInput {
+  ids: number[];
 }
 
 export interface CreateTaskInput {
@@ -4436,6 +4442,10 @@ contextType?: string;
  * Pass 'mine' to force the caller-scoped view even for admin/office roles
  */
 scope?: string;
+};
+
+export type BulkArchiveTasks200 = {
+  archived: number;
 };
 
 export type SetPropertyProfilePhoto200 = {

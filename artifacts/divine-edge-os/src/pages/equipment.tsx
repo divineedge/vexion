@@ -41,7 +41,7 @@ import MediaGallery from '@/components/media/MediaGallery';
 import {
   Wrench, Plus, Trash2, AlertTriangle, TrendingUp, Fuel, Clock, DollarSign,
   ChevronRight, ChevronDown, X, CheckCircle2, BarChart3, Archive, Paperclip,
-  Eye, Gauge,
+  Eye, Gauge, RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -758,6 +758,16 @@ export default function EquipmentPage() {
     });
   };
 
+  const handleRestore = (id: number, name: string) => {
+    updateEquipment.mutate({ id, data: { name, isActive: true } }, {
+      onSuccess: () => {
+        toast.success(`${name} restored`);
+        invalidateEquipmentLists(qc);
+      },
+      onError: () => toast.error('Failed to restore equipment'),
+    });
+  };
+
   const sellCount = equipment?.filter(e => e.sellRecommended).length ?? 0;
 
   return (
@@ -911,6 +921,11 @@ export default function EquipmentPage() {
                             <Archive className="w-3.5 h-3.5" />
                           </Button>
                         </>
+                      )}
+                      {!isTechnician && item.archivedAt && (
+                        <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-primary" title="Restore equipment" onClick={e => { e.stopPropagation(); handleRestore(item.id, item.name); }}>
+                          <RotateCcw className="w-3.5 h-3.5" />
+                        </Button>
                       )}
                       {isOwner && item.archivedAt && (
                         <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-destructive" title="Permanently delete" onClick={e => { e.stopPropagation(); handleHardDelete(item.id, item.name); }}>

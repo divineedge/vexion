@@ -326,7 +326,11 @@ router.patch("/equipment/:id", requireOfficeRole, async (req, res): Promise<void
   if (expectedLifespanHours !== undefined) updates.expectedLifespanHours = expectedLifespanHours != null ? parseFloat(expectedLifespanHours) : null;
   if (currentHours != null) updates.currentHours = parseFloat(currentHours);
   if (currentMiles !== undefined) updates.currentMiles = currentMiles != null ? parseFloat(currentMiles) : null;
-  if (isActive !== undefined) updates.isActive = isActive;
+  if (isActive !== undefined) {
+    updates.isActive = isActive;
+    // Restoring an archived item: clear the archive stamp so it re-appears in the default list.
+    if (isActive === true) updates.archivedAt = null;
+  }
   if (notes !== undefined) updates.notes = notes;
 
   const [row] = await db.update(equipmentTable).set(updates).where(and(eq(equipmentTable.id, id), eq(equipmentTable.tenantId, tenantId))).returning();

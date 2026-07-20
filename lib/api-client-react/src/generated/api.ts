@@ -203,6 +203,8 @@ import type {
   RepairLogSummary,
   RescheduleOnceInput,
   RescheduleOnceResult,
+  ReschedulePlanVisit200,
+  ReschedulePlanVisitInput,
   ResequenceRouteInput,
   ResequenceRouteResult,
   ResolveFollowupQueueItemInput,
@@ -17025,6 +17027,80 @@ export const useCancelPlanVisit = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCancelPlanVisitMutationOptions(options));
+    }
+
+export const getReschedulePlanVisitUrl = (id: number,
+    jobId: number,) => {
+
+
+
+
+  return `/api/customer-plans/${id}/visits/${jobId}/reschedule`
+}
+
+/**
+ * @summary Move a single scheduled plan visit to a new date and/or technician
+ */
+export const reschedulePlanVisit = async (id: number,
+    jobId: number,
+    reschedulePlanVisitInput: ReschedulePlanVisitInput, options?: RequestInit): Promise<ReschedulePlanVisit200> => {
+
+  return customFetch<ReschedulePlanVisit200>(getReschedulePlanVisitUrl(id,jobId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reschedulePlanVisitInput)
+  }
+);}
+
+
+
+
+
+export const getReschedulePlanVisitMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reschedulePlanVisit>>, TError,{id: number;jobId: number;data: BodyType<ReschedulePlanVisitInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reschedulePlanVisit>>, TError,{id: number;jobId: number;data: BodyType<ReschedulePlanVisitInput>}, TContext> => {
+
+const mutationKey = ['reschedulePlanVisit'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reschedulePlanVisit>>, {id: number;jobId: number;data: BodyType<ReschedulePlanVisitInput>}> = (props) => {
+          const {id,jobId,data} = props ?? {};
+
+          return  reschedulePlanVisit(id,jobId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReschedulePlanVisitMutationResult = NonNullable<Awaited<ReturnType<typeof reschedulePlanVisit>>>
+    export type ReschedulePlanVisitMutationBody = BodyType<ReschedulePlanVisitInput>
+    export type ReschedulePlanVisitMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Move a single scheduled plan visit to a new date and/or technician
+ */
+export const useReschedulePlanVisit = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reschedulePlanVisit>>, TError,{id: number;jobId: number;data: BodyType<ReschedulePlanVisitInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reschedulePlanVisit>>,
+        TError,
+        {id: number;jobId: number;data: BodyType<ReschedulePlanVisitInput>},
+        TContext
+      > => {
+      return useMutation(getReschedulePlanVisitMutationOptions(options));
     }
 
 export const getRenewCustomerPlanUrl = (id: number,) => {

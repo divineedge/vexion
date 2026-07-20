@@ -471,6 +471,103 @@ router.patch("/customer-plans/:id", async (req, res): Promise<void> => {
   res.json(fmtPlan(updated));
 });
 
+// ── Reschedule a single visit ─────────────────────────────────────────────────
+
+router.post("/customer-plans/:id/visits/:jobId/reschedule", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  const id = parseInt(req.params.id, 10);
+  const jobId = parseInt(req.params.jobId, 10);
+  const { newScheduledAt, assigneeId } = req.body;
+
+  if (!newScheduledAt) {
+    res.status(400).json({ error: "newScheduledAt is required" });
+    return;
+  }
+  const newDate = new Date(newScheduledAt);
+  if (isNaN(newDate.getTime())) {
+    res.status(400).json({ error: "newScheduledAt is not a valid date" });
+    return;
+  }
+
+  // Verify the job belongs to this plan and is still schedulable
+  const [job] = await db
+    .select()
+    .from(jobsTable)
+    .where(and(eq(jobsTable.id, jobId), eq(jobsTable.planId, id), eq(jobsTable.tenantId, tenantId)));
+  if (!job) { res.status(404).json({ error: "Visit not found on this plan" }); return; }
+  if (job.status !== "scheduled") {
+    res.status(400).json({ error: "Only scheduled visits can be rescheduled" });
+    return;
+  }
+
+  // Validate assignee if provided
+  let resolvedAssigneeId: number | null = job.assigneeId;
+  let assigneeName: string | null = null;
+  if (assigneeId !== undefined) {
+    if (assigneeId === null) {
+      resolvedAssigneeId = null;
+    } else {
+      const [user] = await db
+        .select({ id: usersTable.id, name: usersTable.name })
+        .from(usersTable)
+        .where(and(eq(usersTable.id, assigneeId), eq(usersTable.tenantId, tenantId)));
+      if (!user) { res.status(400).json({ error: "Assignee not found" }); return; }
+      resolvedAssigneeId = user.id;
+      assigneeName = user.name;
+    }
+  } else if (job.assigneeId) {
+    // Keep existing assignee name
+    const [user] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, job.assigneeId));
+    assigneeName = user?.name ?? null;
+  }
+
+  const updatePayload: Partial<typeof jobsTable.$inferInsert> = {
+    scheduledAt: newDate,
+    assigneeId: resolvedAssigneeId,
+  };
+
+  const [updated] = await db
+    .update(jobsTable)
+    .set(updatePayload)
+    .where(and(eq(jobsTable.id, jobId), eq(jobsTable.planId, id), eq(jobsTable.tenantId, tenantId)))
+    .returning();
+
+  // Advance the plan's serviceState cursor for this service if the new date is later,
+  // so the background worker continues scheduling from the correct point.
+  if (job.serviceId) {
+    const [plan] = await db.select().from(customerPlansTable).where(eq(customerPlansTable.id, id));
+    if (plan) {
+      const state = ((plan.serviceState as unknown[]) ?? []) as Array<{
+        serviceId: number; serviceName: string; frequencyDays: number; lastScheduledAt: string;
+      }>;
+      const entry = state.find(s => s.serviceId === job.serviceId);
+      if (entry) {
+        const currentCursor = new Date(entry.lastScheduledAt);
+        if (newDate > currentCursor) {
+          entry.lastScheduledAt = newDate.toISOString();
+          await db.update(customerPlansTable).set({ serviceState: state }).where(eq(customerPlansTable.id, id));
+        }
+      }
+    }
+  }
+
+  await db.insert(activityLogTable).values({
+    tenantId, userId, type: "plan_updated",
+    message: `Visit rescheduled to ${newDate.toISOString().slice(0, 10)}`,
+    entityId: id,
+  });
+
+  res.json({
+    id: updated.id,
+    scheduledAt: updated.scheduledAt.toISOString(),
+    status: updated.status,
+    assigneeId: updated.assigneeId,
+    assigneeName,
+  });
+});
+
 // ── Cancel a single visit (requires a reason) ─────────────────────────────────
 
 router.post("/customer-plans/:id/visits/:jobId/cancel", async (req, res): Promise<void> => {

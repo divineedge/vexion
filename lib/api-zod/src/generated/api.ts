@@ -7146,6 +7146,28 @@ export const CancelPlanVisitResponse = zod.object({
 
 
 /**
+ * @summary Move a single scheduled plan visit to a new date and/or technician
+ */
+export const ReschedulePlanVisitParams = zod.object({
+  "id": zod.coerce.number(),
+  "jobId": zod.coerce.number()
+})
+
+export const ReschedulePlanVisitBody = zod.object({
+  "newScheduledAt": zod.string(),
+  "assigneeId": zod.number().nullish()
+})
+
+export const ReschedulePlanVisitResponse = zod.object({
+  "id": zod.number(),
+  "scheduledAt": zod.string(),
+  "status": zod.string(),
+  "assigneeId": zod.number().nullish(),
+  "assigneeName": zod.string().nullish()
+})
+
+
+/**
  * @summary Manually renew a plan for one more billing period
  */
 export const RenewCustomerPlanParams = zod.object({

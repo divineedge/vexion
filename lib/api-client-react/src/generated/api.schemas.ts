@@ -2384,6 +2384,12 @@ export const CancelSeriesScope = {
   all: 'all',
 } as const;
 
+export interface ReschedulePlanVisitInput {
+  newScheduledAt: string;
+  /** @nullable */
+  assigneeId?: number | null;
+}
+
 export interface CancelPlanVisitInput {
   reason: string;
 }
@@ -4471,6 +4477,16 @@ export type CancelPlanVisit200 = {
   status: string;
   /** @nullable */
   cancelReason?: string | null;
+};
+
+export type ReschedulePlanVisit200 = {
+  id: number;
+  scheduledAt: string;
+  status: string;
+  /** @nullable */
+  assigneeId?: number | null;
+  /** @nullable */
+  assigneeName?: string | null;
 };
 
 export type RunRecurringTemplateNow200 = {

@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   useGetCustomerPlan, getGetCustomerPlanQueryKey,
   useUpdateCustomerPlan, useRenewCustomerPlan, useCancelPlanVisit,
+  useReschedulePlanVisit, useListUsers,
 } from '@workspace/api-client-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,8 +14,10 @@ import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { ArrowLeft, CalendarClock, MapPin, DollarSign, X } from 'lucide-react';
+import { ArrowLeft, CalendarClock, MapPin, DollarSign, X, CalendarDays } from 'lucide-react';
 import { toast } from 'sonner';
 
 const STATUS_STYLE: Record<string, string> = {
@@ -31,22 +34,39 @@ const VISIT_STATUS_STYLE: Record<string, string> = {
   in_progress: 'bg-amber-100 text-amber-700 border-amber-200',
 };
 
+/** Format a JS Date as a local YYYY-MM-DD string for <input type="date"> */
+function toDateInputValue(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
 export default function PlanDetailPage() {
   const { id } = useParams<{ id: string }>();
   const planId = Number(id);
   const [, navigate] = useLocation();
   const qc = useQueryClient();
+
+  // Cancel visit dialog state
   const [cancelVisitId, setCancelVisitId] = useState<number | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+
+  // Reschedule visit dialog state
+  const [rescheduleVisitId, setRescheduleVisitId] = useState<number | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [rescheduleAssigneeId, setRescheduleAssigneeId] = useState<string>('_keep');
 
   const { data: plan, isLoading } = useGetCustomerPlan(planId, {
     query: { enabled: !!planId, queryKey: getGetCustomerPlanQueryKey(planId) },
   });
+  const { data: users = [] } = useListUsers();
   const invalidate = () => qc.invalidateQueries({ queryKey: getGetCustomerPlanQueryKey(planId) });
 
   const updateMutation = useUpdateCustomerPlan();
   const renewMutation = useRenewCustomerPlan();
   const cancelVisitMutation = useCancelPlanVisit();
+  const rescheduleVisitMutation = useReschedulePlanVisit();
 
   const setStatus = (status: 'active' | 'paused' | 'cancelled' | 'pending_renewal') => {
     updateMutation.mutate({ id: planId, data: { status } }, {
@@ -74,6 +94,34 @@ export default function PlanDetailPage() {
     cancelVisitMutation.mutate({ id: planId, jobId: cancelVisitId, data: { reason: cancelReason } }, {
       onSuccess: () => { toast.success('Visit cancelled'); invalidate(); setCancelVisitId(null); setCancelReason(''); },
       onError: () => toast.error('Failed to cancel visit'),
+    });
+  };
+
+  const openReschedule = (visitId: number, currentScheduledAt: string) => {
+    setRescheduleVisitId(visitId);
+    setRescheduleDate(toDateInputValue(new Date(currentScheduledAt)));
+    setRescheduleAssigneeId('_keep');
+  };
+
+  const confirmRescheduleVisit = () => {
+    if (!rescheduleVisitId || !rescheduleDate) { toast.error('A new date is required'); return; }
+    // Build ISO timestamp from local date (noon UTC to avoid tz shift artifacts)
+    const newScheduledAt = `${rescheduleDate}T12:00:00.000Z`;
+    const data: { newScheduledAt: string; assigneeId?: number | null } = { newScheduledAt };
+    if (rescheduleAssigneeId === '_unassign') {
+      data.assigneeId = null;
+    } else if (rescheduleAssigneeId !== '_keep') {
+      data.assigneeId = Number(rescheduleAssigneeId);
+    }
+    rescheduleVisitMutation.mutate({ id: planId, jobId: rescheduleVisitId, data }, {
+      onSuccess: () => {
+        toast.success('Visit rescheduled');
+        invalidate();
+        setRescheduleVisitId(null);
+        setRescheduleDate('');
+        setRescheduleAssigneeId('_keep');
+      },
+      onError: () => toast.error('Failed to reschedule visit'),
     });
   };
 
@@ -143,7 +191,7 @@ export default function PlanDetailPage() {
                 <TableHead>Date</TableHead>
                 <TableHead>Technician</TableHead>
                 <TableHead className="text-center">Status</TableHead>
-                <TableHead className="w-[50px]" />
+                <TableHead className="w-[90px]" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -160,9 +208,26 @@ export default function PlanDetailPage() {
                   </TableCell>
                   <TableCell>
                     {v.status === 'scheduled' && (
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setCancelVisitId(v.id)}>
-                        <X className="w-3.5 h-3.5" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          title="Reschedule visit"
+                          onClick={() => openReschedule(v.id, v.scheduledAt)}
+                        >
+                          <CalendarDays className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          title="Cancel visit"
+                          onClick={() => setCancelVisitId(v.id)}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
                     )}
                   </TableCell>
                 </TableRow>
@@ -209,6 +274,54 @@ export default function PlanDetailPage() {
         <Card><CardContent className="p-4 text-sm text-muted-foreground">{plan.notes}</CardContent></Card>
       )}
 
+      {/* ── Reschedule Visit Dialog ── */}
+      <Dialog
+        open={rescheduleVisitId !== null}
+        onOpenChange={open => { if (!open) { setRescheduleVisitId(null); setRescheduleDate(''); setRescheduleAssigneeId('_keep'); } }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reschedule this visit</DialogTitle>
+            <DialogDescription>
+              Pick a new date for this visit. The rest of the plan's schedule stays unchanged.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="reschedule-date">New date <span className="text-destructive">*</span></Label>
+              <Input
+                id="reschedule-date"
+                type="date"
+                value={rescheduleDate}
+                onChange={e => setRescheduleDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="reschedule-tech">Technician</Label>
+              <Select value={rescheduleAssigneeId} onValueChange={setRescheduleAssigneeId}>
+                <SelectTrigger id="reschedule-tech">
+                  <SelectValue placeholder="Keep current technician" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_keep">Keep current technician</SelectItem>
+                  <SelectItem value="_unassign">Unassign</SelectItem>
+                  {users.map(u => (
+                    <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRescheduleVisitId(null)}>Back</Button>
+            <Button onClick={confirmRescheduleVisit} disabled={rescheduleVisitMutation.isPending || !rescheduleDate}>
+              {rescheduleVisitMutation.isPending ? 'Saving…' : 'Reschedule Visit'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Cancel Visit Dialog ── */}
       <Dialog open={cancelVisitId !== null} onOpenChange={open => { if (!open) { setCancelVisitId(null); setCancelReason(''); } }}>
         <DialogContent>
           <DialogHeader>

@@ -4625,6 +4625,48 @@ paths:
                   cancelReason:
                     type: ["string", "null"]
 
+  /customer-plans/{id}/visits/{jobId}/reschedule:
+    post:
+      operationId: reschedulePlanVisit
+      tags: [servicePlans]
+      summary: Move a single scheduled plan visit to a new date and/or technician
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReschedulePlanVisitInput"
+      responses:
+        "200":
+          description: Visit rescheduled
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, scheduledAt, status]
+                properties:
+                  id:
+                    type: integer
+                  scheduledAt:
+                    type: string
+                  status:
+                    type: string
+                  assigneeId:
+                    type: ["integer", "null"]
+                  assigneeName:
+                    type: ["string", "null"]
+
   /customer-plans/{id}/renew:
     post:
       operationId: renewCustomerPlan
@@ -8702,6 +8744,15 @@ components:
     CancelSeriesScope:
       type: string
       enum: [forward, all]
+
+    ReschedulePlanVisitInput:
+      type: object
+      required: [newScheduledAt]
+      properties:
+        newScheduledAt:
+          type: string
+        assigneeId:
+          type: ["integer", "null"]
 
     CancelPlanVisitInput:
       type: object

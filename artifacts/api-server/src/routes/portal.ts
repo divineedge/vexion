@@ -507,8 +507,66 @@ router.post("/portal/service-requests", requirePortalAuth, async (req: any, res)
     })
     .returning();
 
-  const [prop] = await db.select({ address: propertiesTable.address }).from(propertiesTable).where(eq(propertiesTable.id, propertyId)).limit(1);
-  res.status(201).json(formatPortalJob(job, prop?.address ?? null));
+  // Fetch property address, tenant config, and customer name in parallel for the notification email
+  const [propRow, tenantRow, customerRow] = await Promise.all([
+    db.select({ address: propertiesTable.address }).from(propertiesTable).where(eq(propertiesTable.id, propertyId)).limit(1),
+    db.select().from(tenantsTable).where(eq(tenantsTable.id, portalTenantId)).limit(1),
+    db.select({ name: customersTable.name, email: customersTable.email }).from(customersTable).where(eq(customersTable.id, portalCustomerId)).limit(1),
+  ]);
+
+  const propertyAddress = propRow[0]?.address ?? null;
+
+  // Send notification email to the tenant — fire-and-forget, never blocks the response
+  (async () => {
+    try {
+      const tenant = tenantRow[0];
+      const notifyTo = tenant?.businessEmail ?? null;
+      if (!notifyTo) {
+        logger.info({ tenantId: portalTenantId, jobId: job.id }, "No businessEmail configured — skipping service-request notification");
+        return;
+      }
+
+      const emailProviderConfig: EmailProviderConfig = {
+        provider: (tenant?.emailProvider as "smtp" | "sendgrid" | "mailgun" | "resend" | "gmail" | null) ?? null,
+        config: (tenant?.emailProviderConfig as Record<string, string>) ?? {},
+        fromAddress: tenant?.businessEmail ?? (tenant?.emailProviderConfig as Record<string, string>)?.["fromAddress"] ?? null,
+      };
+
+      const companyName = tenant?.name ?? "Your Company";
+      const customerName = customerRow[0]?.name ?? "A customer";
+      const customerEmail = customerRow[0]?.email ?? null;
+      const preferredDate = preferredDateStart
+        ? new Date(preferredDateStart).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
+        : "No preference specified";
+
+      const subject = `New Service Request — ${customerName}`;
+      const body = [
+        `A new service request has been submitted through the customer portal.`,
+        "",
+        `Customer:         ${customerName}${customerEmail ? ` <${customerEmail}>` : ""}`,
+        `Property Address: ${propertyAddress ?? "Not specified"}`,
+        `Preferred Date:   ${preferredDate}`,
+        "",
+        "Request Details:",
+        description,
+        "",
+        `This request has been saved as Job #${job.id} in ${companyName}.`,
+        "",
+        `— ${companyName} Portal`,
+      ].join("\n");
+
+      const result = await sendEmail(emailProviderConfig, notifyTo, subject, body);
+      if (!result.success) {
+        logger.warn({ tenantId: portalTenantId, jobId: job.id, error: result.error }, "Failed to send service-request notification email");
+      } else {
+        logger.info({ tenantId: portalTenantId, jobId: job.id, to: notifyTo }, "Service-request notification email sent");
+      }
+    } catch (err) {
+      logger.error({ err }, "Unexpected error sending service-request notification email");
+    }
+  })();
+
+  res.status(201).json(formatPortalJob(job, propertyAddress));
 });
 
 // ---------------------------------------------------------------------------

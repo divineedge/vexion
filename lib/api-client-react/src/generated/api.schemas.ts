@@ -1963,6 +1963,23 @@ export interface BlueprintEstimate {
   computedAt?: string;
 }
 
+export type BlueprintLinkedQuoteStatus = typeof BlueprintLinkedQuoteStatus[keyof typeof BlueprintLinkedQuoteStatus];
+
+
+export const BlueprintLinkedQuoteStatus = {
+  pending: 'pending',
+  approved: 'approved',
+  declined: 'declined',
+} as const;
+
+export interface BlueprintLinkedQuote {
+  id: number;
+  status: BlueprintLinkedQuoteStatus;
+  calculatedPrice: number;
+  /** @nullable */
+  expiresAt?: string | null;
+}
+
 export interface Blueprint {
   id: number;
   tenantId: number;
@@ -2014,6 +2031,8 @@ export interface Blueprint {
   isArchived?: boolean;
   /** @nullable */
   archivedAt?: string | null;
+  /** Instant quotes generated from this blueprint. Only included on GET /blueprints/{id}. */
+  linkedQuotes?: BlueprintLinkedQuote[];
   createdAt: string;
 }
 

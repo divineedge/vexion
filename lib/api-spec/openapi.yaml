@@ -8271,8 +8271,27 @@ components:
           description: "True once the linked job is completed or the linked estimate/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page."
         archivedAt:
           type: ["string", "null"]
+        linkedQuotes:
+          type: array
+          description: "Instant quotes generated from this blueprint. Only included on GET /blueprints/{id}."
+          items:
+            $ref: "#/components/schemas/BlueprintLinkedQuote"
         createdAt:
           type: string
+
+    BlueprintLinkedQuote:
+      type: object
+      required: [id, status, calculatedPrice]
+      properties:
+        id:
+          type: integer
+        status:
+          type: string
+          enum: [pending, approved, declined]
+        calculatedPrice:
+          type: number
+        expiresAt:
+          type: ["string", "null"]
 
     BlueprintInput:
       type: object

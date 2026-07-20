@@ -7,6 +7,7 @@
  */
 import type { BlueprintCanvasData } from './blueprintCanvasData';
 import type { BlueprintEstimate } from './blueprintEstimate';
+import type { BlueprintLinkedQuote } from './blueprintLinkedQuote';
 import type { BlueprintMode } from './blueprintMode';
 import type { BlueprintSourceType } from './blueprintSourceType';
 import type { BlueprintSuggestedPartsItem } from './blueprintSuggestedPartsItem';
@@ -62,5 +63,7 @@ export interface Blueprint {
   isArchived?: boolean;
   /** @nullable */
   archivedAt?: string | null;
+  /** Instant quotes generated from this blueprint. Only included on GET /blueprints/{id}. */
+  linkedQuotes?: BlueprintLinkedQuote[];
   createdAt: string;
 }

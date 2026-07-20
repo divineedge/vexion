@@ -2919,6 +2919,12 @@ export const ListBlueprintsResponseItem = zod.object({
 }).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
   "isArchived": zod.boolean().optional().describe('True once the linked job is completed or the linked estimate\/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page.'),
   "archivedAt": zod.string().nullish(),
+  "linkedQuotes": zod.array(zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['pending', 'approved', 'declined']),
+  "calculatedPrice": zod.number(),
+  "expiresAt": zod.string().nullish()
+})).optional().describe('Instant quotes generated from this blueprint. Only included on GET \/blueprints\/{id}.'),
   "createdAt": zod.string()
 })
 export const ListBlueprintsResponse = zod.array(ListBlueprintsResponseItem)
@@ -2980,6 +2986,12 @@ export const CreateBlueprintResponse = zod.object({
 }).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
   "isArchived": zod.boolean().optional().describe('True once the linked job is completed or the linked estimate\/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page.'),
   "archivedAt": zod.string().nullish(),
+  "linkedQuotes": zod.array(zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['pending', 'approved', 'declined']),
+  "calculatedPrice": zod.number(),
+  "expiresAt": zod.string().nullish()
+})).optional().describe('Instant quotes generated from this blueprint. Only included on GET \/blueprints\/{id}.'),
   "createdAt": zod.string()
 })
 
@@ -3030,6 +3042,12 @@ export const GetBlueprintResponse = zod.object({
 }).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
   "isArchived": zod.boolean().optional().describe('True once the linked job is completed or the linked estimate\/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page.'),
   "archivedAt": zod.string().nullish(),
+  "linkedQuotes": zod.array(zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['pending', 'approved', 'declined']),
+  "calculatedPrice": zod.number(),
+  "expiresAt": zod.string().nullish()
+})).optional().describe('Instant quotes generated from this blueprint. Only included on GET \/blueprints\/{id}.'),
   "createdAt": zod.string()
 })
 
@@ -3092,6 +3110,12 @@ export const UpdateBlueprintResponse = zod.object({
 }).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
   "isArchived": zod.boolean().optional().describe('True once the linked job is completed or the linked estimate\/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page.'),
   "archivedAt": zod.string().nullish(),
+  "linkedQuotes": zod.array(zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['pending', 'approved', 'declined']),
+  "calculatedPrice": zod.number(),
+  "expiresAt": zod.string().nullish()
+})).optional().describe('Instant quotes generated from this blueprint. Only included on GET \/blueprints\/{id}.'),
   "createdAt": zod.string()
 })
 
@@ -3182,6 +3206,12 @@ export const GenerateBlueprintFromAiResponse = zod.object({
 }).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
   "isArchived": zod.boolean().optional().describe('True once the linked job is completed or the linked estimate\/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page.'),
   "archivedAt": zod.string().nullish(),
+  "linkedQuotes": zod.array(zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['pending', 'approved', 'declined']),
+  "calculatedPrice": zod.number(),
+  "expiresAt": zod.string().nullish()
+})).optional().describe('Instant quotes generated from this blueprint. Only included on GET \/blueprints\/{id}.'),
   "createdAt": zod.string()
 })
 
@@ -3254,6 +3284,12 @@ export const GenerateBlueprintAiZonesResponse = zod.object({
 }).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
   "isArchived": zod.boolean().optional().describe('True once the linked job is completed or the linked estimate\/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page.'),
   "archivedAt": zod.string().nullish(),
+  "linkedQuotes": zod.array(zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['pending', 'approved', 'declined']),
+  "calculatedPrice": zod.number(),
+  "expiresAt": zod.string().nullish()
+})).optional().describe('Instant quotes generated from this blueprint. Only included on GET \/blueprints\/{id}.'),
   "createdAt": zod.string()
 })
 
@@ -3300,6 +3336,12 @@ export const ListBlueprintTemplatesResponseItem = zod.object({
 }).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
   "isArchived": zod.boolean().optional().describe('True once the linked job is completed or the linked estimate\/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page.'),
   "archivedAt": zod.string().nullish(),
+  "linkedQuotes": zod.array(zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['pending', 'approved', 'declined']),
+  "calculatedPrice": zod.number(),
+  "expiresAt": zod.string().nullish()
+})).optional().describe('Instant quotes generated from this blueprint. Only included on GET \/blueprints\/{id}.'),
   "createdAt": zod.string()
 })
 export const ListBlueprintTemplatesResponse = zod.array(ListBlueprintTemplatesResponseItem)
@@ -3356,6 +3398,12 @@ export const ApplyBlueprintTemplateResponse = zod.object({
 }).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
   "isArchived": zod.boolean().optional().describe('True once the linked job is completed or the linked estimate\/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page.'),
   "archivedAt": zod.string().nullish(),
+  "linkedQuotes": zod.array(zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['pending', 'approved', 'declined']),
+  "calculatedPrice": zod.number(),
+  "expiresAt": zod.string().nullish()
+})).optional().describe('Instant quotes generated from this blueprint. Only included on GET \/blueprints\/{id}.'),
   "createdAt": zod.string()
 })
 

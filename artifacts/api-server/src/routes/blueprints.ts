@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, blueprintsTable, inventoryItemsTable, mediaAttachmentsTable, jobsTable, estimatesTable } from "@workspace/db";
+import { db, blueprintsTable, inventoryItemsTable, mediaAttachmentsTable, jobsTable, estimatesTable, quotesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -254,9 +254,25 @@ router.get("/blueprints/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const [bp] = await db.select().from(blueprintsTable).where(and(eq(blueprintsTable.id, id), eq(blueprintsTable.tenantId, tenantId)));
+  const [[bp], linkedQuotesRows] = await Promise.all([
+    db.select().from(blueprintsTable).where(and(eq(blueprintsTable.id, id), eq(blueprintsTable.tenantId, tenantId))),
+    db.select({
+      id: quotesTable.id,
+      status: quotesTable.status,
+      calculatedPrice: quotesTable.calculatedPrice,
+      expiresAt: quotesTable.expiresAt,
+    }).from(quotesTable).where(and(eq(quotesTable.blueprintId, id), eq(quotesTable.tenantId, tenantId))),
+  ]);
   if (!bp) { res.status(404).json({ error: "Not found" }); return; }
-  res.json(await formatBlueprint(bp));
+
+  const linkedQuotes = linkedQuotesRows.map(q => ({
+    id: q.id,
+    status: q.status,
+    calculatedPrice: q.calculatedPrice,
+    expiresAt: q.expiresAt ? q.expiresAt.toISOString() : null,
+  }));
+
+  res.json({ ...(await formatBlueprint(bp)), linkedQuotes });
 });
 
 router.patch("/blueprints/:id", async (req, res): Promise<void> => {

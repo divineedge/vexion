@@ -18,8 +18,9 @@ import {
   ChevronDown, TreeDeciduous, Mountain, Waves, Hash, Layers, SprayCan, Link2,
   Wand2, Shapes, Sparkles, X, Check, ZoomIn, ZoomOut, Maximize, Square, HelpCircle, Library,
   Upload, FileText, Undo2, Shrub, Flower2, Sprout, Grid3x3, Milestone, BrickWall, AlertTriangle,
-  PackageCheck, GitFork, Cpu, Droplets,
+  PackageCheck, GitFork, Cpu, Droplets, Receipt,
 } from 'lucide-react';
+import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -2499,6 +2500,41 @@ export default function BlueprintCanvasPage() {
                 {!scalePxPerFt && (
                   <p className="text-xs mt-3 text-muted-foreground/70">Tip: Use the Ruler tool to calibrate real-world scale for area measurements in sq ft.</p>
                 )}
+              </div>
+            )}
+
+            {/* Linked Quotes */}
+            {blueprint?.linkedQuotes && blueprint.linkedQuotes.length > 0 && (
+              <div className="p-4 border-t space-y-2">
+                <p className="text-sm font-medium flex items-center gap-1.5">
+                  <Receipt className="w-4 h-4" /> Linked Quotes
+                </p>
+                <div className="space-y-2">
+                  {blueprint.linkedQuotes.map((q) => {
+                    const statusVariant =
+                      q.status === 'approved' ? 'default' :
+                      q.status === 'declined' ? 'destructive' : 'outline';
+                    const statusLabel =
+                      q.status === 'approved' ? 'Approved' :
+                      q.status === 'declined' ? 'Declined' : 'Pending';
+                    return (
+                      <div key={q.id} className="rounded-md border p-2.5 text-xs space-y-1 bg-muted/20">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-muted-foreground font-mono">Quote #{q.id}</span>
+                          <Badge variant={statusVariant} className="text-[10px] px-1.5 py-0">
+                            {statusLabel}
+                          </Badge>
+                        </div>
+                        <p className="font-semibold text-sm">${q.calculatedPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                        {q.expiresAt && (
+                          <p className="text-muted-foreground">
+                            Expires {format(new Date(q.expiresAt), 'MMM d, yyyy')}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </CardContent>

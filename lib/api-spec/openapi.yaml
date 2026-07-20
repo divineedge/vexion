@@ -3951,6 +3951,67 @@ paths:
               schema:
                 $ref: '#/components/schemas/MediaAttachment'
 
+  /portal/plans:
+    get:
+      tags: [portal]
+      operationId: portalListPlans
+      summary: List the current customer's service plans
+      responses:
+        "200":
+          description: List of service plans
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PortalPlan"
+
+  /portal/plans/{id}:
+    get:
+      tags: [portal]
+      operationId: portalGetPlan
+      summary: Get a single service plan with visits and billing history
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Plan detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalPlanDetail"
+        "404":
+          description: Not found
+    patch:
+      tags: [portal]
+      operationId: portalUpdatePlan
+      summary: Toggle auto-renew on a service plan
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalUpdatePlanInput"
+      responses:
+        "200":
+          description: Updated plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalPlan"
+        "404":
+          description: Not found
+
   /portal/storage/uploads/request-url:
     post:
       tags: [portal]
@@ -10331,6 +10392,108 @@ components:
           type: ["string", "null"]
         createdAt:
           type: string
+
+    PortalPlan:
+      type: object
+      required: [id, templateName, startDate, endDate, billingCycle, billingPrice, autoRenew, status, nextBillingDate, propertyAddress, serviceState, createdAt]
+      properties:
+        id:
+          type: integer
+        templateName:
+          type: string
+        startDate:
+          type: string
+        endDate:
+          type: string
+        billingCycle:
+          type: string
+          enum: [monthly, quarterly, annual, custom]
+        customCycleDays:
+          type: ["integer", "null"]
+        billingPrice:
+          type: number
+        autoRenew:
+          type: boolean
+        status:
+          type: string
+          enum: [active, paused, cancelled, pending_renewal]
+        nextBillingDate:
+          type: string
+        lastBilledAt:
+          type: ["string", "null"]
+        propertyAddress:
+          type: ["string", "null"]
+        serviceState:
+          type: array
+          items:
+            type: object
+            properties:
+              serviceId:
+                type: integer
+              serviceName:
+                type: string
+              frequencyDays:
+                type: integer
+              lastScheduledAt:
+                type: ["string", "null"]
+        createdAt:
+          type: string
+
+    PortalPlanVisit:
+      type: object
+      required: [id, title, status, scheduledAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        status:
+          type: string
+        scheduledAt:
+          type: string
+        assigneeName:
+          type: ["string", "null"]
+
+    PortalPlanBillingEntry:
+      type: object
+      required: [id, invoiceNumber, status, total, createdAt]
+      properties:
+        id:
+          type: integer
+        invoiceNumber:
+          type: string
+        status:
+          type: string
+        total:
+          type: number
+        dueDate:
+          type: ["string", "null"]
+        paidAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    PortalPlanDetail:
+      allOf:
+        - $ref: "#/components/schemas/PortalPlan"
+        - type: object
+          required: [visits, billingHistory]
+          properties:
+            visits:
+              type: array
+              items:
+                $ref: "#/components/schemas/PortalPlanVisit"
+            billingHistory:
+              type: array
+              items:
+                $ref: "#/components/schemas/PortalPlanBillingEntry"
+
+    PortalUpdatePlanInput:
+      type: object
+      required: [autoRenew]
+      properties:
+        autoRenew:
+          type: boolean
 
     PortalAlertResponse:
       type: object

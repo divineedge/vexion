@@ -183,9 +183,12 @@ import type {
   PortalOtpRequest,
   PortalOtpRequestResult,
   PortalOtpVerify,
+  PortalPlan,
+  PortalPlanDetail,
   PortalProperty,
   PortalServiceRequestInput,
   PortalSummary,
+  PortalUpdatePlanInput,
   PreviewCustomerPlanInput,
   Property,
   PropertyInput,
@@ -14583,6 +14586,232 @@ export const usePortalAddPropertyMedia = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getPortalAddPropertyMediaMutationOptions(options));
+    }
+
+export const getPortalListPlansUrl = () => {
+
+
+
+
+  return `/api/portal/plans`
+}
+
+/**
+ * @summary List the current customer's service plans
+ */
+export const portalListPlans = async ( options?: RequestInit): Promise<PortalPlan[]> => {
+
+  return customFetch<PortalPlan[]>(getPortalListPlansUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getPortalListPlansQueryKey = () => {
+    return [
+    `/api/portal/plans`
+    ] as const;
+    }
+
+
+export const getPortalListPlansQueryOptions = <TData = Awaited<ReturnType<typeof portalListPlans>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof portalListPlans>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getPortalListPlansQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof portalListPlans>>> = ({ signal }) => portalListPlans({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof portalListPlans>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type PortalListPlansQueryResult = NonNullable<Awaited<ReturnType<typeof portalListPlans>>>
+export type PortalListPlansQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List the current customer's service plans
+ */
+
+export function usePortalListPlans<TData = Awaited<ReturnType<typeof portalListPlans>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof portalListPlans>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getPortalListPlansQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getPortalGetPlanUrl = (id: number,) => {
+
+
+
+
+  return `/api/portal/plans/${id}`
+}
+
+/**
+ * @summary Get a single service plan with visits and billing history
+ */
+export const portalGetPlan = async (id: number, options?: RequestInit): Promise<PortalPlanDetail> => {
+
+  return customFetch<PortalPlanDetail>(getPortalGetPlanUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getPortalGetPlanQueryKey = (id: number,) => {
+    return [
+    `/api/portal/plans/${id}`
+    ] as const;
+    }
+
+
+export const getPortalGetPlanQueryOptions = <TData = Awaited<ReturnType<typeof portalGetPlan>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof portalGetPlan>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getPortalGetPlanQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof portalGetPlan>>> = ({ signal }) => portalGetPlan(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof portalGetPlan>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type PortalGetPlanQueryResult = NonNullable<Awaited<ReturnType<typeof portalGetPlan>>>
+export type PortalGetPlanQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a single service plan with visits and billing history
+ */
+
+export function usePortalGetPlan<TData = Awaited<ReturnType<typeof portalGetPlan>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof portalGetPlan>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getPortalGetPlanQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getPortalUpdatePlanUrl = (id: number,) => {
+
+
+
+
+  return `/api/portal/plans/${id}`
+}
+
+/**
+ * @summary Toggle auto-renew on a service plan
+ */
+export const portalUpdatePlan = async (id: number,
+    portalUpdatePlanInput: PortalUpdatePlanInput, options?: RequestInit): Promise<PortalPlan> => {
+
+  return customFetch<PortalPlan>(getPortalUpdatePlanUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(portalUpdatePlanInput)
+  }
+);}
+
+
+
+
+
+export const getPortalUpdatePlanMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalUpdatePlan>>, TError,{id: number;data: BodyType<PortalUpdatePlanInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof portalUpdatePlan>>, TError,{id: number;data: BodyType<PortalUpdatePlanInput>}, TContext> => {
+
+const mutationKey = ['portalUpdatePlan'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof portalUpdatePlan>>, {id: number;data: BodyType<PortalUpdatePlanInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  portalUpdatePlan(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PortalUpdatePlanMutationResult = NonNullable<Awaited<ReturnType<typeof portalUpdatePlan>>>
+    export type PortalUpdatePlanMutationBody = BodyType<PortalUpdatePlanInput>
+    export type PortalUpdatePlanMutationError = ErrorType<void>
+
+    /**
+ * @summary Toggle auto-renew on a service plan
+ */
+export const usePortalUpdatePlan = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalUpdatePlan>>, TError,{id: number;data: BodyType<PortalUpdatePlanInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof portalUpdatePlan>>,
+        TError,
+        {id: number;data: BodyType<PortalUpdatePlanInput>},
+        TContext
+      > => {
+      return useMutation(getPortalUpdatePlanMutationOptions(options));
     }
 
 export const getPortalRequestUploadUrlUrl = () => {

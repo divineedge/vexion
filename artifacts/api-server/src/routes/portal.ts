@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable, mediaAttachmentsTable, tenantsTable, communicationsLogTable } from "@workspace/db";
-import { eq, and, gt, desc, lte, isNotNull } from "drizzle-orm";
+import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable, mediaAttachmentsTable, tenantsTable, communicationsLogTable, customerPlansTable, usersTable } from "@workspace/db";
+import { eq, and, gt, desc, lte, isNotNull, ne, sql } from "drizzle-orm";
 import { objectStorageService } from "./storage";
 import crypto from "crypto";
 import { getTenantId } from "../lib/tenantHelper";
@@ -801,8 +801,153 @@ router.get("/portal/property/:id/media", requirePortalAuth, async (req: any, res
 });
 
 // ---------------------------------------------------------------------------
+// GET /portal/plans
+// ---------------------------------------------------------------------------
+router.get("/portal/plans", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+
+  const rows = await db
+    .select({ plan: customerPlansTable, propertyAddress: propertiesTable.address })
+    .from(customerPlansTable)
+    .leftJoin(propertiesTable, eq(customerPlansTable.propertyId, propertiesTable.id))
+    .where(
+      and(
+        eq(customerPlansTable.customerId, portalCustomerId),
+        eq(customerPlansTable.tenantId, portalTenantId),
+        ne(customerPlansTable.status, "cancelled"),
+      ),
+    )
+    .orderBy(desc(customerPlansTable.createdAt));
+
+  res.json(rows.map(r => formatPortalPlan(r.plan, r.propertyAddress)));
+});
+
+// ---------------------------------------------------------------------------
+// GET /portal/plans/:id
+// ---------------------------------------------------------------------------
+router.get("/portal/plans/:id", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+  const planId = Number(req.params.id);
+
+  const [row] = await db
+    .select({ plan: customerPlansTable, propertyAddress: propertiesTable.address })
+    .from(customerPlansTable)
+    .leftJoin(propertiesTable, eq(customerPlansTable.propertyId, propertiesTable.id))
+    .where(
+      and(
+        eq(customerPlansTable.id, planId),
+        eq(customerPlansTable.customerId, portalCustomerId),
+        eq(customerPlansTable.tenantId, portalTenantId),
+      ),
+    )
+    .limit(1);
+
+  if (!row) {
+    res.status(404).json({ error: "Plan not found" });
+    return;
+  }
+
+  const visits = await db
+    .select({ job: jobsTable, assigneeName: usersTable.name })
+    .from(jobsTable)
+    .leftJoin(usersTable, eq(jobsTable.assigneeId, usersTable.id))
+    .where(and(eq(jobsTable.tenantId, portalTenantId), eq(jobsTable.planId, planId)))
+    .orderBy(jobsTable.scheduledAt);
+
+  const billingHistory = await db
+    .select()
+    .from(invoicesTable)
+    .where(and(eq(invoicesTable.tenantId, portalTenantId), eq(invoicesTable.planId, planId)))
+    .orderBy(sql`${invoicesTable.createdAt} DESC`);
+
+  res.json({
+    ...formatPortalPlan(row.plan, row.propertyAddress),
+    visits: visits.map(v => ({
+      id: v.job.id,
+      title: v.job.title,
+      status: v.job.status,
+      scheduledAt: v.job.scheduledAt.toISOString(),
+      assigneeName: v.assigneeName ?? null,
+    })),
+    billingHistory: billingHistory.map(i => ({
+      id: i.id,
+      invoiceNumber: i.invoiceNumber,
+      status: i.status,
+      total: i.total,
+      dueDate: i.dueDate?.toISOString() ?? null,
+      paidAt: i.paidAt?.toISOString() ?? null,
+      createdAt: i.createdAt.toISOString(),
+    })),
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /portal/plans/:id — toggle autoRenew only
+// ---------------------------------------------------------------------------
+router.patch("/portal/plans/:id", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+  const planId = Number(req.params.id);
+  const { autoRenew } = req.body as { autoRenew?: boolean };
+
+  if (typeof autoRenew !== "boolean") {
+    res.status(400).json({ error: "autoRenew (boolean) is required" });
+    return;
+  }
+
+  const [existing] = await db
+    .select({ id: customerPlansTable.id })
+    .from(customerPlansTable)
+    .where(
+      and(
+        eq(customerPlansTable.id, planId),
+        eq(customerPlansTable.customerId, portalCustomerId),
+        eq(customerPlansTable.tenantId, portalTenantId),
+      ),
+    )
+    .limit(1);
+
+  if (!existing) {
+    res.status(404).json({ error: "Plan not found" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(customerPlansTable)
+    .set({ autoRenew })
+    .where(eq(customerPlansTable.id, planId))
+    .returning();
+
+  const [prop] = await db
+    .select({ address: propertiesTable.address })
+    .from(propertiesTable)
+    .where(eq(propertiesTable.id, updated.propertyId))
+    .limit(1);
+
+  res.json(formatPortalPlan(updated, prop?.address ?? null));
+});
+
+// ---------------------------------------------------------------------------
 // Format helpers
 // ---------------------------------------------------------------------------
+
+function formatPortalPlan(p: typeof customerPlansTable.$inferSelect, propertyAddress: string | null | undefined) {
+  return {
+    id: p.id,
+    templateName: p.templateName,
+    startDate: p.startDate.toISOString(),
+    endDate: p.endDate.toISOString(),
+    billingCycle: p.billingCycle,
+    customCycleDays: p.customCycleDays ?? null,
+    billingPrice: p.billingPrice,
+    autoRenew: p.autoRenew,
+    status: p.status,
+    nextBillingDate: p.nextBillingDate,
+    lastBilledAt: p.lastBilledAt?.toISOString() ?? null,
+    propertyAddress: propertyAddress ?? null,
+    serviceState: (p.serviceState as unknown[]) ?? [],
+    createdAt: p.createdAt.toISOString(),
+  };
+}
 
 function formatPortalJob(j: typeof jobsTable.$inferSelect, propertyAddress: string | null | undefined) {
   return {

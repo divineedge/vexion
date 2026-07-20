@@ -9,8 +9,8 @@
  *      renewal reminder when auto-renew is off.
  */
 
-import { db, customerPlansTable, jobsTable, usersTable, propertiesTable, customersTable, activityLogTable } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { db, customerPlansTable, jobsTable, usersTable, propertiesTable, customersTable, activityLogTable, tenantsTable, stopServiceFlagsTable, invoicesTable } from "@workspace/db";
+import { eq, and, sql, ne, inArray, lt, isNotNull, gt } from "drizzle-orm";
 import { logger } from "./logger";
 import { sendEmail } from "./emailProvider";
 import { snapToCluster, billingCycleDays, type ClusterCandidate } from "./planSchedulingEngine";
@@ -202,11 +202,168 @@ async function processRenewalReminders() {
   }
 }
 
+/**
+ * Detects plan-generated invoices that have crossed the tenant's stop-service
+ * overdue threshold, automatically pauses the associated plan, cancels its
+ * upcoming scheduled visits, creates a stop-service flag for office review,
+ * and notifies admin/office users by email.
+ *
+ * Idempotent: skips any plan whose overdue invoice already has a pending flag.
+ */
+async function processOverduePlanFlags() {
+  // Load all plans that are still generating visits / getting billed.
+  const eligiblePlans = await db.select().from(customerPlansTable).where(
+    inArray(customerPlansTable.status, ["active", "pending_renewal"]),
+  );
+  if (eligiblePlans.length === 0) return;
+
+  // Fetch stop-service config for every involved tenant in one query.
+  const tenantIds = [...new Set(eligiblePlans.map(p => p.tenantId))];
+  const tenants = await db
+    .select({
+      id: tenantsTable.id,
+      name: tenantsTable.name,
+      stopServiceRuleEnabled: tenantsTable.stopServiceRuleEnabled,
+      stopServiceThresholdDays: tenantsTable.stopServiceThresholdDays,
+    })
+    .from(tenantsTable)
+    .where(inArray(tenantsTable.id, tenantIds));
+  const tenantMap = new Map(tenants.map(t => [t.id, t]));
+
+  // Only process plans whose tenant has the stop-service rule switched on.
+  const enabledPlans = eligiblePlans.filter(p => tenantMap.get(p.tenantId)?.stopServiceRuleEnabled);
+  if (enabledPlans.length === 0) return;
+
+  // Find overdue plan invoices for those plans (unpaid, dueDate in the past).
+  const planIds = enabledPlans.map(p => p.id);
+  const now = new Date();
+  const overdueInvoices = await db.select().from(invoicesTable).where(and(
+    inArray(invoicesTable.planId, planIds),
+    ne(invoicesTable.status, "paid"),
+    isNotNull(invoicesTable.dueDate),
+    lt(invoicesTable.dueDate, now),
+  ));
+  if (overdueInvoices.length === 0) return;
+
+  // Load existing pending flags to avoid creating duplicates.
+  const overdueInvoiceIds = overdueInvoices.map(i => i.id);
+  const existingFlags = await db
+    .select({ invoiceId: stopServiceFlagsTable.invoiceId })
+    .from(stopServiceFlagsTable)
+    .where(and(
+      inArray(stopServiceFlagsTable.invoiceId, overdueInvoiceIds),
+      eq(stopServiceFlagsTable.status, "pending"),
+    ));
+  const flaggedInvoiceIds = new Set(existingFlags.map(f => f.invoiceId));
+
+  // Build a plan-keyed map: planId → worst qualifying overdue invoice.
+  // Processing at the plan level (not invoice level) ensures each plan is
+  // paused at most once per run even if it has multiple overdue invoices.
+  const planMap = new Map(enabledPlans.map(p => [p.id, p]));
+  const worstInvoicePerPlan = new Map<number, typeof overdueInvoices[number]>();
+
+  for (const invoice of overdueInvoices) {
+    if (!invoice.planId) continue;
+    const plan = planMap.get(invoice.planId);
+    if (!plan) continue;
+    const tenant = tenantMap.get(plan.tenantId);
+    if (!tenant) continue;
+    const thresholdDays = tenant.stopServiceThresholdDays ?? 30;
+    const daysOverdue = Math.floor((now.getTime() - invoice.dueDate!.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysOverdue < thresholdDays) continue;
+
+    // Keep the most-overdue invoice per plan (arbitrary but deterministic).
+    const prev = worstInvoicePerPlan.get(invoice.planId);
+    if (!prev || daysOverdue > Math.floor((now.getTime() - prev.dueDate!.getTime()) / (1000 * 60 * 60 * 24))) {
+      worstInvoicePerPlan.set(invoice.planId, invoice);
+    }
+  }
+
+  for (const [planId, invoice] of worstInvoicePerPlan) {
+    const plan = planMap.get(planId)!;
+    const tenant = tenantMap.get(plan.tenantId)!;
+    const thresholdDays = tenant.stopServiceThresholdDays ?? 30;
+    const daysOverdue = Math.floor((now.getTime() - invoice.dueDate!.getTime()) / (1000 * 60 * 60 * 24));
+
+    try {
+      // 1. Atomically pause the plan — only proceeds if status is still
+      //    active or pending_renewal. If another process/run already paused
+      //    it, the update returns 0 rows and we skip the rest.
+      const updated = await db.update(customerPlansTable)
+        .set({ status: "paused" })
+        .where(and(
+          eq(customerPlansTable.id, plan.id),
+          inArray(customerPlansTable.status, ["active", "pending_renewal"]),
+        ))
+        .returning({ id: customerPlansTable.id });
+
+      if (updated.length === 0) continue; // already paused — nothing more to do
+
+      // 2. Cancel future scheduled plan visits so staff don't show up for a
+      //    non-paying customer.
+      await db.update(jobsTable)
+        .set({ status: "cancelled" })
+        .where(and(
+          eq(jobsTable.tenantId, plan.tenantId),
+          eq(jobsTable.planId, plan.id),
+          eq(jobsTable.status, "scheduled"),
+          gt(jobsTable.scheduledAt, now),
+        ));
+
+      // 3. Create a stop-service flag so the office queue surfaces this —
+      //    but only if no pending flag already exists for this invoice
+      //    (the payment-reminder scheduler may have already raised one).
+      if (!flaggedInvoiceIds.has(invoice.id)) {
+        await db.insert(stopServiceFlagsTable).values({
+          tenantId: plan.tenantId,
+          customerId: plan.customerId,
+          invoiceId: invoice.id,
+          daysOverdue,
+          message: `Plan "${plan.templateName}" auto-paused: invoice ${invoice.invoiceNumber} is ${daysOverdue} days overdue (threshold: ${thresholdDays} days).`,
+          status: "pending",
+        });
+      }
+
+      // 4. Email every admin/office user on this tenant.
+      const adminUsers = await db
+        .select({ email: usersTable.email, name: usersTable.name })
+        .from(usersTable)
+        .where(and(
+          eq(usersTable.tenantId, plan.tenantId),
+          inArray(usersTable.role, ["owner", "office"]),
+        ));
+
+      for (const admin of adminUsers) {
+        await sendEmail(
+          { provider: null, config: {}, fromAddress: null },
+          admin.email,
+          `Service plan auto-paused: overdue invoice for ${plan.templateName}`,
+          `Hi ${admin.name},\n\nThe "${plan.templateName}" service plan (Plan #${plan.id}) has been automatically paused because invoice ${invoice.invoiceNumber} is ${daysOverdue} days overdue.\n\nA stop-service flag has been raised in your dashboard. Once the customer has paid, you can resume the plan from the Plans section.\n\n— ${tenant.name}`,
+        ).catch(err => logger.warn({ err, planId: plan.id }, "Plan overdue pause notification email failed"));
+      }
+
+      // 5. Log for audit trail.
+      await db.insert(activityLogTable).values({
+        tenantId: plan.tenantId,
+        userId: 1,
+        type: "plan_auto_paused_overdue",
+        message: `Plan "${plan.templateName}" auto-paused: invoice ${invoice.invoiceNumber} is ${daysOverdue} days overdue`,
+        entityId: plan.id,
+      });
+
+      logger.info({ planId: plan.id, invoiceId: invoice.id, daysOverdue }, "Plan scheduler: auto-paused plan due to overdue invoice");
+    } catch (err) {
+      logger.error({ err, planId: plan.id, invoiceId: invoice.id }, "Plan scheduler: failed to auto-pause overdue plan");
+    }
+  }
+}
+
 async function runPlanCycle() {
   logger.info("Plan scheduler: starting daily cycle");
   await processJobGeneration();
   await processRenewals();
   await processRenewalReminders();
+  await processOverduePlanFlags();
   logger.info("Plan scheduler: daily cycle complete");
 }
 

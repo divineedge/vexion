@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable, invoicesTable, tenantsTable, blueprintsTable } from "@workspace/db";
+import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable, invoicesTable, tenantsTable, blueprintsTable, chemicalApplicationsTable } from "@workspace/db";
 import { eq, and, or, sql, desc, asc, isNotNull, isNull, ne, inArray, min, gt } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { nthOccurrenceAfterRoot, describeRule, type RecurrenceRule } from "../lib/recurrenceEngine";
@@ -487,6 +487,24 @@ router.delete("/jobs/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
+
+  // Block deletion if the job has linked chemical application records.
+  // Deleting would SET NULL the job_id and permanently sever the compliance audit trail.
+  const [chemCount] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(chemicalApplicationsTable)
+    .where(and(eq(chemicalApplicationsTable.jobId, id), eq(chemicalApplicationsTable.tenantId, tenantId)));
+
+  const count = chemCount?.count ?? 0;
+  if (count > 0) {
+    res.status(409).json({
+      error: "Cannot delete job with chemical application records",
+      message: `This job has ${count} chemical application record${count === 1 ? "" : "s"} linked to it. Deleting the job would permanently remove the job association from these compliance records. Please reassign or remove the chemical application records before deleting this job.`,
+      chemicalApplicationCount: count,
+    });
+    return;
+  }
+
   await db.delete(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
   res.sendStatus(204);
 });

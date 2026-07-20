@@ -29,6 +29,7 @@ import {
   useListRepairLogs, getListRepairLogsQueryKey,
   useListSubTimers, getListSubTimersQueryKey,
   useStartSubTimer, useStopSubTimer,
+  useDeleteJob,
 } from '@workspace/api-client-react';
 import MediaGallery from '@/components/media/MediaGallery';
 import { JobFormFields, EMPTY_JOB, buildRecurrenceRule, type NewJobForm } from '@/components/jobs/JobFormFields';
@@ -197,6 +198,8 @@ export default function SchedulePage() {
   const { data: chemMixtures } = useListChemicalMixtures({ query: { queryKey: getListChemicalMixturesQueryKey() } });
   const createChemApp = useCreateJobChemicalApplication();
   const deleteChemApp = useDeleteChemicalApplication();
+  const deleteJob = useDeleteJob();
+  const [deleteBlockedMsg, setDeleteBlockedMsg] = useState<string | null>(null);
 
   // Recurring series hooks
   const { data: recurringSeries } = useListRecurringSeries({
@@ -577,9 +580,38 @@ export default function SchedulePage() {
                       </div>
                     )}
                   </div>
-                  <Badge className={`shrink-0 capitalize ${STATUS_COLORS[selectedJob.status] ?? ''}`} variant="outline">
-                    {selectedJob.status.replace('_', ' ')}
-                  </Badge>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge className={`capitalize ${STATUS_COLORS[selectedJob.status] ?? ''}`} variant="outline">
+                      {selectedJob.status.replace('_', ' ')}
+                    </Badge>
+                    {canManageJobs && (
+                      <button
+                        title="Delete job"
+                        className="text-muted-foreground/40 hover:text-destructive transition-colors"
+                        onClick={() => {
+                          if (!window.confirm('Permanently delete this job? This cannot be undone.')) return;
+                          deleteJob.mutate({ id: selectedJob.id }, {
+                            onSuccess: () => {
+                              toast.success('Job deleted');
+                              qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                              setSelectedJobId(null);
+                            },
+                            onError: (err: any) => {
+                              const status = err?.response?.status;
+                              const body = err?.response?.data;
+                              if (status === 409 && body?.message) {
+                                setDeleteBlockedMsg(body.message);
+                              } else {
+                                toast.error('Failed to delete job');
+                              }
+                            },
+                          });
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </SheetHeader>
 
@@ -1462,6 +1494,21 @@ export default function SchedulePage() {
             <Button onClick={() => confirmPause(pauseDialogRootId!)} disabled={pauseSeries.isPending}>
               {pauseSeries.isPending ? 'Pausing…' : 'Pause Series'}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Chemical application compliance block */}
+      <Dialog open={deleteBlockedMsg !== null} onOpenChange={(open) => { if (!open) setDeleteBlockedMsg(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="w-5 h-5" /> Cannot Delete Job
+            </DialogTitle>
+            <DialogDescription>{deleteBlockedMsg}</DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end pt-2">
+            <Button onClick={() => setDeleteBlockedMsg(null)}>OK</Button>
           </div>
         </DialogContent>
       </Dialog>

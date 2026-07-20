@@ -2,7 +2,7 @@ import ExcelJS from "exceljs";
 import multer from "multer";
 import crypto from "crypto";
 import type { Request, Response } from "express";
-import { db, importBatchesTable, usersTable } from "@workspace/db";
+import { db, importBatchesTable, usersTable, activityLogTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { getUserId } from "./tenantHelper";
 
@@ -449,6 +449,14 @@ export async function handleImportCommit(
     .returning({ id: importBatchesTable.id });
   result.batchId = batch.id;
 
+  await db.insert(activityLogTable).values({
+    tenantId,
+    userId,
+    type: "import_committed",
+    message: `Imported "${file.originalname}" (${config.entityKey}): ${result.created} created, ${result.updated} updated`,
+    entityId: batch.id,
+  });
+
   res.json(result);
 }
 
@@ -577,6 +585,14 @@ export async function handleRollbackImportBatch(req: Request, res: Response, ten
     .update(importBatchesTable)
     .set({ status: "rolled_back", rolledBackAt: new Date(), rolledBackBy: userId })
     .where(eq(importBatchesTable.id, batchId));
+
+  await db.insert(activityLogTable).values({
+    tenantId,
+    userId,
+    type: "import_rolled_back",
+    message: `Rolled back import batch #${batchId} (${batch.entityKey}): ${response.deletedCount} deleted, ${response.revertedCount} reverted`,
+    entityId: batchId,
+  });
 
   res.json(response);
 }

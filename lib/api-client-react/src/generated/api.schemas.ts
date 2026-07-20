@@ -85,6 +85,79 @@ export interface Estimate {
   updatedAt: string;
 }
 
+export interface PublicInvoiceBusinessProfile {
+  /** @nullable */
+  companyName?: string | null;
+  /** @nullable */
+  logoUrl?: string | null;
+  /** @nullable */
+  tagline?: string | null;
+  /** @nullable */
+  phone?: string | null;
+  /** @nullable */
+  email?: string | null;
+  /** @nullable */
+  website?: string | null;
+  /** @nullable */
+  address?: string | null;
+  /** @nullable */
+  invoiceFooterText?: string | null;
+}
+
+export type InvoiceStatus = typeof InvoiceStatus[keyof typeof InvoiceStatus];
+
+
+export const InvoiceStatus = {
+  draft: 'draft',
+  sent: 'sent',
+  paid: 'paid',
+  overdue: 'overdue',
+  cancelled: 'cancelled',
+} as const;
+
+export interface InvoiceLineItem {
+  id: number;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+}
+
+export interface Invoice {
+  id: number;
+  tenantId: number;
+  invoiceNumber: string;
+  customerId: number;
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  jobId?: number | null;
+  status: InvoiceStatus;
+  subtotal: number;
+  tax: number;
+  total: number;
+  /** @nullable */
+  dueDate?: string | null;
+  /** @nullable */
+  paidAt?: string | null;
+  /** @nullable */
+  notes?: string | null;
+  lineItems?: InvoiceLineItem[];
+  /** @nullable */
+  stripePaymentUrl?: string | null;
+  /** @nullable */
+  lobLetterId?: string | null;
+  /** @nullable */
+  lobStatus?: string | null;
+  /** @nullable */
+  publicToken?: string | null;
+  createdAt: string;
+}
+
+export type PublicInvoice = Invoice & {
+  businessProfile?: PublicInvoiceBusinessProfile;
+};
+
 export interface PublicEstimateBusinessProfile {
   /** @nullable */
   companyName?: string | null;
@@ -214,6 +287,8 @@ export interface Visit {
   convertedToEstimateId?: number | null;
   /** @nullable */
   convertedToJobId?: number | null;
+  /** When true, an SMS reminder will be sent before this visit */
+  smsReminderEnabled?: boolean;
   /** @nullable */
   customerName?: string | null;
   /** @nullable */
@@ -241,6 +316,7 @@ export interface CreateVisitInput {
   purpose: string;
   notes?: string;
   scheduledAt?: string;
+  /** Enable SMS reminder for this visit */
   smsReminderEnabled?: boolean;
 }
 
@@ -259,6 +335,7 @@ export interface UpdateVisitInput {
   purpose?: string;
   notes?: string;
   scheduledAt?: string;
+  /** Enable or disable SMS reminder for this visit */
   smsReminderEnabled?: boolean;
 }
 
@@ -1164,6 +1241,10 @@ export interface Job {
   isOneTimeReschedule?: boolean;
   /** @nullable */
   originalScheduledDate?: string | null;
+  /** When true, the scheduler sends an SMS reminder to the customer before this job */
+  smsReminderEnabled?: boolean;
+  /** When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed. */
+  holdFromBilling?: boolean;
   createdAt: string;
 }
 
@@ -1206,6 +1287,7 @@ export interface JobInput {
   estimatedDuration?: number;
   blueprintId?: number;
   recurrenceRule?: RecurrenceRule;
+  /** Enable SMS reminder for this job */
   smsReminderEnabled?: boolean;
 }
 
@@ -1254,6 +1336,10 @@ export interface JobUpdate {
   recurrenceRule?: RecurrenceRule;
   /** Scope of the edit for recurring jobs */
   editScope?: JobUpdateEditScope;
+  /** Enable or disable SMS reminder for this job */
+  smsReminderEnabled?: boolean;
+  /** When true, exclude this job from the next automatic overnight billing run */
+  holdFromBilling?: boolean;
 }
 
 export interface CrewMember {
@@ -1298,6 +1384,28 @@ export interface StockAdjustmentInput {
   /** Positive to add stock, negative to remove stock */
   delta: number;
   reason?: string;
+}
+
+export interface EquipmentLinkedPart {
+  id: number;
+  tenantId: number;
+  name: string;
+  sku: string;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  category?: string | null;
+  unitPrice: number;
+  markupPct?: number;
+  markedUpPrice?: number;
+  quantity: number;
+  reorderPoint: number;
+  unit: string;
+  isLowStock: boolean;
+  availableForBlueprint?: boolean;
+  createdAt: string;
+  /** Bundle item labels (check names) that link this part to the equipment */
+  checkLabels: string[];
 }
 
 export interface InventoryItem {
@@ -1367,54 +1475,6 @@ export interface InventorySummary {
   totalValue: number;
   lowStockCount: number;
   categories: CategoryCount[];
-}
-
-export type InvoiceStatus = typeof InvoiceStatus[keyof typeof InvoiceStatus];
-
-
-export const InvoiceStatus = {
-  draft: 'draft',
-  sent: 'sent',
-  paid: 'paid',
-  overdue: 'overdue',
-  cancelled: 'cancelled',
-} as const;
-
-export interface InvoiceLineItem {
-  id: number;
-  description: string;
-  quantity: number;
-  unitPrice: number;
-  total: number;
-}
-
-export interface Invoice {
-  id: number;
-  tenantId: number;
-  invoiceNumber: string;
-  customerId: number;
-  /** @nullable */
-  customerName?: string | null;
-  /** @nullable */
-  jobId?: number | null;
-  status: InvoiceStatus;
-  subtotal: number;
-  tax: number;
-  total: number;
-  /** @nullable */
-  dueDate?: string | null;
-  /** @nullable */
-  paidAt?: string | null;
-  /** @nullable */
-  notes?: string | null;
-  lineItems?: InvoiceLineItem[];
-  /** @nullable */
-  stripePaymentUrl?: string | null;
-  /** @nullable */
-  lobLetterId?: string | null;
-  /** @nullable */
-  lobStatus?: string | null;
-  createdAt: string;
 }
 
 export interface BroadcastFilter {
@@ -3076,6 +3136,33 @@ export interface Equipment {
   sellRecommended?: boolean;
   /** @nullable */
   sellReason?: string | null;
+  /**
+     * ISO date of next scheduled service (from the latest maintenance record)
+     * @nullable
+     */
+  nextServiceDueDate?: string | null;
+  /**
+     * Hour-meter reading at which next service is due
+     * @nullable
+     */
+  nextServiceDueHours?: number | null;
+  /**
+     * Mileage at which next service is due
+     * @nullable
+     */
+  nextServiceDueMiles?: number | null;
+  /** True when current hours/miles/date have reached or passed the next service threshold */
+  maintenanceDue?: boolean;
+  /**
+     * Hours remaining until next service (negative means overdue)
+     * @nullable
+     */
+  hoursUntilService?: number | null;
+  /**
+     * Miles remaining until next service (negative means overdue)
+     * @nullable
+     */
+  milesUntilService?: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -3132,16 +3219,16 @@ export interface EquipmentFuelLog {
   id: number;
   equipmentId: number;
   tenantId: number;
-  date: string;
-  gallons: number;
-  cost: number;
-  /** @nullable */
-  odometerReading?: number | null;
   /**
      * Optional link to the job this fuel was consumed for. When set, the Job Profitability report attributes this cost directly to that job rather than spreading it across all jobs.
      * @nullable
      */
   jobId?: number | null;
+  date: string;
+  gallons: number;
+  cost: number;
+  /** @nullable */
+  odometerReading?: number | null;
   createdAt: string;
 }
 
@@ -3513,6 +3600,84 @@ export interface PortalAlert {
   createdAt: string;
 }
 
+export type PortalPlanBillingCycle = typeof PortalPlanBillingCycle[keyof typeof PortalPlanBillingCycle];
+
+
+export const PortalPlanBillingCycle = {
+  monthly: 'monthly',
+  quarterly: 'quarterly',
+  annual: 'annual',
+  custom: 'custom',
+} as const;
+
+export type PortalPlanStatus = typeof PortalPlanStatus[keyof typeof PortalPlanStatus];
+
+
+export const PortalPlanStatus = {
+  active: 'active',
+  paused: 'paused',
+  cancelled: 'cancelled',
+  pending_renewal: 'pending_renewal',
+} as const;
+
+export type PortalPlanServiceStateItem = {
+  serviceId?: number;
+  serviceName?: string;
+  frequencyDays?: number;
+  /** @nullable */
+  lastScheduledAt?: string | null;
+};
+
+export interface PortalPlan {
+  id: number;
+  templateName: string;
+  startDate: string;
+  endDate: string;
+  billingCycle: PortalPlanBillingCycle;
+  /** @nullable */
+  customCycleDays?: number | null;
+  billingPrice: number;
+  autoRenew: boolean;
+  status: PortalPlanStatus;
+  nextBillingDate: string;
+  /** @nullable */
+  lastBilledAt?: string | null;
+  /** @nullable */
+  propertyAddress: string | null;
+  serviceState: PortalPlanServiceStateItem[];
+  createdAt: string;
+}
+
+export interface PortalPlanVisit {
+  id: number;
+  title: string;
+  status: string;
+  scheduledAt: string;
+  /** @nullable */
+  assigneeName?: string | null;
+}
+
+export interface PortalPlanBillingEntry {
+  id: number;
+  invoiceNumber: string;
+  status: string;
+  total: number;
+  /** @nullable */
+  dueDate?: string | null;
+  /** @nullable */
+  paidAt?: string | null;
+  createdAt: string;
+}
+
+export type PortalPlanDetail = PortalPlan & {
+  visits: PortalPlanVisit[];
+  billingHistory: PortalPlanBillingEntry[];
+};
+
+export interface PortalUpdatePlanInput {
+  autoRenew: boolean;
+}
+
 export type PortalAlertResponseAction = typeof PortalAlertResponseAction[keyof typeof PortalAlertResponseAction];
 
 
@@ -3749,6 +3914,13 @@ export interface RunRecurringTemplateNowInput {
   excludeJobIds?: number[];
 }
 
+export type BillingPreviewJobFlags = {
+  /** Another job in this billing group has the same service and was completed within 30 minutes */
+  duplicate?: boolean;
+  /** This job's amount is more than 2.5 standard deviations from the group mean (requires ≥3 jobs) */
+  outlier?: boolean;
+};
+
 export interface BillingPreviewJob {
   id: number;
   title: string;
@@ -3756,6 +3928,9 @@ export interface BillingPreviewJob {
   totalAmount: number;
   /** @nullable */
   serviceId?: number | null;
+  flags?: BillingPreviewJobFlags;
+  /** When true, this job is held from the next automatic overnight billing run */
+  holdFromBilling?: boolean;
 }
 
 export interface BillingPreviewGroup {
@@ -4614,111 +4789,7 @@ elementId?: string;
 blueprintId?: number;
 };
 
-export interface PortalPlanServiceStateItem {
-  serviceId: number;
-  serviceName: string;
-  frequencyDays: number;
-  /** @nullable */
-  lastScheduledAt?: string | null;
-}
-
-export interface PortalPlan {
-  id: number;
-  templateName: string;
-  startDate: string;
-  endDate: string;
-  billingCycle: 'monthly' | 'quarterly' | 'annual' | 'custom';
-  /** @nullable */
-  customCycleDays?: number | null;
-  billingPrice: number;
-  autoRenew: boolean;
-  status: 'active' | 'paused' | 'cancelled' | 'pending_renewal';
-  nextBillingDate: string;
-  /** @nullable */
-  lastBilledAt?: string | null;
-  /** @nullable */
-  propertyAddress?: string | null;
-  serviceState: PortalPlanServiceStateItem[];
-  createdAt: string;
-}
-
-export interface PortalPlanVisit {
-  id: number;
-  title: string;
-  status: string;
-  scheduledAt: string;
-  /** @nullable */
-  assigneeName?: string | null;
-}
-
-export interface PortalPlanBillingEntry {
-  id: number;
-  invoiceNumber: string;
-  status: string;
-  total: number;
-  /** @nullable */
-  dueDate?: string | null;
-  /** @nullable */
-  paidAt?: string | null;
-  createdAt: string;
-}
-
-export interface PortalPlanDetail extends PortalPlan {
-  visits: PortalPlanVisit[];
-  billingHistory: PortalPlanBillingEntry[];
-}
-
-export interface PortalUpdatePlanInput {
-  autoRenew: boolean;
-}
-
 export type GetRepairLogSummaryParams = {
 propertyId: number;
 };
-
-export interface PublicInvoiceBusinessProfile {
-  /** @nullable */
-  companyName?: string | null;
-  /** @nullable */
-  logoUrl?: string | null;
-  /** @nullable */
-  tagline?: string | null;
-  /** @nullable */
-  phone?: string | null;
-  /** @nullable */
-  email?: string | null;
-  /** @nullable */
-  website?: string | null;
-  /** @nullable */
-  address?: string | null;
-  /** @nullable */
-  invoiceFooterText?: string | null;
-}
-
-export type PublicInvoice = Invoice & {
-  businessProfile?: PublicInvoiceBusinessProfile;
-};
-
-export interface EquipmentLinkedPart {
-  id: number;
-  tenantId: number;
-  name: string;
-  sku: string;
-  /** @nullable */
-  description?: string | null;
-  /** @nullable */
-  category?: string | null;
-  unitPrice: number;
-  markupPct?: number;
-  markedUpPrice?: number;
-  quantity: number;
-  reorderPoint: number;
-  unit: string;
-  isLowStock: boolean;
-  availableForBlueprint?: boolean;
-  createdAt: string;
-  /** Bundle item labels (check names) that link this part to the equipment */
-  checkLabels: string[];
-}
-
 

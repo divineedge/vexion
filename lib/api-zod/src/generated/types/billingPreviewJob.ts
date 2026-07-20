@@ -5,6 +5,7 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { BillingPreviewJobFlags } from './billingPreviewJobFlags';
 
 export interface BillingPreviewJob {
   id: number;
@@ -13,4 +14,7 @@ export interface BillingPreviewJob {
   totalAmount: number;
   /** @nullable */
   serviceId?: number | null;
+  flags?: BillingPreviewJobFlags;
+  /** When true, this job is held from the next automatic overnight billing run */
+  holdFromBilling?: boolean;
 }

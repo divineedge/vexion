@@ -15,4 +15,8 @@ triggerType?: string;
  * 'open' (default) or 'resolved'
  */
 status?: string;
+/**
+ * Filter to items assigned to a specific user id. Pass 'me' to get the calling user's items.
+ */
+assignedToUserId?: string;
 };

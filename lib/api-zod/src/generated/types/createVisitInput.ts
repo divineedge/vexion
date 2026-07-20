@@ -15,4 +15,6 @@ export interface CreateVisitInput {
   purpose: string;
   notes?: string;
   scheduledAt?: string;
+  /** Enable SMS reminder for this visit */
+  smsReminderEnabled?: boolean;
 }

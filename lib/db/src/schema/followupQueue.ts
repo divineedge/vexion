@@ -26,6 +26,8 @@ export const followupQueueItemsTable = pgTable("followup_queue_items", {
   /** 'open' | 'resolved' */
   status: text("status").notNull().default("open"),
   lastRepeatedAt: timestamp("last_repeated_at", { withTimezone: true }).notNull().defaultNow(),
+  /** User this item is assigned to for follow-up ownership (nullable). */
+  assignedToUserId: integer("assigned_to_user_id").references(() => usersTable.id),
   resolvedAt: timestamp("resolved_at", { withTimezone: true }),
   resolvedByUserId: integer("resolved_by_user_id").references(() => usersTable.id),
   communicationNote: text("communication_note"),

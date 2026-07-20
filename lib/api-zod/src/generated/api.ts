@@ -9097,7 +9097,8 @@ export const RescheduleJobOnceResponse = zod.object({
  */
 export const ListFollowupQueueItemsQueryParams = zod.object({
   "triggerType": zod.coerce.string().optional().describe('Filter to a single trigger type, e.g. \'sent_estimate\' | \'sent_invoice\' | \'unanswered_email\' | \'missed_call\' | \'voicemail\''),
-  "status": zod.coerce.string().optional().describe('\'open\' (default) or \'resolved\'')
+  "status": zod.coerce.string().optional().describe('\'open\' (default) or \'resolved\''),
+  "assignedToUserId": zod.coerce.string().optional().describe('Filter to items assigned to a specific user id. Pass \'me\' to get the calling user\'s items.')
 })
 
 export const ListFollowupQueueItemsResponseItem = zod.object({
@@ -9115,7 +9116,9 @@ export const ListFollowupQueueItemsResponseItem = zod.object({
   "lastRepeatedAt": zod.string(),
   "resolvedAt": zod.string().nullish(),
   "resolvedByUserId": zod.number().nullish(),
-  "communicationNote": zod.string().nullish()
+  "communicationNote": zod.string().nullish(),
+  "assignedToUserId": zod.number().nullish(),
+  "assignedToUserName": zod.string().nullish()
 })
 export const ListFollowupQueueItemsResponse = zod.array(ListFollowupQueueItemsResponseItem)
 
@@ -9143,7 +9146,9 @@ export const GetFollowupQueueItemContextResponse = zod.object({
   "lastRepeatedAt": zod.string(),
   "resolvedAt": zod.string().nullish(),
   "resolvedByUserId": zod.number().nullish(),
-  "communicationNote": zod.string().nullish()
+  "communicationNote": zod.string().nullish(),
+  "assignedToUserId": zod.number().nullish(),
+  "assignedToUserName": zod.string().nullish()
 }),
   "customer": zod.object({
   "id": zod.number().optional(),
@@ -9183,6 +9188,38 @@ export const GetFollowupQueueItemContextResponse = zod.object({
 
 
 /**
+ * @summary Assign or unassign a follow-up queue item to a user
+ */
+export const AssignFollowupQueueItemParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AssignFollowupQueueItemBody = zod.object({
+  "assignedToUserId": zod.number().nullish()
+})
+
+export const AssignFollowupQueueItemResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "customerName": zod.string().nullable(),
+  "triggerType": zod.string(),
+  "triggerContextId": zod.number().nullish(),
+  "reason": zod.string(),
+  "status": zod.string(),
+  "priority": zod.string(),
+  "ageDays": zod.number(),
+  "createdAt": zod.string(),
+  "lastRepeatedAt": zod.string(),
+  "resolvedAt": zod.string().nullish(),
+  "resolvedByUserId": zod.number().nullish(),
+  "communicationNote": zod.string().nullish(),
+  "assignedToUserId": zod.number().nullish(),
+  "assignedToUserName": zod.string().nullish()
+})
+
+
+/**
  * @summary Resolve a follow-up item by logging a communication note
  */
 export const ResolveFollowupQueueItemParams = zod.object({
@@ -9208,7 +9245,9 @@ export const ResolveFollowupQueueItemResponse = zod.object({
   "lastRepeatedAt": zod.string(),
   "resolvedAt": zod.string().nullish(),
   "resolvedByUserId": zod.number().nullish(),
-  "communicationNote": zod.string().nullish()
+  "communicationNote": zod.string().nullish(),
+  "assignedToUserId": zod.number().nullish(),
+  "assignedToUserName": zod.string().nullish()
 })
 
 

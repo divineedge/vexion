@@ -25,6 +25,7 @@ import type {
   AddMediaInput,
   AgingInvoicesReport,
   ApplyBlueprintTemplateBody,
+  AssignFollowupQueueItemInput,
   AuthResponse,
   BankTransaction,
   BillingAutomationStatus,
@@ -22512,6 +22513,78 @@ export function useGetFollowupQueueItemContext<TData = Awaited<ReturnType<typeof
 
 
 
+
+export const getAssignFollowupQueueItemUrl = (id: number,) => {
+
+
+
+
+  return `/api/followup-queue/${id}/assign`
+}
+
+/**
+ * @summary Assign or unassign a follow-up queue item to a user
+ */
+export const assignFollowupQueueItem = async (id: number,
+    assignFollowupQueueItemInput: AssignFollowupQueueItemInput, options?: RequestInit): Promise<FollowupQueueItem> => {
+
+  return customFetch<FollowupQueueItem>(getAssignFollowupQueueItemUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(assignFollowupQueueItemInput)
+  }
+);}
+
+
+
+
+
+export const getAssignFollowupQueueItemMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof assignFollowupQueueItem>>, TError,{id: number;data: BodyType<AssignFollowupQueueItemInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof assignFollowupQueueItem>>, TError,{id: number;data: BodyType<AssignFollowupQueueItemInput>}, TContext> => {
+
+const mutationKey = ['assignFollowupQueueItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof assignFollowupQueueItem>>, {id: number;data: BodyType<AssignFollowupQueueItemInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  assignFollowupQueueItem(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AssignFollowupQueueItemMutationResult = NonNullable<Awaited<ReturnType<typeof assignFollowupQueueItem>>>
+    export type AssignFollowupQueueItemMutationBody = BodyType<AssignFollowupQueueItemInput>
+    export type AssignFollowupQueueItemMutationError = ErrorType<void>
+
+    /**
+ * @summary Assign or unassign a follow-up queue item to a user
+ */
+export const useAssignFollowupQueueItem = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof assignFollowupQueueItem>>, TError,{id: number;data: BodyType<AssignFollowupQueueItemInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof assignFollowupQueueItem>>,
+        TError,
+        {id: number;data: BodyType<AssignFollowupQueueItemInput>},
+        TContext
+      > => {
+      return useMutation(getAssignFollowupQueueItemMutationOptions(options));
+    }
 
 export const getResolveFollowupQueueItemUrl = (id: number,) => {
 

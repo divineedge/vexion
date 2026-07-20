@@ -3280,6 +3280,15 @@ export interface FollowupQueueItem {
   resolvedByUserId?: number | null;
   /** @nullable */
   communicationNote?: string | null;
+  /** @nullable */
+  assignedToUserId?: number | null;
+  /** @nullable */
+  assignedToUserName?: string | null;
+}
+
+export interface AssignFollowupQueueItemInput {
+  /** @nullable */
+  assignedToUserId?: number | null;
 }
 
 export interface FollowupContactHistoryEntry {
@@ -4829,6 +4838,10 @@ triggerType?: string;
  * 'open' (default) or 'resolved'
  */
 status?: string;
+/**
+ * Filter to items assigned to a specific user id. Pass 'me' to get the calling user's items.
+ */
+assignedToUserId?: string;
 };
 
 export type ListRepairLogsParams = {
@@ -4837,6 +4850,64 @@ jobId?: number;
 elementId?: string;
 blueprintId?: number;
 };
+
+export interface PortalPlanServiceStateItem {
+  serviceId: number;
+  serviceName: string;
+  frequencyDays: number;
+  /** @nullable */
+  lastScheduledAt?: string | null;
+}
+
+export interface PortalPlan {
+  id: number;
+  templateName: string;
+  startDate: string;
+  endDate: string;
+  billingCycle: 'monthly' | 'quarterly' | 'annual' | 'custom';
+  /** @nullable */
+  customCycleDays?: number | null;
+  billingPrice: number;
+  autoRenew: boolean;
+  status: 'active' | 'paused' | 'cancelled' | 'pending_renewal';
+  nextBillingDate: string;
+  /** @nullable */
+  lastBilledAt?: string | null;
+  /** @nullable */
+  propertyAddress?: string | null;
+  serviceState: PortalPlanServiceStateItem[];
+  createdAt: string;
+}
+
+export interface PortalPlanVisit {
+  id: number;
+  title: string;
+  status: string;
+  scheduledAt: string;
+  /** @nullable */
+  assigneeName?: string | null;
+}
+
+export interface PortalPlanBillingEntry {
+  id: number;
+  invoiceNumber: string;
+  status: string;
+  total: number;
+  /** @nullable */
+  dueDate?: string | null;
+  /** @nullable */
+  paidAt?: string | null;
+  createdAt: string;
+}
+
+export interface PortalPlanDetail extends PortalPlan {
+  visits: PortalPlanVisit[];
+  billingHistory: PortalPlanBillingEntry[];
+}
+
+export interface PortalUpdatePlanInput {
+  autoRenew: boolean;
+}
 
 export type GetRepairLogSummaryParams = {
 propertyId: number;

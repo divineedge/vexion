@@ -3,9 +3,12 @@ import {
   useListFollowupQueueItems, getListFollowupQueueItemsQueryKey,
   useGetFollowupQueueItemContext, getGetFollowupQueueItemContextQueryKey,
   useResolveFollowupQueueItem,
+  useAssignFollowupQueueItem,
+  useListUsers, getListUsersQueryKey,
   type FollowupQueueItem,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ListChecks, Phone, Mail, Voicemail, FileText, PhoneMissed, CheckCircle2, Clock } from 'lucide-react';
+import { ListChecks, Phone, Mail, Voicemail, FileText, PhoneMissed, CheckCircle2, Clock, UserCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const TRIGGER_META: Record<string, { label: string; icon: React.ElementType }> = {
@@ -37,20 +40,31 @@ function priorityBadgeClass(p: string) {
 
 export default function FollowupQueuePage() {
   const qc = useQueryClient();
+  const { user } = useAuth();
   const [triggerFilter, setTriggerFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'open' | 'resolved'>('open');
+  const [assigneeFilter, setAssigneeFilter] = useState<'all' | 'me'>('all');
   const [selected, setSelected] = useState<FollowupQueueItem | null>(null);
 
   const params = {
     ...(triggerFilter !== 'all' ? { triggerType: triggerFilter } : {}),
     status: statusFilter,
+    ...(assigneeFilter === 'me' ? { assignedToUserId: 'me' } : {}),
   };
 
   const { data: items = [] } = useListFollowupQueueItems(params, {
     query: { queryKey: getListFollowupQueueItemsQueryKey(params), refetchInterval: 60000 },
   });
 
+  const { data: users = [] } = useListUsers({ query: { queryKey: getListUsersQueryKey() } });
+
   const sorted = useMemo(() => [...items].sort((a, b) => b.ageDays - a.ageDays), [items]);
+
+  const handleAssigned = (item: FollowupQueueItem) => {
+    // Refresh selected item if it's the one being updated
+    if (selected?.id === item.id) setSelected(item);
+    qc.invalidateQueries({ queryKey: getListFollowupQueueItemsQueryKey(params) });
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -61,7 +75,14 @@ export default function FollowupQueuePage() {
             Every sent estimate, unpaid invoice, unanswered email, missed call, and voicemail that needs a human follow-up — nothing here disappears until it's resolved.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select value={assigneeFilter} onValueChange={v => setAssigneeFilter(v as 'all' | 'me')}>
+            <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All follow-ups</SelectItem>
+              <SelectItem value="me">My follow-ups</SelectItem>
+            </SelectContent>
+          </Select>
           <Select value={triggerFilter} onValueChange={setTriggerFilter}>
             <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -101,6 +122,7 @@ export default function FollowupQueuePage() {
                   <TableHead>Trigger</TableHead>
                   <TableHead>Reason</TableHead>
                   <TableHead>Priority</TableHead>
+                  <TableHead>Assigned to</TableHead>
                   <TableHead>Age</TableHead>
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>
@@ -120,6 +142,14 @@ export default function FollowupQueuePage() {
                       <TableCell className="text-sm text-muted-foreground max-w-xs truncate">{item.reason}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className={priorityBadgeClass(item.priority) + ' text-[10px]'}>{item.priority}</Badge>
+                      </TableCell>
+                      <TableCell onClick={e => e.stopPropagation()}>
+                        <InlineAssignSelect
+                          item={item}
+                          users={users}
+                          currentUserId={user?.id}
+                          onAssigned={handleAssigned}
+                        />
                       </TableCell>
                       <TableCell>
                         <span className="inline-flex items-center gap-1 text-sm">
@@ -142,7 +172,10 @@ export default function FollowupQueuePage() {
 
       <FollowupDrawer
         item={selected}
+        users={users}
+        currentUserId={user?.id}
         onOpenChange={(o) => { if (!o) setSelected(null); }}
+        onAssigned={handleAssigned}
         onResolved={() => {
           setSelected(null);
           qc.invalidateQueries({ queryKey: getListFollowupQueueItemsQueryKey(params) });
@@ -152,11 +185,77 @@ export default function FollowupQueuePage() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Inline assign select — used in the table row
+// ---------------------------------------------------------------------------
+type User = { id: number; name: string };
+
+function InlineAssignSelect({
+  item, users, currentUserId, onAssigned,
+}: {
+  item: FollowupQueueItem;
+  users: User[];
+  currentUserId?: number;
+  onAssigned: (item: FollowupQueueItem) => void;
+}) {
+  const assignMutation = useAssignFollowupQueueItem();
+
+  const value = item.assignedToUserId != null ? String(item.assignedToUserId) : 'unassigned';
+
+  const handleChange = (val: string) => {
+    const assignedToUserId = val === 'unassigned' ? null : parseInt(val, 10);
+    assignMutation.mutate(
+      { id: item.id, data: { assignedToUserId } },
+      {
+        onSuccess: (updated) => {
+          toast.success(assignedToUserId ? 'Assigned' : 'Unassigned');
+          onAssigned(updated);
+        },
+        onError: () => toast.error('Failed to update assignment'),
+      },
+    );
+  };
+
+  return (
+    <Select value={value} onValueChange={handleChange} disabled={assignMutation.isPending}>
+      <SelectTrigger className="w-[140px] h-7 text-xs border-dashed">
+        <SelectValue placeholder="Unassigned">
+          {value === 'unassigned' ? (
+            <span className="text-muted-foreground flex items-center gap-1"><UserCircle2 className="w-3 h-3" /> Unassigned</span>
+          ) : (
+            <span className="flex items-center gap-1"><UserCircle2 className="w-3 h-3" />{item.assignedToUserName ?? '...'}</span>
+          )}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="unassigned">Unassigned</SelectItem>
+        {currentUserId && !users.find(u => u.id === currentUserId) ? null : null}
+        {users.map(u => (
+          <SelectItem key={u.id} value={String(u.id)}>
+            {u.name}{u.id === currentUserId ? ' (me)' : ''}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Drawer
+// ---------------------------------------------------------------------------
 function FollowupDrawer({
-  item, onOpenChange, onResolved,
-}: { item: FollowupQueueItem | null; onOpenChange: (o: boolean) => void; onResolved: () => void }) {
+  item, users, currentUserId, onOpenChange, onAssigned, onResolved,
+}: {
+  item: FollowupQueueItem | null;
+  users: User[];
+  currentUserId?: number;
+  onOpenChange: (o: boolean) => void;
+  onAssigned: (item: FollowupQueueItem) => void;
+  onResolved: () => void;
+}) {
   const [note, setNote] = useState('');
   const resolveMutation = useResolveFollowupQueueItem();
+  const assignMutation = useAssignFollowupQueueItem();
 
   const { data: context } = useGetFollowupQueueItemContext(item?.id ?? 0, {
     query: { queryKey: getGetFollowupQueueItemContextQueryKey(item?.id ?? 0), enabled: !!item },
@@ -173,6 +272,23 @@ function FollowupDrawer({
     });
   };
 
+  const handleAssign = (val: string) => {
+    if (!item) return;
+    const assignedToUserId = val === 'unassigned' ? null : parseInt(val, 10);
+    assignMutation.mutate(
+      { id: item.id, data: { assignedToUserId } },
+      {
+        onSuccess: (updated) => {
+          toast.success(assignedToUserId ? 'Assigned' : 'Unassigned');
+          onAssigned(updated);
+        },
+        onError: () => toast.error('Failed to update assignment'),
+      },
+    );
+  };
+
+  const assignedValue = item?.assignedToUserId != null ? String(item.assignedToUserId) : 'unassigned';
+
   return (
     <Sheet open={!!item} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
@@ -184,6 +300,26 @@ function FollowupDrawer({
             </SheetHeader>
 
             <div className="space-y-6 pb-8">
+              {/* Assign to */}
+              <div className="space-y-1.5">
+                <h4 className="text-sm font-semibold flex items-center gap-1.5"><UserCircle2 className="w-4 h-4" /> Assigned to</h4>
+                <Select value={assignedValue} onValueChange={handleAssign} disabled={assignMutation.isPending || item.status === 'resolved'}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Unassigned" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
+                    {users.map(u => (
+                      <SelectItem key={u.id} value={String(u.id)}>
+                        {u.name}{u.id === currentUserId ? ' (me)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Separator />
+
               {context?.customer && (
                 <div className="flex flex-wrap gap-2">
                   {context.customer.phone && (

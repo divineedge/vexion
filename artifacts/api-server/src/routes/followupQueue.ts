@@ -1,14 +1,12 @@
 import { Router, type IRouter } from "express";
 import {
   db, followupQueueItemsTable, customersTable, communicationsLogTable,
-  estimatesTable, invoicesTable, tenantsTable,
+  estimatesTable, invoicesTable, tenantsTable, usersTable,
 } from "@workspace/db";
-import { eq, and, desc, or } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 
 const router: IRouter = Router();
-
-type QueueItem = typeof followupQueueItemsTable.$inferSelect;
 
 function priorityForTrigger(triggerType: string): "high" | "medium" | "low" {
   if (triggerType === "missed_call" || triggerType === "voicemail") return "high";
@@ -16,7 +14,11 @@ function priorityForTrigger(triggerType: string): "high" | "medium" | "low" {
   return "low";
 }
 
-function formatItem(item: QueueItem, customerName: string | null) {
+function formatItem(
+  item: typeof followupQueueItemsTable.$inferSelect,
+  customerName: string | null,
+  assignedToUserName: string | null = null,
+) {
   const ageDays = Math.floor((Date.now() - item.createdAt.getTime()) / (24 * 60 * 60 * 1000));
   return {
     id: item.id,
@@ -34,28 +36,54 @@ function formatItem(item: QueueItem, customerName: string | null) {
     resolvedAt: item.resolvedAt?.toISOString() ?? null,
     resolvedByUserId: item.resolvedByUserId ?? null,
     communicationNote: item.communicationNote ?? null,
+    assignedToUserId: item.assignedToUserId ?? null,
+    assignedToUserName: assignedToUserName ?? null,
   };
 }
 
 // ---------------------------------------------------------------------------
-// GET /followup-queue — list, filterable by triggerType and status
+// GET /followup-queue — list, filterable by triggerType, status, assignedToUserId
 // ---------------------------------------------------------------------------
 router.get("/followup-queue", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { triggerType, status } = req.query as { triggerType?: string; status?: string };
+  const userId = getUserId(req);
+  const { triggerType, status, assignedToUserId } = req.query as {
+    triggerType?: string;
+    status?: string;
+    assignedToUserId?: string;
+  };
 
   const conditions = [eq(followupQueueItemsTable.tenantId, tenantId)];
   if (triggerType) conditions.push(eq(followupQueueItemsTable.triggerType, triggerType));
   conditions.push(eq(followupQueueItemsTable.status, status ?? "open"));
 
+  // Resolve 'me' to the calling user's id; numeric strings filter to a specific user
+  if (assignedToUserId === "me") {
+    conditions.push(eq(followupQueueItemsTable.assignedToUserId, userId));
+  } else if (assignedToUserId && !isNaN(parseInt(assignedToUserId, 10))) {
+    conditions.push(eq(followupQueueItemsTable.assignedToUserId, parseInt(assignedToUserId, 10)));
+  }
+
+  // Join user with tenant guard so we never surface another tenant's staff name
   const rows = await db
-    .select({ item: followupQueueItemsTable, customerName: customersTable.name })
+    .select({
+      item: followupQueueItemsTable,
+      customerName: customersTable.name,
+      assignedToUserName: usersTable.name,
+    })
     .from(followupQueueItemsTable)
     .leftJoin(customersTable, eq(followupQueueItemsTable.customerId, customersTable.id))
+    .leftJoin(
+      usersTable,
+      and(
+        eq(followupQueueItemsTable.assignedToUserId, usersTable.id),
+        eq(usersTable.tenantId, tenantId),
+      ),
+    )
     .where(and(...conditions))
     .orderBy(desc(followupQueueItemsTable.createdAt));
 
-  res.json(rows.map(r => formatItem(r.item, r.customerName ?? null)));
+  res.json(rows.map(r => formatItem(r.item, r.customerName ?? null, r.assignedToUserName ?? null)));
 });
 
 // ---------------------------------------------------------------------------
@@ -65,12 +93,21 @@ router.get("/followup-queue/:id/context", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(req.params.id, 10);
 
-  const [item] = await db
-    .select()
+  const [itemRow] = await db
+    .select({ item: followupQueueItemsTable, assignedToUserName: usersTable.name })
     .from(followupQueueItemsTable)
+    .leftJoin(
+      usersTable,
+      and(
+        eq(followupQueueItemsTable.assignedToUserId, usersTable.id),
+        eq(usersTable.tenantId, tenantId),
+      ),
+    )
     .where(and(eq(followupQueueItemsTable.id, id), eq(followupQueueItemsTable.tenantId, tenantId)))
     .limit(1);
-  if (!item) { res.status(404).json({ error: "Follow-up item not found" }); return; }
+  if (!itemRow) { res.status(404).json({ error: "Follow-up item not found" }); return; }
+
+  const { item, assignedToUserName } = itemRow;
 
   const [customer] = await db
     .select()
@@ -95,7 +132,7 @@ router.get("/followup-queue/:id/context", async (req, res): Promise<void> => {
   const closedEstimates = estimates.filter(e => e.status === "approved" || e.status === "declined" || e.status === "expired");
 
   res.json({
-    item: formatItem(item, customer?.name ?? null),
+    item: formatItem(item, customer?.name ?? null, assignedToUserName ?? null),
     customer: customer ? {
       id: customer.id, name: customer.name, phone: customer.phone, email: customer.email,
       smsOptOut: customer.smsOptOut, emailOptOut: customer.emailOptOut,
@@ -108,6 +145,49 @@ router.get("/followup-queue/:id/context", async (req, res): Promise<void> => {
     closedEstimates: closedEstimates.map(e => ({ id: e.id, status: e.status, total: e.total })),
     invoices: invoices.map(i => ({ id: i.id, invoiceNumber: i.invoiceNumber, status: i.status, total: i.total, dueDate: i.dueDate?.toISOString() ?? null })),
   });
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /followup-queue/:id/assign — assign or unassign to a user
+// ---------------------------------------------------------------------------
+router.patch("/followup-queue/:id/assign", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const id = parseInt(req.params.id, 10);
+  const { assignedToUserId } = req.body as { assignedToUserId?: number | null };
+
+  // Validate the target user belongs to this tenant before writing
+  if (assignedToUserId != null) {
+    const [targetUser] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(and(eq(usersTable.id, assignedToUserId), eq(usersTable.tenantId, tenantId)))
+      .limit(1);
+    if (!targetUser) {
+      res.status(400).json({ error: "User not found in this tenant" });
+      return;
+    }
+  }
+
+  const [updated] = await db
+    .update(followupQueueItemsTable)
+    .set({ assignedToUserId: assignedToUserId ?? null })
+    .where(and(eq(followupQueueItemsTable.id, id), eq(followupQueueItemsTable.tenantId, tenantId)))
+    .returning();
+
+  if (!updated) { res.status(404).json({ error: "Follow-up item not found" }); return; }
+
+  // Fetch assignee name scoped to tenant
+  let assignedToUserName: string | null = null;
+  if (updated.assignedToUserId) {
+    const [u] = await db
+      .select({ name: usersTable.name })
+      .from(usersTable)
+      .where(and(eq(usersTable.id, updated.assignedToUserId), eq(usersTable.tenantId, tenantId)));
+    assignedToUserName = u?.name ?? null;
+  }
+
+  const [customer] = await db.select({ name: customersTable.name }).from(customersTable).where(eq(customersTable.id, updated.customerId));
+  res.json(formatItem(updated, customer?.name ?? null, assignedToUserName));
 });
 
 // ---------------------------------------------------------------------------
@@ -137,8 +217,18 @@ router.post("/followup-queue/:id/resolve", async (req, res): Promise<void> => {
 
   if (!updated) { res.status(404).json({ error: "Follow-up item not found" }); return; }
 
+  // Fetch assignee name scoped to tenant
+  let assignedToUserName: string | null = null;
+  if (updated.assignedToUserId) {
+    const [u] = await db
+      .select({ name: usersTable.name })
+      .from(usersTable)
+      .where(and(eq(usersTable.id, updated.assignedToUserId), eq(usersTable.tenantId, tenantId)));
+    assignedToUserName = u?.name ?? null;
+  }
+
   const [customer] = await db.select({ name: customersTable.name }).from(customersTable).where(eq(customersTable.id, updated.customerId));
-  res.json(formatItem(updated, customer?.name ?? null));
+  res.json(formatItem(updated, customer?.name ?? null, assignedToUserName));
 });
 
 // ---------------------------------------------------------------------------

@@ -5946,6 +5946,11 @@ paths:
           description: "'open' (default) or 'resolved'"
           schema:
             type: string
+        - name: assignedToUserId
+          in: query
+          description: "Filter to items assigned to a specific user id. Pass 'me' to get the calling user's items."
+          schema:
+            type: string
       responses:
         "200":
           description: Follow-up queue items
@@ -5970,6 +5975,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FollowupQueueItemContext"
+        "404":
+          description: Not found
+
+  /followup-queue/{id}/assign:
+    patch:
+      operationId: assignFollowupQueueItem
+      tags: [followupQueue]
+      summary: Assign or unassign a follow-up queue item to a user
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignFollowupQueueItemInput"
+      responses:
+        "200":
+          description: Updated follow-up item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FollowupQueueItem"
         "404":
           description: Not found
 
@@ -10056,6 +10084,9 @@ components:
           type: integer
         tenantId:
           type: integer
+        jobId:
+          type: ["integer", "null"]
+          description: Optional link to the job this fuel was consumed for. When set, the Job Profitability report attributes this cost directly to that job rather than spreading it across all jobs.
         date:
           type: string
         gallons:
@@ -10064,9 +10095,6 @@ components:
           type: number
         odometerReading:
           type: ["number", "null"]
-        jobId:
-          type: ["integer", "null"]
-          description: Optional link to the job this fuel was consumed for. When set, the Job Profitability report attributes this cost directly to that job rather than spreading it across all jobs.
         createdAt:
           type: string
 
@@ -10135,6 +10163,13 @@ components:
         resolvedAt: { type: ["string", "null"] }
         resolvedByUserId: { type: ["integer", "null"] }
         communicationNote: { type: ["string", "null"] }
+        assignedToUserId: { type: ["integer", "null"] }
+        assignedToUserName: { type: ["string", "null"] }
+
+    AssignFollowupQueueItemInput:
+      type: object
+      properties:
+        assignedToUserId: { type: ["integer", "null"] }
 
     FollowupContactHistoryEntry:
       type: object

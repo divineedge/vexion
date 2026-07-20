@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import crypto from "crypto";
-import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable, invoicesTable, tenantsTable, blueprintsTable, chemicalApplicationsTable, customerPlansTable } from "@workspace/db";
+import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable, invoicesTable, tenantsTable, blueprintsTable, chemicalApplicationsTable, customerPlansTable, equipmentFuelLogsTable } from "@workspace/db";
 import { eq, and, or, sql, desc, asc, isNotNull, isNull, ne, inArray, min, gt } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { getCallerRole } from "../lib/roles";
@@ -185,6 +185,19 @@ const jobsImportExportConfig: ImportExportEntityConfig = {
   },
   deleteById: async (tenantId, id) => {
     await db.delete(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
+  },
+  getDependents: async (tenantId, id) => {
+    const [invRow] = await db.select({ count: sql<number>`count(*)` }).from(invoicesTable).where(and(eq(invoicesTable.tenantId, tenantId), eq(invoicesTable.jobId, id)));
+    const [alertRow] = await db.select({ count: sql<number>`count(*)` }).from(customerAlertsTable).where(and(eq(customerAlertsTable.tenantId, tenantId), eq(customerAlertsTable.jobId, id)));
+    const [fuelRow] = await db.select({ count: sql<number>`count(*)` }).from(equipmentFuelLogsTable).where(and(eq(equipmentFuelLogsTable.tenantId, tenantId), eq(equipmentFuelLogsTable.jobId, id)));
+    const invCount = Number(invRow?.count ?? 0);
+    const alertCount = Number(alertRow?.count ?? 0);
+    const fuelCount = Number(fuelRow?.count ?? 0);
+    const parts: string[] = [];
+    if (invCount > 0) parts.push(`${invCount} linked invoice${invCount === 1 ? "" : "s"}`);
+    if (alertCount > 0) parts.push(`${alertCount} customer alert${alertCount === 1 ? "" : "s"}`);
+    if (fuelCount > 0) parts.push(`${fuelCount} fuel log${fuelCount === 1 ? "" : "s"}`);
+    return parts.length > 0 ? `still has ${parts.join(", ")} — delete those first, then undo this import again` : null;
   },
 };
 registerImportExportConfig(jobsImportExportConfig);

@@ -140,6 +140,19 @@ const customersImportExportConfig: ImportExportEntityConfig = {
   deleteById: async (tenantId, id) => {
     await db.delete(customersTable).where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)));
   },
+  getDependents: async (tenantId, id) => {
+    const [jobRow] = await db.select({ count: sql<number>`count(*)` }).from(jobsTable).where(and(eq(jobsTable.tenantId, tenantId), eq(jobsTable.customerId, id)));
+    const [invoiceRow] = await db.select({ count: sql<number>`count(*)` }).from(invoicesTable).where(and(eq(invoicesTable.tenantId, tenantId), eq(invoicesTable.customerId, id)));
+    const [propRow] = await db.select({ count: sql<number>`count(*)` }).from(propertiesTable).where(and(eq(propertiesTable.tenantId, tenantId), eq(propertiesTable.customerId, id)));
+    const jobCount = Number(jobRow?.count ?? 0);
+    const invoiceCount = Number(invoiceRow?.count ?? 0);
+    const propCount = Number(propRow?.count ?? 0);
+    const parts: string[] = [];
+    if (jobCount > 0) parts.push(`${jobCount} job${jobCount === 1 ? "" : "s"}`);
+    if (invoiceCount > 0) parts.push(`${invoiceCount} invoice${invoiceCount === 1 ? "" : "s"}`);
+    if (propCount > 0) parts.push(`${propCount} propert${propCount === 1 ? "y" : "ies"}`);
+    return parts.length > 0 ? `still has ${parts.join(", ")} — delete those first, then undo this import again` : null;
+  },
 };
 registerImportExportConfig(customersImportExportConfig);
 

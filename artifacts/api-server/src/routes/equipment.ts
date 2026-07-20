@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db, equipmentTable, equipmentMaintenanceTable, equipmentFuelLogsTable, equipmentReadingLogsTable, tenantsTable, usersTable, jobsTable, taskBundlesItemsTable, inventoryItemsTable } from "@workspace/db";
-import { eq, and, desc, sum, isNull, isNotNull, inArray, or, gte, lte, ilike } from "drizzle-orm";
+import { eq, and, desc, sum, isNull, isNotNull, inArray, or, gte, lte, ilike, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isOwnerRole } from "../lib/roles";
 import {
@@ -120,6 +120,19 @@ const equipmentImportExportConfig: ImportExportEntityConfig = {
   },
   deleteById: async (tenantId, id) => {
     await db.delete(equipmentTable).where(and(eq(equipmentTable.id, id), eq(equipmentTable.tenantId, tenantId)));
+  },
+  getDependents: async (tenantId, id) => {
+    const [maintRow] = await db.select({ count: sql<number>`count(*)` }).from(equipmentMaintenanceTable).where(and(eq(equipmentMaintenanceTable.tenantId, tenantId), eq(equipmentMaintenanceTable.equipmentId, id)));
+    const [fuelRow] = await db.select({ count: sql<number>`count(*)` }).from(equipmentFuelLogsTable).where(and(eq(equipmentFuelLogsTable.tenantId, tenantId), eq(equipmentFuelLogsTable.equipmentId, id)));
+    const [readRow] = await db.select({ count: sql<number>`count(*)` }).from(equipmentReadingLogsTable).where(and(eq(equipmentReadingLogsTable.tenantId, tenantId), eq(equipmentReadingLogsTable.equipmentId, id)));
+    const maintCount = Number(maintRow?.count ?? 0);
+    const fuelCount = Number(fuelRow?.count ?? 0);
+    const readCount = Number(readRow?.count ?? 0);
+    const parts: string[] = [];
+    if (maintCount > 0) parts.push(`${maintCount} maintenance record${maintCount === 1 ? "" : "s"}`);
+    if (fuelCount > 0) parts.push(`${fuelCount} fuel log${fuelCount === 1 ? "" : "s"}`);
+    if (readCount > 0) parts.push(`${readCount} reading log${readCount === 1 ? "" : "s"}`);
+    return parts.length > 0 ? `still has ${parts.join(", ")} — delete those first, then undo this import again` : null;
   },
 };
 registerImportExportConfig(equipmentImportExportConfig);

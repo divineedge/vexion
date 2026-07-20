@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, propertiesTable, customersTable, propertyOwnershipHistoryTable, activityLogTable } from "@workspace/db";
+import { db, propertiesTable, customersTable, propertyOwnershipHistoryTable, activityLogTable, jobsTable, estimatesTable } from "@workspace/db";
 import { eq, and, ilike, sql, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import {
@@ -133,6 +133,16 @@ const propertiesImportExportConfig: ImportExportEntityConfig = {
   },
   deleteById: async (tenantId, id) => {
     await db.delete(propertiesTable).where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId)));
+  },
+  getDependents: async (tenantId, id) => {
+    const [jobRow] = await db.select({ count: sql<number>`count(*)` }).from(jobsTable).where(and(eq(jobsTable.tenantId, tenantId), eq(jobsTable.propertyId, id)));
+    const [estRow] = await db.select({ count: sql<number>`count(*)` }).from(estimatesTable).where(and(eq(estimatesTable.tenantId, tenantId), eq(estimatesTable.propertyId, id)));
+    const jobCount = Number(jobRow?.count ?? 0);
+    const estCount = Number(estRow?.count ?? 0);
+    const parts: string[] = [];
+    if (jobCount > 0) parts.push(`${jobCount} job${jobCount === 1 ? "" : "s"}`);
+    if (estCount > 0) parts.push(`${estCount} estimate${estCount === 1 ? "" : "s"}`);
+    return parts.length > 0 ? `still has ${parts.join(", ")} — delete those first, then undo this import again` : null;
   },
 };
 registerImportExportConfig(propertiesImportExportConfig);

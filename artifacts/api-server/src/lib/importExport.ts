@@ -71,6 +71,12 @@ export interface ImportExportEntityConfig {
   getById: (tenantId: number, id: number) => Promise<Record<string, unknown> | null>;
   /** Hard-deletes a record, used to undo a row this import created. */
   deleteById: (tenantId: number, id: number) => Promise<void>;
+  /**
+   * Optional. Called when deleteById throws (typically a FK constraint) to produce a
+   * human-readable explanation of what's blocking the delete.
+   * Return a string like "still has 2 jobs booked" or null if nothing specific is found.
+   */
+  getDependents?: (tenantId: number, id: number) => Promise<string | null>;
 }
 
 // ---------------------------------------------------------------------------
@@ -523,11 +529,19 @@ function reviveDates(values: Record<string, unknown>): Record<string, unknown> {
   return result;
 }
 
+export interface RollbackBlockedRow {
+  row: number;
+  recordId: number;
+  reason: string;
+}
+
 export interface ImportBatchRollbackResponse {
   deletedCount: number;
   revertedCount: number;
   failedCount: number;
   errors: string[];
+  /** Rows that could not be deleted because other records now depend on them. */
+  blockedRows: RollbackBlockedRow[];
 }
 
 export async function handleRollbackImportBatch(req: Request, res: Response, tenantId: number, userId: number): Promise<void> {
@@ -548,9 +562,11 @@ export async function handleRollbackImportBatch(req: Request, res: Response, ten
     return;
   }
   if (batch.status === "rolled_back") {
-    res.status(400).json({ error: "This import has already been rolled back" });
+    res.status(400).json({ error: "This import has already been fully rolled back" });
     return;
   }
+  // rollback_partial is allowed — it means a previous attempt was blocked on some rows
+  // and the caller is retrying after removing the dependent records.
 
   const config = getImportExportConfig(batch.entityKey);
   if (!config) {
@@ -558,8 +574,14 @@ export async function handleRollbackImportBatch(req: Request, res: Response, ten
     return;
   }
 
+  // On a partial retry, rowActions holds only the previously-failed actions (both
+  // created and updated). Each action in rowActions is re-attempted — we do not
+  // skip any action type during a retry.
   const actions = (batch.rowActions as ImportRowAction[]) ?? [];
-  const response: ImportBatchRollbackResponse = { deletedCount: 0, revertedCount: 0, failedCount: 0, errors: [] };
+  const response: ImportBatchRollbackResponse = { deletedCount: 0, revertedCount: 0, failedCount: 0, errors: [], blockedRows: [] };
+
+  // Remaining created-row actions that are still blocked after this pass.
+  const remainingBlockedActions: ImportRowAction[] = [];
 
   // Undo in reverse order in case later rows in the same file depended on earlier ones.
   for (const action of [...actions].reverse()) {
@@ -568,6 +590,9 @@ export async function handleRollbackImportBatch(req: Request, res: Response, ten
         await config.deleteById(tenantId, action.recordId);
         response.deletedCount++;
       } else if (action.action === "updated") {
+        // Always attempt to revert updated rows. On a partial retry, rowActions
+        // contains only previously-failed actions, so skipping would mean they
+        // never get reverted.
         if (action.priorValues) {
           await config.update(tenantId, action.recordId, reviveDates(action.priorValues));
           response.revertedCount++;
@@ -575,15 +600,45 @@ export async function handleRollbackImportBatch(req: Request, res: Response, ten
       }
     } catch (err) {
       response.failedCount++;
+
+      // Always retain any failed action so retries can process it. For created-row
+      // FK failures, surface a human-readable reason via getDependents if available.
+      remainingBlockedActions.push(action);
+
+      if (action.action === "created" && config.getDependents) {
+        let reason: string | null = null;
+        try {
+          reason = await config.getDependents(tenantId, action.recordId);
+        } catch {
+          // ignore — fall through to generic message
+        }
+        if (reason) {
+          response.blockedRows.push({ row: action.row, recordId: action.recordId, reason });
+          continue; // skip generic error for FK-diagnosed rows (reason is surfaced above)
+        }
+      }
+
       response.errors.push(
         `Row ${action.row} (record ${action.recordId}): ${err instanceof Error ? err.message : "Unknown error"}`,
       );
     }
   }
 
+  // Only finalize as rolled_back when every created row has been deleted and there
+  // are no unexpected errors. If blocked rows remain, keep the batch retryable as
+  // rollback_partial and replace rowActions with just the remaining blocked entries
+  // so the next attempt processes only what still needs to be removed.
+  const fullyUndone = remainingBlockedActions.length === 0 && response.errors.length === 0;
+  const newStatus = fullyUndone ? "rolled_back" : "rollback_partial";
+
   await db
     .update(importBatchesTable)
-    .set({ status: "rolled_back", rolledBackAt: new Date(), rolledBackBy: userId })
+    .set({
+      status: newStatus,
+      rowActions: fullyUndone ? actions : remainingBlockedActions,
+      rolledBackAt: new Date(),
+      rolledBackBy: userId,
+    })
     .where(eq(importBatchesTable.id, batchId));
 
   await db.insert(activityLogTable).values({

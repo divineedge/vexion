@@ -85,6 +85,13 @@
       "when": 1753056006000,
       "tag": "0011_add_hold_from_billing_to_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1753056007000,
+      "tag": "0012_add_sms_reminder_enabled",
+      "breakpoints": true
     }
   ]
 }

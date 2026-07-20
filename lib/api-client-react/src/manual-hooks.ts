@@ -252,7 +252,7 @@ export interface ImportBatchSummary {
   id: number;
   entityKey: ImportExportEntity;
   fileName: string | null;
-  status: "committed" | "rolled_back";
+  status: "committed" | "rolled_back" | "rollback_partial";
   totalRows: number;
   created: number;
   updated: number;
@@ -263,11 +263,20 @@ export interface ImportBatchSummary {
   rolledBackAt: string | null;
 }
 
+export interface RollbackBlockedRow {
+  row: number;
+  recordId: number;
+  /** Human-readable explanation, e.g. "still has 2 jobs booked — delete those first, then undo this import again" */
+  reason: string;
+}
+
 export interface ImportBatchRollbackResult {
   deletedCount: number;
   revertedCount: number;
   failedCount: number;
   errors: string[];
+  /** Rows that could not be deleted because other records now depend on them. */
+  blockedRows: RollbackBlockedRow[];
 }
 
 export const listImportBatches = async (

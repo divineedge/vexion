@@ -1243,8 +1243,6 @@ export interface Job {
   originalScheduledDate?: string | null;
   /** When true, the scheduler sends an SMS reminder to the customer before this job */
   smsReminderEnabled?: boolean;
-  /** When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed. */
-  holdFromBilling?: boolean;
   createdAt: string;
 }
 
@@ -1338,8 +1336,6 @@ export interface JobUpdate {
   editScope?: JobUpdateEditScope;
   /** Enable or disable SMS reminder for this job */
   smsReminderEnabled?: boolean;
-  /** When true, exclude this job from the next automatic overnight billing run */
-  holdFromBilling?: boolean;
 }
 
 export interface CrewMember {
@@ -3290,11 +3286,6 @@ export interface FollowupQueueItem {
   assignedToUserName?: string | null;
 }
 
-export interface AssignFollowupQueueItemInput {
-  /** @nullable */
-  assignedToUserId?: number | null;
-}
-
 export interface FollowupContactHistoryEntry {
   id: number;
   direction: string;
@@ -3600,6 +3591,84 @@ export interface PortalAlert {
   createdAt: string;
 }
 
+export type PortalPlanBillingCycle = typeof PortalPlanBillingCycle[keyof typeof PortalPlanBillingCycle];
+
+
+export const PortalPlanBillingCycle = {
+  monthly: 'monthly',
+  quarterly: 'quarterly',
+  annual: 'annual',
+  custom: 'custom',
+} as const;
+
+export type PortalPlanStatus = typeof PortalPlanStatus[keyof typeof PortalPlanStatus];
+
+
+export const PortalPlanStatus = {
+  active: 'active',
+  paused: 'paused',
+  cancelled: 'cancelled',
+  pending_renewal: 'pending_renewal',
+} as const;
+
+export type PortalPlanServiceStateItem = {
+  serviceId?: number;
+  serviceName?: string;
+  frequencyDays?: number;
+  /** @nullable */
+  lastScheduledAt?: string | null;
+};
+
+export interface PortalPlan {
+  id: number;
+  templateName: string;
+  startDate: string;
+  endDate: string;
+  billingCycle: PortalPlanBillingCycle;
+  /** @nullable */
+  customCycleDays?: number | null;
+  billingPrice: number;
+  autoRenew: boolean;
+  status: PortalPlanStatus;
+  nextBillingDate: string;
+  /** @nullable */
+  lastBilledAt?: string | null;
+  /** @nullable */
+  propertyAddress: string | null;
+  serviceState: PortalPlanServiceStateItem[];
+  createdAt: string;
+}
+
+export interface PortalPlanVisit {
+  id: number;
+  title: string;
+  status: string;
+  scheduledAt: string;
+  /** @nullable */
+  assigneeName?: string | null;
+}
+
+export interface PortalPlanBillingEntry {
+  id: number;
+  invoiceNumber: string;
+  status: string;
+  total: number;
+  /** @nullable */
+  dueDate?: string | null;
+  /** @nullable */
+  paidAt?: string | null;
+  createdAt: string;
+}
+
+export type PortalPlanDetail = PortalPlan & {
+  visits: PortalPlanVisit[];
+  billingHistory: PortalPlanBillingEntry[];
+};
+
+export interface PortalUpdatePlanInput {
+  autoRenew: boolean;
+}
+
 export type PortalAlertResponseAction = typeof PortalAlertResponseAction[keyof typeof PortalAlertResponseAction];
 
 
@@ -3843,12 +3912,6 @@ export interface BillingPreviewJob {
   totalAmount: number;
   /** @nullable */
   serviceId?: number | null;
-  flags?: {
-    duplicate?: boolean;
-    outlier?: boolean;
-  };
-  /** When true, this job is held from the next automatic overnight billing run */
-  holdFromBilling?: boolean;
 }
 
 export interface BillingPreviewGroup {
@@ -4694,10 +4757,6 @@ triggerType?: string;
  * 'open' (default) or 'resolved'
  */
 status?: string;
-/**
- * Filter to items assigned to a specific user id. Pass 'me' to get the calling user's items.
- */
-assignedToUserId?: string;
 };
 
 export type ListRepairLogsParams = {
@@ -4711,4 +4770,7 @@ export type GetRepairLogSummaryParams = {
 propertyId: number;
 };
 
-
+export type AssignFollowupQueueItemInput = {
+  /** @nullable */
+  assignedToUserId?: number | null;
+};

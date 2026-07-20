@@ -7578,7 +7578,8 @@ export const SendBroadcastBody = zod.object({
   "lastServiceAfter": zod.string().optional(),
   "campaignId": zod.number().optional(),
   "allCustomers": zod.boolean().optional()
-}).optional()
+}).optional(),
+  "scheduledFor": zod.string().optional().describe('ISO date-time string. When provided, broadcast is queued and sent at this time instead of immediately.')
 })
 
 export const SendBroadcastResponse = zod.object({
@@ -7598,12 +7599,13 @@ export const SendBroadcastResponse = zod.object({
   "allCustomers": zod.boolean().optional()
 }).optional(),
   "recipientCount": zod.number(),
-  "status": zod.enum(['sending', 'completed', 'failed']),
+  "status": zod.enum(['scheduled', 'sending', 'completed', 'failed', 'cancelled']),
   "stats": zod.object({
   "sent": zod.number().optional(),
   "failed": zod.number().optional(),
   "optedOut": zod.number().optional()
 }).optional(),
+  "scheduledFor": zod.string().nullish(),
   "sentAt": zod.string().nullish(),
   "createdBy": zod.number().nullish(),
   "createdAt": zod.string()
@@ -7630,12 +7632,13 @@ export const ListBroadcastsResponseItem = zod.object({
   "allCustomers": zod.boolean().optional()
 }).optional(),
   "recipientCount": zod.number(),
-  "status": zod.enum(['sending', 'completed', 'failed']),
+  "status": zod.enum(['scheduled', 'sending', 'completed', 'failed', 'cancelled']),
   "stats": zod.object({
   "sent": zod.number().optional(),
   "failed": zod.number().optional(),
   "optedOut": zod.number().optional()
 }).optional(),
+  "scheduledFor": zod.string().nullish(),
   "sentAt": zod.string().nullish(),
   "createdBy": zod.number().nullish(),
   "createdAt": zod.string()
@@ -7667,12 +7670,13 @@ export const GetBroadcastResponse = zod.object({
   "allCustomers": zod.boolean().optional()
 }).optional(),
   "recipientCount": zod.number(),
-  "status": zod.enum(['sending', 'completed', 'failed']),
+  "status": zod.enum(['scheduled', 'sending', 'completed', 'failed', 'cancelled']),
   "stats": zod.object({
   "sent": zod.number().optional(),
   "failed": zod.number().optional(),
   "optedOut": zod.number().optional()
 }).optional(),
+  "scheduledFor": zod.string().nullish(),
   "sentAt": zod.string().nullish(),
   "createdBy": zod.number().nullish(),
   "createdAt": zod.string()
@@ -7687,6 +7691,43 @@ export const GetBroadcastResponse = zod.object({
   "createdAt": zod.string()
 })).optional()
 }))
+
+
+/**
+ * @summary Cancel a scheduled broadcast before it fires
+ */
+export const CancelBroadcastParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CancelBroadcastResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "channel": zod.enum(['sms', 'email']),
+  "subject": zod.string().nullish(),
+  "body": zod.string(),
+  "recipientFilter": zod.object({
+  "tag": zod.string().optional(),
+  "city": zod.string().optional(),
+  "state": zod.string().optional(),
+  "customerType": zod.string().optional(),
+  "lastServiceBefore": zod.string().optional(),
+  "lastServiceAfter": zod.string().optional(),
+  "campaignId": zod.number().optional(),
+  "allCustomers": zod.boolean().optional()
+}).optional(),
+  "recipientCount": zod.number(),
+  "status": zod.enum(['scheduled', 'sending', 'completed', 'failed', 'cancelled']),
+  "stats": zod.object({
+  "sent": zod.number().optional(),
+  "failed": zod.number().optional(),
+  "optedOut": zod.number().optional()
+}).optional(),
+  "scheduledFor": zod.string().nullish(),
+  "sentAt": zod.string().nullish(),
+  "createdBy": zod.number().nullish(),
+  "createdAt": zod.string()
+})
 
 
 /**

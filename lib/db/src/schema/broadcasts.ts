@@ -16,8 +16,10 @@ export const broadcastsTable = pgTable("broadcasts", {
   /** Segment filter used to resolve recipients: { tag, city, state, customerType, lastServiceBefore, lastServiceAfter, campaignId, allCustomers } */
   recipientFilter: jsonb("recipient_filter").notNull().default("{}"),
   recipientCount: integer("recipient_count").notNull().default(0),
-  /** 'draft' | 'sending' | 'completed' | 'failed' */
+  /** 'draft' | 'scheduled' | 'sending' | 'completed' | 'failed' | 'cancelled' */
   status: text("status").notNull().default("draft"),
+  /** When set, the broadcast is queued to send at this time instead of immediately */
+  scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
   sentAt: timestamp("sent_at", { withTimezone: true }),
   /** { sent, failed, optedOut } */
   stats: jsonb("stats").default('{"sent":0,"failed":0,"optedOut":0}'),

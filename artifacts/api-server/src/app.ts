@@ -10,6 +10,7 @@ import { startPaymentReminderScheduler } from "./lib/paymentReminderScheduler";
 import { startPlanScheduler } from "./lib/planScheduler";
 import { startFollowupScheduler } from "./lib/followupScheduler";
 import { startClockOutScheduler } from "./lib/clockOutScheduler";
+import { startBroadcastScheduler } from "./lib/broadcastScheduler";
 
 const app: Express = express();
 
@@ -67,5 +68,8 @@ startFollowupScheduler();
 
 // Start hard clock-out enforcement scheduler
 startClockOutScheduler();
+
+// Start scheduled broadcast dispatcher
+startBroadcastScheduler();
 
 export default app;

@@ -13,4 +13,6 @@ export interface SendBroadcastInput {
   subject?: string;
   body: string;
   filter?: BroadcastFilter;
+  /** ISO date-time string. When provided, broadcast is queued and sent at this time instead of immediately. */
+  scheduledFor?: string;
 }

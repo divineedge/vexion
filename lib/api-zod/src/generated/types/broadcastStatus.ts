@@ -10,7 +10,9 @@ export type BroadcastStatus = typeof BroadcastStatus[keyof typeof BroadcastStatu
 
 
 export const BroadcastStatus = {
+  scheduled: 'scheduled',
   sending: 'sending',
   completed: 'completed',
   failed: 'failed',
+  cancelled: 'cancelled',
 } as const;

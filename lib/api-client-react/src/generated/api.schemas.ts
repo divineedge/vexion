@@ -1463,6 +1463,8 @@ export interface SendBroadcastInput {
   subject?: string;
   body: string;
   filter?: BroadcastFilter;
+  /** ISO date-time string. When provided, broadcast is queued and sent at this time instead of immediately. */
+  scheduledFor?: string;
 }
 
 export interface BroadcastStats {
@@ -1483,9 +1485,11 @@ export type BroadcastStatus = typeof BroadcastStatus[keyof typeof BroadcastStatu
 
 
 export const BroadcastStatus = {
+  scheduled: 'scheduled',
   sending: 'sending',
   completed: 'completed',
   failed: 'failed',
+  cancelled: 'cancelled',
 } as const;
 
 export interface Broadcast {
@@ -1499,6 +1503,8 @@ export interface Broadcast {
   recipientCount: number;
   status: BroadcastStatus;
   stats?: BroadcastStats;
+  /** @nullable */
+  scheduledFor?: string | null;
   /** @nullable */
   sentAt?: string | null;
   /** @nullable */

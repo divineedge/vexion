@@ -24,7 +24,7 @@ export interface BroadcastFilter {
 }
 
 /** Resolves a segment filter into the matching customer rows for this tenant, excluding customers who have opted out of the requested channel. */
-async function resolveRecipients(tenantId: number, channel: "sms" | "email", filter: BroadcastFilter) {
+export async function resolveRecipients(tenantId: number, channel: "sms" | "email", filter: BroadcastFilter) {
   const conditions = [eq(customersTable.tenantId, tenantId)];
 
   if (!filter.allCustomers) {
@@ -70,6 +70,7 @@ async function resolveRecipients(tenantId: number, channel: "sms" | "email", fil
 function formatBroadcast(b: typeof broadcastsTable.$inferSelect) {
   return {
     ...b,
+    scheduledFor: b.scheduledFor?.toISOString() ?? null,
     sentAt: b.sentAt?.toISOString() ?? null,
     createdAt: b.createdAt.toISOString(),
   };
@@ -95,12 +96,33 @@ router.post("/broadcasts/send", async (req, res): Promise<void> => {
   const userId = getUserId(req);
   if (!(await isAdminRole(tenantId, userId))) { res.status(403).json({ error: "Restricted to owner/admin roles" }); return; }
 
-  const { channel, subject, body, filter } = req.body as { channel: "sms" | "email"; subject?: string; body: string; filter: BroadcastFilter };
+  const { channel, subject, body, filter, scheduledFor } = req.body as {
+    channel: "sms" | "email"; subject?: string; body: string; filter: BroadcastFilter; scheduledFor?: string;
+  };
   if (channel !== "sms" && channel !== "email") { res.status(400).json({ error: "channel must be 'sms' or 'email'" }); return; }
   if (!body?.trim()) { res.status(400).json({ error: "body is required" }); return; }
   if (channel === "email" && !subject?.trim()) { res.status(400).json({ error: "subject is required for email broadcasts" }); return; }
 
+  // Validate scheduledFor if provided
+  let scheduledDate: Date | null = null;
+  if (scheduledFor) {
+    scheduledDate = new Date(scheduledFor);
+    if (isNaN(scheduledDate.getTime())) { res.status(400).json({ error: "scheduledFor must be a valid ISO date string" }); return; }
+    if (scheduledDate <= new Date()) { res.status(400).json({ error: "scheduledFor must be in the future" }); return; }
+  }
+
   const recipients = await resolveRecipients(tenantId, channel, filter ?? {});
+
+  if (scheduledDate) {
+    // Store as scheduled — the broadcast scheduler will pick it up when the time comes
+    const [broadcast] = await db.insert(broadcastsTable).values({
+      tenantId, channel, subject: subject ?? null, body,
+      recipientFilter: filter ?? {}, recipientCount: recipients.length,
+      status: "scheduled", scheduledFor: scheduledDate, createdBy: userId,
+    }).returning();
+    res.status(201).json(formatBroadcast(broadcast));
+    return;
+  }
 
   const [broadcast] = await db.insert(broadcastsTable).values({
     tenantId, channel, subject: subject ?? null, body,
@@ -179,6 +201,25 @@ router.get("/broadcasts", async (req, res): Promise<void> => {
 
   const rows = await db.select().from(broadcastsTable).where(eq(broadcastsTable.tenantId, tenantId)).orderBy(desc(broadcastsTable.createdAt));
   res.json(rows.map(formatBroadcast));
+});
+
+router.delete("/broadcasts/:id", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  if (!(await isAdminRole(tenantId, userId))) { res.status(403).json({ error: "Restricted to owner/admin roles" }); return; }
+
+  const id = parseInt(req.params.id, 10);
+  const [row] = await db.select().from(broadcastsTable).where(and(eq(broadcastsTable.id, id), eq(broadcastsTable.tenantId, tenantId)));
+  if (!row) { res.status(404).json({ error: "Not found" }); return; }
+  if (row.status !== "scheduled") { res.status(409).json({ error: "Only scheduled broadcasts can be cancelled" }); return; }
+
+  const [updated] = await db.update(broadcastsTable)
+    .set({ status: "cancelled" })
+    .where(and(eq(broadcastsTable.id, id), eq(broadcastsTable.tenantId, tenantId), eq(broadcastsTable.status, "scheduled")))
+    .returning();
+
+  if (!updated) { res.status(409).json({ error: "Broadcast could not be cancelled — it may have already started sending" }); return; }
+  res.json(formatBroadcast(updated));
 });
 
 router.get("/broadcasts/:id", async (req, res): Promise<void> => {

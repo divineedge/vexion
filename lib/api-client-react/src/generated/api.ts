@@ -18212,6 +18212,77 @@ export function useGetBroadcast<TData = Awaited<ReturnType<typeof getBroadcast>>
 
 
 
+export const getCancelBroadcastUrl = (id: number,) => {
+
+
+
+
+  return `/api/broadcasts/${id}`
+}
+
+/**
+ * @summary Cancel a scheduled broadcast before it fires
+ */
+export const cancelBroadcast = async (id: number, options?: RequestInit): Promise<Broadcast> => {
+
+  return customFetch<Broadcast>(getCancelBroadcastUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getCancelBroadcastMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelBroadcast>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelBroadcast>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['cancelBroadcast'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelBroadcast>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  cancelBroadcast(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelBroadcastMutationResult = NonNullable<Awaited<ReturnType<typeof cancelBroadcast>>>
+
+    export type CancelBroadcastMutationError = ErrorType<void>
+
+    /**
+ * @summary Cancel a scheduled broadcast before it fires
+ */
+export const useCancelBroadcast = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelBroadcast>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof cancelBroadcast>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getCancelBroadcastMutationOptions(options));
+    }
+
 export const getListIntegrationsUrl = () => {
 
 

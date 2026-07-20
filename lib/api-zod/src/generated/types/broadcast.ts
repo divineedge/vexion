@@ -22,6 +22,8 @@ export interface Broadcast {
   status: BroadcastStatus;
   stats?: BroadcastStats;
   /** @nullable */
+  scheduledFor?: string | null;
+  /** @nullable */
   sentAt?: string | null;
   /** @nullable */
   createdBy?: number | null;

@@ -4941,6 +4941,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BroadcastDetail"
+    delete:
+      operationId: cancelBroadcast
+      tags: [broadcasts]
+      summary: Cancel a scheduled broadcast before it fires
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Broadcast cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Broadcast"
+        "409":
+          description: Broadcast is not in scheduled state
 
   # INTEGRATION EXTENSIONS
   /integrations:
@@ -7749,6 +7768,9 @@ components:
           type: string
         filter:
           $ref: "#/components/schemas/BroadcastFilter"
+        scheduledFor:
+          type: string
+          description: ISO date-time string. When provided, broadcast is queued and sent at this time instead of immediately.
 
     BroadcastStats:
       type: object
@@ -7781,9 +7803,11 @@ components:
           type: integer
         status:
           type: string
-          enum: [sending, completed, failed]
+          enum: [scheduled, sending, completed, failed, cancelled]
         stats:
           $ref: "#/components/schemas/BroadcastStats"
+        scheduledFor:
+          type: ["string", "null"]
         sentAt:
           type: ["string", "null"]
         createdBy:

@@ -4711,3 +4711,4 @@ export type GetRepairLogSummaryParams = {
 propertyId: number;
 };
 
+

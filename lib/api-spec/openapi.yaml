@@ -9561,6 +9561,12 @@ components:
           type: number
         volumeUnit:
           type: string
+        treatedArea:
+          type: number
+          description: "Area treated by this application (technician-entered). Used for rate calculation in place of the property's stored size."
+        areaUnit:
+          type: string
+          description: "Unit for treatedArea: sqft or acres"
         targetPest:
           type: string
         applicationMethod:

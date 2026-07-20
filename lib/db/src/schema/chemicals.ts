@@ -80,6 +80,10 @@ export const chemicalApplicationsTable = pgTable("chemical_applications", {
   volumeApplied: real("volume_applied").notNull(),
   volumeUnit: text("volume_unit").notNull().default("gal"),
 
+  /** Treated area (as entered by the technician). Used for rate calculation. */
+  treatedArea: real("treated_area"),
+  areaUnit: text("area_unit"), // sqft | acres
+
   targetPest: text("target_pest"),
   applicationMethod: text("application_method"), // spray | granular | drench | etc.
 

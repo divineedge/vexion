@@ -11,6 +11,10 @@ export interface ChemicalApplicationInput {
   productId?: number;
   volumeApplied: number;
   volumeUnit?: string;
+  /** Area treated by this application (technician-entered). Used for rate calculation in place of the property's stored size. */
+  treatedArea?: number;
+  /** Unit for treatedArea: sqft or acres */
+  areaUnit?: string;
   targetPest?: string;
   applicationMethod?: string;
   windSpeed?: number;

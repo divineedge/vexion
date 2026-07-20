@@ -355,6 +355,7 @@ router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> =
 
   const {
     mixtureId, productId, volumeApplied, volumeUnit,
+    treatedArea, areaUnit,
     targetPest, applicationMethod, windSpeed, windDirection, temperature,
     appliedAt, applicatorName, applicatorLicenseNumber, notes,
   } = req.body;
@@ -371,9 +372,13 @@ router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> =
     resolvedApplicatorName = u?.name ?? null;
   }
 
-  // Compute property size in sqft for rate calculation
+  // Compute area in sqft for rate calculation.
+  // Prefer the technician-entered treatedArea over the property's stored size.
   let propertySizeSqft: number | null = null;
-  if (jobRow.size) {
+  if (treatedArea && parseFloat(treatedArea) > 0) {
+    const unit = areaUnit ?? "sqft";
+    propertySizeSqft = unit === "acres" ? parseFloat(treatedArea) * 43560 : parseFloat(treatedArea);
+  } else if (jobRow.size) {
     propertySizeSqft = jobRow.sizeUnit === "acres" ? jobRow.size * 43560 : jobRow.size;
   }
 
@@ -442,6 +447,8 @@ router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> =
     productName,
     volumeApplied: parseFloat(volumeApplied),
     volumeUnit: volumeUnit ?? "gal",
+    treatedArea: treatedArea ? parseFloat(treatedArea) : null,
+    areaUnit: treatedArea ? (areaUnit ?? "sqft") : null,
     targetPest: targetPest ?? null,
     applicationMethod: applicationMethod ?? null,
     windSpeed: windSpeed ? parseFloat(windSpeed) : null,

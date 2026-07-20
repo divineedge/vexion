@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -20,6 +20,9 @@ import {
   useListChemicalMixtures,
   useListChemicalProducts,
   useCreateJobChemicalApplication,
+  useGetJob,
+  useGetProperty,
+  getGetPropertyQueryKey,
   type ChemicalApplicationInput,
 } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
@@ -316,6 +319,18 @@ export default function LogApplicationScreen() {
   const { jobId } = useLocalSearchParams<{ jobId: string }>();
   const numJobId = Number(jobId);
 
+  // Fetch job → property chain
+  const { data: job } = useGetJob(numJobId);
+  const propertyId = (job as { propertyId?: number | null } | undefined)?.propertyId ?? null;
+  const { data: property } = useGetProperty(propertyId ?? 0, {
+    query: {
+      queryKey: getGetPropertyQueryKey(propertyId ?? 0),
+      enabled: propertyId != null && propertyId > 0,
+    },
+  });
+  const propSize = (property as { size?: number | null; sizeUnit?: string | null } | undefined)?.size ?? null;
+  const propSizeUnit = (property as { size?: number | null; sizeUnit?: string | null } | undefined)?.sizeUnit ?? 'sqft';
+
   // Picker state
   const [mode, setMode] = useState<'mixture' | 'product'>('mixture');
   const [selectedMixture, setSelectedMixture] = useState<ChemMixture | null>(null);
@@ -324,6 +339,8 @@ export default function LogApplicationScreen() {
   // Form fields
   const [volumeApplied, setVolumeApplied] = useState('');
   const [volumeUnit, setVolumeUnit] = useState('gal');
+  const [treatedArea, setTreatedArea] = useState('');
+  const [areaUnit, setAreaUnit] = useState('sqft');
   const [targetPest, setTargetPest] = useState('');
   const [applicationMethod, setApplicationMethod] = useState('');
   const [windSpeed, setWindSpeed] = useState('');
@@ -332,10 +349,34 @@ export default function LogApplicationScreen() {
   const [licenseNumber, setLicenseNumber] = useState('');
   const [notes, setNotes] = useState('');
 
+  // Pre-fill treated area from property size when it loads (only if still blank)
+  useEffect(() => {
+    if (propSize != null && treatedArea === '') {
+      setTreatedArea(String(propSize));
+      setAreaUnit(propSizeUnit === 'acres' ? 'acres' : 'sqft');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [propSize, propSizeUnit]);
+
+  // Live rate preview (client-side, mirrors server logic)
+  const liveRates = (() => {
+    const vol = Number(volumeApplied);
+    const area = Number(treatedArea);
+    if (!vol || vol <= 0 || !area || area <= 0) return null;
+    const areaSqft = areaUnit === 'acres' ? area * 43560 : area;
+    const ratePer1000Sqft = (vol / areaSqft) * 1000;
+    const ratePerAcre = ratePer1000Sqft * 43.56;
+    return {
+      ratePer1000Sqft: Math.round(ratePer1000Sqft * 1000) / 1000,
+      ratePerAcre: Math.round(ratePerAcre * 1000) / 1000,
+    };
+  })();
+
   // Modal state
   const [showMixturePicker, setShowMixturePicker] = useState(false);
   const [showProductPicker, setShowProductPicker] = useState(false);
   const [showUnitPicker, setShowUnitPicker] = useState(false);
+  const [showAreaUnitPicker, setShowAreaUnitPicker] = useState(false);
   const [showMethodPicker, setShowMethodPicker] = useState(false);
   const [showWindDirPicker, setShowWindDirPicker] = useState(false);
 
@@ -372,6 +413,10 @@ export default function LogApplicationScreen() {
       };
       if (mode === 'mixture' && selectedMixture) body.mixtureId = selectedMixture.id;
       if (mode === 'product' && selectedProduct) body.productId = selectedProduct.id;
+      if (treatedArea && !isNaN(Number(treatedArea)) && Number(treatedArea) > 0) {
+        body.treatedArea = Number(treatedArea);
+        body.areaUnit = areaUnit;
+      }
       if (targetPest.trim()) body.targetPest = targetPest.trim();
       if (applicationMethod) body.applicationMethod = applicationMethod;
       if (windSpeed && !isNaN(Number(windSpeed))) body.windSpeed = Number(windSpeed);
@@ -391,8 +436,8 @@ export default function LogApplicationScreen() {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', 'Failed to log application. Please try again.');
     }
-  }, [validate, volumeApplied, volumeUnit, mode, selectedMixture, selectedProduct, targetPest,
-      applicationMethod, windSpeed, windDirection, temperature, licenseNumber, notes,
+  }, [validate, volumeApplied, volumeUnit, treatedArea, areaUnit, mode, selectedMixture, selectedProduct,
+      targetPest, applicationMethod, windSpeed, windDirection, temperature, licenseNumber, notes,
       numJobId, createMutation]);
 
   const handleDone = useCallback(() => {
@@ -499,6 +544,54 @@ export default function LogApplicationScreen() {
             </View>
             {errors.volumeApplied && (
               <Text style={[styles.errMsg, { color: colors.destructive }]}>{errors.volumeApplied}</Text>
+            )}
+          </Field>
+
+          {/* Treated Area */}
+          <Field label="Treated Area" colors={colors}>
+            {propSize != null && (
+              <View style={[areaStyles.propertyBadge, { backgroundColor: colors.primary + '15', borderColor: colors.primary + '40' }]}>
+                <Ionicons name="home-outline" size={13} color={colors.primary} />
+                <Text style={[areaStyles.propertyBadgeText, { color: colors.primary }]}>
+                  Property size: {propSize.toLocaleString()} {propSizeUnit}
+                </Text>
+              </View>
+            )}
+            <View style={styles.splitRow}>
+              <View style={{ flex: 2 }}>
+                <StyledInput
+                  value={treatedArea}
+                  onChangeText={setTreatedArea}
+                  placeholder="e.g. 5000"
+                  keyboardType="decimal-pad"
+                  colors={colors}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <SelectButton
+                  value={areaUnit}
+                  placeholder="Unit"
+                  onPress={() => setShowAreaUnitPicker(true)}
+                  colors={colors}
+                />
+              </View>
+            </View>
+            {liveRates && (
+              <View style={[areaStyles.rateRow, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+                <View style={areaStyles.ratePill}>
+                  <Text style={[areaStyles.rateLabel, { color: colors.mutedForeground }]}>/ 1k sqft</Text>
+                  <Text style={[areaStyles.rateVal, { color: colors.foreground }]}>
+                    {liveRates.ratePer1000Sqft} {volumeUnit}
+                  </Text>
+                </View>
+                <View style={[areaStyles.rateDivider, { backgroundColor: colors.border }]} />
+                <View style={areaStyles.ratePill}>
+                  <Text style={[areaStyles.rateLabel, { color: colors.mutedForeground }]}>/ acre</Text>
+                  <Text style={[areaStyles.rateVal, { color: colors.foreground }]}>
+                    {liveRates.ratePerAcre} {volumeUnit}
+                  </Text>
+                </View>
+              </View>
             )}
           </Field>
 
@@ -646,6 +739,14 @@ export default function LogApplicationScreen() {
         items={VOLUME_UNITS.map((u) => ({ name: u }))}
         onSelect={(item) => setVolumeUnit(item.name ?? 'gal')}
         onClose={() => setShowUnitPicker(false)}
+        colors={colors}
+      />
+      <PickerModal
+        visible={showAreaUnitPicker}
+        title="Area Unit"
+        items={[{ name: 'sqft' }, { name: 'acres' }]}
+        onSelect={(item) => setAreaUnit(item.name ?? 'sqft')}
+        onClose={() => setShowAreaUnitPicker(false)}
         colors={colors}
       />
       <PickerModal
@@ -801,6 +902,53 @@ const fieldStyles = StyleSheet.create({
     fontSize: 15,
     flex: 1,
     marginRight: 6,
+  },
+});
+
+const areaStyles = StyleSheet.create({
+  propertyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  propertyBadgeText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+  },
+  rateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  ratePill: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  rateDivider: {
+    width: 1,
+    height: '100%',
+  },
+  rateLabel: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 2,
+  },
+  rateVal: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 14,
   },
 });
 

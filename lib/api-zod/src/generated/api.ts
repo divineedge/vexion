@@ -4163,6 +4163,8 @@ export const CreateJobChemicalApplicationBody = zod.object({
   "productId": zod.number().optional(),
   "volumeApplied": zod.number(),
   "volumeUnit": zod.string().optional(),
+  "treatedArea": zod.number().optional().describe('Area treated by this application (technician-entered). Used for rate calculation in place of the property\'s stored size.'),
+  "areaUnit": zod.string().optional().describe('Unit for treatedArea: sqft or acres'),
   "targetPest": zod.string().optional(),
   "applicationMethod": zod.string().optional(),
   "windSpeed": zod.number().optional(),

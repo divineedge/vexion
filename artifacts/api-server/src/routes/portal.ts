@@ -1,9 +1,11 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable, mediaAttachmentsTable } from "@workspace/db";
+import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable, mediaAttachmentsTable, tenantsTable } from "@workspace/db";
 import { eq, and, gt, desc, lte, isNotNull } from "drizzle-orm";
 import { objectStorageService } from "./storage";
 import crypto from "crypto";
 import { getTenantId } from "../lib/tenantHelper";
+import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -104,10 +106,46 @@ router.post("/portal/auth/request-otp", async (req, res): Promise<void> => {
     expiresAt,
   });
 
-  // In production, send the OTP by email.
-  // Return previewOtp only in development so engineers can test without an email service.
+  // Fetch tenant for email provider config and branding
+  const [tenant] = await db
+    .select()
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId))
+    .limit(1);
+
+  const companyName = tenant?.name ?? "Your Service Provider";
+
+  const emailProviderConfig: EmailProviderConfig = {
+    provider: (tenant?.emailProvider as "smtp" | "sendgrid" | "mailgun" | "resend" | "gmail" | null) ?? null,
+    config: (tenant?.emailProviderConfig as Record<string, string>) ?? {},
+    fromAddress: tenant?.businessEmail ?? (tenant?.emailProviderConfig as Record<string, string>)?.["fromAddress"] ?? null,
+  };
+
+  const subject = `Your ${companyName} login code`;
+  const body = [
+    `Hi ${customer.name ?? "there"},`,
+    "",
+    `Your one-time login code for the ${companyName} client portal is:`,
+    "",
+    `  ${otp}`,
+    "",
+    "This code expires in 10 minutes. If you didn't request this, you can safely ignore this email.",
+    "",
+    `Thank you,`,
+    companyName,
+  ].join("\n");
+
+  const emailResult = await sendEmail(emailProviderConfig, email.toLowerCase().trim(), subject, body);
+
+  if (!emailResult.success) {
+    logger.error({ to: email, error: emailResult.error }, "Failed to send portal OTP email");
+    res.status(500).json({ error: "Failed to send login code. Please try again or contact support." });
+    return;
+  }
+
+  // Return previewOtp only in development so engineers can test without a real email service.
   const isDev = process.env.NODE_ENV !== "production";
-  res.json({ message: "OTP sent to your email", previewOtp: isDev ? otp : null });
+  res.json({ message: "OTP sent to your email", previewOtp: isDev ? otp : undefined });
 });
 
 // ---------------------------------------------------------------------------

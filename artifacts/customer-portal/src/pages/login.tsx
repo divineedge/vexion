@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { toast } from "sonner";
-import { KeyRound, Mail, ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
+import { Mail, ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
 
 const emailSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -171,10 +171,10 @@ export default function Login() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <ShieldCheck className="w-5 h-5 text-primary" />
-                  Enter Security Code
+                  Check your email
                 </CardTitle>
                 <CardDescription>
-                  We've sent a 6-digit code to <span className="font-medium text-foreground">{emailSent}</span>.
+                  We've sent a 6-digit login code to <span className="font-medium text-foreground">{emailSent}</span>. Enter it below to sign in.
                 </CardDescription>
               </CardHeader>
               <CardContent>

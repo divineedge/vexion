@@ -485,7 +485,7 @@ router.get("/equipment/:id/maintenance", async (req, res): Promise<void> => {
   })));
 });
 
-router.post("/equipment/:id/maintenance", async (req, res): Promise<void> => {
+router.post("/equipment/:id/maintenance", requireOfficeRole, async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const equipmentId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
 

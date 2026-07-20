@@ -80,6 +80,7 @@ export default function RoutesDashboardPage() {
   const [addStopJobId, setAddStopJobId] = useState<string>('');
   const [newJobOpen, setNewJobOpen] = useState(false);
   const [newJob, setNewJob] = useState<NewJobForm>(EMPTY_JOB);
+  const [capacityWarning, setCapacityWarning] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
   const weekStartStr = format(weekStart, 'yyyy-MM-dd');
 
@@ -192,7 +193,7 @@ export default function RoutesDashboardPage() {
     });
   };
 
-  const handleAddStop = () => {
+  const doAddStop = () => {
     if (!addStopJobId || !dayDetail) return;
     updateJobRoute.mutate({ id: Number(addStopJobId), data: { routeTemplateId: dayDetail.routeTemplateId, scheduledAt: new Date(`${dayDetail.date}T09:00:00`).toISOString() } }, {
       onSuccess: () => {
@@ -204,6 +205,22 @@ export default function RoutesDashboardPage() {
       },
       onError: () => toast.error('Failed to assign job to route'),
     });
+  };
+
+  const handleAddStop = () => {
+    if (!addStopJobId || !dayDetail || !detail) return;
+    const selectedJob = unassignedJobsForDay.find(j => j.id === Number(addStopJobId));
+    const jobMins = selectedJob?.estimatedDuration ?? 0;
+    const jobHours = jobMins / 60;
+    const overBy = jobHours - detail.capacity.openSpaceHours;
+    if (overBy > 0) {
+      setCapacityWarning({
+        message: `Adding this job (${jobHours.toFixed(1)}h estimated) will put the route ${overBy.toFixed(1)}h over capacity.`,
+        onConfirm: doAddStop,
+      });
+      return;
+    }
+    doAddStop();
   };
 
   const handleRemoveStop = (jobId: number) => {
@@ -220,22 +237,7 @@ export default function RoutesDashboardPage() {
     setNewJobOpen(true);
   };
 
-  const handleCreateJobFromRoute = () => {
-    if (!dayDetail) return;
-    if (!newJob.title || !newJob.scheduledAt) {
-      toast.error('Title and scheduled date are required');
-      return;
-    }
-    const durationMins = newJob.estimatedDuration
-      ? durationUnit === 'hours'
-        ? Math.round(parseFloat(newJob.estimatedDuration) * 60)
-        : parseInt(newJob.estimatedDuration, 10)
-      : undefined;
-
-    const recurrenceRule = buildRecurrenceRule(newJob);
-    const routeTemplateId = dayDetail.routeTemplateId;
-    const scheduledAtIso = new Date(newJob.scheduledAt).toISOString();
-
+  const doCreateJobFromRoute = (durationMins: number | undefined, recurrenceRule: ReturnType<typeof buildRecurrenceRule>, routeTemplateId: number, scheduledAtIso: string) => {
     createJob.mutate({
       data: {
         title: newJob.title,
@@ -259,7 +261,7 @@ export default function RoutesDashboardPage() {
             setNewJobOpen(false);
             setNewJob(EMPTY_JOB);
             invalidateDetail();
-            qc.invalidateQueries({ queryKey: getListJobsQueryKey({ startDate: dayDetail.date, endDate: dayDetailEndDate }) });
+            qc.invalidateQueries({ queryKey: getListJobsQueryKey({ startDate: dayDetail!.date, endDate: dayDetailEndDate }) });
             qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
           },
           onError: () => toast.error('Job was created but could not be assigned to the route'),
@@ -267,6 +269,34 @@ export default function RoutesDashboardPage() {
       },
       onError: () => toast.error('Failed to create job'),
     });
+  };
+
+  const handleCreateJobFromRoute = () => {
+    if (!dayDetail || !detail) return;
+    if (!newJob.title || !newJob.scheduledAt) {
+      toast.error('Title and scheduled date are required');
+      return;
+    }
+    const durationMins = newJob.estimatedDuration
+      ? durationUnit === 'hours'
+        ? Math.round(parseFloat(newJob.estimatedDuration) * 60)
+        : parseInt(newJob.estimatedDuration, 10)
+      : undefined;
+
+    const recurrenceRule = buildRecurrenceRule(newJob);
+    const routeTemplateId = dayDetail.routeTemplateId;
+    const scheduledAtIso = new Date(newJob.scheduledAt).toISOString();
+
+    const jobHours = durationMins ? durationMins / 60 : 0;
+    const overBy = jobHours - detail.capacity.openSpaceHours;
+    if (jobHours > 0 && overBy > 0) {
+      setCapacityWarning({
+        message: `This job's estimated duration (${jobHours.toFixed(1)}h) will put the route ${overBy.toFixed(1)}h over capacity.`,
+        onConfirm: () => doCreateJobFromRoute(durationMins, recurrenceRule, routeTemplateId, scheduledAtIso),
+      });
+      return;
+    }
+    doCreateJobFromRoute(durationMins, recurrenceRule, routeTemplateId, scheduledAtIso);
   };
 
   return (
@@ -519,6 +549,22 @@ export default function RoutesDashboardPage() {
               });
             }} disabled={updateJob.isPending}>
               {updateJob.isPending ? 'Saving…' : 'Mark Complete'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Capacity Over-booking Warning Dialog */}
+      <Dialog open={!!capacityWarning} onOpenChange={open => { if (!open) setCapacityWarning(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Route Over Capacity</DialogTitle>
+            <DialogDescription>{capacityWarning?.message} Do you want to proceed anyway?</DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setCapacityWarning(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => { capacityWarning?.onConfirm(); setCapacityWarning(null); }}>
+              Proceed Anyway
             </Button>
           </div>
         </DialogContent>

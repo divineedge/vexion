@@ -30,6 +30,8 @@ import {
   useListSubTimers, getListSubTimersQueryKey,
   useStartSubTimer, useStopSubTimer,
   useDeleteJob,
+  useListRouteTemplates, getListRouteTemplatesQueryKey,
+  useUpdateJobRoute,
 } from '@workspace/api-client-react';
 import MediaGallery from '@/components/media/MediaGallery';
 import { JobFormFields, EMPTY_JOB, buildRecurrenceRule, type NewJobForm } from '@/components/jobs/JobFormFields';
@@ -50,6 +52,7 @@ import {
   DollarSign, ClipboardList, Plus, Users, FlaskConical, Trash2, AlertTriangle,
   Bell, BellOff, Send, Package, Search, Images, RefreshCw, Pause, Play, X,
   SkipForward, ListEnd, Wrench, Square, Timer, Warehouse, Truck,
+  Route as RouteIcon, ExternalLink,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -200,6 +203,13 @@ export default function SchedulePage() {
   const deleteChemApp = useDeleteChemicalApplication();
   const deleteJob = useDeleteJob();
   const [deleteBlockedMsg, setDeleteBlockedMsg] = useState<string | null>(null);
+  const updateJobRoute = useUpdateJobRoute();
+
+  // Route templates (for route assignment in job detail)
+  const { data: routeTemplates } = useListRouteTemplates(undefined, {
+    query: { enabled: selectedJobId != null, queryKey: getListRouteTemplatesQueryKey() },
+  });
+  const assignedRoute = routeTemplates?.find(rt => rt.id === (selectedJob as any)?.routeTemplateId);
 
   // Recurring series hooks
   const { data: recurringSeries } = useListRecurringSeries({
@@ -762,6 +772,69 @@ export default function SchedulePage() {
                       </div>
                     </div>
                   )}
+                  {/* Route assignment */}
+                  <div className="col-span-2 space-y-1">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Route</p>
+                    {assignedRoute ? (
+                      <div className="flex items-center gap-2 text-sm">
+                        <RouteIcon className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <span className="font-medium">{assignedRoute.name}</span>
+                        {assignedRoute.divisionName && (
+                          <span className="text-xs text-muted-foreground">· {assignedRoute.divisionName}</span>
+                        )}
+                        <button
+                          title="Open route day detail"
+                          className="ml-auto flex items-center gap-1 text-xs text-primary hover:underline"
+                          onClick={() => {
+                            const dateStr = selectedJob.scheduledAt.slice(0, 10);
+                            setLocation(`/routes?routeTemplateId=${assignedRoute.id}&date=${dateStr}`);
+                            setSelectedJobId(null);
+                          }}
+                        >
+                          <ExternalLink className="w-3 h-3" /> View in Routes
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <RouteIcon className="w-4 h-4 shrink-0" />
+                        <span>Not assigned to a route</span>
+                      </div>
+                    )}
+                    {canManageJobs && routeTemplates && routeTemplates.length > 0 && (
+                      <div className="pt-1">
+                        <Select
+                          value={String((selectedJob as any).routeTemplateId ?? '')}
+                          onValueChange={val => {
+                            if (!selectedJobId) return;
+                            const newRouteId = val === 'none' ? null : Number(val);
+                            updateJobRoute.mutate(
+                              { id: selectedJobId, data: { routeTemplateId: newRouteId, scheduledAt: selectedJob.scheduledAt } },
+                              {
+                                onSuccess: () => {
+                                  toast.success(newRouteId ? 'Route assigned' : 'Removed from route');
+                                  qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId) });
+                                  qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                                },
+                                onError: () => toast.error('Failed to update route'),
+                              }
+                            );
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue placeholder="Assign to route…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">— No route —</SelectItem>
+                            {routeTemplates.map(rt => (
+                              <SelectItem key={rt.id} value={String(rt.id)}>
+                                {rt.name}{rt.divisionName ? ` (${rt.divisionName})` : ''}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
                   {selectedJob.totalAmount != null && selectedJob.totalAmount > 0 && (
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Total</p>

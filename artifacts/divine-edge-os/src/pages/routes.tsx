@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useLocation } from 'wouter';
 import {
   useListDivisions, getListDivisionsQueryKey,
   useGetRoutesDashboard, getGetRoutesDashboardQueryKey,
@@ -52,9 +53,26 @@ function CapacityBadge({ openSpaceHours }: { openSpaceHours: number }) {
 
 export default function RoutesDashboardPage() {
   const qc = useQueryClient();
+  const [location] = useLocation();
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 0 }));
   const [divisionFilter, setDivisionFilter] = useState<string>('all');
-  const [dayDetail, setDayDetail] = useState<{ routeTemplateId: number; date: string } | null>(null);
+  const [dayDetail, setDayDetail] = useState<{ routeTemplateId: number; date: string } | null>(() => {
+    // Support deep-link from Schedule page: /routes?routeTemplateId=N&date=YYYY-MM-DD
+    const params = new URLSearchParams(window.location.search);
+    const rtId = params.get('routeTemplateId');
+    const date = params.get('date');
+    if (rtId && date) return { routeTemplateId: Number(rtId), date };
+    return null;
+  });
+
+  // Sync weekStart to the deep-linked date so the dashboard shows the right week
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const date = params.get('date');
+    if (date) {
+      setWeekStart(startOfWeek(new Date(`${date}T00:00:00`), { weekStartsOn: 0 }));
+    }
+  }, [location]);
   const [rescheduleJobId, setRescheduleJobId] = useState<number | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState('');
   const [addStopOpen, setAddStopOpen] = useState(false);

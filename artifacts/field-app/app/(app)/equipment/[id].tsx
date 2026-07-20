@@ -13,7 +13,11 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useGetEquipment, useListEquipmentFuelLogs } from '@workspace/api-client-react';
+import {
+  useGetEquipment,
+  useListEquipmentFuelLogs,
+  useListEquipmentMaintenance,
+} from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 
 type Equipment = {
@@ -38,6 +42,14 @@ type FuelLog = {
   gallons: number;
   cost: number;
   odometerReading?: number | null;
+};
+
+type MaintenanceRecord = {
+  id: number;
+  date: string;
+  description: string;
+  cost?: number | null;
+  vendor?: string | null;
 };
 
 function formatDate(iso: string): string {
@@ -147,18 +159,29 @@ export default function EquipmentDetailScreen() {
     refetch: refetchLogs,
     isFetching,
   } = useListEquipmentFuelLogs(equipmentId);
+  const {
+    data: maintenanceLogs,
+    isLoading: maintLoading,
+    refetch: refetchMaint,
+  } = useListEquipmentMaintenance(equipmentId);
 
-  const isLoading = eqLoading || logsLoading;
+  const isLoading = eqLoading || logsLoading || maintLoading;
 
   const handleLogFuel = useCallback(async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     router.push(`/(app)/equipment-fuel/${equipmentId}`);
   }, [equipmentId]);
 
+  const handleLogMaintenance = useCallback(async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push(`/(app)/equipment-maintenance/${equipmentId}` as any);
+  }, [equipmentId]);
+
   const refetch = useCallback(() => {
     refetchEq();
     refetchLogs();
-  }, [refetchEq, refetchLogs]);
+    refetchMaint();
+  }, [refetchEq, refetchLogs, refetchMaint]);
 
   const bottomPad = insets.bottom + (Platform.OS === 'web' ? 34 : 0) + 100;
 
@@ -172,6 +195,7 @@ export default function EquipmentDetailScreen() {
 
   const eq = equipment as Equipment | undefined;
   const logs = (fuelLogs as FuelLog[] | undefined) ?? [];
+  const maint = (maintenanceLogs as MaintenanceRecord[] | undefined) ?? [];
 
   if (!eq) {
     return (
@@ -287,6 +311,39 @@ export default function EquipmentDetailScreen() {
           </View>
         )}
 
+        {/* Maintenance history */}
+        <View style={[styles.section, { marginBottom: 8 }]}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Maintenance</Text>
+          {maint.length === 0 ? (
+            <View style={[styles.emptyCard, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+              <Ionicons name="construct-outline" size={32} color={colors.mutedForeground} />
+              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No maintenance records yet</Text>
+            </View>
+          ) : (
+            maint.map((record) => (
+              <View
+                key={record.id}
+                style={[styles.logRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+                testID={`maintenance-record-${record.id}`}
+              >
+                <View style={[styles.logIcon, { backgroundColor: '#f59e0b18' }]}>
+                  <Ionicons name="construct" size={16} color="#f59e0b" />
+                </View>
+                <View style={styles.logBody}>
+                  <Text style={[styles.logGallons, { color: colors.foreground }]} numberOfLines={1}>
+                    {record.description}
+                  </Text>
+                  <Text style={[styles.logMeta, { color: colors.mutedForeground }]}>
+                    {formatDate(record.date)}
+                    {record.cost != null ? `  ·  ${record.cost.toFixed(2)}` : ''}
+                    {record.vendor ? `  ·  ${record.vendor}` : ''}
+                  </Text>
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+
         {/* Fuel log history */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Fuel Fills</Text>
@@ -320,7 +377,7 @@ export default function EquipmentDetailScreen() {
         </View>
       </ScrollView>
 
-      {/* Log Fuel FAB */}
+      {/* Action FABs */}
       <View
         style={[
           styles.fabContainer,
@@ -328,12 +385,21 @@ export default function EquipmentDetailScreen() {
         ]}
       >
         <TouchableOpacity
+          style={[styles.fab, { backgroundColor: '#f59e0b' }]}
+          onPress={handleLogMaintenance}
+          activeOpacity={0.85}
+          testID="log-maintenance-button"
+        >
+          <Ionicons name="construct-outline" size={20} color="#ffffff" />
+          <Text style={styles.fabText}>Log Maintenance</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
           style={[styles.fab, { backgroundColor: colors.primary }]}
           onPress={handleLogFuel}
           activeOpacity={0.85}
           testID="log-fuel-button"
         >
-          <Ionicons name="add-circle-outline" size={22} color="#ffffff" />
+          <Ionicons name="water-outline" size={20} color="#ffffff" />
           <Text style={styles.fabText}>Log Fuel Fill</Text>
         </TouchableOpacity>
       </View>
@@ -440,20 +506,22 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    gap: 10,
   },
   fab: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     height: 52,
     borderRadius: 14,
-    gap: 8,
-    shadowColor: '#2563eb',
+    gap: 6,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 6,
   },
-  fabText: { fontFamily: 'Inter_600SemiBold', fontSize: 16, color: '#ffffff' },
+  fabText: { fontFamily: 'Inter_600SemiBold', fontSize: 14, color: '#ffffff' },
 });

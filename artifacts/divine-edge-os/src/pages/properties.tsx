@@ -28,10 +28,12 @@ type NewPropertyForm = {
   zip: string;
   type: string;
   notes: string;
+  size: string;
+  sizeUnit: string;
 };
 
 const EMPTY_FORM: NewPropertyForm = {
-  customerId: '', address: '', city: '', state: '', zip: '', type: '', notes: '',
+  customerId: '', address: '', city: '', state: '', zip: '', type: '', notes: '', size: '', sizeUnit: 'sqft',
 };
 
 export default function PropertiesPage() {
@@ -69,6 +71,8 @@ export default function PropertiesPage() {
         zip: form.zip || undefined,
         type: form.type || undefined,
         notes: form.notes || undefined,
+        size: form.size ? parseFloat(form.size) : undefined,
+        sizeUnit: form.size ? (form.sizeUnit as 'sqft' | 'acres') : undefined,
       },
     }, {
       onSuccess: (prop) => {
@@ -227,6 +231,26 @@ export default function PropertiesPage() {
                   <SelectItem value="municipal">Municipal</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Property Size</label>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  placeholder="e.g. 5000"
+                  value={form.size}
+                  onChange={e => setForm(f => ({ ...f, size: e.target.value }))}
+                  className="flex-1"
+                />
+                <Select value={form.sizeUnit} onValueChange={v => setForm(f => ({ ...f, sizeUnit: v }))}>
+                  <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sqft">sqft</SelectItem>
+                    <SelectItem value="acres">acres</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="space-y-1.5">

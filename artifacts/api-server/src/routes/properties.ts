@@ -261,7 +261,7 @@ router.get("/properties", async (req, res): Promise<void> => {
 
 router.post("/properties", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { customerId, address, city, state, zip, lat, lng, notes, type } = req.body;
+  const { customerId, address, city, state, zip, lat, lng, notes, type, size, sizeUnit } = req.body;
   if (!customerId || !address) {
     res.status(400).json({ error: "customerId and address are required" });
     return;
@@ -303,6 +303,8 @@ router.post("/properties", async (req, res): Promise<void> => {
     lng: resolvedLng,
     notes: notes ?? null,
     type: type ?? null,
+    size: size != null ? parseFloat(size) : null,
+    sizeUnit: sizeUnit ?? null,
     ...(seedPolygons ? { measurementPolygons: seedPolygons } : {}),
   }).returning();
 

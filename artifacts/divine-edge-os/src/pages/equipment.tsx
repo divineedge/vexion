@@ -419,6 +419,80 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
           </div>
         )}
 
+        {/* Maintenance status banner */}
+        {equipment.maintenanceDue ? (
+          <div className="flex items-start gap-3 p-4 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive">
+            <AlertTriangle className="w-5 h-5 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm">Maintenance Overdue</p>
+              <div className="flex flex-wrap gap-3 mt-1.5">
+                {equipment.hoursUntilService != null && (
+                  <span className="text-xs flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {equipment.hoursUntilService < 0
+                      ? `${Math.abs(equipment.hoursUntilService).toFixed(1)} hrs overdue`
+                      : `${equipment.hoursUntilService.toFixed(1)} hrs remaining`}
+                  </span>
+                )}
+                {equipment.milesUntilService != null && (
+                  <span className="text-xs flex items-center gap-1">
+                    <Gauge className="w-3 h-3" />
+                    {equipment.milesUntilService < 0
+                      ? `${Math.abs(equipment.milesUntilService).toFixed(0)} mi overdue`
+                      : `${equipment.milesUntilService.toFixed(0)} mi remaining`}
+                  </span>
+                )}
+                {equipment.nextServiceDueDate && (
+                  <span className="text-xs flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    Due {equipment.nextServiceDueDate}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (equipment.hoursUntilService != null && equipment.hoursUntilService >= 0 && equipment.hoursUntilService <= 10) ||
+           (equipment.milesUntilService != null && equipment.milesUntilService >= 0 && equipment.milesUntilService <= 50) ? (
+          <div className="flex items-start gap-3 p-4 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400">
+            <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm">Service Coming Up Soon</p>
+              <div className="flex flex-wrap gap-3 mt-1.5">
+                {equipment.hoursUntilService != null && equipment.hoursUntilService >= 0 && equipment.hoursUntilService <= 10 && (
+                  <span className="text-xs flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {equipment.hoursUntilService.toFixed(1)} hrs remaining
+                  </span>
+                )}
+                {equipment.milesUntilService != null && equipment.milesUntilService >= 0 && equipment.milesUntilService <= 50 && (
+                  <span className="text-xs flex items-center gap-1">
+                    <Gauge className="w-3 h-3" />
+                    {equipment.milesUntilService.toFixed(0)} mi remaining
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : equipment.hoursUntilService != null || equipment.milesUntilService != null ? (
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border text-muted-foreground">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-green-600 dark:text-green-400" />
+            <div className="flex flex-wrap gap-3">
+              {equipment.hoursUntilService != null && (
+                <span className="text-xs flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  {equipment.hoursUntilService.toFixed(1)} hrs to next service
+                </span>
+              )}
+              {equipment.milesUntilService != null && (
+                <span className="text-xs flex items-center gap-1">
+                  <Gauge className="w-3 h-3" />
+                  {equipment.milesUntilService.toFixed(0)} mi to next service
+                </span>
+              )}
+            </div>
+          </div>
+        ) : null}
+
         {/* Cost summary cards */}
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-lg border p-3 space-y-1">
@@ -981,6 +1055,7 @@ export default function EquipmentPage() {
   };
 
   const sellCount = equipment?.filter(e => e.sellRecommended).length ?? 0;
+  const maintenanceDueCount = equipment?.filter(e => !e.archivedAt && e.maintenanceDue).length ?? 0;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -1014,6 +1089,16 @@ export default function EquipmentPage() {
           )}
         </div>
       </div>
+
+      {/* Maintenance due banner */}
+      {maintenanceDueCount > 0 && (
+        <div className="flex items-center gap-3 p-4 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive">
+          <AlertTriangle className="w-5 h-5 shrink-0" />
+          <p className="text-sm font-medium">
+            {maintenanceDueCount} piece{maintenanceDueCount > 1 ? 's' : ''} of equipment {maintenanceDueCount > 1 ? 'are' : 'is'} overdue for maintenance. Review the details below.
+          </p>
+        </div>
+      )}
 
       {/* Summary banner */}
       {sellCount > 0 && (
@@ -1104,6 +1189,19 @@ export default function EquipmentPage() {
                             <Archive className="w-3 h-3" /> Archived
                           </Badge>
                         ) : !item.isActive && <Badge variant="outline" className="text-xs">Inactive</Badge>}
+                        {!item.archivedAt && item.maintenanceDue && (
+                          <Badge className="text-xs gap-1 bg-destructive text-destructive-foreground">
+                            <AlertTriangle className="w-3 h-3" /> Maintenance Due
+                          </Badge>
+                        )}
+                        {!item.archivedAt && !item.maintenanceDue && (
+                          (item.hoursUntilService != null && item.hoursUntilService >= 0 && item.hoursUntilService <= 10) ||
+                          (item.milesUntilService != null && item.milesUntilService >= 0 && item.milesUntilService <= 50)
+                        ) && (
+                          <Badge className="text-xs gap-1 bg-amber-500 text-white">
+                            <AlertCircle className="w-3 h-3" /> Service Soon
+                          </Badge>
+                        )}
                       </div>
                       <div className="flex items-center gap-4 mt-2 flex-wrap">
                         <span className="text-xs text-muted-foreground flex items-center gap-1">

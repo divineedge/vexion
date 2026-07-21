@@ -12,4 +12,5 @@ assigneeId?: number;
 startDate?: Date;
 endDate?: Date;
 customerId?: number;
+routeTemplateId?: number;
 };

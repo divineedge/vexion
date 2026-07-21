@@ -986,7 +986,8 @@ export const ListJobsQueryParams = zod.object({
   "assigneeId": zod.coerce.number().optional(),
   "startDate": zod.date().optional(),
   "endDate": zod.date().optional(),
-  "customerId": zod.coerce.number().optional()
+  "customerId": zod.coerce.number().optional(),
+  "routeTemplateId": zod.coerce.number().optional()
 })
 
 export const ListJobsResponseItem = zod.object({

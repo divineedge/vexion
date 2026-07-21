@@ -183,14 +183,19 @@ export default function SchedulePage() {
   }, [activeJobTimer?.id]);
   const [clockOutJobId, setClockOutJobId] = useState<number | null>(null);
 
+  // Route filter state (declared here so it's available before useListJobs)
+  const [routeFilter, setRouteFilter] = useState<string>('all');
+
   const assigneeId = isTechnician && user ? user.id : undefined;
 
   const start = view === 'week' ? startOfWeek(currentDate) : startOfMonth(currentDate);
   const end   = view === 'week' ? endOfWeek(currentDate)   : endOfMonth(currentDate);
 
+  const routeTemplateIdParam = routeFilter !== 'all' ? parseInt(routeFilter, 10) : undefined;
+
   const { data: jobs, isLoading } = useListJobs(
-    { startDate: start.toISOString(), endDate: end.toISOString(), assigneeId },
-    { query: { queryKey: getListJobsQueryKey({ startDate: start.toISOString(), endDate: end.toISOString(), assigneeId }) } },
+    { startDate: start.toISOString(), endDate: end.toISOString(), assigneeId, routeTemplateId: routeTemplateIdParam },
+    { query: { queryKey: getListJobsQueryKey({ startDate: start.toISOString(), endDate: end.toISOString(), assigneeId, routeTemplateId: routeTemplateIdParam }) } },
   );
 
   const { data: selectedJob } = useGetJob(selectedJobId!, {
@@ -247,9 +252,9 @@ export default function SchedulePage() {
   const [deleteBlockedMsg, setDeleteBlockedMsg] = useState<string | null>(null);
   const updateJobRoute = useUpdateJobRoute();
 
-  // Route templates (for route assignment in job detail)
+  // Route templates (for route filter dropdown + job detail route assignment)
   const { data: routeTemplates } = useListRouteTemplates(undefined, {
-    query: { enabled: selectedJobId != null, queryKey: getListRouteTemplatesQueryKey() },
+    query: { queryKey: getListRouteTemplatesQueryKey() },
   });
   const assignedRoute = routeTemplates?.find(rt => rt.id === (selectedJob as any)?.routeTemplateId);
 
@@ -380,6 +385,20 @@ export default function SchedulePage() {
           <p className="text-muted-foreground mt-1">Manage field assignments and dispatches.</p>
         </div>
         <div className="flex items-center gap-4">
+          {routeTemplates && routeTemplates.length > 0 && (
+            <Select value={routeFilter} onValueChange={setRouteFilter}>
+              <SelectTrigger className="h-8 text-xs w-44 gap-1">
+                <RouteIcon className="w-3 h-3 shrink-0" />
+                <SelectValue placeholder="All routes" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-xs">All routes</SelectItem>
+                {routeTemplates.map(rt => (
+                  <SelectItem key={rt.id} value={String(rt.id)} className="text-xs">{rt.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <div className="flex items-center rounded-md border p-1 bg-muted/50">
             <Button variant={view === 'week' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('week')} className="h-7 text-xs px-3">Week</Button>
             <Button variant={view === 'month' ? 'secondary' : 'ghost'} size="sm" onClick={() => setView('month')} className="h-7 text-xs px-3">Month</Button>

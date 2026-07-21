@@ -4665,6 +4665,7 @@ assigneeId?: number;
 startDate?: string;
 endDate?: string;
 customerId?: number;
+routeTemplateId?: number;
 };
 
 export type CancelRecurringSeriesParams = {

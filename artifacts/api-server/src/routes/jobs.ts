@@ -258,13 +258,14 @@ function formatJob(
 
 router.get("/jobs", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { status, assigneeId, startDate, endDate, customerId, crewId } = req.query as Record<string, string>;
+  const { status, assigneeId, startDate, endDate, customerId, crewId, routeTemplateId } = req.query as Record<string, string>;
 
   let where = eq(jobsTable.tenantId, tenantId) as ReturnType<typeof eq>;
   if (status) where = and(where, eq(jobsTable.status, status)) as typeof where;
   if (assigneeId) where = and(where, eq(jobsTable.assigneeId, parseInt(assigneeId, 10))) as typeof where;
   if (crewId) where = and(where, eq(jobsTable.crewId, parseInt(crewId, 10))) as typeof where;
   if (customerId) where = and(where, eq(jobsTable.customerId, parseInt(customerId, 10))) as typeof where;
+  if (routeTemplateId) where = and(where, eq(jobsTable.routeTemplateId, parseInt(routeTemplateId, 10))) as typeof where;
   if (startDate) where = and(where, sql`${jobsTable.scheduledAt} >= ${startDate}::timestamptz`) as typeof where;
   if (endDate) where = and(where, sql`${jobsTable.scheduledAt} <= ${endDate}::timestamptz`) as typeof where;
 

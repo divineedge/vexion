@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, invoicesTable, customersTable, jobsTable, activityLogTable, tenantsTable, integrationSyncLogsTable } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { db, invoicesTable, customersTable, jobsTable, activityLogTable, tenantsTable, integrationSyncLogsTable, customerPlansTable, stopServiceFlagsTable } from "@workspace/db";
+import { eq, and, sql, inArray, ne } from "drizzle-orm";
 import crypto from "crypto";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
@@ -8,6 +8,7 @@ import { decryptSecretConfig } from "../lib/secretsCrypto";
 import { sendLobLetter, type LobConfig } from "../lib/lobProvider";
 import { sendReviewRequest } from "../lib/reviewService";
 import { enqueueInvoiceEmail } from "../lib/billingScheduler";
+import { sendEmail } from "../lib/emailProvider";
 import { logger } from "../lib/logger";
 import {
   importUpload,
@@ -320,6 +321,142 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
       if (customer) {
         sendReviewRequest({ tenant, customer, jobId: updated.jobId, invoiceId: updated.id })
           .catch(err => logger.error({ err, invoiceId: updated.id }, "Failed to send review request on invoice paid"));
+      }
+    }
+
+    // Auto-resume a paused plan when its overdue invoice is paid.
+    // Only trigger when this invoice has an active (pending or approved) stop-service flag,
+    // which is the authoritative record that THIS invoice caused the plan to pause.
+    if (updated.planId) {
+      try {
+        const [plan] = await db
+          .select()
+          .from(customerPlansTable)
+          .where(and(eq(customerPlansTable.id, updated.planId), eq(customerPlansTable.tenantId, tenantId)));
+
+        if (plan && plan.status === "paused") {
+          // Check for an active stop-service flag tied to this invoice. If none exists,
+          // this payment is not the one that triggered the pause — do not resume.
+          const activeFlags = await db
+            .select({ id: stopServiceFlagsTable.id })
+            .from(stopServiceFlagsTable)
+            .where(
+              and(
+                eq(stopServiceFlagsTable.tenantId, tenantId),
+                eq(stopServiceFlagsTable.invoiceId, id),
+                inArray(stopServiceFlagsTable.status, ["pending", "approved"]),
+              ),
+            );
+
+          if (activeFlags.length > 0) {
+            // Dismiss all active stop-service flags for this invoice.
+            await db
+              .update(stopServiceFlagsTable)
+              .set({ status: "dismissed", resolvedBy: userId, resolvedAt: new Date() })
+              .where(
+                and(
+                  eq(stopServiceFlagsTable.tenantId, tenantId),
+                  eq(stopServiceFlagsTable.invoiceId, id),
+                  inArray(stopServiceFlagsTable.status, ["pending", "approved"]),
+                ),
+              );
+
+            // Check whether other invoices on this plan still have unresolved stop-service flags.
+            // If any remain, the overdue condition is not fully cleared — keep the plan paused.
+            const otherPlanInvoices = await db
+              .select({ id: invoicesTable.id })
+              .from(invoicesTable)
+              .where(
+                and(
+                  eq(invoicesTable.tenantId, tenantId),
+                  eq(invoicesTable.planId, updated.planId!),
+                  ne(invoicesTable.id, id),
+                ),
+              );
+
+            const remainingFlags =
+              otherPlanInvoices.length > 0
+                ? await db
+                    .select({ id: stopServiceFlagsTable.id })
+                    .from(stopServiceFlagsTable)
+                    .where(
+                      and(
+                        eq(stopServiceFlagsTable.tenantId, tenantId),
+                        inArray(
+                          stopServiceFlagsTable.invoiceId,
+                          otherPlanInvoices.map((inv) => inv.id),
+                        ),
+                        inArray(stopServiceFlagsTable.status, ["pending", "approved"]),
+                      ),
+                    )
+                : [];
+
+            if (remainingFlags.length === 0) {
+              // No other overdue invoices are blocking the plan — safe to resume.
+              await db
+                .update(customerPlansTable)
+                .set({ status: "active" })
+                .where(eq(customerPlansTable.id, plan.id));
+
+              // Activity log entry for the auto-resume.
+              await db.insert(activityLogTable).values({
+                tenantId,
+                userId,
+                type: "plan_resumed",
+                message: `Plan "${plan.templateName}" auto-resumed after invoice ${updated.invoiceNumber} was marked paid`,
+                entityId: plan.id,
+              });
+
+              // Notify the customer by email.
+              try {
+                const [customer] = await db
+                  .select({ email: customersTable.email, name: customersTable.name })
+                  .from(customersTable)
+                  .where(and(eq(customersTable.id, updated.customerId), eq(customersTable.tenantId, tenantId)));
+
+                const [planTenant] = await db
+                  .select({
+                    emailProvider: tenantsTable.emailProvider,
+                    emailProviderConfig: tenantsTable.emailProviderConfig,
+                    businessEmail: tenantsTable.businessEmail,
+                    name: tenantsTable.name,
+                  })
+                  .from(tenantsTable)
+                  .where(eq(tenantsTable.id, tenantId));
+
+                if (customer?.email) {
+                  const providerConfig = {
+                    provider: (planTenant?.emailProvider as "smtp" | "sendgrid" | "mailgun" | "resend" | null) ?? null,
+                    config: (planTenant?.emailProviderConfig as Record<string, string>) ?? {},
+                    fromAddress:
+                      planTenant?.businessEmail ??
+                      (planTenant?.emailProviderConfig as Record<string, string>)?.["fromAddress"] ??
+                      null,
+                  };
+                  const subject = `Your "${plan.templateName}" plan has been resumed`;
+                  const body = [
+                    `Hi ${customer.name},`,
+                    "",
+                    `Great news! We received your payment and your "${plan.templateName}" service plan has been resumed. Your upcoming visits will continue as scheduled.`,
+                    "",
+                    "If you have any questions, please don't hesitate to contact us.",
+                    "",
+                    "Thank you,",
+                    planTenant?.name ?? "Your Service Provider",
+                  ].join("\n");
+
+                  await sendEmail(providerConfig, customer.email, subject, body).catch((err) =>
+                    logger.warn({ err, planId: plan.id }, "Plan auto-resume notification email failed"),
+                  );
+                }
+              } catch (err) {
+                logger.warn({ err, planId: plan.id }, "Plan auto-resume: failed to send customer notification email");
+              }
+            }
+          }
+        }
+      } catch (err) {
+        logger.warn({ err, invoiceId: id }, "Invoice paid: plan auto-resume failed");
       }
     }
   }

@@ -268,7 +268,7 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
           <ExpenseForm
             editing={editingExpense}
             vendors={vendors}
-            onSubmit={async (values, receiptFile) => {
+            onSubmit={async (values, receiptFile, removeReceipt) => {
               let receiptObjectPath: string | undefined;
 
               // Upload the receipt first so we have the objectPath ready for the expense record
@@ -321,6 +321,11 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
                     'Expense saved, but the receipt may not be viewable. Try re-opening the expense and re-attaching the receipt.',
                   );
                 }
+              }
+
+              // Remove receipt if staff clicked the trash button and no new file was chosen
+              if (removeReceipt && !receiptFile && editingExpense) {
+                await customFetch(`/api/expenses/${saved.id}/receipt`, { method: 'DELETE' });
               }
 
               invalidateExpenses();
@@ -379,6 +384,7 @@ function ExpenseForm({ editing, vendors, onSubmit }: {
   onSubmit: (
     values: { vendorId?: number; date: string; amount: number; category: string; description?: string },
     receiptFile: File | null,
+    removeReceipt: boolean,
   ) => Promise<void>;
 }) {
   const [vendorId, setVendorId] = useState<string>(editing?.vendorId ? String(editing.vendorId) : '');
@@ -387,10 +393,11 @@ function ExpenseForm({ editing, vendors, onSubmit }: {
   const [category, setCategory] = useState(editing?.category ?? 'other');
   const [description, setDescription] = useState(editing?.description ?? '');
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptRemoved, setReceiptRemoved] = useState(false);
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const existingReceiptUrl = editing?.receiptUrl ?? null;
+  const existingReceiptUrl = receiptRemoved ? null : (editing?.receiptUrl ?? null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -415,6 +422,7 @@ function ExpenseForm({ editing, vendors, onSubmit }: {
           description: description.trim() || undefined,
         },
         receiptFile,
+        receiptRemoved,
       );
     } finally {
       setSaving(false);
@@ -483,6 +491,15 @@ function ExpenseForm({ editing, vendors, onSubmit }: {
               onClick={() => openReceipt(existingReceiptUrl)}
             >
               <ExternalLink className="w-3.5 h-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 shrink-0 text-destructive hover:text-destructive"
+              title="Remove receipt"
+              onClick={() => setReceiptRemoved(true)}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
             </Button>
           </div>
         ) : null}

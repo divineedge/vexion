@@ -2517,15 +2517,33 @@ export default function BlueprintCanvasPage() {
                     const statusLabel =
                       q.status === 'approved' ? 'Approved' :
                       q.status === 'declined' ? 'Declined' : 'Pending';
+                    const zoneLabels = (q.selectedZoneLabels ?? []) as string[];
+                    const handleOpenQuote = () => {
+                      const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+                      window.open(`${window.location.origin}${base}/quote/${q.token}`, '_blank');
+                    };
                     return (
-                      <div key={q.id} className="rounded-md border p-2.5 text-xs space-y-1 bg-muted/20">
+                      <div
+                        key={q.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={handleOpenQuote}
+                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') handleOpenQuote(); }}
+                        className="rounded-md border p-2.5 text-xs space-y-1 bg-muted/20 cursor-pointer hover:bg-muted/40 transition-colors"
+                      >
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-muted-foreground font-mono">Quote #{q.id}</span>
-                          <Badge variant={statusVariant} className="text-[10px] px-1.5 py-0">
+                          <span className="font-medium truncate">{q.serviceName}</span>
+                          <Badge variant={statusVariant} className="text-[10px] px-1.5 py-0 shrink-0">
                             {statusLabel}
                           </Badge>
                         </div>
-                        <p className="font-semibold text-sm">${q.calculatedPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                        {zoneLabels.length > 0 && (
+                          <p className="text-muted-foreground truncate">{zoneLabels.join(', ')}</p>
+                        )}
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="font-semibold text-sm">${q.calculatedPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                          <span className="text-muted-foreground font-mono text-[10px]">#{q.id}</span>
+                        </div>
                         {q.expiresAt && (
                           <p className="text-muted-foreground">
                             Expires {format(new Date(q.expiresAt), 'MMM d, yyyy')}

@@ -2070,6 +2070,9 @@ export interface BlueprintLinkedQuote {
   calculatedPrice: number;
   /** @nullable */
   expiresAt?: string | null;
+  token: string;
+  serviceName: string;
+  selectedZoneLabels: string[];
 }
 
 export interface Blueprint {

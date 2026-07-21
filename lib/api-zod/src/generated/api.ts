@@ -2985,7 +2985,10 @@ export const ListBlueprintsResponseItem = zod.object({
   "id": zod.number(),
   "status": zod.enum(['pending', 'approved', 'declined']),
   "calculatedPrice": zod.number(),
-  "expiresAt": zod.string().nullish()
+  "expiresAt": zod.string().nullish(),
+  "token": zod.string(),
+  "serviceName": zod.string(),
+  "selectedZoneLabels": zod.array(zod.string())
 })).optional().describe('Instant quotes generated from this blueprint. Only included on GET \/blueprints\/{id}.'),
   "createdAt": zod.string()
 })
@@ -3054,7 +3057,10 @@ export const CreateBlueprintResponse = zod.object({
   "id": zod.number(),
   "status": zod.enum(['pending', 'approved', 'declined']),
   "calculatedPrice": zod.number(),
-  "expiresAt": zod.string().nullish()
+  "expiresAt": zod.string().nullish(),
+  "token": zod.string(),
+  "serviceName": zod.string(),
+  "selectedZoneLabels": zod.array(zod.string())
 })).optional().describe('Instant quotes generated from this blueprint. Only included on GET \/blueprints\/{id}.'),
   "createdAt": zod.string()
 })
@@ -3112,7 +3118,10 @@ export const GetBlueprintResponse = zod.object({
   "id": zod.number(),
   "status": zod.enum(['pending', 'approved', 'declined']),
   "calculatedPrice": zod.number(),
-  "expiresAt": zod.string().nullish()
+  "expiresAt": zod.string().nullish(),
+  "token": zod.string(),
+  "serviceName": zod.string(),
+  "selectedZoneLabels": zod.array(zod.string())
 })).optional().describe('Instant quotes generated from this blueprint. Only included on GET \/blueprints\/{id}.'),
   "createdAt": zod.string()
 })
@@ -3182,7 +3191,10 @@ export const UpdateBlueprintResponse = zod.object({
   "id": zod.number(),
   "status": zod.enum(['pending', 'approved', 'declined']),
   "calculatedPrice": zod.number(),
-  "expiresAt": zod.string().nullish()
+  "expiresAt": zod.string().nullish(),
+  "token": zod.string(),
+  "serviceName": zod.string(),
+  "selectedZoneLabels": zod.array(zod.string())
 })).optional().describe('Instant quotes generated from this blueprint. Only included on GET \/blueprints\/{id}.'),
   "createdAt": zod.string()
 })
@@ -3280,7 +3292,10 @@ export const GenerateBlueprintFromAiResponse = zod.object({
   "id": zod.number(),
   "status": zod.enum(['pending', 'approved', 'declined']),
   "calculatedPrice": zod.number(),
-  "expiresAt": zod.string().nullish()
+  "expiresAt": zod.string().nullish(),
+  "token": zod.string(),
+  "serviceName": zod.string(),
+  "selectedZoneLabels": zod.array(zod.string())
 })).optional().describe('Instant quotes generated from this blueprint. Only included on GET \/blueprints\/{id}.'),
   "createdAt": zod.string()
 })
@@ -3360,7 +3375,10 @@ export const GenerateBlueprintAiZonesResponse = zod.object({
   "id": zod.number(),
   "status": zod.enum(['pending', 'approved', 'declined']),
   "calculatedPrice": zod.number(),
-  "expiresAt": zod.string().nullish()
+  "expiresAt": zod.string().nullish(),
+  "token": zod.string(),
+  "serviceName": zod.string(),
+  "selectedZoneLabels": zod.array(zod.string())
 })).optional().describe('Instant quotes generated from this blueprint. Only included on GET \/blueprints\/{id}.'),
   "createdAt": zod.string()
 })
@@ -3414,7 +3432,10 @@ export const ListBlueprintTemplatesResponseItem = zod.object({
   "id": zod.number(),
   "status": zod.enum(['pending', 'approved', 'declined']),
   "calculatedPrice": zod.number(),
-  "expiresAt": zod.string().nullish()
+  "expiresAt": zod.string().nullish(),
+  "token": zod.string(),
+  "serviceName": zod.string(),
+  "selectedZoneLabels": zod.array(zod.string())
 })).optional().describe('Instant quotes generated from this blueprint. Only included on GET \/blueprints\/{id}.'),
   "createdAt": zod.string()
 })
@@ -3478,7 +3499,10 @@ export const ApplyBlueprintTemplateResponse = zod.object({
   "id": zod.number(),
   "status": zod.enum(['pending', 'approved', 'declined']),
   "calculatedPrice": zod.number(),
-  "expiresAt": zod.string().nullish()
+  "expiresAt": zod.string().nullish(),
+  "token": zod.string(),
+  "serviceName": zod.string(),
+  "selectedZoneLabels": zod.array(zod.string())
 })).optional().describe('Instant quotes generated from this blueprint. Only included on GET \/blueprints\/{id}.'),
   "createdAt": zod.string()
 })

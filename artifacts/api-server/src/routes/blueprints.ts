@@ -290,6 +290,9 @@ router.get("/blueprints/:id", async (req, res): Promise<void> => {
       status: quotesTable.status,
       calculatedPrice: quotesTable.calculatedPrice,
       expiresAt: quotesTable.expiresAt,
+      token: quotesTable.token,
+      serviceName: quotesTable.serviceName,
+      selectedZoneLabels: quotesTable.selectedZoneLabels,
     }).from(quotesTable).where(and(eq(quotesTable.blueprintId, id), eq(quotesTable.tenantId, tenantId))),
   ]);
   if (!bp) { res.status(404).json({ error: "Not found" }); return; }
@@ -299,6 +302,9 @@ router.get("/blueprints/:id", async (req, res): Promise<void> => {
     status: q.status,
     calculatedPrice: q.calculatedPrice,
     expiresAt: q.expiresAt ? q.expiresAt.toISOString() : null,
+    token: q.token,
+    serviceName: q.serviceName,
+    selectedZoneLabels: (q.selectedZoneLabels as string[] | null) ?? [],
   }));
 
   res.json({

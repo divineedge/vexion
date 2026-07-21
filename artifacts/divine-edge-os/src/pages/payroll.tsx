@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Separator } from '@/components/ui/separator';
-import { DollarSign, ChevronDown, ChevronRight, Package, Wrench, Users, TrendingUp, Info, ClipboardList } from 'lucide-react';
+import { DollarSign, ChevronDown, ChevronRight, Package, Wrench, Users, TrendingUp, Info, ClipboardList, Clock, Download } from 'lucide-react';
 
 /* ─── Types ─────────────────────────────────────────────────────────────────── */
 
@@ -64,6 +64,12 @@ interface DailyTaskUserSummary {
   runCount: number;
 }
 
+interface ClockInUserSummary {
+  userId: number;
+  userName: string | null;
+  totalMinutes: number;
+}
+
 /* ─── Helpers ────────────────────────────────────────────────────────────────── */
 
 function fmt(n: number) {
@@ -77,6 +83,37 @@ function fmtMinutes(minutes: number) {
   if (h === 0) return `${m}m`;
   if (m === 0) return `${h}h`;
   return `${h}h ${m}m`;
+}
+
+function minutesToDecimalHours(minutes: number): string {
+  return (minutes / 60).toFixed(2);
+}
+
+function exportTimesheetCsv(rows: TimesheetRow[], period: string) {
+  const headers = ['Employee', 'Clock-In Hours', 'Task Hours', 'Total Hours'];
+  const lines = [
+    headers.join(','),
+    ...rows.map(r => [
+      JSON.stringify(r.name),
+      minutesToDecimalHours(r.clockInMinutes),
+      minutesToDecimalHours(r.taskMinutes),
+      minutesToDecimalHours(r.clockInMinutes + r.taskMinutes),
+    ].join(',')),
+  ];
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `timesheet-${period}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+interface TimesheetRow {
+  userId: number;
+  name: string;
+  clockInMinutes: number;
+  taskMinutes: number;
 }
 
 /** Convert the period selector value to dateFrom / dateTo query params. */
@@ -172,6 +209,125 @@ function JobRow({ job, highlightUserId }: { job: JobBreakdown; highlightUserId?:
   );
 }
 
+/* ─── Timesheet Section ──────────────────────────────────────────────────────── */
+function TimesheetSection({
+  clockInSummary,
+  taskHoursSummary,
+  period,
+  dateFrom,
+  dateTo,
+}: {
+  clockInSummary: ClockInUserSummary[];
+  taskHoursSummary: DailyTaskUserSummary[];
+  period: string;
+  dateFrom: string;
+  dateTo: string;
+}) {
+  // Build a unified set of user ids from both sources
+  const userIds = new Set([
+    ...clockInSummary.map(r => r.userId),
+    ...taskHoursSummary.map(r => r.userId),
+  ]);
+
+  const clockInMap = new Map(clockInSummary.map(r => [r.userId, r]));
+  const taskMap = new Map(taskHoursSummary.map(r => [r.userId, r]));
+
+  const rows: TimesheetRow[] = Array.from(userIds).map(uid => {
+    const ci = clockInMap.get(uid);
+    const tk = taskMap.get(uid);
+    return {
+      userId: uid,
+      name: ci?.userName ?? tk?.userName ?? `User ${uid}`,
+      clockInMinutes: ci?.totalMinutes ?? 0,
+      taskMinutes: tk?.totalMinutes ?? 0,
+    };
+  }).sort((a, b) => a.name.localeCompare(b.name));
+
+  const totalClockIn = rows.reduce((s, r) => s + r.clockInMinutes, 0);
+  const totalTask = rows.reduce((s, r) => s + r.taskMinutes, 0);
+  const totalCombined = totalClockIn + totalTask;
+
+  if (rows.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3 flex-row items-start justify-between gap-4">
+        <div>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Clock className="w-4 h-4 text-muted-foreground" />
+            Timesheet Summary
+          </CardTitle>
+          <CardDescription>
+            Clock-in hours + daily task hours per employee for {dateFrom} to {dateTo}.
+            Export as CSV for payroll processing.
+          </CardDescription>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="shrink-0 gap-1.5"
+          onClick={() => exportTimesheetCsv(rows, period)}
+        >
+          <Download className="w-3.5 h-3.5" />
+          Export CSV
+        </Button>
+      </CardHeader>
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Employee</TableHead>
+              <TableHead className="text-right">
+                <span className="flex items-center justify-end gap-1">
+                  <Clock className="w-3.5 h-3.5" /> Clock-In Hours
+                </span>
+              </TableHead>
+              <TableHead className="text-right">
+                <span className="flex items-center justify-end gap-1">
+                  <ClipboardList className="w-3.5 h-3.5" /> Task Hours
+                </span>
+              </TableHead>
+              <TableHead className="text-right font-semibold">Total Hours</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map(r => {
+              const total = r.clockInMinutes + r.taskMinutes;
+              return (
+                <TableRow key={r.userId}>
+                  <TableCell className="font-medium">{r.name}</TableCell>
+                  <TableCell className="text-right text-sm">
+                    {r.clockInMinutes > 0
+                      ? <span className="text-foreground">{fmtMinutes(r.clockInMinutes)}<span className="text-muted-foreground ml-1 text-xs">({minutesToDecimalHours(r.clockInMinutes)}h)</span></span>
+                      : <span className="text-muted-foreground">—</span>}
+                  </TableCell>
+                  <TableCell className="text-right text-sm">
+                    {r.taskMinutes > 0
+                      ? <span className="text-blue-700">{fmtMinutes(r.taskMinutes)}<span className="text-muted-foreground ml-1 text-xs">({minutesToDecimalHours(r.taskMinutes)}h)</span></span>
+                      : <span className="text-muted-foreground">—</span>}
+                  </TableCell>
+                  <TableCell className="text-right font-semibold">
+                    {fmtMinutes(total)}
+                    <span className="text-muted-foreground ml-1 text-xs font-normal">({minutesToDecimalHours(total)}h)</span>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+          <tfoot>
+            <tr className="border-t-2 bg-muted/30">
+              <td className="px-4 py-3 text-sm font-semibold">{rows.length} employee{rows.length !== 1 ? 's' : ''}</td>
+              <td className="px-4 py-3 text-right text-sm font-semibold">{fmtMinutes(totalClockIn)}</td>
+              <td className="px-4 py-3 text-right text-sm font-semibold text-blue-700">{fmtMinutes(totalTask)}</td>
+              <td className="px-4 py-3 text-right text-sm font-bold">{fmtMinutes(totalCombined)}</td>
+            </tr>
+          </tfoot>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
 /* ─── Page ───────────────────────────────────────────────────────────────────── */
 export default function PayrollPage() {
   const { isTechnician, user, isOwner, canManageOffice } = useAuth();
@@ -216,6 +372,17 @@ export default function PayrollPage() {
         `/api/time-tracking/daily-task-hours/summary?dateFrom=${dateFrom}&dateTo=${dateTo}`,
       ),
     enabled: isTechnician,
+    retry: false,
+  });
+
+  // Admin: clock-in hours per employee for the same period
+  const { data: clockInSummary } = useQuery<ClockInUserSummary[]>({
+    queryKey: ['clock-in-hours-summary', period],
+    queryFn: () =>
+      customFetch<ClockInUserSummary[]>(
+        `/api/time-tracking/clock-in-hours/summary?dateFrom=${dateFrom}&dateTo=${dateTo}`,
+      ),
+    enabled: !isTechnician,
     retry: false,
   });
 
@@ -447,6 +614,17 @@ export default function PayrollPage() {
             </Table>
           </CardContent>
         </Card>
+      )}
+
+      {/* Timesheet section — admin only, all-employee view */}
+      {!isTechnician && !selectedTechId && (
+        <TimesheetSection
+          clockInSummary={clockInSummary ?? []}
+          taskHoursSummary={taskHoursSummary ?? []}
+          period={period}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+        />
       )}
 
       {/* Per-job breakdown table */}

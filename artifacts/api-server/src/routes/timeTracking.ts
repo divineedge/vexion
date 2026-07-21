@@ -260,4 +260,58 @@ router.get("/time-tracking/daily-task-hours/summary", async (req, res): Promise<
   })));
 });
 
+/**
+ * GET /time-tracking/clock-in-hours/summary
+ * Returns per-user clock-in (master-clock) hour totals for a date range.
+ * Admin-only endpoint.
+ */
+router.get("/time-tracking/clock-in-hours/summary", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const callerId = getUserId(req);
+  const role = await getCallerRole(tenantId, callerId);
+  if (!ADMIN_ROLES.has(role)) {
+    res.status(403).json({ error: "Admin or office role required" });
+    return;
+  }
+
+  const { dateFrom, dateTo } = req.query as Record<string, string | undefined>;
+
+  const conditions = [
+    eq(timeEntriesTable.tenantId, tenantId),
+    eq(timeEntriesTable.isMasterClock, true),
+    sql`clocked_out_at IS NOT NULL`,
+  ];
+  if (dateFrom) {
+    const from = new Date(dateFrom);
+    from.setHours(0, 0, 0, 0);
+    conditions.push(gte(timeEntriesTable.clockedInAt, from));
+  }
+  if (dateTo) {
+    const to = new Date(`${dateTo}T23:59:59.999Z`);
+    conditions.push(lte(timeEntriesTable.clockedInAt, to));
+  }
+
+  const rows = await db
+    .select({
+      userId: timeEntriesTable.userId,
+      totalMinutes: sql<number>`COALESCE(sum(total_minutes),0)::int`,
+    })
+    .from(timeEntriesTable)
+    .where(and(...conditions))
+    .groupBy(timeEntriesTable.userId);
+
+  const userIds = rows.map(r => r.userId);
+  const users = userIds.length
+    ? await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable)
+        .where(eq(usersTable.tenantId, tenantId))
+    : [];
+  const userMap = new Map(users.map(u => [u.id, u.name]));
+
+  res.json(rows.map(r => ({
+    userId: r.userId,
+    userName: userMap.get(r.userId) ?? null,
+    totalMinutes: r.totalMinutes,
+  })));
+});
+
 export default router;

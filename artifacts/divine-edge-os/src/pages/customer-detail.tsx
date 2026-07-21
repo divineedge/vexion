@@ -11,6 +11,7 @@ import {
   useListCustomerMessages, getListCustomerMessagesQueryKey,
   useSendMessage,
   useResumeCustomerService,
+  useCreateEstimate,
 } from '@workspace/api-client-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
@@ -146,6 +147,21 @@ export default function CustomerDetailPage() {
 
   const updateCustomer = useUpdateCustomer();
   const resumeService = useResumeCustomerService();
+  const createEstimate = useCreateEstimate();
+
+  const handleNewEstimate = () => {
+    createEstimate.mutate(
+      { data: { customerId: id } },
+      {
+        onSuccess: (e) => {
+          toast.success('Draft estimate created');
+          qc.invalidateQueries({ queryKey: getListEstimatesQueryKey({ customerId: id }) });
+          setLocation(`/estimates?highlight=${e.id}`);
+        },
+        onError: () => toast.error('Failed to create estimate'),
+      },
+    );
+  };
   const activeFields = getActiveCustomerFields(settings as TenantSettings | undefined);
   const { data: portalLink } = useGetCustomerPortalLink(id, {
     query: { enabled: !!id, queryKey: getGetCustomerPortalLinkQueryKey(id) },
@@ -581,6 +597,15 @@ export default function CustomerDetailPage() {
                   <CardContent className="py-16 text-center text-muted-foreground">
                     <Calendar className="w-10 h-10 mx-auto mb-3 opacity-30" />
                     <p>No activity recorded for this customer yet.</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-3 gap-2"
+                      disabled={createEstimate.isPending}
+                      onClick={handleNewEstimate}
+                    >
+                      <Plus className="w-4 h-4" /> New Estimate
+                    </Button>
                   </CardContent>
                 </Card>
               );
@@ -588,9 +613,20 @@ export default function CustomerDetailPage() {
 
             return (
               <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Customer Timeline</CardTitle>
-                  <CardDescription>All jobs, estimates, and visits in chronological order.</CardDescription>
+                <CardHeader className="flex flex-row items-center justify-between pb-3">
+                  <div>
+                    <CardTitle className="text-base">Customer Timeline</CardTitle>
+                    <CardDescription>All jobs, estimates, and visits in chronological order.</CardDescription>
+                  </div>
+                  <Button
+                    size="sm"
+                    className="gap-2"
+                    disabled={createEstimate.isPending}
+                    onClick={handleNewEstimate}
+                  >
+                    <Plus className="w-4 h-4" />
+                    {createEstimate.isPending ? 'Creating...' : 'New Estimate'}
+                  </Button>
                 </CardHeader>
                 <CardContent className="p-0">
                   <div className="relative">

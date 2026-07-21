@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -32,7 +32,7 @@ import {
   Plus, FileText, DollarSign, TrendingUp, Send, Briefcase, Trash2,
   ChevronRight, Eye, Clock, User, MapPin, CheckCircle2, XCircle, Phone, Mail, Globe, Building2,
 } from 'lucide-react';
-import { Link } from 'wouter';
+import { Link, useSearch } from 'wouter';
 const STATUS_COLORS: Record<string, string> = {
   draft:    'bg-gray-100 text-gray-700 border-gray-200',
   sent:     'bg-blue-100 text-blue-700 border-blue-200',
@@ -72,10 +72,21 @@ function calcItem(item: LineItem) {
 export default function EstimatesPage() {
   const { canManageOffice } = useAuth();
   const qc = useQueryClient();
+  const search = useSearch();
 
   const [statusFilter, setStatusFilter] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+
+  // Auto-select an estimate when navigated here with ?highlight=<id>
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    const highlight = params.get('highlight');
+    if (highlight) {
+      const numId = parseInt(highlight, 10);
+      if (!Number.isNaN(numId)) setSelectedId(numId);
+    }
+  }, [search]);
   const [deleteDialogId, setDeleteDialogId] = useState<number | null>(null);
 
   // Form state for create

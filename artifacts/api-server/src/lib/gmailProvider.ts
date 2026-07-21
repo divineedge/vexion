@@ -117,45 +117,48 @@ async function refreshAccessToken(refreshToken: string): Promise<{ accessToken?:
   }
 }
 
-/** Minimal RFC 2822 message builder. Sends multipart/alternative when htmlBody is provided. */
-function buildRawMessage(from: string, to: string, subject: string, body: string, displayName?: string, htmlBody?: string): string {
+/** Minimal RFC 2822 message builder — supports optional HTML via multipart/alternative. */
+function buildRawMessage(from: string, to: string, subject: string, body: string, displayName?: string, html?: string): string {
   // Format as "Display Name <address>" when a friendly name is provided.
   // RFC 5321: if the display name contains special characters or spaces, wrap it in quotes.
   const fromHeader = displayName
     ? `"${displayName.replace(/"/g, '\\"')}" <${from}>`
     : from;
 
-  let contentHeaders: string;
-  let content: string;
-
-  if (htmlBody) {
-    const boundary = `=_boundary_${Date.now()}`;
-    contentHeaders = `MIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary="${boundary}"`;
-    content = [
+  let contentPart: string;
+  if (html) {
+    const boundary = `boundary_${Date.now().toString(36)}`;
+    contentPart = [
+      `Content-Type: multipart/alternative; boundary="${boundary}"`,
+      "",
       `--${boundary}`,
       "Content-Type: text/plain; charset=utf-8",
-      "Content-Transfer-Encoding: quoted-printable",
+      "Content-Transfer-Encoding: 8bit",
       "",
       body,
+      "",
       `--${boundary}`,
       "Content-Type: text/html; charset=utf-8",
-      "Content-Transfer-Encoding: quoted-printable",
+      "Content-Transfer-Encoding: 8bit",
       "",
-      htmlBody,
+      html,
+      "",
       `--${boundary}--`,
     ].join("\r\n");
   } else {
-    contentHeaders = "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8";
-    content = body;
+    contentPart = [
+      "Content-Type: text/plain; charset=utf-8",
+      "",
+      body,
+    ].join("\r\n");
   }
 
   const message = [
     `From: ${fromHeader}`,
     `To: ${to}`,
     `Subject: ${subject}`,
-    contentHeaders,
-    "",
-    content,
+    "MIME-Version: 1.0",
+    contentPart,
   ].join("\r\n");
   return Buffer.from(message, "utf8").toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
@@ -167,7 +170,7 @@ export async function sendViaGmail(
   subject: string,
   body: string,
   displayName?: string,
-  htmlBody?: string,
+  html?: string,
 ): Promise<SendEmailResult> {
   if (!refreshToken) return { success: false, error: "Gmail is not connected — connect a Google account in Settings" };
 
@@ -179,7 +182,7 @@ export async function sendViaGmail(
     // unless the address is a verified send-as alias, so we always pass the connected account's
     // own address rather than any tenant-configured "from" override.
     // The display name (e.g. "Mike's Lawn Care") is accepted by Gmail and shown to recipients.
-    const raw = buildRawMessage(fromEmail, to, subject, body, displayName, htmlBody);
+    const raw = buildRawMessage(fromEmail, to, subject, body, displayName, html);
     const res = await fetch(GMAIL_SEND_URL, {
       method: "POST",
       headers: {

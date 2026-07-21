@@ -534,13 +534,122 @@ router.post("/estimates/:id/send", async (req, res): Promise<void> => {
           companyName,
         ].filter(l => l !== null).join("\n");
 
+        // ── HTML email ─────────────────────────────────────────────────────────
+        const accentColor = "#2d6a4f";
+        const logoHtml = tenant.logoUrl
+          ? `<img src="${tenant.logoUrl}" alt="${companyName}" style="max-height:60px;max-width:200px;display:block;margin:0 auto 12px;">`
+          : "";
+
+        const buildItemRow = (item: EstimateLineItem, badge?: string) => {
+          const lineTotal = item.qty * item.unitPrice * (1 + item.markup / 100) * (1 - item.discount / 100);
+          const badgeHtml = badge
+            ? ` <span style="font-size:11px;color:#6b7280;background:#f3f4f6;border-radius:4px;padding:1px 6px;">${badge}</span>`
+            : "";
+          return `
+            <tr>
+              <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#374151;">
+                ${item.description}${badgeHtml}
+                ${item.optionalPitchLine ? `<div style="font-size:12px;color:#6b7280;margin-top:3px;">${item.optionalPitchLine}</div>` : ""}
+              </td>
+              <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#374151;text-align:center;white-space:nowrap;">${item.qty !== 1 ? `×${item.qty}` : "—"}</td>
+              <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#374151;text-align:right;white-space:nowrap;">${formatMoney(lineTotal)}</td>
+            </tr>`;
+        };
+
+        const requiredRows = requiredItems.map(i => buildItemRow(i)).join("");
+        const optionalRows = optionalItems.map(i => buildItemRow(i, "optional add-on")).join("");
+        const optionalSection = optionalItems.length > 0 ? `
+          <tr>
+            <td colspan="3" style="padding:14px 12px 6px;font-weight:600;color:#4b5563;font-size:13px;text-transform:uppercase;letter-spacing:0.05em;">Optional Add-Ons</td>
+          </tr>
+          ${optionalRows}` : "";
+
+        const propertyRow = property?.address
+          ? `<p style="margin:0 0 16px;color:#6b7280;font-size:14px;">📍 ${property.address}</p>`
+          : "";
+
+        const expiryHtml = updated.expiresAt
+          ? `<p style="margin:16px 0 0;font-size:13px;color:#9ca3af;">This estimate expires on ${updated.expiresAt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}.</p>`
+          : "";
+
+        const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="100%" style="max-width:560px;background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+
+        <!-- Header -->
+        <tr>
+          <td style="background:${accentColor};padding:32px 24px;text-align:center;">
+            ${logoHtml}
+            <p style="margin:0;font-size:20px;font-weight:700;color:#ffffff;">${companyName}</p>
+            <p style="margin:6px 0 0;font-size:14px;color:rgba(255,255,255,0.8);">Estimate for Services</p>
+          </td>
+        </tr>
+
+        <!-- Body -->
+        <tr>
+          <td style="padding:28px 28px 0;">
+            <p style="margin:0 0 8px;font-size:16px;color:#111827;">Hi ${firstName},</p>
+            <p style="margin:0 0 20px;color:#4b5563;font-size:15px;">${companyName} has prepared an estimate for you. Please review the details below and click the button to approve.</p>
+            ${propertyRow}
+          </td>
+        </tr>
+
+        <!-- Line items -->
+        <tr>
+          <td style="padding:0 28px;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;font-size:14px;">
+              <thead>
+                <tr style="background:#f3f4f6;">
+                  <th style="padding:10px 12px;text-align:left;font-weight:600;color:#374151;">Service</th>
+                  <th style="padding:10px 12px;text-align:center;font-weight:600;color:#374151;">Qty</th>
+                  <th style="padding:10px 12px;text-align:right;font-weight:600;color:#374151;">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${requiredRows}
+                ${optionalSection}
+                <tr style="background:#f9fafb;">
+                  <td colspan="2" style="padding:12px;font-weight:700;color:#111827;font-size:15px;">Total</td>
+                  <td style="padding:12px;font-weight:700;color:${accentColor};font-size:16px;text-align:right;">${formatMoney(updated.total ?? 0)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </td>
+        </tr>
+
+        <!-- CTA -->
+        <tr>
+          <td style="padding:28px;text-align:center;">
+            <a href="${approvalUrl}" style="display:inline-block;background:${accentColor};color:#ffffff;font-size:16px;font-weight:600;text-decoration:none;padding:14px 36px;border-radius:8px;">Approve Estimate</a>
+            ${expiryHtml}
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="padding:20px 28px;border-top:1px solid #e5e7eb;text-align:center;font-size:13px;color:#9ca3af;">
+            If you have any questions, simply reply to this email.<br>
+            &mdash; ${companyName}
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
         const emailProviderConfig: EmailProviderConfig = {
           provider: (tenant.emailProvider as "smtp" | "sendgrid" | "mailgun" | "resend" | "gmail" | null) ?? null,
           config: (tenant.emailProviderConfig as Record<string, string>) ?? {},
           fromAddress: tenant.businessEmail ?? (tenant.emailProviderConfig as Record<string, string>)?.["fromAddress"] ?? null,
         };
 
-        const result = await sendEmail(emailProviderConfig, customer.email, subject, body);
+        const result = await sendEmail(emailProviderConfig, customer.email, subject, body, html);
         emailSent = result.success;
         emailError = result.error;
 

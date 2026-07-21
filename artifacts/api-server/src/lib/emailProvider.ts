@@ -28,11 +28,11 @@ async function sendViaSendGrid(
   to: string,
   subject: string,
   body: string,
-  htmlBody?: string,
+  html?: string,
 ): Promise<SendEmailResult> {
   try {
-    const content: { type: string; value: string }[] = [{ type: "text/plain", value: body }];
-    if (htmlBody) content.push({ type: "text/html", value: htmlBody });
+    const content: Array<{ type: string; value: string }> = [{ type: "text/plain", value: body }];
+    if (html) content.push({ type: "text/html", value: html });
     const resp = await fetch("https://api.sendgrid.com/v3/mail/send", {
       method: "POST",
       headers: {
@@ -63,7 +63,7 @@ async function sendViaResend(
   to: string,
   subject: string,
   body: string,
-  htmlBody?: string,
+  html?: string,
 ): Promise<SendEmailResult> {
   try {
     const resp = await fetch("https://api.resend.com/emails", {
@@ -72,7 +72,7 @@ async function sendViaResend(
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ from, to, subject, text: body, ...(htmlBody ? { html: htmlBody } : {}) }),
+      body: JSON.stringify({ from, to, subject, text: body, ...(html ? { html } : {}) }),
     });
     if (!resp.ok) {
       const err = await resp.text();
@@ -92,12 +92,12 @@ async function sendViaMailgun(
   to: string,
   subject: string,
   body: string,
-  htmlBody?: string,
+  html?: string,
 ): Promise<SendEmailResult> {
   try {
     const auth = Buffer.from(`api:${apiKey}`).toString("base64");
     const params: Record<string, string> = { from, to, subject, text: body };
-    if (htmlBody) params["html"] = htmlBody;
+    if (html) params["html"] = html;
     const resp = await fetch(`https://api.mailgun.net/v3/${domain}/messages`, {
       method: "POST",
       headers: {
@@ -122,7 +122,7 @@ export async function sendEmail(
   to: string,
   subject: string,
   body: string,
-  htmlBody?: string,
+  html?: string,
 ): Promise<SendEmailResult> {
   const { provider, config, fromAddress } = providerConfig;
   const from = fromAddress ?? config["fromAddress"] ?? "noreply@example.com";
@@ -135,20 +135,20 @@ export async function sendEmail(
   if (provider === "sendgrid") {
     const apiKey = config["apiKey"] ?? "";
     if (!apiKey) return { success: false, error: "SendGrid API key not configured" };
-    return sendViaSendGrid(apiKey, from, to, subject, body, htmlBody);
+    return sendViaSendGrid(apiKey, from, to, subject, body, html);
   }
 
   if (provider === "resend") {
     const apiKey = config["apiKey"] ?? "";
     if (!apiKey) return { success: false, error: "Resend API key not configured" };
-    return sendViaResend(apiKey, from, to, subject, body, htmlBody);
+    return sendViaResend(apiKey, from, to, subject, body, html);
   }
 
   if (provider === "mailgun") {
     const apiKey = config["apiKey"] ?? "";
     const domain = config["domain"] ?? "";
     if (!apiKey || !domain) return { success: false, error: "Mailgun API key and domain required" };
-    return sendViaMailgun(apiKey, domain, from, to, subject, body, htmlBody);
+    return sendViaMailgun(apiKey, domain, from, to, subject, body, html);
   }
 
   if (provider === "gmail") {
@@ -156,7 +156,7 @@ export async function sendEmail(
     const gmailEmail = config["gmailEmail"] ?? "";
     const gmailSenderName = config["gmailSenderName"] ?? "";
     if (!refreshToken || !gmailEmail) return { success: false, error: "Gmail is not connected — connect a Google account in Settings" };
-    return sendViaGmail(refreshToken, gmailEmail, to, subject, body, gmailSenderName || undefined, htmlBody);
+    return sendViaGmail(refreshToken, gmailEmail, to, subject, body, gmailSenderName || undefined, html);
   }
 
   if (provider === "smtp") {
@@ -184,7 +184,7 @@ export async function sendEmail(
         to,
         subject,
         text: body,
-        ...(htmlBody ? { html: htmlBody } : {}),
+        ...(html ? { html } : {}),
       });
 
       return { success: true, externalId: info.messageId };

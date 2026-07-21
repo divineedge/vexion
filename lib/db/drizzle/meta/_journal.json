@@ -127,6 +127,13 @@
       "when": 1753056012000,
       "tag": "0017_add_treated_zone_name_to_chemical_applications",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1753056013000,
+      "tag": "0018_add_stripe_fields_to_customers",
+      "breakpoints": true
     }
   ]
 }

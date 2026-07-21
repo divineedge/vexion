@@ -282,6 +282,146 @@ describe("GET /reports/job-profitability", () => {
     expect(job.laborCost).toBe(0);      // max(0, 100-200) = 0
     expect(job.netProfit).toBe(-100);   // 100 - 200 - 0 - 0
   });
+
+  /**
+   * Helper: collect the scalar parameter values embedded in the drizzle SQL
+   * object passed to db.execute (the first call = the main jobs query).
+   * Drizzle's sql`` template stores interpolated values as Param chunks whose
+   * `.value` property holds the runtime value.
+   */
+  function extractSqlParams(executeMock: ReturnType<typeof vi.fn>, callIndex = 0): unknown[] {
+    const sqlArg = executeMock.mock.calls[callIndex]?.[0];
+    // Recursively collect all scalar (non-object) values from drizzle queryChunks.
+    // Conditional sql`` fragments produce nested SQL objects whose params live in
+    // their own queryChunks — we must recurse into those too.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    function collect(chunks: any[]): unknown[] {
+      const result: unknown[] = [];
+      for (const c of chunks) {
+        if (c === null || c === undefined) continue;
+        if (typeof c !== "object") {
+          // Raw primitive — this is an interpolated bound value
+          result.push(c);
+        } else if (Array.isArray(c.queryChunks)) {
+          // Nested SQL object (e.g. from a conditional sql`` fragment)
+          result.push(...collect(c.queryChunks));
+        }
+        // Objects with a `value` array are string fragments — skip them
+      }
+      return result;
+    }
+    if (!sqlArg || typeof sqlArg !== "object" || !Array.isArray(sqlArg.queryChunks)) return [];
+    return collect(sqlArg.queryChunks);
+  }
+
+  it("filters by crewId — only the matching job appears in the response and the filter value is in the SQL", async () => {
+    mockTenantP4p(30);
+    const targetCrewId = 7;
+
+    // DB returns only the job that matches crewId=7 (simulating the WHERE clause)
+    (db.execute as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      rows([
+        {
+          id: 10, title: "Crew 7 Job", completed_at: "2024-03-20T10:00:00Z",
+          crew_id: targetCrewId, assignee_id: null, property_id: null,
+          total_amount: "300.00", parts_cost: "50.00",
+          blueprint_p4p_pct: null,
+          invoice_total: "300.00",
+          crew_name: "Crew Seven", assignee_name: null,
+          property_address: null, customer_name: "Carol",
+        },
+      ]),
+    );
+    (db.execute as ReturnType<typeof vi.fn>).mockResolvedValueOnce(rows([{ total: 0 }]));
+
+    const resp = await request(app)
+      .get(`/reports/job-profitability?startDate=2024-03-01&endDate=2024-03-31&crewId=${targetCrewId}`)
+      .set(tenantHeaders());
+
+    expect(resp.status).toBe(200);
+
+    // Only one row in the response — the crew-filtered job
+    expect(resp.body.rows).toHaveLength(1);
+    expect(resp.body.rows[0].jobId).toBe(10);
+    expect(resp.body.rows[0].crewName).toBe("Crew Seven");
+
+    // The SQL sent to the DB must include the crewId value as a bound parameter
+    const executeMock = db.execute as ReturnType<typeof vi.fn>;
+    const params = extractSqlParams(executeMock, 0);
+    expect(params).toContain(targetCrewId);
+  });
+
+  it("filters by assigneeId — only the matching job appears in the response and the filter value is in the SQL", async () => {
+    mockTenantP4p(30);
+    const targetAssigneeId = 42;
+
+    (db.execute as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      rows([
+        {
+          id: 20, title: "Assignee 42 Job", completed_at: "2024-03-21T10:00:00Z",
+          crew_id: null, assignee_id: targetAssigneeId, property_id: null,
+          total_amount: "400.00", parts_cost: "80.00",
+          blueprint_p4p_pct: null,
+          invoice_total: "400.00",
+          crew_name: null, assignee_name: "Dave",
+          property_address: null, customer_name: "Eve",
+        },
+      ]),
+    );
+    (db.execute as ReturnType<typeof vi.fn>).mockResolvedValueOnce(rows([{ total: 0 }]));
+
+    const resp = await request(app)
+      .get(`/reports/job-profitability?startDate=2024-03-01&endDate=2024-03-31&assigneeId=${targetAssigneeId}`)
+      .set(tenantHeaders());
+
+    expect(resp.status).toBe(200);
+
+    // Only the assignee-filtered job is present
+    expect(resp.body.rows).toHaveLength(1);
+    expect(resp.body.rows[0].jobId).toBe(20);
+    expect(resp.body.rows[0].assigneeName).toBe("Dave");
+
+    // The SQL must carry the assigneeId as a bound parameter
+    const executeMock = db.execute as ReturnType<typeof vi.fn>;
+    const params = extractSqlParams(executeMock, 0);
+    expect(params).toContain(targetAssigneeId);
+  });
+
+  it("filters by propertyId — only the matching job appears in the response and the filter value is in the SQL", async () => {
+    mockTenantP4p(30);
+    const targetPropertyId = 99;
+
+    (db.execute as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      rows([
+        {
+          id: 30, title: "Property 99 Job", completed_at: "2024-03-22T10:00:00Z",
+          crew_id: null, assignee_id: null, property_id: targetPropertyId,
+          total_amount: "250.00", parts_cost: "25.00",
+          blueprint_p4p_pct: null,
+          invoice_total: "250.00",
+          crew_name: null, assignee_name: null,
+          property_address: "99 Oak Ave", customer_name: "Frank",
+        },
+      ]),
+    );
+    (db.execute as ReturnType<typeof vi.fn>).mockResolvedValueOnce(rows([{ total: 0 }]));
+
+    const resp = await request(app)
+      .get(`/reports/job-profitability?startDate=2024-03-01&endDate=2024-03-31&propertyId=${targetPropertyId}`)
+      .set(tenantHeaders());
+
+    expect(resp.status).toBe(200);
+
+    // Only the property-filtered job is present
+    expect(resp.body.rows).toHaveLength(1);
+    expect(resp.body.rows[0].jobId).toBe(30);
+    expect(resp.body.rows[0].propertyAddress).toBe("99 Oak Ave");
+
+    // The SQL must carry the propertyId as a bound parameter
+    const executeMock = db.execute as ReturnType<typeof vi.fn>;
+    const params = extractSqlParams(executeMock, 0);
+    expect(params).toContain(targetPropertyId);
+  });
 });
 
 // ── Report B: Employee Revenue ────────────────────────────────────────────────

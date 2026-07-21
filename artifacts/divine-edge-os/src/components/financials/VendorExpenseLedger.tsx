@@ -306,15 +306,21 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
 
               // Register the receipt as a media attachment so /storage/read-url can verify ownership
               if (receiptFile && receiptObjectPath) {
-                await customFetch(`/api/expenses/${saved.id}/receipt`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    fileKey: receiptObjectPath,
-                    mimeType: receiptFile.type,
-                    sizeBytes: receiptFile.size,
-                  }),
-                });
+                try {
+                  await customFetch(`/api/expenses/${saved.id}/receipt`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      fileKey: receiptObjectPath,
+                      mimeType: receiptFile.type,
+                      sizeBytes: receiptFile.size,
+                    }),
+                  });
+                } catch {
+                  toast.warning(
+                    'Expense saved, but the receipt may not be viewable. Try re-opening the expense and re-attaching the receipt.',
+                  );
+                }
               }
 
               invalidateExpenses();

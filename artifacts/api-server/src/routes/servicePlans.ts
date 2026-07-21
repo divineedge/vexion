@@ -12,6 +12,8 @@ import {
   type ClusterCandidate, type PlanVisitCandidate,
 } from "../lib/planSchedulingEngine";
 import { enqueueInvoiceEmail } from "../lib/billingScheduler";
+import { sendEmail } from "../lib/emailProvider";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -434,6 +436,13 @@ router.patch("/customer-plans/:id", async (req, res): Promise<void> => {
   // Cancelling a plan cancels all future scheduled visits; pausing leaves existing
   // visits on the calendar but stops the job-generation worker from adding new ones.
   if (status === "cancelled") {
+    // Capture scheduled visits before cancelling them so we can include them in the customer email.
+    const scheduledVisits = await db
+      .select({ title: jobsTable.title, scheduledAt: jobsTable.scheduledAt })
+      .from(jobsTable)
+      .where(and(eq(jobsTable.tenantId, tenantId), eq(jobsTable.planId, id), eq(jobsTable.status, "scheduled")))
+      .orderBy(jobsTable.scheduledAt);
+
     // Cancel all scheduled plan visits (direct planId links)
     await db.update(jobsTable)
       .set({ status: "cancelled", cancelReason: "Plan cancelled" })
@@ -460,6 +469,58 @@ router.patch("/customer-plans/:id", async (req, res): Promise<void> => {
           inArray(jobsTable.recurrenceParentId, rootIds),
           eq(jobsTable.status, "scheduled"),
         ));
+    }
+
+    // Notify the customer by email.
+    try {
+      const [customer] = await db
+        .select({ email: customersTable.email, name: customersTable.name })
+        .from(customersTable)
+        .where(and(eq(customersTable.id, current.customerId), eq(customersTable.tenantId, tenantId)));
+
+      const [tenant] = await db
+        .select({
+          emailProvider: tenantsTable.emailProvider,
+          emailProviderConfig: tenantsTable.emailProviderConfig,
+          businessEmail: tenantsTable.businessEmail,
+          name: tenantsTable.name,
+        })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, tenantId));
+
+      if (customer?.email) {
+        const providerConfig = {
+          provider: (tenant?.emailProvider as "smtp" | "sendgrid" | "mailgun" | "resend" | null) ?? null,
+          config: (tenant?.emailProviderConfig as Record<string, string>) ?? {},
+          fromAddress: tenant?.businessEmail ?? (tenant?.emailProviderConfig as Record<string, string>)?.["fromAddress"] ?? null,
+        };
+
+        const visitLines = scheduledVisits.length > 0
+          ? scheduledVisits.map(v => `  • ${v.title} — ${v.scheduledAt.toISOString().slice(0, 10)}`).join("\n")
+          : "  (no upcoming visits were scheduled)";
+
+        const subject = `Your "${current.templateName}" plan has been cancelled`;
+        const body = [
+          `Hi ${customer.name},`,
+          "",
+          `We're writing to let you know that your "${current.templateName}" service plan has been cancelled.`,
+          "",
+          scheduledVisits.length > 0
+            ? `The following upcoming visit${scheduledVisits.length > 1 ? "s have" : " has"} also been cancelled:`
+            : "There were no upcoming visits to cancel.",
+          ...(scheduledVisits.length > 0 ? [visitLines] : []),
+          "",
+          "If you have any questions or believe this was done in error, please contact us.",
+          "",
+          `Thank you,`,
+          tenant?.name ?? "Your Service Provider",
+        ].join("\n");
+
+        await sendEmail(providerConfig, customer.email, subject, body)
+          .catch(err => logger.warn({ err, planId: id }, "Plan cancellation notification email failed"));
+      }
+    } catch (err) {
+      logger.warn({ err, planId: id }, "Plan cancellation: failed to send customer notification email");
     }
   }
 

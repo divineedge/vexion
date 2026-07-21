@@ -304,11 +304,13 @@ router.get("/jobs/series", async (req, res): Promise<void> => {
       customerName: customersTable.name,
       assigneeName: usersTable.name,
       crewName: crewsTable.name,
+      planName: customerPlansTable.templateName,
     })
     .from(jobsTable)
     .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
     .leftJoin(usersTable, eq(jobsTable.assigneeId, usersTable.id))
     .leftJoin(crewsTable, eq(jobsTable.crewId, crewsTable.id))
+    .leftJoin(customerPlansTable, eq(jobsTable.planId, customerPlansTable.id))
     .where(
       and(
         eq(jobsTable.tenantId, tenantId),
@@ -376,6 +378,8 @@ router.get("/jobs/series", async (req, res): Promise<void> => {
       customerName: r.customerName ?? null,
       assigneeName: r.assigneeName ?? null,
       crewName: r.crewName ?? null,
+      planId: r.job.planId ?? null,
+      planName: r.planName ?? null,
     };
   });
 
@@ -438,11 +442,40 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const { title, description, status, priority, assigneeId, crewId, scheduledAt, estimatedDuration, recurrenceRule, editScope, smsReminderEnabled, holdFromBilling } = req.body;
+  const { title, description, status, priority, assigneeId, crewId, scheduledAt, estimatedDuration, recurrenceRule, editScope, smsReminderEnabled, holdFromBilling, planId } = req.body;
 
   // Fetch current job to check if it's a recurring instance
   const [currentJob] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
   if (!currentJob) { res.status(404).json({ error: "Not found" }); return; }
+
+  // Validate planId if provided: must exist in tenant and belong to the same customer as the job
+  let resolvedPlanId: number | null | undefined = undefined; // undefined = not changing
+  if (planId !== undefined) {
+    if (planId === null || planId === "" || planId === 0) {
+      resolvedPlanId = null;
+    } else {
+      const numPlanId = parseInt(planId, 10);
+      if (isNaN(numPlanId)) {
+        res.status(400).json({ error: "planId must be a valid integer" });
+        return;
+      }
+      const [plan] = await db
+        .select({ id: customerPlansTable.id, customerId: customerPlansTable.customerId })
+        .from(customerPlansTable)
+        .where(and(eq(customerPlansTable.id, numPlanId), eq(customerPlansTable.tenantId, tenantId)));
+      if (!plan) {
+        res.status(400).json({ error: "Service plan not found" });
+        return;
+      }
+      // If the series/job has a customer, the plan must belong to the same customer
+      const jobCustomerId = currentJob.customerId;
+      if (jobCustomerId != null && plan.customerId !== jobCustomerId) {
+        res.status(400).json({ error: "Service plan does not belong to the same customer as this job" });
+        return;
+      }
+      resolvedPlanId = numPlanId;
+    }
+  }
 
   const baseUpdate: Partial<typeof jobsTable.$inferInsert> = {
     ...(title !== undefined && { title }),
@@ -455,6 +488,7 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
     ...(estimatedDuration !== undefined && { estimatedDuration }),
     ...(smsReminderEnabled !== undefined && { smsReminderEnabled: smsReminderEnabled === true || smsReminderEnabled === "true" }),
     ...(holdFromBilling !== undefined && { holdFromBilling: holdFromBilling === true || holdFromBilling === "true" }),
+    ...(resolvedPlanId !== undefined && { planId: resolvedPlanId }),
   };
 
   // Handle "forward" or "all" scope: update the root series template
@@ -512,6 +546,21 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
     .returning();
 
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+
+  // When planId is changed on a series root, propagate to all existing scheduled children
+  // so the series is consistently linked — future generated instances already inherit via recurrenceScheduler.
+  if (resolvedPlanId !== undefined && !currentJob.recurrenceParentId && currentJob.recurrenceRule) {
+    await db.update(jobsTable)
+      .set({ planId: resolvedPlanId })
+      .where(
+        and(
+          eq(jobsTable.recurrenceParentId, id),
+          eq(jobsTable.tenantId, tenantId),
+          eq(jobsTable.status, "scheduled"),
+        )
+      );
+  }
+
   res.json(formatJob(updated));
 
   // If this is a portal-submitted job and the status changed, notify the customer

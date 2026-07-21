@@ -33,6 +33,7 @@ import {
   useListRouteTemplates, getListRouteTemplatesQueryKey,
   useUpdateJobRoute,
   useListProperties, getListPropertiesQueryKey,
+  useListCustomerPlans, getListCustomerPlansQueryKey,
 } from '@workspace/api-client-react';
 import MediaGallery from '@/components/media/MediaGallery';
 import { JobFormFields, EMPTY_JOB, buildRecurrenceRule, type NewJobForm } from '@/components/jobs/JobFormFields';
@@ -261,6 +262,14 @@ export default function SchedulePage() {
   const [pauseDialogRootId, setPauseDialogRootId] = useState<number | null>(null);
   const [pauseResumeAt, setPauseResumeAt] = useState('');
 
+  // Plan-link state
+  const [linkPlanSeriesId, setLinkPlanSeriesId] = useState<number | null>(null);
+  const [linkPlanValue, setLinkPlanValue] = useState<string>('');
+  const { data: allCustomerPlans } = useListCustomerPlans(
+    { status: 'active' },
+    { query: { enabled: view === 'series', queryKey: getListCustomerPlansQueryKey({ status: 'active' }) } },
+  );
+
   function confirmPause(rootId: number) {
     pauseSeries.mutate({ id: rootId, data: { paused: true, resumeAt: pauseResumeAt ? new Date(pauseResumeAt).toISOString() : null } }, {
       onSuccess: () => {
@@ -413,7 +422,10 @@ export default function SchedulePage() {
             </div>
           ) : (
             <div className="divide-y">
-              {recurringSeries.map(s => (
+              {recurringSeries.map(s => {
+                const sr = s as typeof s & { planId?: number | null; planName?: string | null };
+                const isLinking = linkPlanSeriesId === s.id;
+                return (
                 <div key={s.id} className="flex items-center gap-4 px-4 py-3 hover:bg-muted/30 transition-colors">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -422,6 +434,11 @@ export default function SchedulePage() {
                       <Badge variant="outline" className="text-xs gap-1 text-primary border-primary/30 bg-primary/5">
                         <RefreshCw className="w-2.5 h-2.5" />{s.recurrenceDescription}
                       </Badge>
+                      {sr.planName && (
+                        <Badge variant="outline" className="text-xs gap-1 text-violet-700 border-violet-300 bg-violet-50">
+                          <ClipboardList className="w-2.5 h-2.5" />{sr.planName}
+                        </Badge>
+                      )}
                     </div>
                     <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground flex-wrap">
                       {s.customerName && <span className="flex items-center gap-1"><User className="w-3 h-3" />{s.customerName}</span>}
@@ -429,8 +446,67 @@ export default function SchedulePage() {
                       <span>{s.completedCount} occurrences generated</span>
                       {s.nextScheduledAt && <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />Next: {format(new Date(s.nextScheduledAt), 'MMM d, yyyy')}</span>}
                     </div>
+                    {/* Plan-link picker (inline) */}
+                    {isLinking && (
+                      <div className="flex items-center gap-2 mt-2">
+                        <Select
+                          value={linkPlanValue}
+                          onValueChange={setLinkPlanValue}
+                        >
+                          <SelectTrigger className="h-7 text-xs w-64">
+                            <SelectValue placeholder="Select a service plan…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none" className="text-xs text-muted-foreground">— No plan (unlink) —</SelectItem>
+                            {(allCustomerPlans ?? []).map(p => (
+                              <SelectItem key={p.id} value={String(p.id)} className="text-xs">
+                                {p.templateName}{p.customerName ? ` · ${p.customerName}` : ''}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          size="sm" variant="default" className="h-7 text-xs"
+                          disabled={updateJob.isPending}
+                          onClick={() => {
+                            const newPlanId = linkPlanValue === 'none' || !linkPlanValue ? null : parseInt(linkPlanValue, 10);
+                            updateJob.mutate(
+                              { id: s.id, data: { planId: newPlanId } as Parameters<typeof updateJob.mutate>[0]['data'] },
+                              {
+                                onSuccess: () => {
+                                  toast.success(newPlanId ? 'Plan linked to series' : 'Plan unlinked from series');
+                                  qc.invalidateQueries({ queryKey: getListRecurringSeriesQueryKey() });
+                                  setLinkPlanSeriesId(null);
+                                  setLinkPlanValue('');
+                                },
+                                onError: () => toast.error('Failed to update plan link'),
+                              }
+                            );
+                          }}
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          size="sm" variant="ghost" className="h-7 text-xs"
+                          onClick={() => { setLinkPlanSeriesId(null); setLinkPlanValue(''); }}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      size="sm" variant="outline" className="h-7 text-xs gap-1"
+                      title={sr.planName ? `Linked to: ${sr.planName}` : 'Link to a service plan'}
+                      onClick={() => {
+                        setLinkPlanSeriesId(isLinking ? null : s.id);
+                        setLinkPlanValue(sr.planId ? String(sr.planId) : '');
+                      }}
+                    >
+                      <ClipboardList className="w-3 h-3" />
+                      {sr.planName ? 'Plan' : 'Link Plan'}
+                    </Button>
                     <Button
                       size="sm" variant="outline" className="h-7 text-xs gap-1"
                       disabled={skipNextOccurrence.isPending}
@@ -473,7 +549,8 @@ export default function SchedulePage() {
                     </Button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </Card>

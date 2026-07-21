@@ -59,6 +59,32 @@ export default function ChemicalsReportPage() {
     DANGER: 'bg-red-100 text-red-800 border-red-200',
   };
 
+  type BreakdownItem = {
+    productName?: string | null;
+    activeIngredients?: string | null;
+    epaRegNumber?: string | null;
+    amountApplied: number;
+    unit: string;
+    ratePerAcre?: number | null;
+    ratePer1000Sqft?: number | null;
+  };
+
+  // Determine if any application has a non-null rate so we can show/hide the rate column
+  const hasAnyRate = (applications ?? []).some(app =>
+    Array.isArray(app.breakdown) &&
+    (app.breakdown as BreakdownItem[]).some(b => b.ratePerAcre != null || b.ratePer1000Sqft != null)
+  );
+
+  // Pick the best rate summary for a single application (prefer per-acre if present)
+  const getSummaryRate = (breakdown: unknown[]): string | null => {
+    const items = breakdown as BreakdownItem[];
+    const withAcre = items.find(b => b.ratePerAcre != null);
+    if (withAcre) return `${withAcre.ratePerAcre!.toFixed(3)}/ac`;
+    const with1k = items.find(b => b.ratePer1000Sqft != null);
+    if (with1k) return `${with1k.ratePer1000Sqft!.toFixed(3)}/ksqft`;
+    return null;
+  };
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto animate-in fade-in duration-500">
       <div className="flex items-start justify-between gap-4">
@@ -145,7 +171,7 @@ export default function ChemicalsReportPage() {
                     <div className="shrink-0 text-muted-foreground">
                       {expandedId === app.id ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                     </div>
-                    <div className="flex-1 min-w-0 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div className={`flex-1 min-w-0 grid gap-4 text-sm ${hasAnyRate ? 'grid-cols-2 md:grid-cols-6' : 'grid-cols-2 md:grid-cols-5'}`}>
                       <div>
                         <p className="font-medium">{app.mixtureName ?? app.productName ?? 'Unknown'}</p>
                         <p className="text-muted-foreground text-xs">{app.jobTitle ?? `Job #${app.jobId}`}</p>
@@ -154,6 +180,21 @@ export default function ChemicalsReportPage() {
                         <p className="text-muted-foreground text-xs uppercase tracking-wide">Volume</p>
                         <p className="font-medium">{app.volumeApplied} {app.volumeUnit}</p>
                       </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs uppercase tracking-wide">Treated Area</p>
+                        <p className="font-medium">
+                          {(() => {
+                            const a = app as unknown as { treatedArea?: number | null; areaUnit?: string | null };
+                            return a.treatedArea != null ? `${a.treatedArea} ${a.areaUnit ?? 'sqft'}` : '—';
+                          })()}
+                        </p>
+                      </div>
+                      {hasAnyRate && (
+                        <div>
+                          <p className="text-muted-foreground text-xs uppercase tracking-wide">Rate</p>
+                          <p className="font-medium">{Array.isArray(app.breakdown) ? (getSummaryRate(app.breakdown as unknown[]) ?? '—') : '—'}</p>
+                        </div>
+                      )}
                       <div>
                         <p className="text-muted-foreground text-xs uppercase tracking-wide">Applied</p>
                         <p className="font-medium">{format(new Date(app.appliedAt), 'MMM d, yyyy')}</p>
@@ -221,15 +262,7 @@ export default function ChemicalsReportPage() {
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
-                                {(app.breakdown as Array<{
-                                  productName?: string | null;
-                                  activeIngredients?: string | null;
-                                  epaRegNumber?: string | null;
-                                  amountApplied: number;
-                                  unit: string;
-                                  ratePerAcre?: number | null;
-                                  ratePer1000Sqft?: number | null;
-                                }>).map((b, i) => (
+                                {(app.breakdown as BreakdownItem[]).map((b, i) => (
                                   <TableRow key={i}>
                                     <TableCell className="font-medium">{b.productName ?? '—'}</TableCell>
                                     <TableCell className="text-sm">{b.activeIngredients ?? '—'}</TableCell>

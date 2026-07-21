@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,9 @@ import {
   Alert,
   RefreshControl,
   Platform,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,6 +21,7 @@ import {
   useListRecurringSeries,
   useSkipNextOccurrence,
   useListJobs,
+  usePauseRecurringSeries,
 } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
@@ -39,6 +43,13 @@ function formatShortDate(iso: string): string {
   });
 }
 
+/** Return true if the string looks like a parseable date (YYYY-MM-DD or similar) */
+function isValidDateString(value: string): boolean {
+  if (!value.trim()) return false;
+  const d = new Date(value.trim());
+  return !isNaN(d.getTime());
+}
+
 type RawJob = {
   id: number;
   title: string;
@@ -54,6 +65,10 @@ export default function SeriesDetailScreen() {
   const { user } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
   const seriesId = Number(id);
+
+  const [pauseModalVisible, setPauseModalVisible] = useState(false);
+  const [resumeDateInput, setResumeDateInput] = useState('');
+  const [dateError, setDateError] = useState('');
 
   const {
     data: allSeries,
@@ -74,6 +89,7 @@ export default function SeriesDetailScreen() {
   );
 
   const skipOccurrence = useSkipNextOccurrence();
+  const pauseSeries = usePauseRecurringSeries();
 
   const series = allSeries?.find((s) => s.id === seriesId);
 
@@ -125,6 +141,72 @@ export default function SeriesDetailScreen() {
     );
   }, [seriesId, series, skipOccurrence, refetch]);
 
+  const openPauseModal = useCallback(async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setResumeDateInput('');
+    setDateError('');
+    setPauseModalVisible(true);
+  }, []);
+
+  const confirmPause = useCallback(() => {
+    const trimmed = resumeDateInput.trim();
+    if (trimmed && !isValidDateString(trimmed)) {
+      setDateError('Enter a valid date, e.g. 2025-03-01, or leave it blank.');
+      return;
+    }
+    setPauseModalVisible(false);
+    pauseSeries.mutate(
+      {
+        id: seriesId,
+        data: {
+          paused: true,
+          ...(trimmed ? { resumeAt: new Date(trimmed).toISOString() } : {}),
+        },
+      },
+      {
+        onSuccess: () => {
+          refetch();
+          Alert.alert(
+            'Series paused',
+            trimmed
+              ? `This series has been paused and will resume on ${formatDate(new Date(trimmed).toISOString())}.`
+              : 'This series has been paused. Resume it manually when ready.',
+          );
+        },
+        onError: () => {
+          Alert.alert('Error', 'Could not pause this series. Please try again.');
+        },
+      },
+    );
+  }, [seriesId, resumeDateInput, pauseSeries, refetch]);
+
+  const handleResume = useCallback(async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Alert.alert(
+      'Resume series?',
+      'Scheduling will restart from the next occurrence date.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Resume',
+          onPress: () =>
+            pauseSeries.mutate(
+              { id: seriesId, data: { paused: false } },
+              {
+                onSuccess: () => {
+                  refetch();
+                  Alert.alert('Series resumed', 'This series is now active again.');
+                },
+                onError: () => {
+                  Alert.alert('Error', 'Could not resume this series. Please try again.');
+                },
+              },
+            ),
+        },
+      ],
+    );
+  }, [seriesId, pauseSeries, refetch]);
+
   const bottomPad = insets.bottom + (Platform.OS === 'web' ? 34 : 0) + 80;
 
   if (isLoading) {
@@ -148,6 +230,7 @@ export default function SeriesDetailScreen() {
   }
 
   const isPaused = series.isRecurrencePaused;
+  const isMutating = skipOccurrence.isPending || pauseSeries.isPending;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -277,31 +360,133 @@ export default function SeriesDetailScreen() {
         ) : null}
       </ScrollView>
 
-      {/* Skip next occurrence FAB */}
-      {!isPaused && series.nextScheduledAt ? (
-        <View
-          style={[
-            styles.fabContainer,
-            { paddingBottom: insets.bottom + (Platform.OS === 'web' ? 34 : 0) + 16 },
-          ]}
-        >
+      {/* Action FABs */}
+      <View
+        style={[
+          styles.fabContainer,
+          { paddingBottom: insets.bottom + (Platform.OS === 'web' ? 34 : 0) + 16 },
+        ]}
+      >
+        {isPaused ? (
+          /* Resume button */
           <TouchableOpacity
-            style={[styles.skipFab, { backgroundColor: '#ef4444', opacity: skipOccurrence.isPending ? 0.6 : 1 }]}
-            onPress={handleSkip}
-            disabled={skipOccurrence.isPending}
+            style={[styles.resumeFab, { backgroundColor: '#16a34a', opacity: isMutating ? 0.6 : 1 }]}
+            onPress={handleResume}
+            disabled={isMutating}
             activeOpacity={0.85}
           >
-            {skipOccurrence.isPending ? (
+            {pauseSeries.isPending ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
               <>
-                <Ionicons name="close-circle-outline" size={20} color="#ffffff" />
-                <Text style={styles.skipFabText}>Skip Next Occurrence</Text>
+                <Ionicons name="play-circle-outline" size={20} color="#ffffff" />
+                <Text style={styles.fabText}>Resume Series</Text>
               </>
             )}
           </TouchableOpacity>
-        </View>
-      ) : null}
+        ) : (
+          /* Active series: skip + pause */
+          <View style={styles.fabRow}>
+            {series.nextScheduledAt ? (
+              <TouchableOpacity
+                style={[styles.skipFab, { opacity: isMutating ? 0.6 : 1 }]}
+                onPress={handleSkip}
+                disabled={isMutating}
+                activeOpacity={0.85}
+              >
+                {skipOccurrence.isPending ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="close-circle-outline" size={20} color="#ffffff" />
+                    <Text style={styles.fabText}>Skip Next</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity
+              style={[styles.pauseFab, { opacity: isMutating ? 0.6 : 1 }]}
+              onPress={openPauseModal}
+              disabled={isMutating}
+              activeOpacity={0.85}
+            >
+              {pauseSeries.isPending ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <Ionicons name="pause-circle-outline" size={20} color="#ffffff" />
+                  <Text style={styles.fabText}>Pause Series</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+
+      {/* Pause modal – resume date input */}
+      <Modal
+        visible={pauseModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPauseModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.modalHeader}>
+              <Ionicons name="pause-circle-outline" size={24} color="#f59e0b" />
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>Pause Series</Text>
+            </View>
+            <Text style={[styles.modalBody, { color: colors.mutedForeground }]}>
+              No new occurrences will be scheduled while this series is paused.
+              {'\n\n'}Optionally set a date when it should automatically resume (e.g. start of next season).
+            </Text>
+
+            <Text style={[styles.inputLabel, { color: colors.foreground }]}>Resume date (optional)</Text>
+            <TextInput
+              style={[
+                styles.dateInput,
+                {
+                  backgroundColor: colors.background,
+                  borderColor: dateError ? '#ef4444' : colors.border,
+                  color: colors.foreground,
+                },
+              ]}
+              placeholder="YYYY-MM-DD  or  Month DD, YYYY"
+              placeholderTextColor={colors.mutedForeground}
+              value={resumeDateInput}
+              onChangeText={(t) => {
+                setResumeDateInput(t);
+                if (dateError) setDateError('');
+              }}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="done"
+              onSubmitEditing={confirmPause}
+            />
+            {dateError ? (
+              <Text style={styles.inputError}>{dateError}</Text>
+            ) : null}
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { borderColor: colors.border }]}
+                onPress={() => setPauseModalVisible(false)}
+              >
+                <Text style={[styles.modalBtnText, { color: colors.foreground }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnPrimary]}
+                onPress={confirmPause}
+              >
+                <Text style={[styles.modalBtnText, { color: '#ffffff' }]}>Pause Series</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -489,22 +674,125 @@ const styles = StyleSheet.create({
     right: 0,
     paddingHorizontal: 20,
   },
+  fabRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
   skipFab: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     height: 52,
     borderRadius: 14,
     gap: 8,
+    backgroundColor: '#ef4444',
     shadowColor: '#ef4444',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 8,
     elevation: 6,
   },
-  skipFabText: {
+  pauseFab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 52,
+    borderRadius: 14,
+    gap: 8,
+    backgroundColor: '#f59e0b',
+    shadowColor: '#f59e0b',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  resumeFab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 52,
+    borderRadius: 14,
+    gap: 8,
+    shadowColor: '#16a34a',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  fabText: {
     fontFamily: 'Inter_600SemiBold',
-    fontSize: 16,
+    fontSize: 15,
     color: '#ffffff',
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    gap: 12,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  modalTitle: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 18,
+  },
+  modalBody: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  inputLabel: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
+    marginBottom: -4,
+  },
+  dateInput: {
+    height: 44,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+  },
+  inputError: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: '#ef4444',
+    marginTop: -4,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  modalBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBtnPrimary: {
+    backgroundColor: '#f59e0b',
+    borderColor: '#f59e0b',
+  },
+  modalBtnText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
   },
 });

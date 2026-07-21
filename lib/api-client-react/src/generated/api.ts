@@ -234,6 +234,9 @@ import type {
   RunRecurringTemplateNowInput,
   SalesTaxReport,
   SendBroadcastInput,
+  SendInvoiceReminder200,
+  SendInvoiceReminder400,
+  SendInvoiceReminder404,
   SendJobReminder200,
   SendMessageInput,
   SendReminderInput,
@@ -20517,6 +20520,77 @@ export const useIgnoreBankTransaction = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getIgnoreBankTransactionMutationOptions(options));
+    }
+
+export const getSendInvoiceReminderUrl = (id: number,) => {
+
+
+
+
+  return `/api/invoices/${id}/send-reminder`
+}
+
+/**
+ * @summary Send a payment reminder for a specific invoice immediately (on-demand)
+ */
+export const sendInvoiceReminder = async (id: number, options?: RequestInit): Promise<SendInvoiceReminder200> => {
+
+  return customFetch<SendInvoiceReminder200>(getSendInvoiceReminderUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getSendInvoiceReminderMutationOptions = <TError = ErrorType<SendInvoiceReminder400 | SendInvoiceReminder404>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendInvoiceReminder>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendInvoiceReminder>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['sendInvoiceReminder'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendInvoiceReminder>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  sendInvoiceReminder(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendInvoiceReminderMutationResult = NonNullable<Awaited<ReturnType<typeof sendInvoiceReminder>>>
+
+    export type SendInvoiceReminderMutationError = ErrorType<SendInvoiceReminder400 | SendInvoiceReminder404>
+
+    /**
+ * @summary Send a payment reminder for a specific invoice immediately (on-demand)
+ */
+export const useSendInvoiceReminder = <TError = ErrorType<SendInvoiceReminder400 | SendInvoiceReminder404>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendInvoiceReminder>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendInvoiceReminder>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getSendInvoiceReminderMutationOptions(options));
     }
 
 export const getPrintMailInvoiceUrl = (id: number,) => {

@@ -155,6 +155,11 @@ export interface Invoice {
   lobStatus?: string | null;
   /** @nullable */
   publicToken?: string | null;
+  /**
+     * Offset days for which a payment reminder has already been sent
+     * @nullable
+     */
+  paymentRemindersSent?: number[] | null;
   createdAt: string;
 }
 
@@ -4807,6 +4812,20 @@ export type GetQuickBooksAuthorizeUrl200 = {
 
 export type ListBankTransactionsParams = {
 status?: string;
+};
+
+export type SendInvoiceReminder200 = {
+  ok: boolean;
+  delivered: boolean;
+  message?: string;
+};
+
+export type SendInvoiceReminder400 = {
+  error: string;
+};
+
+export type SendInvoiceReminder404 = {
+  error: string;
 };
 
 export type GetDevToolsEnvironment200 = {

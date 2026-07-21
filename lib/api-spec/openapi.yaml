@@ -5576,6 +5576,53 @@ paths:
               schema:
                 $ref: "#/components/schemas/BankTransaction"
 
+  /invoices/{id}/send-reminder:
+    post:
+      operationId: sendInvoiceReminder
+      tags: [invoices]
+      summary: Send a payment reminder for a specific invoice immediately (on-demand)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Reminder outcome
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, delivered]
+                properties:
+                  ok:
+                    type: boolean
+                  delivered:
+                    type: boolean
+                  message:
+                    type: string
+        "400":
+          description: Cannot send reminder
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+        "404":
+          description: Invoice not found
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
+
   /invoices/{id}/print-mail:
     post:
       operationId: printMailInvoice
@@ -8272,6 +8319,11 @@ components:
           type: ["string", "null"]
         publicToken:
           type: ["string", "null"]
+        paymentRemindersSent:
+          type: ["array", "null"]
+          items:
+            type: integer
+          description: "Offset days for which a payment reminder has already been sent"
         createdAt:
           type: string
 

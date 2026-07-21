@@ -2375,6 +2375,7 @@ export const ListInvoicesResponseItem = zod.object({
   "lobLetterId": zod.string().nullish(),
   "lobStatus": zod.string().nullish(),
   "publicToken": zod.string().nullish(),
+  "paymentRemindersSent": zod.array(zod.number()).nullish().describe('Offset days for which a payment reminder has already been sent'),
   "createdAt": zod.string()
 })
 export const ListInvoicesResponse = zod.array(ListInvoicesResponseItem)
@@ -2420,6 +2421,7 @@ export const CreateInvoiceResponse = zod.object({
   "lobLetterId": zod.string().nullish(),
   "lobStatus": zod.string().nullish(),
   "publicToken": zod.string().nullish(),
+  "paymentRemindersSent": zod.array(zod.number()).nullish().describe('Offset days for which a payment reminder has already been sent'),
   "createdAt": zod.string()
 })
 
@@ -2456,6 +2458,7 @@ export const GetInvoiceResponse = zod.object({
   "lobLetterId": zod.string().nullish(),
   "lobStatus": zod.string().nullish(),
   "publicToken": zod.string().nullish(),
+  "paymentRemindersSent": zod.array(zod.number()).nullish().describe('Offset days for which a payment reminder has already been sent'),
   "createdAt": zod.string()
 })
 
@@ -2498,6 +2501,7 @@ export const UpdateInvoiceResponse = zod.object({
   "lobLetterId": zod.string().nullish(),
   "lobStatus": zod.string().nullish(),
   "publicToken": zod.string().nullish(),
+  "paymentRemindersSent": zod.array(zod.number()).nullish().describe('Offset days for which a payment reminder has already been sent'),
   "createdAt": zod.string()
 })
 
@@ -2534,6 +2538,7 @@ export const CreateInvoiceFromJobResponse = zod.object({
   "lobLetterId": zod.string().nullish(),
   "lobStatus": zod.string().nullish(),
   "publicToken": zod.string().nullish(),
+  "paymentRemindersSent": zod.array(zod.number()).nullish().describe('Offset days for which a payment reminder has already been sent'),
   "createdAt": zod.string()
 })
 
@@ -6697,6 +6702,7 @@ export const GetPublicInvoiceResponse = zod.object({
   "lobLetterId": zod.string().nullish(),
   "lobStatus": zod.string().nullish(),
   "publicToken": zod.string().nullish(),
+  "paymentRemindersSent": zod.array(zod.number()).nullish().describe('Offset days for which a payment reminder has already been sent'),
   "createdAt": zod.string()
 }).and(zod.object({
   "businessProfile": zod.object({
@@ -8498,6 +8504,20 @@ export const IgnoreBankTransactionResponse = zod.object({
 
 
 /**
+ * @summary Send a payment reminder for a specific invoice immediately (on-demand)
+ */
+export const SendInvoiceReminderParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SendInvoiceReminderResponse = zod.object({
+  "ok": zod.boolean(),
+  "delivered": zod.boolean(),
+  "message": zod.string().optional()
+})
+
+
+/**
  * @summary Mail a physical copy of an invoice via Lob
  */
 export const PrintMailInvoiceParams = zod.object({
@@ -8529,6 +8549,7 @@ export const PrintMailInvoiceResponse = zod.object({
   "lobLetterId": zod.string().nullish(),
   "lobStatus": zod.string().nullish(),
   "publicToken": zod.string().nullish(),
+  "paymentRemindersSent": zod.array(zod.number()).nullish().describe('Offset days for which a payment reminder has already been sent'),
   "createdAt": zod.string()
 })
 

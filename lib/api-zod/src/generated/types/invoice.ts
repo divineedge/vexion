@@ -36,5 +36,10 @@ export interface Invoice {
   lobStatus?: string | null;
   /** @nullable */
   publicToken?: string | null;
+  /**
+     * Offset days for which a payment reminder has already been sent
+     * @nullable
+     */
+  paymentRemindersSent?: number[] | null;
   createdAt: string;
 }

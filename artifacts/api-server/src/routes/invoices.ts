@@ -10,6 +10,7 @@ import { sendReviewRequest } from "../lib/reviewService";
 import { enqueueInvoiceEmail } from "../lib/billingScheduler";
 import { sendEmail } from "../lib/emailProvider";
 import { logger } from "../lib/logger";
+import { sendPaymentReminder, type ReminderRule } from "../lib/paymentReminderScheduler";
 import {
   importUpload,
   handleExportRequest,
@@ -462,6 +463,78 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
   }
 
   res.json(formatInvoice(updated));
+});
+
+// POST /invoices/:id/send-reminder — on-demand payment reminder for one invoice
+router.post("/invoices/:id/send-reminder", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+
+  const [row] = await db
+    .select({ invoice: invoicesTable, customer: customersTable, tenant: tenantsTable })
+    .from(invoicesTable)
+    .leftJoin(customersTable, eq(invoicesTable.customerId, customersTable.id))
+    .leftJoin(tenantsTable, eq(invoicesTable.tenantId, tenantsTable.id))
+    .where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId)));
+
+  if (!row?.invoice) { res.status(404).json({ error: "Invoice not found" }); return; }
+  if (!row.customer) { res.status(400).json({ error: "Customer not found for this invoice" }); return; }
+  if (!row.tenant) { res.status(400).json({ error: "Tenant not found" }); return; }
+
+  if (row.invoice.status === "paid") {
+    res.status(400).json({ error: "Invoice is already paid — no reminder needed" });
+    return;
+  }
+
+  const schedule = (row.tenant.paymentReminderSchedule as ReminderRule[]) ?? [];
+  if (!row.tenant.paymentRemindersEnabled || schedule.length === 0) {
+    res.status(400).json({ error: "Payment reminders are not configured for this account" });
+    return;
+  }
+
+  const alreadySent = (row.invoice.paymentRemindersSent as number[] | null) ?? [];
+
+  // Find the next unsent rule (lowest offsetDays not yet sent), bypassing the date threshold
+  const nextRule = schedule
+    .filter(r => !alreadySent.includes(r.offsetDays))
+    .sort((a, b) => a.offsetDays - b.offsetDays)[0];
+
+  if (!nextRule) {
+    res.status(400).json({ error: "All configured reminders have already been sent for this invoice" });
+    return;
+  }
+
+  const legacyChannels = (row.tenant.paymentReminderChannels as string[]) ?? ["email"];
+  const channels = nextRule.channels && nextRule.channels.length > 0 ? nextRule.channels : legacyChannels;
+
+  const delivered = await sendPaymentReminder({
+    tenant: row.tenant,
+    customer: row.customer,
+    invoice: row.invoice,
+    rule: nextRule,
+    channels,
+  });
+
+  if (delivered) {
+    await db.execute(sql`
+      UPDATE invoices
+      SET payment_reminders_sent = COALESCE(payment_reminders_sent, '[]'::jsonb) || ${JSON.stringify([nextRule.offsetDays])}::jsonb
+      WHERE id = ${id}
+        AND NOT (COALESCE(payment_reminders_sent, '[]'::jsonb) @> ${JSON.stringify([nextRule.offsetDays])}::jsonb)
+    `);
+    logger.info({ tenantId, invoiceId: id, offsetDays: nextRule.offsetDays }, "On-demand payment reminder sent");
+  } else {
+    logger.warn({ tenantId, invoiceId: id, offsetDays: nextRule.offsetDays }, "On-demand payment reminder not delivered on any channel");
+  }
+
+  res.json({
+    ok: true,
+    delivered,
+    message: delivered
+      ? `Reminder sent via ${channels.join(" and ")} (${nextRule.label})`
+      : "Reminder could not be delivered — check your email/SMS provider settings",
+  });
 });
 
 // POST /invoices/:id/print-mail — send a physical copy of the invoice via Lob

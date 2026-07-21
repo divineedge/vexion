@@ -117,7 +117,8 @@ export async function processTenant(tenant: typeof tenantsTable.$inferSelect) {
   }
 }
 
-async function sendPaymentReminder(params: {
+/** @internal exported so the on-demand send-reminder route can reuse it */
+export async function sendPaymentReminder(params: {
   tenant: typeof tenantsTable.$inferSelect;
   customer: typeof customersTable.$inferSelect;
   invoice: typeof invoicesTable.$inferSelect;

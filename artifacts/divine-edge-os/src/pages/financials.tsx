@@ -15,6 +15,7 @@ import {
   useRetryBillingEmail,
   useListCustomers, getListCustomersQueryKey,
   usePrintMailInvoice,
+  useSendInvoiceReminder,
   useListStopServiceFlags, getListStopServiceFlagsQueryKey,
   useApproveStopServiceFlag,
   useDismissStopServiceFlag,
@@ -803,6 +804,20 @@ export default function FinancialsPage() {
     },
   });
 
+  const sendReminder = useSendInvoiceReminder({
+    mutation: {
+      onSuccess: (data) => {
+        if (data.delivered) {
+          toast.success(data.message ?? 'Reminder sent');
+        } else {
+          toast.warning(data.message ?? 'Reminder could not be delivered — check provider settings');
+        }
+        if (selectedInvoiceId) qc.invalidateQueries({ queryKey: getGetInvoiceQueryKey(selectedInvoiceId) });
+      },
+      onError: (err: any) => toast.error(err?.error ?? 'Failed to send reminder'),
+    },
+  });
+
   // Fetch job for parts breakdown when the invoice is linked to a job
   const jobId = selectedInvoice?.jobId ?? null;
   const { data: linkedJob } = useGetJob(jobId!, {
@@ -1495,6 +1510,46 @@ export default function FinancialsPage() {
                     {selectedInvoice.lobLetterId ? 'Mailed' : printMailInvoice.isPending ? 'Sending...' : 'Mail Invoice'}
                   </Button>
                 </div>
+
+                {/* Send Payment Reminder */}
+                {(() => {
+                  const schedule = (settings?.paymentReminderSchedule ?? []) as { offsetDays: number }[];
+                  const alreadySent = (selectedInvoice as any).paymentRemindersSent as number[] | null ?? [];
+                  const isPaid = selectedInvoice.status === 'paid';
+                  const noReminders = !settings?.paymentRemindersEnabled || schedule.length === 0;
+                  const allSent = !noReminders && schedule.length > 0 && schedule.every(r => alreadySent.includes(r.offsetDays));
+                  const disabledReason = isPaid
+                    ? 'Invoice is already paid'
+                    : noReminders
+                    ? 'Payment reminders are not configured for this account'
+                    : allSent
+                    ? 'All configured reminders have already been sent'
+                    : undefined;
+                  const isDisabled = !!disabledReason || sendReminder.isPending;
+                  return (
+                    <div className="flex items-center justify-between rounded-lg border p-3">
+                      <div>
+                        <p className="text-sm font-medium">Payment Reminder</p>
+                        <p className="text-xs text-muted-foreground">
+                          {allSent
+                            ? 'All reminders sent'
+                            : `Send next reminder now via ${settings?.paymentReminderChannels?.join(' & ') ?? 'email'}`}
+                        </p>
+                      </div>
+                      <span title={disabledReason}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={isDisabled}
+                          onClick={() => sendReminder.mutate({ id: selectedInvoice.id })}
+                        >
+                          <Mail className="w-3.5 h-3.5 mr-1" />
+                          {sendReminder.isPending ? 'Sending...' : 'Send Reminder'}
+                        </Button>
+                      </span>
+                    </div>
+                  );
+                })()}
 
                 <Separator />
 

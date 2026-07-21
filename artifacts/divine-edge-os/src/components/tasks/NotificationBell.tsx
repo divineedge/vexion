@@ -51,7 +51,7 @@ export function NotificationBell() {
           {notifications.map(n => (
             <Link
               key={n.id}
-              href={`/tasks?taskId=${n.taskId}`}
+              href={n.linkPath ?? (n.taskId != null ? `/tasks?taskId=${n.taskId}` : `/follow-up-queue`)}
               onClick={() => { setOpen(false); if (!n.isRead) markRead.mutate({ id: n.id }); }}
               className={`block px-3 py-2.5 text-sm hover:bg-muted/50 transition-colors ${!n.isRead ? 'bg-primary/5' : ''}`}
             >

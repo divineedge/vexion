@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
 import { createHmac, timingSafeEqual } from "crypto";
-import { db, communicationsLogTable, customersTable, tenantsTable, jobsTable, propertiesTable, followupQueueItemsTable, internalTasksTable } from "@workspace/db";
-import { eq, and, desc, or } from "drizzle-orm";
+import { db, communicationsLogTable, customersTable, tenantsTable, jobsTable, propertiesTable, followupQueueItemsTable, internalTasksTable, taskNotificationsTable, usersTable } from "@workspace/db";
+import { eq, and, desc, or, inArray } from "drizzle-orm";
+import { ADMIN_ROLES } from "../lib/roles";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { sendSms, type SmsProviderConfig } from "../lib/smsProvider";
 import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
@@ -368,6 +369,65 @@ router.post("/communications/webhook", async (req, res): Promise<void> => {
             : `Missed call from ${customer.name}`,
           status: "open",
         });
+      }
+
+      // Push an in-app notification to all active admin/office users for this tenant
+      const notifMessage = isVoicemail
+        ? customer
+          ? `${customer.name} left a voicemail`
+          : `Voicemail from ${callFrom || "unknown number"}`
+        : customer
+          ? `Missed call from ${customer.name}`
+          : `Missed call from ${callFrom || "unknown number"}`;
+
+      const linkPath = customer
+        ? `/communications?customerId=${customer.id}`
+        : `/follow-up-queue`;
+
+      const adminUsers = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(
+          and(
+            eq(usersTable.tenantId, tenant.id),
+            eq(usersTable.isActive, true),
+            inArray(usersTable.role, Array.from(ADMIN_ROLES)),
+          ),
+        );
+
+      if (adminUsers.length > 0) {
+        await db.insert(taskNotificationsTable).values(
+          adminUsers.map(u => ({
+            tenantId: tenant.id,
+            recipientUserId: u.id,
+            taskId: null,
+            type: triggerType, // 'missed_call' | 'voicemail'
+            message: notifMessage,
+            linkPath,
+            isRead: false,
+          })),
+        );
+      }
+
+      // Optional: email a configured "missed call alerts" address
+      const followupCfg = (tenant.followupTriggerConfig as { missedCall?: { enabled?: boolean; alertEmail?: string } } | null) ?? {};
+      const alertEmail = followupCfg.missedCall?.alertEmail;
+      if (alertEmail) {
+        const emailConfig = {
+          provider: (tenant.emailProvider as "smtp" | "sendgrid" | "mailgun" | "resend" | null) ?? null,
+          config: (tenant.emailProviderConfig as Record<string, string>) ?? {},
+          fromAddress: (tenant.emailProviderConfig as Record<string, string>)?.["fromAddress"] ?? null,
+        };
+        const subject = isVoicemail
+          ? `Voicemail received — ${customer?.name ?? callFrom}`
+          : `Missed call — ${customer?.name ?? callFrom}`;
+        const body = [
+          isVoicemail ? "A voicemail was received." : "A missed call was received.",
+          customer ? `Customer: ${customer.name}` : `From: ${callFrom}`,
+          `To: ${callTo}`,
+          customer ? `\nView the thread: https://app.divine-edge.com/communications?customerId=${customer.id}` : "",
+        ].filter(Boolean).join("\n");
+        await sendEmail(emailConfig, alertEmail, subject, body).catch(() => {/* non-fatal */});
       }
     }
 

@@ -4624,9 +4624,10 @@ export interface TaskNotification {
   id: number;
   tenantId: number;
   recipientUserId: number;
-  taskId: number;
+  taskId?: number | null;
   type: string;
   message: string;
+  linkPath?: string | null;
   isRead: boolean;
   createdAt: string;
 }

@@ -12216,13 +12216,14 @@ components:
 
     TaskNotification:
       type: object
-      required: [id, tenantId, recipientUserId, taskId, type, message, isRead, createdAt]
+      required: [id, tenantId, recipientUserId, type, message, isRead, createdAt]
       properties:
         id: { type: integer }
         tenantId: { type: integer }
         recipientUserId: { type: integer }
-        taskId: { type: integer }
+        taskId: { type: integer, nullable: true }
         type: { type: string }
         message: { type: string }
+        linkPath: { type: string, nullable: true }
         isRead: { type: boolean }
         createdAt: { type: string }

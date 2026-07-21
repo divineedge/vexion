@@ -176,6 +176,13 @@
       "when": 1753062000000,
       "tag": "0024_add_daily_task_hourly_rate",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1753100000000,
+      "tag": "0025_task_notifications_nullable_taskid_linkpath",
+      "breakpoints": true
     }
   ]
 }

@@ -5493,9 +5493,10 @@ export const ListNotificationsResponseItem = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
   "recipientUserId": zod.number(),
-  "taskId": zod.number(),
+  "taskId": zod.number().nullish(),
   "type": zod.string(),
   "message": zod.string(),
+  "linkPath": zod.string().nullish(),
   "isRead": zod.boolean(),
   "createdAt": zod.string()
 })
@@ -5513,9 +5514,10 @@ export const MarkNotificationReadResponse = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
   "recipientUserId": zod.number(),
-  "taskId": zod.number(),
+  "taskId": zod.number().nullish(),
   "type": zod.string(),
   "message": zod.string(),
+  "linkPath": zod.string().nullish(),
   "isRead": zod.boolean(),
   "createdAt": zod.string()
 })

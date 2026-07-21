@@ -45,15 +45,27 @@ export const insertInternalTaskSchema = createInsertSchema(internalTasksTable).o
 export type InsertInternalTask = z.infer<typeof insertInternalTaskSchema>;
 export type InternalTask = typeof internalTasksTable.$inferSelect;
 
-/** In-app notifications generated when a task is assigned / completed / rejected. */
+/**
+ * In-app notifications generated when a task is assigned / completed / rejected,
+ * or when a system event (missed call, voicemail) warrants immediate staff attention.
+ *
+ * taskId is nullable for non-task notifications (e.g. missed call / voicemail alerts).
+ * linkPath is the client-side navigation path for non-task notifications.
+ */
 export const taskNotificationsTable = pgTable("task_notifications", {
   id: serial("id").primaryKey(),
   tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
   recipientUserId: integer("recipient_user_id").notNull().references(() => usersTable.id),
-  taskId: integer("task_id").notNull().references(() => internalTasksTable.id),
-  /** 'assigned' | 'completed' | 'rejected' */
+  /** Null for system notifications not tied to a specific task (e.g. missed call alerts). */
+  taskId: integer("task_id").references(() => internalTasksTable.id),
+  /** 'assigned' | 'completed' | 'rejected' | 'missed_call' | 'voicemail' */
   type: text("type").notNull(),
   message: text("message").notNull(),
+  /**
+   * Optional client-side navigation path used when taskId is null.
+   * e.g. "/communications?customerId=42"
+   */
+  linkPath: text("link_path"),
   isRead: boolean("is_read").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

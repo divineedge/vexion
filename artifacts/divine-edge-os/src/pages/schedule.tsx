@@ -63,12 +63,36 @@ import {
 } from 'date-fns';
 
 function PartLocationBadges({ inventoryItemId }: { inventoryItemId: number }) {
+  const [, navTo] = useLocation();
   const { data: locationStock } = useGetInventoryItemByLocation(inventoryItemId, {
     query: { queryKey: getGetInventoryItemByLocationQueryKey(inventoryItemId) },
   });
   if (!locationStock || locationStock.length === 0) return null;
+
+  const totalStock = locationStock.reduce((sum, loc) => sum + loc.quantity, 0);
+  const isOutOfStock = totalStock === 0;
+  const isLowStock = !isOutOfStock && locationStock.some(loc => loc.isLowStock);
+
   return (
     <div className="flex flex-wrap gap-1 mt-0.5">
+      {isOutOfStock && (
+        <button
+          onClick={e => { e.stopPropagation(); navTo('/inventory'); }}
+          title="Go to inventory to restock"
+          className="inline-flex items-center gap-0.5 text-[10px] font-medium bg-red-100 text-red-700 border border-red-200 rounded px-1.5 py-0.5 hover:bg-red-200 transition-colors cursor-pointer"
+        >
+          <AlertTriangle className="w-2.5 h-2.5" /> Out of Stock
+        </button>
+      )}
+      {isLowStock && (
+        <button
+          onClick={e => { e.stopPropagation(); navTo('/inventory'); }}
+          title="Go to inventory to restock"
+          className="inline-flex items-center gap-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 border border-amber-200 rounded px-1.5 py-0.5 hover:bg-amber-200 transition-colors cursor-pointer"
+        >
+          <AlertTriangle className="w-2.5 h-2.5" /> Low Stock
+        </button>
+      )}
       {locationStock.map(loc => (
         <span
           key={loc.id}

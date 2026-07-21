@@ -304,6 +304,7 @@ router.get("/jobs/series", async (req, res): Promise<void> => {
       customerName: customersTable.name,
       assigneeName: usersTable.name,
       crewName: crewsTable.name,
+      planId: customerPlansTable.id,
       planName: customerPlansTable.templateName,
     })
     .from(jobsTable)
@@ -378,7 +379,7 @@ router.get("/jobs/series", async (req, res): Promise<void> => {
       customerName: r.customerName ?? null,
       assigneeName: r.assigneeName ?? null,
       crewName: r.crewName ?? null,
-      planId: r.job.planId ?? null,
+      planId: r.planId ?? null,
       planName: r.planName ?? null,
     };
   });

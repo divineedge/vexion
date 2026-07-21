@@ -1164,6 +1164,10 @@ export interface RecurringSeries {
   assigneeName?: string | null;
   /** @nullable */
   crewName?: string | null;
+  /** @nullable */
+  planId?: number | null;
+  /** @nullable */
+  planName?: string | null;
 }
 
 export type JobStatus = typeof JobStatus[keyof typeof JobStatus];

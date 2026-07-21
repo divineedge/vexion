@@ -434,9 +434,9 @@ export default function SchedulePage() {
                       <Badge variant="outline" className="text-xs gap-1 text-primary border-primary/30 bg-primary/5">
                         <RefreshCw className="w-2.5 h-2.5" />{s.recurrenceDescription}
                       </Badge>
-                      {sr.planName && (
+                      {s.planName && (
                         <Badge variant="outline" className="text-xs gap-1 text-violet-700 border-violet-300 bg-violet-50">
-                          <ClipboardList className="w-2.5 h-2.5" />{sr.planName}
+                          <ListEnd className="w-2.5 h-2.5" />{s.planName}
                         </Badge>
                       )}
                     </div>

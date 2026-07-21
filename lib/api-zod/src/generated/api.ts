@@ -1349,7 +1349,9 @@ export const ListRecurringSeriesResponseItem = zod.object({
   "completedCount": zod.number(),
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
-  "crewName": zod.string().nullish()
+  "crewName": zod.string().nullish(),
+  "planId": zod.number().nullish(),
+  "planName": zod.string().nullish()
 })
 export const ListRecurringSeriesResponse = zod.array(ListRecurringSeriesResponseItem)
 

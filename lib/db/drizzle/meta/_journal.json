@@ -152,13 +152,6 @@
     {
       "idx": 21,
       "version": "7",
-      "when": 1753056016000,
-      "tag": "0019_add_stripe_fields_to_customers",
-      "breakpoints": true
-    },
-    {
-      "idx": 22,
-      "version": "7",
       "when": 1753056017000,
       "tag": "0021_add_stripe_customer_fields_and_broadcast_schedule",
       "breakpoints": true

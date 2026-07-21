@@ -32,12 +32,52 @@ import {
   Layers,
   CalendarDays,
   Receipt,
+  TriangleAlert,
 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const RENEWAL_WARNING_DAYS = 30;
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function isNearExpiry(plan: { status: string; autoRenew: boolean; nextBillingDate: string }) {
+  if (plan.autoRenew) return false;
+  if (plan.status !== "active" && plan.status !== "pending_renewal") return false;
+  const msUntil = new Date(plan.nextBillingDate).getTime() - Date.now();
+  const daysUntil = msUntil / (1000 * 60 * 60 * 24);
+  return daysUntil <= RENEWAL_WARNING_DAYS;
+}
+
+function ExpiryWarningBanner({ nextBillingDate }: { nextBillingDate: string }) {
+  const msUntil = new Date(nextBillingDate).getTime() - Date.now();
+  const daysUntil = Math.ceil(msUntil / (1000 * 60 * 60 * 24));
+  const expiredAlready = daysUntil <= 0;
+
+  return (
+    <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40 px-4 py-3 text-amber-900 dark:text-amber-200">
+      <TriangleAlert className="h-5 w-5 shrink-0 mt-0.5 text-amber-500" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold">
+          {expiredAlready
+            ? "Your plan has expired"
+            : `Your plan expires in ${daysUntil} day${daysUntil === 1 ? "" : "s"}`}
+        </p>
+        <p className="text-xs mt-0.5 text-amber-800 dark:text-amber-300">
+          Auto-renew is off. Submit a service request to renew your plan and avoid any interruption.
+        </p>
+        <Link href="/service-requests">
+          <button className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-amber-900 dark:text-amber-100 underline underline-offset-2 hover:opacity-80 transition-opacity">
+            Contact us to renew →
+          </button>
+        </Link>
+      </div>
+    </div>
+  );
+}
 
 function billingCycleLabel(cycle: string, customDays?: number | null) {
   switch (cycle) {
@@ -220,6 +260,9 @@ function PlanDetail({ planId }: { planId: number }) {
         {planStatusBadge(plan.status)}
       </div>
 
+      {/* Expiry warning */}
+      {isNearExpiry(plan) && <ExpiryWarningBanner nextBillingDate={plan.nextBillingDate} />}
+
       {/* Key details */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Card className="shadow-sm">
@@ -389,38 +432,42 @@ function PlanDetail({ planId }: { planId: number }) {
 // ─── Plans List ────────────────────────────────────────────────────────────────
 
 function PlanCard({ plan }: { plan: PortalPlan }) {
+  const showWarning = isNearExpiry(plan);
   return (
-    <Link href={`/plans/${plan.id}`}>
-      <Card className="shadow-sm hover:border-primary/40 transition-colors cursor-pointer">
-        <CardContent className="p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="font-semibold text-foreground">{plan.templateName}</h3>
-                {planStatusBadge(plan.status)}
-              </div>
-              {plan.propertyAddress && (
-                <p className="text-sm text-muted-foreground mt-0.5 truncate">{plan.propertyAddress}</p>
-              )}
-              <div className="flex flex-wrap gap-4 mt-3 text-sm text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <Banknote className="h-3.5 w-3.5" />
-                  {formatCurrency(plan.billingPrice)} / {billingCycleLabel(plan.billingCycle, plan.customCycleDays)}
-                </span>
-                <span className="flex items-center gap-1">
-                  <CalendarClock className="h-3.5 w-3.5" />
-                  Next billing: {formatDate(plan.nextBillingDate)}
-                </span>
-                <span className="flex items-center gap-1">
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  Auto-renew: {plan.autoRenew ? "On" : "Off"}
-                </span>
+    <div className="space-y-1.5">
+      {showWarning && <ExpiryWarningBanner nextBillingDate={plan.nextBillingDate} />}
+      <Link href={`/plans/${plan.id}`}>
+        <Card className={`shadow-sm hover:border-primary/40 transition-colors cursor-pointer ${showWarning ? "border-amber-300 dark:border-amber-700" : ""}`}>
+          <CardContent className="p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="font-semibold text-foreground">{plan.templateName}</h3>
+                  {planStatusBadge(plan.status)}
+                </div>
+                {plan.propertyAddress && (
+                  <p className="text-sm text-muted-foreground mt-0.5 truncate">{plan.propertyAddress}</p>
+                )}
+                <div className="flex flex-wrap gap-4 mt-3 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <Banknote className="h-3.5 w-3.5" />
+                    {formatCurrency(plan.billingPrice)} / {billingCycleLabel(plan.billingCycle, plan.customCycleDays)}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <CalendarClock className="h-3.5 w-3.5" />
+                    Next billing: {formatDate(plan.nextBillingDate)}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Auto-renew: {plan.autoRenew ? "On" : "Off"}
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
-    </Link>
+          </CardContent>
+        </Card>
+      </Link>
+    </div>
   );
 }
 

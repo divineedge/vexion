@@ -7,12 +7,79 @@
  * to claim each broadcast before dispatching, preventing duplicate sends in multi-instance deployments.
  */
 
-import { db, broadcastsTable, broadcastRecipientsTable, customersTable, tenantsTable, communicationsLogTable } from "@workspace/db";
+import { db, broadcastsTable, broadcastRecipientsTable, customersTable, tenantsTable, communicationsLogTable, usersTable } from "@workspace/db";
 import { eq, and, lte } from "drizzle-orm";
 import { resolveRecipients } from "../routes/broadcasts";
 import { logger } from "./logger";
 import { sendSms, type SmsProviderConfig } from "./smsProvider";
 import { sendEmail, type EmailProviderConfig } from "./emailProvider";
+
+/**
+ * Sends an alert email to the tenant owner when a scheduled broadcast lands in 'failed' status.
+ * Resolves the owner email from businessEmail on the tenant, falling back to the first user with
+ * role='owner'. Silently skips if no email address can be found.
+ */
+async function notifyBroadcastFailed(
+  tenantId: number,
+  broadcastId: number,
+  sent: number,
+  failed: number,
+  errorMessage?: string,
+): Promise<void> {
+  try {
+    const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+    if (!tenant) return;
+
+    // Resolve owner email: prefer businessEmail on the tenant record, fall back to owner user.
+    let ownerEmail: string | null = tenant.businessEmail ?? null;
+    if (!ownerEmail) {
+      const [ownerUser] = await db
+        .select({ email: usersTable.email })
+        .from(usersTable)
+        .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.role, "owner")))
+        .limit(1);
+      ownerEmail = ownerUser?.email ?? null;
+    }
+
+    if (!ownerEmail) {
+      logger.warn({ tenantId, broadcastId }, "Broadcast failed alert: no owner email found, skipping notification");
+      return;
+    }
+
+    const companyName = tenant.name ?? "Your company";
+    const subject = `Action required: Scheduled broadcast #${broadcastId} failed to send`;
+    const body = [
+      `Hi,`,
+      ``,
+      `A scheduled broadcast (ID: ${broadcastId}) from ${companyName} failed to send.`,
+      ``,
+      sent > 0
+        ? `Partial send: ${sent} message(s) delivered, ${failed} failed.`
+        : `No messages were delivered (${failed} failed).`,
+      ``,
+      errorMessage ? `Error: ${errorMessage}` : null,
+      ``,
+      `To review the send history or resend, go to the Broadcasts page in ${companyName} OS and find broadcast #${broadcastId}.`,
+      ``,
+      `— ${companyName} automated alert`,
+    ].filter((l): l is string => l !== null).join("\n");
+
+    const emailProviderConfig: EmailProviderConfig = {
+      provider: (tenant.emailProvider as EmailProviderConfig["provider"]) ?? null,
+      config: (tenant.emailProviderConfig as Record<string, string>) ?? {},
+      fromAddress: tenant.businessEmail ?? (tenant.emailProviderConfig as Record<string, string>)?.["fromAddress"] ?? null,
+    };
+
+    const result = await sendEmail(emailProviderConfig, ownerEmail, subject, body);
+    if (!result.success) {
+      logger.warn({ tenantId, broadcastId, error: result.error }, "Broadcast failed alert: email send failed");
+    } else {
+      logger.info({ tenantId, broadcastId, ownerEmail }, "Broadcast failed alert: notification sent to owner");
+    }
+  } catch (err) {
+    logger.error({ tenantId, broadcastId, err }, "Broadcast failed alert: exception sending notification");
+  }
+}
 
 async function claimScheduledBroadcast(broadcastId: number): Promise<boolean> {
   const now = new Date();
@@ -81,9 +148,14 @@ async function dispatchBroadcast(
     }
   }
 
+  const finalStatus = failed > 0 && sent === 0 ? "failed" : "completed";
   await db.update(broadcastsTable)
-    .set({ status: failed > 0 && sent === 0 ? "failed" : "completed", sentAt: new Date(), stats: { sent, failed, optedOut: 0 } })
+    .set({ status: finalStatus, sentAt: new Date(), stats: { sent, failed, optedOut: 0 } })
     .where(eq(broadcastsTable.id, broadcastId));
+
+  if (finalStatus === "failed") {
+    await notifyBroadcastFailed(tenantId, broadcastId, sent, failed);
+  }
 }
 
 async function processScheduledBroadcasts() {
@@ -127,6 +199,13 @@ async function processScheduledBroadcasts() {
       await db.update(broadcastsTable)
         .set({ status: "failed" })
         .where(eq(broadcastsTable.id, broadcast.id));
+      await notifyBroadcastFailed(
+        broadcast.tenantId,
+        broadcast.id,
+        0,
+        0,
+        err instanceof Error ? err.message : "Unexpected error during dispatch",
+      );
     }
   }
 }

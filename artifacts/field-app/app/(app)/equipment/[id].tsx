@@ -172,9 +172,10 @@ export default function EquipmentDetailScreen() {
 
   const isLoading = eqLoading || logsLoading || maintLoading;
 
-  // Log Hours modal state
+  // Log Reading modal state
   const [showLogHours, setShowLogHours] = useState(false);
-  const [hoursValue, setHoursValue] = useState('');
+  const [readingType, setReadingType] = useState<'hours' | 'mileage'>('hours');
+  const [readingValue, setReadingValue] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const { mutateAsync: createReadingLog } = useCreateEquipmentReadingLog();
@@ -192,30 +193,42 @@ export default function EquipmentDetailScreen() {
   const handleOpenLogHours = useCallback(async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const eq = equipment as Equipment | undefined;
-    setHoursValue(eq ? String(eq.currentHours) : '');
+    // Default to hours; pre-fill with the appropriate current reading
+    setReadingType('hours');
+    setReadingValue(eq ? String(eq.currentHours) : '');
     setShowLogHours(true);
   }, [equipment]);
 
+  const handleSelectReadingType = useCallback((type: 'hours' | 'mileage') => {
+    const eq = equipment as Equipment | undefined;
+    setReadingType(type);
+    if (type === 'hours') {
+      setReadingValue(eq ? String(eq.currentHours) : '');
+    } else {
+      setReadingValue(eq?.currentMiles != null ? String(eq.currentMiles) : '');
+    }
+  }, [equipment]);
+
   const handleSubmitHours = useCallback(async () => {
-    const parsed = parseFloat(hoursValue);
+    const parsed = parseFloat(readingValue);
     if (isNaN(parsed) || parsed < 0) {
-      Alert.alert('Invalid', 'Please enter a valid hour reading.');
+      Alert.alert('Invalid', `Please enter a valid ${readingType === 'hours' ? 'hour' : 'mileage'} reading.`);
       return;
     }
     setSubmitting(true);
     try {
       const today = new Date().toISOString().slice(0, 10);
-      await createReadingLog({ id: equipmentId, data: { date: today, readingType: 'hours', value: parsed } });
+      await createReadingLog({ id: equipmentId, data: { date: today, readingType, value: parsed } });
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setShowLogHours(false);
-      setHoursValue('');
+      setReadingValue('');
       refetchEq();
     } catch {
       Alert.alert('Error', 'Failed to save reading. Please try again.');
     } finally {
       setSubmitting(false);
     }
-  }, [hoursValue, equipmentId, createReadingLog, refetchEq]);
+  }, [readingValue, readingType, equipmentId, createReadingLog, refetchEq]);
 
   const refetch = useCallback(() => {
     refetchEq();
@@ -453,7 +466,7 @@ export default function EquipmentDetailScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Log Hours Modal */}
+      {/* Log Reading Modal */}
       <Modal
         visible={showLogHours}
         transparent
@@ -466,20 +479,53 @@ export default function EquipmentDetailScreen() {
         >
           <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.foreground }]}>Log Hour-Meter Reading</Text>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>Log Reading</Text>
               <TouchableOpacity onPress={() => setShowLogHours(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Ionicons name="close" size={22} color={colors.mutedForeground} />
               </TouchableOpacity>
             </View>
+
+            {/* Reading type toggle */}
+            <View style={styles.typeToggle}>
+              <TouchableOpacity
+                style={[
+                  styles.typeToggleBtn,
+                  readingType === 'hours' && { backgroundColor: '#6366f1' },
+                  readingType !== 'hours' && { backgroundColor: colors.muted },
+                ]}
+                onPress={() => handleSelectReadingType('hours')}
+                testID="reading-type-hours"
+              >
+                <Ionicons name="time-outline" size={15} color={readingType === 'hours' ? '#fff' : colors.mutedForeground} />
+                <Text style={[styles.typeToggleBtnText, { color: readingType === 'hours' ? '#fff' : colors.mutedForeground }]}>
+                  Hours
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.typeToggleBtn,
+                  readingType === 'mileage' && { backgroundColor: '#6366f1' },
+                  readingType !== 'mileage' && { backgroundColor: colors.muted },
+                ]}
+                onPress={() => handleSelectReadingType('mileage')}
+                testID="reading-type-mileage"
+              >
+                <Ionicons name="speedometer-outline" size={15} color={readingType === 'mileage' ? '#fff' : colors.mutedForeground} />
+                <Text style={[styles.typeToggleBtnText, { color: readingType === 'mileage' ? '#fff' : colors.mutedForeground }]}>
+                  Miles
+                </Text>
+              </TouchableOpacity>
+            </View>
+
             <Text style={[styles.modalLabel, { color: colors.mutedForeground }]}>
-              Current hours on the meter
+              {readingType === 'hours' ? 'Current hours on the meter' : 'Current odometer reading (miles)'}
             </Text>
             <TextInput
               style={[styles.modalInput, { backgroundColor: colors.muted, color: colors.foreground, borderColor: colors.border }]}
-              value={hoursValue}
-              onChangeText={setHoursValue}
+              value={readingValue}
+              onChangeText={setReadingValue}
               keyboardType="decimal-pad"
-              placeholder="e.g. 1234.5"
+              placeholder={readingType === 'hours' ? 'e.g. 1234.5' : 'e.g. 45200'}
               placeholderTextColor={colors.mutedForeground}
               autoFocus
               selectTextOnFocus
@@ -672,4 +718,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   modalBtnText: { fontFamily: 'Inter_600SemiBold', fontSize: 15 },
+  typeToggle: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  typeToggleBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 40,
+    borderRadius: 10,
+    gap: 6,
+  },
+  typeToggleBtnText: { fontFamily: 'Inter_600SemiBold', fontSize: 14 },
 });

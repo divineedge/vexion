@@ -798,11 +798,12 @@ router.post("/equipment/:id/reading-logs", async (req, res): Promise<void> => {
   }).returning();
 
   // Update the equipment's currentHours/currentMiles to the new reading if it's higher
+  // (or if this is the first mileage reading and currentMiles is still null)
   if (readingType === "hours" && parsedValue > owned.currentHours) {
     await db.update(equipmentTable)
       .set({ currentHours: parsedValue })
       .where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId)));
-  } else if (readingType === "mileage" && owned.currentMiles != null && parsedValue > owned.currentMiles) {
+  } else if (readingType === "mileage" && (owned.currentMiles == null || parsedValue > owned.currentMiles)) {
     await db.update(equipmentTable)
       .set({ currentMiles: parsedValue })
       .where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId)));

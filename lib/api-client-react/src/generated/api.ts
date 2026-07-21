@@ -214,6 +214,7 @@ import type {
   RescheduleOnceResult,
   ReschedulePlanVisit200,
   ReschedulePlanVisitInput,
+  ResendEstimate200,
   ResequenceRouteInput,
   ResequenceRouteResult,
   ResolveFollowupQueueItemInput,
@@ -15635,6 +15636,77 @@ export const useSendEstimate = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getSendEstimateMutationOptions(options));
+    }
+
+export const getResendEstimateUrl = (id: number,) => {
+
+
+
+
+  return `/api/estimates/${id}/resend`
+}
+
+/**
+ * @summary Re-send estimate email to customer without changing status or rotating token
+ */
+export const resendEstimate = async (id: number, options?: RequestInit): Promise<ResendEstimate200> => {
+
+  return customFetch<ResendEstimate200>(getResendEstimateUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getResendEstimateMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resendEstimate>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resendEstimate>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['resendEstimate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resendEstimate>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  resendEstimate(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResendEstimateMutationResult = NonNullable<Awaited<ReturnType<typeof resendEstimate>>>
+
+    export type ResendEstimateMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Re-send estimate email to customer without changing status or rotating token
+ */
+export const useResendEstimate = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resendEstimate>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resendEstimate>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getResendEstimateMutationOptions(options));
     }
 
 export const getConvertEstimateToJobUrl = (id: number,) => {

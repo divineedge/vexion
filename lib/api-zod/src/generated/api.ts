@@ -6530,6 +6530,19 @@ export const SendEstimateResponse = zod.object({
 
 
 /**
+ * @summary Re-send estimate email to customer without changing status or rotating token
+ */
+export const ResendEstimateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ResendEstimateResponse = zod.object({
+  "emailSent": zod.boolean().optional(),
+  "emailError": zod.string().nullish()
+})
+
+
+/**
  * @summary Convert approved estimate to a job
  */
 export const ConvertEstimateToJobParams = zod.object({

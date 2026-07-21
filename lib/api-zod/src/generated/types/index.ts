@@ -348,6 +348,7 @@ export * from './rescheduleOnceInput';
 export * from './rescheduleOnceResult';
 export * from './reschedulePlanVisit200';
 export * from './reschedulePlanVisitInput';
+export * from './resendEstimate200';
 export * from './resequenceRouteInput';
 export * from './resequenceRouteResult';
 export * from './resolveFollowupQueueItemInput';

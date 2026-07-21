@@ -19,6 +19,7 @@ import {
   useUpdateEstimate,
   useDeleteEstimate,
   useSendEstimate,
+  useResendEstimate,
   useConvertEstimateToJob,
   useGetEstimatePipeline, getGetEstimatePipelineQueryKey,
   useListCustomers, getListCustomersQueryKey,
@@ -120,6 +121,7 @@ export default function EstimatesPage() {
   const updateEstimate = useUpdateEstimate();
   const deleteEstimate = useDeleteEstimate();
   const sendEstimate = useSendEstimate();
+  const resendEstimate = useResendEstimate();
   const convertToJob = useConvertEstimateToJob();
 
   function invalidate() {
@@ -171,6 +173,22 @@ export default function EstimatesPage() {
         setSelectedId(e.id);
       },
       onError: () => toast.error('Failed to create estimate'),
+    });
+  }
+
+  function handleResend(id: number) {
+    resendEstimate.mutate({ id }, {
+      onSuccess: (r) => {
+        const result = r as typeof r & { emailSent?: boolean; emailError?: string | null };
+        if (result.emailSent) {
+          toast.success('Estimate re-sent — customer emailed again');
+        } else if (result.emailError) {
+          toast.warning('Resend attempted, but email failed', { description: result.emailError });
+        } else {
+          toast.success('Resend attempted');
+        }
+      },
+      onError: () => toast.error('Failed to resend estimate'),
     });
   }
 
@@ -525,6 +543,11 @@ export default function EstimatesPage() {
                     <span className="text-sm text-emerald-700 flex items-center gap-1">
                       <CheckCircle2 className="w-4 h-4" /> Converted → Job #{selectedEstimate.convertedToJobId}
                     </span>
+                  )}
+                  {selectedEstimate.status === 'sent' && canManageOffice && (
+                    <Button size="sm" variant="outline" className="gap-2" onClick={() => handleResend(selectedEstimate.id)} disabled={resendEstimate.isPending}>
+                      <Send className="w-3.5 h-3.5" /> Resend Email
+                    </Button>
                   )}
                   {selectedEstimate.approvalToken && selectedEstimate.status === 'sent' && (
                     <Button size="sm" variant="outline" className="gap-2" asChild>

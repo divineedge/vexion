@@ -687,6 +687,136 @@ router.post("/estimates/:id/send", async (req, res): Promise<void> => {
   res.json({ ...formatEstimate(updated), approvalToken: token, emailSent, emailError: emailError ?? null });
 });
 
+// ── RESEND ────────────────────────────────────────────────────────────────────
+router.post("/estimates/:id/resend", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const id = parseInt(req.params.id, 10);
+
+  const [current] = await db
+    .select()
+    .from(estimatesTable)
+    .where(and(eq(estimatesTable.id, id), eq(estimatesTable.tenantId, tenantId)));
+  if (!current) { res.status(404).json({ error: "Not found" }); return; }
+  if (current.status !== "sent") {
+    res.status(409).json({ error: `Can only resend estimates in 'sent' status; current status: ${current.status}` });
+    return;
+  }
+
+  // Reuse the existing token — no rotation so the customer's original link still works
+  const token = current.approvalToken ?? generateToken();
+  if (!current.approvalToken) {
+    await db.update(estimatesTable)
+      .set({ approvalToken: token })
+      .where(and(eq(estimatesTable.id, id), eq(estimatesTable.tenantId, tenantId)));
+  }
+
+  let emailSent = false;
+  let emailError: string | undefined;
+
+  try {
+    const [tenant, customer, property] = await Promise.all([
+      db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId)).then(r => r[0]),
+      current.customerId
+        ? db.select().from(customersTable).where(eq(customersTable.id, current.customerId)).then(r => r[0])
+        : Promise.resolve(undefined),
+      current.propertyId
+        ? db.select({ address: propertiesTable.address }).from(propertiesTable).where(eq(propertiesTable.id, current.propertyId)).then(r => r[0])
+        : Promise.resolve(undefined),
+    ]);
+
+    if (tenant && customer?.email && !customer.emailOptOut) {
+      const domainsEnv = process.env.REPLIT_DOMAINS;
+      const firstDomain = domainsEnv?.split(",")[0]?.trim();
+      const domain = firstDomain || process.env.REPLIT_DEV_DOMAIN;
+
+      if (domain) {
+        const approvalUrl = `https://${domain}/estimate/${token}`;
+        const companyName = tenant.name ?? "Your service provider";
+        const firstName = customer.name.split(" ")[0] ?? customer.name;
+
+        const items = (current.lineItems as EstimateLineItem[]) ?? [];
+        const requiredItems = items.filter(i => !i.isOptional);
+        const optionalItems = items.filter(i => i.isOptional);
+
+        const formatMoney = (n: number) => `${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const expiryLine = current.expiresAt
+          ? `This estimate expires on ${current.expiresAt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}.`
+          : null;
+
+        const serviceLines = requiredItems.map(item => {
+          const lineTotal = item.qty * item.unitPrice * (1 + item.markup / 100) * (1 - item.discount / 100);
+          return `  • ${item.description}${item.qty !== 1 ? ` (qty ${item.qty})` : ""} — ${formatMoney(lineTotal)}`;
+        });
+        const optionalLines = optionalItems.map(item => {
+          const lineTotal = item.qty * item.unitPrice * (1 + item.markup / 100) * (1 - item.discount / 100);
+          return `  • ${item.description} — ${formatMoney(lineTotal)} (optional add-on)${item.optionalPitchLine ? `\n    ${item.optionalPitchLine}` : ""}`;
+        });
+
+        const subject = `Your estimate from ${companyName} — ${formatMoney(current.total ?? 0)}`;
+        const body = [
+          `Hi ${firstName},`,
+          "",
+          `${companyName} has prepared an estimate for you.`,
+          "",
+          property?.address ? `Property: ${property.address}` : null,
+          "",
+          "── Services ──",
+          ...serviceLines,
+          ...(optionalLines.length > 0 ? ["", "── Optional Add-Ons ──", ...optionalLines] : []),
+          "",
+          `Total: ${formatMoney(current.total ?? 0)}`,
+          "",
+          expiryLine,
+          "",
+          "To review and approve your estimate, visit:",
+          approvalUrl,
+          "",
+          "If you have any questions, feel free to reply to this email.",
+          "",
+          `Thank you,`,
+          companyName,
+        ].filter(l => l !== null).join("\n");
+
+        const emailProviderConfig: EmailProviderConfig = {
+          provider: (tenant.emailProvider as "smtp" | "sendgrid" | "mailgun" | "resend" | "gmail" | null) ?? null,
+          config: (tenant.emailProviderConfig as Record<string, string>) ?? {},
+          fromAddress: tenant.businessEmail ?? (tenant.emailProviderConfig as Record<string, string>)?.["fromAddress"] ?? null,
+        };
+
+        const result = await sendEmail(emailProviderConfig, customer.email, subject, body);
+        emailSent = result.success;
+        emailError = result.error;
+
+        await db.insert(communicationsLogTable).values({
+          tenantId,
+          customerId: customer.id,
+          direction: "outbound",
+          channel: "email",
+          toAddress: customer.email,
+          subject,
+          body,
+          status: result.success ? "sent" : "failed",
+          externalId: result.externalId ?? null,
+          errorNote: result.error ?? null,
+          messageType: "manual",
+        });
+      } else {
+        emailError = "No public domain configured (REPLIT_DOMAINS/REPLIT_DEV_DOMAIN unset)";
+        logger.warn({ estimateId: id, tenantId }, "Cannot resend estimate: no public domain configured");
+      }
+    } else if (!customer?.email) {
+      emailError = "Customer has no email address on file";
+    } else if (customer?.emailOptOut) {
+      emailError = "Customer has opted out of email";
+    }
+  } catch (err) {
+    emailError = String(err);
+    logger.error({ err, estimateId: id, tenantId }, "Failed to resend estimate email");
+  }
+
+  res.json({ emailSent, emailError: emailError ?? null });
+});
+
 // ── CONVERT TO JOB ────────────────────────────────────────────────────────────
 router.post("/estimates/:id/convert", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);

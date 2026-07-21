@@ -4225,6 +4225,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/Estimate"
 
+  /estimates/{id}/resend:
+    post:
+      operationId: resendEstimate
+      tags: [estimates]
+      summary: Re-send estimate email to customer without changing status or rotating token
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Resend result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  emailSent:
+                    type: boolean
+                  emailError:
+                    type: string
+                    nullable: true
+
   /estimates/{id}/convert:
     post:
       operationId: convertEstimateToJob

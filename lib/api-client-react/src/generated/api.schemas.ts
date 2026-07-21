@@ -4679,6 +4679,11 @@ startDate?: string;
 endDate?: string;
 };
 
+export type ResendEstimate200 = {
+  emailSent?: boolean;
+  emailError?: string | null;
+};
+
 export type ConvertEstimateToJob201 = {
   jobId?: number;
   total?: number;

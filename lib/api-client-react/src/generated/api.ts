@@ -157,6 +157,7 @@ import type {
   ListInventoryItemsParams,
   ListInvoicesParams,
   ListJobsParams,
+  ListPlanCancelRequestsParams,
   ListPropertiesParams,
   ListRepairLogsParams,
   ListReviewRequestsParams,
@@ -175,12 +176,14 @@ import type {
   PauseSeriesInput,
   PlStatementReport,
   Plan,
+  PlanCancelRequest,
   PlanTemplate,
   PlansDashboard,
   PortalAddMediaInput,
   PortalAlert,
   PortalAlertResponse,
   PortalAuthResponse,
+  PortalCancelRequestInput,
   PortalCustomer,
   PortalInvoice,
   PortalJob,
@@ -193,6 +196,7 @@ import type {
   PortalPlan,
   PortalPlanDetail,
   PortalProperty,
+  PortalRequestPlanCancellation201,
   PortalServiceRequestInput,
   PortalSummary,
   PortalUpdatePlanInput,
@@ -15567,6 +15571,304 @@ export const usePortalUpdatePlan = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getPortalUpdatePlanMutationOptions(options));
+    }
+
+export const getPortalRequestPlanCancellationUrl = (id: number,) => {
+
+
+
+
+  return `/api/portal/plans/${id}/cancel-request`
+}
+
+/**
+ * @summary Submit a cancellation request for a service plan
+ */
+export const portalRequestPlanCancellation = async (id: number,
+    portalCancelRequestInput?: PortalCancelRequestInput, options?: RequestInit): Promise<PortalRequestPlanCancellation201> => {
+
+  return customFetch<PortalRequestPlanCancellation201>(getPortalRequestPlanCancellationUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(portalCancelRequestInput)
+  }
+);}
+
+
+
+
+
+export const getPortalRequestPlanCancellationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalRequestPlanCancellation>>, TError,{id: number;data?: BodyType<PortalCancelRequestInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof portalRequestPlanCancellation>>, TError,{id: number;data?: BodyType<PortalCancelRequestInput>}, TContext> => {
+
+const mutationKey = ['portalRequestPlanCancellation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof portalRequestPlanCancellation>>, {id: number;data?: BodyType<PortalCancelRequestInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  portalRequestPlanCancellation(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PortalRequestPlanCancellationMutationResult = NonNullable<Awaited<ReturnType<typeof portalRequestPlanCancellation>>>
+    export type PortalRequestPlanCancellationMutationBody = BodyType<PortalCancelRequestInput> | undefined
+    export type PortalRequestPlanCancellationMutationError = ErrorType<void>
+
+    /**
+ * @summary Submit a cancellation request for a service plan
+ */
+export const usePortalRequestPlanCancellation = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalRequestPlanCancellation>>, TError,{id: number;data?: BodyType<PortalCancelRequestInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof portalRequestPlanCancellation>>,
+        TError,
+        {id: number;data?: BodyType<PortalCancelRequestInput>},
+        TContext
+      > => {
+      return useMutation(getPortalRequestPlanCancellationMutationOptions(options));
+    }
+
+export const getListPlanCancelRequestsUrl = (params?: ListPlanCancelRequestsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/plan-cancel-requests?${stringifiedParams}` : `/api/plan-cancel-requests`
+}
+
+/**
+ * @summary List plan cancellation requests (staff)
+ */
+export const listPlanCancelRequests = async (params?: ListPlanCancelRequestsParams, options?: RequestInit): Promise<PlanCancelRequest[]> => {
+
+  return customFetch<PlanCancelRequest[]>(getListPlanCancelRequestsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPlanCancelRequestsQueryKey = (params?: ListPlanCancelRequestsParams,) => {
+    return [
+    `/api/plan-cancel-requests`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListPlanCancelRequestsQueryOptions = <TData = Awaited<ReturnType<typeof listPlanCancelRequests>>, TError = ErrorType<unknown>>(params?: ListPlanCancelRequestsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPlanCancelRequests>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPlanCancelRequestsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPlanCancelRequests>>> = ({ signal }) => listPlanCancelRequests(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPlanCancelRequests>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPlanCancelRequestsQueryResult = NonNullable<Awaited<ReturnType<typeof listPlanCancelRequests>>>
+export type ListPlanCancelRequestsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List plan cancellation requests (staff)
+ */
+
+export function useListPlanCancelRequests<TData = Awaited<ReturnType<typeof listPlanCancelRequests>>, TError = ErrorType<unknown>>(
+ params?: ListPlanCancelRequestsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPlanCancelRequests>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPlanCancelRequestsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getApprovePlanCancelRequestUrl = (id: number,) => {
+
+
+
+
+  return `/api/plan-cancel-requests/${id}/approve`
+}
+
+/**
+ * @summary Approve a cancellation request (cancels the plan)
+ */
+export const approvePlanCancelRequest = async (id: number, options?: RequestInit): Promise<PlanCancelRequest> => {
+
+  return customFetch<PlanCancelRequest>(getApprovePlanCancelRequestUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getApprovePlanCancelRequestMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approvePlanCancelRequest>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof approvePlanCancelRequest>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['approvePlanCancelRequest'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof approvePlanCancelRequest>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  approvePlanCancelRequest(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApprovePlanCancelRequestMutationResult = NonNullable<Awaited<ReturnType<typeof approvePlanCancelRequest>>>
+
+    export type ApprovePlanCancelRequestMutationError = ErrorType<void>
+
+    /**
+ * @summary Approve a cancellation request (cancels the plan)
+ */
+export const useApprovePlanCancelRequest = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approvePlanCancelRequest>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof approvePlanCancelRequest>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getApprovePlanCancelRequestMutationOptions(options));
+    }
+
+export const getDismissPlanCancelRequestUrl = (id: number,) => {
+
+
+
+
+  return `/api/plan-cancel-requests/${id}/dismiss`
+}
+
+/**
+ * @summary Dismiss a cancellation request (plan remains active)
+ */
+export const dismissPlanCancelRequest = async (id: number, options?: RequestInit): Promise<PlanCancelRequest> => {
+
+  return customFetch<PlanCancelRequest>(getDismissPlanCancelRequestUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getDismissPlanCancelRequestMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dismissPlanCancelRequest>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof dismissPlanCancelRequest>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['dismissPlanCancelRequest'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof dismissPlanCancelRequest>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  dismissPlanCancelRequest(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DismissPlanCancelRequestMutationResult = NonNullable<Awaited<ReturnType<typeof dismissPlanCancelRequest>>>
+
+    export type DismissPlanCancelRequestMutationError = ErrorType<void>
+
+    /**
+ * @summary Dismiss a cancellation request (plan remains active)
+ */
+export const useDismissPlanCancelRequest = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dismissPlanCancelRequest>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof dismissPlanCancelRequest>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDismissPlanCancelRequestMutationOptions(options));
     }
 
 export const getPortalRequestUploadUrlUrl = () => {

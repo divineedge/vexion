@@ -3769,6 +3769,39 @@ export interface PortalUpdatePlanInput {
   autoRenew: boolean;
 }
 
+export interface PortalCancelRequestInput {
+  /** Optional reason for cancellation */
+  reason?: string;
+}
+
+export type PlanCancelRequestStatus = typeof PlanCancelRequestStatus[keyof typeof PlanCancelRequestStatus];
+
+
+export const PlanCancelRequestStatus = {
+  pending: 'pending',
+  approved: 'approved',
+  dismissed: 'dismissed',
+} as const;
+
+export interface PlanCancelRequest {
+  id: number;
+  tenantId: number;
+  customerId: number;
+  planId: number;
+  /** @nullable */
+  reason?: string | null;
+  status: PlanCancelRequestStatus;
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  planName?: string | null;
+  /** @nullable */
+  resolvedBy?: number | null;
+  /** @nullable */
+  resolvedAt?: string | null;
+  createdAt: string;
+}
+
 export type PortalAlertResponseAction = typeof PortalAlertResponseAction[keyof typeof PortalAlertResponseAction];
 
 
@@ -4744,6 +4777,23 @@ export type SetPropertyProfilePhoto200 = {
 export type SetCustomerProfilePhoto200 = {
   profilePhotoUrl?: string;
 };
+
+export type PortalRequestPlanCancellation201 = {
+  message?: string;
+};
+
+export type ListPlanCancelRequestsParams = {
+status?: ListPlanCancelRequestsStatus;
+};
+
+export type ListPlanCancelRequestsStatus = typeof ListPlanCancelRequestsStatus[keyof typeof ListPlanCancelRequestsStatus];
+
+
+export const ListPlanCancelRequestsStatus = {
+  pending: 'pending',
+  approved: 'approved',
+  dismissed: 'dismissed',
+} as const;
 
 export type ListEstimatesParams = {
 status?: string;

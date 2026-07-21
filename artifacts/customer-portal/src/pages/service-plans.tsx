@@ -4,6 +4,7 @@ import {
   usePortalListPlans,
   usePortalGetPlan,
   usePortalUpdatePlan,
+  usePortalRequestPlanCancellation,
   getPortalGetPlanQueryKey,
   getPortalListPlansQueryKey,
   PortalPlan,
@@ -22,6 +23,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   CalendarClock,
   CheckCircle2,
@@ -33,6 +43,7 @@ import {
   CalendarDays,
   Receipt,
   TriangleAlert,
+  XCircle,
 } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { toast } from "sonner";
@@ -182,6 +193,25 @@ function PlanDetail({ planId }: { planId: number }) {
   const detailQueryKey = getPortalGetPlanQueryKey(planId);
   const listQueryKey = getPortalListPlansQueryKey();
 
+  const [cancelDialogOpen, setCancelDialogOpen] = React.useState(false);
+  const [cancelReason, setCancelReason] = React.useState("");
+  const [cancelRequested, setCancelRequested] = React.useState(false);
+
+  const cancelMutation = usePortalRequestPlanCancellation({
+    mutation: {
+      onSuccess: () => {
+        setCancelDialogOpen(false);
+        setCancelReason("");
+        setCancelRequested(true);
+        toast.success("Cancellation request submitted — we'll be in touch shortly.");
+      },
+      onError: (err: any) => {
+        const msg = err?.error ?? "Failed to submit cancellation request";
+        toast.error(msg);
+      },
+    },
+  });
+
   const updateMutation = usePortalUpdatePlan({
     mutation: {
       onMutate: async ({ data }) => {
@@ -318,6 +348,84 @@ function PlanDetail({ planId }: { planId: number }) {
           />
         </CardContent>
       </Card>
+
+      {/* Cancellation request */}
+      {(plan.status === "active" || plan.status === "paused") && (
+        <Card className="shadow-sm border-destructive/20">
+          <CardContent className="p-5">
+            {cancelRequested ? (
+              <div className="flex items-start gap-3">
+                <XCircle className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Cancellation requested</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    We've received your request and will be in touch shortly to confirm.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Cancel this plan</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Submit a cancellation request. Your plan stays active until our team confirms.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 text-destructive border-destructive/30 hover:bg-destructive/5"
+                  onClick={() => setCancelDialogOpen(true)}
+                >
+                  Request Cancellation
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Cancellation confirmation dialog */}
+      <Dialog open={cancelDialogOpen} onOpenChange={open => { if (!open) setCancelDialogOpen(false); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Request plan cancellation?</DialogTitle>
+            <DialogDescription>
+              Your plan won't be cancelled immediately. Our team will review your request and reach out to confirm.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-1">
+            <Label htmlFor="cancel-reason" className="text-sm">
+              Reason <span className="text-muted-foreground">(optional)</span>
+            </Label>
+            <Textarea
+              id="cancel-reason"
+              placeholder="Let us know why you'd like to cancel…"
+              value={cancelReason}
+              onChange={e => setCancelReason(e.target.value)}
+              rows={3}
+              className="resize-none"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancelDialogOpen(false)}>
+              Keep my plan
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={cancelMutation.isPending}
+              onClick={() =>
+                cancelMutation.mutate({
+                  id: planId,
+                  data: cancelReason.trim() ? { reason: cancelReason.trim() } : undefined,
+                })
+              }
+            >
+              {cancelMutation.isPending ? "Submitting…" : "Submit request"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Included services */}
       {serviceList.length > 0 && (

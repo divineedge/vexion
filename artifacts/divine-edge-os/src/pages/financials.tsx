@@ -20,12 +20,15 @@ import {
   useApproveStopServiceFlag,
   useDismissStopServiceFlag,
   useResumeStopServiceFlagPlan,
+  useListPlanCancelRequests, getListPlanCancelRequestsQueryKey,
+  useApprovePlanCancelRequest,
+  useDismissPlanCancelRequest,
   useGetTenantSettings, getGetTenantSettingsQueryKey,
   useCreateInvoice,
   useUpdateJob,
   customFetch,
 } from '@workspace/api-client-react';
-import type { RecurringInvoiceTemplate, BillingLineItem, StopServiceFlag, BillingPreviewGroup, BillingPreviewJob } from '@workspace/api-client-react';
+import type { RecurringInvoiceTemplate, BillingLineItem, StopServiceFlag, PlanCancelRequest, BillingPreviewGroup, BillingPreviewJob } from '@workspace/api-client-react';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
 import { Card, CardContent } from '@/components/ui/card';
@@ -716,6 +719,7 @@ export default function FinancialsPage() {
   const [editingTemplate, setEditingTemplate] = useState<RecurringInvoiceTemplate | null>(null);
   const [approvingFlag, setApprovingFlag] = useState<StopServiceFlag | null>(null);
   const [resumingFlag, setResumingFlag] = useState<StopServiceFlag | null>(null);
+  const [approvingCancelReq, setApprovingCancelReq] = useState<PlanCancelRequest | null>(null);
   const [previewTemplate, setPreviewTemplate] = useState<{ id: number; name: string } | null>(null);
   const [flagSearch, setFlagSearch] = useState('');
   const [flagDateRange, setFlagDateRange] = useState('all');
@@ -744,6 +748,19 @@ export default function FinancialsPage() {
     { status: 'dismissed' },
     { query: { enabled: showDismissed, queryKey: getListStopServiceFlagsQueryKey({ status: 'dismissed' }) } },
   );
+
+  const { data: cancelRequests, isLoading: cancelReqsLoading } = useListPlanCancelRequests(
+    { status: 'pending' },
+    { query: { queryKey: getListPlanCancelRequestsQueryKey({ status: 'pending' }) } },
+  );
+
+  const { data: dismissedCancelReqs } = useListPlanCancelRequests(
+    { status: 'dismissed' },
+    { query: { enabled: showDismissed, queryKey: getListPlanCancelRequestsQueryKey({ status: 'dismissed' }) } },
+  );
+
+  const approveCancelReq = useApprovePlanCancelRequest();
+  const dismissCancelReq = useDismissPlanCancelRequest();
 
   const allFlags = [
     ...(stopServiceFlags ?? []),
@@ -965,10 +982,10 @@ export default function FinancialsPage() {
             )}
           </TabsTrigger>
           <TabsTrigger value="approvals">
-            <ShieldAlert className="w-4 h-4 mr-2" />Stop-Service Approvals
-            {(stopServiceFlags?.length ?? 0) > 0 && (
+            <ShieldAlert className="w-4 h-4 mr-2" />Approvals
+            {((stopServiceFlags?.length ?? 0) + (cancelRequests?.length ?? 0)) > 0 && (
               <Badge className="ml-2 h-4 px-1 text-[10px] bg-red-500 text-white border-transparent">
-                {stopServiceFlags!.length}
+                {(stopServiceFlags?.length ?? 0) + (cancelRequests?.length ?? 0)}
               </Badge>
             )}
           </TabsTrigger>
@@ -1273,8 +1290,95 @@ export default function FinancialsPage() {
           </div>
         </TabsContent>
 
-        {/* ── Stop-Service Approvals ── */}
-        <TabsContent value="approvals" className="space-y-4">
+        {/* ── Approvals ── */}
+        <TabsContent value="approvals" className="space-y-6">
+          {/* ── Plan Cancellation Requests ── */}
+          <div className="space-y-3">
+            <div>
+              <h3 className="font-semibold">Plan Cancellation Requests</h3>
+              <p className="text-sm text-muted-foreground">Customers who requested to cancel their service plan. Approving will cancel the plan immediately.</p>
+            </div>
+            {cancelReqsLoading ? (
+              <p className="text-sm text-muted-foreground py-2 text-center">Loading…</p>
+            ) : ((cancelRequests?.length ?? 0) + (showDismissed ? (dismissedCancelReqs?.length ?? 0) : 0)) === 0 ? (
+              <p className="text-sm text-muted-foreground py-2">No pending cancellation requests.</p>
+            ) : (
+              <Card>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Plan</TableHead>
+                        <TableHead>Reason</TableHead>
+                        <TableHead>Submitted</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {[...(cancelRequests ?? []), ...(showDismissed ? (dismissedCancelReqs ?? []) : [])].map(req => {
+                        const isDismissed = req.status === 'dismissed';
+                        return (
+                          <TableRow key={req.id} className={isDismissed ? 'opacity-60' : ''}>
+                            <TableCell className="font-medium">{req.customerName ?? '—'}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{req.planName ?? `Plan #${req.planId}`}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{req.reason ?? <span className="italic">No reason given</span>}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{format(new Date(req.createdAt), 'MMM d, yyyy')}</TableCell>
+                            <TableCell>
+                              {isDismissed ? (
+                                <Badge className="bg-slate-100 text-slate-600 border-transparent" variant="outline">Dismissed</Badge>
+                              ) : (
+                                <Badge className="bg-amber-100 text-amber-800 border-transparent" variant="outline">Pending</Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {canManageOffice && !isDismissed && (
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 text-xs gap-1 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                                    onClick={() => setApprovingCancelReq(req)}
+                                    disabled={approveCancelReq.isPending}
+                                  >
+                                    <Check className="w-3 h-3" /> Approve
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 text-xs gap-1 text-muted-foreground hover:text-destructive"
+                                    onClick={() => {
+                                      dismissCancelReq.mutate(
+                                        { id: req.id },
+                                        {
+                                          onSuccess: () => {
+                                            toast.success('Request dismissed');
+                                            qc.invalidateQueries({ queryKey: getListPlanCancelRequestsQueryKey({ status: 'pending' }) });
+                                          },
+                                          onError: () => toast.error('Failed to dismiss request'),
+                                        },
+                                      );
+                                    }}
+                                    disabled={dismissCancelReq.isPending}
+                                  >
+                                    <X className="w-3 h-3" /> Dismiss
+                                  </Button>
+                                </div>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          {/* ── Stop-Service Approvals ── */}
+          <div className="space-y-3">
           <div>
             <h3 className="font-semibold">Stop-Service Approvals</h3>
             <p className="text-sm text-muted-foreground">Review overdue accounts flagged for service pause. Approving will halt the customer's recurring billing series.</p>
@@ -1395,6 +1499,7 @@ export default function FinancialsPage() {
               </CardContent>
             </Card>
           )}
+          </div>{/* end stop-service section */}
         </TabsContent>
 
         {/* ── Vendors & Expenses ── */}
@@ -1402,6 +1507,47 @@ export default function FinancialsPage() {
           <VendorExpenseLedger canEdit={canManageOffice} />
         </TabsContent>
       </Tabs>
+
+      {/* Approve Plan Cancellation Request Dialog */}
+      <Dialog open={!!approvingCancelReq} onOpenChange={open => { if (!open) setApprovingCancelReq(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cancel this service plan?</DialogTitle>
+            <DialogDescription>
+              This will immediately cancel the plan for{' '}
+              <strong>{approvingCancelReq?.customerName ?? 'this customer'}</strong>
+              {approvingCancelReq?.planName ? ` (${approvingCancelReq.planName})` : ''}.
+              No further visits or invoices will be generated.
+              {approvingCancelReq?.reason && (
+                <> Customer's reason: <em>"{approvingCancelReq.reason}"</em></>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setApprovingCancelReq(null)}>Keep plan</Button>
+            <Button
+              variant="destructive"
+              disabled={approveCancelReq.isPending}
+              onClick={() => {
+                if (!approvingCancelReq) return;
+                approveCancelReq.mutate(
+                  { id: approvingCancelReq.id },
+                  {
+                    onSuccess: () => {
+                      toast.success(`Plan cancelled for ${approvingCancelReq.customerName ?? 'customer'}`);
+                      qc.invalidateQueries({ queryKey: getListPlanCancelRequestsQueryKey({ status: 'pending' }) });
+                      setApprovingCancelReq(null);
+                    },
+                    onError: () => toast.error('Failed to cancel plan'),
+                  },
+                );
+              }}
+            >
+              {approveCancelReq.isPending ? 'Cancelling…' : 'Cancel plan'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Approve Stop-Service Flag Dialog */}
       <Dialog open={!!approvingFlag} onOpenChange={open => { if (!open) setApprovingFlag(null); }}>

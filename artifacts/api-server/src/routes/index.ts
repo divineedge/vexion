@@ -46,6 +46,7 @@ import followupQueueRouter from "./followupQueue";
 import importBatchesRouter from "./importBatches";
 import employeeHistoryRouter from "./employeeHistory";
 import repairLogsRouter from "./repairLogs";
+import planCancelRequestsRouter from "./planCancelRequests";
 
 const router: IRouter = Router();
 
@@ -96,5 +97,6 @@ router.use(followupQueueRouter);
 router.use(importBatchesRouter);
 router.use(employeeHistoryRouter);
 router.use(repairLogsRouter);
+router.use(planCancelRequestsRouter);
 
 export default router;

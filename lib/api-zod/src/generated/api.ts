@@ -6339,6 +6339,89 @@ export const PortalUpdatePlanResponse = zod.object({
 
 
 /**
+ * @summary Submit a cancellation request for a service plan
+ */
+export const PortalRequestPlanCancellationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const PortalRequestPlanCancellationBody = zod.object({
+  "reason": zod.string().optional().describe('Optional reason for cancellation')
+})
+
+export const PortalRequestPlanCancellationResponse = zod.object({
+  "message": zod.string().optional()
+})
+
+
+/**
+ * @summary List plan cancellation requests (staff)
+ */
+export const ListPlanCancelRequestsQueryParams = zod.object({
+  "status": zod.enum(['pending', 'approved', 'dismissed']).optional()
+})
+
+export const ListPlanCancelRequestsResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "planId": zod.number(),
+  "reason": zod.string().nullish(),
+  "status": zod.enum(['pending', 'approved', 'dismissed']),
+  "customerName": zod.string().nullish(),
+  "planName": zod.string().nullish(),
+  "resolvedBy": zod.number().nullish(),
+  "resolvedAt": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+export const ListPlanCancelRequestsResponse = zod.array(ListPlanCancelRequestsResponseItem)
+
+
+/**
+ * @summary Approve a cancellation request (cancels the plan)
+ */
+export const ApprovePlanCancelRequestParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ApprovePlanCancelRequestResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "planId": zod.number(),
+  "reason": zod.string().nullish(),
+  "status": zod.enum(['pending', 'approved', 'dismissed']),
+  "customerName": zod.string().nullish(),
+  "planName": zod.string().nullish(),
+  "resolvedBy": zod.number().nullish(),
+  "resolvedAt": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Dismiss a cancellation request (plan remains active)
+ */
+export const DismissPlanCancelRequestParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DismissPlanCancelRequestResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "planId": zod.number(),
+  "reason": zod.string().nullish(),
+  "status": zod.enum(['pending', 'approved', 'dismissed']),
+  "customerName": zod.string().nullish(),
+  "planName": zod.string().nullish(),
+  "resolvedBy": zod.number().nullish(),
+  "resolvedAt": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
  * @summary Request a presigned upload URL (portal customers)
  */
 

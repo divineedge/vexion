@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable, mediaAttachmentsTable, tenantsTable, communicationsLogTable, customerPlansTable, usersTable } from "@workspace/db";
+import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable, mediaAttachmentsTable, tenantsTable, communicationsLogTable, customerPlansTable, usersTable, planCancelRequestsTable } from "@workspace/db";
 import { eq, and, gt, desc, lte, isNotNull, ne, sql } from "drizzle-orm";
 import { objectStorageService } from "./storage";
 import crypto from "crypto";
@@ -1400,6 +1400,75 @@ router.post("/portal/stripe-webhook", async (req: any, res): Promise<void> => {
   }
 
   res.json({ received: true });
+});
+
+// ---------------------------------------------------------------------------
+// POST /portal/plans/:id/cancel-request
+// ---------------------------------------------------------------------------
+router.post("/portal/plans/:id/cancel-request", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+  const planId = Number(req.params.id);
+  const { reason } = req.body as { reason?: string };
+
+  // Verify the plan belongs to this customer and is cancellable
+  const [row] = await db
+    .select({ id: customerPlansTable.id, status: customerPlansTable.status })
+    .from(customerPlansTable)
+    .where(
+      and(
+        eq(customerPlansTable.id, planId),
+        eq(customerPlansTable.customerId, portalCustomerId),
+        eq(customerPlansTable.tenantId, portalTenantId),
+      ),
+    )
+    .limit(1);
+
+  if (!row) {
+    res.status(404).json({ error: "Plan not found" });
+    return;
+  }
+
+  if (row.status === "cancelled") {
+    res.status(409).json({ error: "Plan is already cancelled" });
+    return;
+  }
+
+  // Check for an existing pending request for this plan
+  const [existing] = await db
+    .select({ id: planCancelRequestsTable.id })
+    .from(planCancelRequestsTable)
+    .where(
+      and(
+        eq(planCancelRequestsTable.planId, planId),
+        eq(planCancelRequestsTable.tenantId, portalTenantId),
+        eq(planCancelRequestsTable.status, "pending"),
+      ),
+    )
+    .limit(1);
+
+  if (existing) {
+    res.status(409).json({ error: "A cancellation request is already pending for this plan" });
+    return;
+  }
+
+  try {
+    await db.insert(planCancelRequestsTable).values({
+      tenantId: portalTenantId,
+      customerId: portalCustomerId,
+      planId,
+      reason: reason?.trim() || null,
+      status: "pending",
+    });
+  } catch (err: any) {
+    // Unique index violation means a pending request already exists (concurrent submission)
+    if (err?.code === "23505") {
+      res.status(409).json({ error: "A cancellation request is already pending for this plan" });
+      return;
+    }
+    throw err;
+  }
+
+  res.status(201).json({ message: "Cancellation request submitted" });
 });
 
 // ---------------------------------------------------------------------------

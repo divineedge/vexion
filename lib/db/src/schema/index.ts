@@ -42,3 +42,4 @@ export * from "./followupQueue";
 export * from "./importBatches";
 export * from "./employeeHistory";
 export * from "./repairLogs";
+export * from "./planCancelRequests";

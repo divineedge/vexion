@@ -4215,6 +4215,109 @@ paths:
         "404":
           description: Not found
 
+  /portal/plans/{id}/cancel-request:
+    post:
+      tags: [portal]
+      operationId: portalRequestPlanCancellation
+      summary: Submit a cancellation request for a service plan
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalCancelRequestInput"
+      responses:
+        "201":
+          description: Cancellation request submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        "404":
+          description: Not found
+        "409":
+          description: Plan already cancelled or request already pending
+
+  /plan-cancel-requests:
+    get:
+      tags: [planCancelRequests]
+      operationId: listPlanCancelRequests
+      summary: List plan cancellation requests (staff)
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, approved, dismissed]
+      responses:
+        "200":
+          description: List of cancellation requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PlanCancelRequest"
+
+  /plan-cancel-requests/{id}/approve:
+    post:
+      tags: [planCancelRequests]
+      operationId: approvePlanCancelRequest
+      summary: Approve a cancellation request (cancels the plan)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Request approved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanCancelRequest"
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+        "409":
+          description: Already resolved
+
+  /plan-cancel-requests/{id}/dismiss:
+    post:
+      tags: [planCancelRequests]
+      operationId: dismissPlanCancelRequest
+      summary: Dismiss a cancellation request (plan remains active)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Request dismissed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanCancelRequest"
+        "403":
+          description: Forbidden
+        "404":
+          description: Not found
+        "409":
+          description: Already resolved
+
   /portal/storage/uploads/request-url:
     post:
       tags: [portal]
@@ -11140,6 +11243,41 @@ components:
       properties:
         autoRenew:
           type: boolean
+
+    PortalCancelRequestInput:
+      type: object
+      properties:
+        reason:
+          type: string
+          description: Optional reason for cancellation
+
+    PlanCancelRequest:
+      type: object
+      required: [id, tenantId, customerId, planId, status, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        customerId:
+          type: integer
+        planId:
+          type: integer
+        reason:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [pending, approved, dismissed]
+        customerName:
+          type: ["string", "null"]
+        planName:
+          type: ["string", "null"]
+        resolvedBy:
+          type: ["integer", "null"]
+        resolvedAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
 
     PortalAlertResponse:
       type: object

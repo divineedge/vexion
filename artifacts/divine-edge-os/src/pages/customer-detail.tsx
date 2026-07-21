@@ -30,7 +30,7 @@ import { Switch } from '@/components/ui/switch';
 import {
   ArrowLeft, Building, Phone, Mail, Edit, Plus, Calendar, MapPin,
   Save, X, User, FileText, Tag, DollarSign, Home, Briefcase, Megaphone, AlertTriangle, Link,
-  MessageSquare, Send, PhoneOff, MailMinus, ChevronRight, PlayCircle, ClipboardList, Eye,
+  MessageSquare, Send, PhoneOff, MailMinus, ChevronRight, PlayCircle, ClipboardList, Eye, RefreshCw,
 } from 'lucide-react';
 import CustomerAvatar from '@/components/media/CustomerAvatar';
 import PropertyThumbnail from '@/components/media/PropertyThumbnail';
@@ -93,6 +93,7 @@ export default function CustomerDetailPage() {
   const [composeChannel, setComposeChannel] = useState<'sms' | 'email'>('sms');
   const [composeBody, setComposeBody] = useState('');
   const [composeSubject, setComposeSubject] = useState('');
+  const [resendingReminder, setResendingReminder] = useState(false);
 
   // Add property state
   const [addPropertyOpen, setAddPropertyOpen] = useState(false);
@@ -776,10 +777,57 @@ export default function CustomerDetailPage() {
                 {(() => {
                   const failure = (customer as any).lastReminderFailure as { channel: string; errorNote: string; failedAt: string } | null;
                   if (!failure) return null;
+
+                  // Find the most recent failed reminder message so we know jobId + reminderType
+                  const failedMsg = (messages ?? []).find(
+                    m => m.status === 'failed' &&
+                         ((m as any).messageType === 'reminder_7d' || (m as any).messageType === 'reminder_24h'),
+                  ) as (typeof messages extends (infer T)[] | undefined ? T : never) & { messageType?: string; jobId?: number | null } | undefined;
+
+                  const jobId = failedMsg?.jobId ?? null;
+                  const reminderType: '7d' | '24h' | null =
+                    failedMsg?.messageType === 'reminder_7d' ? '7d' :
+                    failedMsg?.messageType === 'reminder_24h' ? '24h' : null;
+
                   return (
-                    <Badge variant="outline" className="text-red-600 border-red-200 gap-1 text-xs" title={`${failure.channel.toUpperCase()} failed: ${failure.errorNote}`}>
-                      <AlertTriangle className="w-3 h-3" /> Last reminder failed ({failure.channel.toUpperCase()})
-                    </Badge>
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant="outline" className="text-red-600 border-red-200 gap-1 text-xs" title={`${failure.channel.toUpperCase()} failed: ${failure.errorNote}`}>
+                        <AlertTriangle className="w-3 h-3" /> Last reminder failed ({failure.channel.toUpperCase()})
+                      </Badge>
+                      {canManageOffice && jobId && reminderType && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-xs gap-1 text-red-700 border-red-200 hover:bg-red-50"
+                          disabled={resendingReminder}
+                          onClick={async () => {
+                            setResendingReminder(true);
+                            try {
+                              const result = await customFetch<{ sent: boolean; channels: string[]; failures: string[] }>(
+                                `/api/jobs/${jobId}/resend-reminder`,
+                                { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reminderType }) },
+                              );
+                              if (result.channels.length > 0) {
+                                toast.success(`Reminder re-sent via ${result.channels.join(', ')}`);
+                              } else if (result.failures.length > 0) {
+                                toast.error(`Re-send failed: ${result.failures.join('; ')}`);
+                              } else {
+                                toast.warning('No channels available to re-send (check opt-out settings)');
+                              }
+                              qc.invalidateQueries({ queryKey: getListCustomerMessagesQueryKey(id) });
+                              qc.invalidateQueries({ queryKey: getGetCustomerQueryKey(id) });
+                            } catch {
+                              toast.error('Failed to re-send reminder');
+                            } finally {
+                              setResendingReminder(false);
+                            }
+                          }}
+                        >
+                          <RefreshCw className={`w-3 h-3 ${resendingReminder ? 'animate-spin' : ''}`} />
+                          {resendingReminder ? 'Sending...' : 'Re-send'}
+                        </Button>
+                      )}
+                    </div>
                   );
                 })()}
                 {(customer as any).smsOptOut && (

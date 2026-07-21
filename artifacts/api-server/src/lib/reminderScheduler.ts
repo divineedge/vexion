@@ -283,6 +283,149 @@ export async function runWeeklyRemindersNow(tenantId: number) {
   return results;
 }
 
+/**
+ * Manually re-send a reminder for a specific job, resetting the slot so it
+ * can be claimed again.  Used by the "Re-send reminder" button in the UI.
+ *
+ * Steps:
+ *  1. Clear the sent flag so the slot is open again.
+ *  2. Claim the slot atomically (prevents duplicate sends if called twice).
+ *  3. Send the reminder immediately.
+ */
+export async function resendReminderForJob(
+  tenantId: number,
+  jobId: number,
+  reminderType: "7d" | "24h",
+): Promise<{ sent: boolean; channels: string[]; failures: string[] }> {
+  const field = reminderType === "7d" ? "sent7d" : "sent24h";
+
+  // Step 1: Clear the flag so claimReminderSlot can succeed.
+  await db.execute(sql`
+    UPDATE jobs
+    SET reminders_sent = jsonb_set(
+      COALESCE(reminders_sent, '{}'::jsonb),
+      ${sql.raw(`'{${field}}'`)},
+      'false'
+    )
+    WHERE id = ${jobId} AND tenant_id = ${tenantId}
+  `);
+
+  // Step 2: Atomically claim the slot.
+  const claimed = await claimReminderSlot(jobId, reminderType);
+  if (!claimed) {
+    return { sent: false, channels: [], failures: ["slot already claimed by concurrent request"] };
+  }
+
+  // Step 3: Fetch job data and send.
+  const [row] = await db
+    .select({
+      job: jobsTable,
+      customer: customersTable,
+      propertyAddress: propertiesTable.address,
+      tenant: tenantsTable,
+    })
+    .from(jobsTable)
+    .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
+    .leftJoin(propertiesTable, eq(jobsTable.propertyId, propertiesTable.id))
+    .leftJoin(tenantsTable, eq(jobsTable.tenantId, tenantsTable.id))
+    .where(and(eq(jobsTable.id, jobId), eq(jobsTable.tenantId, tenantId)));
+
+  if (!row?.customer || !row.tenant) {
+    return { sent: false, channels: [], failures: ["job, customer, or tenant not found"] };
+  }
+
+  // Capture channel results by temporarily tracking them here.
+  // sendReminder logs to DB and returns nothing, so we re-implement a
+  // lightweight version that also returns channel outcome.
+  const now = new Date();
+  const companyName = row.tenant.name;
+  const { job, customer, tenant, propertyAddress } = row;
+
+  const smsProviderConfig: SmsProviderConfig = {
+    platform: (tenant.phonePlatform as "openphone" | "grasshopper" | "twilio" | "quo" | null) ?? null,
+    config: (tenant.phonePlatformConfig as Record<string, string>) ?? {},
+    fromNumber: tenant.mainPhoneNumber ?? null,
+  };
+  const emailProviderConfig: EmailProviderConfig = {
+    provider: (tenant.emailProvider as "smtp" | "sendgrid" | "mailgun" | "resend" | null) ?? null,
+    config: (tenant.emailProviderConfig as Record<string, string>) ?? {},
+    fromAddress: (tenant.emailProviderConfig as Record<string, string>)?.["fromAddress"] ?? null,
+  };
+
+  const messageType = reminderType === "7d" ? "reminder_7d" : "reminder_24h";
+  const channels: string[] = [];
+  const failures: string[] = [];
+
+  if (customer.phone && !customer.smsOptOut && job.smsReminderEnabled) {
+    const smsBody = buildReminderSmsBody({
+      customerName: customer.name.split(" ")[0] ?? customer.name,
+      jobTitle: job.title,
+      scheduledAt: job.scheduledAt,
+      propertyAddress: propertyAddress ?? null,
+      companyName,
+    });
+    const smsResult = await sendSms(smsProviderConfig, customer.phone, smsBody);
+    await db.insert(communicationsLogTable).values({
+      tenantId: tenant.id,
+      customerId: customer.id,
+      direction: "outbound",
+      channel: "sms",
+      fromAddress: tenant.mainPhoneNumber ?? null,
+      toAddress: customer.phone,
+      body: smsBody,
+      status: smsResult.success ? "sent" : "failed",
+      externalId: smsResult.externalId ?? null,
+      errorNote: smsResult.success ? null : (smsResult.error ?? "Unknown SMS error"),
+      messageType,
+      jobId: job.id,
+    });
+    if (smsResult.success) channels.push("sms");
+    else failures.push(`sms: ${smsResult.error}`);
+  }
+
+  if (customer.email && !customer.emailOptOut) {
+    const { subject, body } = buildReminderEmailBody({
+      customerName: customer.name.split(" ")[0] ?? customer.name,
+      jobTitle: job.title,
+      scheduledAt: job.scheduledAt,
+      propertyAddress: propertyAddress ?? null,
+      companyName,
+    });
+    const emailResult = await sendEmail(emailProviderConfig, customer.email, subject, body);
+    await db.insert(communicationsLogTable).values({
+      tenantId: tenant.id,
+      customerId: customer.id,
+      direction: "outbound",
+      channel: "email",
+      toAddress: customer.email,
+      subject,
+      body,
+      status: emailResult.success ? "sent" : "failed",
+      externalId: emailResult.externalId ?? null,
+      errorNote: emailResult.success ? null : (emailResult.error ?? "Unknown email error"),
+      messageType,
+      jobId: job.id,
+    });
+    if (emailResult.success) channels.push("email");
+    else failures.push(`email: ${emailResult.error}`);
+  }
+
+  // Update the sentAt timestamp.
+  const sentAtField = reminderType === "7d" ? "sentAt7d" : "sentAt24h";
+  await db.execute(sql`
+    UPDATE jobs
+    SET reminders_sent = jsonb_set(
+      COALESCE(reminders_sent, '{}'::jsonb),
+      ${sql.raw(`'{${sentAtField}}'`)},
+      ${JSON.stringify(now.toISOString())}::jsonb
+    )
+    WHERE id = ${job.id}
+  `);
+
+  logger.info({ jobId, reminderType, channels, failures }, "Manual reminder resend completed");
+  return { sent: true, channels, failures };
+}
+
 export function startReminderScheduler() {
   logger.info("Starting reminder scheduler (runs every 15 minutes)");
 

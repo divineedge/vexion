@@ -3,7 +3,8 @@ import crypto from "crypto";
 import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable, invoicesTable, tenantsTable, blueprintsTable, chemicalApplicationsTable, customerPlansTable, equipmentFuelLogsTable } from "@workspace/db";
 import { eq, and, or, sql, desc, asc, isNotNull, isNull, ne, inArray, min, gt } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
-import { getCallerRole } from "../lib/roles";
+import { getCallerRole, isAdminRole } from "../lib/roles";
+import { resendReminderForJob } from "../lib/reminderScheduler";
 import { nthOccurrenceAfterRoot, describeRule, type RecurrenceRule } from "../lib/recurrenceEngine";
 import { enqueueInvoiceEmail } from "../lib/billingScheduler";
 import {
@@ -910,6 +911,40 @@ router.post("/jobs/:id/alerts", async (req, res): Promise<void> => {
     createdAt: alert.createdAt.toISOString(),
     updatedAt: alert.updatedAt.toISOString(),
   });
+});
+
+// ---------------------------------------------------------------------------
+// POST /jobs/:id/resend-reminder — manually re-send a failed reminder
+// ---------------------------------------------------------------------------
+router.post("/jobs/:id/resend-reminder", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  const id = parseInt(req.params.id, 10);
+
+  const admin = await isAdminRole(tenantId, userId);
+  if (!admin) {
+    res.status(403).json({ error: "Office/admin role required" });
+    return;
+  }
+
+  const { reminderType } = req.body as { reminderType?: string };
+  if (reminderType !== "7d" && reminderType !== "24h") {
+    res.status(400).json({ error: "reminderType must be '7d' or '24h'" });
+    return;
+  }
+
+  const [job] = await db
+    .select({ id: jobsTable.id })
+    .from(jobsTable)
+    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!job) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+
+  const result = await resendReminderForJob(tenantId, id, reminderType);
+  res.json(result);
 });
 
 export default router;

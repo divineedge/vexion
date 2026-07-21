@@ -512,6 +512,7 @@ router.get("/chemical-applications/export", async (req, res): Promise<void> => {
   const headers = [
     'Application ID', 'Applied At', 'Job', 'Property Address',
     'Mixture / Product', 'Volume Applied', 'Volume Unit',
+    'Treated Area', 'Area Unit',
     'Target Pest', 'Application Method',
     'Wind Speed (mph)', 'Wind Direction', 'Temperature (°F)',
     'Applicator Name', 'Applicator License #', 'Notes',
@@ -541,6 +542,8 @@ router.get("/chemical-applications/export", async (req, res): Promise<void> => {
       app.mixtureName ?? app.productName ?? '',
       app.volumeApplied,
       app.volumeUnit,
+      app.treatedArea ?? '',
+      app.areaUnit ?? '',
       app.targetPest ?? '',
       app.applicationMethod ?? '',
       app.windSpeed ?? '',

@@ -513,6 +513,57 @@ router.patch("/portal/alerts/:id/respond", requirePortalAuth, async (req: any, r
     .returning();
 
   const [job] = await db.select({ title: jobsTable.title }).from(jobsTable).where(eq(jobsTable.id, updated.jobId)).limit(1);
+
+  // Notify the company by email — fire-and-forget, never blocks the response
+  (async () => {
+    try {
+      const [tenantRow, customerRow] = await Promise.all([
+        db.select().from(tenantsTable).where(eq(tenantsTable.id, portalTenantId)).limit(1),
+        db.select({ name: customersTable.name, email: customersTable.email }).from(customersTable).where(eq(customersTable.id, portalCustomerId)).limit(1),
+      ]);
+
+      const tenant = tenantRow[0];
+      const notifyTo = tenant?.businessEmail ?? null;
+      if (!notifyTo) {
+        logger.info({ tenantId: portalTenantId, alertId }, "No businessEmail configured — skipping alert-response notification");
+        return;
+      }
+
+      const emailProviderConfig: EmailProviderConfig = {
+        provider: (tenant?.emailProvider as "smtp" | "sendgrid" | "mailgun" | "resend" | "gmail" | null) ?? null,
+        config: (tenant?.emailProviderConfig as Record<string, string>) ?? {},
+        fromAddress: tenant?.businessEmail ?? (tenant?.emailProviderConfig as Record<string, string>)?.["fromAddress"] ?? null,
+      };
+
+      const companyName = tenant?.name ?? "Your Company";
+      const customerName = customerRow[0]?.name ?? "A customer";
+      const customerEmail = customerRow[0]?.email ?? null;
+      const jobTitle = job?.title ?? `Alert #${alertId}`;
+      const responseLabel = action === "accept" ? "Accepted" : "Declined";
+
+      const subject = `Customer ${responseLabel} an Alert — ${jobTitle}`;
+      const body = [
+        `A customer has responded to a job alert.`,
+        "",
+        `Customer:  ${customerName}${customerEmail ? ` <${customerEmail}>` : ""}`,
+        `Job:       ${jobTitle}`,
+        `Response:  ${responseLabel}`,
+        customerResponse ? `Comments:  ${customerResponse}` : null,
+        "",
+        `— ${companyName} Portal`,
+      ].filter(l => l !== null).join("\n");
+
+      const result = await sendEmail(emailProviderConfig, notifyTo, subject, body);
+      if (!result.success) {
+        logger.warn({ tenantId: portalTenantId, alertId, error: result.error }, "Failed to send alert-response notification email");
+      } else {
+        logger.info({ tenantId: portalTenantId, alertId, to: notifyTo }, "Alert-response notification email sent");
+      }
+    } catch (err) {
+      logger.error({ err }, "Unexpected error sending alert-response notification email");
+    }
+  })();
+
   res.json(formatPortalAlert(updated, job?.title ?? null));
 });
 

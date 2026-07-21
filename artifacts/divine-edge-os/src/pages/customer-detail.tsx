@@ -32,6 +32,7 @@ import {
   ArrowLeft, Building, Phone, Mail, Edit, Plus, Calendar, MapPin,
   Save, X, User, FileText, Tag, DollarSign, Home, Briefcase, Megaphone, AlertTriangle, Link,
   MessageSquare, Send, PhoneOff, MailMinus, ChevronRight, PlayCircle, ClipboardList, Eye, RefreshCw,
+  MailWarning,
 } from 'lucide-react';
 import CustomerAvatar from '@/components/media/CustomerAvatar';
 import PropertyThumbnail from '@/components/media/PropertyThumbnail';
@@ -95,6 +96,7 @@ export default function CustomerDetailPage() {
   const [composeBody, setComposeBody] = useState('');
   const [composeSubject, setComposeSubject] = useState('');
   const [resendingReminder, setResendingReminder] = useState(false);
+  const [resendingInvoice, setResendingInvoice] = useState<number | null>(null);
 
   // Add property state
   const [addPropertyOpen, setAddPropertyOpen] = useState(false);
@@ -170,6 +172,21 @@ export default function CustomerDetailPage() {
     query: { enabled: !!id, queryKey: getListCustomerMessagesQueryKey(id) },
   });
   const sendMessage = useSendMessage();
+
+  type AutoInvoiceFailure = {
+    id: number;
+    kind: 'creation' | 'email';
+    message: string;
+    jobId: number | null;
+    invoiceId: number | null;
+    invoiceNumber?: string | null;
+    createdAt: string;
+  };
+  const { data: autoInvoiceFailures, refetch: refetchFailures } = useQuery<AutoInvoiceFailure[]>({
+    queryKey: ['auto-invoice-failures', id],
+    queryFn: () => customFetch<AutoInvoiceFailure[]>(`/api/customers/${id}/auto-invoice-failures`),
+    enabled: !!id,
+  });
 
   const openEdit = () => {
     if (!customer) return;
@@ -930,7 +947,69 @@ export default function CustomerDetailPage() {
         </TabsContent>
 
         {/* Jobs tab */}
-        <TabsContent value="jobs" className="focus-visible:outline-none">
+        <TabsContent value="jobs" className="space-y-4 focus-visible:outline-none">
+          {/* Auto-invoice failure alerts */}
+          {(autoInvoiceFailures ?? []).length > 0 && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 space-y-3">
+              <div className="flex items-center gap-2 text-red-700">
+                <MailWarning className="w-4 h-4 shrink-0" />
+                <p className="text-sm font-semibold">
+                  {(autoInvoiceFailures ?? []).length === 1
+                    ? '1 auto-invoice issue requires attention'
+                    : `${(autoInvoiceFailures ?? []).length} auto-invoice issues require attention`}
+                </p>
+              </div>
+              <div className="space-y-2">
+                {(autoInvoiceFailures ?? []).map(f => (
+                  <div key={f.id} className="flex items-start justify-between gap-3 rounded-md bg-white border border-red-100 px-3 py-2.5">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-red-800">
+                        {f.kind === 'creation' ? 'Invoice not created' : `Email delivery failed${f.invoiceNumber ? ` — ${f.invoiceNumber}` : ''}`}
+                      </p>
+                      <p className="text-xs text-red-600 mt-0.5 truncate" title={f.message}>{f.message}</p>
+                      <p className="text-[10px] text-muted-foreground mt-1">{new Date(f.createdAt).toLocaleString()}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {f.kind === 'email' && f.invoiceId != null && canManageOffice && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-xs gap-1 text-red-700 border-red-200 hover:bg-red-50"
+                          disabled={resendingInvoice === f.invoiceId}
+                          onClick={async () => {
+                            setResendingInvoice(f.invoiceId!);
+                            try {
+                              await customFetch(`/api/invoices/${f.invoiceId}/resend-email`, { method: 'POST' });
+                              toast.success('Invoice email re-queued for delivery');
+                              refetchFailures();
+                            } catch {
+                              toast.error('Failed to resend invoice email');
+                            } finally {
+                              setResendingInvoice(null);
+                            }
+                          }}
+                        >
+                          <RefreshCw className={`w-3 h-3 ${resendingInvoice === f.invoiceId ? 'animate-spin' : ''}`} />
+                          {resendingInvoice === f.invoiceId ? 'Sending...' : 'Resend Email'}
+                        </Button>
+                      )}
+                      {f.jobId != null && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => setLocation(`/jobs/${f.jobId}`)}
+                        >
+                          View Job <ChevronRight className="w-3 h-3 ml-0.5" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-3">
               <div>

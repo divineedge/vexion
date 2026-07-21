@@ -7,6 +7,7 @@ import { isAdminRole } from "../lib/roles";
 import { decryptSecretConfig } from "../lib/secretsCrypto";
 import { sendLobLetter, type LobConfig } from "../lib/lobProvider";
 import { sendReviewRequest } from "../lib/reviewService";
+import { enqueueInvoiceEmail } from "../lib/billingScheduler";
 import { logger } from "../lib/logger";
 import {
   importUpload,
@@ -396,6 +397,38 @@ router.post("/invoices/:id/print-mail", async (req, res): Promise<void> => {
     .returning();
 
   res.json(formatInvoice(updated, row.customer.name));
+});
+
+// ── POST /invoices/:id/resend-email — re-enqueue the invoice email ────────────
+router.post("/invoices/:id/resend-email", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  if (!(await isAdminRole(tenantId, userId))) {
+    res.status(403).json({ error: "Restricted to owner/admin/office roles" });
+    return;
+  }
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+
+  const [row] = await db
+    .select({ invoice: invoicesTable, customerEmail: customersTable.email })
+    .from(invoicesTable)
+    .leftJoin(customersTable, eq(invoicesTable.customerId, customersTable.id))
+    .where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId)));
+
+  if (!row) { res.status(404).json({ error: "Not found" }); return; }
+  if (!row.customerEmail) { res.status(400).json({ error: "Customer has no email address on file" }); return; }
+
+  await enqueueInvoiceEmail(tenantId, id);
+  await db.insert(activityLogTable).values({
+    tenantId,
+    userId,
+    type: "invoice_email_resent",
+    message: `Invoice ${row.invoice.invoiceNumber} email manually re-queued by staff`,
+    entityId: id,
+  });
+
+  res.json({ ok: true });
 });
 
 // ── PUBLIC: GET INVOICE BY TOKEN ──────────────────────────────────────────────

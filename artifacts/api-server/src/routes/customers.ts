@@ -614,4 +614,84 @@ router.post("/customers/:id/resume-service", async (req, res): Promise<void> => 
   res.json(formatCustomer(customer, { propertyCount: propCount, paymentStanding }));
 });
 
+// ---------------------------------------------------------------------------
+// GET /customers/:id/auto-invoice-failures
+// Returns any auto-invoice creation or email delivery failures for this
+// customer so staff can see them and trigger a manual resend.
+// ---------------------------------------------------------------------------
+router.get("/customers/:id/auto-invoice-failures", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const customerId = parseInt(rawId, 10);
+
+  // 1. Invoice creation failures — entityId = jobId
+  const jobRows = await db
+    .select({ id: jobsTable.id })
+    .from(jobsTable)
+    .where(and(eq(jobsTable.tenantId, tenantId), eq(jobsTable.customerId, customerId)));
+  const jobIds = jobRows.map(j => j.id);
+
+  // 2. Invoice email delivery failures — entityId = invoiceId
+  const invRows = await db
+    .select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber, jobId: invoicesTable.jobId })
+    .from(invoicesTable)
+    .where(and(eq(invoicesTable.tenantId, tenantId), eq(invoicesTable.customerId, customerId)));
+  const invIds = invRows.map(i => i.id);
+  const invById = new Map(invRows.map(i => [i.id, i]));
+
+  const [creationFailures, emailFailures] = await Promise.all([
+    jobIds.length > 0
+      ? db
+          .select()
+          .from(activityLogTable)
+          .where(
+            and(
+              eq(activityLogTable.tenantId, tenantId),
+              eq(activityLogTable.type, "auto_invoice_failed"),
+              inArray(activityLogTable.entityId, jobIds),
+            ),
+          )
+          .orderBy(desc(activityLogTable.createdAt))
+      : Promise.resolve([]),
+    invIds.length > 0
+      ? db
+          .select()
+          .from(activityLogTable)
+          .where(
+            and(
+              eq(activityLogTable.tenantId, tenantId),
+              eq(activityLogTable.type, "auto_invoice_email_failed"),
+              inArray(activityLogTable.entityId, invIds),
+            ),
+          )
+          .orderBy(desc(activityLogTable.createdAt))
+      : Promise.resolve([]),
+  ]);
+
+  const results = [
+    ...creationFailures.map(e => ({
+      id: e.id,
+      kind: "creation" as const,
+      message: e.message,
+      jobId: e.entityId,
+      invoiceId: null,
+      createdAt: e.createdAt.toISOString(),
+    })),
+    ...emailFailures.map(e => {
+      const inv = e.entityId != null ? invById.get(e.entityId) : undefined;
+      return {
+        id: e.id,
+        kind: "email" as const,
+        message: e.message,
+        jobId: inv?.jobId ?? null,
+        invoiceId: e.entityId,
+        invoiceNumber: inv?.invoiceNumber ?? null,
+        createdAt: e.createdAt.toISOString(),
+      };
+    }),
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  res.json(results);
+});
+
 export default router;

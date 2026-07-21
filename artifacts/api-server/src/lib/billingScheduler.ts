@@ -631,6 +631,16 @@ async function processEmailQueue() {
       logger.info({ queueId: row.queue.id, invoiceId: row.queue.invoiceId }, "Billing email sent");
     } else {
       logger.warn({ queueId: row.queue.id, error: result.error }, "Billing email failed");
+      // If this attempt exhausts all retries, write a durable activity log entry so staff can see it
+      if (row.queue.attempts + 1 >= MAX_EMAIL_ATTEMPTS && row.queue.invoiceId) {
+        await db.insert(activityLogTable).values({
+          tenantId: row.queue.tenantId,
+          userId: null,
+          type: "auto_invoice_email_failed",
+          message: `Invoice email permanently failed after ${MAX_EMAIL_ATTEMPTS} attempts: ${result.error ?? "unknown error"}`,
+          entityId: row.queue.invoiceId,
+        }).catch(() => { /* best-effort */ });
+      }
     }
   }
 }

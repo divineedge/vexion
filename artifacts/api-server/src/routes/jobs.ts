@@ -738,6 +738,14 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
       } catch (err) {
         // Non-fatal: log but don't fail the job completion response
         console.error("Auto-invoice creation failed:", err);
+        // Write an activity log entry so staff can see the failure and follow up
+        await db.insert(activityLogTable).values({
+          tenantId,
+          userId,
+          type: "auto_invoice_failed",
+          message: `Auto-invoice creation failed on job completion: ${err instanceof Error ? err.message : String(err)}`,
+          entityId: id,
+        }).catch(() => { /* best-effort */ });
       }
     }
   }

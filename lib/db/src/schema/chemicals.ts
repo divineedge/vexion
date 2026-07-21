@@ -84,6 +84,9 @@ export const chemicalApplicationsTable = pgTable("chemical_applications", {
   treatedArea: real("treated_area"),
   areaUnit: text("area_unit"), // sqft | acres
 
+  /** Optional zone name (from property blueprint/measurement polygons) the technician selected */
+  treatedZoneName: text("treated_zone_name"),
+
   targetPest: text("target_pest"),
   applicationMethod: text("application_method"), // spray | granular | drench | etc.
 

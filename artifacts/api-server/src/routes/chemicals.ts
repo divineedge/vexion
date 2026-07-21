@@ -355,7 +355,7 @@ router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> =
 
   const {
     mixtureId, productId, volumeApplied, volumeUnit,
-    treatedArea, areaUnit,
+    treatedArea, areaUnit, treatedZoneName,
     targetPest, applicationMethod, windSpeed, windDirection, temperature,
     appliedAt, applicatorName, applicatorLicenseNumber, notes,
   } = req.body;
@@ -449,6 +449,7 @@ router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> =
     volumeUnit: volumeUnit ?? "gal",
     treatedArea: treatedArea ? parseFloat(treatedArea) : null,
     areaUnit: treatedArea ? (areaUnit ?? "sqft") : null,
+    treatedZoneName: treatedZoneName ?? null,
     targetPest: targetPest ?? null,
     applicationMethod: applicationMethod ?? null,
     windSpeed: windSpeed ? parseFloat(windSpeed) : null,
@@ -512,7 +513,7 @@ router.get("/chemical-applications/export", async (req, res): Promise<void> => {
   const headers = [
     'Application ID', 'Applied At', 'Job', 'Property Address',
     'Mixture / Product', 'Volume Applied', 'Volume Unit',
-    'Treated Area', 'Area Unit',
+    'Treated Area', 'Area Unit', 'Treated Zone',
     'Target Pest', 'Application Method',
     'Wind Speed (mph)', 'Wind Direction', 'Temperature (°F)',
     'Applicator Name', 'Applicator License #', 'Notes',
@@ -544,6 +545,7 @@ router.get("/chemical-applications/export", async (req, res): Promise<void> => {
       app.volumeUnit,
       app.treatedArea ?? '',
       app.areaUnit ?? '',
+      app.treatedZoneName ?? '',
       app.targetPest ?? '',
       app.applicationMethod ?? '',
       app.windSpeed ?? '',

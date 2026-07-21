@@ -24,6 +24,7 @@ import {
   useGetProperty,
   getGetPropertyQueryKey,
   type ChemicalApplicationInput,
+  type MeasurementZone,
 } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
@@ -330,6 +331,7 @@ export default function LogApplicationScreen() {
   });
   const propSize = (property as { size?: number | null; sizeUnit?: string | null } | undefined)?.size ?? null;
   const propSizeUnit = (property as { size?: number | null; sizeUnit?: string | null } | undefined)?.sizeUnit ?? 'sqft';
+  const measurementZones = ((property as { measurementPolygons?: MeasurementZone[] } | undefined)?.measurementPolygons ?? []).filter(z => z.enabled && z.areaSqft > 0);
 
   // Picker state
   const [mode, setMode] = useState<'mixture' | 'product'>('mixture');
@@ -341,6 +343,7 @@ export default function LogApplicationScreen() {
   const [volumeUnit, setVolumeUnit] = useState('gal');
   const [treatedArea, setTreatedArea] = useState('');
   const [areaUnit, setAreaUnit] = useState('sqft');
+  const [selectedZone, setSelectedZone] = useState<MeasurementZone | null>(null);
   const [targetPest, setTargetPest] = useState('');
   const [applicationMethod, setApplicationMethod] = useState('');
   const [windSpeed, setWindSpeed] = useState('');
@@ -379,6 +382,7 @@ export default function LogApplicationScreen() {
   const [showAreaUnitPicker, setShowAreaUnitPicker] = useState(false);
   const [showMethodPicker, setShowMethodPicker] = useState(false);
   const [showWindDirPicker, setShowWindDirPicker] = useState(false);
+  const [showZonePicker, setShowZonePicker] = useState(false);
 
   // Result
   const [result, setResult] = useState<ChemApp | null>(null);
@@ -417,6 +421,7 @@ export default function LogApplicationScreen() {
         body.treatedArea = Number(treatedArea);
         body.areaUnit = areaUnit;
       }
+      if (selectedZone) body.treatedZoneName = selectedZone.label;
       if (targetPest.trim()) body.targetPest = targetPest.trim();
       if (applicationMethod) body.applicationMethod = applicationMethod;
       if (windSpeed && !isNaN(Number(windSpeed))) body.windSpeed = Number(windSpeed);
@@ -438,7 +443,7 @@ export default function LogApplicationScreen() {
     }
   }, [validate, volumeApplied, volumeUnit, treatedArea, areaUnit, mode, selectedMixture, selectedProduct,
       targetPest, applicationMethod, windSpeed, windDirection, temperature, licenseNumber, notes,
-      numJobId, createMutation]);
+      numJobId, createMutation, selectedZone]);
 
   const handleDone = useCallback(() => {
     router.back();
@@ -549,11 +554,39 @@ export default function LogApplicationScreen() {
 
           {/* Treated Area */}
           <Field label="Treated Area" colors={colors}>
-            {propSize != null && (
+            {/* Zone picker — only shown when the property has named measurement zones */}
+            {measurementZones.length > 0 && (
+              <View style={areaStyles.zonePicker}>
+                <SelectButton
+                  value={selectedZone ? selectedZone.label : ''}
+                  placeholder="Pick a zone (optional)…"
+                  onPress={() => setShowZonePicker(true)}
+                  colors={colors}
+                />
+                {selectedZone && (
+                  <TouchableOpacity
+                    style={[areaStyles.clearZone, { backgroundColor: colors.muted, borderColor: colors.border }]}
+                    onPress={() => setSelectedZone(null)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="close" size={15} color={colors.mutedForeground} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+            {propSize != null && !selectedZone && (
               <View style={[areaStyles.propertyBadge, { backgroundColor: colors.primary + '15', borderColor: colors.primary + '40' }]}>
                 <Ionicons name="home-outline" size={13} color={colors.primary} />
                 <Text style={[areaStyles.propertyBadgeText, { color: colors.primary }]}>
                   Property size: {propSize.toLocaleString()} {propSizeUnit}
+                </Text>
+              </View>
+            )}
+            {selectedZone && (
+              <View style={[areaStyles.propertyBadge, { backgroundColor: '#22c55e15', borderColor: '#22c55e40' }]}>
+                <Ionicons name="map-outline" size={13} color="#22c55e" />
+                <Text style={[areaStyles.propertyBadgeText, { color: '#22c55e' }]}>
+                  Zone area: {selectedZone.areaSqft.toLocaleString()} sqft
                 </Text>
               </View>
             )}
@@ -765,6 +798,19 @@ export default function LogApplicationScreen() {
         onClose={() => setShowWindDirPicker(false)}
         colors={colors}
       />
+      <PickerModal
+        visible={showZonePicker}
+        title="Select Zone"
+        items={measurementZones.map((z) => ({ id: z.id as unknown as number, name: `${z.label} (${z.areaSqft.toLocaleString()} sqft)`, _zone: z }))}
+        onSelect={(item) => {
+          const zone = (item as unknown as { _zone: MeasurementZone })._zone;
+          setSelectedZone(zone);
+          setTreatedArea(String(Math.round(zone.areaSqft)));
+          setAreaUnit('sqft');
+        }}
+        onClose={() => setShowZonePicker(false)}
+        colors={colors}
+      />
     </View>
   );
 }
@@ -949,6 +995,21 @@ const areaStyles = StyleSheet.create({
   rateVal: {
     fontFamily: 'Inter_700Bold',
     fontSize: 14,
+  },
+  zonePicker: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  clearZone: {
+    width: 38,
+    height: 46,
+    borderWidth: 1.5,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
 });
 

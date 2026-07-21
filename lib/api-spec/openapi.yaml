@@ -10080,6 +10080,8 @@ components:
           type: number
         volumeUnit:
           type: string
+        treatedZoneName:
+          type: ["string", "null"]
         targetPest:
           type: ["string", "null"]
         applicationMethod:
@@ -10125,6 +10127,9 @@ components:
         areaUnit:
           type: string
           description: "Unit for treatedArea: sqft or acres"
+        treatedZoneName:
+          type: string
+          description: "Optional name of the blueprint/measurement zone the technician selected (e.g. 'Front Lawn')"
         targetPest:
           type: string
         applicationMethod:

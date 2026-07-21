@@ -101,10 +101,31 @@
       "breakpoints": true
     },
     {
-      "idx": 15,
+      "idx": 14,
       "version": "7",
       "when": 1753056009000,
+      "tag": "0014_add_template_id_to_estimates",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1753056010000,
       "tag": "0015_add_invoice_claim_lock_at_to_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1753056011000,
+      "tag": "0016_backfill_treated_area_chemical_applications",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1753056012000,
+      "tag": "0017_add_treated_zone_name_to_chemical_applications",
       "breakpoints": true
     }
   ]

@@ -3114,6 +3114,8 @@ export interface ChemicalApplication {
   volumeApplied: number;
   volumeUnit: string;
   /** @nullable */
+  treatedZoneName?: string | null;
+  /** @nullable */
   targetPest?: string | null;
   /** @nullable */
   applicationMethod?: string | null;
@@ -3144,6 +3146,8 @@ export interface ChemicalApplicationInput {
   treatedArea?: number;
   /** Unit for treatedArea: sqft or acres */
   areaUnit?: string;
+  /** Optional name of the blueprint/measurement zone the technician selected (e.g. 'Front Lawn') */
+  treatedZoneName?: string;
   targetPest?: string;
   applicationMethod?: string;
   windSpeed?: number;

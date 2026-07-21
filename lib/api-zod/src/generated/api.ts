@@ -2979,6 +2979,8 @@ export const ListBlueprintsResponseItem = zod.object({
 }).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
   "isArchived": zod.boolean().optional().describe('True once the linked job is completed or the linked estimate\/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page.'),
   "archivedAt": zod.string().nullish(),
+  "linkedQuotesCount": zod.number().optional().describe('Total number of instant quotes linked to this blueprint. Included on both list and detail endpoints.'),
+  "pendingQuotesCount": zod.number().optional().describe('Number of linked quotes still in \'pending\' status — action may be needed. Included on both list and detail endpoints.'),
   "linkedQuotes": zod.array(zod.object({
   "id": zod.number(),
   "status": zod.enum(['pending', 'approved', 'declined']),
@@ -3046,6 +3048,8 @@ export const CreateBlueprintResponse = zod.object({
 }).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
   "isArchived": zod.boolean().optional().describe('True once the linked job is completed or the linked estimate\/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page.'),
   "archivedAt": zod.string().nullish(),
+  "linkedQuotesCount": zod.number().optional().describe('Total number of instant quotes linked to this blueprint. Included on both list and detail endpoints.'),
+  "pendingQuotesCount": zod.number().optional().describe('Number of linked quotes still in \'pending\' status — action may be needed. Included on both list and detail endpoints.'),
   "linkedQuotes": zod.array(zod.object({
   "id": zod.number(),
   "status": zod.enum(['pending', 'approved', 'declined']),
@@ -3102,6 +3106,8 @@ export const GetBlueprintResponse = zod.object({
 }).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
   "isArchived": zod.boolean().optional().describe('True once the linked job is completed or the linked estimate\/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page.'),
   "archivedAt": zod.string().nullish(),
+  "linkedQuotesCount": zod.number().optional().describe('Total number of instant quotes linked to this blueprint. Included on both list and detail endpoints.'),
+  "pendingQuotesCount": zod.number().optional().describe('Number of linked quotes still in \'pending\' status — action may be needed. Included on both list and detail endpoints.'),
   "linkedQuotes": zod.array(zod.object({
   "id": zod.number(),
   "status": zod.enum(['pending', 'approved', 'declined']),
@@ -3170,6 +3176,8 @@ export const UpdateBlueprintResponse = zod.object({
 }).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
   "isArchived": zod.boolean().optional().describe('True once the linked job is completed or the linked estimate\/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page.'),
   "archivedAt": zod.string().nullish(),
+  "linkedQuotesCount": zod.number().optional().describe('Total number of instant quotes linked to this blueprint. Included on both list and detail endpoints.'),
+  "pendingQuotesCount": zod.number().optional().describe('Number of linked quotes still in \'pending\' status — action may be needed. Included on both list and detail endpoints.'),
   "linkedQuotes": zod.array(zod.object({
   "id": zod.number(),
   "status": zod.enum(['pending', 'approved', 'declined']),
@@ -3266,6 +3274,8 @@ export const GenerateBlueprintFromAiResponse = zod.object({
 }).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
   "isArchived": zod.boolean().optional().describe('True once the linked job is completed or the linked estimate\/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page.'),
   "archivedAt": zod.string().nullish(),
+  "linkedQuotesCount": zod.number().optional().describe('Total number of instant quotes linked to this blueprint. Included on both list and detail endpoints.'),
+  "pendingQuotesCount": zod.number().optional().describe('Number of linked quotes still in \'pending\' status — action may be needed. Included on both list and detail endpoints.'),
   "linkedQuotes": zod.array(zod.object({
   "id": zod.number(),
   "status": zod.enum(['pending', 'approved', 'declined']),
@@ -3344,6 +3354,8 @@ export const GenerateBlueprintAiZonesResponse = zod.object({
 }).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
   "isArchived": zod.boolean().optional().describe('True once the linked job is completed or the linked estimate\/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page.'),
   "archivedAt": zod.string().nullish(),
+  "linkedQuotesCount": zod.number().optional().describe('Total number of instant quotes linked to this blueprint. Included on both list and detail endpoints.'),
+  "pendingQuotesCount": zod.number().optional().describe('Number of linked quotes still in \'pending\' status — action may be needed. Included on both list and detail endpoints.'),
   "linkedQuotes": zod.array(zod.object({
   "id": zod.number(),
   "status": zod.enum(['pending', 'approved', 'declined']),
@@ -3396,6 +3408,8 @@ export const ListBlueprintTemplatesResponseItem = zod.object({
 }).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
   "isArchived": zod.boolean().optional().describe('True once the linked job is completed or the linked estimate\/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page.'),
   "archivedAt": zod.string().nullish(),
+  "linkedQuotesCount": zod.number().optional().describe('Total number of instant quotes linked to this blueprint. Included on both list and detail endpoints.'),
+  "pendingQuotesCount": zod.number().optional().describe('Number of linked quotes still in \'pending\' status — action may be needed. Included on both list and detail endpoints.'),
   "linkedQuotes": zod.array(zod.object({
   "id": zod.number(),
   "status": zod.enum(['pending', 'approved', 'declined']),
@@ -3458,6 +3472,8 @@ export const ApplyBlueprintTemplateResponse = zod.object({
 }).nullish().describe('Snapshot of the most recently computed materials estimate, persisted so it stays visible outside the canvas editor.'),
   "isArchived": zod.boolean().optional().describe('True once the linked job is completed or the linked estimate\/quote is declined. Hidden from the main Blueprints list by default; still visible on its property page.'),
   "archivedAt": zod.string().nullish(),
+  "linkedQuotesCount": zod.number().optional().describe('Total number of instant quotes linked to this blueprint. Included on both list and detail endpoints.'),
+  "pendingQuotesCount": zod.number().optional().describe('Number of linked quotes still in \'pending\' status — action may be needed. Included on both list and detail endpoints.'),
   "linkedQuotes": zod.array(zod.object({
   "id": zod.number(),
   "status": zod.enum(['pending', 'approved', 'declined']),

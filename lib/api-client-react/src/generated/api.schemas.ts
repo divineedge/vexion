@@ -2123,6 +2123,10 @@ export interface Blueprint {
   isArchived?: boolean;
   /** @nullable */
   archivedAt?: string | null;
+  /** Total number of instant quotes linked to this blueprint. Included on both list and detail endpoints. */
+  linkedQuotesCount?: number;
+  /** Number of linked quotes still in 'pending' status — action may be needed. Included on both list and detail endpoints. */
+  pendingQuotesCount?: number;
   /** Instant quotes generated from this blueprint. Only included on GET /blueprints/{id}. */
   linkedQuotes?: BlueprintLinkedQuote[];
   createdAt: string;

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, blueprintsTable, inventoryItemsTable, mediaAttachmentsTable, jobsTable, estimatesTable, quotesTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { ObjectStorageService } from "../lib/objectStorage";
 
@@ -200,7 +200,33 @@ router.get("/blueprints", async (req, res): Promise<void> => {
   if (includeArchived !== "true") conditions.push(eq(blueprintsTable.isArchived, false));
 
   const rows = await db.select().from(blueprintsTable).where(and(...conditions)).orderBy(blueprintsTable.createdAt);
-  res.json(await Promise.all(rows.map(formatBlueprint)));
+
+  // Batch-fetch linked quote counts for all blueprints in one query
+  const blueprintIds = rows.map(r => r.id);
+  type QuoteCountRow = { blueprintId: number; total: number; pending: number };
+  let quoteCounts: QuoteCountRow[] = [];
+  if (blueprintIds.length > 0) {
+    quoteCounts = await db
+      .select({
+        blueprintId: quotesTable.blueprintId,
+        total: sql<number>`cast(count(*) as int)`,
+        pending: sql<number>`cast(sum(case when ${quotesTable.status} = 'pending' then 1 else 0 end) as int)`,
+      })
+      .from(quotesTable)
+      .where(and(eq(quotesTable.tenantId, tenantId), inArray(quotesTable.blueprintId, blueprintIds)))
+      .groupBy(quotesTable.blueprintId) as QuoteCountRow[];
+  }
+  const quoteCountMap = new Map(quoteCounts.map(q => [q.blueprintId, q]));
+
+  const formatted = await Promise.all(rows.map(formatBlueprint));
+  res.json(formatted.map(bp => {
+    const counts = quoteCountMap.get((bp as any).id);
+    return {
+      ...bp,
+      linkedQuotesCount: counts?.total ?? 0,
+      pendingQuotesCount: counts?.pending ?? 0,
+    };
+  }));
 });
 
 router.post("/blueprints", async (req, res): Promise<void> => {
@@ -275,7 +301,12 @@ router.get("/blueprints/:id", async (req, res): Promise<void> => {
     expiresAt: q.expiresAt ? q.expiresAt.toISOString() : null,
   }));
 
-  res.json({ ...(await formatBlueprint(bp)), linkedQuotes });
+  res.json({
+    ...(await formatBlueprint(bp)),
+    linkedQuotes,
+    linkedQuotesCount: linkedQuotes.length,
+    pendingQuotesCount: linkedQuotes.filter(q => q.status === "pending").length,
+  });
 });
 
 router.patch("/blueprints/:id", async (req, res): Promise<void> => {

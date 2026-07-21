@@ -31,7 +31,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, DraftingCompass, Percent, Package, AlertTriangle, Trash2, Wand2, Library, CopyPlus, Upload, FileText, Loader2, Calculator, Archive, ShoppingCart } from 'lucide-react';
+import { Plus, DraftingCompass, Percent, Package, AlertTriangle, Trash2, Wand2, Library, CopyPlus, Upload, FileText, Loader2, Calculator, Archive, ShoppingCart, FileCheck } from 'lucide-react';
 import { useLocation } from 'wouter';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -911,6 +911,27 @@ function BlueprintCard({ bp, globalPct, p4pEditing, p4pOpen, setP4pEditing, setP
             <Badge variant="outline" className="capitalize text-[10px] shrink-0 ml-2">{bp.mode}</Badge>
           )}
         </div>
+
+        {/* Linked quotes badge */}
+        {(bp.linkedQuotesCount ?? 0) > 0 && (
+          <div
+            className="flex items-center gap-1.5 cursor-pointer"
+            onClick={() => setLocation(`/blueprints/${bp.id}`)}
+          >
+            {(bp.pendingQuotesCount ?? 0) > 0 ? (
+              <Badge className="gap-1 text-[11px] px-2 py-0.5 bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200">
+                <FileCheck className="w-3 h-3" />
+                {bp.pendingQuotesCount} Pending Quote{bp.pendingQuotesCount !== 1 ? 's' : ''}
+                {bp.linkedQuotesCount > bp.pendingQuotesCount && ` / ${bp.linkedQuotesCount} Total`}
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="gap-1 text-[11px] px-2 py-0.5 text-muted-foreground">
+                <FileCheck className="w-3 h-3" />
+                {bp.linkedQuotesCount} Quote{bp.linkedQuotesCount !== 1 ? 's' : ''}
+              </Badge>
+            )}
+          </div>
+        )}
 
         <p className="text-xs text-muted-foreground mt-auto">
           Created {format(new Date(bp.createdAt), 'MMM d, yyyy')}

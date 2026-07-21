@@ -5462,7 +5462,7 @@ export const PortalGetSummaryResponse = zod.object({
   "createdAt": zod.string()
 })),
   "unreadAlertCount": zod.number(),
-  "openRequestCount": zod.number()
+  "openRequestCount": zod.number().optional()
 })
 
 
@@ -7088,6 +7088,35 @@ export const DeleteEstimateTemplateParams = zod.object({
 })
 
 export const DeleteEstimateTemplateResponse = zod.void()
+
+
+/**
+ * @summary Duplicate an estimate template
+ */
+export const DuplicateEstimateTemplateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DuplicateEstimateTemplateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "description": zod.string(),
+  "qty": zod.number(),
+  "unitPrice": zod.number(),
+  "markup": zod.number(),
+  "discount": zod.number(),
+  "isOptional": zod.boolean(),
+  "optionalPitchLine": zod.string().nullish(),
+  "acceptedByCustomer": zod.boolean()
+})).optional(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
 
 
 /**

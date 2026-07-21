@@ -16891,6 +16891,77 @@ export const useDeleteEstimateTemplate = <TError = ErrorType<unknown>,
       return useMutation(getDeleteEstimateTemplateMutationOptions(options));
     }
 
+export const getDuplicateEstimateTemplateUrl = (id: number,) => {
+
+
+
+
+  return `/api/estimate-templates/${id}/duplicate`
+}
+
+/**
+ * @summary Duplicate an estimate template
+ */
+export const duplicateEstimateTemplate = async (id: number, options?: RequestInit): Promise<EstimateTemplate> => {
+
+  return customFetch<EstimateTemplate>(getDuplicateEstimateTemplateUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getDuplicateEstimateTemplateMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof duplicateEstimateTemplate>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof duplicateEstimateTemplate>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['duplicateEstimateTemplate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof duplicateEstimateTemplate>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  duplicateEstimateTemplate(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DuplicateEstimateTemplateMutationResult = NonNullable<Awaited<ReturnType<typeof duplicateEstimateTemplate>>>
+
+    export type DuplicateEstimateTemplateMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Duplicate an estimate template
+ */
+export const useDuplicateEstimateTemplate = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof duplicateEstimateTemplate>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof duplicateEstimateTemplate>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDuplicateEstimateTemplateMutationOptions(options));
+    }
+
 export const getListPlanTemplatesUrl = () => {
 
 

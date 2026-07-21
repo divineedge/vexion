@@ -3570,7 +3570,7 @@ export interface PortalSummary {
   upcomingJobs: PortalJob[];
   recentInvoices: PortalInvoice[];
   unreadAlertCount: number;
-  openRequestCount: number;
+  openRequestCount?: number;
 }
 
 export interface PortalProperty {

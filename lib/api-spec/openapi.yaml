@@ -4573,6 +4573,25 @@ paths:
         "204":
           description: Deleted
 
+  /estimate-templates/{id}/duplicate:
+    post:
+      operationId: duplicateEstimateTemplate
+      tags: [estimates]
+      summary: Duplicate an estimate template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "201":
+          description: Duplicated template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EstimateTemplate"
+
   # SERVICE PLANS & AUTOMATED SCHEDULING
   /plan-templates:
     get:

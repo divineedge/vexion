@@ -110,4 +110,18 @@ router.delete("/estimate-templates/:id", async (req, res): Promise<void> => {
   res.sendStatus(204);
 });
 
+router.post("/estimate-templates/:id/duplicate", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const id = parseInt(req.params.id, 10);
+  const [source] = await db.select().from(estimateTemplatesTable).where(and(eq(estimateTemplatesTable.id, id), eq(estimateTemplatesTable.tenantId, tenantId)));
+  if (!source) { res.status(404).json({ error: "Not found" }); return; }
+  const [copy] = await db.insert(estimateTemplatesTable).values({
+    tenantId,
+    name: `${source.name} (Copy)`,
+    description: source.description,
+    lineItems: source.lineItems,
+  }).returning();
+  res.status(201).json(fmt(copy));
+});
+
 export default router;

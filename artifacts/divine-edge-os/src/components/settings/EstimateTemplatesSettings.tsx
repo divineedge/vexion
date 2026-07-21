@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   useListEstimateTemplates, getListEstimateTemplatesQueryKey,
   useCreateEstimateTemplate, useUpdateEstimateTemplate, useDeleteEstimateTemplate,
+  useDuplicateEstimateTemplate,
 } from '@workspace/api-client-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { Plus, Trash2, FileText } from 'lucide-react';
+import { Plus, Trash2, FileText, Copy } from 'lucide-react';
 
 interface LineItem {
   id: string;
@@ -61,6 +62,7 @@ export default function EstimateTemplatesSettings() {
   const createMutation = useCreateEstimateTemplate();
   const updateMutation = useUpdateEstimateTemplate();
   const deleteMutation = useDeleteEstimateTemplate();
+  const duplicateMutation = useDuplicateEstimateTemplate();
 
   const openCreate = () => {
     setForm(EMPTY_FORM);
@@ -84,6 +86,18 @@ export default function EstimateTemplatesSettings() {
     }));
     setLineItems(items.length > 0 ? items : [emptyItem()]);
     setSheetMode('edit');
+  };
+
+  const handleDuplicate = (t: NonNullable<typeof templates>[number], e: React.MouseEvent) => {
+    e.stopPropagation();
+    duplicateMutation.mutate({ id: t.id }, {
+      onSuccess: (copy) => {
+        toast.success('Template duplicated');
+        invalidate();
+        openEdit(copy as NonNullable<typeof templates>[number]);
+      },
+      onError: () => toast.error('Failed to duplicate template'),
+    });
   };
 
   const updateLineItem = (idx: number, patch: Partial<LineItem>) => {
@@ -171,6 +185,7 @@ export default function EstimateTemplatesSettings() {
                 <TableHead>Description</TableHead>
                 <TableHead className="text-right">Items</TableHead>
                 <TableHead className="text-right">Est. Total</TableHead>
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -216,6 +231,18 @@ export default function EstimateTemplatesSettings() {
                     </TableCell>
                     <TableCell className="text-right font-medium">
                       ${total.toFixed(2)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                        onClick={(e) => handleDuplicate(t, e)}
+                        disabled={duplicateMutation.isPending}
+                        title="Duplicate template"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 );

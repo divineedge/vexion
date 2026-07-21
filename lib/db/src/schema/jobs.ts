@@ -85,6 +85,12 @@ export const jobsTable = pgTable("jobs", {
   /** The date this job would have been on before a one-time reschedule */
   originalScheduledDate: timestamp("original_scheduled_date", { withTimezone: true }),
 
+  /**
+   * Tracks how the job was created: "portal" = submitted by the customer via the portal,
+   * "staff" = created internally. Null means legacy/pre-migration rows.
+   */
+  source: text("source"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

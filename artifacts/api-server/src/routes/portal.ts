@@ -311,7 +311,7 @@ router.get("/portal/summary", requirePortalAuth, async (req: any, res): Promise<
 
   const now = new Date();
 
-  const [upcomingJobs, recentInvoices, pendingAlerts] = await Promise.all([
+  const [upcomingJobs, recentInvoices, pendingAlerts, openRequests] = await Promise.all([
     db
       .select({ job: jobsTable, propertyAddress: propertiesTable.address })
       .from(jobsTable)
@@ -345,12 +345,25 @@ router.get("/portal/summary", requirePortalAuth, async (req: any, res): Promise<
           eq(customerAlertsTable.status, "pending"),
         ),
       ),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(jobsTable)
+      .where(
+        and(
+          eq(jobsTable.customerId, portalCustomerId),
+          eq(jobsTable.tenantId, portalTenantId),
+          eq(jobsTable.source, "portal"),
+          ne(jobsTable.status, "completed"),
+          ne(jobsTable.status, "cancelled"),
+        ),
+      ),
   ]);
 
   res.json({
     upcomingJobs: upcomingJobs.map(r => formatPortalJob(r.job, r.propertyAddress)),
     recentInvoices: recentInvoices.map(formatPortalInvoice),
     unreadAlertCount: pendingAlerts.length,
+    openRequestCount: openRequests[0]?.count ?? 0,
   });
 });
 
@@ -568,6 +581,28 @@ router.patch("/portal/alerts/:id/respond", requirePortalAuth, async (req: any, r
 });
 
 // ---------------------------------------------------------------------------
+// GET /portal/service-requests
+// ---------------------------------------------------------------------------
+router.get("/portal/service-requests", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+
+  const rows = await db
+    .select({ job: jobsTable, propertyAddress: propertiesTable.address })
+    .from(jobsTable)
+    .leftJoin(propertiesTable, eq(jobsTable.propertyId, propertiesTable.id))
+    .where(
+      and(
+        eq(jobsTable.customerId, portalCustomerId),
+        eq(jobsTable.tenantId, portalTenantId),
+        eq(jobsTable.source, "portal"),
+      ),
+    )
+    .orderBy(desc(jobsTable.createdAt));
+
+  res.json(rows.map(r => formatPortalJob(r.job, r.propertyAddress)));
+});
+
+// ---------------------------------------------------------------------------
 // POST /portal/service-requests
 // ---------------------------------------------------------------------------
 router.post("/portal/service-requests", requirePortalAuth, async (req: any, res): Promise<void> => {
@@ -615,6 +650,7 @@ router.post("/portal/service-requests", requirePortalAuth, async (req: any, res)
       propertyId,
       scheduledAt,
       totalAmount: 0,
+      source: "portal",
     })
     .returning();
 

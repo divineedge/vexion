@@ -1,12 +1,13 @@
 import * as React from "react";
 import { Link, useLocation } from "wouter";
 import { usePortalGetMe, usePortalGetSummary } from "@workspace/api-client-react";
-import { MapPin, Briefcase, FileText, Bell, LayoutDashboard, Menu, X, LogOut, Loader2, CalendarDays } from "lucide-react";
+import { MapPin, Briefcase, FileText, Bell, LayoutDashboard, Menu, X, LogOut, Loader2, CalendarDays, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
 const navItems = [
   { name: "Overview", path: "/home", icon: LayoutDashboard },
+  { name: "My Requests", path: "/my-requests", icon: ClipboardList },
   { name: "Jobs", path: "/jobs", icon: Briefcase },
   { name: "Invoices", path: "/invoices", icon: FileText },
   { name: "Properties", path: "/properties", icon: MapPin },

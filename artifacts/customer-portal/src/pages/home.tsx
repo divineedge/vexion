@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { ArrowRight, Bell, CalendarClock, Briefcase, FileText, MapPin, CheckCircle2, Clock } from "lucide-react";
+import { ArrowRight, Bell, CalendarClock, Briefcase, FileText, MapPin, CheckCircle2, Clock, ClipboardList } from "lucide-react";
 
 export default function Home() {
   const { data: summary, isLoading: isSummaryLoading } = usePortalGetSummary();
@@ -110,11 +110,29 @@ export default function Home() {
           </CardHeader>
           <CardContent>
             <div className="text-4xl font-bold text-foreground">
-              {/* Note: summary doesn't have property count, we would need to fetch properties or rely on what's available. For now, hardcode or show something else */}
               <Link href="/properties" className="text-primary hover:underline text-sm font-normal">View your properties</Link>
             </div>
           </CardContent>
         </Card>
+
+        {(summary?.openRequestCount ?? 0) > 0 && (
+          <Card className="shadow-sm hover-elevate transition-all border-amber-200 dark:border-amber-800/40">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg font-medium flex items-center gap-2 text-muted-foreground">
+                <ClipboardList className="w-4 h-4" />
+                Open Requests
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex items-end justify-between">
+              <div className="text-4xl font-bold text-foreground">
+                {isSummaryLoading ? <Skeleton className="h-10 w-16" /> : summary?.openRequestCount ?? 0}
+              </div>
+              <Link href="/my-requests" className="text-sm font-medium text-primary hover:underline flex items-center gap-1 pb-1">
+                View <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

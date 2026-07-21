@@ -7,6 +7,7 @@ import { getCallerRole, isAdminRole } from "../lib/roles";
 import { resendReminderForJob } from "../lib/reminderScheduler";
 import { nthOccurrenceAfterRoot, describeRule, type RecurrenceRule } from "../lib/recurrenceEngine";
 import { enqueueInvoiceEmail } from "../lib/billingScheduler";
+import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
 import {
   importUpload,
   handleExportRequest,
@@ -512,6 +513,83 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
 
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
   res.json(formatJob(updated));
+
+  // If this is a portal-submitted job and the status changed, notify the customer
+  const portalCustomerId = updated.customerId;
+  if (
+    updated.source === "portal" &&
+    status !== undefined &&
+    status !== currentJob.status &&
+    portalCustomerId !== null
+  ) {
+    (async () => {
+      try {
+        const statusLabels: Record<string, string> = {
+          pending: "Pending Review",
+          scheduled: "Scheduled",
+          in_progress: "In Progress",
+          completed: "Completed",
+          cancelled: "Cancelled",
+        };
+        const newLabel = statusLabels[status] ?? status;
+
+        // Insert a portal alert so the customer sees it in the Alerts tab
+        await db.insert(customerAlertsTable).values({
+          tenantId,
+          customerId: portalCustomerId,
+          jobId: updated.id,
+          type: "status_update",
+          message: `Your service request "${updated.title}" has been updated to: ${newLabel}.`,
+          status: "pending",
+        }).catch(() => { /* best-effort */ });
+
+        // Also send an email notification
+        const [tenantRow, customerRow] = await Promise.all([
+          db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
+          db.select({ name: customersTable.name, email: customersTable.email })
+            .from(customersTable)
+            .where(eq(customersTable.id, portalCustomerId))
+            .limit(1),
+        ]);
+        const tenant = tenantRow[0];
+        const customer = customerRow[0];
+        if (!customer?.email) return;
+
+        const emailProviderConfig: EmailProviderConfig = {
+          provider: (tenant?.emailProvider as "smtp" | "sendgrid" | "mailgun" | "resend" | "gmail" | null) ?? null,
+          config: (tenant?.emailProviderConfig as Record<string, string>) ?? {},
+          fromAddress: tenant?.businessEmail ?? (tenant?.emailProviderConfig as Record<string, string>)?.["fromAddress"] ?? null,
+        };
+        const companyName = tenant?.name ?? "Your Service Provider";
+
+        const subject = `Service Request Update — ${updated.title}`;
+        const body = [
+          `Hi ${customer.name ?? "there"},`,
+          "",
+          `Your service request has been updated.`,
+          "",
+          `Request: ${updated.title}`,
+          `New Status: ${newLabel}`,
+          "",
+          status === "scheduled" && updated.scheduledAt
+            ? `Scheduled for: ${updated.scheduledAt.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}`
+            : null,
+          status === "completed"
+            ? "Our team has completed the work. Thank you for choosing us!"
+            : "You'll receive another update when the status changes.",
+          "",
+          "If you have any questions, please contact us.",
+          "",
+          `Thank you,`,
+          companyName,
+        ].filter((l) => l !== null).join("\n");
+
+        await sendEmail(emailProviderConfig, customer.email, subject, body);
+      } catch (err) {
+        // fire-and-forget — never breaks the response already sent
+      }
+    })();
+  }
 });
 
 router.delete("/jobs/:id", async (req, res): Promise<void> => {

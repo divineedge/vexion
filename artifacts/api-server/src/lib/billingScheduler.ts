@@ -9,7 +9,7 @@
  *   2. Email Queue — send pending billing emails with retry logic (max 3 attempts).
  */
 
-import { db, recurringInvoiceTemplatesTable, billingEmailQueueTable, invoicesTable, customersTable, tenantsTable, jobsTable } from "@workspace/db";
+import { db, recurringInvoiceTemplatesTable, billingEmailQueueTable, invoicesTable, customersTable, tenantsTable, jobsTable, activityLogTable } from "@workspace/db";
 import type { RecurringInvoiceTemplate } from "@workspace/db";
 import { eq, and, lte, sql, inArray, notInArray, isNull, asc, min, lt, isNotNull } from "drizzle-orm";
 import { logger } from "./logger";
@@ -261,6 +261,28 @@ async function generateInvoiceForCustomer(
       { lineItems: [], jobIds: [] },
     );
 
+    // Detect and surface any jobs that were skipped due to a concurrent claim.
+    const skippedIds = result.jobIds.filter(id => !claimedIds.has(id));
+    if (skippedIds.length > 0) {
+      logger.warn(
+        {
+          skippedJobIds: skippedIds,
+          claimedJobIds: [...claimedIds],
+          templateId: template.id,
+          customerId,
+          tenantId: template.tenantId,
+        },
+        "Billing collision detected: jobs were already claimed by a concurrent run and were skipped",
+      );
+      await tx.insert(activityLogTable).values({
+        tenantId: template.tenantId,
+        userId: null,
+        type: "billing_collision",
+        message: `Billing collision: ${skippedIds.length} job(s) skipped because they were already claimed by a concurrent run. Skipped job IDs: ${skippedIds.join(", ")}. Template ID: ${template.id}, customer ID: ${customerId}.`,
+        entityId: template.id,
+      });
+    }
+
     if (filtered.lineItems.length === 0) return null;
     lineItems = filtered.lineItems;
     jobIds = filtered.jobIds;
@@ -495,7 +517,21 @@ async function processWeeklyNonRecurringInvoices() {
             ),
           )
           .returning({ id: jobsTable.id });
-        if (!claimedRow) return; // Already claimed — skip silently
+        if (!claimedRow) {
+          // Job was already claimed by a concurrent process — log a warning and write an audit entry.
+          logger.warn(
+            { jobId: job.id, tenantId: job.tenantId, customerId: job.customerId },
+            "Billing collision detected: weekly non-recurring job already claimed by concurrent run; skipping",
+          );
+          await tx.insert(activityLogTable).values({
+            tenantId: job.tenantId,
+            userId: null,
+            type: "billing_collision",
+            message: `Billing collision: weekly invoice job ID ${job.id} was already claimed by a concurrent run and was skipped.`,
+            entityId: job.id,
+          });
+          return;
+        }
 
         const [invoice] = await tx.insert(invoicesTable).values({
           tenantId: job.tenantId,

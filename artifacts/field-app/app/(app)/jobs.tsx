@@ -303,6 +303,11 @@ export default function JobsScreen() {
     router.push('/(app)/equipment');
   }, []);
 
+  const handleRecurringPress = useCallback(async () => {
+    await Haptics.selectionAsync();
+    router.push('/(app)/recurring');
+  }, []);
+
   const bottomPad = insets.bottom + (Platform.OS === 'web' ? 34 : 0) + 16;
 
   const isClockedIn = masterClock?.isClockedIn ?? false;
@@ -328,6 +333,13 @@ export default function JobsScreen() {
           </Text>
         </View>
         <View style={styles.headerActions}>
+          <TouchableOpacity
+            onPress={handleRecurringPress}
+            style={styles.headerBtn}
+            testID="recurring-nav-button"
+          >
+            <Ionicons name="repeat-outline" size={22} color={colors.mutedForeground} />
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={handleEquipmentPress}
             style={styles.headerBtn}

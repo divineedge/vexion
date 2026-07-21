@@ -49,6 +49,7 @@ export default function AppLayout() {
         options={{ title: 'Log Maintenance', headerShown: true }}
       />
       <Stack.Screen name="series/[id]" options={{ title: 'Recurring Series', headerShown: true }} />
+      <Stack.Screen name="recurring" options={{ title: 'Recurring Series', headerShown: true }} />
     </Stack>
   );
 }

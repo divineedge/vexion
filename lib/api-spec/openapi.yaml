@@ -9551,6 +9551,10 @@ components:
         routeExceptionFee:
           type: number
           description: "Trip charge auto-appended to a job's invoice when it uses a one-time reschedule"
+        # ── Payroll ──────────────────────────────────────────────────────────
+        dailyTaskHourlyRate:
+          type: number
+          description: "$/hour flat rate applied to daily task / compliance time for payroll. 0 = display-only."
 
     PauseSeriesInput:
       type: object
@@ -9977,6 +9981,9 @@ components:
           type: string
         routeExceptionFee:
           type: number
+        dailyTaskHourlyRate:
+          type: number
+          description: "$/hour flat rate applied to daily task / compliance time for payroll. 0 = display-only."
 
     CustomerFieldConfig:
       type: object

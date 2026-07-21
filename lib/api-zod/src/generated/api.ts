@@ -3744,7 +3744,8 @@ export const GetTenantSettingsResponse = zod.object({
   "reviewCustomLink1Url": zod.string().nullish(),
   "reviewCustomLink2Label": zod.string().nullish(),
   "reviewCustomLink2Url": zod.string().nullish(),
-  "routeExceptionFee": zod.number().optional().describe('Trip charge auto-appended to a job\'s invoice when it uses a one-time reschedule')
+  "routeExceptionFee": zod.number().optional().describe('Trip charge auto-appended to a job\'s invoice when it uses a one-time reschedule'),
+  "dailyTaskHourlyRate": zod.number().optional().describe('$\/hour flat rate applied to daily task \/ compliance time for payroll. 0 = display-only.')
 })
 
 
@@ -3807,7 +3808,8 @@ export const UpdateTenantSettingsBody = zod.object({
   "reviewCustomLink1Url": zod.string().optional(),
   "reviewCustomLink2Label": zod.string().optional(),
   "reviewCustomLink2Url": zod.string().optional(),
-  "routeExceptionFee": zod.number().optional()
+  "routeExceptionFee": zod.number().optional(),
+  "dailyTaskHourlyRate": zod.number().optional().describe('$\/hour flat rate applied to daily task \/ compliance time for payroll. 0 = display-only.')
 })
 
 export const UpdateTenantSettingsResponse = zod.object({
@@ -3888,7 +3890,8 @@ export const UpdateTenantSettingsResponse = zod.object({
   "reviewCustomLink1Url": zod.string().nullish(),
   "reviewCustomLink2Label": zod.string().nullish(),
   "reviewCustomLink2Url": zod.string().nullish(),
-  "routeExceptionFee": zod.number().optional().describe('Trip charge auto-appended to a job\'s invoice when it uses a one-time reschedule')
+  "routeExceptionFee": zod.number().optional().describe('Trip charge auto-appended to a job\'s invoice when it uses a one-time reschedule'),
+  "dailyTaskHourlyRate": zod.number().optional().describe('$\/hour flat rate applied to daily task \/ compliance time for payroll. 0 = display-only.')
 })
 
 

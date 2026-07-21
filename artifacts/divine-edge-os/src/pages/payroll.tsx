@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
-import { customFetch } from '@workspace/api-client-react';
+import { customFetch, useGetTenantSettings } from '@workspace/api-client-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -334,6 +334,9 @@ export default function PayrollPage() {
   const [period, setPeriod] = useState('30d');
   const [selectedTechId, setSelectedTechId] = useState<number | null>(null);
 
+  const { data: tenantSettings } = useGetTenantSettings();
+  const dailyTaskHourlyRate: number = tenantSettings?.dailyTaskHourlyRate ?? 0;
+
   // Technicians cannot call /p4p/summary (403); their stats come via /p4p/jobs
   const { data: summary, isLoading: summaryLoading } = useQuery<SummaryResponse>({
     queryKey: ['p4p-summary', period],
@@ -398,6 +401,12 @@ export default function PayrollPage() {
   const totalNetLabor = summary?.technicians.reduce((s, t) => s + t.netLaborRevenue, 0) ?? 0;
   const totalMaterials = summary?.technicians.reduce((s, t) => s + t.totalMaterialCost, 0) ?? 0;
   const totalTaskMinutes = Array.from(taskHoursMap.values()).reduce((s, t) => s + t.totalMinutes, 0);
+  const totalTaskPay = dailyTaskHourlyRate > 0 ? (totalTaskMinutes / 60) * dailyTaskHourlyRate : 0;
+
+  // Per-technician task pay helpers
+  const taskPayForMinutes = (minutes: number) =>
+    dailyTaskHourlyRate > 0 ? (minutes / 60) * dailyTaskHourlyRate : 0;
+  const myTaskPay = taskPayForMinutes(myTaskMinutes);
 
   const myStats = isTechnician
     ? summary?.technicians.find(t => t.userId === user?.id)
@@ -518,8 +527,18 @@ export default function PayrollPage() {
                 <ClipboardList className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-xl font-bold text-blue-700">{fmtMinutes(totalTaskMinutes)}</p>
-                <p className="text-xs text-muted-foreground">Daily Task Hours</p>
+                {dailyTaskHourlyRate > 0 ? (
+                  <>
+                    <p className="text-xl font-bold text-blue-700">{fmt(totalTaskPay)}</p>
+                    <p className="text-xs text-muted-foreground">Total Task Pay</p>
+                    <p className="text-xs text-muted-foreground">{fmtMinutes(totalTaskMinutes)} @ ${dailyTaskHourlyRate}/hr</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xl font-bold text-blue-700">{fmtMinutes(totalTaskMinutes)}</p>
+                    <p className="text-xs text-muted-foreground">Daily Task Hours</p>
+                  </>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -534,7 +553,14 @@ export default function PayrollPage() {
             { label: 'Net Labor Revenue', value: myStats ? fmt(myStats.netLaborRevenue) : '—', accent: '' },
             { label: 'Materials Deducted', value: myStats ? fmt(myStats.totalMaterialCost) : '—', accent: 'text-amber-600' },
             { label: 'Jobs Counted', value: myStats?.jobCount ?? '—', accent: '' },
-            { label: 'Daily Task Hours', value: fmtMinutes(myTaskMinutes), accent: 'text-blue-700', sub: myTaskRuns > 0 ? `${myTaskRuns} run${myTaskRuns !== 1 ? 's' : ''}` : undefined },
+            {
+              label: dailyTaskHourlyRate > 0 ? 'Task Pay' : 'Daily Task Hours',
+              value: dailyTaskHourlyRate > 0 ? fmt(myTaskPay) : fmtMinutes(myTaskMinutes),
+              accent: 'text-blue-700',
+              sub: dailyTaskHourlyRate > 0
+                ? `${fmtMinutes(myTaskMinutes)} @ ${dailyTaskHourlyRate}/hr`
+                : (myTaskRuns > 0 ? `${myTaskRuns} run${myTaskRuns !== 1 ? 's' : ''}` : undefined),
+            },
           ].map(stat => (
             <Card key={stat.label}>
               <CardContent className="p-4">
@@ -566,7 +592,8 @@ export default function PayrollPage() {
                   <TableHead className="text-right">P4P Earnings</TableHead>
                   <TableHead className="text-right">
                     <span className="flex items-center justify-end gap-1">
-                      <ClipboardList className="w-3.5 h-3.5" /> Task Hours
+                      <ClipboardList className="w-3.5 h-3.5" />
+                      {dailyTaskHourlyRate > 0 ? 'Task Pay' : 'Task Hours'}
                     </span>
                   </TableHead>
                 </TableRow>
@@ -599,8 +626,17 @@ export default function PayrollPage() {
                         <TableCell className="text-right">
                           {taskData ? (
                             <span className="text-blue-700 font-medium text-sm">
-                              {fmtMinutes(taskData.totalMinutes)}
-                              <span className="text-xs text-muted-foreground ml-1">({taskData.runCount})</span>
+                              {dailyTaskHourlyRate > 0 ? (
+                                <>
+                                  {fmt(taskPayForMinutes(taskData.totalMinutes))}
+                                  <span className="text-xs text-muted-foreground ml-1">({fmtMinutes(taskData.totalMinutes)})</span>
+                                </>
+                              ) : (
+                                <>
+                                  {fmtMinutes(taskData.totalMinutes)}
+                                  <span className="text-xs text-muted-foreground ml-1">({taskData.runCount})</span>
+                                </>
+                              )}
                             </span>
                           ) : (
                             <span className="text-muted-foreground text-sm">—</span>

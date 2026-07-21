@@ -124,6 +124,8 @@ export const tenantsTable = pgTable("tenants", {
   // ── Time Tracking ─────────────────────────────────────────────────────────
   /** Hard cap (hours) on a single master-clock shift; after this, the system auto clocks-out the staffer. Null = no cap. */
   maxClockInHours: real("max_clock_in_hours").default(12),
+  /** $/hour pay rate for daily task / compliance time; 0 = display-only (no dollar value applied) */
+  dailyTaskHourlyRate: real("daily_task_hourly_rate").notNull().default(0),
   // ── Non-recurring job invoicing cadence ──────────────────────────────────
   /** How completed non-recurring jobs flagged for auto-invoicing get billed: 'immediate' | 'weekly' */
   nonRecurringInvoiceCadence: text("non_recurring_invoice_cadence").notNull().default("immediate"),

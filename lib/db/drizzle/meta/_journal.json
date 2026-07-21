@@ -169,6 +169,13 @@
       "when": 1753061400000,
       "tag": "0023_add_plan_cancel_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1753062000000,
+      "tag": "0024_add_daily_task_hourly_rate",
+      "breakpoints": true
     }
   ]
 }

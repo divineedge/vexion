@@ -17,7 +17,7 @@ import {
 } from '@workspace/api-client-react';
 import type { FollowupTriggerConfig } from '@workspace/api-client-react';
 import type { ChemicalProduct, ChemicalMixture, ChemicalMixtureItem, PaymentReminderRule } from '@workspace/api-client-react';
-import { Repeat as RepeatIcon } from 'lucide-react';
+import { Repeat as RepeatIcon, ClipboardList } from 'lucide-react';
 import { format } from 'date-fns';
 import PlanTemplatesSettings from '@/components/settings/PlanTemplatesSettings';
 import EstimateTemplatesSettings from '@/components/settings/EstimateTemplatesSettings';
@@ -112,6 +112,7 @@ export default function SettingsPage() {
   const [nonRecurringInvoiceCadence, setNonRecurringInvoiceCadence] = useState<'immediate' | 'weekly'>('immediate');
   const [maxClockInHours, setMaxClockInHours] = useState('');
   const [p4pMasterPct, setP4pMasterPct] = useState('0');
+  const [dailyTaskHourlyRate, setDailyTaskHourlyRate] = useState('0');
 
   // Equipment thresholds
   const [equipRepairPct, setEquipRepairPct] = useState('50');
@@ -212,6 +213,7 @@ export default function SettingsPage() {
       setNonRecurringInvoiceCadence(((settings as any).nonRecurringInvoiceCadence as 'immediate' | 'weekly') ?? 'immediate');
       setMaxClockInHours((settings as any).maxClockInHours != null ? String((settings as any).maxClockInHours) : '');
       setP4pMasterPct(String((settings as any).p4pMasterPercentage ?? 0));
+      setDailyTaskHourlyRate(String(settings.dailyTaskHourlyRate ?? 0));
       setEquipRepairPct(String((settings as any).equipmentRepairThresholdPct ?? 50));
       setEquipResalePct(String((settings as any).equipmentResaleThresholdPct ?? 20));
       setDefaultGeofenceRadius(String((settings as any).defaultGeofenceRadius ?? 100));
@@ -368,7 +370,7 @@ export default function SettingsPage() {
 
   const saveOperational = () => {
     updateSettings.mutate(
-      { data: { durationUnit, autoInvoiceFrequency, nonRecurringInvoiceCadence, maxClockInHours: maxClockInHours ? parseFloat(maxClockInHours) : null, p4pMasterPercentage: parseFloat(p4pMasterPct) || 0 } as Parameters<typeof updateSettings.mutate>[0]['data'] },
+      { data: { durationUnit, autoInvoiceFrequency, nonRecurringInvoiceCadence, maxClockInHours: maxClockInHours ? parseFloat(maxClockInHours) : null, p4pMasterPercentage: parseFloat(p4pMasterPct) || 0, dailyTaskHourlyRate: parseFloat(dailyTaskHourlyRate) || 0 } as Parameters<typeof updateSettings.mutate>[0]['data'] },
       {
         onSuccess: () => { toast.success('Operational settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
         onError: () => toast.error('Failed to save settings'),
@@ -1793,6 +1795,35 @@ export default function SettingsPage() {
                   <span className="text-sm font-medium text-muted-foreground">%</span>
                   <span className="text-xs text-muted-foreground ml-2">
                     {parseFloat(p4pMasterPct) > 0 ? `= ${parseFloat(p4pMasterPct)} per $100 of net labor revenue` : 'P4P disabled'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Daily Task Hourly Rate */}
+              <div className="col-span-2 space-y-2 pt-2 border-t">
+                <label className="text-sm font-medium flex items-center gap-2">
+                  <ClipboardList className="w-4 h-4 text-blue-600" />
+                  Daily Task Hourly Rate
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Flat hourly pay rate applied to daily task / compliance time logged by technicians.
+                  When set, the Payroll page shows a Task Pay column (task minutes ÷ 60 × rate) alongside P4P earnings.
+                  Set to 0 to display task hours without a dollar value.
+                </p>
+                <div className="flex items-center gap-2 w-fit">
+                  <span className="text-sm font-medium text-muted-foreground">$</span>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={0.25}
+                    className="w-28 text-right"
+                    value={dailyTaskHourlyRate}
+                    onChange={e => setDailyTaskHourlyRate(e.target.value)}
+                    placeholder="0.00"
+                  />
+                  <span className="text-sm font-medium text-muted-foreground">/ hr</span>
+                  <span className="text-xs text-muted-foreground ml-2">
+                    {parseFloat(dailyTaskHourlyRate) > 0 ? 'Task pay will appear in Payroll' : 'Display-only (no dollar value)'}
                   </span>
                 </div>
               </div>

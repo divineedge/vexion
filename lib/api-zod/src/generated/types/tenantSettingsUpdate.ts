@@ -62,4 +62,6 @@ export interface TenantSettingsUpdate {
   reviewCustomLink2Label?: string;
   reviewCustomLink2Url?: string;
   routeExceptionFee?: number;
+  /** $/hour flat rate applied to daily task / compliance time for payroll. 0 = display-only. */
+  dailyTaskHourlyRate?: number;
 }

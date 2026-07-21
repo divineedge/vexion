@@ -110,6 +110,8 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     fuelPricePerGallon: tenant.fuelPricePerGallon ?? 4.0,
     equipmentRuntimeHourlyRate: tenant.equipmentRuntimeHourlyRate ?? 0,
     equipmentDowntimeHourlyRate: tenant.equipmentDowntimeHourlyRate ?? 0,
+    // Payroll
+    dailyTaskHourlyRate: tenant.dailyTaskHourlyRate ?? 0,
     // Smart Follow-Up Queue automation triggers
     followupTriggerConfig: (tenant.followupTriggerConfig as Record<string, unknown>) ?? {
       sentEstimate: { enabled: true, delayDays: 3, repeatDays: 3 },
@@ -157,6 +159,8 @@ router.patch("/settings", async (req, res): Promise<void> => {
     routeExceptionFee,
     // Equipment Cost Ledger
     fuelPricePerGallon, equipmentRuntimeHourlyRate, equipmentDowntimeHourlyRate,
+    // Payroll
+    dailyTaskHourlyRate,
   } = req.body;
 
   const updates: Partial<typeof tenantsTable.$inferInsert> = {};
@@ -284,6 +288,7 @@ router.patch("/settings", async (req, res): Promise<void> => {
   if (fuelPricePerGallon !== undefined) updates.fuelPricePerGallon = parseFloat(fuelPricePerGallon);
   if (equipmentRuntimeHourlyRate !== undefined) updates.equipmentRuntimeHourlyRate = parseFloat(equipmentRuntimeHourlyRate);
   if (equipmentDowntimeHourlyRate !== undefined) updates.equipmentDowntimeHourlyRate = parseFloat(equipmentDowntimeHourlyRate);
+  if (dailyTaskHourlyRate !== undefined) updates.dailyTaskHourlyRate = parseFloat(dailyTaskHourlyRate);
 
   const [updated] = await db.update(tenantsTable).set(updates).where(eq(tenantsTable.id, tenantId)).returning();
   if (!updated) { res.status(404).json({ error: "Tenant not found" }); return; }

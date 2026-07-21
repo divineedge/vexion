@@ -2490,6 +2490,8 @@ export interface TenantSettings {
   reviewCustomLink2Url?: string | null;
   /** Trip charge auto-appended to a job's invoice when it uses a one-time reschedule */
   routeExceptionFee?: number;
+  /** $/hour flat rate applied to daily task / compliance time for payroll. 0 = display-only. */
+  dailyTaskHourlyRate?: number;
 }
 
 export interface PauseSeriesInput {
@@ -2801,6 +2803,8 @@ export interface TenantSettingsUpdate {
   reviewCustomLink2Label?: string;
   reviewCustomLink2Url?: string;
   routeExceptionFee?: number;
+  /** $/hour flat rate applied to daily task / compliance time for payroll. 0 = display-only. */
+  dailyTaskHourlyRate?: number;
 }
 
 export type ReviewRequestChannel = typeof ReviewRequestChannel[keyof typeof ReviewRequestChannel];

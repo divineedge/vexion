@@ -298,8 +298,11 @@ async function generateInvoiceForCustomer(
   return invoice.id;
 }
 
-/** Runs one due template inside a transaction: generates 1..N invoices (N>1 only for service-only scope) and advances the schedule. */
-async function generateDueTemplate(tx: Tx, template: RecurringInvoiceTemplate): Promise<number[]> {
+/**
+ * Runs one due template inside a transaction: generates 1..N invoices (N>1 only for service-only scope) and advances the schedule.
+ * Exported for integration testing only — call via db.transaction() in production.
+ */
+export async function generateDueTemplate(tx: Tx, template: RecurringInvoiceTemplate): Promise<number[]> {
   // ── Concurrent-process guard ─────────────────────────────────────────────
   // Lock the template row so that if two scheduler processes start at the same
   // moment only one proceeds at a time. After acquiring the lock, re-read

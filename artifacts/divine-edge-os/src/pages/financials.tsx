@@ -41,7 +41,7 @@ import { toast } from 'sonner';
 import {
   Plus, ArrowUpRight, DollarSign, Clock, FileText, CheckCircle, Calendar,
   User, ChevronDown, Package, RefreshCw, Play, Pause, Mail, MailCheck, MailX, Trash2, Pencil,
-  Building2, ShieldAlert, Check, X, Phone, Globe, Eye, AlertTriangle,
+  Building2, ShieldAlert, Check, X, Phone, Globe, Eye, AlertTriangle, Search,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAuth } from '@/contexts/AuthContext';
@@ -714,6 +714,9 @@ export default function FinancialsPage() {
   const [editingTemplate, setEditingTemplate] = useState<RecurringInvoiceTemplate | null>(null);
   const [approvingFlag, setApprovingFlag] = useState<StopServiceFlag | null>(null);
   const [previewTemplate, setPreviewTemplate] = useState<{ id: number; name: string } | null>(null);
+  const [flagSearch, setFlagSearch] = useState('');
+  const [flagDateRange, setFlagDateRange] = useState('all');
+  const [showDismissed, setShowDismissed] = useState(false);
 
   const { data: summary } = useGetFinancialsSummary({ query: { queryKey: getGetFinancialsSummaryQueryKey() } });
   const { data: invoices, isLoading } = useListInvoices({}, { query: { queryKey: getListInvoicesQueryKey({}) } });
@@ -733,6 +736,27 @@ export default function FinancialsPage() {
     { status: 'pending' },
     { query: { queryKey: getListStopServiceFlagsQueryKey({ status: 'pending' }) } },
   );
+
+  const { data: dismissedFlags } = useListStopServiceFlags(
+    { status: 'dismissed' },
+    { query: { enabled: showDismissed, queryKey: getListStopServiceFlagsQueryKey({ status: 'dismissed' }) } },
+  );
+
+  const allFlags = [
+    ...(stopServiceFlags ?? []),
+    ...(showDismissed ? (dismissedFlags ?? []) : []),
+  ];
+
+  const filteredFlags = allFlags.filter(flag => {
+    if (flagSearch && !(flag.customerName ?? '').toLowerCase().includes(flagSearch.toLowerCase())) return false;
+    if (flagDateRange !== 'all') {
+      const days = parseInt(flagDateRange, 10);
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - days);
+      if (new Date(flag.createdAt) < cutoff) return false;
+    }
+    return true;
+  });
 
   const approveFlag = useApproveStopServiceFlag();
   const dismissFlag = useDismissStopServiceFlag();
@@ -1223,10 +1247,41 @@ export default function FinancialsPage() {
             <h3 className="font-semibold">Stop-Service Approvals</h3>
             <p className="text-sm text-muted-foreground">Review overdue accounts flagged for service pause. Approving will halt the customer's recurring billing series.</p>
           </div>
+
+          {/* Filters */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative flex-1 min-w-[180px] max-w-xs">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              <Input
+                className="pl-8 h-8 text-sm"
+                placeholder="Search customer…"
+                value={flagSearch}
+                onChange={e => setFlagSearch(e.target.value)}
+              />
+            </div>
+            <Select value={flagDateRange} onValueChange={setFlagDateRange}>
+              <SelectTrigger className="h-8 text-sm w-[150px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All dates</SelectItem>
+                <SelectItem value="7">Last 7 days</SelectItem>
+                <SelectItem value="30">Last 30 days</SelectItem>
+                <SelectItem value="90">Last 90 days</SelectItem>
+              </SelectContent>
+            </Select>
+            <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+              <Switch checked={showDismissed} onCheckedChange={setShowDismissed} />
+              Show dismissed
+            </label>
+          </div>
+
           {flagsLoading ? (
             <p className="text-sm text-muted-foreground py-4 text-center">Loading...</p>
-          ) : (stopServiceFlags ?? []).length === 0 ? (
-            <p className="text-sm text-muted-foreground py-2">No pending approvals.</p>
+          ) : filteredFlags.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-2">
+              {allFlags.length === 0 ? 'No pending approvals.' : 'No flags match the current filters.'}
+            </p>
           ) : (
             <Card>
               <CardContent className="p-0">
@@ -1238,49 +1293,60 @@ export default function FinancialsPage() {
                       <TableHead>Days Overdue</TableHead>
                       <TableHead>Message</TableHead>
                       <TableHead>Flagged</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(stopServiceFlags ?? []).map(flag => (
-                      <TableRow key={flag.id}>
-                        <TableCell className="font-medium">{flag.customerName ?? '—'}</TableCell>
-                        <TableCell className="font-mono text-sm">{flag.invoiceNumber ?? `#${flag.invoiceId}`}</TableCell>
-                        <TableCell>
-                          <Badge className="bg-red-100 text-red-800 border-transparent" variant="outline">
-                            {flag.daysOverdue}d
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{flag.message}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {format(new Date(flag.createdAt), 'MMM d, yyyy')}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {canManageOffice && (
-                            <div className="flex items-center justify-end gap-1">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs gap-1 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
-                                onClick={() => setApprovingFlag(flag)}
-                                disabled={approveFlag.isPending}
-                              >
-                                <Check className="w-3 h-3" /> Approve
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 text-xs gap-1 text-muted-foreground hover:text-destructive"
-                                onClick={() => handleDismissFlag(flag)}
-                                disabled={dismissFlag.isPending}
-                              >
-                                <X className="w-3 h-3" /> Dismiss
-                              </Button>
-                            </div>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {filteredFlags.map(flag => {
+                      const isDismissed = flag.status === 'dismissed';
+                      return (
+                        <TableRow key={flag.id} className={isDismissed ? 'opacity-60' : ''}>
+                          <TableCell className="font-medium">{flag.customerName ?? '—'}</TableCell>
+                          <TableCell className="font-mono text-sm">{flag.invoiceNumber ?? `#${flag.invoiceId}`}</TableCell>
+                          <TableCell>
+                            <Badge className="bg-red-100 text-red-800 border-transparent" variant="outline">
+                              {flag.daysOverdue}d
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{flag.message}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {format(new Date(flag.createdAt), 'MMM d, yyyy')}
+                          </TableCell>
+                          <TableCell>
+                            {isDismissed ? (
+                              <Badge className="bg-slate-100 text-slate-600 border-transparent" variant="outline">Dismissed</Badge>
+                            ) : (
+                              <Badge className="bg-amber-100 text-amber-800 border-transparent" variant="outline">Pending</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {canManageOffice && !isDismissed && (
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs gap-1 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                                  onClick={() => setApprovingFlag(flag)}
+                                  disabled={approveFlag.isPending}
+                                >
+                                  <Check className="w-3 h-3" /> Approve
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 text-xs gap-1 text-muted-foreground hover:text-destructive"
+                                  onClick={() => handleDismissFlag(flag)}
+                                  disabled={dismissFlag.isPending}
+                                >
+                                  <X className="w-3 h-3" /> Dismiss
+                                </Button>
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </CardContent>

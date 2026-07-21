@@ -213,8 +213,15 @@ router.post("/portal/auth/request-otp", async (req, res): Promise<void> => {
   });
 
   // Return previewOtp only in development so engineers can test without a real email service.
+  // Return emailDelivered: false when no real email provider is configured so the frontend
+  // can show a meaningful warning instead of "Check your email" (which would never arrive).
   const isDev = process.env.NODE_ENV !== "production";
-  res.json({ message: "OTP sent to your email", previewOtp: isDev ? otp : undefined });
+  const emailDelivered = !emailResult.devOnly;
+  res.json({
+    message: "OTP sent to your email",
+    previewOtp: isDev ? otp : undefined,
+    emailDelivered,
+  });
 });
 
 // ---------------------------------------------------------------------------

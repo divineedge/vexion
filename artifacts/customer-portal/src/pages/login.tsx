@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { toast } from "sonner";
-import { Mail, ArrowRight, CheckCircle2, ShieldCheck } from "lucide-react";
+import { Mail, ArrowRight, CheckCircle2, ShieldCheck, AlertTriangle } from "lucide-react";
 
 const emailSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -25,6 +25,7 @@ export default function Login() {
   const [emailSent, setEmailSent] = useState("");
   const [tenantId, setTenantId] = useState<number>(1);
   const [previewOtp, setPreviewOtp] = useState<string | null>(null);
+  const [emailDelivered, setEmailDelivered] = useState<boolean>(true);
 
   const requestOtp = usePortalRequestOtp();
   const verifyOtp = usePortalVerifyOtp();
@@ -70,7 +71,11 @@ export default function Login() {
         onSuccess: (data) => {
           setEmailSent(values.email);
           setStep("otp");
-          toast.success("Security code sent!");
+          const delivered = (data as any).emailDelivered !== false;
+          setEmailDelivered(delivered);
+          if (delivered) {
+            toast.success("Security code sent!");
+          }
           
           if (data.previewOtp) {
             setPreviewOtp(data.previewOtp);
@@ -171,10 +176,17 @@ export default function Login() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <ShieldCheck className="w-5 h-5 text-primary" />
-                  Check your email
+                  {emailDelivered ? "Check your email" : "Email delivery not configured"}
                 </CardTitle>
                 <CardDescription>
-                  We've sent a 6-digit login code to <span className="font-medium text-foreground">{emailSent}</span>. Enter it below to sign in.
+                  {emailDelivered ? (
+                    <>We've sent a 6-digit login code to <span className="font-medium text-foreground">{emailSent}</span>. Enter it below to sign in.</>
+                  ) : (
+                    <span className="flex items-start gap-2 text-amber-700 dark:text-amber-400">
+                      <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                      Email delivery is not configured for this account. Your login code was not sent. Please contact support to resolve this before signing in.
+                    </span>
+                  )}
                 </CardDescription>
               </CardHeader>
               <CardContent>

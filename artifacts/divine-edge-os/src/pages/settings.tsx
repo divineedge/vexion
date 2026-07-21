@@ -1362,15 +1362,23 @@ export default function SettingsPage() {
                 </div>
               )}
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col gap-2">
                 {(settings as any)?.emailProvider ? (
-                  <Badge className="bg-emerald-500/10 text-emerald-700 border-transparent gap-1">
+                  <Badge className="bg-emerald-500/10 text-emerald-700 border-transparent gap-1 w-fit">
                     <CheckCircle className="w-3 h-3" /> Connected — {(settings as any).emailProvider === 'gmail' ? 'Google / Gmail' : (settings as any).emailProvider}
                   </Badge>
                 ) : (
-                  <Badge variant="outline" className="text-muted-foreground gap-1">
-                    <WifiOff className="w-3 h-3" /> Not connected — emails will be logged to console
-                  </Badge>
+                  <>
+                    <Badge variant="outline" className="text-muted-foreground gap-1 w-fit">
+                      <WifiOff className="w-3 h-3" /> Not connected
+                    </Badge>
+                    <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-400">
+                      <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                      <span>
+                        No email provider is configured. Transactional emails (portal login codes, service reminders, estimates) will only be logged to the server console and will <strong>not</strong> reach customers. Connect a provider above to enable delivery.
+                      </span>
+                    </div>
+                  </>
                 )}
               </div>
 

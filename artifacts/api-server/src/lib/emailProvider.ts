@@ -18,6 +18,8 @@ export interface SendEmailResult {
   success: boolean;
   externalId?: string;
   error?: string;
+  /** True when no real email provider is configured — message was only logged to console. */
+  devOnly?: boolean;
 }
 
 async function sendViaSendGrid(
@@ -126,8 +128,8 @@ export async function sendEmail(
   const from = fromAddress ?? config["fromAddress"] ?? "noreply@example.com";
 
   if (!provider) {
-    logger.info({ to, subject, body }, "[EMAIL DEV] Would send email");
-    return { success: true, externalId: `dev-${Date.now()}` };
+    logger.info({ to, subject, body }, "[EMAIL DEV] Would send email (no provider configured)");
+    return { success: true, externalId: `dev-${Date.now()}`, devOnly: true };
   }
 
   if (provider === "sendgrid") {

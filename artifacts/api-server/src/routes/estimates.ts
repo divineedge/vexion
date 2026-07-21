@@ -3,7 +3,7 @@ import { db, estimatesTable, visitsTable, jobsTable, customersTable, propertiesT
 import { eq, and, sql, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { sendReviewRequest } from "../lib/reviewService";
-import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
+import { sendEmail, buildEstimateResponseNotificationHtml, type EmailProviderConfig } from "../lib/emailProvider";
 import { logger } from "../lib/logger";
 import crypto from "crypto";
 import {
@@ -826,13 +826,60 @@ router.post("/public/estimates/:token/respond", async (req, res): Promise<void> 
       .where(and(eq(blueprintsTable.id, updated.blueprintId), eq(blueprintsTable.tenantId, updated.tenantId)));
   }
 
-  if (isApproved && updated.customerId) {
-    const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, updated.tenantId));
+  // ── Fetch shared context (tenant + customer) for notifications ───────────────
+  const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, updated.tenantId));
+  const customer = updated.customerId
+    ? await db.select().from(customersTable).where(eq(customersTable.id, updated.customerId)).then(r => r[0])
+    : undefined;
+
+  if (isApproved && customer) {
     if (tenant?.reviewRequestOnEstimateApproved) {
-      const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, updated.customerId));
-      if (customer) {
-        sendReviewRequest({ tenant, customer, estimateId: updated.id })
-          .catch(err => logger.error({ err, estimateId: updated.id }, "Failed to send review request on estimate approved"));
+      sendReviewRequest({ tenant, customer, estimateId: updated.id })
+        .catch(err => logger.error({ err, estimateId: updated.id }, "Failed to send review request on estimate approved"));
+    }
+  }
+
+  // ── Notify the assignee by email ──────────────────────────────────────────
+  if (updated.assigneeId && tenant) {
+    const assigneeRow = await db.select({ name: usersTable.name, email: usersTable.email })
+      .from(usersTable)
+      .where(eq(usersTable.id, updated.assigneeId))
+      .then(r => r[0]);
+
+    if (assigneeRow?.email) {
+      try {
+        const domainsEnv = process.env.REPLIT_DOMAINS;
+        const firstDomain = domainsEnv?.split(",")[0]?.trim();
+        const domain = firstDomain || process.env.REPLIT_DEV_DOMAIN;
+        const estimatesUrl = domain
+          ? `https://${domain}/estimates`
+          : `/estimates`;
+
+        const { subject, body, html } = buildEstimateResponseNotificationHtml({
+          assigneeName: assigneeRow.name ?? null,
+          customerName: customer?.name ?? "A customer",
+          action: isApproved ? "approved" : "declined",
+          total: updated.total ?? 0,
+          estimatesUrl,
+          companyName: tenant.name ?? "Your company",
+          declineReason: isApproved ? null : (updated.declineReason ?? null),
+        });
+
+        const emailProviderConfig: EmailProviderConfig = {
+          provider: (tenant.emailProvider as "smtp" | "sendgrid" | "mailgun" | "resend" | "gmail" | null) ?? null,
+          config: (tenant.emailProviderConfig as Record<string, string>) ?? {},
+          fromAddress: tenant.businessEmail ?? (tenant.emailProviderConfig as Record<string, string>)?.["fromAddress"] ?? null,
+        };
+
+        sendEmail(emailProviderConfig, assigneeRow.email, subject, body, html)
+          .then(result => {
+            if (!result.success) {
+              logger.warn({ estimateId: updated.id, assigneeEmail: assigneeRow.email, error: result.error }, "Failed to send estimate response notification to assignee");
+            }
+          })
+          .catch(err => logger.error({ err, estimateId: updated.id }, "Error sending estimate response notification to assignee"));
+      } catch (err) {
+        logger.error({ err, estimateId: updated.id }, "Error building estimate response notification email");
       }
     }
   }

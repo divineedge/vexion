@@ -276,6 +276,131 @@ export function buildOtpEmailHtml(params: {
 </html>`;
 }
 
+/** Escape a string for safe embedding in HTML text content or attribute values. */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
+ * Builds a branded HTML email notifying a staff member that a customer
+ * approved or declined an estimate.
+ */
+export function buildEstimateResponseNotificationHtml(params: {
+  assigneeName: string | null;
+  customerName: string;
+  action: "approved" | "declined";
+  total: number;
+  estimatesUrl: string;
+  companyName: string;
+  declineReason?: string | null;
+}): { subject: string; body: string; html: string } {
+  const { assigneeName, customerName, action, total, estimatesUrl, companyName, declineReason } = params;
+
+  // Escape all user-supplied values before interpolating into HTML
+  const safeAssigneeName = assigneeName ? escapeHtml(assigneeName) : null;
+  const safeCustomerName = escapeHtml(customerName);
+  const safeCompanyName = escapeHtml(companyName);
+  const safeEstimatesUrl = escapeHtml(estimatesUrl);
+  const safeDeclineReason = declineReason ? escapeHtml(declineReason) : null;
+
+  const actionLabel = action === "approved" ? "approved" : "declined";
+  const actionColor = action === "approved" ? "#16a34a" : "#dc2626";
+  const actionBg = action === "approved" ? "#dcfce7" : "#fee2e2";
+  const totalStr = total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // Plain text uses raw values — no injection surface in plain text
+  const subject = `Estimate ${actionLabel} by ${customerName} — ${totalStr}`;
+  const plainGreeting = assigneeName ? `Hi ${assigneeName},` : "Hi there,";
+  const declineNotePlain = action === "declined" && declineReason
+    ? `\nDecline reason: ${declineReason}\n`
+    : "";
+
+  const body = [
+    plainGreeting,
+    "",
+    `${customerName} has ${actionLabel} their estimate of ${totalStr}.`,
+    declineNotePlain,
+    "Open the Estimates page to review it:",
+    estimatesUrl,
+    "",
+    `— ${companyName}`,
+  ].filter(l => l !== null).join("\n");
+
+  const htmlGreeting = safeAssigneeName ? `Hi ${safeAssigneeName},` : "Hi there,";
+  const declineReasonHtml = action === "declined" && safeDeclineReason
+    ? `<p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6;"><strong>Decline reason:</strong> ${safeDeclineReason}</p>`
+    : "";
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${safeCompanyName} — Estimate ${actionLabel}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f4f5;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f4f5;padding:40px 0;">
+    <tr>
+      <td align="center">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;background-color:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+
+          <!-- Header -->
+          <tr>
+            <td style="background-color:#1a1a2e;padding:28px 40px;">
+              <p style="margin:0;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:0.5px;">${safeCompanyName}</p>
+            </td>
+          </tr>
+
+          <!-- Status badge -->
+          <tr>
+            <td style="padding:28px 40px 0;">
+              <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6;">${htmlGreeting}</p>
+              <table cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="background-color:${actionBg};border-radius:6px;padding:10px 20px;">
+                    <p style="margin:0;font-size:15px;font-weight:700;color:${actionColor};text-transform:uppercase;letter-spacing:0.5px;">${actionLabel}</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:20px 40px 8px;">
+              <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6;">
+                <strong>${safeCustomerName}</strong> has ${actionLabel} their estimate.
+              </p>
+              <p style="margin:0 0 16px;font-size:22px;font-weight:700;color:#111827;">${totalStr}</p>
+              ${declineReasonHtml}
+              <a href="${safeEstimatesUrl}" style="display:inline-block;background-color:#1a1a2e;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 24px;border-radius:6px;margin-bottom:24px;">View Estimates</a>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color:#f9fafb;padding:20px 40px;border-top:1px solid #e5e7eb;">
+              <p style="margin:0;font-size:12px;color:#9ca3af;">
+                &copy; ${new Date().getFullYear()} ${safeCompanyName}. This is an automated notification.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  return { subject, body, html };
+}
+
 export function buildReminderEmailBody(params: {
   customerName: string;
   jobTitle: string;

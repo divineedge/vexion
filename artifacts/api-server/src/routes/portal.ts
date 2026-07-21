@@ -6,6 +6,7 @@ import crypto from "crypto";
 import { getTenantId } from "../lib/tenantHelper";
 import { sendEmail, buildOtpEmailHtml, type EmailProviderConfig } from "../lib/emailProvider";
 import { logger } from "../lib/logger";
+import PDFDocument from "pdfkit";
 
 const router: IRouter = Router();
 
@@ -446,6 +447,217 @@ router.get("/portal/invoices/:id", requirePortalAuth, async (req: any, res): Pro
   }
 
   res.json(formatPortalInvoice(invoice));
+});
+
+// ---------------------------------------------------------------------------
+// GET /portal/invoices/:id/pdf
+// ---------------------------------------------------------------------------
+router.get("/portal/invoices/:id/pdf", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+  const invoiceId = parseInt(req.params.id, 10);
+
+  const [[invoice], [tenant], [customer]] = await Promise.all([
+    db
+      .select()
+      .from(invoicesTable)
+      .where(
+        and(
+          eq(invoicesTable.id, invoiceId),
+          eq(invoicesTable.customerId, portalCustomerId),
+          eq(invoicesTable.tenantId, portalTenantId),
+        ),
+      )
+      .limit(1),
+    db.select().from(tenantsTable).where(eq(tenantsTable.id, portalTenantId)).limit(1),
+    db.select().from(customersTable).where(eq(customersTable.id, portalCustomerId)).limit(1),
+  ]);
+
+  if (!invoice) {
+    res.status(404).json({ error: "Invoice not found" });
+    return;
+  }
+
+  const companyName = tenant?.name ?? "Your Service Provider";
+  const safeInvoiceNumber = invoice.invoiceNumber.replace(/[^a-zA-Z0-9_-]/g, "_");
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="invoice-${safeInvoiceNumber}.pdf"`,
+  );
+
+  const doc = new PDFDocument({ margin: 50, size: "LETTER" });
+  doc.pipe(res);
+
+  // ── Header: company name & branding ──────────────────────────────────────
+  const brandColor = "#16a34a"; // green-600
+  doc
+    .fontSize(22)
+    .fillColor(brandColor)
+    .font("Helvetica-Bold")
+    .text(companyName, 50, 50, { align: "left" });
+
+  // Company contact info (right-aligned)
+  const contactLines: string[] = [];
+  if (tenant?.businessAddress) contactLines.push(tenant.businessAddress);
+  if (tenant?.businessPhone) contactLines.push(tenant.businessPhone);
+  if (tenant?.businessEmail) contactLines.push(tenant.businessEmail);
+  if (contactLines.length > 0) {
+    doc
+      .fontSize(9)
+      .fillColor("#555555")
+      .font("Helvetica")
+      .text(contactLines.join("\n"), 50, 55, { align: "right" });
+  }
+
+  // ── Invoice title bar ─────────────────────────────────────────────────────
+  const titleY = 110;
+  doc.rect(50, titleY, 512, 30).fill(brandColor);
+  doc
+    .fontSize(14)
+    .fillColor("#ffffff")
+    .font("Helvetica-Bold")
+    .text("INVOICE", 60, titleY + 8, { align: "left", width: 496 });
+
+  // Invoice number (right side of title bar)
+  doc.text(`#${invoice.invoiceNumber}`, 60, titleY + 8, { align: "right", width: 496 });
+
+  // ── Bill to / Invoice details ─────────────────────────────────────────────
+  const detailsY = 155;
+  doc
+    .fontSize(9)
+    .fillColor("#888888")
+    .font("Helvetica-Bold")
+    .text("BILL TO", 50, detailsY);
+
+  doc
+    .fontSize(10)
+    .fillColor("#222222")
+    .font("Helvetica")
+    .text(customer?.name ?? "Customer", 50, detailsY + 14);
+
+  if (customer?.email) {
+    doc.fontSize(9).fillColor("#555555").text(customer.email, 50, detailsY + 28);
+  }
+
+  // Right column: dates & status
+  const metaX = 380;
+  const metaLabelColor = "#888888";
+  const metaValueColor = "#222222";
+
+  const formatDate = (d: Date | null | undefined): string => {
+    if (!d) return "—";
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  };
+
+  const metaRows: Array<[string, string]> = [
+    ["Issue Date", formatDate(invoice.createdAt)],
+    ["Due Date", formatDate(invoice.dueDate ?? null)],
+    ["Status", (invoice.status ?? "draft").toUpperCase()],
+  ];
+  if (invoice.paidAt) {
+    metaRows.push(["Paid On", formatDate(invoice.paidAt)]);
+  }
+
+  let metaY = detailsY;
+  for (const [label, value] of metaRows) {
+    doc.fontSize(9).fillColor(metaLabelColor).font("Helvetica-Bold").text(label, metaX, metaY, { width: 80 });
+    doc.fontSize(9).fillColor(metaValueColor).font("Helvetica").text(value, metaX + 90, metaY, { width: 132 });
+    metaY += 14;
+  }
+
+  // ── Line items table ──────────────────────────────────────────────────────
+  const tableTop = detailsY + 85;
+  const colDesc = 50;
+  const colQty = 340;
+  const colUnit = 390;
+  const colTotal = 460;
+  const tableWidth = 512;
+
+  // Table header
+  doc.rect(50, tableTop, tableWidth, 22).fill("#f3f4f6");
+  doc.fontSize(9).fillColor("#444444").font("Helvetica-Bold");
+  doc.text("Description", colDesc + 4, tableTop + 6, { width: 280 });
+  doc.text("Qty", colQty + 4, tableTop + 6, { width: 44, align: "right" });
+  doc.text("Unit Price", colUnit + 4, tableTop + 6, { width: 60, align: "right" });
+  doc.text("Total", colTotal + 4, tableTop + 6, { width: 100, align: "right" });
+
+  const formatCurrency = (n: number) =>
+    new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+
+  type LineItem = { description?: string; quantity?: number; unitPrice?: number; total?: number };
+  const lineItems = (invoice.lineItems as LineItem[]) ?? [];
+
+  let rowY = tableTop + 22;
+  let rowIndex = 0;
+  for (const item of lineItems) {
+    const rowHeight = 22;
+    if (rowIndex % 2 === 1) {
+      doc.rect(50, rowY, tableWidth, rowHeight).fill("#f9fafb");
+    }
+    doc.fontSize(9).fillColor("#222222").font("Helvetica");
+    doc.text(item.description ?? "", colDesc + 4, rowY + 6, { width: 280 });
+    doc.text(String(item.quantity ?? 1), colQty + 4, rowY + 6, { width: 44, align: "right" });
+    doc.text(formatCurrency(item.unitPrice ?? 0), colUnit + 4, rowY + 6, { width: 60, align: "right" });
+    doc.text(formatCurrency(item.total ?? 0), colTotal + 4, rowY + 6, { width: 100, align: "right" });
+    rowY += rowHeight;
+    rowIndex++;
+  }
+
+  if (lineItems.length === 0) {
+    doc.fontSize(9).fillColor("#888888").font("Helvetica")
+      .text("No line items", colDesc + 4, rowY + 6, { width: 500 });
+    rowY += 22;
+  }
+
+  // Bottom border of table
+  doc.moveTo(50, rowY).lineTo(562, rowY).strokeColor("#e5e7eb").lineWidth(1).stroke();
+
+  // ── Totals ────────────────────────────────────────────────────────────────
+  rowY += 12;
+  const totalsX = 380;
+
+  const subtotal = invoice.subtotal ?? 0;
+  const tax = invoice.tax ?? 0;
+  const total = invoice.total ?? 0;
+
+  doc.fontSize(9).fillColor("#555555").font("Helvetica");
+  doc.text("Subtotal", totalsX, rowY, { width: 80 });
+  doc.text(formatCurrency(subtotal), totalsX + 90, rowY, { width: 92, align: "right" });
+  rowY += 16;
+
+  if (tax !== 0) {
+    doc.text("Tax", totalsX, rowY, { width: 80 });
+    doc.text(formatCurrency(tax), totalsX + 90, rowY, { width: 92, align: "right" });
+    rowY += 16;
+  }
+
+  // Total row
+  doc.rect(totalsX - 4, rowY - 4, 192, 24).fill(brandColor);
+  doc.fontSize(11).fillColor("#ffffff").font("Helvetica-Bold");
+  doc.text("TOTAL", totalsX, rowY + 2, { width: 80 });
+  doc.text(formatCurrency(total), totalsX + 90, rowY + 2, { width: 92, align: "right" });
+  rowY += 32;
+
+  // ── Notes ─────────────────────────────────────────────────────────────────
+  if (invoice.notes) {
+    rowY += 12;
+    doc.fontSize(9).fillColor("#888888").font("Helvetica-Bold").text("Notes", 50, rowY);
+    rowY += 14;
+    doc.fontSize(9).fillColor("#444444").font("Helvetica").text(invoice.notes, 50, rowY, { width: 512 });
+  }
+
+  // ── Footer ────────────────────────────────────────────────────────────────
+  doc
+    .fontSize(8)
+    .fillColor("#aaaaaa")
+    .font("Helvetica")
+    .text(`Thank you for your business — ${companyName}`, 50, 730, {
+      align: "center",
+      width: 512,
+    });
+
+  doc.end();
 });
 
 // ---------------------------------------------------------------------------

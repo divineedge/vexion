@@ -4,12 +4,46 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { FileText, Download, CheckCircle2, AlertCircle, ChevronRight } from "lucide-react";
+import { FileText, Download, CheckCircle2, AlertCircle, ChevronRight, Loader2 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link } from "wouter";
+import { useState } from "react";
 
 export default function Invoices() {
   const { data: invoices, isLoading } = usePortalListInvoices();
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+
+  async function downloadPdf(e: React.MouseEvent, invoiceId: number, invoiceNumber: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (downloadingId !== null) return;
+    setDownloadingId(invoiceId);
+    try {
+      const token = localStorage.getItem("portal_token");
+      const params = new URLSearchParams(window.location.search);
+      const tenantId = params.get("tenant") ?? "1";
+      const res = await fetch(`/api/portal/invoices/${invoiceId}/pdf`, {
+        headers: {
+          "x-portal-token": token ?? "",
+          "x-tenant-id": tenantId,
+        },
+      });
+      if (!res.ok) throw new Error("Failed to download PDF");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `invoice-${invoiceNumber}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      // silent — browser will show nothing downloaded
+    } finally {
+      setDownloadingId(null);
+    }
+  }
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -72,11 +106,19 @@ export default function Invoices() {
 
               {invoice.status === 'sent' || invoice.status === 'overdue' ? (
                 <Button className="w-full" onClick={(e) => e.stopPropagation()}>Pay Now</Button>
-              ) : (
-                <Button variant="outline" className="w-full" size="sm" onClick={(e) => e.stopPropagation()}>
-                  <Download className="w-4 h-4 mr-2" /> Receipt
-                </Button>
-              )}
+              ) : null}
+              <Button
+                variant="outline"
+                className="w-full"
+                size="sm"
+                disabled={downloadingId === invoice.id}
+                onClick={(e) => downloadPdf(e, invoice.id, invoice.invoiceNumber)}
+              >
+                {downloadingId === invoice.id
+                  ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  : <Download className="w-4 h-4 mr-2" />}
+                Download PDF
+              </Button>
               <ChevronRight className="w-4 h-4 text-muted-foreground hidden sm:block" />
             </div>
           </div>

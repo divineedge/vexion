@@ -3492,6 +3492,28 @@ paths:
         "404":
           description: Invoice not found
 
+  /portal/invoices/{id}/pdf:
+    get:
+      operationId: portalGetInvoicePdf
+      tags: [portal]
+      summary: Download a PDF copy of an invoice
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: PDF file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Invoice not found
+
   /portal/properties:
     get:
       operationId: portalListProperties

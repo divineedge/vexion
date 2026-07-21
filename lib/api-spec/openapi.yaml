@@ -5229,6 +5229,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BroadcastDetail"
+    patch:
+      operationId: updateBroadcast
+      tags: [broadcasts]
+      summary: Edit a scheduled broadcast's message or send time before it fires
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateBroadcastInput"
+      responses:
+        "200":
+          description: Broadcast updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Broadcast"
+        "409":
+          description: Broadcast is not in scheduled state
     delete:
       operationId: cancelBroadcast
       tags: [broadcasts]
@@ -8240,6 +8265,17 @@ components:
         scheduledFor:
           type: string
           description: ISO date-time string. When provided, broadcast is queued and sent at this time instead of immediately.
+
+    UpdateBroadcastInput:
+      type: object
+      properties:
+        body:
+          type: string
+        subject:
+          type: string
+        scheduledFor:
+          type: string
+          description: ISO date-time string for the new send time.
 
     BroadcastStats:
       type: object

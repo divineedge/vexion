@@ -266,6 +266,7 @@ import type {
   TenantSettings,
   TenantSettingsUpdate,
   TimeEntry,
+  UpdateBroadcastInput,
   UpdateCustomerPlanInput,
   UpdateEstimateInput,
   UpdateIntegrationInput,
@@ -13119,6 +13120,83 @@ export function usePortalGetInvoice<TData = Awaited<ReturnType<typeof portalGetI
 
 
 
+export const getPortalGetInvoicePdfUrl = (id: number,) => {
+
+
+
+
+  return `/api/portal/invoices/${id}/pdf`
+}
+
+/**
+ * @summary Download a PDF copy of an invoice
+ */
+export const portalGetInvoicePdf = async (id: number, options?: RequestInit): Promise<Blob> => {
+
+  return customFetch<Blob>(getPortalGetInvoicePdfUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getPortalGetInvoicePdfQueryKey = (id: number,) => {
+    return [
+    `/api/portal/invoices/${id}/pdf`
+    ] as const;
+    }
+
+
+export const getPortalGetInvoicePdfQueryOptions = <TData = Awaited<ReturnType<typeof portalGetInvoicePdf>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof portalGetInvoicePdf>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getPortalGetInvoicePdfQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof portalGetInvoicePdf>>> = ({ signal }) => portalGetInvoicePdf(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof portalGetInvoicePdf>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type PortalGetInvoicePdfQueryResult = NonNullable<Awaited<ReturnType<typeof portalGetInvoicePdf>>>
+export type PortalGetInvoicePdfQueryError = ErrorType<void>
+
+
+/**
+ * @summary Download a PDF copy of an invoice
+ */
+
+export function usePortalGetInvoicePdf<TData = Awaited<ReturnType<typeof portalGetInvoicePdf>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof portalGetInvoicePdf>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getPortalGetInvoicePdfQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getPortalListPropertiesUrl = () => {
 
 
@@ -19183,6 +19261,78 @@ export function useGetBroadcast<TData = Awaited<ReturnType<typeof getBroadcast>>
 
 
 
+
+export const getUpdateBroadcastUrl = (id: number,) => {
+
+
+
+
+  return `/api/broadcasts/${id}`
+}
+
+/**
+ * @summary Edit a scheduled broadcast's message or send time before it fires
+ */
+export const updateBroadcast = async (id: number,
+    updateBroadcastInput: UpdateBroadcastInput, options?: RequestInit): Promise<Broadcast> => {
+
+  return customFetch<Broadcast>(getUpdateBroadcastUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateBroadcastInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateBroadcastMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateBroadcast>>, TError,{id: number;data: BodyType<UpdateBroadcastInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateBroadcast>>, TError,{id: number;data: BodyType<UpdateBroadcastInput>}, TContext> => {
+
+const mutationKey = ['updateBroadcast'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateBroadcast>>, {id: number;data: BodyType<UpdateBroadcastInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateBroadcast(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateBroadcastMutationResult = NonNullable<Awaited<ReturnType<typeof updateBroadcast>>>
+    export type UpdateBroadcastMutationBody = BodyType<UpdateBroadcastInput>
+    export type UpdateBroadcastMutationError = ErrorType<void>
+
+    /**
+ * @summary Edit a scheduled broadcast's message or send time before it fires
+ */
+export const useUpdateBroadcast = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateBroadcast>>, TError,{id: number;data: BodyType<UpdateBroadcastInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateBroadcast>>,
+        TError,
+        {id: number;data: BodyType<UpdateBroadcastInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateBroadcastMutationOptions(options));
+    }
 
 export const getCancelBroadcastUrl = (id: number,) => {
 

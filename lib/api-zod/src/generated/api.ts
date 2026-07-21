@@ -5572,6 +5572,16 @@ export const PortalGetInvoiceResponse = zod.object({
 
 
 /**
+ * @summary Download a PDF copy of an invoice
+ */
+export const PortalGetInvoicePdfParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const PortalGetInvoicePdfResponse = zod.unknown()
+
+
+/**
  * @summary List all properties for the portal customer
  */
 export const PortalListPropertiesResponseItem = zod.object({
@@ -8129,6 +8139,49 @@ export const GetBroadcastResponse = zod.object({
   "createdAt": zod.string()
 })).optional()
 }))
+
+
+/**
+ * @summary Edit a scheduled broadcast's message or send time before it fires
+ */
+export const UpdateBroadcastParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateBroadcastBody = zod.object({
+  "body": zod.string().optional(),
+  "subject": zod.string().optional(),
+  "scheduledFor": zod.string().optional().describe('ISO date-time string for the new send time.')
+})
+
+export const UpdateBroadcastResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "channel": zod.enum(['sms', 'email']),
+  "subject": zod.string().nullish(),
+  "body": zod.string(),
+  "recipientFilter": zod.object({
+  "tag": zod.string().optional(),
+  "city": zod.string().optional(),
+  "state": zod.string().optional(),
+  "customerType": zod.string().optional(),
+  "lastServiceBefore": zod.string().optional(),
+  "lastServiceAfter": zod.string().optional(),
+  "campaignId": zod.number().optional(),
+  "allCustomers": zod.boolean().optional()
+}).optional(),
+  "recipientCount": zod.number(),
+  "status": zod.enum(['scheduled', 'sending', 'completed', 'failed', 'cancelled']),
+  "stats": zod.object({
+  "sent": zod.number().optional(),
+  "failed": zod.number().optional(),
+  "optedOut": zod.number().optional()
+}).optional(),
+  "scheduledFor": zod.string().nullish(),
+  "sentAt": zod.string().nullish(),
+  "createdBy": zod.number().nullish(),
+  "createdAt": zod.string()
+})
 
 
 /**

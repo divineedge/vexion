@@ -442,6 +442,7 @@ export * from './tenantSettingsUpdatePaymentReminderChannelsItem';
 export * from './tenantSettingsUpdatePreferredAreaUnit';
 export * from './tenantSettingsUpdateRolePermissions';
 export * from './timeEntry';
+export * from './updateBroadcastInput';
 export * from './updateCustomerPlanInput';
 export * from './updateCustomerPlanInputServiceStateItem';
 export * from './updateCustomerPlanInputStatus';

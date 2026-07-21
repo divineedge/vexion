@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  usePreviewBroadcast, useSendBroadcast, useCancelBroadcast,
+  usePreviewBroadcast, useSendBroadcast, useCancelBroadcast, useUpdateBroadcast,
   useListBroadcasts, getListBroadcastsQueryKey,
   useGetBroadcast, getGetBroadcastQueryKey,
 } from '@workspace/api-client-react';
@@ -15,7 +15,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { MessageSquare, Mail, Users, Send, Loader2, Clock, X } from 'lucide-react';
+import { MessageSquare, Mail, Users, Send, Loader2, Clock, X, Pencil, Check } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface Campaign {
@@ -50,6 +50,10 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
   const [scheduledFor, setScheduledFor] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [selectedBroadcastId, setSelectedBroadcastId] = useState<number | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [editBody, setEditBody] = useState('');
+  const [editSubject, setEditSubject] = useState('');
+  const [editScheduledFor, setEditScheduledFor] = useState('');
 
   const filter = {
     ...(allCustomers ? { allCustomers: true } : {
@@ -77,6 +81,17 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
         setSendMode('now');
       },
       onError: () => toast.error('Failed to send broadcast'),
+    },
+  });
+  const updateMutation = useUpdateBroadcast({
+    mutation: {
+      onSuccess: (data) => {
+        toast.success('Broadcast updated');
+        qc.invalidateQueries({ queryKey: getListBroadcastsQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetBroadcastQueryKey(data.id) });
+        setEditMode(false);
+      },
+      onError: () => toast.error('Could not update broadcast'),
     },
   });
   const cancelMutation = useCancelBroadcast({
@@ -125,8 +140,12 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
     });
   };
 
-  // Min datetime for the picker = now + 5 min, formatted for datetime-local input
-  const minDateTime = new Date(Date.now() + 5 * 60 * 1000).toISOString().slice(0, 16);
+  // Min datetime for the picker = now + 5 min, formatted for datetime-local input (local time)
+  function toDatetimeLocal(d: Date): string {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  const minDateTime = toDatetimeLocal(new Date(Date.now() + 5 * 60 * 1000));
 
   return (
     <div className="space-y-6">
@@ -352,7 +371,9 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
       </Sheet>
 
       {/* Broadcast detail sheet */}
-      <Sheet open={selectedBroadcastId != null} onOpenChange={open => { if (!open) setSelectedBroadcastId(null); }}>
+      <Sheet open={selectedBroadcastId != null} onOpenChange={open => {
+        if (!open) { setSelectedBroadcastId(null); setEditMode(false); }
+      }}>
         <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
           {detail && (
             <>
@@ -371,46 +392,127 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
                     {detail.status === 'scheduled' && <Clock className="w-3 h-3 mr-1 inline" />}
                     {detail.status}
                   </Badge>
-                  {detail.status === 'scheduled' && (
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="gap-1.5"
-                      disabled={cancelMutation.isPending}
-                      onClick={() => cancelMutation.mutate({ id: detail.id })}
-                    >
-                      {cancelMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
-                      Cancel Broadcast
-                    </Button>
+                  {detail.status === 'scheduled' && !editMode && (
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5"
+                        onClick={() => {
+                          setEditBody(detail.body ?? '');
+                          setEditSubject(detail.subject ?? '');
+                          setEditScheduledFor(
+                            detail.scheduledFor
+                              ? toDatetimeLocal(new Date(detail.scheduledFor))
+                              : ''
+                          );
+                          setEditMode(true);
+                        }}
+                      >
+                        <Pencil className="w-3.5 h-3.5" /> Edit
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="gap-1.5"
+                        disabled={cancelMutation.isPending}
+                        onClick={() => cancelMutation.mutate({ id: detail.id })}
+                      >
+                        {cancelMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                        Cancel
+                      </Button>
+                    </div>
                   )}
                 </div>
 
-                {detail.status !== 'scheduled' && detail.status !== 'cancelled' && (
-                  <div className="grid grid-cols-3 gap-3 text-center">
-                    <div className="p-3 bg-muted/40 rounded-lg"><p className="text-lg font-bold">{detail.recipientCount}</p><p className="text-xs text-muted-foreground">Targeted</p></div>
-                    <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 rounded-lg"><p className="text-lg font-bold text-emerald-700">{detail.stats?.sent ?? 0}</p><p className="text-xs text-muted-foreground">Sent</p></div>
-                    <div className="p-3 bg-red-50 dark:bg-red-950/20 rounded-lg"><p className="text-lg font-bold text-red-600">{detail.stats?.failed ?? 0}</p><p className="text-xs text-muted-foreground">Failed</p></div>
-                  </div>
-                )}
-
-                {detail.status === 'scheduled' && (
-                  <div className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
-                    <p><strong>Recipients at send time:</strong> {detail.recipientCount} (opt-outs re-checked when sent)</p>
-                  </div>
-                )}
-
-                {detail.subject && <p className="text-sm"><strong>Subject:</strong> {detail.subject}</p>}
-                <p className="text-sm whitespace-pre-wrap border rounded-lg p-3 bg-muted/20">{detail.body}</p>
-
-                {(detail.recipients ?? []).length > 0 && (
-                  <div className="rounded-lg border divide-y max-h-64 overflow-y-auto">
-                    {(detail.recipients ?? []).map(r => (
-                      <div key={r.id} className="flex items-center justify-between px-3 py-2 text-sm">
-                        <span>{r.customerName}</span>
-                        <Badge variant={r.status === 'sent' ? 'secondary' : 'destructive'} className="text-xs">{r.status}</Badge>
+                {/* Edit form for scheduled broadcasts */}
+                {detail.status === 'scheduled' && editMode ? (
+                  <div className="space-y-3 rounded-lg border p-4 bg-muted/20">
+                    <p className="text-sm font-medium">Edit Broadcast</p>
+                    {detail.channel === 'email' && (
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-muted-foreground">Subject</label>
+                        <Input value={editSubject} onChange={e => setEditSubject(e.target.value)} placeholder="Subject" />
                       </div>
-                    ))}
+                    )}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Message</label>
+                      <Textarea
+                        rows={5}
+                        value={editBody}
+                        onChange={e => setEditBody(e.target.value)}
+                        placeholder="Message body"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Send date &amp; time</label>
+                      <Input
+                        type="datetime-local"
+                        min={minDateTime}
+                        value={editScheduledFor}
+                        onChange={e => setEditScheduledFor(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <Button variant="outline" size="sm" onClick={() => setEditMode(false)}>
+                        Discard
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="gap-1.5"
+                        disabled={updateMutation.isPending}
+                        onClick={() => {
+                          if (!editBody.trim()) { toast.error('Message body is required'); return; }
+                          if (editScheduledFor && new Date(editScheduledFor) <= new Date()) {
+                            toast.error('Scheduled time must be in the future'); return;
+                          }
+                          updateMutation.mutate({
+                            id: detail.id,
+                            data: {
+                              body: editBody,
+                              ...(detail.channel === 'email' ? { subject: editSubject } : {}),
+                              ...(editScheduledFor ? { scheduledFor: new Date(editScheduledFor).toISOString() } : {}),
+                            },
+                          });
+                        }}
+                      >
+                        {updateMutation.isPending
+                          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          : <Check className="w-3.5 h-3.5" />}
+                        Save Changes
+                      </Button>
+                    </div>
                   </div>
+                ) : (
+                  <>
+                    {detail.status !== 'scheduled' && detail.status !== 'cancelled' && (
+                      <div className="grid grid-cols-3 gap-3 text-center">
+                        <div className="p-3 bg-muted/40 rounded-lg"><p className="text-lg font-bold">{detail.recipientCount}</p><p className="text-xs text-muted-foreground">Targeted</p></div>
+                        <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 rounded-lg"><p className="text-lg font-bold text-emerald-700">{detail.stats?.sent ?? 0}</p><p className="text-xs text-muted-foreground">Sent</p></div>
+                        <div className="p-3 bg-red-50 dark:bg-red-950/20 rounded-lg"><p className="text-lg font-bold text-red-600">{detail.stats?.failed ?? 0}</p><p className="text-xs text-muted-foreground">Failed</p></div>
+                      </div>
+                    )}
+
+                    {detail.status === 'scheduled' && (
+                      <div className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">
+                        <p><strong>Recipients at send time:</strong> {detail.recipientCount} (opt-outs re-checked when sent)</p>
+                      </div>
+                    )}
+
+                    {detail.subject && <p className="text-sm"><strong>Subject:</strong> {detail.subject}</p>}
+                    <p className="text-sm whitespace-pre-wrap border rounded-lg p-3 bg-muted/20">{detail.body}</p>
+
+                    {(detail.recipients ?? []).length > 0 && (
+                      <div className="rounded-lg border divide-y max-h-64 overflow-y-auto">
+                        {(detail.recipients ?? []).map(r => (
+                          <div key={r.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                            <span>{r.customerName}</span>
+                            <Badge variant={r.status === 'sent' ? 'secondary' : 'destructive'} className="text-xs">{r.status}</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </>

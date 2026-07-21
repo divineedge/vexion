@@ -222,6 +222,45 @@ router.delete("/broadcasts/:id", async (req, res): Promise<void> => {
   res.json(formatBroadcast(updated));
 });
 
+router.patch("/broadcasts/:id", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  if (!(await isAdminRole(tenantId, userId))) { res.status(403).json({ error: "Restricted to owner/admin roles" }); return; }
+
+  const id = parseInt(req.params.id, 10);
+  const [row] = await db.select().from(broadcastsTable).where(and(eq(broadcastsTable.id, id), eq(broadcastsTable.tenantId, tenantId)));
+  if (!row) { res.status(404).json({ error: "Not found" }); return; }
+  if (row.status !== "scheduled") { res.status(409).json({ error: "Only scheduled broadcasts can be edited" }); return; }
+
+  const { body, subject, scheduledFor } = req.body as { body?: string; subject?: string; scheduledFor?: string };
+
+  const updates: Partial<typeof broadcastsTable.$inferInsert> = {};
+  if (body !== undefined) {
+    if (!body.trim()) { res.status(400).json({ error: "body cannot be empty" }); return; }
+    updates.body = body;
+  }
+  if (subject !== undefined) {
+    if (row.channel === "email" && !subject?.trim()) { res.status(400).json({ error: "subject cannot be empty for email broadcasts" }); return; }
+    updates.subject = subject ?? null;
+  }
+  if (scheduledFor !== undefined) {
+    const scheduledDate = new Date(scheduledFor);
+    if (isNaN(scheduledDate.getTime())) { res.status(400).json({ error: "scheduledFor must be a valid ISO date string" }); return; }
+    if (scheduledDate <= new Date()) { res.status(400).json({ error: "scheduledFor must be in the future" }); return; }
+    updates.scheduledFor = scheduledDate;
+  }
+
+  if (Object.keys(updates).length === 0) { res.status(400).json({ error: "No updatable fields provided" }); return; }
+
+  const [updated] = await db.update(broadcastsTable)
+    .set(updates)
+    .where(and(eq(broadcastsTable.id, id), eq(broadcastsTable.tenantId, tenantId), eq(broadcastsTable.status, "scheduled")))
+    .returning();
+
+  if (!updated) { res.status(409).json({ error: "Broadcast could not be updated — it may have already started sending" }); return; }
+  res.json(formatBroadcast(updated));
+});
+
 router.get("/broadcasts/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);

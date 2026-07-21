@@ -1571,6 +1571,13 @@ export interface SendBroadcastInput {
   scheduledFor?: string;
 }
 
+export interface UpdateBroadcastInput {
+  body?: string;
+  subject?: string;
+  /** ISO date-time string for the new send time. */
+  scheduledFor?: string;
+}
+
 export interface BroadcastStats {
   sent?: number;
   failed?: number;

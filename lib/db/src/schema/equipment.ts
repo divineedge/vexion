@@ -115,3 +115,22 @@ export const equipmentReadingLogsTable = pgTable("equipment_reading_logs", {
 export const insertEquipmentReadingLogSchema = createInsertSchema(equipmentReadingLogsTable).omit({ id: true, createdAt: true });
 export type InsertEquipmentReadingLog = z.infer<typeof insertEquipmentReadingLogSchema>;
 export type EquipmentReadingLog = typeof equipmentReadingLogsTable.$inferSelect;
+
+// ── Equipment Lifecycle Events (archive / restore audit trail) ────────────────
+
+import { usersTable } from "./users";
+
+export const equipmentLifecycleEventsTable = pgTable("equipment_lifecycle_events", {
+  id: serial("id").primaryKey(),
+  equipmentId: integer("equipment_id").notNull().references(() => equipmentTable.id, { onDelete: "cascade" }),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
+  /** "archived" | "restored" */
+  eventType: text("event_type").notNull(),
+  performedByUserId: integer("performed_by_user_id").references(() => usersTable.id, { onDelete: "set null" }),
+  performedByName: text("performed_by_name"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertEquipmentLifecycleEventSchema = createInsertSchema(equipmentLifecycleEventsTable).omit({ id: true, createdAt: true });
+export type InsertEquipmentLifecycleEvent = z.infer<typeof insertEquipmentLifecycleEventSchema>;
+export type EquipmentLifecycleEvent = typeof equipmentLifecycleEventsTable.$inferSelect;

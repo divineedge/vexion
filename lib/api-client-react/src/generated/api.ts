@@ -93,6 +93,7 @@ import type {
   EquipmentFuelLogInput,
   EquipmentInput,
   EquipmentLedger,
+  EquipmentLifecycleEvent,
   EquipmentLinkedPart,
   EquipmentMaintenance,
   EquipmentMaintenanceInput,
@@ -10270,6 +10271,83 @@ export const useDeleteEquipment = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getDeleteEquipmentMutationOptions(options));
     }
+
+export const getListEquipmentLifecycleEventsUrl = (id: number,) => {
+
+
+
+
+  return `/api/equipment/${id}/lifecycle-events`
+}
+
+/**
+ * @summary List archive/restore lifecycle events for an equipment item
+ */
+export const listEquipmentLifecycleEvents = async (id: number, options?: RequestInit): Promise<EquipmentLifecycleEvent[]> => {
+
+  return customFetch<EquipmentLifecycleEvent[]>(getListEquipmentLifecycleEventsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListEquipmentLifecycleEventsQueryKey = (id: number,) => {
+    return [
+    `/api/equipment/${id}/lifecycle-events`
+    ] as const;
+    }
+
+
+export const getListEquipmentLifecycleEventsQueryOptions = <TData = Awaited<ReturnType<typeof listEquipmentLifecycleEvents>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEquipmentLifecycleEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListEquipmentLifecycleEventsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listEquipmentLifecycleEvents>>> = ({ signal }) => listEquipmentLifecycleEvents(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listEquipmentLifecycleEvents>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListEquipmentLifecycleEventsQueryResult = NonNullable<Awaited<ReturnType<typeof listEquipmentLifecycleEvents>>>
+export type ListEquipmentLifecycleEventsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List archive/restore lifecycle events for an equipment item
+ */
+
+export function useListEquipmentLifecycleEvents<TData = Awaited<ReturnType<typeof listEquipmentLifecycleEvents>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEquipmentLifecycleEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListEquipmentLifecycleEventsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getHardDeleteEquipmentUrl = (id: number,) => {
 

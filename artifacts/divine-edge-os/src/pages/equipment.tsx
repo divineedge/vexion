@@ -23,6 +23,7 @@ import {
   useListTasks, getListTasksQueryKey,
   useGetEquipmentLinkedParts, getGetEquipmentLinkedPartsQueryKey,
   useCreateTask,
+  useListEquipmentLifecycleEvents, getListEquipmentLifecycleEventsQueryKey,
 } from '@workspace/api-client-react';
 import type { Equipment, EquipmentMaintenance, EquipmentFuelLog, EquipmentLinkedPart } from '@workspace/api-client-react';
 import { Link } from 'wouter';
@@ -45,7 +46,7 @@ import MediaGallery from '@/components/media/MediaGallery';
 import {
   Wrench, Plus, Trash2, AlertTriangle, TrendingUp, Fuel, Clock, DollarSign,
   ChevronRight, ChevronDown, X, CheckCircle2, BarChart3, Archive, Paperclip,
-  Eye, Gauge, RotateCcw, ShoppingCart, PackageSearch, AlertCircle,
+  Eye, Gauge, RotateCcw, ShoppingCart, PackageSearch, AlertCircle, History,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -306,6 +307,11 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
   });
   const [taskFormOpen, setTaskFormOpen] = useState(false);
 
+  // Lifecycle events (archive / restore history)
+  const { data: lifecycleEvents } = useListEquipmentLifecycleEvents(equipment.id, {
+    query: { queryKey: getListEquipmentLifecycleEventsQueryKey(equipment.id) },
+  });
+
   const handleAddMaintenance = () => {
     if (!maintForm.date || !maintForm.description) { toast.error('Date and description are required'); return; }
     createMaintenance.mutate({
@@ -489,6 +495,9 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
             </TabsTrigger>
             <TabsTrigger value="ledger" className="flex-1 flex items-center gap-1.5">
               <Gauge className="w-3.5 h-3.5" /> Ledger
+            </TabsTrigger>
+            <TabsTrigger value="activity" className="flex-1 flex items-center gap-1.5">
+              <History className="w-3.5 h-3.5" /> Activity
             </TabsTrigger>
           </TabsList>
 
@@ -683,6 +692,31 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
           {/* Ledger tab — Operating vs Maintenance & Repair cost, side by side */}
           <TabsContent value="ledger" className="mt-4">
             <EquipmentLedgerPanel equipmentId={equipment.id} />
+          </TabsContent>
+
+          {/* Activity tab — archive / restore lifecycle history */}
+          <TabsContent value="activity" className="mt-4">
+            {lifecycleEvents && lifecycleEvents.length > 0 ? (
+              <div className="space-y-2">
+                {lifecycleEvents.map(event => (
+                  <div key={event.id} className="rounded-lg border p-3 flex items-start gap-3">
+                    <div className={`mt-0.5 shrink-0 rounded-full p-1 ${event.eventType === 'archived' ? 'bg-destructive/10 text-destructive' : 'bg-green-500/10 text-green-600'}`}>
+                      {event.eventType === 'archived'
+                        ? <Archive className="w-3.5 h-3.5" />
+                        : <RotateCcw className="w-3.5 h-3.5" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium capitalize">{event.eventType}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {event.performedByName ?? 'Unknown user'} · {new Date(event.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-6">No archive or restore events recorded yet.</p>
+            )}
           </TabsContent>
         </Tabs>
       </div>

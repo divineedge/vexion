@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, equipmentTable, equipmentMaintenanceTable, equipmentFuelLogsTable, equipmentReadingLogsTable, tenantsTable, usersTable, jobsTable, taskBundlesItemsTable, inventoryItemsTable } from "@workspace/db";
+import { db, equipmentTable, equipmentMaintenanceTable, equipmentFuelLogsTable, equipmentReadingLogsTable, equipmentLifecycleEventsTable, tenantsTable, usersTable, jobsTable, taskBundlesItemsTable, inventoryItemsTable } from "@workspace/db";
 import { eq, and, desc, sum, isNull, isNotNull, inArray, or, gte, lte, ilike, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isOwnerRole } from "../lib/roles";
@@ -419,6 +419,7 @@ router.post("/equipment", requireOfficeRole, async (req, res): Promise<void> => 
 
 router.patch("/equipment/:id", requireOfficeRole, async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
+  const userId = getUserId(req);
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   const { name, type, purchaseDate, purchasePrice, expectedLifespanYears, expectedLifespanHours, currentHours, currentMiles, isActive, notes } = req.body;
   const updates: Partial<typeof equipmentTable.$inferInsert> = {};
@@ -430,31 +431,84 @@ router.patch("/equipment/:id", requireOfficeRole, async (req, res): Promise<void
   if (expectedLifespanHours !== undefined) updates.expectedLifespanHours = expectedLifespanHours != null ? parseFloat(expectedLifespanHours) : null;
   if (currentHours != null) updates.currentHours = parseFloat(currentHours);
   if (currentMiles !== undefined) updates.currentMiles = currentMiles != null ? parseFloat(currentMiles) : null;
+
+  // Track whether this PATCH is a restore so we can log a lifecycle event after the update
+  let isRestoring = false;
   if (isActive !== undefined) {
     updates.isActive = isActive;
     // Restoring an archived item: clear the archive stamp so it re-appears in the default list.
-    if (isActive === true) updates.archivedAt = null;
+    if (isActive === true) {
+      updates.archivedAt = null;
+      isRestoring = true;
+    }
   }
   if (notes !== undefined) updates.notes = notes;
 
   const [row] = await db.update(equipmentTable).set(updates).where(and(eq(equipmentTable.id, id), eq(equipmentTable.tenantId, tenantId))).returning();
   if (!row) { res.status(404).json({ error: "Equipment not found" }); return; }
+
+  // Record restore lifecycle event
+  if (isRestoring) {
+    const [actor] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
+    await db.insert(equipmentLifecycleEventsTable).values({
+      equipmentId: id,
+      tenantId,
+      eventType: "restored",
+      performedByUserId: userId,
+      performedByName: actor?.name ?? null,
+    });
+  }
+
   const thresholds = await getTenantThresholds(tenantId);
   res.json(formatEquipment(row, thresholds.repairThresholdPct, thresholds.resaleThresholdPct));
 });
 
+router.get("/equipment/:id/lifecycle-events", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+  const owned = await requireEquipmentOwnership(id, tenantId, res);
+  if (!owned) return;
+  const rows = await db
+    .select()
+    .from(equipmentLifecycleEventsTable)
+    .where(and(eq(equipmentLifecycleEventsTable.equipmentId, id), eq(equipmentLifecycleEventsTable.tenantId, tenantId)))
+    .orderBy(desc(equipmentLifecycleEventsTable.createdAt));
+  res.json(rows.map(r => ({
+    id: r.id,
+    equipmentId: r.equipmentId,
+    tenantId: r.tenantId,
+    eventType: r.eventType,
+    performedByUserId: r.performedByUserId ?? null,
+    performedByName: r.performedByName ?? null,
+    createdAt: r.createdAt.toISOString(),
+  })));
+});
+
 router.delete("/equipment/:id", requireOfficeRole, async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
+  const userId = getUserId(req);
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
 
   // Verify ownership before touching anything
   const owned = await requireEquipmentOwnership(id, tenantId, res);
   if (!owned) return;
 
+  // Resolve the actor's display name for the audit log
+  const [actor] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
+
   // Soft-delete: mark as archived and inactive, but keep all maintenance/fuel history intact.
   await db.update(equipmentTable)
     .set({ isActive: false, archivedAt: new Date() })
     .where(and(eq(equipmentTable.id, id), eq(equipmentTable.tenantId, tenantId)));
+
+  // Record the lifecycle event
+  await db.insert(equipmentLifecycleEventsTable).values({
+    equipmentId: id,
+    tenantId,
+    eventType: "archived",
+    performedByUserId: userId,
+    performedByName: actor?.name ?? null,
+  });
 
   res.sendStatus(204);
 });

@@ -3239,6 +3239,19 @@ export interface EquipmentInput {
   notes?: string;
 }
 
+export interface EquipmentLifecycleEvent {
+  id: number;
+  equipmentId: number;
+  tenantId: number;
+  /** "archived" or "restored" */
+  eventType: string;
+  /** @nullable */
+  performedByUserId?: number | null;
+  /** @nullable */
+  performedByName?: string | null;
+  createdAt: string;
+}
+
 export interface EquipmentMaintenance {
   id: number;
   equipmentId: number;

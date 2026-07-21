@@ -155,6 +155,7 @@ export * from './equipmentInput';
 export * from './equipmentLedger';
 export * from './equipmentLedgerMaintenance';
 export * from './equipmentLedgerOperating';
+export * from './equipmentLifecycleEvent';
 export * from './equipmentLinkedPart';
 export * from './equipmentMaintenance';
 export * from './equipmentMaintenanceInput';

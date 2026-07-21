@@ -2712,6 +2712,27 @@ paths:
         "204":
           description: Archived
 
+  /equipment/{id}/lifecycle-events:
+    get:
+      operationId: listEquipmentLifecycleEvents
+      tags: [equipment]
+      summary: List archive/restore lifecycle events for an equipment item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of lifecycle events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EquipmentLifecycleEvent"
+
   /equipment/{id}/hard-delete:
     delete:
       operationId: hardDeleteEquipment
@@ -10314,6 +10335,26 @@ components:
         isActive:
           type: boolean
         notes:
+          type: string
+
+    EquipmentLifecycleEvent:
+      type: object
+      required: [id, equipmentId, tenantId, eventType, createdAt]
+      properties:
+        id:
+          type: integer
+        equipmentId:
+          type: integer
+        tenantId:
+          type: integer
+        eventType:
+          type: string
+          description: '"archived" or "restored"'
+        performedByUserId:
+          type: ["integer", "null"]
+        performedByName:
+          type: ["string", "null"]
+        createdAt:
           type: string
 
     EquipmentMaintenance:

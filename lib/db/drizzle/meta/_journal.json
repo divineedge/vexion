@@ -162,6 +162,13 @@
       "when": 1753056017000,
       "tag": "0021_add_stripe_customer_fields_and_broadcast_schedule",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1753056018000,
+      "tag": "0022_add_equipment_lifecycle_events",
+      "breakpoints": true
     }
   ]
 }

@@ -4527,6 +4527,25 @@ export const DeleteEquipmentResponse = zod.void()
 
 
 /**
+ * @summary List archive/restore lifecycle events for an equipment item
+ */
+export const ListEquipmentLifecycleEventsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListEquipmentLifecycleEventsResponseItem = zod.object({
+  "id": zod.number(),
+  "equipmentId": zod.number(),
+  "tenantId": zod.number(),
+  "eventType": zod.string().describe('\"archived\" or \"restored\"'),
+  "performedByUserId": zod.number().nullish(),
+  "performedByName": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+export const ListEquipmentLifecycleEventsResponse = zod.array(ListEquipmentLifecycleEventsResponseItem)
+
+
+/**
  * @summary Permanently delete equipment and its maintenance/fuel history (owner/super-admin only)
  */
 export const HardDeleteEquipmentParams = zod.object({

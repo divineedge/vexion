@@ -88,6 +88,8 @@ export default function PropertyDetailPage() {
   const [transferForm, setTransferForm] = useState({ newCustomerId: '', notes: '', customerSearch: '' });
   const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
   const [savingMeasurements, setSavingMeasurements] = useState(false);
+  const [geocodeFailed, setGeocodeFailed] = useState(false);
+  const [activeTab, setActiveTab] = useState('satellite');
 
   // ── Repair log state ──────────────────────────────────────────────────────
   const [repairDialogOpen, setRepairDialogOpen] = useState(false);
@@ -209,8 +211,14 @@ export default function PropertyDetailPage() {
     updateProperty.mutate(
       { id, data: payload },
       {
-        onSuccess: () => {
-          toast.success('Property updated');
+        onSuccess: (result) => {
+          const status = (result as unknown as { geocodeStatus?: string }).geocodeStatus;
+          if (status === 'failed') {
+            setGeocodeFailed(true);
+          } else {
+            setGeocodeFailed(false);
+            toast.success('Property updated');
+          }
           qc.invalidateQueries({ queryKey: getGetPropertyQueryKey(id) });
           setEditing(false);
         },
@@ -374,7 +382,32 @@ export default function PropertyDetailPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="satellite" className="w-full" onValueChange={v => { if (v === 'history') loadOwnershipHistory(); }}>
+      {geocodeFailed && (
+        <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="flex-1">
+            <p className="font-medium">Address not found on the map</p>
+            <p className="mt-0.5 text-amber-800 dark:text-amber-300">
+              The address could not be geocoded — the map pin is missing. Check for typos or an incomplete address, then save again.{' '}
+              <button
+                className="font-medium underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-100"
+                onClick={() => { setActiveTab('satellite'); setGeocodeFailed(false); }}
+              >
+                Place pin manually on Satellite Map →
+              </button>
+            </p>
+          </div>
+          <button
+            aria-label="Dismiss"
+            className="text-amber-600 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-100"
+            onClick={() => setGeocodeFailed(false)}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      <Tabs value={activeTab} className="w-full" onValueChange={v => { setActiveTab(v); if (v === 'history') loadOwnershipHistory(); }}>
         <TabsList className="mb-4 flex flex-wrap h-auto gap-1">
           <TabsTrigger value="satellite" className="gap-1.5">
             <Satellite className="w-4 h-4" /> Satellite Map

@@ -278,15 +278,20 @@ router.post("/properties", async (req, res): Promise<void> => {
   }
 
   // Auto-geocode when lat/lng not explicitly provided
+  const latLngExplicitPost = lat !== undefined && lng !== undefined;
   let resolvedLat: number | null = lat ?? null;
   let resolvedLng: number | null = lng ?? null;
   let seedPolygons: unknown[] | null = null;
+  let geocodeStatus: "ok" | "failed" | "skipped" = "skipped";
 
-  if (resolvedLat == null || resolvedLng == null) {
+  if (latLngExplicitPost) {
+    geocodeStatus = "skipped";
+  } else {
     const geo = await geocodeAddress(address, city, state, zip);
     if (geo) {
       resolvedLat = geo.lat;
       resolvedLng = geo.lng;
+      geocodeStatus = "ok";
       if (geo.boundaryPolygon) {
         seedPolygons = [
           {
@@ -299,6 +304,8 @@ router.post("/properties", async (req, res): Promise<void> => {
           },
         ];
       }
+    } else {
+      geocodeStatus = "failed";
     }
   }
 
@@ -318,7 +325,7 @@ router.post("/properties", async (req, res): Promise<void> => {
     ...(seedPolygons ? { measurementPolygons: seedPolygons } : {}),
   }).returning();
 
-  res.status(201).json(formatProperty(property));
+  res.status(201).json({ ...formatProperty(property), geocodeStatus });
 });
 
 router.get("/properties/:id", async (req, res): Promise<void> => {
@@ -350,8 +357,11 @@ router.patch("/properties/:id", async (req, res): Promise<void> => {
   let resolvedLat: number | undefined = lat;
   let resolvedLng: number | undefined = lng;
   let resolvedPolygons: unknown[] | undefined = measurementPolygons;
+  let geocodeStatus: "ok" | "failed" | "skipped" | undefined;
 
-  if (addressChanged && !latLngExplicit) {
+  if (latLngExplicit) {
+    geocodeStatus = "skipped";
+  } else if (addressChanged) {
     // Fetch current property to build full address string
     const [current] = await db.select().from(propertiesTable)
       .where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId)));
@@ -366,6 +376,7 @@ router.patch("/properties/:id", async (req, res): Promise<void> => {
     if (geo) {
       resolvedLat = geo.lat;
       resolvedLng = geo.lng;
+      geocodeStatus = "ok";
       // Seed boundary polygon only when polygons are currently empty and not being explicitly set
       const existingPolygons = (current.measurementPolygons as unknown[]) ?? [];
       if (existingPolygons.length === 0 && measurementPolygons === undefined && geo.boundaryPolygon) {
@@ -380,6 +391,8 @@ router.patch("/properties/:id", async (req, res): Promise<void> => {
           },
         ];
       }
+    } else {
+      geocodeStatus = "failed";
     }
   }
 
@@ -404,7 +417,7 @@ router.patch("/properties/:id", async (req, res): Promise<void> => {
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
 
   const [row] = await db.select({ customerName: customersTable.name }).from(customersTable).where(eq(customersTable.id, updated.customerId));
-  res.json(formatProperty(updated, row?.customerName));
+  res.json({ ...formatProperty(updated, row?.customerName), ...(geocodeStatus ? { geocodeStatus } : {}) });
 });
 
 // PATCH /properties/:id/measurements — save measurement polygons

@@ -77,7 +77,12 @@ export default function PropertiesPage() {
       },
     }, {
       onSuccess: (prop) => {
-        toast.success('Property added');
+        const geocodeStatus = (prop as unknown as { geocodeStatus?: string }).geocodeStatus;
+        if (geocodeStatus === 'failed') {
+          toast.warning('Property saved, but the address could not be found on the map. Open the Satellite Map tab to place the pin manually.');
+        } else {
+          toast.success('Property added');
+        }
         qc.invalidateQueries({ queryKey: getListPropertiesQueryKey() });
         setAddOpen(false);
         setForm(EMPTY_FORM);

@@ -6792,6 +6792,77 @@ export const useDismissStopServiceFlag = <TError = ErrorType<unknown>,
       return useMutation(getDismissStopServiceFlagMutationOptions(options));
     }
 
+export const getResumeStopServiceFlagPlanUrl = (id: number,) => {
+
+
+
+
+  return `/api/stop-service-flags/${id}/resume-plan`
+}
+
+/**
+ * @summary Resume the paused plan linked to a stop-service flag and mark the flag resolved
+ */
+export const resumeStopServiceFlagPlan = async (id: number, options?: RequestInit): Promise<StopServiceFlag> => {
+
+  return customFetch<StopServiceFlag>(getResumeStopServiceFlagPlanUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getResumeStopServiceFlagPlanMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resumeStopServiceFlagPlan>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resumeStopServiceFlagPlan>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['resumeStopServiceFlagPlan'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resumeStopServiceFlagPlan>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  resumeStopServiceFlagPlan(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResumeStopServiceFlagPlanMutationResult = NonNullable<Awaited<ReturnType<typeof resumeStopServiceFlagPlan>>>
+
+    export type ResumeStopServiceFlagPlanMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Resume the paused plan linked to a stop-service flag and mark the flag resolved
+ */
+export const useResumeStopServiceFlagPlan = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resumeStopServiceFlagPlan>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resumeStopServiceFlagPlan>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getResumeStopServiceFlagPlanMutationOptions(options));
+    }
+
 export const getGetMasterClockUrl = () => {
 
 

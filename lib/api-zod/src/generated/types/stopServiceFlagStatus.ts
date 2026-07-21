@@ -13,4 +13,5 @@ export const StopServiceFlagStatus = {
   pending: 'pending',
   approved: 'approved',
   dismissed: 'dismissed',
+  resumed: 'resumed',
 } as const;

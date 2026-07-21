@@ -2946,6 +2946,7 @@ export const StopServiceFlagStatus = {
   pending: 'pending',
   approved: 'approved',
   dismissed: 'dismissed',
+  resumed: 'resumed',
 } as const;
 
 export interface StopServiceFlag {
@@ -2957,6 +2958,10 @@ export interface StopServiceFlag {
   invoiceId: number;
   /** @nullable */
   invoiceNumber?: string | null;
+  /** @nullable */
+  planId?: number | null;
+  /** @nullable */
+  planStatus?: string | null;
   daysOverdue: number;
   message: string;
   status: StopServiceFlagStatus;

@@ -1812,6 +1812,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/StopServiceFlag"
 
+  /stop-service-flags/{id}/resume-plan:
+    post:
+      operationId: resumeStopServiceFlagPlan
+      tags: [stopServiceFlags]
+      summary: Resume the paused plan linked to a stop-service flag and mark the flag resolved
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Plan resumed and flag resolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StopServiceFlag"
+
   # TIME TRACKING
   /time-tracking/master-clock:
     get:
@@ -10020,13 +10039,17 @@ components:
           type: integer
         invoiceNumber:
           type: ["string", "null"]
+        planId:
+          type: ["integer", "null"]
+        planStatus:
+          type: ["string", "null"]
         daysOverdue:
           type: integer
         message:
           type: string
         status:
           type: string
-          enum: [pending, approved, dismissed]
+          enum: [pending, approved, dismissed, resumed]
         resolvedBy:
           type: ["integer", "null"]
         resolvedAt:

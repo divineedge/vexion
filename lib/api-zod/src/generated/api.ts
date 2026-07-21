@@ -2790,9 +2790,11 @@ export const ListStopServiceFlagsResponseItem = zod.object({
   "customerName": zod.string().nullish(),
   "invoiceId": zod.number(),
   "invoiceNumber": zod.string().nullish(),
+  "planId": zod.number().nullish(),
+  "planStatus": zod.string().nullish(),
   "daysOverdue": zod.number(),
   "message": zod.string(),
-  "status": zod.enum(['pending', 'approved', 'dismissed']),
+  "status": zod.enum(['pending', 'approved', 'dismissed', 'resumed']),
   "resolvedBy": zod.number().nullish(),
   "resolvedAt": zod.string().nullish(),
   "createdAt": zod.string()
@@ -2814,9 +2816,11 @@ export const ApproveStopServiceFlagResponse = zod.object({
   "customerName": zod.string().nullish(),
   "invoiceId": zod.number(),
   "invoiceNumber": zod.string().nullish(),
+  "planId": zod.number().nullish(),
+  "planStatus": zod.string().nullish(),
   "daysOverdue": zod.number(),
   "message": zod.string(),
-  "status": zod.enum(['pending', 'approved', 'dismissed']),
+  "status": zod.enum(['pending', 'approved', 'dismissed', 'resumed']),
   "resolvedBy": zod.number().nullish(),
   "resolvedAt": zod.string().nullish(),
   "createdAt": zod.string()
@@ -2837,9 +2841,36 @@ export const DismissStopServiceFlagResponse = zod.object({
   "customerName": zod.string().nullish(),
   "invoiceId": zod.number(),
   "invoiceNumber": zod.string().nullish(),
+  "planId": zod.number().nullish(),
+  "planStatus": zod.string().nullish(),
   "daysOverdue": zod.number(),
   "message": zod.string(),
-  "status": zod.enum(['pending', 'approved', 'dismissed']),
+  "status": zod.enum(['pending', 'approved', 'dismissed', 'resumed']),
+  "resolvedBy": zod.number().nullish(),
+  "resolvedAt": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Resume the paused plan linked to a stop-service flag and mark the flag resolved
+ */
+export const ResumeStopServiceFlagPlanParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ResumeStopServiceFlagPlanResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number(),
+  "customerName": zod.string().nullish(),
+  "invoiceId": zod.number(),
+  "invoiceNumber": zod.string().nullish(),
+  "planId": zod.number().nullish(),
+  "planStatus": zod.string().nullish(),
+  "daysOverdue": zod.number(),
+  "message": zod.string(),
+  "status": zod.enum(['pending', 'approved', 'dismissed', 'resumed']),
   "resolvedBy": zod.number().nullish(),
   "resolvedAt": zod.string().nullish(),
   "createdAt": zod.string()

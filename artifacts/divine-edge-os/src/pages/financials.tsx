@@ -19,6 +19,7 @@ import {
   useListStopServiceFlags, getListStopServiceFlagsQueryKey,
   useApproveStopServiceFlag,
   useDismissStopServiceFlag,
+  useResumeStopServiceFlagPlan,
   useGetTenantSettings, getGetTenantSettingsQueryKey,
   useCreateInvoice,
   useUpdateJob,
@@ -714,6 +715,7 @@ export default function FinancialsPage() {
   const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<RecurringInvoiceTemplate | null>(null);
   const [approvingFlag, setApprovingFlag] = useState<StopServiceFlag | null>(null);
+  const [resumingFlag, setResumingFlag] = useState<StopServiceFlag | null>(null);
   const [previewTemplate, setPreviewTemplate] = useState<{ id: number; name: string } | null>(null);
   const [flagSearch, setFlagSearch] = useState('');
   const [flagDateRange, setFlagDateRange] = useState('all');
@@ -761,6 +763,7 @@ export default function FinancialsPage() {
 
   const approveFlag = useApproveStopServiceFlag();
   const dismissFlag = useDismissStopServiceFlag();
+  const resumePlan = useResumeStopServiceFlagPlan();
 
   const handleApproveFlag = (flag: StopServiceFlag) => {
     approveFlag.mutate(
@@ -785,6 +788,20 @@ export default function FinancialsPage() {
           qc.invalidateQueries({ queryKey: getListStopServiceFlagsQueryKey({ status: 'pending' }) });
         },
         onError: () => toast.error('Failed to dismiss flag'),
+      },
+    );
+  };
+
+  const handleResumePlan = (flag: StopServiceFlag) => {
+    resumePlan.mutate(
+      { id: flag.id },
+      {
+        onSuccess: () => {
+          toast.success(`Plan resumed for ${flag.customerName ?? 'customer'}`);
+          qc.invalidateQueries({ queryKey: getListStopServiceFlagsQueryKey({ status: 'pending' }) });
+          setResumingFlag(null);
+        },
+        onError: () => toast.error('Failed to resume plan'),
       },
     );
   };
@@ -1338,6 +1355,17 @@ export default function FinancialsPage() {
                           <TableCell className="text-right">
                             {canManageOffice && !isDismissed && (
                               <div className="flex items-center justify-end gap-1">
+                                {flag.planId && flag.planStatus === 'paused' && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 text-xs gap-1 text-blue-700 border-blue-300 hover:bg-blue-50"
+                                    onClick={() => setResumingFlag(flag)}
+                                    disabled={resumePlan.isPending}
+                                  >
+                                    <Play className="w-3 h-3" /> Resume plan
+                                  </Button>
+                                )}
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1396,6 +1424,31 @@ export default function FinancialsPage() {
               onClick={() => approvingFlag && handleApproveFlag(approvingFlag)}
             >
               {approveFlag.isPending ? 'Pausing...' : 'Approve & Pause Service'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Resume Plan Dialog */}
+      <Dialog open={!!resumingFlag} onOpenChange={open => { if (!open) setResumingFlag(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Resume Service Plan?</DialogTitle>
+            <DialogDescription>
+              This will set the plan for{' '}
+              <strong>{resumingFlag?.customerName ?? 'this customer'}</strong> back to{' '}
+              <strong>active</strong> and mark this stop-service flag as resolved. Make sure the
+              outstanding invoice <strong>{resumingFlag?.invoiceNumber}</strong> has been paid or
+              arranged before resuming.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResumingFlag(null)}>Cancel</Button>
+            <Button
+              disabled={resumePlan.isPending}
+              onClick={() => resumingFlag && handleResumePlan(resumingFlag)}
+            >
+              {resumePlan.isPending ? 'Resuming...' : 'Resume Plan'}
             </Button>
           </DialogFooter>
         </DialogContent>

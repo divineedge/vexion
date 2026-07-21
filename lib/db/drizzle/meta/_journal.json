@@ -143,10 +143,10 @@
       "breakpoints": true
     },
     {
-      "idx": 19,
+      "idx": 20,
       "version": "7",
-      "when": 1753056014000,
-      "tag": "0019_add_stripe_fields_to_customers",
+      "when": 1753056015000,
+      "tag": "0020_backfill_invoice_billing_date",
       "breakpoints": true
     }
   ]

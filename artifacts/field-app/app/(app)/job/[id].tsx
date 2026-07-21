@@ -18,7 +18,7 @@ import {
   useGetJob, useListJobChemicalApplications,
   useListSubTimers, useStartSubTimer, useStopSubTimer,
   useGetMasterClock, useStartMasterClock, useStopMasterClock,
-  useUpdateJob, useSkipNextOccurrence,
+  useUpdateJob, useSkipNextOccurrence, useGetRouteDayDetail,
 } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useOffline } from '@/contexts/OfflineContext';
@@ -137,6 +137,231 @@ const recurringStyles = StyleSheet.create({
   },
 });
 
+type RouteStop = {
+  jobId: number;
+  sequenceOrder: number;
+  driveMinutesFromPrev: number;
+  propertyAddress?: string | null;
+};
+
+function RouteSummaryCard({
+  routeTemplateName,
+  stops,
+  currentJobId,
+  colors,
+}: {
+  routeTemplateName: string;
+  stops: RouteStop[];
+  currentJobId: number;
+  colors: ReturnType<typeof useColors>;
+}) {
+  const [expanded, setExpanded] = React.useState(false);
+  const idx = stops.findIndex(s => s.jobId === currentJobId);
+  if (idx === -1) return null;
+
+  const stop = stops[idx];
+  const nextStop = stops[idx + 1] ?? null;
+  const total = stops.length;
+  const position = idx + 1;
+
+  const driveLabel = stop.driveMinutesFromPrev > 0
+    ? `${stop.driveMinutesFromPrev} min drive from prev`
+    : position === 1
+    ? 'First stop on route'
+    : null;
+
+  return (
+    <View style={[routeStyles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      {/* Header: route name + position */}
+      <TouchableOpacity
+        style={routeStyles.headerRow}
+        onPress={() => setExpanded(v => !v)}
+        activeOpacity={0.8}
+      >
+        <View style={[routeStyles.iconBox, { backgroundColor: colors.primary + '18' }]}>
+          <Ionicons name="navigate-outline" size={18} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[routeStyles.routeName, { color: colors.foreground }]} numberOfLines={1}>
+            {routeTemplateName}
+          </Text>
+          <Text style={[routeStyles.stopBadge, { color: colors.primary }]}>
+            Stop {position} of {total}
+          </Text>
+        </View>
+        <Ionicons
+          name={expanded ? 'chevron-up' : 'chevron-down'}
+          size={16}
+          color={colors.mutedForeground}
+        />
+      </TouchableOpacity>
+
+      {/* Mini summary: drive time + next stop */}
+      {driveLabel ? (
+        <View style={[routeStyles.infoRow, { borderTopColor: colors.border }]}>
+          <Ionicons name="time-outline" size={14} color={colors.mutedForeground} />
+          <Text style={[routeStyles.infoText, { color: colors.mutedForeground }]}>{driveLabel}</Text>
+        </View>
+      ) : null}
+
+      {nextStop ? (
+        <View style={[routeStyles.infoRow, { borderTopColor: colors.border }]}>
+          <Ionicons name="arrow-forward-circle-outline" size={14} color={colors.mutedForeground} />
+          <Text style={[routeStyles.infoText, { color: colors.mutedForeground }]} numberOfLines={1}>
+            Next: {nextStop.propertyAddress ?? `Stop ${idx + 2}`}
+            {nextStop.driveMinutesFromPrev > 0 ? ` · ${nextStop.driveMinutesFromPrev} min` : ''}
+          </Text>
+        </View>
+      ) : (
+        <View style={[routeStyles.infoRow, { borderTopColor: colors.border }]}>
+          <Ionicons name="flag-outline" size={14} color={colors.mutedForeground} />
+          <Text style={[routeStyles.infoText, { color: colors.mutedForeground }]}>Last stop of the day</Text>
+        </View>
+      )}
+
+      {/* Full sequence — shown when expanded */}
+      {expanded && (
+        <View style={[routeStyles.sequenceContainer, { borderTopColor: colors.border }]}>
+          <Text style={[routeStyles.sequenceTitle, { color: colors.mutedForeground }]}>
+            Full day sequence
+          </Text>
+          {stops.map((s, i) => {
+            const isCurrent = s.jobId === currentJobId;
+            return (
+              <View
+                key={s.jobId}
+                style={[
+                  routeStyles.sequenceRow,
+                  isCurrent && { backgroundColor: colors.primary + '12' },
+                ]}
+              >
+                {/* Stop number pill */}
+                <View style={[
+                  routeStyles.sequencePill,
+                  { backgroundColor: isCurrent ? colors.primary : colors.muted },
+                ]}>
+                  <Text style={[
+                    routeStyles.sequencePillText,
+                    { color: isCurrent ? '#fff' : colors.mutedForeground },
+                  ]}>
+                    {i + 1}
+                  </Text>
+                </View>
+
+                {/* Address + drive time */}
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={[
+                      routeStyles.sequenceAddress,
+                      { color: isCurrent ? colors.foreground : colors.mutedForeground },
+                      isCurrent && { fontFamily: 'Inter_600SemiBold' },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {s.propertyAddress ?? `Stop ${i + 1}`}
+                    {isCurrent ? '  ← you are here' : ''}
+                  </Text>
+                  {s.driveMinutesFromPrev > 0 && (
+                    <Text style={[routeStyles.sequenceDrive, { color: colors.mutedForeground }]}>
+                      {s.driveMinutesFromPrev} min drive
+                    </Text>
+                  )}
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+}
+
+const routeStyles = StyleSheet.create({
+  card: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 14,
+  },
+  iconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  routeName: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
+    marginBottom: 2,
+  },
+  stopBadge: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 13,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  infoText: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    flex: 1,
+  },
+  sequenceContainer: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 10,
+    paddingBottom: 6,
+  },
+  sequenceTitle: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    paddingHorizontal: 14,
+    marginBottom: 6,
+  },
+  sequenceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  sequencePill: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  sequencePillText: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 12,
+  },
+  sequenceAddress: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 13,
+    marginBottom: 1,
+  },
+  sequenceDrive: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 11,
+  },
+});
+
 type BreakdownItem = {
   productName?: string | null;
   amountApplied?: number | null;
@@ -183,6 +408,17 @@ export default function JobDetailScreen() {
   const [cachedApps, setCachedApps] = useState<ChemApp[] | null>(null);
 
   const { data: job, isLoading: jobLoading, isError: jobError, refetch: refetchJob } = useGetJob(jobId);
+
+  // Derive route context from job fields once loaded
+  const jobRouteTemplateId = (job as { routeTemplateId?: number | null } | undefined)?.routeTemplateId ?? null;
+  const jobScheduledAt = (job as { scheduledAt?: string } | undefined)?.scheduledAt;
+  const jobDateStr = jobScheduledAt ? jobScheduledAt.slice(0, 10) : '';
+
+  const { data: routeDay } = useGetRouteDayDetail(
+    jobRouteTemplateId ?? 0,
+    { date: jobDateStr },
+    { query: { enabled: !!jobRouteTemplateId && !!jobDateStr, queryKey: ['routeDay', jobRouteTemplateId, jobDateStr] } },
+  );
   const {
     data: applications,
     isLoading: appsLoading,
@@ -369,6 +605,16 @@ export default function JobDetailScreen() {
             );
           }} />
         ) : null}
+
+        {/* Route summary card */}
+        {routeDay && !isOffline && (
+          <RouteSummaryCard
+            routeTemplateName={routeDay.routeTemplateName}
+            stops={routeDay.stops}
+            currentJobId={jobId}
+            colors={colors}
+          />
+        )}
 
         {/* Clock in / out card — hidden when offline since timers require network */}
         {!isOffline && (

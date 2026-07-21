@@ -254,6 +254,116 @@ describe("GET /reports/job-profitability", () => {
     expect(job.netProfit).toBe(210);
   });
 
+  /**
+   * Regression guard: proves the report SQL would silently double-count revenue
+   * if two invoice rows shared the same job_id.
+   *
+   * The job-profitability query does:
+   *   FROM jobs j LEFT JOIN invoices i ON i.job_id = j.id
+   *
+   * Two invoice rows with the same job_id → LEFT JOIN returns two rows for that
+   * job → revenue, parts cost, and labor cost are all counted twice in the
+   * totals with no error.
+   *
+   * The UNIQUE partial index `invoices_job_id_uidx` (migration
+   * 0018_add_invoice_job_id_unique.sql) makes this data state impossible:
+   * the DB rejects any second INSERT/UPDATE that would set job_id to a value
+   * already used by another invoice row.
+   *
+   * This test simulates the bad data state to prove the doubling happens
+   * (documenting the bug), then confirms the correct single-invoice total to
+   * make the expected value explicit.
+   */
+  it("double-counts revenue when two invoices share the same job_id — proving the bug the DB constraint (invoices_job_id_uidx) prevents", async () => {
+    mockTenantP4p(0);   // zero P4P so only revenue matters for clarity
+
+    // Simulate a LEFT JOIN returning the same job twice because two invoice
+    // rows both have job_id=99 — the data state the UNIQUE constraint now blocks.
+    (db.execute as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      rows([
+        {
+          id: 99, title: "Shared Invoice Job", completed_at: "2024-06-01T10:00:00Z",
+          crew_id: null, assignee_id: null, property_id: null,
+          total_amount: "400.00", parts_cost: "0.00",
+          blueprint_p4p_pct: null,
+          invoice_total: "400.00",   // first invoice row for this job
+          crew_name: null, assignee_name: null,
+          property_address: null, customer_name: "Acme",
+        },
+        {
+          id: 99, title: "Shared Invoice Job", completed_at: "2024-06-01T10:00:00Z",
+          crew_id: null, assignee_id: null, property_id: null,
+          total_amount: "400.00", parts_cost: "0.00",
+          blueprint_p4p_pct: null,
+          invoice_total: "400.00",   // second invoice row — same job_id, triggers the bug
+          crew_name: null, assignee_name: null,
+          property_address: null, customer_name: "Acme",
+        },
+      ]),
+    );
+    (db.execute as ReturnType<typeof vi.fn>).mockResolvedValueOnce(rows([{ total: 0 }]));
+
+    const resp = await request(app)
+      .get("/reports/job-profitability?startDate=2024-06-01&endDate=2024-06-30")
+      .set(tenantHeaders());
+
+    expect(resp.status).toBe(200);
+    const { rows: jobRows, totals } = resp.body;
+
+    // Bug confirmed: job 99 appears twice, revenue is doubled.
+    expect(jobRows).toHaveLength(2);  // same job, counted twice
+    expect(totals.revenue).toBe(800); // 400 × 2 — wrong; correct total is 400
+
+    // The constraint (invoices_job_id_uidx WHERE job_id IS NOT NULL) is the real
+    // guard. It rejects the second invoice INSERT at the DB level so this data
+    // state can never occur in production.
+  });
+
+  /**
+   * Positive counterpart: confirms that when each job has exactly one linked
+   * invoice — the invariant the UNIQUE constraint enforces — the report totals
+   * are correct and not doubled.
+   */
+  it("reports correct (non-doubled) revenue when each job has exactly one invoice — the invariant the DB constraint enforces", async () => {
+    mockTenantP4p(0);
+
+    // Two distinct jobs, each with its own invoice — the only valid state after
+    // invoices_job_id_uidx is applied.
+    (db.execute as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      rows([
+        {
+          id: 10, title: "Job Alpha", completed_at: "2024-06-01T10:00:00Z",
+          crew_id: null, assignee_id: null, property_id: null,
+          total_amount: "400.00", parts_cost: "0.00",
+          blueprint_p4p_pct: null,
+          invoice_total: "400.00",
+          crew_name: null, assignee_name: null,
+          property_address: null, customer_name: "Acme",
+        },
+        {
+          id: 11, title: "Job Beta", completed_at: "2024-06-02T10:00:00Z",
+          crew_id: null, assignee_id: null, property_id: null,
+          total_amount: "200.00", parts_cost: "0.00",
+          blueprint_p4p_pct: null,
+          invoice_total: "200.00",
+          crew_name: null, assignee_name: null,
+          property_address: null, customer_name: "Globex",
+        },
+      ]),
+    );
+    (db.execute as ReturnType<typeof vi.fn>).mockResolvedValueOnce(rows([{ total: 0 }]));
+
+    const resp = await request(app)
+      .get("/reports/job-profitability?startDate=2024-06-01&endDate=2024-06-30")
+      .set(tenantHeaders());
+
+    expect(resp.status).toBe(200);
+    const { rows: jobRows, totals } = resp.body;
+
+    expect(jobRows).toHaveLength(2);   // one row per job — correct
+    expect(totals.revenue).toBe(600);  // 400 + 200 — not doubled
+  });
+
   it("clamps labor cost pool to zero when parts_cost exceeds revenue", async () => {
     // Parts > revenue → netLaborRevenue = max(0, …) = 0
     mockTenantP4p(30);

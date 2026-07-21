@@ -54,6 +54,22 @@ export const invoicesTable = pgTable("invoices", {
   uniqueIndex("invoices_template_customer_billing_date_uidx")
     .on(table.generatedFromTemplateId, table.customerId, table.billingDate)
     .where(sql`generated_from_template_id IS NOT NULL AND billing_date IS NOT NULL`),
+  /**
+   * Unique index ensuring at most one invoice is linked to any given job.
+   *
+   * Without this constraint the P&L and job-profitability reports would
+   * silently double-count revenue: both queries do a LEFT JOIN from jobs to
+   * invoices on invoices.job_id = jobs.id, so two invoice rows sharing the
+   * same job_id would produce two result rows for that job — doubling the
+   * reported revenue, parts cost, and labor cost for it with no error or
+   * warning.
+   *
+   * Plan-cycle invoices legitimately have job_id = NULL, so this is a
+   * partial index that only covers non-null job_id values.
+   */
+  uniqueIndex("invoices_job_id_uidx")
+    .on(table.jobId)
+    .where(sql`job_id IS NOT NULL`),
 ]);
 
 export const insertInvoiceSchema = createInsertSchema(invoicesTable).omit({ id: true, createdAt: true, updatedAt: true });

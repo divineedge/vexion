@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
 import { db, propertiesTable, customersTable, propertyOwnershipHistoryTable, activityLogTable, jobsTable, estimatesTable } from "@workspace/db";
-import { eq, and, ilike, sql, desc } from "drizzle-orm";
+import { eq, and, ilike, sql, desc, isNull } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
+import { isAdminRole } from "../lib/roles";
 import {
   importUpload,
   handleExportRequest,
@@ -528,6 +529,65 @@ router.post("/properties/:id/transfer", async (req, res): Promise<void> => {
   });
 
   res.json(formatProperty(result, newCustomer.name));
+});
+
+// POST /properties/backfill-geocodes — one-time admin endpoint to geocode all properties with null lat/lng
+router.post("/properties/backfill-geocodes", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+
+  if (!(await isAdminRole(tenantId, userId))) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  // Fetch all properties for this tenant that are missing coordinates
+  const properties = await db
+    .select()
+    .from(propertiesTable)
+    .where(and(eq(propertiesTable.tenantId, tenantId), isNull(propertiesTable.lat)));
+
+  let geocoded = 0;
+  let skipped = 0;
+
+  for (const property of properties) {
+    // Nominatim rate-limit: 1 request/second per policy
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+
+    const geo = await geocodeAddress(property.address, property.city, property.state, property.zip);
+    if (!geo) {
+      skipped++;
+      continue;
+    }
+
+    const existingPolygons = (property.measurementPolygons as unknown[]) ?? [];
+    const seedPolygon =
+      existingPolygons.length === 0 && geo.boundaryPolygon
+        ? [
+            {
+              id: "boundary",
+              label: "Suggested Boundary",
+              vertices: geo.boundaryPolygon,
+              areaSqft: 0,
+              enabled: true,
+              color: "#3B82F6",
+            },
+          ]
+        : undefined;
+
+    await db
+      .update(propertiesTable)
+      .set({
+        lat: geo.lat,
+        lng: geo.lng,
+        ...(seedPolygon ? { measurementPolygons: seedPolygon } : {}),
+      })
+      .where(and(eq(propertiesTable.id, property.id), eq(propertiesTable.tenantId, tenantId)));
+
+    geocoded++;
+  }
+
+  res.json({ total: properties.length, geocoded, skipped });
 });
 
 // Ownership history for a property

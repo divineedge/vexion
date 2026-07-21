@@ -20,6 +20,7 @@ export * from './aiZonePoint';
 export * from './applyBlueprintTemplateBody';
 export * from './assignFollowupQueueItemInput';
 export * from './authResponse';
+export * from './backfillGeocodesResult';
 export * from './bankTransaction';
 export * from './bankTransactionStatus';
 export * from './billingAutomationStatus';

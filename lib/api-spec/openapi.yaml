@@ -562,6 +562,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/Property"
 
+  /properties/backfill-geocodes:
+    post:
+      operationId: backfillPropertyGeocodes
+      tags: [properties]
+      summary: Back-fill lat/lng for all properties that are missing coordinates (admin only)
+      responses:
+        "200":
+          description: Summary of geocoding results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BackfillGeocodesResult"
+        "403":
+          description: Forbidden
+
   /properties/{id}/geocode:
     get:
       operationId: geocodeProperty
@@ -7275,6 +7290,20 @@ components:
             $ref: "#/components/schemas/MeasurementZone"
         serviceableAreaSqft:
           type: number
+
+    BackfillGeocodesResult:
+      type: object
+      required: [total, geocoded, skipped]
+      properties:
+        total:
+          type: integer
+          description: Total properties with null lat that were processed
+        geocoded:
+          type: integer
+          description: Properties successfully geocoded
+        skipped:
+          type: integer
+          description: Properties that could not be resolved and were left as-is
 
     GeocodeResult:
       type: object

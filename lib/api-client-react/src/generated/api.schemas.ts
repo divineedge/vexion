@@ -954,6 +954,15 @@ export interface PropertyMeasurementUpdate {
   serviceableAreaSqft?: number;
 }
 
+export interface BackfillGeocodesResult {
+  /** Total properties with null lat that were processed */
+  total: number;
+  /** Properties successfully geocoded */
+  geocoded: number;
+  /** Properties that could not be resolved and were left as-is */
+  skipped: number;
+}
+
 export interface GeocodeResult {
   lat: number;
   lng: number;

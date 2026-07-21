@@ -787,6 +787,16 @@ export const UpdatePropertyMeasurementsResponse = zod.object({
 
 
 /**
+ * @summary Back-fill lat/lng for all properties that are missing coordinates (admin only)
+ */
+export const BackfillPropertyGeocodesResponse = zod.object({
+  "total": zod.number().describe('Total properties with null lat that were processed'),
+  "geocoded": zod.number().describe('Properties successfully geocoded'),
+  "skipped": zod.number().describe('Properties that could not be resolved and were left as-is')
+})
+
+
+/**
  * @summary Geocode property address and return lat/lng with optional parcel boundary
  */
 export const GeocodePropertyParams = zod.object({

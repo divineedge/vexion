@@ -27,6 +27,7 @@ import type {
   ApplyBlueprintTemplateBody,
   AssignFollowupQueueItemInput,
   AuthResponse,
+  BackfillGeocodesResult,
   BankTransaction,
   BillingAutomationStatus,
   BillingPreview,
@@ -2240,6 +2241,77 @@ export const useUpdatePropertyMeasurements = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpdatePropertyMeasurementsMutationOptions(options));
+    }
+
+export const getBackfillPropertyGeocodesUrl = () => {
+
+
+
+
+  return `/api/properties/backfill-geocodes`
+}
+
+/**
+ * @summary Back-fill lat/lng for all properties that are missing coordinates (admin only)
+ */
+export const backfillPropertyGeocodes = async ( options?: RequestInit): Promise<BackfillGeocodesResult> => {
+
+  return customFetch<BackfillGeocodesResult>(getBackfillPropertyGeocodesUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getBackfillPropertyGeocodesMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof backfillPropertyGeocodes>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof backfillPropertyGeocodes>>, TError,void, TContext> => {
+
+const mutationKey = ['backfillPropertyGeocodes'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof backfillPropertyGeocodes>>, void> = () => {
+
+
+          return  backfillPropertyGeocodes(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BackfillPropertyGeocodesMutationResult = NonNullable<Awaited<ReturnType<typeof backfillPropertyGeocodes>>>
+
+    export type BackfillPropertyGeocodesMutationError = ErrorType<void>
+
+    /**
+ * @summary Back-fill lat/lng for all properties that are missing coordinates (admin only)
+ */
+export const useBackfillPropertyGeocodes = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof backfillPropertyGeocodes>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof backfillPropertyGeocodes>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getBackfillPropertyGeocodesMutationOptions(options));
     }
 
 export const getGeocodePropertyUrl = (id: number,) => {

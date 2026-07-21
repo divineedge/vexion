@@ -209,8 +209,10 @@ async function processRenewalReminders() {
  * and notifies admin/office users by email.
  *
  * Idempotent: skips any plan whose overdue invoice already has a pending flag.
+ *
+ * Exported for testing.
  */
-async function processOverduePlanFlags() {
+export async function processOverduePlanFlags() {
   // Load all plans that are still generating visits / getting billed.
   const eligiblePlans = await db.select().from(customerPlansTable).where(
     inArray(customerPlansTable.status, ["active", "pending_renewal"]),

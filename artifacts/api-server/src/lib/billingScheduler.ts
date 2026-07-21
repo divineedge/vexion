@@ -11,7 +11,7 @@
 
 import { db, recurringInvoiceTemplatesTable, billingEmailQueueTable, invoicesTable, customersTable, tenantsTable, jobsTable } from "@workspace/db";
 import type { RecurringInvoiceTemplate } from "@workspace/db";
-import { eq, and, lte, sql, inArray, notInArray, isNull, asc, min } from "drizzle-orm";
+import { eq, and, lte, sql, inArray, notInArray, isNull, asc, min, lt, isNotNull } from "drizzle-orm";
 import { logger } from "./logger";
 import { sendEmail } from "./emailProvider";
 import crypto from "crypto";
@@ -31,22 +31,32 @@ type BillingLineItem = { description: string; quantity: number; unitPrice: numbe
 // ── Atomic claim guard ───────────────────────────────────────────────────────
 
 /**
- * Atomically claims a set of jobs for invoicing by setting a sentinel invoiceId of -1.
- * Only rows whose invoiceId IS NULL are updated, so a concurrent process that races
- * to claim the same job will get rowCount = 0 for that row and skip it.
+ * Atomically claims a set of jobs for invoicing by stamping `invoiceClaimLockAt`
+ * with the current timestamp.  Only rows whose invoiceId IS NULL *and*
+ * invoiceClaimLockAt IS NULL are updated, so a concurrent process that races to
+ * claim the same job will see rowCount = 0 for that row and skip it.
  *
- * Must be called inside a transaction: the sentinel value (-1) is replaced by the real
- * invoiceId before the transaction commits, so it is never visible to external readers.
- * If the transaction rolls back, the UPDATE rolls back too and the job stays claimable.
+ * Must be called inside a transaction.  The lock column is cleared once the real
+ * invoiceId is written into the same transaction.  If the transaction rolls back the
+ * UPDATE rolls back too and the job stays claimable.  If the process crashes before
+ * the commit, the stale-lock cleanup sweep (resetStaleClaimLocks) will clear the
+ * column after ~5 minutes so the job re-enters the eligible pool.
  *
  * Returns the subset of jobIds that were successfully claimed by this call.
  */
 async function claimJobsForInvoicing(tx: Tx, jobIds: number[]): Promise<number[]> {
   if (jobIds.length === 0) return [];
+  const now = new Date();
   const claimed = await tx
     .update(jobsTable)
-    .set({ invoiceId: -1 })
-    .where(and(inArray(jobsTable.id, jobIds), isNull(jobsTable.invoiceId)))
+    .set({ invoiceClaimLockAt: now })
+    .where(
+      and(
+        inArray(jobsTable.id, jobIds),
+        isNull(jobsTable.invoiceId),
+        isNull(jobsTable.invoiceClaimLockAt),
+      ),
+    )
     .returning({ id: jobsTable.id });
   return claimed.map(r => r.id);
 }
@@ -283,9 +293,13 @@ async function generateInvoiceForCustomer(
     .returning();
 
   if (jobIds.length > 0) {
-    // Clear holdFromBilling now that the job has actually been billed — the hold
-    // was a "skip me in the *next* run" signal, not a permanent exclusion.
-    await tx.update(jobsTable).set({ invoiceId: invoice.id, holdFromBilling: false }).where(inArray(jobsTable.id, jobIds));
+    // Write the real invoiceId and clear the claim lock.  Also clear holdFromBilling
+    // now that the job has actually been billed — the hold was a "skip me in the
+    // *next* run" signal, not a permanent exclusion.
+    await tx
+      .update(jobsTable)
+      .set({ invoiceId: invoice.id, invoiceClaimLockAt: null, holdFromBilling: false })
+      .where(inArray(jobsTable.id, jobIds));
   }
 
   await tx.insert(billingEmailQueueTable).values({
@@ -468,11 +482,18 @@ async function processWeeklyNonRecurringInvoices() {
       let claimed = false;
       await db.transaction(async tx => {
         // Atomically claim this job before creating the invoice. If another
-        // concurrent process already claimed it (invoiceId != null), bail out.
+        // concurrent process already claimed it (invoiceId != null or
+        // invoiceClaimLockAt != null), bail out.
         const [claimedRow] = await tx
           .update(jobsTable)
-          .set({ invoiceId: -1 })
-          .where(and(eq(jobsTable.id, job.id), isNull(jobsTable.invoiceId)))
+          .set({ invoiceClaimLockAt: new Date() })
+          .where(
+            and(
+              eq(jobsTable.id, job.id),
+              isNull(jobsTable.invoiceId),
+              isNull(jobsTable.invoiceClaimLockAt),
+            ),
+          )
           .returning({ id: jobsTable.id });
         if (!claimedRow) return; // Already claimed — skip silently
 
@@ -489,7 +510,11 @@ async function processWeeklyNonRecurringInvoices() {
           lineItems,
         }).returning();
         invoiceId = invoice.id;
-        await tx.update(jobsTable).set({ invoiceId: invoice.id, pendingWeeklyInvoice: false }).where(eq(jobsTable.id, job.id));
+        // Write the real invoiceId and clear the claim lock in the same statement.
+        await tx
+          .update(jobsTable)
+          .set({ invoiceId: invoice.id, invoiceClaimLockAt: null, pendingWeeklyInvoice: false })
+          .where(eq(jobsTable.id, job.id));
         claimed = true;
       });
       if (!claimed) continue;
@@ -574,10 +599,45 @@ async function processEmailQueue() {
   }
 }
 
+// ── Stale claim-lock cleanup ──────────────────────────────────────────────────
+
+/**
+ * Resets `invoiceClaimLockAt` on any job where the lock is older than 5 minutes
+ * and no real invoiceId was ever written.  This handles the case where the billing
+ * process crashed mid-transaction before the commit: without this sweep those jobs
+ * would remain locked indefinitely and never appear in a future billing run.
+ */
+async function resetStaleClaimLocks(): Promise<void> {
+  const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+  const cutoff = new Date(Date.now() - STALE_THRESHOLD_MS);
+
+  const reset = await db
+    .update(jobsTable)
+    .set({ invoiceClaimLockAt: null })
+    .where(
+      and(
+        isNotNull(jobsTable.invoiceClaimLockAt),
+        isNull(jobsTable.invoiceId),
+        lt(jobsTable.invoiceClaimLockAt, cutoff),
+      ),
+    )
+    .returning({ id: jobsTable.id });
+
+  if (reset.length > 0) {
+    logger.warn(
+      { jobIds: reset.map(r => r.id), cutoff },
+      "Billing scheduler: reset stale invoice claim locks (likely from a prior crashed process)",
+    );
+  }
+}
+
 // ── Scheduler entry point ─────────────────────────────────────────────────────
 
 async function runBillingCycle() {
   logger.info("Billing scheduler: starting daily cycle");
+  // Clear any stale claim locks left by a previous crashed process before
+  // attempting new invoice generation, so those jobs re-enter the eligible pool.
+  await resetStaleClaimLocks();
   await processRecurringTemplates();
   await processWeeklyNonRecurringInvoices();
   await processEmailQueue();

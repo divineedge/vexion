@@ -65,6 +65,13 @@ export const jobsTable = pgTable("jobs", {
   resumeAt: timestamp("resume_at", { withTimezone: true }),
 
   // ── Non-recurring invoicing ───────────────────────────────────────────────
+  /**
+   * Temporary claim lock set by the billing scheduler at the start of a transaction
+   * to prevent concurrent processes from invoicing the same job twice.
+   * Cleared once the real invoiceId is written. A non-null value older than ~5 minutes
+   * indicates a crashed process and is reset by the stale-lock cleanup sweep.
+   */
+  invoiceClaimLockAt: timestamp("invoice_claim_lock_at", { withTimezone: true }),
   /** Set true when this (non-recurring) job completed and is waiting to be swept into a weekly batch invoice. */
   pendingWeeklyInvoice: boolean("pending_weekly_invoice").notNull().default(false),
   /**

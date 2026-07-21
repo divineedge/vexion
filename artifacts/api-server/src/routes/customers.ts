@@ -307,18 +307,23 @@ router.get("/customers", async (req, res): Promise<void> => {
   const baseWhere = eq(customersTable.tenantId, tenantId);
   let where = q ? and(baseWhere, ilike(customersTable.name, `%${q}%`)) : baseWhere;
 
-  // If filtering by reminder failure, restrict to customers that have a failed outbound reminder in comms log
+  // If filtering by reminder failure, restrict to customers whose MOST RECENT outbound reminder attempt failed.
+  // Using a subquery with DISTINCT ON so a later successful send clears the badge.
   if (hasReminderFailure === "true") {
-    const failedCustomerIds = await db
-      .selectDistinct({ customerId: communicationsLogTable.customerId })
-      .from(communicationsLogTable)
-      .where(and(
-        eq(communicationsLogTable.tenantId, tenantId),
-        eq(communicationsLogTable.direction, "outbound"),
-        eq(communicationsLogTable.status, "failed"),
-        sql`${communicationsLogTable.messageType} IN ('reminder_7d', 'reminder_24h')`,
-      ));
-    const ids = failedCustomerIds.map(r => r.customerId).filter((id): id is number => id !== null);
+    const failedCustomerIds = await db.execute(sql`
+      SELECT customer_id FROM (
+        SELECT DISTINCT ON (customer_id)
+          customer_id,
+          status
+        FROM communications_log
+        WHERE tenant_id = ${tenantId}
+          AND direction = 'outbound'
+          AND message_type IN ('reminder_7d', 'reminder_24h')
+        ORDER BY customer_id, created_at DESC
+      ) latest
+      WHERE status = 'failed'
+    `) as unknown as { rows: Array<{ customer_id: number }> };
+    const ids = failedCustomerIds.rows.map(r => r.customer_id).filter((id): id is number => id !== null);
     if (ids.length === 0) {
       res.json({ items: [], total: 0, page: pageNum, limit: limitNum });
       return;

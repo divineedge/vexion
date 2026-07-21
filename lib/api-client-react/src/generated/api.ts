@@ -75,6 +75,7 @@ import type {
   CustomerAlertInput,
   CustomerInput,
   CustomerListResponse,
+  CustomerPaymentMethod,
   CustomerPlan,
   CustomerPlanDetail,
   CustomerPlanPreview,
@@ -238,6 +239,7 @@ import type {
   SetLocationStockInput,
   SetProfilePhotoInput,
   SetPropertyProfilePhoto200,
+  SetupIntentResponse,
   ShrinkageReportLedger,
   SimulationResult,
   SimulationRunInput,
@@ -1724,6 +1726,83 @@ export const useDeleteCustomer = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getDeleteCustomerMutationOptions(options));
     }
+
+export const getGetCustomerPaymentMethodUrl = (id: number,) => {
+
+
+
+
+  return `/api/customers/${id}/payment-method`
+}
+
+/**
+ * @summary Get the saved Stripe payment method for a customer
+ */
+export const getCustomerPaymentMethod = async (id: number, options?: RequestInit): Promise<CustomerPaymentMethod> => {
+
+  return customFetch<CustomerPaymentMethod>(getGetCustomerPaymentMethodUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCustomerPaymentMethodQueryKey = (id: number,) => {
+    return [
+    `/api/customers/${id}/payment-method`
+    ] as const;
+    }
+
+
+export const getGetCustomerPaymentMethodQueryOptions = <TData = Awaited<ReturnType<typeof getCustomerPaymentMethod>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCustomerPaymentMethod>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCustomerPaymentMethodQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCustomerPaymentMethod>>> = ({ signal }) => getCustomerPaymentMethod(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCustomerPaymentMethod>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCustomerPaymentMethodQueryResult = NonNullable<Awaited<ReturnType<typeof getCustomerPaymentMethod>>>
+export type GetCustomerPaymentMethodQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get the saved Stripe payment method for a customer
+ */
+
+export function useGetCustomerPaymentMethod<TData = Awaited<ReturnType<typeof getCustomerPaymentMethod>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCustomerPaymentMethod>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCustomerPaymentMethodQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getListPropertiesUrl = (params?: ListPropertiesParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -16004,6 +16083,77 @@ export const useRespondToEstimate = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getRespondToEstimateMutationOptions(options));
+    }
+
+export const getCreateEstimateSetupIntentUrl = (token: string,) => {
+
+
+
+
+  return `/api/public/estimates/${token}/setup-intent`
+}
+
+/**
+ * @summary Create a Stripe SetupIntent for payment-on-file (no auth)
+ */
+export const createEstimateSetupIntent = async (token: string, options?: RequestInit): Promise<SetupIntentResponse> => {
+
+  return customFetch<SetupIntentResponse>(getCreateEstimateSetupIntentUrl(token),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCreateEstimateSetupIntentMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEstimateSetupIntent>>, TError,{token: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createEstimateSetupIntent>>, TError,{token: string}, TContext> => {
+
+const mutationKey = ['createEstimateSetupIntent'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createEstimateSetupIntent>>, {token: string}> = (props) => {
+          const {token} = props ?? {};
+
+          return  createEstimateSetupIntent(token,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateEstimateSetupIntentMutationResult = NonNullable<Awaited<ReturnType<typeof createEstimateSetupIntent>>>
+
+    export type CreateEstimateSetupIntentMutationError = ErrorType<void>
+
+    /**
+ * @summary Create a Stripe SetupIntent for payment-on-file (no auth)
+ */
+export const useCreateEstimateSetupIntent = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEstimateSetupIntent>>, TError,{token: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createEstimateSetupIntent>>,
+        TError,
+        {token: string},
+        TContext
+      > => {
+      return useMutation(getCreateEstimateSetupIntentMutationOptions(options));
     }
 
 export const getListVisitsUrl = (params?: ListVisitsParams,) => {

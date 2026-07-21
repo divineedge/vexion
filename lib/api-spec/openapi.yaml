@@ -415,6 +415,27 @@ paths:
         "204":
           description: Deleted
 
+  /customers/{id}/payment-method:
+    get:
+      operationId: getCustomerPaymentMethod
+      tags: [customers]
+      summary: Get the saved Stripe payment method for a customer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Payment method details (or null if none saved)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerPaymentMethod"
+        "404":
+          description: Customer not found
+
   # PROPERTIES
   /properties:
     get:
@@ -4363,6 +4384,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/Estimate"
 
+  /public/estimates/{token}/setup-intent:
+    post:
+      operationId: createEstimateSetupIntent
+      tags: [estimates]
+      summary: Create a Stripe SetupIntent for payment-on-file (no auth)
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SetupIntent client secret and publishable key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetupIntentResponse"
+        "400":
+          description: Bad request (Stripe not enabled or no customer)
+        "404":
+          description: Estimate not found
+        "503":
+          description: Stripe not configured
+
   # VISITS
   /visits:
     get:
@@ -6373,6 +6419,10 @@ components:
             $ref: "#/components/schemas/EstimateLineItem"
         expired:
           type: boolean
+        stripeEnabled:
+          type: boolean
+        stripePublishableKey:
+          type: ["string", "null"]
         businessProfile:
           $ref: "#/components/schemas/PublicEstimateBusinessProfile"
 
@@ -6451,6 +6501,40 @@ components:
             type: string
         declineReason:
           type: string
+        paymentMethodId:
+          type: string
+          description: Stripe PaymentMethod ID (pm_xxx) — required when Stripe is enabled and action is approve
+
+    SetupIntentResponse:
+      type: object
+      required: [clientSecret, publishableKey]
+      properties:
+        clientSecret:
+          type: string
+        publishableKey:
+          type: string
+
+    CustomerPaymentMethod:
+      type: object
+      properties:
+        paymentMethod:
+          type: object
+          nullable: true
+          properties:
+            type:
+              type: string
+            brand:
+              type: string
+            last4:
+              type: string
+            expMonth:
+              type: integer
+            expYear:
+              type: integer
+            bankName:
+              type: string
+            label:
+              type: string
 
     Visit:
       type: object

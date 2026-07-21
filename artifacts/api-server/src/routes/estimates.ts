@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, estimatesTable, visitsTable, jobsTable, customersTable, propertiesTable, usersTable, tenantsTable, blueprintsTable, communicationsLogTable, estimateTemplatesTable } from "@workspace/db";
 import { eq, and, sql, desc } from "drizzle-orm";
+import { getStripeClient, getStripePublishableKey, ensureStripeCustomer } from "../lib/stripe";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { sendReviewRequest } from "../lib/reviewService";
 import { sendEmail, buildEstimateResponseNotificationHtml, type EmailProviderConfig } from "../lib/emailProvider";
@@ -888,12 +889,16 @@ router.get("/public/estimates/:token", async (req, res): Promise<void> => {
   const required = items.filter(i => !i.isOptional);
   const optional = items.filter(i => i.isOptional);
 
+  const stripeEnabled = !!(tenant?.stripeEnabled && getStripeClient());
+
   res.json({
     ...formatEstimate(row.estimate, { customerName: row.customerName, propertyAddress: row.propertyAddress }),
     approvalToken: undefined, // don't expose token in response
     required,
     optional,
     expired: !!expired,
+    stripeEnabled,
+    stripePublishableKey: stripeEnabled ? (getStripePublishableKey() ?? null) : null,
     businessProfile: {
       companyName: tenant?.name ?? null,
       logoUrl: tenant?.logoUrl ?? null,
@@ -906,10 +911,67 @@ router.get("/public/estimates/:token", async (req, res): Promise<void> => {
   });
 });
 
+// ── PUBLIC: CREATE SETUP INTENT ────────────────────────────────────────────────
+router.post("/public/estimates/:token/setup-intent", async (req, res): Promise<void> => {
+  const { token } = req.params;
+
+  const [estimate] = await db.select().from(estimatesTable).where(eq(estimatesTable.approvalToken, token));
+  if (!estimate) { res.status(404).json({ error: "Estimate not found" }); return; }
+  if (!["sent"].includes(estimate.status)) {
+    res.status(409).json({ error: `Estimate already ${estimate.status}` });
+    return;
+  }
+  if (estimate.expiresAt && estimate.expiresAt < new Date()) {
+    res.status(410).json({ error: "Estimate has expired" });
+    return;
+  }
+
+  const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, estimate.tenantId));
+  if (!tenant?.stripeEnabled) {
+    res.status(400).json({ error: "Stripe is not enabled for this tenant" });
+    return;
+  }
+
+  const stripe = getStripeClient();
+  if (!stripe) {
+    res.status(503).json({ error: "Stripe is not configured on this server" });
+    return;
+  }
+
+  const publishableKey = getStripePublishableKey();
+  if (!publishableKey) {
+    res.status(503).json({ error: "Stripe publishable key is not configured" });
+    return;
+  }
+
+  if (!estimate.customerId) {
+    res.status(400).json({ error: "Estimate has no linked customer" });
+    return;
+  }
+
+  const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, estimate.customerId));
+  if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
+
+  const stripeCustomerId = await ensureStripeCustomer(
+    customer.id,
+    customer.name,
+    customer.email,
+    customer.stripeCustomerId,
+  );
+
+  const setupIntent = await stripe.setupIntents.create({
+    customer: stripeCustomerId,
+    usage: "off_session",
+    automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+  });
+
+  res.json({ clientSecret: setupIntent.client_secret, publishableKey });
+});
+
 // ── PUBLIC: RESPOND (APPROVE / DECLINE) ───────────────────────────────────────
 router.post("/public/estimates/:token/respond", async (req, res): Promise<void> => {
   const { token } = req.params;
-  const { action, acceptedOptionalItemIds, declineReason } = req.body;
+  const { action, acceptedOptionalItemIds, declineReason, paymentMethodId } = req.body;
 
   if (!["approve", "decline"].includes(action)) {
     res.status(400).json({ error: "action must be 'approve' or 'decline'" });
@@ -925,6 +987,60 @@ router.post("/public/estimates/:token/respond", async (req, res): Promise<void> 
   if (estimate.expiresAt && estimate.expiresAt < new Date()) {
     res.status(410).json({ error: "Estimate has expired" });
     return;
+  }
+
+  // When approving and Stripe is enabled, a payment method must be supplied.
+  // If stripeEnabled is true but the server Stripe client is unavailable (missing secret key),
+  // fail closed — do NOT allow acceptance without a payment method.
+  if (action === "approve") {
+    const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, estimate.tenantId));
+    if (tenant?.stripeEnabled) {
+      const stripe = getStripeClient();
+      if (!stripe) {
+        res.status(503).json({ error: "Payment method required but Stripe is not configured on this server. Contact support." });
+        return;
+      }
+      if (!paymentMethodId) {
+        res.status(422).json({ error: "paymentMethodId is required when Stripe is enabled" });
+        return;
+      }
+      if (!estimate.customerId) {
+        res.status(400).json({ error: "Estimate has no linked customer" });
+        return;
+      }
+      const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, estimate.customerId));
+      if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
+
+      const stripeCustomerId = await ensureStripeCustomer(
+        customer.id,
+        customer.name,
+        customer.email,
+        customer.stripeCustomerId,
+      );
+
+      // Retrieve the PaymentMethod to check its current attachment status.
+      // confirmCardSetup already attaches it to our customer, so re-calling attach
+      // on an already-attached PM raises a Stripe error. Only attach if needed.
+      const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+      if (pm.customer === null || pm.customer === undefined) {
+        // Not yet attached — attach it now
+        await stripe.paymentMethods.attach(paymentMethodId, { customer: stripeCustomerId });
+      } else if (pm.customer !== stripeCustomerId) {
+        // Attached to a different customer — reject to prevent cross-customer data leak
+        res.status(422).json({ error: "Payment method belongs to a different customer" });
+        return;
+      }
+      // Already attached to the correct customer — skip attach
+
+      await stripe.customers.update(stripeCustomerId, {
+        invoice_settings: { default_payment_method: paymentMethodId },
+      });
+
+      // Persist the Stripe payment method ID to our DB
+      await db.update(customersTable)
+        .set({ stripeDefaultPaymentMethodId: paymentMethodId })
+        .where(eq(customersTable.id, estimate.customerId));
+    }
   }
 
   const items = (estimate.lineItems as EstimateLineItem[]) ?? [];

@@ -179,12 +179,15 @@ export interface PublicEstimateBusinessProfile {
   address?: string | null;
 }
 
-export type PublicEstimate = Estimate & {
+export type PublicEstimate = Estimate & ({
   required?: EstimateLineItem[];
   optional?: EstimateLineItem[];
   expired?: boolean;
+  stripeEnabled?: boolean;
+  /** @nullable */
+  stripePublishableKey?: string | null;
   businessProfile?: PublicEstimateBusinessProfile;
-};
+});
 
 export interface EstimatePipeline {
   pipelineValue: number;
@@ -257,6 +260,27 @@ export interface EstimateRespondInput {
   action: EstimateRespondInputAction;
   acceptedOptionalItemIds?: string[];
   declineReason?: string;
+  /** Stripe PaymentMethod ID (pm_xxx) — required when Stripe is enabled and action is approve */
+  paymentMethodId?: string;
+}
+
+export interface SetupIntentResponse {
+  clientSecret: string;
+  publishableKey: string;
+}
+
+export type CustomerPaymentMethodPaymentMethod = {
+  type?: string;
+  brand?: string;
+  last4?: string;
+  expMonth?: number;
+  expYear?: number;
+  bankName?: string;
+  label?: string;
+} | null;
+
+export interface CustomerPaymentMethod {
+  paymentMethod?: CustomerPaymentMethodPaymentMethod;
 }
 
 export type VisitVisitMode = typeof VisitVisitMode[keyof typeof VisitVisitMode];
@@ -3570,7 +3594,7 @@ export interface PortalSummary {
   upcomingJobs: PortalJob[];
   recentInvoices: PortalInvoice[];
   unreadAlertCount: number;
-  openRequestCount?: number;
+  openRequestCount: number;
 }
 
 export interface PortalProperty {

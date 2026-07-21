@@ -30,6 +30,10 @@ export const customersTable = pgTable("customers", {
   autoInvoiceOnCompletion: boolean("auto_invoice_on_completion").notNull().default(false),
   /** Profile photo URL (stored objectPath) */
   profilePhotoUrl: text("profile_photo_url"),
+  /** Stripe Customer ID (cus_xxx) — set when customer first provides a payment method */
+  stripeCustomerId: text("stripe_customer_id"),
+  /** Stripe PaymentMethod ID (pm_xxx) saved as default for off-session use */
+  stripeDefaultPaymentMethodId: text("stripe_default_payment_method_id"),
   totalSpend: real("total_spend").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

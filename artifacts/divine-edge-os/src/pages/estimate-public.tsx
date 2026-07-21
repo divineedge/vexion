@@ -8,7 +8,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { CheckCircle2, XCircle, MapPin, Clock, AlertTriangle, Phone, Mail, Globe, Building2 } from 'lucide-react';
+import { CheckCircle2, XCircle, MapPin, Clock, AlertTriangle, Phone, Mail, Globe, Building2, CreditCard, Lock } from 'lucide-react';
+import { loadStripe, type Stripe as StripeInstance } from '@stripe/stripe-js';
+import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
 interface LineItem {
   id: string;
@@ -28,18 +30,143 @@ function calcItem(item: LineItem) {
   return afterMarkup * (1 - item.discount / 100);
 }
 
+// ── Payment form (mounted inside Stripe Elements) ─────────────────────────────
+interface PaymentFormProps {
+  token: string;
+  acceptedOptionalItemIds: string[];
+  grandTotal: number;
+  onApproved: () => void;
+}
+
+function PaymentForm({ token, acceptedOptionalItemIds, grandTotal, onApproved }: PaymentFormProps) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const respond = useRespondToEstimate();
+
+  const [cardComplete, setCardComplete] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const apiBase = (() => {
+    const base = import.meta.env.BASE_URL ?? '/';
+    const clean = base.endsWith('/') ? base.slice(0, -1) : base;
+    return `${clean}/api`;
+  })();
+
+  async function handleApprove() {
+    if (!stripe || !elements || !cardComplete) return;
+    setSubmitting(true);
+    try {
+      // 1. Create a SetupIntent via our backend
+      const siRes = await fetch(`${apiBase}/public/estimates/${token}/setup-intent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!siRes.ok) {
+        const err = await siRes.json().catch(() => ({}));
+        toast.error((err as any).error ?? 'Failed to initialise payment setup');
+        return;
+      }
+      const { clientSecret } = await siRes.json();
+
+      // 2. Confirm the card setup client-side
+      const result = await stripe.confirmCardSetup(clientSecret, {
+        payment_method: { card: elements.getElement(CardElement)! },
+      });
+      if (result.error) {
+        toast.error(result.error.message ?? 'Card setup failed');
+        return;
+      }
+      const paymentMethodId = result.setupIntent?.payment_method as string | null;
+      if (!paymentMethodId) {
+        toast.error('Card setup did not return a payment method');
+        return;
+      }
+
+      // 3. Submit acceptance with the confirmed payment method ID
+      respond.mutate(
+        {
+          token,
+          data: {
+            action: 'approve',
+            acceptedOptionalItemIds,
+            paymentMethodId,
+          } as any,
+        },
+        {
+          onSuccess: () => { onApproved(); toast.success('Estimate approved!'); },
+          onError: () => toast.error('Failed to submit response. Please try again.'),
+        },
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const busy = submitting || respond.isPending;
+
+  return (
+    <div className="space-y-3">
+      {/* Card input section */}
+      <Card className="border-blue-200 bg-blue-50/40">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2 text-blue-800">
+            <Lock className="w-4 h-4" /> Payment method required
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            A card is saved now and will only be charged after the work is completed and invoiced.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="border rounded-md bg-white p-3">
+            <CardElement
+              onChange={e => setCardComplete(e.complete)}
+              options={{
+                style: {
+                  base: { fontSize: '15px', color: '#1a1a1a', '::placeholder': { color: '#a0aec0' } },
+                },
+              }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+            <CreditCard className="w-3 h-3" /> Secured by Stripe. Your card details are never stored on our servers.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Button
+        className="w-full h-12 text-base"
+        onClick={handleApprove}
+        disabled={busy || !cardComplete || !stripe}
+      >
+        <CheckCircle2 className="w-5 h-5 mr-2" />
+        {busy ? 'Submitting...' : `Approve — $${grandTotal.toFixed(2)}`}
+      </Button>
+    </div>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 export default function EstimatePublicPage() {
   const { token } = useParams<{ token: string }>();
   const [accepted, setAccepted] = useState<Set<string>>(new Set());
   const [declineReason, setDeclineReason] = useState('');
   const [responded, setResponded] = useState<'approved' | 'declined' | null>(null);
   const [showDeclineForm, setShowDeclineForm] = useState(false);
+  const [stripePromise, setStripePromise] = useState<Promise<StripeInstance | null> | null>(null);
 
   const { data: estimate, isLoading, error } = useGetPublicEstimate(token!, {
     query: { enabled: !!token, queryKey: ['getPublicEstimate', token] },
   });
 
   const respond = useRespondToEstimate();
+
+  // Initialise Stripe when the estimate loads and Stripe is enabled
+  useEffect(() => {
+    const pk = (estimate as any)?.stripePublishableKey;
+    if (pk && !stripePromise) {
+      setStripePromise(loadStripe(pk));
+    }
+  }, [estimate]);
 
   // Initialize accepted with already-accepted optional items
   useEffect(() => {
@@ -93,6 +220,8 @@ export default function EstimatePublicPage() {
   const optionalTotal = optional.filter(i => accepted.has(i.id)).reduce((sum, i) => sum + calcItem(i), 0);
   const grandTotal = requiredTotal + optionalTotal;
 
+  const stripeEnabled = !!(estimate as any).stripeEnabled; // stripeEnabled is in the generated schema but estimate type is allOf — access via any until stricter type is applied
+
   function toggleOptional(id: string) {
     setAccepted(prev => {
       const next = new Set(prev);
@@ -102,7 +231,7 @@ export default function EstimatePublicPage() {
     });
   }
 
-  function handleApprove() {
+  function handleApproveNoStripe() {
     respond.mutate({
       token: token!,
       data: {
@@ -342,15 +471,30 @@ export default function EstimatePublicPage() {
         {estimate.status === 'sent' && (
           <div className="space-y-3">
             {!showDeclineForm ? (
-              <div className="flex gap-3">
-                <Button className="flex-1 h-12 text-base" onClick={handleApprove} disabled={respond.isPending}>
-                  <CheckCircle2 className="w-5 h-5 mr-2" />
-                  {respond.isPending ? 'Submitting...' : `Approve — $${grandTotal.toFixed(2)}`}
-                </Button>
-                <Button variant="outline" className="h-12" onClick={() => setShowDeclineForm(true)}>
+              <>
+                {stripeEnabled && stripePromise ? (
+                  <Elements stripe={stripePromise}>
+                    <PaymentForm
+                      token={token!}
+                      acceptedOptionalItemIds={Array.from(accepted)}
+                      grandTotal={grandTotal}
+                      onApproved={() => setResponded('approved')}
+                    />
+                  </Elements>
+                ) : (
+                  <Button
+                    className="w-full h-12 text-base"
+                    onClick={handleApproveNoStripe}
+                    disabled={respond.isPending}
+                  >
+                    <CheckCircle2 className="w-5 h-5 mr-2" />
+                    {respond.isPending ? 'Submitting...' : `Approve — $${grandTotal.toFixed(2)}`}
+                  </Button>
+                )}
+                <Button variant="outline" className="w-full h-10" onClick={() => setShowDeclineForm(true)}>
                   Decline
                 </Button>
-              </div>
+              </>
             ) : (
               <Card>
                 <CardContent className="pt-5 space-y-3">

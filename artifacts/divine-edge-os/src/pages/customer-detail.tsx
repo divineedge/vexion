@@ -12,6 +12,7 @@ import {
   useSendMessage,
   useResumeCustomerService,
   useCreateEstimate,
+  useGetCustomerPaymentMethod, getGetCustomerPaymentMethodQueryKey,
 } from '@workspace/api-client-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
@@ -32,7 +33,7 @@ import {
   ArrowLeft, Building, Phone, Mail, Edit, Plus, Calendar, MapPin,
   Save, X, User, FileText, Tag, DollarSign, Home, Briefcase, Megaphone, AlertTriangle, Link,
   MessageSquare, Send, PhoneOff, MailMinus, ChevronRight, PlayCircle, ClipboardList, Eye, RefreshCw,
-  MailWarning,
+  MailWarning, CreditCard,
 } from 'lucide-react';
 import CustomerAvatar from '@/components/media/CustomerAvatar';
 import PropertyThumbnail from '@/components/media/PropertyThumbnail';
@@ -132,6 +133,13 @@ export default function CustomerDetailPage() {
   const { data: campaigns } = useQuery<Campaign[]>({
     queryKey: ['marketing-campaigns-slim'],
     queryFn: () => customFetch<Campaign[]>('/api/marketing/campaigns'),
+  });
+
+  const { data: paymentMethodData } = useGetCustomerPaymentMethod(id, {
+    query: {
+      enabled: !!id && !!(customer as any)?.stripeDefaultPaymentMethodId,
+      queryKey: getGetCustomerPaymentMethodQueryKey(id),
+    },
   });
 
   // Check for duplicate properties whenever address changes
@@ -325,6 +333,11 @@ export default function CustomerDetailPage() {
             {linkedCampaign && (
               <Badge variant="outline" className="gap-1 text-violet-700 border-violet-200 bg-violet-50">
                 <Megaphone className="w-3 h-3" /> {linkedCampaign.name}
+              </Badge>
+            )}
+            {paymentMethodData?.paymentMethod && (
+              <Badge variant="outline" className="gap-1 text-emerald-700 border-emerald-200 bg-emerald-50">
+                <CreditCard className="w-3 h-3" /> {paymentMethodData.paymentMethod.label}
               </Badge>
             )}
             {customer.paymentStanding && (() => {

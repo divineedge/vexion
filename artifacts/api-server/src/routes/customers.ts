@@ -4,6 +4,7 @@ import { eq, and, ilike, sql, desc, isNull, ne, inArray } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { syncCustomerToMailchimp } from "../lib/mailchimpSync";
 import { isAdminRole } from "../lib/roles";
+import { getStripeClient } from "../lib/stripe";
 import {
   importUpload,
   handleExportRequest,
@@ -493,6 +494,57 @@ router.delete("/customers/:id", async (req, res): Promise<void> => {
   const id = parseInt(rawId, 10);
   await db.delete(customersTable).where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)));
   res.sendStatus(204);
+});
+
+// ── PAYMENT METHOD ────────────────────────────────────────────────────────────
+router.get("/customers/:id/payment-method", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+
+  const [customer] = await db.select().from(customersTable)
+    .where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)));
+  if (!customer) { res.status(404).json({ error: "Not found" }); return; }
+
+  if (!customer.stripeDefaultPaymentMethodId) {
+    res.json({ paymentMethod: null });
+    return;
+  }
+
+  const stripe = getStripeClient();
+  if (!stripe) {
+    res.json({ paymentMethod: null });
+    return;
+  }
+
+  try {
+    const pm = await stripe.paymentMethods.retrieve(customer.stripeDefaultPaymentMethodId);
+    if (pm.type === "card" && pm.card) {
+      res.json({
+        paymentMethod: {
+          type: "card",
+          brand: pm.card.brand,
+          last4: pm.card.last4,
+          expMonth: pm.card.exp_month,
+          expYear: pm.card.exp_year,
+          label: `${pm.card.brand.charAt(0).toUpperCase() + pm.card.brand.slice(1)} •••• ${pm.card.last4}`,
+        },
+      });
+    } else if (pm.type === "us_bank_account" && pm.us_bank_account) {
+      res.json({
+        paymentMethod: {
+          type: "bank",
+          bankName: pm.us_bank_account.bank_name ?? "Bank",
+          last4: pm.us_bank_account.last4,
+          label: `${pm.us_bank_account.bank_name ?? "Bank"} •••• ${pm.us_bank_account.last4}`,
+        },
+      });
+    } else {
+      res.json({ paymentMethod: { type: pm.type, label: pm.type } });
+    }
+  } catch {
+    res.json({ paymentMethod: null });
+  }
 });
 
 // Property history — properties this customer previously owned

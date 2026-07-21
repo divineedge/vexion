@@ -9,9 +9,12 @@ import type { Estimate } from './estimate';
 import type { EstimateLineItem } from './estimateLineItem';
 import type { PublicEstimateBusinessProfile } from './publicEstimateBusinessProfile';
 
-export type PublicEstimate = Estimate & {
+export type PublicEstimate = Estimate & ({
   required?: EstimateLineItem[];
   optional?: EstimateLineItem[];
   expired?: boolean;
+  stripeEnabled?: boolean;
+  /** @nullable */
+  stripePublishableKey?: string | null;
   businessProfile?: PublicEstimateBusinessProfile;
-};
+});

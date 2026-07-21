@@ -497,6 +497,26 @@ export const DeleteCustomerResponse = zod.void()
 
 
 /**
+ * @summary Get the saved Stripe payment method for a customer
+ */
+export const GetCustomerPaymentMethodParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetCustomerPaymentMethodResponse = zod.object({
+  "paymentMethod": zod.object({
+  "type": zod.string().optional(),
+  "brand": zod.string().optional(),
+  "last4": zod.string().optional(),
+  "expMonth": zod.number().optional(),
+  "expYear": zod.number().optional(),
+  "bankName": zod.string().optional(),
+  "label": zod.string().optional()
+}).nullish()
+})
+
+
+/**
  * @summary List all properties
  */
 export const ListPropertiesQueryParams = zod.object({
@@ -5462,7 +5482,7 @@ export const PortalGetSummaryResponse = zod.object({
   "createdAt": zod.string()
 })),
   "unreadAlertCount": zod.number(),
-  "openRequestCount": zod.number().optional()
+  "openRequestCount": zod.number()
 })
 
 
@@ -6675,6 +6695,8 @@ export const GetPublicEstimateResponse = zod.object({
   "acceptedByCustomer": zod.boolean()
 })).optional(),
   "expired": zod.boolean().optional(),
+  "stripeEnabled": zod.boolean().optional(),
+  "stripePublishableKey": zod.string().nullish(),
   "businessProfile": zod.object({
   "companyName": zod.string().nullish(),
   "logoUrl": zod.string().nullish(),
@@ -6697,7 +6719,8 @@ export const RespondToEstimateParams = zod.object({
 export const RespondToEstimateBody = zod.object({
   "action": zod.enum(['approve', 'decline']),
   "acceptedOptionalItemIds": zod.array(zod.string()).optional(),
-  "declineReason": zod.string().optional()
+  "declineReason": zod.string().optional(),
+  "paymentMethodId": zod.string().optional().describe('Stripe PaymentMethod ID (pm_xxx) — required when Stripe is enabled and action is approve')
 })
 
 export const RespondToEstimateResponse = zod.object({
@@ -6740,6 +6763,19 @@ export const RespondToEstimateResponse = zod.object({
   "propertyAddress": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Create a Stripe SetupIntent for payment-on-file (no auth)
+ */
+export const CreateEstimateSetupIntentParams = zod.object({
+  "token": zod.coerce.string()
+})
+
+export const CreateEstimateSetupIntentResponse = zod.object({
+  "clientSecret": zod.string(),
+  "publishableKey": zod.string()
 })
 
 

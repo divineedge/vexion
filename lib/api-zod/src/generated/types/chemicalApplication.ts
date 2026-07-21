@@ -28,6 +28,8 @@ export interface ChemicalApplication {
   volumeApplied: number;
   volumeUnit: string;
   /** @nullable */
+  treatedZoneName?: string | null;
+  /** @nullable */
   targetPest?: string | null;
   /** @nullable */
   applicationMethod?: string | null;

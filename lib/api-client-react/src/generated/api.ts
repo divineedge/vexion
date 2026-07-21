@@ -187,6 +187,8 @@ import type {
   PortalOtpRequest,
   PortalOtpRequestResult,
   PortalOtpVerify,
+  PortalPaySessionInput,
+  PortalPaySessionResult,
   PortalPlan,
   PortalPlanDetail,
   PortalProperty,
@@ -13196,6 +13198,149 @@ export function usePortalGetInvoicePdf<TData = Awaited<ReturnType<typeof portalG
 
 
 
+
+export const getPortalCreatePaySessionUrl = (id: number,) => {
+
+
+
+
+  return `/api/portal/invoices/${id}/pay-session`
+}
+
+/**
+ * @summary Create a Stripe Checkout session for a pending invoice
+ */
+export const portalCreatePaySession = async (id: number,
+    portalPaySessionInput: PortalPaySessionInput, options?: RequestInit): Promise<PortalPaySessionResult> => {
+
+  return customFetch<PortalPaySessionResult>(getPortalCreatePaySessionUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(portalPaySessionInput)
+  }
+);}
+
+
+
+
+
+export const getPortalCreatePaySessionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalCreatePaySession>>, TError,{id: number;data: BodyType<PortalPaySessionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof portalCreatePaySession>>, TError,{id: number;data: BodyType<PortalPaySessionInput>}, TContext> => {
+
+const mutationKey = ['portalCreatePaySession'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof portalCreatePaySession>>, {id: number;data: BodyType<PortalPaySessionInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  portalCreatePaySession(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PortalCreatePaySessionMutationResult = NonNullable<Awaited<ReturnType<typeof portalCreatePaySession>>>
+    export type PortalCreatePaySessionMutationBody = BodyType<PortalPaySessionInput>
+    export type PortalCreatePaySessionMutationError = ErrorType<void>
+
+    /**
+ * @summary Create a Stripe Checkout session for a pending invoice
+ */
+export const usePortalCreatePaySession = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalCreatePaySession>>, TError,{id: number;data: BodyType<PortalPaySessionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof portalCreatePaySession>>,
+        TError,
+        {id: number;data: BodyType<PortalPaySessionInput>},
+        TContext
+      > => {
+      return useMutation(getPortalCreatePaySessionMutationOptions(options));
+    }
+
+export const getPortalStripeWebhookUrl = () => {
+
+
+
+
+  return `/api/portal/stripe-webhook`
+}
+
+/**
+ * @summary Stripe webhook endpoint for payment events
+ */
+export const portalStripeWebhook = async ( options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getPortalStripeWebhookUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getPortalStripeWebhookMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalStripeWebhook>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof portalStripeWebhook>>, TError,void, TContext> => {
+
+const mutationKey = ['portalStripeWebhook'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof portalStripeWebhook>>, void> = () => {
+
+
+          return  portalStripeWebhook(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PortalStripeWebhookMutationResult = NonNullable<Awaited<ReturnType<typeof portalStripeWebhook>>>
+
+    export type PortalStripeWebhookMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Stripe webhook endpoint for payment events
+ */
+export const usePortalStripeWebhook = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalStripeWebhook>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof portalStripeWebhook>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getPortalStripeWebhookMutationOptions(options));
+    }
 
 export const getPortalListPropertiesUrl = () => {
 

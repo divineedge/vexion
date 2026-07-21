@@ -7,6 +7,7 @@ import { getTenantId } from "../lib/tenantHelper";
 import { sendEmail, buildOtpEmailHtml, type EmailProviderConfig } from "../lib/emailProvider";
 import { logger } from "../lib/logger";
 import PDFDocument from "pdfkit";
+import { getStripeClient } from "../lib/stripeClient";
 
 const router: IRouter = Router();
 
@@ -1236,6 +1237,169 @@ router.patch("/portal/plans/:id", requirePortalAuth, async (req: any, res): Prom
     .limit(1);
 
   res.json(formatPortalPlan(updated, prop?.address ?? null));
+});
+
+// ---------------------------------------------------------------------------
+// POST /portal/invoices/:id/pay-session
+// Creates a Stripe Checkout session for a pending/overdue invoice.
+// ---------------------------------------------------------------------------
+router.post("/portal/invoices/:id/pay-session", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+  const invoiceId = parseInt(req.params.id, 10);
+  const { returnUrl } = req.body as { returnUrl?: string };
+
+  if (!returnUrl) {
+    res.status(400).json({ error: "returnUrl is required" });
+    return;
+  }
+
+  // Verify invoice belongs to this customer and is unpaid
+  const [invoice] = await db
+    .select()
+    .from(invoicesTable)
+    .where(
+      and(
+        eq(invoicesTable.id, invoiceId),
+        eq(invoicesTable.customerId, portalCustomerId),
+        eq(invoicesTable.tenantId, portalTenantId),
+      ),
+    )
+    .limit(1);
+
+  if (!invoice) {
+    res.status(404).json({ error: "Invoice not found" });
+    return;
+  }
+
+  if (invoice.status !== "sent" && invoice.status !== "overdue") {
+    res.status(400).json({ error: "Invoice is not payable" });
+    return;
+  }
+
+  const stripe = getStripeClient();
+  if (!stripe) {
+    res.status(402).json({ error: "Online payments are not configured. Please contact the office." });
+    return;
+  }
+
+  const amountCents = Math.round(invoice.total * 100);
+  if (amountCents <= 0) {
+    res.status(400).json({ error: "Invoice total must be greater than zero" });
+    return;
+  }
+
+  const successUrl = returnUrl.includes("?")
+    ? `${returnUrl}&payment=success`
+    : `${returnUrl}?payment=success`;
+
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            unit_amount: amountCents,
+            product_data: {
+              name: `Invoice ${invoice.invoiceNumber}`,
+              description: invoice.notes ?? undefined,
+            },
+          },
+          quantity: 1,
+        },
+      ],
+      success_url: successUrl,
+      cancel_url: returnUrl,
+      metadata: {
+        invoiceId: String(invoiceId),
+        tenantId: String(portalTenantId),
+      },
+      payment_intent_data: {
+        metadata: {
+          invoiceId: String(invoiceId),
+          tenantId: String(portalTenantId),
+        },
+      },
+    });
+
+    res.json({ checkoutUrl: session.url });
+  } catch (err) {
+    logger.error({ err, invoiceId }, "Stripe Checkout session creation failed");
+    res.status(500).json({ error: "Failed to create payment session. Please try again." });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /portal/stripe-webhook
+// Stripe sends signed events here. No portal auth — verified by signature.
+// ---------------------------------------------------------------------------
+router.post("/portal/stripe-webhook", async (req: any, res): Promise<void> => {
+  const webhookSecret = process.env["STRIPE_WEBHOOK_SECRET"];
+  if (!webhookSecret) {
+    logger.warn("STRIPE_WEBHOOK_SECRET not set — rejecting webhook");
+    res.status(400).json({ error: "Webhook not configured" });
+    return;
+  }
+
+  const sig = req.headers["stripe-signature"] as string | undefined;
+  if (!sig) {
+    res.status(400).json({ error: "Missing stripe-signature header" });
+    return;
+  }
+
+  const rawBody: Buffer | undefined = (req as Request & { rawBody?: Buffer }).rawBody;
+  if (!rawBody) {
+    res.status(400).json({ error: "Raw body unavailable" });
+    return;
+  }
+
+  const stripe = getStripeClient();
+  if (!stripe) {
+    res.status(400).json({ error: "Stripe not configured" });
+    return;
+  }
+
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
+  } catch (err) {
+    logger.warn({ err }, "Stripe webhook signature verification failed");
+    res.status(400).json({ error: "Invalid webhook signature" });
+    return;
+  }
+
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object;
+    const invoiceId = session.metadata?.invoiceId ? parseInt(session.metadata.invoiceId, 10) : null;
+    const tenantId = session.metadata?.tenantId ? parseInt(session.metadata.tenantId, 10) : null;
+
+    if (!invoiceId || !tenantId) {
+      logger.warn({ sessionId: session.id }, "Stripe webhook: missing invoiceId/tenantId in metadata");
+      res.json({ received: true });
+      return;
+    }
+
+    if (session.payment_status === "paid") {
+      try {
+        await db
+          .update(invoicesTable)
+          .set({ status: "paid", paidAt: new Date() })
+          .where(
+            and(
+              eq(invoicesTable.id, invoiceId),
+              eq(invoicesTable.tenantId, tenantId),
+            ),
+          );
+        logger.info({ invoiceId, tenantId }, "Invoice marked paid via Stripe webhook");
+      } catch (err) {
+        logger.error({ err, invoiceId }, "Failed to mark invoice as paid");
+        // Still return 200 to Stripe so it doesn't retry
+      }
+    }
+  }
+
+  res.json({ received: true });
 });
 
 // ---------------------------------------------------------------------------

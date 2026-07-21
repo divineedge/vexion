@@ -3535,6 +3535,47 @@ paths:
         "404":
           description: Invoice not found
 
+  /portal/invoices/{id}/pay-session:
+    post:
+      operationId: portalCreatePaySession
+      tags: [portal]
+      summary: Create a Stripe Checkout session for a pending invoice
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalPaySessionInput"
+      responses:
+        "200":
+          description: Checkout session URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalPaySessionResult"
+        "400":
+          description: Invoice not payable or missing returnUrl
+        "402":
+          description: Online payments not configured
+        "404":
+          description: Invoice not found
+
+  /portal/stripe-webhook:
+    post:
+      operationId: portalStripeWebhook
+      tags: [portal]
+      summary: Stripe webhook endpoint for payment events
+      responses:
+        "200":
+          description: Received
+
+
   /portal/properties:
     get:
       operationId: portalListProperties
@@ -10794,6 +10835,20 @@ components:
           items:
             $ref: "#/components/schemas/JobPart"
         createdAt:
+          type: string
+
+    PortalPaySessionInput:
+      type: object
+      required: [returnUrl]
+      properties:
+        returnUrl:
+          type: string
+
+    PortalPaySessionResult:
+      type: object
+      required: [checkoutUrl]
+      properties:
+        checkoutUrl:
           type: string
 
     PortalProperty:

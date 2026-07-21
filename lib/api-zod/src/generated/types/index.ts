@@ -299,6 +299,8 @@ export * from './portalLinkResult';
 export * from './portalOtpRequest';
 export * from './portalOtpRequestResult';
 export * from './portalOtpVerify';
+export * from './portalPaySessionInput';
+export * from './portalPaySessionResult';
 export * from './portalPlan';
 export * from './portalPlanBillingCycle';
 export * from './portalPlanBillingEntry';

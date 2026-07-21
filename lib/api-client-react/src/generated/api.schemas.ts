@@ -3612,6 +3612,14 @@ export interface PortalSummary {
   openRequestCount: number;
 }
 
+export interface PortalPaySessionInput {
+  returnUrl: string;
+}
+
+export interface PortalPaySessionResult {
+  checkoutUrl: string;
+}
+
 export interface PortalProperty {
   id: number;
   address: string;

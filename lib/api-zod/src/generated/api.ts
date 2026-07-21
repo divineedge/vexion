@@ -4180,6 +4180,7 @@ export const ListChemicalApplicationsResponseItem = zod.object({
   "productName": zod.string().nullish(),
   "volumeApplied": zod.number(),
   "volumeUnit": zod.string(),
+  "treatedZoneName": zod.string().nullish(),
   "targetPest": zod.string().nullish(),
   "applicationMethod": zod.string().nullish(),
   "windSpeed": zod.number().nullish(),
@@ -4225,6 +4226,7 @@ export const ListJobChemicalApplicationsResponseItem = zod.object({
   "productName": zod.string().nullish(),
   "volumeApplied": zod.number(),
   "volumeUnit": zod.string(),
+  "treatedZoneName": zod.string().nullish(),
   "targetPest": zod.string().nullish(),
   "applicationMethod": zod.string().nullish(),
   "windSpeed": zod.number().nullish(),
@@ -4264,6 +4266,7 @@ export const CreateJobChemicalApplicationBody = zod.object({
   "volumeUnit": zod.string().optional(),
   "treatedArea": zod.number().optional().describe('Area treated by this application (technician-entered). Used for rate calculation in place of the property\'s stored size.'),
   "areaUnit": zod.string().optional().describe('Unit for treatedArea: sqft or acres'),
+  "treatedZoneName": zod.string().optional().describe('Optional name of the blueprint\/measurement zone the technician selected (e.g. \'Front Lawn\')'),
   "targetPest": zod.string().optional(),
   "applicationMethod": zod.string().optional(),
   "windSpeed": zod.number().optional(),
@@ -4288,6 +4291,7 @@ export const CreateJobChemicalApplicationResponse = zod.object({
   "productName": zod.string().nullish(),
   "volumeApplied": zod.number(),
   "volumeUnit": zod.string(),
+  "treatedZoneName": zod.string().nullish(),
   "targetPest": zod.string().nullish(),
   "applicationMethod": zod.string().nullish(),
   "windSpeed": zod.number().nullish(),
@@ -5579,6 +5583,28 @@ export const PortalGetInvoicePdfParams = zod.object({
 })
 
 export const PortalGetInvoicePdfResponse = zod.unknown()
+
+
+/**
+ * @summary Create a Stripe Checkout session for a pending invoice
+ */
+export const PortalCreatePaySessionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const PortalCreatePaySessionBody = zod.object({
+  "returnUrl": zod.string()
+})
+
+export const PortalCreatePaySessionResponse = zod.object({
+  "checkoutUrl": zod.string()
+})
+
+
+/**
+ * @summary Stripe webhook endpoint for payment events
+ */
+export const PortalStripeWebhookResponse = zod.unknown()
 
 
 /**

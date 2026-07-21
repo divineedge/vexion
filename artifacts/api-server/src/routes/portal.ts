@@ -4,7 +4,7 @@ import { eq, and, gt, desc, lte, isNotNull, ne, sql } from "drizzle-orm";
 import { objectStorageService } from "./storage";
 import crypto from "crypto";
 import { getTenantId } from "../lib/tenantHelper";
-import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
+import { sendEmail, buildOtpEmailHtml, type EmailProviderConfig } from "../lib/emailProvider";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -168,7 +168,13 @@ router.post("/portal/auth/request-otp", async (req, res): Promise<void> => {
     companyName,
   ].join("\n");
 
-  const emailResult = await sendEmail(emailProviderConfig, email.toLowerCase().trim(), subject, body);
+  const htmlBody = buildOtpEmailHtml({
+    customerName: customer.name ?? null,
+    otp,
+    companyName,
+  });
+
+  const emailResult = await sendEmail(emailProviderConfig, email.toLowerCase().trim(), subject, body, htmlBody);
 
   if (!emailResult.success) {
     logger.error({ to: email, error: emailResult.error }, "Failed to send portal OTP email");

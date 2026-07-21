@@ -274,6 +274,25 @@ router.delete("/tasks/:id", async (req, res): Promise<void> => {
   res.status(204).end();
 });
 
+router.post("/tasks/:id/unarchive", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  const role = await getCallerRole(tenantId, userId);
+  if (!ADMIN_ROLES.has(role)) { res.status(403).json({ error: "Only Admin/Office can unarchive tasks" }); return; }
+
+  const id = parseInt(req.params.id, 10);
+  const [task] = await db.select().from(internalTasksTable).where(and(eq(internalTasksTable.id, id), eq(internalTasksTable.tenantId, tenantId)));
+  if (!task) { res.status(404).json({ error: "Task not found" }); return; }
+
+  const [updated] = await db.update(internalTasksTable)
+    .set({ archivedAt: null } as Partial<typeof internalTasksTable.$inferInsert>)
+    .where(eq(internalTasksTable.id, id))
+    .returning();
+
+  const [enriched] = await enrichTasks(tenantId, [updated]);
+  res.json(enriched);
+});
+
 router.post("/tasks/bulk-archive", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);

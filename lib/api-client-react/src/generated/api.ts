@@ -12080,6 +12080,77 @@ export const useBulkArchiveTasks = <TError = ErrorType<void>,
       return useMutation(getBulkArchiveTasksMutationOptions(options));
     }
 
+export const getUnarchiveTaskUrl = (id: number,) => {
+
+
+
+
+  return `/api/tasks/${id}/unarchive`
+}
+
+/**
+ * @summary Clear the archivedAt timestamp on a task, restoring it to the active list (admin/office only)
+ */
+export const unarchiveTask = async (id: number, options?: RequestInit): Promise<InternalTask> => {
+
+  return customFetch<InternalTask>(getUnarchiveTaskUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getUnarchiveTaskMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unarchiveTask>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof unarchiveTask>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['unarchiveTask'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof unarchiveTask>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  unarchiveTask(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UnarchiveTaskMutationResult = NonNullable<Awaited<ReturnType<typeof unarchiveTask>>>
+
+    export type UnarchiveTaskMutationError = ErrorType<void>
+
+    /**
+ * @summary Clear the archivedAt timestamp on a task, restoring it to the active list (admin/office only)
+ */
+export const useUnarchiveTask = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unarchiveTask>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof unarchiveTask>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getUnarchiveTaskMutationOptions(options));
+    }
+
 export const getGetTaskUrl = (id: number,) => {
 
 

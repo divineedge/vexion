@@ -16,6 +16,7 @@ import { TaskActions } from '@/components/tasks/TaskActions';
 import {
   TASK_PRIORITIES, TASK_STATUSES, priorityBadgeClass, statusBadgeClass, roleBucketLabel,
 } from '@/lib/taskConstants';
+import { Label } from '@/components/ui/label';
 
 export default function TasksPage() {
   const { user, isOwner, isManager, isDepartmentManager } = useAuth();
@@ -28,11 +29,13 @@ export default function TasksPage() {
   const [priorityFilter, setPriorityFilter] = useState('__all__');
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
 
   const listParams = {
     scope,
     ...(statusFilter !== '__all__' && statusFilter !== '__open__' ? { status: statusFilter } : {}),
     ...(priorityFilter !== '__all__' ? { priority: priorityFilter } : {}),
+    ...(isAdmin && showArchived ? { includeArchived: true } : {}),
   };
 
   const { data: tasks = [], isLoading } = useListTasks(
@@ -40,9 +43,18 @@ export default function TasksPage() {
     { query: { queryKey: getListTasksQueryKey(listParams) } },
   );
 
-  const visibleTasks = statusFilter === '__open__'
-    ? tasks.filter(t => t.status === 'open' || t.status === 'in_progress')
-    : tasks;
+  const visibleTasks = (() => {
+    let filtered = tasks;
+    if (statusFilter === '__open__') {
+      filtered = filtered.filter(t => t.status === 'open' || t.status === 'in_progress');
+    }
+    if (!showArchived) {
+      filtered = filtered.filter(t => !t.archivedAt);
+    } else if (showArchived) {
+      filtered = filtered.filter(t => !!t.archivedAt);
+    }
+    return filtered;
+  })();
 
   const sorted = [...visibleTasks].sort((a, b) => {
     const order: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
@@ -85,6 +97,7 @@ export default function TasksPage() {
   function changeScope(v: 'mine' | 'all') { setScope(v); setSelected(new Set()); }
   function changeStatus(v: string) { setStatusFilter(v); setSelected(new Set()); }
   function changePriority(v: string) { setPriorityFilter(v); setSelected(new Set()); }
+  function toggleShowArchived() { setShowArchived(prev => !prev); setSelected(new Set()); }
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -126,8 +139,20 @@ export default function TasksPage() {
               </SelectContent>
             </Select>
 
-            {isAdmin && someSelected && (
-              <div className="ml-auto flex items-center gap-2">
+            {isAdmin && (
+              <div className="flex items-center gap-2 ml-auto">
+                <Checkbox
+                  id="show-archived"
+                  checked={showArchived}
+                  onCheckedChange={toggleShowArchived}
+                />
+                <Label htmlFor="show-archived" className="text-sm cursor-pointer select-none">
+                  Show archived
+                </Label>
+              </div>
+            )}
+            {isAdmin && someSelected && !showArchived && (
+              <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">{selected.size} selected</span>
                 <Button size="sm" variant="outline" className="gap-1.5 h-8" onClick={() => setArchiveConfirmOpen(true)} disabled={bulkArchive.isPending}>
                   <Archive className="w-3.5 h-3.5" /> Archive selected
@@ -136,8 +161,8 @@ export default function TasksPage() {
             )}
           </div>
 
-          {/* Select-all bar — only for admins */}
-          {isAdmin && sorted.length > 0 && (
+          {/* Select-all bar — only for admins viewing active tasks */}
+          {isAdmin && !showArchived && sorted.length > 0 && (
             <div className="px-4 py-2 border-b bg-muted/30 flex items-center gap-2 text-xs text-muted-foreground">
               <Checkbox
                 checked={allSelected}
@@ -162,6 +187,7 @@ export default function TasksPage() {
                   key={task.id}
                   task={task}
                   isAdmin={isAdmin}
+                  showArchived={showArchived}
                   selected={selected.has(task.id)}
                   onToggle={() => toggleOne(task.id)}
                 />
@@ -196,15 +222,16 @@ export default function TasksPage() {
   );
 }
 
-function TaskRow({ task, isAdmin, selected, onToggle }: {
+function TaskRow({ task, isAdmin, showArchived, selected, onToggle }: {
   task: InternalTask;
   isAdmin: boolean;
+  showArchived: boolean;
   selected: boolean;
   onToggle: () => void;
 }) {
   return (
-    <div className={`p-4 flex items-start gap-3 flex-wrap transition-colors ${selected ? 'bg-muted/40' : ''}`}>
-      {isAdmin && (
+    <div className={`p-4 flex items-start gap-3 flex-wrap transition-colors ${selected ? 'bg-muted/40' : ''} ${task.archivedAt ? 'opacity-75' : ''}`}>
+      {isAdmin && !showArchived && (
         <div className="pt-0.5">
           <Checkbox checked={selected} onCheckedChange={onToggle} aria-label={`Select task: ${task.title}`} />
         </div>
@@ -214,6 +241,11 @@ function TaskRow({ task, isAdmin, selected, onToggle }: {
           <p className="font-medium truncate">{task.title}</p>
           <Badge variant="outline" className={priorityBadgeClass(task.priority)}>{task.priority}</Badge>
           <Badge variant="outline" className={statusBadgeClass(task.status)}>{task.status.replace('_', ' ')}</Badge>
+          {task.archivedAt && (
+            <Badge variant="outline" className="text-muted-foreground border-muted-foreground/40 bg-muted/50">
+              Archived {format(new Date(task.archivedAt), 'MMM d, yyyy')}
+            </Badge>
+          )}
         </div>
         {task.description && <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{task.description}</p>}
         {task.status === 'rejected' && task.rejectionReason && (

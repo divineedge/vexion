@@ -3202,6 +3202,11 @@ paths:
           description: Pass 'mine' to force the caller-scoped view even for admin/office roles
           schema:
             type: string
+        - name: includeArchived
+          in: query
+          schema:
+            type: boolean
+          description: "When true, includes archived tasks in the results (admin/office only). Defaults to false."
       responses:
         "200":
           description: Task list
@@ -3256,6 +3261,29 @@ paths:
           description: Invalid input
         "403":
           description: Not permitted
+
+  /tasks/{id}/unarchive:
+    post:
+      operationId: unarchiveTask
+      tags: [tasks]
+      summary: Clear the archivedAt timestamp on a task, restoring it to the active list (admin/office only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Task restored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InternalTask"
+        "403":
+          description: Not permitted
+        "404":
+          description: Not found
 
   /tasks/{id}:
     get:

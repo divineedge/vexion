@@ -15,4 +15,8 @@ contextType?: string;
  * Pass 'mine' to force the caller-scoped view even for admin/office roles
  */
 scope?: string;
+/**
+ * When true, includes archived tasks in the results (admin/office only). Defaults to false.
+ */
+includeArchived?: boolean;
 };

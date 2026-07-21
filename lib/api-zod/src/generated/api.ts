@@ -5148,7 +5148,8 @@ export const ListTasksQueryParams = zod.object({
   "priority": zod.coerce.string().optional(),
   "assigneeId": zod.coerce.number().optional(),
   "contextType": zod.coerce.string().optional(),
-  "scope": zod.coerce.string().optional().describe('Pass \'mine\' to force the caller-scoped view even for admin\/office roles')
+  "scope": zod.coerce.string().optional().describe('Pass \'mine\' to force the caller-scoped view even for admin\/office roles'),
+  "includeArchived": zod.coerce.boolean().optional().describe('When true, includes archived tasks in the results (admin\/office only). Defaults to false.')
 })
 
 export const ListTasksResponseItem = zod.object({
@@ -5226,6 +5227,38 @@ export const BulkArchiveTasksBody = zod.object({
 
 export const BulkArchiveTasksResponse = zod.object({
   "archived": zod.number()
+})
+
+
+/**
+ * @summary Clear the archivedAt timestamp on a task, restoring it to the active list (admin/office only)
+ */
+export const UnarchiveTaskParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UnarchiveTaskResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "taskType": zod.string().nullish(),
+  "createdById": zod.number(),
+  "createdByName": zod.string().nullish(),
+  "assignedToUserId": zod.number().nullish(),
+  "assignedToName": zod.string().nullish(),
+  "assignedToRole": zod.string().nullish(),
+  "priority": zod.string(),
+  "status": zod.string(),
+  "dueDate": zod.string().nullish(),
+  "contextType": zod.string().nullish(),
+  "contextId": zod.number().nullish(),
+  "contextLabel": zod.string().nullish(),
+  "completedAt": zod.string().nullish(),
+  "rejectionReason": zod.string().nullish(),
+  "archivedAt": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
 })
 
 

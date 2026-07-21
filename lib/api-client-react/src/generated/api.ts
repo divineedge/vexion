@@ -97,6 +97,8 @@ import type {
   EquipmentLinkedPart,
   EquipmentMaintenance,
   EquipmentMaintenanceInput,
+  EquipmentReadingLog,
+  EquipmentReadingLogInput,
   Estimate,
   EstimatePipeline,
   EstimateRespondInput,
@@ -10940,6 +10942,78 @@ export const useDeleteEquipmentFuelLog = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteEquipmentFuelLogMutationOptions(options));
+    }
+
+export const getCreateEquipmentReadingLogUrl = (id: number,) => {
+
+
+
+
+  return `/api/equipment/${id}/reading-logs`
+}
+
+/**
+ * @summary Log an hour-meter or mileage reading (all roles)
+ */
+export const createEquipmentReadingLog = async (id: number,
+    equipmentReadingLogInput: EquipmentReadingLogInput, options?: RequestInit): Promise<EquipmentReadingLog> => {
+
+  return customFetch<EquipmentReadingLog>(getCreateEquipmentReadingLogUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(equipmentReadingLogInput)
+  }
+);}
+
+
+
+
+
+export const getCreateEquipmentReadingLogMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEquipmentReadingLog>>, TError,{id: number;data: BodyType<EquipmentReadingLogInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createEquipmentReadingLog>>, TError,{id: number;data: BodyType<EquipmentReadingLogInput>}, TContext> => {
+
+const mutationKey = ['createEquipmentReadingLog'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createEquipmentReadingLog>>, {id: number;data: BodyType<EquipmentReadingLogInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  createEquipmentReadingLog(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateEquipmentReadingLogMutationResult = NonNullable<Awaited<ReturnType<typeof createEquipmentReadingLog>>>
+    export type CreateEquipmentReadingLogMutationBody = BodyType<EquipmentReadingLogInput>
+    export type CreateEquipmentReadingLogMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Log an hour-meter or mileage reading (all roles)
+ */
+export const useCreateEquipmentReadingLog = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEquipmentReadingLog>>, TError,{id: number;data: BodyType<EquipmentReadingLogInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createEquipmentReadingLog>>,
+        TError,
+        {id: number;data: BodyType<EquipmentReadingLogInput>},
+        TContext
+      > => {
+      return useMutation(getCreateEquipmentReadingLogMutationOptions(options));
     }
 
 export const getGetEquipmentLedgerUrl = (id: number,

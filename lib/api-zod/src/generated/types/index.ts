@@ -159,6 +159,8 @@ export * from './equipmentLifecycleEvent';
 export * from './equipmentLinkedPart';
 export * from './equipmentMaintenance';
 export * from './equipmentMaintenanceInput';
+export * from './equipmentReadingLog';
+export * from './equipmentReadingLogInput';
 export * from './estimate';
 export * from './estimatedPart';
 export * from './estimateLineItem';

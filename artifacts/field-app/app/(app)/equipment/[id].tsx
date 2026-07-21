@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,10 @@ import {
   ActivityIndicator,
   RefreshControl,
   Platform,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Alert,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,6 +21,7 @@ import {
   useGetEquipment,
   useListEquipmentFuelLogs,
   useListEquipmentMaintenance,
+  useCreateEquipmentReadingLog,
 } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 
@@ -167,6 +172,13 @@ export default function EquipmentDetailScreen() {
 
   const isLoading = eqLoading || logsLoading || maintLoading;
 
+  // Log Hours modal state
+  const [showLogHours, setShowLogHours] = useState(false);
+  const [hoursValue, setHoursValue] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const { mutateAsync: createReadingLog } = useCreateEquipmentReadingLog();
+
   const handleLogFuel = useCallback(async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     router.push(`/(app)/equipment-fuel/${equipmentId}`);
@@ -176,6 +188,34 @@ export default function EquipmentDetailScreen() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     router.push(`/(app)/equipment-maintenance/${equipmentId}` as any);
   }, [equipmentId]);
+
+  const handleOpenLogHours = useCallback(async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const eq = equipment as Equipment | undefined;
+    setHoursValue(eq ? String(eq.currentHours) : '');
+    setShowLogHours(true);
+  }, [equipment]);
+
+  const handleSubmitHours = useCallback(async () => {
+    const parsed = parseFloat(hoursValue);
+    if (isNaN(parsed) || parsed < 0) {
+      Alert.alert('Invalid', 'Please enter a valid hour reading.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      await createReadingLog({ id: equipmentId, data: { date: today, readingType: 'hours', value: parsed } });
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setShowLogHours(false);
+      setHoursValue('');
+      refetchEq();
+    } catch {
+      Alert.alert('Error', 'Failed to save reading. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [hoursValue, equipmentId, createReadingLog, refetchEq]);
 
   const refetch = useCallback(() => {
     refetchEq();
@@ -394,6 +434,15 @@ export default function EquipmentDetailScreen() {
           <Text style={styles.fabText}>Log Maintenance</Text>
         </TouchableOpacity>
         <TouchableOpacity
+          style={[styles.fab, { backgroundColor: '#6366f1' }]}
+          onPress={handleOpenLogHours}
+          activeOpacity={0.85}
+          testID="log-hours-button"
+        >
+          <Ionicons name="time-outline" size={20} color="#ffffff" />
+          <Text style={styles.fabText}>Log Hours</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
           style={[styles.fab, { backgroundColor: colors.primary }]}
           onPress={handleLogFuel}
           activeOpacity={0.85}
@@ -403,6 +452,63 @@ export default function EquipmentDetailScreen() {
           <Text style={styles.fabText}>Log Fuel Fill</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Log Hours Modal */}
+      <Modal
+        visible={showLogHours}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowLogHours(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>Log Hour-Meter Reading</Text>
+              <TouchableOpacity onPress={() => setShowLogHours(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close" size={22} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.modalLabel, { color: colors.mutedForeground }]}>
+              Current hours on the meter
+            </Text>
+            <TextInput
+              style={[styles.modalInput, { backgroundColor: colors.muted, color: colors.foreground, borderColor: colors.border }]}
+              value={hoursValue}
+              onChangeText={setHoursValue}
+              keyboardType="decimal-pad"
+              placeholder="e.g. 1234.5"
+              placeholderTextColor={colors.mutedForeground}
+              autoFocus
+              selectTextOnFocus
+              testID="log-hours-input"
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.muted }]}
+                onPress={() => setShowLogHours(false)}
+                disabled={submitting}
+              >
+                <Text style={[styles.modalBtnText, { color: colors.foreground }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: '#6366f1', opacity: submitting ? 0.6 : 1 }]}
+                onPress={handleSubmitHours}
+                disabled={submitting}
+                testID="log-hours-submit"
+              >
+                {submitting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={[styles.modalBtnText, { color: '#fff' }]}>Save Reading</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -524,4 +630,46 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   fabText: { fontFamily: 'Inter_600SemiBold', fontSize: 14, color: '#ffffff' },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 20,
+    gap: 14,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  modalTitle: { fontFamily: 'Inter_700Bold', fontSize: 17 },
+  modalLabel: { fontFamily: 'Inter_400Regular', fontSize: 13 },
+  modalInput: {
+    height: 48,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    fontFamily: 'Inter_400Regular',
+    fontSize: 17,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  modalBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBtnText: { fontFamily: 'Inter_600SemiBold', fontSize: 15 },
 });

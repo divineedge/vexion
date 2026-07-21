@@ -757,6 +757,60 @@ router.delete("/equipment/:equipmentId/fuel-logs/:id", requireOfficeRole, async 
   res.sendStatus(204);
 });
 
+// ─── Reading Logs Sub-resource ────────────────────────────────────────────────
+
+router.post("/equipment/:id/reading-logs", async (req, res): Promise<void> => {
+  // All roles (including technicians) can log readings
+  const tenantId = getTenantId(req);
+  const equipmentId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+
+  const owned = await requireEquipmentOwnership(equipmentId, tenantId, res);
+  if (!owned) return;
+
+  if (owned.archivedAt) {
+    res.status(409).json({ error: "Cannot log readings on archived equipment" });
+    return;
+  }
+
+  const { date, readingType, value } = req.body;
+  if (!date || !readingType || value == null) {
+    res.status(400).json({ error: "date, readingType, and value are required" });
+    return;
+  }
+  if (readingType !== "hours" && readingType !== "mileage") {
+    res.status(400).json({ error: "readingType must be 'hours' or 'mileage'" });
+    return;
+  }
+
+  const parsedValue = parseFloat(value);
+  if (isNaN(parsedValue) || parsedValue < 0) {
+    res.status(400).json({ error: "value must be a non-negative number" });
+    return;
+  }
+
+  const [row] = await db.insert(equipmentReadingLogsTable).values({
+    equipmentId,
+    tenantId,
+    date,
+    readingType,
+    value: parsedValue,
+    source: "manual",
+  }).returning();
+
+  // Update the equipment's currentHours/currentMiles to the new reading if it's higher
+  if (readingType === "hours" && parsedValue > owned.currentHours) {
+    await db.update(equipmentTable)
+      .set({ currentHours: parsedValue })
+      .where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId)));
+  } else if (readingType === "mileage" && owned.currentMiles != null && parsedValue > owned.currentMiles) {
+    await db.update(equipmentTable)
+      .set({ currentMiles: parsedValue })
+      .where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId)));
+  }
+
+  res.status(201).json({ ...row, createdAt: row.createdAt.toISOString() });
+});
+
 // ─── Cost Ledger: Operating vs. Maintenance & Repair ────────────────────────────
 // Two independent running-total views over the same asset's history, filterable
 // by date range. Operating = fuel spend + a runtime-hours cost factor (from

@@ -3328,6 +3328,28 @@ export interface EquipmentFuelLogInput {
   jobId?: number;
 }
 
+export interface EquipmentReadingLog {
+  id: number;
+  equipmentId: number;
+  tenantId: number;
+  date: string;
+  /** hours | mileage */
+  readingType: string;
+  value: number;
+  /** manual | task_bundle */
+  source: string;
+  /** @nullable */
+  taskBundleCompletionId?: number | null;
+  createdAt: string;
+}
+
+export interface EquipmentReadingLogInput {
+  date: string;
+  /** hours | mileage */
+  readingType: string;
+  value: number;
+}
+
 export type EquipmentLedgerOperating = {
   fuelCost: number;
   runtimeHours: number;

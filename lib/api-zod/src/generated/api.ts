@@ -4738,6 +4738,32 @@ export const DeleteEquipmentFuelLogResponse = zod.void()
 
 
 /**
+ * @summary Log an hour-meter or mileage reading (all roles)
+ */
+export const CreateEquipmentReadingLogParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CreateEquipmentReadingLogBody = zod.object({
+  "date": zod.string(),
+  "readingType": zod.string().describe('hours | mileage'),
+  "value": zod.number()
+})
+
+export const CreateEquipmentReadingLogResponse = zod.object({
+  "id": zod.number(),
+  "equipmentId": zod.number(),
+  "tenantId": zod.number(),
+  "date": zod.string(),
+  "readingType": zod.string().describe('hours | mileage'),
+  "value": zod.number(),
+  "source": zod.string().describe('manual | task_bundle'),
+  "taskBundleCompletionId": zod.number().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
  * @summary Operating vs. Maintenance & Repair cost ledgers for an asset, with running totals over an optional date range
  */
 export const GetEquipmentLedgerParams = zod.object({

@@ -2897,6 +2897,31 @@ paths:
         "204":
           description: Deleted
 
+  /equipment/{id}/reading-logs:
+    post:
+      operationId: createEquipmentReadingLog
+      tags: [equipment]
+      summary: Log an hour-meter or mileage reading (all roles)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EquipmentReadingLogInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EquipmentReadingLog"
+
   /equipment/{id}/ledger:
     get:
       operationId: getEquipmentLedger
@@ -10665,6 +10690,43 @@ components:
         jobId:
           type: integer
           description: Optional job to attribute this fuel cost to. Improves per-job fuel cost accuracy in the Job Profitability report.
+
+    EquipmentReadingLog:
+      type: object
+      required: [id, equipmentId, tenantId, date, readingType, value, source, createdAt]
+      properties:
+        id:
+          type: integer
+        equipmentId:
+          type: integer
+        tenantId:
+          type: integer
+        date:
+          type: string
+        readingType:
+          type: string
+          description: "hours | mileage"
+        value:
+          type: number
+        source:
+          type: string
+          description: "manual | task_bundle"
+        taskBundleCompletionId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+
+    EquipmentReadingLogInput:
+      type: object
+      required: [date, readingType, value]
+      properties:
+        date:
+          type: string
+        readingType:
+          type: string
+          description: "hours | mileage"
+        value:
+          type: number
 
     EquipmentLedger:
       type: object

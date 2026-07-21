@@ -133,7 +133,7 @@ function JobProfitabilityReport() {
       <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
         <div>
           <CardTitle>Job Profitability</CardTitle>
-          <CardDescription>Parts cost and labor use the P4P engine; fuel is allocated evenly across jobs in range.</CardDescription>
+          <CardDescription>Parts cost and labor use the P4P engine; fuel marked <span className="font-medium text-foreground">actual</span> was linked directly to that job, <span className="font-medium text-foreground">est.</span> is split evenly across unlinked jobs.</CardDescription>
         </div>
         <div className="flex items-center gap-2 print:hidden">
           <GeneratedBadge generatedAt={data?.generatedAt} cached={data?.cached} />
@@ -180,7 +180,7 @@ function JobProfitabilityReport() {
                 <TableRow>
                   <TableHead>Job</TableHead><TableHead>Customer</TableHead><TableHead>Crew</TableHead><TableHead>Technician</TableHead>
                   <TableHead className="text-right">Revenue</TableHead><TableHead className="text-right">Parts</TableHead>
-                  <TableHead className="text-right">Labor</TableHead><TableHead className="text-right">Fuel</TableHead>
+                  <TableHead className="text-right">Labor</TableHead><TableHead className="text-right">Fuel</TableHead><TableHead className="text-right sr-only">Fuel source</TableHead>
                   <TableHead className="text-right">Net Profit</TableHead><TableHead className="text-right">Margin</TableHead>
                 </TableRow>
               </TableHeader>
@@ -195,12 +195,18 @@ function JobProfitabilityReport() {
                     <TableCell className="text-right">{money(r.partsCost)}</TableCell>
                     <TableCell className="text-right">{money(r.laborCost)}</TableCell>
                     <TableCell className="text-right">{money(r.fuelCost)}</TableCell>
+                    <TableCell className="text-right">
+                      {(r as { fuelCostSource?: string }).fuelCostSource === 'actual'
+                        ? <Badge variant="outline" className="text-xs text-emerald-600 border-emerald-300">actual</Badge>
+                        : <Badge variant="outline" className="text-xs text-muted-foreground">est.</Badge>
+                      }
+                    </TableCell>
                     <TableCell className={`text-right font-medium ${r.netProfit < 0 ? 'text-destructive' : ''}`}>{money(r.netProfit)}</TableCell>
                     <TableCell className={`text-right ${r.marginPct < 0 ? 'text-destructive' : 'text-emerald-600'}`}>{r.marginPct}%</TableCell>
                   </TableRow>
                 ))}
                 {data.rows.length === 0 && (
-                  <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-8">No completed jobs in this range.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11} className="text-center text-muted-foreground py-8">No completed jobs in this range.</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>

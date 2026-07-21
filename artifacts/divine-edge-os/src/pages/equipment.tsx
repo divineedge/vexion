@@ -16,6 +16,8 @@ import {
   getListEquipmentFuelLogsQueryKey,
   useCreateEquipmentFuelLog,
   useDeleteEquipmentFuelLog,
+  useListJobs,
+  getListJobsQueryKey,
   useListEquipmentTasks, getListEquipmentTasksQueryKey,
   useGetEquipmentLedger, getGetEquipmentLedgerQueryKey,
   useListTasks, getListTasksQueryKey,
@@ -289,8 +291,14 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
   const createFuelLog = useCreateEquipmentFuelLog();
   const deleteFuelLog = useDeleteEquipmentFuelLog();
 
-  const [fuelForm, setFuelForm] = useState({ date: '', gallons: '', cost: '', odometerReading: '' });
+  const [fuelForm, setFuelForm] = useState({ date: '', gallons: '', cost: '', odometerReading: '', jobId: '' });
   const [fuelOpen, setFuelOpen] = useState(false);
+
+  // Recent jobs for linking a fuel fill to a specific job
+  const { data: recentJobs = [] } = useListJobs(
+    undefined,
+    { query: { queryKey: getListJobsQueryKey(), enabled: fuelOpen } },
+  );
 
   // Maintenance tasks (internal to-do queue linked to this equipment)
   const { data: equipmentTasks } = useListEquipmentTasks(equipment.id, {
@@ -332,6 +340,7 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
         gallons: parseFloat(fuelForm.gallons),
         cost: fuelForm.cost ? parseFloat(fuelForm.cost) : 0,
         odometerReading: fuelForm.odometerReading ? parseFloat(fuelForm.odometerReading) : undefined,
+        jobId: fuelForm.jobId ? parseInt(fuelForm.jobId, 10) : undefined,
       },
     }, {
       onSuccess: () => {
@@ -339,7 +348,7 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
         qc.invalidateQueries({ queryKey: getListEquipmentFuelLogsQueryKey(equipment.id) });
         qc.invalidateQueries({ queryKey: getListEquipmentQueryKey() });
         setFuelOpen(false);
-        setFuelForm({ date: '', gallons: '', cost: '', odometerReading: '' });
+        setFuelForm({ date: '', gallons: '', cost: '', odometerReading: '', jobId: '' });
       },
       onError: () => toast.error('Failed to add fuel log'),
     });
@@ -586,6 +595,23 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
                       <Input type="number" placeholder="Current hours" value={fuelForm.odometerReading} onChange={e => setFuelForm(f => ({ ...f, odometerReading: e.target.value }))} />
                     </div>
                   </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">Job (optional)</label>
+                    <Select value={fuelForm.jobId || '__none__'} onValueChange={v => setFuelForm(f => ({ ...f, jobId: v === '__none__' ? '' : v }))}>
+                      <SelectTrigger className="w-full text-sm">
+                        <SelectValue placeholder="No job — fleet overhead" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">No job — fleet overhead</SelectItem>
+                        {recentJobs.map(j => (
+                          <SelectItem key={j.id} value={String(j.id)}>
+                            {j.title}{j.scheduledAt ? ` · ${j.scheduledAt.slice(0, 10)}` : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">Linking to a job attributes the fuel cost directly to that job's profitability.</p>
+                  </div>
                   <div className="flex gap-2 justify-end">
                     <Button variant="outline" size="sm" onClick={() => setFuelOpen(false)}>Cancel</Button>
                     <Button size="sm" onClick={handleAddFuel} disabled={createFuelLog.isPending}>Save</Button>
@@ -595,23 +621,32 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
             )}
             {fuelLogs && fuelLogs.length > 0 ? (
               <div className="space-y-2">
-                {fuelLogs.map(f => (
-                  <div key={f.id} className="rounded-lg border p-3 flex items-start gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-medium">{f.gallons} gal</p>
-                        <Badge variant="outline" className="text-xs">{fmt$(f.cost)}</Badge>
-                        {f.odometerReading != null && <span className="text-xs text-muted-foreground">@ {f.odometerReading} hrs</span>}
+                {fuelLogs.map(f => {
+                  const linkedJob = f.jobId != null ? recentJobs.find(j => j.id === f.jobId) : null;
+                  return (
+                    <div key={f.id} className="rounded-lg border p-3 flex items-start gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-medium">{f.gallons} gal</p>
+                          <Badge variant="outline" className="text-xs">{fmt$(f.cost)}</Badge>
+                          {f.odometerReading != null && <span className="text-xs text-muted-foreground">@ {f.odometerReading} hrs</span>}
+                          {f.jobId != null && (
+                            <Badge variant="secondary" className="text-xs gap-1">
+                              <Fuel className="w-3 h-3" />
+                              {linkedJob ? linkedJob.title : `Job #${f.jobId}`}
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">{f.date}</p>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">{f.date}</p>
+                      {!isTechnician && (
+                        <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground hover:text-destructive shrink-0" onClick={() => handleDeleteFuel(f.id)}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
                     </div>
-                    {!isTechnician && (
-                      <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground hover:text-destructive shrink-0" onClick={() => handleDeleteFuel(f.id)}>
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground text-center py-6">No fuel logs yet.</p>

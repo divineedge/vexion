@@ -145,7 +145,8 @@ router.get("/reports/job-profitability", async (req, res): Promise<void> => {
       const p4pPct = j.blueprint_p4p_pct != null ? Number(j.blueprint_p4p_pct) : globalPct;
       const netLaborRevenue = Math.max(0, revenue - partsCost);
       const laborCost = Math.round((netLaborRevenue * p4pPct / 100) * 100) / 100;
-      const rawFuelCost = linkedFuelByJob.has(j.id) ? linkedFuelByJob.get(j.id)! : unlinkedFuelPerJob;
+      const fuelIsLinked = linkedFuelByJob.has(j.id);
+      const rawFuelCost = fuelIsLinked ? linkedFuelByJob.get(j.id)! : unlinkedFuelPerJob;
       const fuelCost = Math.round(rawFuelCost * 100) / 100;
       const netProfit = Math.round((revenue - partsCost - laborCost - fuelCost) * 100) / 100;
       const marginPct = revenue > 0 ? Math.round((netProfit / revenue) * 1000) / 10 : 0;
@@ -164,6 +165,7 @@ router.get("/reports/job-profitability", async (req, res): Promise<void> => {
         partsCost,
         laborCost,
         fuelCost,
+        fuelCostSource: fuelIsLinked ? 'actual' : 'estimated',
         netProfit,
         marginPct,
       };

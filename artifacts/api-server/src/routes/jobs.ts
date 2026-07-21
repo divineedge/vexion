@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import crypto from "crypto";
-import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable, invoicesTable, tenantsTable, blueprintsTable, chemicalApplicationsTable, customerPlansTable, equipmentFuelLogsTable } from "@workspace/db";
+import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable, invoicesTable, tenantsTable, blueprintsTable, chemicalApplicationsTable, customerPlansTable, equipmentFuelLogsTable, routeTemplatesTable } from "@workspace/db";
 import { eq, and, or, sql, desc, asc, isNotNull, isNull, ne, inArray, min, gt } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { getCallerRole, isAdminRole } from "../lib/roles";
@@ -218,7 +218,7 @@ router.post("/jobs/import/commit", importUpload.single("file"), async (req, res)
 
 function formatJob(
   j: typeof jobsTable.$inferSelect,
-  extras?: { customerName?: string | null; assigneeName?: string | null; propertyAddress?: string | null; crewName?: string | null; planName?: string | null }
+  extras?: { customerName?: string | null; assigneeName?: string | null; propertyAddress?: string | null; crewName?: string | null; planName?: string | null; routeName?: string | null }
 ) {
   const rule = j.recurrenceRule as unknown as RecurrenceRule | null;
   return {
@@ -248,6 +248,7 @@ function formatJob(
     pendingWeeklyInvoice: j.pendingWeeklyInvoice ?? false,
     recurrenceDescription: rule ? describeRule(rule) : null,
     routeTemplateId: j.routeTemplateId ?? null,
+    routeName: extras?.routeName ?? null,
     sequenceOrder: j.sequenceOrder ?? null,
     isOneTimeReschedule: !!j.isOneTimeReschedule,
     originalScheduledDate: j.originalScheduledDate?.toISOString() ?? null,
@@ -275,6 +276,7 @@ router.get("/jobs", async (req, res): Promise<void> => {
       propertyAddress: propertiesTable.address,
       crewName: crewsTable.name,
       planName: customerPlansTable.templateName,
+      routeName: routeTemplatesTable.name,
     })
     .from(jobsTable)
     .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
@@ -282,10 +284,11 @@ router.get("/jobs", async (req, res): Promise<void> => {
     .leftJoin(propertiesTable, eq(jobsTable.propertyId, propertiesTable.id))
     .leftJoin(crewsTable, eq(jobsTable.crewId, crewsTable.id))
     .leftJoin(customerPlansTable, eq(jobsTable.planId, customerPlansTable.id))
+    .leftJoin(routeTemplatesTable, eq(jobsTable.routeTemplateId, routeTemplatesTable.id))
     .where(where)
     .orderBy(jobsTable.scheduledAt);
 
-  res.json(rows.map(r => formatJob(r.job, { customerName: r.customerName, assigneeName: r.assigneeName, propertyAddress: r.propertyAddress, crewName: r.crewName, planName: r.planName })));
+  res.json(rows.map(r => formatJob(r.job, { customerName: r.customerName, assigneeName: r.assigneeName, propertyAddress: r.propertyAddress, crewName: r.crewName, planName: r.planName, routeName: r.routeName })));
 });
 
 // ── Recurring series list ────────────────────────────────────────────────────
@@ -425,17 +428,18 @@ router.get("/jobs/:id", async (req, res): Promise<void> => {
   const id = parseInt(rawId, 10);
 
   const [row] = await db
-    .select({ job: jobsTable, customerName: customersTable.name, assigneeName: usersTable.name, propertyAddress: propertiesTable.address, crewName: crewsTable.name, planName: customerPlansTable.templateName })
+    .select({ job: jobsTable, customerName: customersTable.name, assigneeName: usersTable.name, propertyAddress: propertiesTable.address, crewName: crewsTable.name, planName: customerPlansTable.templateName, routeName: routeTemplatesTable.name })
     .from(jobsTable)
     .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
     .leftJoin(usersTable, eq(jobsTable.assigneeId, usersTable.id))
     .leftJoin(propertiesTable, eq(jobsTable.propertyId, propertiesTable.id))
     .leftJoin(crewsTable, eq(jobsTable.crewId, crewsTable.id))
     .leftJoin(customerPlansTable, eq(jobsTable.planId, customerPlansTable.id))
+    .leftJoin(routeTemplatesTable, eq(jobsTable.routeTemplateId, routeTemplatesTable.id))
     .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
 
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
-  res.json(formatJob(row.job, { customerName: row.customerName, assigneeName: row.assigneeName, propertyAddress: row.propertyAddress, crewName: row.crewName, planName: row.planName }));
+  res.json(formatJob(row.job, { customerName: row.customerName, assigneeName: row.assigneeName, propertyAddress: row.propertyAddress, crewName: row.crewName, planName: row.planName, routeName: row.routeName }));
 });
 
 router.patch("/jobs/:id", async (req, res): Promise<void> => {

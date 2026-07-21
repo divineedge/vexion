@@ -610,6 +610,12 @@ export default function SchedulePage() {
                               <span className="truncate text-[10px]">{(job as any).recurrenceDescription ?? 'Recurring'}</span>
                             </div>
                           )}
+                          {(job as any).routeName && (
+                            <div className="mt-0.5 flex items-center gap-1">
+                              <RouteIcon className="w-2.5 h-2.5 opacity-70 shrink-0" />
+                              <span className="truncate text-[10px] font-medium opacity-80">{(job as any).routeName}</span>
+                            </div>
+                          )}
                         </div>
                       ))}
                       {/* Estimates */}

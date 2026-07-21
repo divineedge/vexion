@@ -8042,6 +8042,9 @@ components:
           description: "Human-readable summary e.g. Every Mon & Thu"
         routeTemplateId:
           type: ["integer", "null"]
+        routeName:
+          type: ["string", "null"]
+          description: "Name of the assigned route template, joined server-side for display"
         sequenceOrder:
           type: ["integer", "null"]
         isOneTimeReschedule:

@@ -79,6 +79,11 @@ export interface Job {
   recurrenceDescription?: string | null;
   /** @nullable */
   routeTemplateId?: number | null;
+  /**
+     * Name of the assigned route template, joined server-side for display
+     * @nullable
+     */
+  routeName?: string | null;
   /** @nullable */
   sequenceOrder?: number | null;
   isOneTimeReschedule?: boolean;

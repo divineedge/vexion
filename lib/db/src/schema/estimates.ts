@@ -5,6 +5,7 @@ import { tenantsTable } from "./tenants";
 import { customersTable } from "./customers";
 import { propertiesTable } from "./properties";
 import { usersTable } from "./users";
+import { estimateTemplatesTable } from "./estimateTemplates";
 
 /**
  * Estimate line item shape stored in JSONB:
@@ -33,6 +34,7 @@ export const estimatesTable = pgTable("estimates", {
   customerId: integer("customer_id").references(() => customersTable.id),
   propertyId: integer("property_id").references(() => propertiesTable.id),
   blueprintId: integer("blueprint_id"),
+  templateId: integer("template_id").references(() => estimateTemplatesTable.id),
   assigneeId: integer("assignee_id").references(() => usersTable.id),
   /** Draft | Sent | Approved | Declined | Expired */
   status: text("status").notNull().default("draft"),

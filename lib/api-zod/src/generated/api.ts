@@ -5461,7 +5461,8 @@ export const PortalGetSummaryResponse = zod.object({
 })).optional(),
   "createdAt": zod.string()
 })),
-  "unreadAlertCount": zod.number()
+  "unreadAlertCount": zod.number(),
+  "openRequestCount": zod.number()
 })
 
 
@@ -5603,6 +5604,22 @@ export const PortalRespondToAlertResponse = zod.object({
   "photoUrl": zod.string().nullish(),
   "createdAt": zod.string()
 })
+
+
+/**
+ * @summary List service requests submitted by the portal customer
+ */
+export const PortalListServiceRequestsResponseItem = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "status": zod.string(),
+  "scheduledAt": zod.string(),
+  "completedAt": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "totalAmount": zod.number().optional()
+})
+export const PortalListServiceRequestsResponse = zod.array(PortalListServiceRequestsResponseItem)
 
 
 /**
@@ -6239,6 +6256,8 @@ export const ListEstimatesResponseItem = zod.object({
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
   "convertedToJobId": zod.number().nullish(),
+  "templateId": zod.number().nullish(),
+  "templateName": zod.string().nullish(),
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
@@ -6308,6 +6327,8 @@ export const CreateEstimateResponse = zod.object({
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
   "convertedToJobId": zod.number().nullish(),
+  "templateId": zod.number().nullish(),
+  "templateName": zod.string().nullish(),
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
@@ -6365,6 +6386,8 @@ export const GetEstimateResponse = zod.object({
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
   "convertedToJobId": zod.number().nullish(),
+  "templateId": zod.number().nullish(),
+  "templateName": zod.string().nullish(),
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
@@ -6436,6 +6459,8 @@ export const UpdateEstimateResponse = zod.object({
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
   "convertedToJobId": zod.number().nullish(),
+  "templateId": zod.number().nullish(),
+  "templateName": zod.string().nullish(),
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
@@ -6494,6 +6519,8 @@ export const SendEstimateResponse = zod.object({
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
   "convertedToJobId": zod.number().nullish(),
+  "templateId": zod.number().nullish(),
+  "templateName": zod.string().nullish(),
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
@@ -6602,6 +6629,8 @@ export const GetPublicEstimateResponse = zod.object({
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
   "convertedToJobId": zod.number().nullish(),
+  "templateId": zod.number().nullish(),
+  "templateName": zod.string().nullish(),
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
@@ -6691,6 +6720,8 @@ export const RespondToEstimateResponse = zod.object({
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
   "convertedToJobId": zod.number().nullish(),
+  "templateId": zod.number().nullish(),
+  "templateName": zod.string().nullish(),
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),

@@ -13265,6 +13265,83 @@ export const usePortalRespondToAlert = <TError = ErrorType<unknown>,
       return useMutation(getPortalRespondToAlertMutationOptions(options));
     }
 
+export const getPortalListServiceRequestsUrl = () => {
+
+
+
+
+  return `/api/portal/service-requests`
+}
+
+/**
+ * @summary List service requests submitted by the portal customer
+ */
+export const portalListServiceRequests = async ( options?: RequestInit): Promise<PortalJob[]> => {
+
+  return customFetch<PortalJob[]>(getPortalListServiceRequestsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getPortalListServiceRequestsQueryKey = () => {
+    return [
+    `/api/portal/service-requests`
+    ] as const;
+    }
+
+
+export const getPortalListServiceRequestsQueryOptions = <TData = Awaited<ReturnType<typeof portalListServiceRequests>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof portalListServiceRequests>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getPortalListServiceRequestsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof portalListServiceRequests>>> = ({ signal }) => portalListServiceRequests({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof portalListServiceRequests>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type PortalListServiceRequestsQueryResult = NonNullable<Awaited<ReturnType<typeof portalListServiceRequests>>>
+export type PortalListServiceRequestsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List service requests submitted by the portal customer
+ */
+
+export function usePortalListServiceRequests<TData = Awaited<ReturnType<typeof portalListServiceRequests>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof portalListServiceRequests>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getPortalListServiceRequestsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getPortalCreateServiceRequestUrl = () => {
 
 
@@ -13335,52 +13412,6 @@ export const usePortalCreateServiceRequest = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getPortalCreateServiceRequestMutationOptions(options));
     }
-
-export const getPortalListServiceRequestsUrl = () => {
-  return `/api/portal/service-requests`
-}
-
-/**
- * @summary List service requests submitted by the customer via the portal
- */
-export const portalListServiceRequests = async ( options?: RequestInit): Promise<PortalJob[]> => {
-  return customFetch<PortalJob[]>(getPortalListServiceRequestsUrl(),
-  {
-    ...options,
-    method: 'GET',
-  }
-);}
-
-export const getPortalListServiceRequestsQueryOptions = <TData = Awaited<ReturnType<typeof portalListServiceRequests>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof portalListServiceRequests>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? ['portalListServiceRequests'];
-
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof portalListServiceRequests>>> = ({ signal }) => portalListServiceRequests({ signal, ...requestOptions });
-
-  return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof portalListServiceRequests>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type PortalListServiceRequestsQueryResult = NonNullable<Awaited<ReturnType<typeof portalListServiceRequests>>>
-export type PortalListServiceRequestsQueryError = ErrorType<unknown>
-
-/**
- * @summary List service requests submitted by the customer via the portal
- */
-export function usePortalListServiceRequests<TData = Awaited<ReturnType<typeof portalListServiceRequests>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof portalListServiceRequests>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-
-  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getPortalListServiceRequestsQueryOptions(options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
-
-  query.queryKey = queryOptions.queryKey ;
-
-  return query;
-}
 
 export const getListJobAlertsUrl = (id: number,) => {
 

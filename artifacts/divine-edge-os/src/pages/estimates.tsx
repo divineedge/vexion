@@ -148,6 +148,7 @@ export default function EstimatesPage() {
         scheduledAt: form.scheduledAt || undefined,
         expiresAt: form.expiresAt || undefined,
         notes: form.notes || undefined,
+        templateId: form.templateId ? parseInt(form.templateId, 10) : undefined,
         lineItems: lineItems.map(i => ({
           id: i.id,
           description: i.description,
@@ -580,6 +581,16 @@ export default function EstimatesPage() {
                     </div>
                   )}
                 </div>
+
+                {(selectedEstimate as typeof selectedEstimate & { templateName?: string | null }).templateName && (
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Template</p>
+                    <p className="text-sm flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      Built from: <span className="font-medium">{(selectedEstimate as typeof selectedEstimate & { templateName?: string | null }).templateName}</span>
+                    </p>
+                  </div>
+                )}
 
                 {selectedEstimate.notes && (
                   <div className="space-y-1">

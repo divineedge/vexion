@@ -3548,6 +3548,19 @@ paths:
                 $ref: "#/components/schemas/PortalAlert"
 
   /portal/service-requests:
+    get:
+      operationId: portalListServiceRequests
+      tags: [portal]
+      summary: List service requests submitted by the portal customer
+      responses:
+        "200":
+          description: Service requests (returned as PortalJob objects)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PortalJob"
     post:
       operationId: portalCreateServiceRequest
       tags: [portal]
@@ -6220,6 +6233,10 @@ components:
           type: ["string", "null"]
         convertedToJobId:
           type: ["integer", "null"]
+        templateId:
+          type: ["integer", "null"]
+        templateName:
+          type: ["string", "null"]
         customerName:
           type: ["string", "null"]
         assigneeName:
@@ -10517,7 +10534,7 @@ components:
 
     PortalSummary:
       type: object
-      required: [upcomingJobs, recentInvoices, unreadAlertCount]
+      required: [upcomingJobs, recentInvoices, unreadAlertCount, openRequestCount]
       properties:
         upcomingJobs:
           type: array
@@ -10528,6 +10545,8 @@ components:
           items:
             $ref: "#/components/schemas/PortalInvoice"
         unreadAlertCount:
+          type: integer
+        openRequestCount:
           type: integer
 
     PortalJob:

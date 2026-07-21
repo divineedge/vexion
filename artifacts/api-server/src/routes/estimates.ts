@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, estimatesTable, visitsTable, jobsTable, customersTable, propertiesTable, usersTable, tenantsTable, blueprintsTable, communicationsLogTable } from "@workspace/db";
+import { db, estimatesTable, visitsTable, jobsTable, customersTable, propertiesTable, usersTable, tenantsTable, blueprintsTable, communicationsLogTable, estimateTemplatesTable } from "@workspace/db";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { sendReviewRequest } from "../lib/reviewService";
@@ -243,7 +243,7 @@ interface EstimateLineItem {
 
 function formatEstimate(
   e: typeof estimatesTable.$inferSelect,
-  extras?: { customerName?: string | null; assigneeName?: string | null; propertyAddress?: string | null }
+  extras?: { customerName?: string | null; assigneeName?: string | null; propertyAddress?: string | null; templateName?: string | null }
 ) {
   return {
     ...e,
@@ -258,6 +258,7 @@ function formatEstimate(
     customerName: extras?.customerName ?? null,
     assigneeName: extras?.assigneeName ?? null,
     propertyAddress: extras?.propertyAddress ?? null,
+    templateName: extras?.templateName ?? null,
   };
 }
 
@@ -330,12 +331,16 @@ router.post("/estimates", async (req, res): Promise<void> => {
   const { customerId, propertyId, blueprintId, assigneeId, visitMode, scheduledAt, expiresAt, notes, lineItems, templateId } = req.body;
 
   let items: EstimateLineItem[] = lineItems ?? [];
+  let resolvedTemplateId: number | null = null;
 
-  // If a templateId was provided, load template line items
+  // If a templateId was provided, load template line items and record the reference
   if (templateId) {
-    const { estimateTemplatesTable } = await import("@workspace/db");
-    const [tmpl] = await db.select().from(estimateTemplatesTable).where(and(eq(estimateTemplatesTable.id, templateId), eq(estimateTemplatesTable.tenantId, tenantId)));
-    if (tmpl) items = (tmpl.lineItems as EstimateLineItem[]) ?? [];
+    const templateIdNum = parseInt(templateId, 10);
+    const [tmpl] = await db.select().from(estimateTemplatesTable).where(and(eq(estimateTemplatesTable.id, templateIdNum), eq(estimateTemplatesTable.tenantId, tenantId)));
+    if (tmpl) {
+      items = (tmpl.lineItems as EstimateLineItem[]) ?? [];
+      resolvedTemplateId = tmpl.id;
+    }
   }
 
   const { subtotal, tax, total } = calcTotals(items);
@@ -348,6 +353,7 @@ router.post("/estimates", async (req, res): Promise<void> => {
     customerId: customerId ? parseInt(customerId, 10) : null,
     propertyId: propertyId ? parseInt(propertyId, 10) : null,
     blueprintId: blueprintId ? parseInt(blueprintId, 10) : null,
+    templateId: resolvedTemplateId,
     assigneeId: assigneeId ? parseInt(assigneeId, 10) : null,
     visitMode: visitMode ?? "scheduled",
     scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
@@ -374,15 +380,17 @@ router.get("/estimates/:id", async (req, res): Promise<void> => {
       customerName: customersTable.name,
       assigneeName: usersTable.name,
       propertyAddress: propertiesTable.address,
+      templateName: estimateTemplatesTable.name,
     })
     .from(estimatesTable)
     .leftJoin(customersTable, eq(estimatesTable.customerId, customersTable.id))
     .leftJoin(usersTable, eq(estimatesTable.assigneeId, usersTable.id))
     .leftJoin(propertiesTable, eq(estimatesTable.propertyId, propertiesTable.id))
+    .leftJoin(estimateTemplatesTable, eq(estimatesTable.templateId, estimateTemplatesTable.id))
     .where(and(eq(estimatesTable.id, id), eq(estimatesTable.tenantId, tenantId)));
 
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
-  res.json(formatEstimate(row.estimate, { customerName: row.customerName, assigneeName: row.assigneeName, propertyAddress: row.propertyAddress }));
+  res.json(formatEstimate(row.estimate, { customerName: row.customerName, assigneeName: row.assigneeName, propertyAddress: row.propertyAddress, templateName: row.templateName }));
 });
 
 // ── UPDATE ────────────────────────────────────────────────────────────────────

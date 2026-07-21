@@ -76,6 +76,10 @@ export interface Estimate {
   /** @nullable */
   convertedToJobId?: number | null;
   /** @nullable */
+  templateId?: number | null;
+  /** @nullable */
+  templateName?: string | null;
+  /** @nullable */
   customerName?: string | null;
   /** @nullable */
   assigneeName?: string | null;

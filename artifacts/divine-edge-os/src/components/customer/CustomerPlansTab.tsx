@@ -1,12 +1,13 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'wouter';
 import {
   useListCustomerPlans, getListCustomerPlansQueryKey,
   useListPlanTemplates, getListPlanTemplatesQueryKey,
   usePreviewCustomerPlan, useCreateCustomerPlan,
+  customFetch,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -14,7 +15,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
-import { CalendarClock, Plus, Repeat, MapPin, ChevronRight } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { CalendarClock, Plus, Repeat, MapPin, ChevronRight, Info, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Property { id: number; address: string; }
@@ -27,6 +29,12 @@ const STATUS_STYLE: Record<string, string> = {
   pending_renewal: 'bg-blue-100 text-blue-700 border-blue-200',
 };
 
+interface PriceResolution {
+  resolvedPrice: number;
+  pricingMode: string;
+  breakdown?: Array<{ serviceId: number; serviceName: string; areaSqft: number; price: number }>;
+}
+
 export default function CustomerPlansTab({ customerId, properties }: { customerId: number; properties: Property[] }) {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
@@ -35,6 +43,9 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
   const [propertyId, setPropertyId] = useState<string>(properties[0] ? String(properties[0].id) : '');
   const [startDate, setStartDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [autoRenew, setAutoRenew] = useState(true);
+  const [priceOverride, setPriceOverride] = useState<string>('');
+  const [priceResolution, setPriceResolution] = useState<PriceResolution | null>(null);
+  const [resolvingPrice, setResolvingPrice] = useState(false);
 
   const { data: plans, isLoading } = useListCustomerPlans(
     { customerId },
@@ -46,11 +57,56 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
   const previewMutation = usePreviewCustomerPlan();
   const createMutation = useCreateCustomerPlan();
 
+  const selectedTemplate = activeTemplates.find(t => String(t.id) === templateId);
+  const templatePricingMode = (selectedTemplate as any)?.pricingMode ?? 'flat';
+
+  // Auto-resolve price when template + property are selected and template is area-based
+  useEffect(() => {
+    if (!templateId || !propertyId) { setPriceResolution(null); return; }
+    if (templatePricingMode === 'flat') {
+      setPriceResolution(null);
+      if (selectedTemplate) setPriceOverride(String(selectedTemplate.price));
+      return;
+    }
+
+    let cancelled = false;
+    setResolvingPrice(true);
+    setPriceResolution(null);
+
+    customFetch<PriceResolution>('/api/plan-templates/resolve-price', {
+      method: 'POST',
+      body: JSON.stringify({ templateId: Number(templateId), propertyId: Number(propertyId) }),
+      headers: { 'Content-Type': 'application/json' },
+    }).then(res => {
+      if (cancelled) return;
+      setPriceResolution(res);
+      setPriceOverride(String(res.resolvedPrice.toFixed(2)));
+    }).catch(() => {
+      if (cancelled) return;
+      // Fall back to flat price
+      if (selectedTemplate) setPriceOverride(String(selectedTemplate.price));
+    }).finally(() => {
+      if (!cancelled) setResolvingPrice(false);
+    });
+
+    return () => { cancelled = true; };
+  }, [templateId, propertyId, templatePricingMode]);
+
+  // When template changes to flat, seed the price override from the template's flat price
+  useEffect(() => {
+    if (templatePricingMode === 'flat' && selectedTemplate) {
+      setPriceOverride(String(selectedTemplate.price));
+    }
+  }, [templateId]);
+
   const openSell = () => {
     setTemplateId('');
     setPropertyId(properties[0] ? String(properties[0].id) : '');
     setStartDate(new Date().toISOString().slice(0, 10));
     setAutoRenew(true);
+    setPriceOverride('');
+    setPriceResolution(null);
+    setResolvingPrice(false);
     previewMutation.reset();
     setSellOpen(true);
   };
@@ -63,6 +119,7 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
   const confirmSale = () => {
     if (!templateId || !propertyId) return;
     const preview = previewMutation.data;
+    const finalPrice = parseFloat(priceOverride) || selectedTemplate?.price || 0;
     createMutation.mutate({
       data: {
         templateId: Number(templateId),
@@ -70,6 +127,7 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
         propertyId: Number(propertyId),
         startDate,
         autoRenew,
+        price: finalPrice,
         visits: preview?.visits,
       },
     }, {
@@ -81,8 +139,6 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
       onError: () => toast.error('Failed to sell plan'),
     });
   };
-
-  const selectedTemplate = activeTemplates.find(t => String(t.id) === templateId);
 
   return (
     <div className="space-y-4">
@@ -138,9 +194,14 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
               <Select value={templateId} onValueChange={v => { setTemplateId(v); previewMutation.reset(); }}>
                 <SelectTrigger><SelectValue placeholder="Choose a plan" /></SelectTrigger>
                 <SelectContent>
-                  {activeTemplates.map(t => (
-                    <SelectItem key={t.id} value={String(t.id)}>{t.name} — ${t.price.toFixed(2)}/{CYCLE_LABEL[t.billingCycle]}</SelectItem>
-                  ))}
+                  {activeTemplates.map(t => {
+                    const pm = (t as any).pricingMode ?? 'flat';
+                    return (
+                      <SelectItem key={t.id} value={String(t.id)}>
+                        {t.name}{pm === 'flat' ? ` — $${t.price.toFixed(2)}/${CYCLE_LABEL[t.billingCycle]}` : ` — area-based/${CYCLE_LABEL[t.billingCycle]}`}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
@@ -167,6 +228,46 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
                 </div>
               </div>
             </div>
+
+            {/* Price field */}
+            {templateId && (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <label className="text-sm font-medium">Price per {selectedTemplate ? CYCLE_LABEL[selectedTemplate.billingCycle] : 'Period'} ($)</label>
+                  {resolvingPrice && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+                  {priceResolution && !resolvingPrice && priceResolution.pricingMode !== 'flat' && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="w-3.5 h-3.5 text-violet-500 cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs text-xs" side="top">
+                          <p className="font-medium mb-1">
+                            {priceResolution.pricingMode === 'sum_services' ? 'Resolved from service pricing' : 'Resolved from area matrix'}
+                          </p>
+                          {priceResolution.breakdown?.map(b => (
+                            <p key={b.serviceId} className="text-muted-foreground">
+                              {b.serviceName}: {b.areaSqft.toLocaleString()} sqft → ${b.price.toFixed(2)}
+                            </p>
+                          ))}
+                          <p className="text-muted-foreground mt-1 italic">You can edit the price below to override.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                </div>
+                <Input
+                  type="number" step="0.01" min={0} placeholder="0.00"
+                  value={priceOverride}
+                  onChange={e => setPriceOverride(e.target.value)}
+                />
+                {priceResolution && !resolvingPrice && priceResolution.pricingMode !== 'flat' && (
+                  <p className="text-xs text-violet-600">
+                    Auto-resolved from property area{priceResolution.pricingMode === 'sum_services' ? ' and service pricing' : ''}. Edit above to override.
+                  </p>
+                )}
+              </div>
+            )}
 
             <Button variant="outline" onClick={runPreview} disabled={previewMutation.isPending || !templateId || !propertyId} className="w-full">
               {previewMutation.isPending ? 'Building preview...' : 'Preview Schedule'}

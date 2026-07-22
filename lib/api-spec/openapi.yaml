@@ -5089,6 +5089,25 @@ paths:
         "204":
           description: Deleted
 
+  /plan-templates/resolve-price:
+    post:
+      operationId: resolvePlanPrice
+      tags: [servicePlans]
+      summary: Resolve the plan price for a property based on the template's pricing mode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolvePlanPriceInput"
+      responses:
+        "200":
+          description: Resolved price and optional breakdown
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResolvePlanPriceResult"
+
   /customer-plans/preview:
     post:
       operationId: previewCustomerPlan
@@ -7071,9 +7090,21 @@ components:
         frequencyDays:
           type: integer
 
+    PlanPricingTier:
+      type: object
+      required: [minSqft, maxSqft, price]
+      properties:
+        minSqft:
+          type: number
+        maxSqft:
+          type: ["number", "null"]
+          description: null means open-ended (above minSqft)
+        price:
+          type: number
+
     PlanTemplate:
       type: object
-      required: [id, tenantId, name, services, visitCount, billingCycle, price, autoRenewDefault, isActive, createdAt, updatedAt]
+      required: [id, tenantId, name, services, visitCount, billingCycle, price, autoRenewDefault, isActive, pricingMode, createdAt, updatedAt]
       properties:
         id:
           type: integer
@@ -7096,6 +7127,13 @@ components:
           type: ["integer", "null"]
         price:
           type: number
+        pricingMode:
+          type: string
+          enum: [flat, matrix, sum_services]
+        pricingMatrix:
+          type: ["array", "null"]
+          items:
+            $ref: "#/components/schemas/PlanPricingTier"
         autoRenewDefault:
           type: boolean
         isActive:
@@ -7126,10 +7164,48 @@ components:
           type: integer
         price:
           type: number
+        pricingMode:
+          type: string
+          enum: [flat, matrix, sum_services]
+        pricingMatrix:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanPricingTier"
         autoRenewDefault:
           type: boolean
         isActive:
           type: boolean
+
+    ResolvePlanPriceInput:
+      type: object
+      required: [templateId, propertyId]
+      properties:
+        templateId:
+          type: integer
+        propertyId:
+          type: integer
+
+    ResolvePlanPriceResult:
+      type: object
+      required: [resolvedPrice, pricingMode]
+      properties:
+        resolvedPrice:
+          type: number
+        pricingMode:
+          type: string
+        breakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              serviceId:
+                type: integer
+              serviceName:
+                type: string
+              areaSqft:
+                type: number
+              price:
+                type: number
 
     PlanVisitPreview:
       type: object
@@ -7250,6 +7326,9 @@ components:
           type: string
         autoRenew:
           type: boolean
+        price:
+          type: number
+          description: Sale-time price override (e.g. resolved from area matrix). Falls back to template flat price when omitted.
         visits:
           type: array
           items:

@@ -3,6 +3,7 @@ import crypto from "crypto";
 import {
   db, planTemplatesTable, customerPlansTable, jobsTable, customersTable,
   propertiesTable, usersTable, invoicesTable, activityLogTable, tenantsTable,
+  servicesTable,
 } from "@workspace/db";
 import { eq, and, sql, gt, ne, inArray, isNotNull, isNull } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
@@ -100,6 +101,30 @@ async function requireAdmin(req: import("express").Request, res: import("express
   return true;
 }
 
+// ── Matrix validation ─────────────────────────────────────────────────────────
+
+function validatePlanMatrix(matrix: PlanPricingTier[]): string | null {
+  if (matrix.length === 0) return null; // empty = no tiers to validate
+  for (const tier of matrix) {
+    if (typeof tier.minSqft !== "number" || tier.minSqft < 0) return "Each tier must have a non-negative minSqft";
+    if (tier.maxSqft !== null && (typeof tier.maxSqft !== "number" || tier.maxSqft < tier.minSqft)) {
+      return "Each tier's maxSqft must be >= minSqft (or null for open-ended)";
+    }
+    if (typeof tier.price !== "number" || tier.price < 0) return "Each tier must have a non-negative price";
+  }
+  // Sort by minSqft and verify: no overlaps, no gaps that skip coverage, only last may be open-ended
+  const sorted = [...matrix].sort((a, b) => a.minSqft - b.minSqft);
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const cur = sorted[i];
+    const next = sorted[i + 1];
+    if (cur.maxSqft === null) return "Only the last (highest) tier may be open-ended";
+    if (next.minSqft <= cur.maxSqft) return `Tiers overlap: tier ending at ${cur.maxSqft} overlaps tier starting at ${next.minSqft}`;
+  }
+  const openEnded = matrix.filter(t => t.maxSqft === null);
+  if (openEnded.length > 1) return "At most one open-ended tier (no upper limit) is allowed";
+  return null;
+}
+
 // ── Plan Templates CRUD ───────────────────────────────────────────────────────
 
 router.get("/plan-templates", async (req, res): Promise<void> => {
@@ -111,10 +136,15 @@ router.get("/plan-templates", async (req, res): Promise<void> => {
 router.post("/plan-templates", async (req, res): Promise<void> => {
   if (!(await requireAdmin(req, res))) return;
   const tenantId = getTenantId(req);
-  const { name, description, services, visitCount, billingCycle, customCycleDays, price, autoRenewDefault, isActive } = req.body;
+  const { name, description, services, visitCount, billingCycle, customCycleDays, price, autoRenewDefault, isActive, pricingMode, pricingMatrix } = req.body;
   if (!name || !Array.isArray(services) || services.length === 0) {
     res.status(400).json({ error: "name and at least one service are required" });
     return;
+  }
+  const resolvedMode = ["flat", "matrix", "sum_services"].includes(pricingMode) ? pricingMode : "flat";
+  if (resolvedMode === "matrix") {
+    const matrixErr = validatePlanMatrix(Array.isArray(pricingMatrix) ? pricingMatrix : []);
+    if (matrixErr) { res.status(400).json({ error: matrixErr }); return; }
   }
   const [t] = await db.insert(planTemplatesTable).values({
     tenantId,
@@ -127,6 +157,8 @@ router.post("/plan-templates", async (req, res): Promise<void> => {
     price: price ?? 0,
     autoRenewDefault: autoRenewDefault ?? true,
     isActive: isActive ?? true,
+    pricingMode: resolvedMode,
+    pricingMatrix: resolvedMode === "matrix" && Array.isArray(pricingMatrix) ? pricingMatrix : null,
   }).returning();
   res.status(201).json(fmtTemplate(t));
 });
@@ -143,7 +175,7 @@ router.patch("/plan-templates/:id", async (req, res): Promise<void> => {
   if (!(await requireAdmin(req, res))) return;
   const tenantId = getTenantId(req);
   const id = parseInt(req.params.id, 10);
-  const { name, description, services, visitCount, billingCycle, customCycleDays, price, autoRenewDefault, isActive } = req.body;
+  const { name, description, services, visitCount, billingCycle, customCycleDays, price, autoRenewDefault, isActive, pricingMode, pricingMatrix } = req.body;
   const update: Partial<typeof planTemplatesTable.$inferInsert> = {};
   if (name !== undefined) update.name = name;
   if (description !== undefined) update.description = description;
@@ -154,6 +186,19 @@ router.patch("/plan-templates/:id", async (req, res): Promise<void> => {
   if (price !== undefined) update.price = price;
   if (autoRenewDefault !== undefined) update.autoRenewDefault = autoRenewDefault;
   if (isActive !== undefined) update.isActive = isActive;
+  if (pricingMode !== undefined) {
+    const resolvedMode = ["flat", "matrix", "sum_services"].includes(pricingMode) ? pricingMode : "flat";
+    if (resolvedMode === "matrix") {
+      const matrixErr = validatePlanMatrix(Array.isArray(pricingMatrix) ? pricingMatrix : []);
+      if (matrixErr) { res.status(400).json({ error: matrixErr }); return; }
+    }
+    update.pricingMode = resolvedMode;
+    update.pricingMatrix = resolvedMode === "matrix" && Array.isArray(pricingMatrix) ? pricingMatrix : null;
+  } else if (pricingMatrix !== undefined) {
+    const matrixErr = validatePlanMatrix(Array.isArray(pricingMatrix) ? pricingMatrix : []);
+    if (matrixErr) { res.status(400).json({ error: matrixErr }); return; }
+    update.pricingMatrix = Array.isArray(pricingMatrix) ? pricingMatrix : null;
+  }
   const [updated] = await db.update(planTemplatesTable).set(update).where(and(eq(planTemplatesTable.id, id), eq(planTemplatesTable.tenantId, tenantId))).returning();
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
   res.json(fmtTemplate(updated));
@@ -178,6 +223,135 @@ router.delete("/plan-templates/:id", async (req, res): Promise<void> => {
     .returning({ id: planTemplatesTable.id });
   if (!deleted) { res.status(404).json({ error: "Not found" }); return; }
   res.sendStatus(204);
+});
+
+// ── Plan price resolver ───────────────────────────────────────────────────────
+
+interface MeasurementPolygon {
+  id: string;
+  zoneTypeId?: string | null;
+  areaSqft?: number | null;
+  enabled?: boolean;
+}
+
+interface PlanPricingTier {
+  minSqft: number;
+  maxSqft: number | null;
+  price: number;
+}
+
+function resolvePlanMatrixPrice(matrix: PlanPricingTier[], areaSqft: number): number | null {
+  const sorted = [...matrix].sort((a, b) => a.minSqft - b.minSqft);
+  for (const tier of sorted) {
+    if (areaSqft >= tier.minSqft && (tier.maxSqft === null || areaSqft <= tier.maxSqft)) {
+      return tier.price;
+    }
+  }
+  return null;
+}
+
+function resolveServiceMatrixPrice(
+  pricingMode: string,
+  basePrice: number,
+  pricingMatrix: unknown,
+  areaSqft: number,
+): number {
+  if (pricingMode !== "matrix" || !Array.isArray(pricingMatrix) || pricingMatrix.length === 0) {
+    return basePrice;
+  }
+  const sorted = [...(pricingMatrix as PlanPricingTier[])].sort((a, b) => a.minSqft - b.minSqft);
+  for (const tier of sorted) {
+    if (areaSqft >= tier.minSqft && (tier.maxSqft === null || areaSqft <= tier.maxSqft)) {
+      if (tier.maxSqft === null && (tier as any).perSqftRate != null && (tier as any).perSqftRate > 0) {
+        return (tier as any).perSqftRate * areaSqft;
+      }
+      return tier.price;
+    }
+  }
+  return basePrice;
+}
+
+router.post("/plan-templates/resolve-price", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const { templateId, propertyId } = req.body;
+  if (!templateId || !propertyId) {
+    res.status(400).json({ error: "templateId and propertyId are required" });
+    return;
+  }
+
+  const [template] = await db.select().from(planTemplatesTable)
+    .where(and(eq(planTemplatesTable.id, templateId), eq(planTemplatesTable.tenantId, tenantId)));
+  if (!template) { res.status(404).json({ error: "Plan template not found" }); return; }
+
+  const [property] = await db.select().from(propertiesTable)
+    .where(and(eq(propertiesTable.id, propertyId), eq(propertiesTable.tenantId, tenantId)));
+  if (!property) { res.status(404).json({ error: "Property not found" }); return; }
+
+  const mode = template.pricingMode ?? "flat";
+
+  if (mode === "flat") {
+    res.json({ resolvedPrice: template.price, pricingMode: "flat" });
+    return;
+  }
+
+  if (mode === "matrix") {
+    const matrix = (template.pricingMatrix as PlanPricingTier[] | null) ?? [];
+    const areaSqft = property.serviceableAreaSqft ?? 0;
+    const resolved = resolvePlanMatrixPrice(matrix, areaSqft);
+    res.json({
+      resolvedPrice: resolved ?? template.price,
+      pricingMode: "matrix",
+    });
+    return;
+  }
+
+  if (mode === "sum_services") {
+    const planServices = ((template.services as unknown[]) ?? []) as PlanServiceRule[];
+    const serviceIds = planServices.map(s => s.serviceId);
+    if (serviceIds.length === 0) {
+      res.json({ resolvedPrice: template.price, pricingMode: "sum_services", breakdown: [] });
+      return;
+    }
+
+    const svcRows = await db.select({
+      id: servicesTable.id,
+      name: servicesTable.name,
+      basePrice: servicesTable.basePrice,
+      pricingMode: servicesTable.pricingMode,
+      pricingMatrix: servicesTable.pricingMatrix,
+      linkedZoneTypeId: servicesTable.linkedZoneTypeId,
+    }).from(servicesTable)
+      .where(and(inArray(servicesTable.id, serviceIds), eq(servicesTable.tenantId, tenantId)));
+
+    const polygons = ((property.measurementPolygons as unknown[]) ?? []) as MeasurementPolygon[];
+
+    // Build a map: zoneTypeId → total sqft (only enabled polygons)
+    const zoneAreaMap = new Map<string, number>();
+    for (const poly of polygons) {
+      if (poly.enabled === false) continue;
+      if (!poly.zoneTypeId || !poly.areaSqft) continue;
+      zoneAreaMap.set(poly.zoneTypeId, (zoneAreaMap.get(poly.zoneTypeId) ?? 0) + poly.areaSqft);
+    }
+    const totalAreaSqft = property.serviceableAreaSqft ?? 0;
+
+    const breakdown: Array<{ serviceId: number; serviceName: string; areaSqft: number; price: number }> = [];
+    let total = 0;
+
+    for (const svc of svcRows) {
+      // For zone-linked services use the matching zone area; fall back to total serviceable area
+      const areaSqft = svc.linkedZoneTypeId
+        ? (zoneAreaMap.get(svc.linkedZoneTypeId) ?? totalAreaSqft)
+        : totalAreaSqft;
+      const price = resolveServiceMatrixPrice(svc.pricingMode, svc.basePrice, svc.pricingMatrix, areaSqft);
+      total += price;
+      breakdown.push({ serviceId: svc.id, serviceName: svc.name, areaSqft, price });
+    }
+
+    res.json({ resolvedPrice: total, pricingMode: "sum_services", breakdown });
+    return;
+  }
+
+  res.json({ resolvedPrice: template.price, pricingMode: mode });
 });
 
 // ── Preview a plan's schedule before selling it ───────────────────────────────
@@ -219,7 +393,7 @@ router.post("/customer-plans/preview", async (req, res): Promise<void> => {
 router.post("/customer-plans", async (req, res): Promise<void> => {
   if (!(await requireAdmin(req, res))) return;
   const tenantId = getTenantId(req);
-  const { templateId, customerId, propertyId, startDate, autoRenew, visits } = req.body;
+  const { templateId, customerId, propertyId, startDate, autoRenew, visits, price: salePriceOverride } = req.body;
 
   if (!templateId || !customerId || !propertyId || !startDate) {
     res.status(400).json({ error: "templateId, customerId, propertyId and startDate are required" });
@@ -300,7 +474,7 @@ router.post("/customer-plans", async (req, res): Promise<void> => {
       endDate,
       billingCycle: template.billingCycle,
       customCycleDays: template.customCycleDays,
-      billingPrice: template.price,
+      billingPrice: typeof salePriceOverride === "number" && salePriceOverride >= 0 ? salePriceOverride : template.price,
       autoRenew: autoRenew ?? template.autoRenewDefault,
       status: "active",
       nextBillingDate: endDate.toISOString().slice(0, 10),

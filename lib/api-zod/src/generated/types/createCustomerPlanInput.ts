@@ -13,5 +13,7 @@ export interface CreateCustomerPlanInput {
   propertyId: number;
   startDate: string;
   autoRenew?: boolean;
+  /** Sale-time price override (e.g. resolved from area matrix). Falls back to template flat price when omitted. */
+  price?: number;
   visits?: CreateCustomerPlanInputVisitsItem[];
 }

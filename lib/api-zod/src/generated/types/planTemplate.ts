@@ -5,7 +5,9 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { PlanPricingTier } from './planPricingTier';
 import type { PlanTemplateBillingCycle } from './planTemplateBillingCycle';
+import type { PlanTemplatePricingMode } from './planTemplatePricingMode';
 import type { PlanTemplateServiceRule } from './planTemplateServiceRule';
 
 export interface PlanTemplate {
@@ -20,6 +22,9 @@ export interface PlanTemplate {
   /** @nullable */
   customCycleDays?: number | null;
   price: number;
+  pricingMode: PlanTemplatePricingMode;
+  /** @nullable */
+  pricingMatrix?: PlanPricingTier[] | null;
   autoRenewDefault: boolean;
   isActive: boolean;
   createdAt: string;

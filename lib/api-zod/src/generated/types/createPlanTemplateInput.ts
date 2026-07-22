@@ -6,6 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CreatePlanTemplateInputBillingCycle } from './createPlanTemplateInputBillingCycle';
+import type { CreatePlanTemplateInputPricingMode } from './createPlanTemplateInputPricingMode';
+import type { PlanPricingTier } from './planPricingTier';
 import type { PlanTemplateServiceRule } from './planTemplateServiceRule';
 
 export interface CreatePlanTemplateInput {
@@ -16,6 +18,8 @@ export interface CreatePlanTemplateInput {
   billingCycle?: CreatePlanTemplateInputBillingCycle;
   customCycleDays?: number;
   price?: number;
+  pricingMode?: CreatePlanTemplateInputPricingMode;
+  pricingMatrix?: PlanPricingTier[];
   autoRenewDefault?: boolean;
   isActive?: boolean;
 }

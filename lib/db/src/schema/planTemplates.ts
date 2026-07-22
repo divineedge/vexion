@@ -27,6 +27,18 @@ export const planTemplatesTable = pgTable("plan_templates", {
   customCycleDays: integer("custom_cycle_days"),
   /** Price charged per billing cycle. */
   price: real("price").notNull().default(0),
+  /**
+   * Pricing mode for this plan template:
+   * - 'flat'         → always use `price` (default / current behaviour)
+   * - 'matrix'       → resolve price from `pricingMatrix` brackets keyed on the property's serviceableAreaSqft
+   * - 'sum_services' → sum each included service's own area-based price for the property's zone areas
+   */
+  pricingMode: text("pricing_mode").notNull().default("flat"),
+  /**
+   * Array of sqft brackets used when pricingMode = 'matrix':
+   * [{ minSqft, maxSqft (null = open-ended), price }]
+   */
+  pricingMatrix: jsonb("pricing_matrix"),
   /** Default for whether plans sold from this template auto-renew (can be overridden per plan). */
   autoRenewDefault: boolean("auto_renew_default").notNull().default(true),
   isActive: boolean("is_active").notNull().default(true),

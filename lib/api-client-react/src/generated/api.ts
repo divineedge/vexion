@@ -232,6 +232,8 @@ import type {
   ResequenceRouteInput,
   ResequenceRouteResult,
   ResolveFollowupQueueItemInput,
+  ResolvePlanPriceInput,
+  ResolvePlanPriceResult,
   RevenueTrendItem,
   ReviewRequest,
   ReviewRequestUpdate,
@@ -18667,6 +18669,77 @@ export const useDeletePlanTemplate = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeletePlanTemplateMutationOptions(options));
+    }
+
+export const getResolvePlanPriceUrl = () => {
+
+
+
+
+  return `/api/plan-templates/resolve-price`
+}
+
+/**
+ * @summary Resolve the plan price for a property based on the template's pricing mode
+ */
+export const resolvePlanPrice = async (resolvePlanPriceInput: ResolvePlanPriceInput, options?: RequestInit): Promise<ResolvePlanPriceResult> => {
+
+  return customFetch<ResolvePlanPriceResult>(getResolvePlanPriceUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(resolvePlanPriceInput)
+  }
+);}
+
+
+
+
+
+export const getResolvePlanPriceMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolvePlanPrice>>, TError,{data: BodyType<ResolvePlanPriceInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resolvePlanPrice>>, TError,{data: BodyType<ResolvePlanPriceInput>}, TContext> => {
+
+const mutationKey = ['resolvePlanPrice'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resolvePlanPrice>>, {data: BodyType<ResolvePlanPriceInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  resolvePlanPrice(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResolvePlanPriceMutationResult = NonNullable<Awaited<ReturnType<typeof resolvePlanPrice>>>
+    export type ResolvePlanPriceMutationBody = BodyType<ResolvePlanPriceInput>
+    export type ResolvePlanPriceMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Resolve the plan price for a property based on the template's pricing mode
+ */
+export const useResolvePlanPrice = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resolvePlanPrice>>, TError,{data: BodyType<ResolvePlanPriceInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resolvePlanPrice>>,
+        TError,
+        {data: BodyType<ResolvePlanPriceInput>},
+        TContext
+      > => {
+      return useMutation(getResolvePlanPriceMutationOptions(options));
     }
 
 export const getPreviewCustomerPlanUrl = () => {

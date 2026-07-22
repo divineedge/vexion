@@ -7516,6 +7516,12 @@ export const ListPlanTemplatesResponseItem = zod.object({
   "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']),
   "customCycleDays": zod.number().nullish(),
   "price": zod.number(),
+  "pricingMode": zod.enum(['flat', 'matrix', 'sum_services']),
+  "pricingMatrix": zod.array(zod.object({
+  "minSqft": zod.number(),
+  "maxSqft": zod.number().nullable().describe('null means open-ended (above minSqft)'),
+  "price": zod.number()
+})).nullish(),
   "autoRenewDefault": zod.boolean(),
   "isActive": zod.boolean(),
   "createdAt": zod.string(),
@@ -7539,6 +7545,12 @@ export const CreatePlanTemplateBody = zod.object({
   "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']).optional(),
   "customCycleDays": zod.number().optional(),
   "price": zod.number().optional(),
+  "pricingMode": zod.enum(['flat', 'matrix', 'sum_services']).optional(),
+  "pricingMatrix": zod.array(zod.object({
+  "minSqft": zod.number(),
+  "maxSqft": zod.number().nullable().describe('null means open-ended (above minSqft)'),
+  "price": zod.number()
+})).optional(),
   "autoRenewDefault": zod.boolean().optional(),
   "isActive": zod.boolean().optional()
 })
@@ -7557,6 +7569,12 @@ export const CreatePlanTemplateResponse = zod.object({
   "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']),
   "customCycleDays": zod.number().nullish(),
   "price": zod.number(),
+  "pricingMode": zod.enum(['flat', 'matrix', 'sum_services']),
+  "pricingMatrix": zod.array(zod.object({
+  "minSqft": zod.number(),
+  "maxSqft": zod.number().nullable().describe('null means open-ended (above minSqft)'),
+  "price": zod.number()
+})).nullish(),
   "autoRenewDefault": zod.boolean(),
   "isActive": zod.boolean(),
   "createdAt": zod.string(),
@@ -7585,6 +7603,12 @@ export const GetPlanTemplateResponse = zod.object({
   "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']),
   "customCycleDays": zod.number().nullish(),
   "price": zod.number(),
+  "pricingMode": zod.enum(['flat', 'matrix', 'sum_services']),
+  "pricingMatrix": zod.array(zod.object({
+  "minSqft": zod.number(),
+  "maxSqft": zod.number().nullable().describe('null means open-ended (above minSqft)'),
+  "price": zod.number()
+})).nullish(),
   "autoRenewDefault": zod.boolean(),
   "isActive": zod.boolean(),
   "createdAt": zod.string(),
@@ -7611,6 +7635,12 @@ export const UpdatePlanTemplateBody = zod.object({
   "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']).optional(),
   "customCycleDays": zod.number().optional(),
   "price": zod.number().optional(),
+  "pricingMode": zod.enum(['flat', 'matrix', 'sum_services']).optional(),
+  "pricingMatrix": zod.array(zod.object({
+  "minSqft": zod.number(),
+  "maxSqft": zod.number().nullable().describe('null means open-ended (above minSqft)'),
+  "price": zod.number()
+})).optional(),
   "autoRenewDefault": zod.boolean().optional(),
   "isActive": zod.boolean().optional()
 })
@@ -7629,6 +7659,12 @@ export const UpdatePlanTemplateResponse = zod.object({
   "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']),
   "customCycleDays": zod.number().nullish(),
   "price": zod.number(),
+  "pricingMode": zod.enum(['flat', 'matrix', 'sum_services']),
+  "pricingMatrix": zod.array(zod.object({
+  "minSqft": zod.number(),
+  "maxSqft": zod.number().nullable().describe('null means open-ended (above minSqft)'),
+  "price": zod.number()
+})).nullish(),
   "autoRenewDefault": zod.boolean(),
   "isActive": zod.boolean(),
   "createdAt": zod.string(),
@@ -7644,6 +7680,26 @@ export const DeletePlanTemplateParams = zod.object({
 })
 
 export const DeletePlanTemplateResponse = zod.void()
+
+
+/**
+ * @summary Resolve the plan price for a property based on the template's pricing mode
+ */
+export const ResolvePlanPriceBody = zod.object({
+  "templateId": zod.number(),
+  "propertyId": zod.number()
+})
+
+export const ResolvePlanPriceResponse = zod.object({
+  "resolvedPrice": zod.number(),
+  "pricingMode": zod.string(),
+  "breakdown": zod.array(zod.object({
+  "serviceId": zod.number().optional(),
+  "serviceName": zod.string().optional(),
+  "areaSqft": zod.number().optional(),
+  "price": zod.number().optional()
+})).optional()
+})
 
 
 /**
@@ -7670,6 +7726,12 @@ export const PreviewCustomerPlanResponse = zod.object({
   "billingCycle": zod.enum(['monthly', 'quarterly', 'annual', 'custom']),
   "customCycleDays": zod.number().nullish(),
   "price": zod.number(),
+  "pricingMode": zod.enum(['flat', 'matrix', 'sum_services']),
+  "pricingMatrix": zod.array(zod.object({
+  "minSqft": zod.number(),
+  "maxSqft": zod.number().nullable().describe('null means open-ended (above minSqft)'),
+  "price": zod.number()
+})).nullish(),
   "autoRenewDefault": zod.boolean(),
   "isActive": zod.boolean(),
   "createdAt": zod.string(),
@@ -7737,6 +7799,7 @@ export const CreateCustomerPlanBody = zod.object({
   "propertyId": zod.number(),
   "startDate": zod.string(),
   "autoRenew": zod.boolean().optional(),
+  "price": zod.number().optional().describe('Sale-time price override (e.g. resolved from area matrix). Falls back to template flat price when omitted.'),
   "visits": zod.array(zod.object({
   "serviceId": zod.number(),
   "serviceName": zod.string(),

@@ -395,6 +395,16 @@ export interface PlanTemplateServiceRule {
   frequencyDays: number;
 }
 
+export interface PlanPricingTier {
+  minSqft: number;
+  /**
+     * null means open-ended (above minSqft)
+     * @nullable
+     */
+  maxSqft: number | null;
+  price: number;
+}
+
 export type PlanTemplateBillingCycle = typeof PlanTemplateBillingCycle[keyof typeof PlanTemplateBillingCycle];
 
 
@@ -403,6 +413,15 @@ export const PlanTemplateBillingCycle = {
   quarterly: 'quarterly',
   annual: 'annual',
   custom: 'custom',
+} as const;
+
+export type PlanTemplatePricingMode = typeof PlanTemplatePricingMode[keyof typeof PlanTemplatePricingMode];
+
+
+export const PlanTemplatePricingMode = {
+  flat: 'flat',
+  matrix: 'matrix',
+  sum_services: 'sum_services',
 } as const;
 
 export interface PlanTemplate {
@@ -417,6 +436,9 @@ export interface PlanTemplate {
   /** @nullable */
   customCycleDays?: number | null;
   price: number;
+  pricingMode: PlanTemplatePricingMode;
+  /** @nullable */
+  pricingMatrix?: PlanPricingTier[] | null;
   autoRenewDefault: boolean;
   isActive: boolean;
   createdAt: string;
@@ -433,6 +455,15 @@ export const CreatePlanTemplateInputBillingCycle = {
   custom: 'custom',
 } as const;
 
+export type CreatePlanTemplateInputPricingMode = typeof CreatePlanTemplateInputPricingMode[keyof typeof CreatePlanTemplateInputPricingMode];
+
+
+export const CreatePlanTemplateInputPricingMode = {
+  flat: 'flat',
+  matrix: 'matrix',
+  sum_services: 'sum_services',
+} as const;
+
 export interface CreatePlanTemplateInput {
   name: string;
   description?: string;
@@ -441,8 +472,28 @@ export interface CreatePlanTemplateInput {
   billingCycle?: CreatePlanTemplateInputBillingCycle;
   customCycleDays?: number;
   price?: number;
+  pricingMode?: CreatePlanTemplateInputPricingMode;
+  pricingMatrix?: PlanPricingTier[];
   autoRenewDefault?: boolean;
   isActive?: boolean;
+}
+
+export interface ResolvePlanPriceInput {
+  templateId: number;
+  propertyId: number;
+}
+
+export type ResolvePlanPriceResultBreakdownItem = {
+  serviceId?: number;
+  serviceName?: string;
+  areaSqft?: number;
+  price?: number;
+};
+
+export interface ResolvePlanPriceResult {
+  resolvedPrice: number;
+  pricingMode: string;
+  breakdown?: ResolvePlanPriceResultBreakdownItem[];
 }
 
 export interface PlanVisitPreview {
@@ -544,6 +595,8 @@ export interface CreateCustomerPlanInput {
   propertyId: number;
   startDate: string;
   autoRenew?: boolean;
+  /** Sale-time price override (e.g. resolved from area matrix). Falls back to template flat price when omitted. */
+  price?: number;
   visits?: CreateCustomerPlanInputVisitsItem[];
 }
 

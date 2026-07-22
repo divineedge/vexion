@@ -5,6 +5,7 @@ import {
   useGetPlStatementReport,
   useGetAgingInvoicesReport,
   useGetSalesTaxReport,
+  useGetInventorySalesReport,
   useListCrews, getListCrewsQueryKey,
   useListUsers, getListUsersQueryKey,
 } from '@workspace/api-client-react';
@@ -18,7 +19,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import {
   Briefcase, Users, ScrollText, Clock3, Percent, Download, Printer,
-  RefreshCw, ShieldAlert,
+  RefreshCw, ShieldAlert, Package,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { downloadCsv } from '@/lib/csvExport';
@@ -40,11 +41,12 @@ const REPORTS = [
   { id: 'pl-statement', label: 'P&L Statement', icon: ScrollText, description: 'Revenue, cost of goods sold, and net income for a period.' },
   { id: 'aging-invoices', label: 'Aging Invoices', icon: Clock3, description: 'Open invoices grouped by how overdue they are.' },
   { id: 'sales-tax', label: 'Sales Tax', icon: Percent, description: 'Taxable revenue and tax collected, by month.' },
+  { id: 'inventory-sales', label: 'Inventory Sales', icon: Package, description: 'Units sold, margin, and commission per inventory item.' },
 ] as const;
 
 export default function ReportsPage() {
   const { canManageOffice } = useAuth();
-  const [active, setActive] = useState<typeof REPORTS[number]['id']>('job-profitability');
+  const [active, setActive] = useState<(typeof REPORTS)[number]['id']>('job-profitability');
 
   if (!canManageOffice) {
     return (
@@ -64,7 +66,7 @@ export default function ReportsPage() {
       </div>
 
       {/* Report matrix */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 print:hidden">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 print:hidden">
         {REPORTS.map(r => (
           <Card
             key={r.id}
@@ -91,6 +93,7 @@ export default function ReportsPage() {
         <TabsContent value="pl-statement"><PlStatementReport /></TabsContent>
         <TabsContent value="aging-invoices"><AgingInvoicesReport /></TabsContent>
         <TabsContent value="sales-tax"><SalesTaxReport /></TabsContent>
+        <TabsContent value="inventory-sales"><InventorySalesReport /></TabsContent>
       </Tabs>
     </div>
   );
@@ -471,6 +474,115 @@ function SalesTaxReport() {
                 ))}
                 {data.rows.length === 0 && (
                   <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-8">No paid invoices in this range.</TableCell></TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Report F: Inventory Sales ──────────────────────────────────────────────
+function InventorySalesReport() {
+  const { start, end } = defaultRange();
+  const [startDate, setStartDate] = useState(start);
+  const [endDate, setEndDate] = useState(end);
+  const { data, isFetching, refetch } = useGetInventorySalesReport({ startDate, endDate });
+
+  const exportCsv = () => {
+    if (!data) return;
+    downloadCsv('inventory-sales.csv', data.rows.map(r => ({
+      item: r.itemName, sku: r.sku, category: r.category ?? '',
+      unitsSold: r.unitsSold, sellPricePerUnit: r.sellPricePerUnit,
+      totalRevenue: r.totalRevenue, totalCost: r.totalCost,
+      grossMargin: r.grossMargin, commissionPct: r.commissionPct,
+      commissionEarned: r.commissionEarned, currentStock: r.currentStock,
+      salesperson: r.salespersonName ?? '',
+    })));
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
+        <div>
+          <CardTitle>Inventory Sales</CardTitle>
+          <CardDescription>Units sold, revenue, cost, margin, and commission per inventory item on completed jobs in the selected range.</CardDescription>
+        </div>
+        <div className="flex items-center gap-2 print:hidden">
+          <GeneratedBadge generatedAt={data?.generatedAt} cached={data?.cached} />
+          <Button size="sm" variant="outline" className="gap-2" onClick={exportCsv} disabled={!data}><Download className="w-4 h-4" /> CSV</Button>
+          <Button size="sm" variant="outline" className="gap-2" onClick={() => window.print()} disabled={!data}><Printer className="w-4 h-4" /> PDF</Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-end gap-3 print:hidden">
+          <Field label="Start"><Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-40" /></Field>
+          <Field label="End"><Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-40" /></Field>
+          <Button size="sm" onClick={() => refetch()} disabled={isFetching}>{isFetching ? 'Running…' : 'Run Report'}</Button>
+        </div>
+
+        {data && (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <Stat label="Units Sold" value={String(data.totals.unitsSold)} />
+              <Stat label="Total Revenue" value={money(data.totals.totalRevenue)} />
+              <Stat label="Total Cost" value={money(data.totals.totalCost)} />
+              <Stat label="Gross Margin" value={money(data.totals.grossMargin)} highlight />
+              <Stat label="Commission Earned" value={money(data.totals.commissionEarned)} />
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Item</TableHead>
+                  <TableHead>SKU</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Salesperson</TableHead>
+                  <TableHead className="text-right">Units Sold</TableHead>
+                  <TableHead className="text-right">Sell Price</TableHead>
+                  <TableHead className="text-right">Revenue</TableHead>
+                  <TableHead className="text-right">Cost</TableHead>
+                  <TableHead className="text-right">Margin</TableHead>
+                  <TableHead className="text-right">Commission %</TableHead>
+                  <TableHead className="text-right">Commission $</TableHead>
+                  <TableHead className="text-right">Stock Left</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.rows.map(r => (
+                  <TableRow key={r.inventoryItemId}>
+                    <TableCell className="font-medium">{r.itemName}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{r.sku}</TableCell>
+                    <TableCell>{r.category ? <Badge variant="outline">{r.category}</Badge> : <span className="text-muted-foreground">—</span>}</TableCell>
+                    <TableCell className="text-muted-foreground">{r.salespersonName ?? '—'}</TableCell>
+                    <TableCell className="text-right">{r.unitsSold}</TableCell>
+                    <TableCell className="text-right">{money(r.sellPricePerUnit)}</TableCell>
+                    <TableCell className="text-right">{money(r.totalRevenue)}</TableCell>
+                    <TableCell className="text-right text-muted-foreground">{money(r.totalCost)}</TableCell>
+                    <TableCell className={`text-right font-medium ${r.grossMargin < 0 ? 'text-destructive' : 'text-emerald-600'}`}>{money(r.grossMargin)}</TableCell>
+                    <TableCell className="text-right">{r.commissionPct > 0 ? `${r.commissionPct}%` : <span className="text-muted-foreground">—</span>}</TableCell>
+                    <TableCell className="text-right">{r.commissionEarned > 0 ? money(r.commissionEarned) : <span className="text-muted-foreground">—</span>}</TableCell>
+                    <TableCell className="text-right">
+                      <span className={r.currentStock <= 0 ? 'text-destructive font-semibold' : ''}>{r.currentStock}</span>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {data.rows.length === 0 && (
+                  <TableRow><TableCell colSpan={12} className="text-center text-muted-foreground py-8">No inventory items sold in completed jobs during this range.</TableCell></TableRow>
+                )}
+                {data.rows.length > 0 && (
+                  <TableRow className="font-semibold bg-muted/30">
+                    <TableCell colSpan={4}>Totals</TableCell>
+                    <TableCell className="text-right">{data.totals.unitsSold}</TableCell>
+                    <TableCell />
+                    <TableCell className="text-right">{money(data.totals.totalRevenue)}</TableCell>
+                    <TableCell className="text-right">{money(data.totals.totalCost)}</TableCell>
+                    <TableCell className={`text-right ${data.totals.grossMargin < 0 ? 'text-destructive' : 'text-emerald-600'}`}>{money(data.totals.grossMargin)}</TableCell>
+                    <TableCell />
+                    <TableCell className="text-right">{money(data.totals.commissionEarned)}</TableCell>
+                    <TableCell />
+                  </TableRow>
                 )}
               </TableBody>
             </Table>

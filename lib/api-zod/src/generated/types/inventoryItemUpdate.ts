@@ -17,4 +17,6 @@ export interface InventoryItemUpdate {
   unit?: string;
   /** When true, this item is offered as a pickable option in the Blueprint canvas palette. */
   availableForBlueprint?: boolean;
+  /** Percentage of the markup (sell - buy) awarded to the salesperson as commission. */
+  commissionPct?: number;
 }

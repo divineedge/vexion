@@ -214,6 +214,7 @@ function formatItem(
     unit: i.unit,
     isLowStock: i.quantity <= i.reorderPoint,
     availableForBlueprint: i.availableForBlueprint,
+    commissionPct: i.commissionPct ?? null,
     createdAt: i.createdAt.toISOString(),
   };
 }
@@ -279,7 +280,7 @@ router.get("/inventory", async (req, res): Promise<void> => {
 router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
-  const { name, sku, description, category, costPrice, markupPct: reqMarkupPct, quantity, reorderPoint, unit, availableForBlueprint } = req.body;
+  const { name, sku, description, category, costPrice, markupPct: reqMarkupPct, quantity, reorderPoint, unit, availableForBlueprint, commissionPct: reqCommissionPct } = req.body;
 
   if (!name || !sku) {
     res.status(400).json({ error: "name and sku are required" });
@@ -294,6 +295,7 @@ router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void
   const sellPrice = costVal * (1 + effectiveMarkupPct / 100);
   const qty = parseSafeInt(quantity, 0);
   const reorder = parseSafeInt(reorderPoint, 5);
+  const commissionPctVal = reqCommissionPct != null ? parseSafeFloat(reqCommissionPct, 0) : null;
 
   const [item] = await db.insert(inventoryItemsTable).values({
     tenantId,
@@ -308,6 +310,7 @@ router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void
     unit: unit ? String(unit) : "each",
     isLowStock: qty <= reorder,
     availableForBlueprint: availableForBlueprint === true || availableForBlueprint === "true",
+    commissionPct: commissionPctVal,
   }).returning();
 
   const showCost = await canSeeCostPrice(tenantId, userId);
@@ -348,7 +351,7 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
     if (isNaN(m) || m < 0) { res.status(400).json({ error: "markupPct must be a non-negative number" }); return; }
   }
 
-  const { name, description, category, costPrice, markupPct: reqMarkupPct, quantity, reorderPoint, unit, availableForBlueprint } = req.body;
+  const { name, description, category, costPrice, markupPct: reqMarkupPct, quantity, reorderPoint, unit, availableForBlueprint, commissionPct: reqCommissionPct } = req.body;
   const updates: Partial<typeof inventoryItemsTable.$inferInsert> = {};
   if (name !== undefined) updates.name = String(name);
   if (description !== undefined) updates.description = description ? String(description) : null;
@@ -357,6 +360,7 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
   if (reorderPoint !== undefined) { updates.reorderPoint = parseSafeInt(reorderPoint, 5); }
   if (unit !== undefined) updates.unit = String(unit) || "each";
   if (availableForBlueprint !== undefined) updates.availableForBlueprint = availableForBlueprint === true || availableForBlueprint === "true";
+  if (reqCommissionPct !== undefined) updates.commissionPct = reqCommissionPct != null ? parseSafeFloat(reqCommissionPct, 0) : null;
 
   if (costPrice !== undefined || reqMarkupPct !== undefined) {
     const [existing] = await db

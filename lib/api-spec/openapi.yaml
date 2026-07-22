@@ -5985,6 +5985,22 @@ paths:
               schema:
                 $ref: "#/components/schemas/SalesTaxReport"
 
+  /reports/inventory-sales:
+    get:
+      operationId: getInventorySalesReport
+      tags: [reports]
+      summary: Inventory sold on completed jobs within a date range, with commission tracking
+      parameters:
+        - { name: startDate, in: query, schema: { type: string } }
+        - { name: endDate, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Inventory sales report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventorySalesReport"
+
   # VENDORS & EXPENSE LEDGER
   /vendors:
     get:
@@ -8352,6 +8368,9 @@ components:
         availableForBlueprint:
           type: boolean
           description: "When true, this item is offered as a pickable option in the Blueprint canvas palette."
+        commissionPct:
+          type: ["number", "null"]
+          description: "Percentage of the markup (sell - buy) awarded to the salesperson as commission. Null means 0%."
         createdAt:
           type: string
 
@@ -8382,6 +8401,9 @@ components:
         availableForBlueprint:
           type: boolean
           description: "When true, this item is offered as a pickable option in the Blueprint canvas palette."
+        commissionPct:
+          type: number
+          description: "Percentage of the markup (sell - buy) awarded to the salesperson as commission."
 
     InventoryItemUpdate:
       type: object
@@ -8405,6 +8427,9 @@ components:
         availableForBlueprint:
           type: boolean
           description: "When true, this item is offered as a pickable option in the Blueprint canvas palette."
+        commissionPct:
+          type: number
+          description: "Percentage of the markup (sell - buy) awarded to the salesperson as commission."
 
     InventorySummary:
       type: object
@@ -12031,6 +12056,48 @@ components:
         cached: { type: boolean }
         startDate: { type: string }
         endDate: { type: string }
+
+    InventorySalesReport:
+      type: object
+      required: [rows, totals, generatedAt, cached, startDate, endDate]
+      properties:
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventorySalesReportRow"
+        totals:
+          type: object
+          required: [unitsSold, totalRevenue, totalCost, grossMargin, commissionEarned]
+          properties:
+            unitsSold: { type: number }
+            totalRevenue: { type: number }
+            totalCost: { type: number }
+            grossMargin: { type: number }
+            commissionEarned: { type: number }
+        generatedAt: { type: string }
+        cached: { type: boolean }
+        startDate: { type: string }
+        endDate: { type: string }
+
+    InventorySalesReportRow:
+      type: object
+      required: [inventoryItemId, itemName, sku, unitsSold, sellPricePerUnit, totalRevenue, totalCost, grossMargin, commissionPct, commissionEarned, currentStock]
+      properties:
+        inventoryItemId: { type: integer }
+        itemName: { type: string }
+        sku: { type: string }
+        category:
+          type: ["string", "null"]
+        unitsSold: { type: number }
+        sellPricePerUnit: { type: number }
+        totalRevenue: { type: number }
+        totalCost: { type: number }
+        grossMargin: { type: number }
+        commissionPct: { type: number }
+        commissionEarned: { type: number }
+        currentStock: { type: integer }
+        salespersonName:
+          type: ["string", "null"]
 
     # ── Vendors & Expense Ledger ─────────────────────────────────────────────
     Vendor:

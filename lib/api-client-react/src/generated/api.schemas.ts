@@ -1484,6 +1484,11 @@ export interface InventoryItem {
   isLowStock?: boolean;
   /** When true, this item is offered as a pickable option in the Blueprint canvas palette. */
   availableForBlueprint?: boolean;
+  /**
+     * Percentage of the markup (sell - buy) awarded to the salesperson as commission. Null means 0%.
+     * @nullable
+     */
+  commissionPct?: number | null;
   createdAt: string;
 }
 
@@ -1501,6 +1506,8 @@ export interface InventoryItemInput {
   unit?: string;
   /** When true, this item is offered as a pickable option in the Blueprint canvas palette. */
   availableForBlueprint?: boolean;
+  /** Percentage of the markup (sell - buy) awarded to the salesperson as commission. */
+  commissionPct?: number;
 }
 
 export interface InventoryItemUpdate {
@@ -1514,6 +1521,8 @@ export interface InventoryItemUpdate {
   unit?: string;
   /** When true, this item is offered as a pickable option in the Blueprint canvas palette. */
   availableForBlueprint?: boolean;
+  /** Percentage of the markup (sell - buy) awarded to the salesperson as commission. */
+  commissionPct?: number;
 }
 
 export interface CategoryCount {
@@ -4414,6 +4423,41 @@ export interface SalesTaxReport {
   endDate: string;
 }
 
+export type InventorySalesReportTotals = {
+  unitsSold: number;
+  totalRevenue: number;
+  totalCost: number;
+  grossMargin: number;
+  commissionEarned: number;
+};
+
+export interface InventorySalesReportRow {
+  inventoryItemId: number;
+  itemName: string;
+  sku: string;
+  /** @nullable */
+  category?: string | null;
+  unitsSold: number;
+  sellPricePerUnit: number;
+  totalRevenue: number;
+  totalCost: number;
+  grossMargin: number;
+  commissionPct: number;
+  commissionEarned: number;
+  currentStock: number;
+  /** @nullable */
+  salespersonName?: string | null;
+}
+
+export interface InventorySalesReport {
+  rows: InventorySalesReportRow[];
+  totals: InventorySalesReportTotals;
+  generatedAt: string;
+  cached: boolean;
+  startDate: string;
+  endDate: string;
+}
+
 export interface Vendor {
   id: number;
   tenantId: number;
@@ -4955,6 +4999,11 @@ endDate?: string;
 };
 
 export type GetSalesTaxReportParams = {
+startDate?: string;
+endDate?: string;
+};
+
+export type GetInventorySalesReportParams = {
 startDate?: string;
 endDate?: string;
 };

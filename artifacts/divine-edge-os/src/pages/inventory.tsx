@@ -74,12 +74,13 @@ type ItemForm = {
   reorderPoint: string;
   unit: string;
   availableForBlueprint: boolean;
+  commissionPct: string;
 };
 
 const EMPTY_FORM: ItemForm = {
   name: '', sku: '', description: '', category: '',
   costPrice: '', markupPct: '', quantity: '0', reorderPoint: '5', unit: 'each',
-  availableForBlueprint: false,
+  availableForBlueprint: false, commissionPct: '',
 };
 
 export default function InventoryPage() {
@@ -256,6 +257,7 @@ export default function InventoryPage() {
       reorderPoint: String(item.reorderPoint),
       unit: item.unit ?? 'each',
       availableForBlueprint: item.availableForBlueprint ?? false,
+      commissionPct: item.commissionPct != null ? String(item.commissionPct) : '',
     });
     updateSellPreview(costVal, mPct);
     setSelectedId(id);
@@ -275,6 +277,7 @@ export default function InventoryPage() {
       reorderPoint: parseInt(form.reorderPoint, 10) || 5,
       unit: form.unit || 'each',
       availableForBlueprint: form.availableForBlueprint,
+      commissionPct: form.commissionPct ? parseFloat(form.commissionPct) : undefined,
     };
 
     if (sheetMode === 'create') {
@@ -777,6 +780,20 @@ export default function InventoryPage() {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Description</label>
               <Input placeholder="Optional notes" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Salesperson Commission (%)</label>
+              <Input
+                type="number"
+                step="0.1"
+                min="0"
+                max="100"
+                placeholder="0"
+                value={form.commissionPct}
+                onChange={e => setForm(f => ({ ...f, commissionPct: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">Percentage of gross margin paid as commission to the salesperson on this item.</p>
             </div>
 
             <Separator />

@@ -1944,6 +1944,7 @@ export const ListInventoryItemsResponseItem = zod.object({
   "unit": zod.string().optional(),
   "isLowStock": zod.boolean().optional(),
   "availableForBlueprint": zod.boolean().optional().describe('When true, this item is offered as a pickable option in the Blueprint canvas palette.'),
+  "commissionPct": zod.number().nullish().describe('Percentage of the markup (sell - buy) awarded to the salesperson as commission. Null means 0%.'),
   "createdAt": zod.string()
 })
 export const ListInventoryItemsResponse = zod.array(ListInventoryItemsResponseItem)
@@ -1962,7 +1963,8 @@ export const CreateInventoryItemBody = zod.object({
   "quantity": zod.number(),
   "reorderPoint": zod.number().optional(),
   "unit": zod.string().optional(),
-  "availableForBlueprint": zod.boolean().optional().describe('When true, this item is offered as a pickable option in the Blueprint canvas palette.')
+  "availableForBlueprint": zod.boolean().optional().describe('When true, this item is offered as a pickable option in the Blueprint canvas palette.'),
+  "commissionPct": zod.number().optional().describe('Percentage of the markup (sell - buy) awarded to the salesperson as commission.')
 })
 
 export const CreateInventoryItemResponse = zod.object({
@@ -1981,6 +1983,7 @@ export const CreateInventoryItemResponse = zod.object({
   "unit": zod.string().optional(),
   "isLowStock": zod.boolean().optional(),
   "availableForBlueprint": zod.boolean().optional().describe('When true, this item is offered as a pickable option in the Blueprint canvas palette.'),
+  "commissionPct": zod.number().nullish().describe('Percentage of the markup (sell - buy) awarded to the salesperson as commission. Null means 0%.'),
   "createdAt": zod.string()
 })
 
@@ -2008,6 +2011,7 @@ export const GetInventoryItemResponse = zod.object({
   "unit": zod.string().optional(),
   "isLowStock": zod.boolean().optional(),
   "availableForBlueprint": zod.boolean().optional().describe('When true, this item is offered as a pickable option in the Blueprint canvas palette.'),
+  "commissionPct": zod.number().nullish().describe('Percentage of the markup (sell - buy) awarded to the salesperson as commission. Null means 0%.'),
   "createdAt": zod.string()
 })
 
@@ -2028,7 +2032,8 @@ export const UpdateInventoryItemBody = zod.object({
   "quantity": zod.number().optional(),
   "reorderPoint": zod.number().optional(),
   "unit": zod.string().optional(),
-  "availableForBlueprint": zod.boolean().optional().describe('When true, this item is offered as a pickable option in the Blueprint canvas palette.')
+  "availableForBlueprint": zod.boolean().optional().describe('When true, this item is offered as a pickable option in the Blueprint canvas palette.'),
+  "commissionPct": zod.number().optional().describe('Percentage of the markup (sell - buy) awarded to the salesperson as commission.')
 })
 
 export const UpdateInventoryItemResponse = zod.object({
@@ -2047,6 +2052,7 @@ export const UpdateInventoryItemResponse = zod.object({
   "unit": zod.string().optional(),
   "isLowStock": zod.boolean().optional(),
   "availableForBlueprint": zod.boolean().optional().describe('When true, this item is offered as a pickable option in the Blueprint canvas palette.'),
+  "commissionPct": zod.number().nullish().describe('Percentage of the markup (sell - buy) awarded to the salesperson as commission. Null means 0%.'),
   "createdAt": zod.string()
 })
 
@@ -2089,6 +2095,7 @@ export const AdjustInventoryStockResponse = zod.object({
   "unit": zod.string().optional(),
   "isLowStock": zod.boolean().optional(),
   "availableForBlueprint": zod.boolean().optional().describe('When true, this item is offered as a pickable option in the Blueprint canvas palette.'),
+  "commissionPct": zod.number().nullish().describe('Percentage of the markup (sell - buy) awarded to the salesperson as commission. Null means 0%.'),
   "createdAt": zod.string()
 })
 
@@ -9042,6 +9049,44 @@ export const GetSalesTaxReportResponse = zod.object({
   "totals": zod.object({
   "taxableRevenue": zod.number(),
   "taxCollected": zod.number()
+}),
+  "generatedAt": zod.string(),
+  "cached": zod.boolean(),
+  "startDate": zod.string(),
+  "endDate": zod.string()
+})
+
+
+/**
+ * @summary Inventory sold on completed jobs within a date range, with commission tracking
+ */
+export const GetInventorySalesReportQueryParams = zod.object({
+  "startDate": zod.coerce.string().optional(),
+  "endDate": zod.coerce.string().optional()
+})
+
+export const GetInventorySalesReportResponse = zod.object({
+  "rows": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "itemName": zod.string(),
+  "sku": zod.string(),
+  "category": zod.string().nullish(),
+  "unitsSold": zod.number(),
+  "sellPricePerUnit": zod.number(),
+  "totalRevenue": zod.number(),
+  "totalCost": zod.number(),
+  "grossMargin": zod.number(),
+  "commissionPct": zod.number(),
+  "commissionEarned": zod.number(),
+  "currentStock": zod.number(),
+  "salespersonName": zod.string().nullish()
+})),
+  "totals": zod.object({
+  "unitsSold": zod.number(),
+  "totalRevenue": zod.number(),
+  "totalCost": zod.number(),
+  "grossMargin": zod.number(),
+  "commissionEarned": zod.number()
 }),
   "generatedAt": zod.string(),
   "cached": zod.boolean(),

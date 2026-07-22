@@ -15,7 +15,7 @@
  */
 
 import { Router, type IRouter } from "express";
-import { db, tenantsTable } from "@workspace/db";
+import { db, tenantsTable, inventoryItemsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
@@ -446,6 +446,151 @@ router.get("/reports/sales-tax", async (req, res): Promise<void> => {
         taxCollected: Math.round(monthly.reduce((s, m) => s + m.taxCollected, 0) * 100) / 100,
       },
     };
+  });
+
+  res.json({ ...data, generatedAt, cached, startDate: startDate.toISOString(), endDate: endDate.toISOString() });
+});
+
+// ── Report F: Inventory Sales ─────────────────────────────────────────────────
+router.get("/reports/inventory-sales", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  if (!(await requireAdmin(tenantId, userId, res))) return;
+
+  const q = req.query as Record<string, string>;
+  const range = tryParseDateRange(q, res);
+  if (!range) return;
+  const { startDate, endDate } = range;
+
+  const { data, generatedAt, cached } = await getCachedReport(tenantId, "inventory-sales", { ...q }, async () => {
+    // Aggregate job_parts across completed jobs in the date range.
+    // job_parts shape: [{inventoryItemId, name, quantity, unitPrice (sell), total}]
+    // We look up cost price (unitPrice in DB) from inventory_items to compute margin.
+    const jobRows = await db.execute(sql`
+      SELECT
+        j.job_parts,
+        j.assignee_id,
+        u.name AS assignee_name,
+        cr.name AS crew_name,
+        j.completed_at
+      FROM jobs j
+      LEFT JOIN users u ON u.id = j.assignee_id AND u.tenant_id = j.tenant_id
+      LEFT JOIN crews cr ON cr.id = j.crew_id AND cr.tenant_id = j.tenant_id
+      WHERE j.tenant_id = ${tenantId}
+        AND j.status = 'completed'
+        AND j.completed_at >= ${startDate.toISOString()}::timestamptz
+        AND j.completed_at <= ${endDate.toISOString()}::timestamptz
+        AND j.job_parts IS NOT NULL
+        AND jsonb_array_length(j.job_parts) > 0
+    `);
+
+    type JobRow = {
+      job_parts: Array<{ inventoryItemId?: number; name?: string; quantity?: number; unitPrice?: number; total?: number }>;
+      assignee_id: number | null;
+      assignee_name: string | null;
+      crew_name: string | null;
+      completed_at: string;
+    };
+
+    const jobs = jobRows.rows as JobRow[];
+
+    // Pull all inventory items for this tenant to get cost prices and commissionPct.
+    const inventoryItems = await db
+      .select({
+        id: inventoryItemsTable.id,
+        unitPrice: inventoryItemsTable.unitPrice,   // cost/buy price
+        commissionPct: inventoryItemsTable.commissionPct,
+        quantity: inventoryItemsTable.quantity,
+        sku: inventoryItemsTable.sku,
+        category: inventoryItemsTable.category,
+      })
+      .from(inventoryItemsTable)
+      .where(eq(inventoryItemsTable.tenantId, tenantId));
+
+    const itemMeta = new Map(inventoryItems.map(i => [i.id, i]));
+
+    // Aggregate by (inventoryItemId, salesperson) so each salesperson's sales of
+    // the same item are counted separately — commission is per-person, not per-item.
+    type Agg = {
+      itemName: string;
+      sku: string;
+      category: string | null;
+      unitsSold: number;
+      totalRevenue: number;
+      totalCost: number;
+      commissionPct: number;
+      salespersonName: string | null;
+      inventoryItemId: number;
+    };
+    // Key: `${inventoryItemId}::${salesperson ?? '__none__'}`
+    const agg = new Map<string, Agg>();
+
+    for (const job of jobs) {
+      const salesperson = job.assignee_name ?? job.crew_name ?? null;
+      const salespersonKey = salesperson ?? '__none__';
+      for (const part of (job.job_parts ?? [])) {
+        if (!part.inventoryItemId) continue;
+        const itemId = part.inventoryItemId;
+        const aggKey = `${itemId}::${salespersonKey}`;
+        const qty = Number(part.quantity ?? 0);
+        const sellTotal = Number(part.total ?? 0);
+        const meta = itemMeta.get(itemId);
+        const costPerUnit = meta?.unitPrice ?? 0;  // DB unitPrice = buy price
+        const costTotal = costPerUnit * qty;
+        const commPct = meta?.commissionPct ?? 0;
+
+        const existing = agg.get(aggKey);
+        if (existing) {
+          existing.unitsSold += qty;
+          existing.totalRevenue += sellTotal;
+          existing.totalCost += costTotal;
+        } else {
+          agg.set(aggKey, {
+            inventoryItemId: itemId,
+            itemName: part.name ?? `Item #${itemId}`,
+            sku: meta?.sku ?? '',
+            category: meta?.category ?? null,
+            unitsSold: qty,
+            totalRevenue: sellTotal,
+            totalCost: costTotal,
+            commissionPct: commPct,
+            salespersonName: salesperson,
+          });
+        }
+      }
+    }
+
+    const rows = Array.from(agg.values()).map(r => {
+      const grossMargin = Math.round((r.totalRevenue - r.totalCost) * 100) / 100;
+      const commissionEarned = Math.round(grossMargin * (r.commissionPct / 100) * 100) / 100;
+      const currentStock = itemMeta.get(r.inventoryItemId)?.quantity ?? 0;
+      const sellPricePerUnit = r.unitsSold > 0 ? Math.round((r.totalRevenue / r.unitsSold) * 100) / 100 : 0;
+      return {
+        inventoryItemId: r.inventoryItemId,
+        itemName: r.itemName,
+        sku: r.sku,
+        category: r.category,
+        unitsSold: Math.round(r.unitsSold * 100) / 100,
+        sellPricePerUnit,
+        totalRevenue: Math.round(r.totalRevenue * 100) / 100,
+        totalCost: Math.round(r.totalCost * 100) / 100,
+        grossMargin,
+        commissionPct: r.commissionPct,
+        commissionEarned,
+        currentStock,
+        salespersonName: r.salespersonName,
+      };
+    }).sort((a, b) => b.totalRevenue - a.totalRevenue);
+
+    const totals = {
+      unitsSold: Math.round(rows.reduce((s, r) => s + r.unitsSold, 0) * 100) / 100,
+      totalRevenue: Math.round(rows.reduce((s, r) => s + r.totalRevenue, 0) * 100) / 100,
+      totalCost: Math.round(rows.reduce((s, r) => s + r.totalCost, 0) * 100) / 100,
+      grossMargin: Math.round(rows.reduce((s, r) => s + r.grossMargin, 0) * 100) / 100,
+      commissionEarned: Math.round(rows.reduce((s, r) => s + r.commissionEarned, 0) * 100) / 100,
+    };
+
+    return { rows, totals };
   });
 
   res.json({ ...data, generatedAt, cached, startDate: startDate.toISOString(), endDate: endDate.toISOString() });

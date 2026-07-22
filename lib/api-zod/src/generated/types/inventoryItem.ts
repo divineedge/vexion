@@ -31,5 +31,10 @@ export interface InventoryItem {
   isLowStock?: boolean;
   /** When true, this item is offered as a pickable option in the Blueprint canvas palette. */
   availableForBlueprint?: boolean;
+  /**
+     * Percentage of the markup (sell - buy) awarded to the salesperson as commission. Null means 0%.
+     * @nullable
+     */
+  commissionPct?: number | null;
   createdAt: string;
 }

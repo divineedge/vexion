@@ -75,6 +75,8 @@ export const inventoryItemsTable = pgTable("inventory_items", {
   isLowStock: boolean("is_low_stock").notNull().default(false),
   /** When true, this item is offered as a pickable option in the Blueprint canvas palette / can be linked to a placed element. */
   availableForBlueprint: boolean("available_for_blueprint").notNull().default(false),
+  /** Percentage of the markup (sell - buy) awarded to the salesperson as commission. Null means 0%. */
+  commissionPct: real("commission_pct"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

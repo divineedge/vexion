@@ -116,6 +116,7 @@ import type {
   GetEmployeeRevenueReportParams,
   GetEquipmentLedgerParams,
   GetGmailAuthorizeUrl200,
+  GetInventorySalesReportParams,
   GetJobProfitabilityReportParams,
   GetPlStatementReportParams,
   GetQuickBooksAuthorizeUrl200,
@@ -135,6 +136,7 @@ import type {
   InventoryItemUpdate,
   InventoryLocation,
   InventoryLocationInput,
+  InventorySalesReport,
   InventorySummary,
   Invoice,
   InvoiceInput,
@@ -21950,6 +21952,90 @@ export function useGetSalesTaxReport<TData = Awaited<ReturnType<typeof getSalesT
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetSalesTaxReportQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetInventorySalesReportUrl = (params?: GetInventorySalesReportParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/reports/inventory-sales?${stringifiedParams}` : `/api/reports/inventory-sales`
+}
+
+/**
+ * @summary Inventory sold on completed jobs within a date range, with commission tracking
+ */
+export const getInventorySalesReport = async (params?: GetInventorySalesReportParams, options?: RequestInit): Promise<InventorySalesReport> => {
+
+  return customFetch<InventorySalesReport>(getGetInventorySalesReportUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetInventorySalesReportQueryKey = (params?: GetInventorySalesReportParams,) => {
+    return [
+    `/api/reports/inventory-sales`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetInventorySalesReportQueryOptions = <TData = Awaited<ReturnType<typeof getInventorySalesReport>>, TError = ErrorType<unknown>>(params?: GetInventorySalesReportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInventorySalesReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetInventorySalesReportQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getInventorySalesReport>>> = ({ signal }) => getInventorySalesReport(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getInventorySalesReport>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetInventorySalesReportQueryResult = NonNullable<Awaited<ReturnType<typeof getInventorySalesReport>>>
+export type GetInventorySalesReportQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Inventory sold on completed jobs within a date range, with commission tracking
+ */
+
+export function useGetInventorySalesReport<TData = Awaited<ReturnType<typeof getInventorySalesReport>>, TError = ErrorType<unknown>>(
+ params?: GetInventorySalesReportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInventorySalesReport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetInventorySalesReportQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

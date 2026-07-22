@@ -9,6 +9,7 @@ import { adminNavSections, techNavItems } from './navConfig';
 import { SidebarSection } from './SidebarSection';
 import { Breadcrumb } from './Breadcrumb';
 import { NotificationBell } from '@/components/tasks/NotificationBell';
+import { QuickAddBar } from './QuickAddBar';
 import { useListTasks, getListTasksQueryKey, useListFollowupQueueItems, getListFollowupQueueItemsQueryKey, useListStopServiceFlags, getListStopServiceFlagsQueryKey } from '@workspace/api-client-react';
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
@@ -209,8 +210,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="ml-auto"><NotificationBell /></div>
         </div>
 
-        {/* Breadcrumb strip */}
-        <div className="hidden md:flex items-center justify-end px-6 md:px-8 pt-3">
+        {/* Desktop top-right bar: shortcuts + notification bell */}
+        <div className="hidden md:flex items-center justify-end gap-2 px-6 md:px-8 pt-3">
+          <QuickAddBar canCustomize={canManageOffice} />
+          <div className="h-4 w-px bg-border" aria-hidden />
           <NotificationBell />
         </div>
         <Breadcrumb isTechnician={isTechnician} />

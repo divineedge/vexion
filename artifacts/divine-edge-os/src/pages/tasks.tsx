@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useListTasks, useBulkArchiveTasks, getListTasksQueryKey, type InternalTask } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -24,6 +24,16 @@ export default function TasksPage() {
   const qc = useQueryClient();
 
   const [createOpen, setCreateOpen] = useState(false);
+
+  // Open create drawer when arriving via quick-add shortcut (?action=create)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('action') === 'create') {
+      setCreateOpen(true);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
   const [scope, setScope] = useState<'mine' | 'all'>(isAdmin ? 'all' : 'mine');
   const [statusFilter, setStatusFilter] = useState('__open__');
   const [priorityFilter, setPriorityFilter] = useState('__all__');

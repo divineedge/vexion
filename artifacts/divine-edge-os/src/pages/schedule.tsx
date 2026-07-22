@@ -133,6 +133,16 @@ export default function SchedulePage() {
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [newJob, setNewJob] = useState<NewJobForm>(EMPTY_JOB);
+
+  // Open create sheet when arriving via quick-add shortcut (?action=create)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('action') === 'create') {
+      setCreateOpen(true);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
   const [alertPanelOpen, setAlertPanelOpen] = useState(false);
   const [alertForm, setAlertForm] = useState({ type: 'issue', message: '' });
 

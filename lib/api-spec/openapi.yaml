@@ -9672,6 +9672,12 @@ components:
         dailyTaskHourlyRate:
           type: number
           description: "$/hour flat rate applied to daily task / compliance time for payroll. 0 = display-only."
+        # ── Quick-Add Shortcut Bar ────────────────────────────────────────────
+        quickShortcuts:
+          type: array
+          items:
+            type: string
+          description: "Ordered list of shortcut IDs shown in the header quick-add bar (tenant-wide, max 6)"
 
     PauseSeriesInput:
       type: object
@@ -10113,6 +10119,11 @@ components:
         dailyTaskHourlyRate:
           type: number
           description: "$/hour flat rate applied to daily task / compliance time for payroll. 0 = display-only."
+        quickShortcuts:
+          type: array
+          items:
+            type: string
+          description: "Ordered list of shortcut IDs shown in the header quick-add bar (max 6)"
 
     CustomerFieldConfig:
       type: object

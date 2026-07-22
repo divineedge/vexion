@@ -127,6 +127,8 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
       unansweredEmail: { enabled: true, hours: 48 },
       missedCall: { enabled: true },
     },
+    // Quick-Add Shortcut Bar
+    quickShortcuts: (tenant.quickShortcuts as string[] | null) ?? ["new-job", "new-customer", "new-invoice"],
   };
 }
 
@@ -169,6 +171,8 @@ router.patch("/settings", async (req, res): Promise<void> => {
     fuelPricePerGallon, equipmentRuntimeHourlyRate, equipmentDowntimeHourlyRate,
     // Payroll
     dailyTaskHourlyRate,
+    // Quick-Add Shortcut Bar
+    quickShortcuts,
   } = req.body;
 
   const updates: Partial<typeof tenantsTable.$inferInsert> = {};
@@ -298,6 +302,24 @@ router.patch("/settings", async (req, res): Promise<void> => {
   if (equipmentRuntimeHourlyRate !== undefined) updates.equipmentRuntimeHourlyRate = parseFloat(equipmentRuntimeHourlyRate);
   if (equipmentDowntimeHourlyRate !== undefined) updates.equipmentDowntimeHourlyRate = parseFloat(equipmentDowntimeHourlyRate);
   if (dailyTaskHourlyRate !== undefined) updates.dailyTaskHourlyRate = parseFloat(dailyTaskHourlyRate);
+  if (quickShortcuts !== undefined) {
+    const VALID_IDS = new Set([
+      'new-job', 'new-customer', 'new-invoice', 'new-estimate',
+      'new-task', 'new-expense', 'go-calendar', 'go-reports',
+    ]);
+    if (!Array.isArray(quickShortcuts)) {
+      res.status(400).json({ error: "quickShortcuts must be an array" });
+      return;
+    }
+    const invalid = quickShortcuts.filter((id: unknown) => typeof id !== 'string' || !VALID_IDS.has(id as string));
+    if (invalid.length > 0) {
+      res.status(400).json({ error: `Invalid shortcut IDs: ${invalid.join(', ')}` });
+      return;
+    }
+    // Dedupe and cap at 6
+    const deduped = [...new Set(quickShortcuts as string[])].slice(0, 6);
+    updates.quickShortcuts = deduped;
+  }
 
   const [updated] = await db.update(tenantsTable).set(updates).where(eq(tenantsTable.id, tenantId)).returning();
   if (!updated) { res.status(404).json({ error: "Tenant not found" }); return; }

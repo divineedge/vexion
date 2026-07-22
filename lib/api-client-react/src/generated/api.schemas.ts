@@ -2509,6 +2509,8 @@ export interface TenantSettings {
   routeExceptionFee?: number;
   /** $/hour flat rate applied to daily task / compliance time for payroll. 0 = display-only. */
   dailyTaskHourlyRate?: number;
+  /** Ordered list of shortcut IDs shown in the header quick-add bar (tenant-wide, max 6) */
+  quickShortcuts?: string[];
 }
 
 export interface PauseSeriesInput {
@@ -2829,6 +2831,8 @@ export interface TenantSettingsUpdate {
   routeExceptionFee?: number;
   /** $/hour flat rate applied to daily task / compliance time for payroll. 0 = display-only. */
   dailyTaskHourlyRate?: number;
+  /** Ordered list of shortcut IDs shown in the header quick-add bar (max 6) */
+  quickShortcuts?: string[];
 }
 
 export type ReviewRequestChannel = typeof ReviewRequestChannel[keyof typeof ReviewRequestChannel];

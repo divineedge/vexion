@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   useListInvoices, getListInvoicesQueryKey,
   useGetInvoice, getGetInvoiceQueryKey,
@@ -716,6 +716,16 @@ export default function FinancialsPage() {
   const [partsExpanded, setPartsExpanded] = useState(false);
   const [templateSheetOpen, setTemplateSheetOpen] = useState(false);
   const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
+
+  // Open new-invoice sheet when arriving via quick-add shortcut (?action=create)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('action') === 'create') {
+      setCreateInvoiceOpen(true);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
   const [editingTemplate, setEditingTemplate] = useState<RecurringInvoiceTemplate | null>(null);
   const [approvingFlag, setApprovingFlag] = useState<StopServiceFlag | null>(null);
   const [resumingFlag, setResumingFlag] = useState<StopServiceFlag | null>(null);

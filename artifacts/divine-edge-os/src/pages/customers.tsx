@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   useListCustomers, getListCustomersQueryKey,
   useCreateCustomer,
@@ -60,6 +60,17 @@ export default function CustomersPage() {
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<FormData>(BLANK);
   const [tagInput, setTagInput] = useState('');
+
+  // Open create sheet when arriving via quick-add shortcut (?action=create)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('action') === 'create') {
+      setCreating(true);
+      setForm(BLANK);
+      // Clean the URL without triggering a re-render loop
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   const queryParams = {
     q: debouncedSearch || undefined,

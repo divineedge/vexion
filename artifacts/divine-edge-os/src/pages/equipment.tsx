@@ -1287,7 +1287,7 @@ export default function EquipmentPage() {
                 onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
               />
               <datalist id="equipment-type-options">
-                {equipmentTypes.map(t => (
+                {equipmentTypes.map((t: { id: number; label: string }) => (
                   <option key={t.id} value={t.label} />
                 ))}
               </datalist>

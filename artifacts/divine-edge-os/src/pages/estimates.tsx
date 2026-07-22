@@ -80,12 +80,17 @@ export default function EstimatesPage() {
   const [createOpen, setCreateOpen] = useState(false);
 
   // Auto-select an estimate when navigated here with ?highlight=<id>
+  // Also open create sheet when arriving via quick-add shortcut (?action=create)
   useEffect(() => {
     const params = new URLSearchParams(search);
     const highlight = params.get('highlight');
     if (highlight) {
       const numId = parseInt(highlight, 10);
       if (!Number.isNaN(numId)) setSelectedId(numId);
+    }
+    if (params.get('action') === 'create') {
+      setCreateOpen(true);
+      window.history.replaceState({}, '', window.location.pathname);
     }
   }, [search]);
   const [deleteDialogId, setDeleteDialogId] = useState<number | null>(null);

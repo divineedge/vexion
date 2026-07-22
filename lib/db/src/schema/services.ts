@@ -29,6 +29,10 @@ export const servicesTable = pgTable("services", {
    * When set, the resolver uses the area of this zone type from the property's measurement polygons.
    */
   linkedZoneTypeId: text("linked_zone_type_id"),
+  /** Off-season window start as "MM-DD" (e.g. "11-15"). Null = no off-season. */
+  offSeasonStart: text("off_season_start"),
+  /** Off-season window end as "MM-DD" (e.g. "03-14"). Null = no off-season. */
+  offSeasonEnd: text("off_season_end"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

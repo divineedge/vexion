@@ -14,7 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Search, Plus, Briefcase, DollarSign, Clock, Edit, Trash2, TrendingUp, Grid3X3, X, ChevronRight } from 'lucide-react';
+import { Search, Plus, Briefcase, DollarSign, Clock, Edit, Trash2, TrendingUp, Grid3X3, X, ChevronRight, Snowflake } from 'lucide-react';
 import { useDebounce } from '@/hooks/use-debounce';
 import type { PricingTier } from '@/lib/pricingMatrix';
 
@@ -37,6 +37,8 @@ interface Service {
   pricingMode: string;
   pricingMatrix: PricingTier[] | null;
   linkedZoneTypeId: string | null;
+  offSeasonStart: string | null;
+  offSeasonEnd: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -52,6 +54,11 @@ type ServiceForm = {
   pricingMode: 'flat' | 'matrix';
   pricingMatrix: PricingTier[];
   linkedZoneTypeId: string;
+  offSeasonEnabled: boolean;
+  offSeasonStartMonth: string;
+  offSeasonStartDay: string;
+  offSeasonEndMonth: string;
+  offSeasonEndDay: string;
 };
 
 const EMPTY_FORM: ServiceForm = {
@@ -65,6 +72,11 @@ const EMPTY_FORM: ServiceForm = {
   pricingMode: 'flat',
   pricingMatrix: [],
   linkedZoneTypeId: '',
+  offSeasonEnabled: false,
+  offSeasonStartMonth: '11',
+  offSeasonStartDay: '15',
+  offSeasonEndMonth: '03',
+  offSeasonEndDay: '14',
 };
 
 const EMPTY_TIER: PricingTier = { minSqft: 0, maxSqft: null, price: 0 };
@@ -160,6 +172,76 @@ function TierRow({
   );
 }
 
+const MONTHS = [
+  { value: '01', label: 'January' },
+  { value: '02', label: 'February' },
+  { value: '03', label: 'March' },
+  { value: '04', label: 'April' },
+  { value: '05', label: 'May' },
+  { value: '06', label: 'June' },
+  { value: '07', label: 'July' },
+  { value: '08', label: 'August' },
+  { value: '09', label: 'September' },
+  { value: '10', label: 'October' },
+  { value: '11', label: 'November' },
+  { value: '12', label: 'December' },
+];
+
+function daysForMonth(month: string): string[] {
+  const counts: Record<string, number> = {
+    '01': 31, '02': 29, '03': 31, '04': 30, '05': 31, '06': 30,
+    '07': 31, '08': 31, '09': 30, '10': 31, '11': 30, '12': 31,
+  };
+  const n = counts[month] ?? 31;
+  return Array.from({ length: n }, (_, i) => String(i + 1).padStart(2, '0'));
+}
+
+function formatMMDD(mmdd: string): string {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const [mm, dd] = mmdd.split('-');
+  return `${months[parseInt(mm, 10) - 1] ?? mm} ${parseInt(dd, 10)}`;
+}
+
+function MonthDayPicker({
+  month, day, onMonthChange, onDayChange, label,
+}: {
+  month: string; day: string;
+  onMonthChange: (v: string) => void; onDayChange: (v: string) => void;
+  label: string;
+}) {
+  const days = daysForMonth(month);
+  const safeDay = days.includes(day) ? day : days[days.length - 1] ?? '01';
+
+  return (
+    <div className="space-y-1.5">
+      <label className="text-xs font-medium text-muted-foreground">{label}</label>
+      <div className="flex gap-2">
+        <Select value={month} onValueChange={v => { onMonthChange(v); }}>
+          <SelectTrigger className="flex-1">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {MONTHS.map(m => (
+              <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={safeDay} onValueChange={onDayChange}>
+          <SelectTrigger className="w-20">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {days.map(d => (
+              <SelectItem key={d} value={d}>{parseInt(d, 10)}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+}
+
 export default function ServicesPage() {
   const { canManageOffice } = useAuth();
   const qc = useQueryClient();
@@ -223,6 +305,10 @@ export default function ServicesPage() {
   };
 
   const openEdit = (s: Service) => {
+    const hasOffSeason = !!(s.offSeasonStart && s.offSeasonEnd);
+    const [startMonth = '11', startDay = '15'] = (s.offSeasonStart ?? '11-15').split('-');
+    const [endMonth = '03', endDay = '14'] = (s.offSeasonEnd ?? '03-14').split('-');
+
     setForm({
       name: s.name,
       description: s.description ?? '',
@@ -234,6 +320,11 @@ export default function ServicesPage() {
       pricingMode: s.pricingMode === 'matrix' ? 'matrix' : 'flat',
       pricingMatrix: Array.isArray(s.pricingMatrix) ? s.pricingMatrix : [],
       linkedZoneTypeId: s.linkedZoneTypeId ?? '',
+      offSeasonEnabled: hasOffSeason,
+      offSeasonStartMonth: startMonth,
+      offSeasonStartDay: startDay,
+      offSeasonEndMonth: endMonth,
+      offSeasonEndDay: endDay,
     });
     setSelectedId(s.id);
     setSheetMode('edit');
@@ -246,7 +337,14 @@ export default function ServicesPage() {
       return;
     }
 
-    const payload: Record<string, unknown> = {
+    const offSeasonStart = form.offSeasonEnabled
+      ? `${form.offSeasonStartMonth}-${form.offSeasonStartDay}`
+      : '';
+    const offSeasonEnd = form.offSeasonEnabled
+      ? `${form.offSeasonEndMonth}-${form.offSeasonEndDay}`
+      : '';
+
+    const payload: object = {
       name: form.name,
       description: form.description,
       category: form.category,
@@ -257,6 +355,8 @@ export default function ServicesPage() {
       pricingMode: form.pricingMode,
       pricingMatrix: form.pricingMode === 'matrix' ? form.pricingMatrix : null,
       linkedZoneTypeId: form.linkedZoneTypeId || null,
+      offSeasonStart,
+      offSeasonEnd,
     };
 
     if (sheetMode === 'create') {
@@ -271,7 +371,6 @@ export default function ServicesPage() {
     const tiers = form.pricingMatrix;
     const lastBounded = tiers.filter(t => t.maxSqft !== null);
     const lastMax = lastBounded.length > 0 ? (lastBounded[lastBounded.length - 1].maxSqft ?? 0) : 0;
-    // If there's already an open-ended tier, insert before it
     const hasOpen = tiers.some(t => t.maxSqft === null);
     const newTier: PricingTier = { minSqft: lastMax + 1, maxSqft: hasOpen ? lastMax + 1000 : null, price: 0 };
     setForm(f => ({ ...f, pricingMatrix: [...f.pricingMatrix, newTier] }));
@@ -360,16 +459,17 @@ export default function ServicesPage() {
                 <TableHead className="text-right">Pricing</TableHead>
                 <TableHead className="text-right">Duration</TableHead>
                 <TableHead className="text-right">P4P Rate</TableHead>
+                <TableHead>Off Season</TableHead>
                 <TableHead className="text-center">Status</TableHead>
                 {canManageOffice && <TableHead className="w-[60px]" />}
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">Loading services...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="py-8 text-center text-muted-foreground">Loading services...</TableCell></TableRow>
               ) : (services ?? []).length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-12 text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="py-12 text-center text-muted-foreground">
                     <Briefcase className="w-10 h-10 mx-auto mb-3 opacity-30" />
                     <p className="font-medium">No services yet</p>
                     <p className="text-sm mt-1">Add your first service to start building your catalog.</p>
@@ -418,6 +518,16 @@ export default function ServicesPage() {
                         </span>
                       ) : (
                         <span className="text-xs text-muted-foreground">Global ({globalP4pRate}%)</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {s.offSeasonStart && s.offSeasonEnd ? (
+                        <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded">
+                          <Snowflake className="w-3 h-3" />
+                          {formatMMDD(s.offSeasonStart)} – {formatMMDD(s.offSeasonEnd)}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">—</span>
                       )}
                     </TableCell>
                     <TableCell className="text-center">
@@ -621,6 +731,49 @@ export default function ServicesPage() {
               <p className="text-xs text-muted-foreground">
                 Override the global P4P rate for this specific service. Leave blank to inherit the global rate.
               </p>
+            </div>
+
+            <Separator />
+
+            {/* Off-season section */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium flex items-center gap-1.5">
+                    <Snowflake className="w-4 h-4 text-blue-500" />
+                    Off Season
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Recurring jobs and plan visits will skip dates inside this window.
+                  </p>
+                </div>
+                <Switch
+                  checked={form.offSeasonEnabled}
+                  onCheckedChange={v => setForm(f => ({ ...f, offSeasonEnabled: v }))}
+                />
+              </div>
+
+              {form.offSeasonEnabled && (
+                <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+                  <MonthDayPicker
+                    label="Off season starts"
+                    month={form.offSeasonStartMonth}
+                    day={form.offSeasonStartDay}
+                    onMonthChange={v => setForm(f => ({ ...f, offSeasonStartMonth: v }))}
+                    onDayChange={v => setForm(f => ({ ...f, offSeasonStartDay: v }))}
+                  />
+                  <MonthDayPicker
+                    label="Off season ends (last off day)"
+                    month={form.offSeasonEndMonth}
+                    day={form.offSeasonEndDay}
+                    onMonthChange={v => setForm(f => ({ ...f, offSeasonEndMonth: v }))}
+                    onDayChange={v => setForm(f => ({ ...f, offSeasonEndDay: v }))}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    The window repeats every year. It can wrap across year-end (e.g. Nov 15 → Mar 14).
+                  </p>
+                </div>
+              )}
             </div>
 
             <Separator />

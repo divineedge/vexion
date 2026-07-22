@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useParams, useLocation } from 'wouter';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   useGetCustomerPlan, getGetCustomerPlanQueryKey,
   useUpdateCustomerPlan, useRenewCustomerPlan, useCancelPlanVisit,
   useReschedulePlanVisit, useListUsers,
 } from '@workspace/api-client-react';
+import { customFetch } from '@workspace/api-client-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -17,8 +18,22 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { ArrowLeft, CalendarClock, MapPin, DollarSign, X, CalendarDays } from 'lucide-react';
+import { ArrowLeft, CalendarClock, MapPin, DollarSign, X, CalendarDays, Snowflake } from 'lucide-react';
 import { toast } from 'sonner';
+
+interface ServiceRecord {
+  id: number;
+  name: string;
+  offSeasonStart: string | null;
+  offSeasonEnd: string | null;
+}
+
+function formatMMDD(mmdd: string): string {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const [mm, dd] = mmdd.split('-');
+  return `${months[parseInt(mm, 10) - 1] ?? mm} ${parseInt(dd, 10)}`;
+}
 
 const STATUS_STYLE: Record<string, string> = {
   active: 'bg-emerald-100 text-emerald-700 border-emerald-200',
@@ -61,6 +76,13 @@ export default function PlanDetailPage() {
     query: { enabled: !!planId, queryKey: getGetCustomerPlanQueryKey(planId) },
   });
   const { data: users = [] } = useListUsers();
+
+  // Fetch services to display off-season windows
+  const { data: allServices = [] } = useQuery<ServiceRecord[]>({
+    queryKey: ['services'],
+    queryFn: () => customFetch<ServiceRecord[]>('/api/services'),
+  });
+  const serviceMap = new Map(allServices.map(s => [s.id, s]));
   const invalidate = () => qc.invalidateQueries({ queryKey: getGetCustomerPlanQueryKey(planId) });
 
   const updateMutation = useUpdateCustomerPlan();
@@ -269,6 +291,50 @@ export default function PlanDetailPage() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Services & Off-Season Windows */}
+      {plan.serviceState && (plan.serviceState as any[]).length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Services in this Plan</CardTitle>
+            <CardDescription>Scheduled services and any configured off-season windows.</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Service</TableHead>
+                  <TableHead>Frequency</TableHead>
+                  <TableHead>Off Season</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(plan.serviceState as any[]).map((svc: any) => {
+                  const svcRecord = serviceMap.get(svc.serviceId);
+                  return (
+                    <TableRow key={svc.serviceId}>
+                      <TableCell className="font-medium">{svc.serviceName}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        Every {svc.frequencyDays} day{svc.frequencyDays !== 1 ? 's' : ''}
+                      </TableCell>
+                      <TableCell>
+                        {svcRecord?.offSeasonStart && svcRecord?.offSeasonEnd ? (
+                          <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded">
+                            <Snowflake className="w-3 h-3" />
+                            {formatMMDD(svcRecord.offSeasonStart)} – {formatMMDD(svcRecord.offSeasonEnd)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">—</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       {plan.notes && (
         <Card><CardContent className="p-4 text-sm text-muted-foreground">{plan.notes}</CardContent></Card>

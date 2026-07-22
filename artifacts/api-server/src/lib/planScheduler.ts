@@ -9,8 +9,9 @@
  *      renewal reminder when auto-renew is off.
  */
 
-import { db, customerPlansTable, jobsTable, usersTable, propertiesTable, customersTable, activityLogTable, tenantsTable, stopServiceFlagsTable, invoicesTable } from "@workspace/db";
+import { db, customerPlansTable, jobsTable, usersTable, propertiesTable, customersTable, activityLogTable, tenantsTable, stopServiceFlagsTable, invoicesTable, servicesTable } from "@workspace/db";
 import { eq, and, sql, ne, inArray, lt, isNotNull, gt } from "drizzle-orm";
+import { isInOffSeason, firstDayAfterOffSeason } from "./offSeasonUtils";
 import { logger } from "./logger";
 import { sendEmail } from "./emailProvider";
 import { snapToCluster, billingCycleDays, type ClusterCandidate } from "./planSchedulingEngine";
@@ -57,10 +58,21 @@ async function generateVisitsForPlan(plan: typeof customerPlansTable.$inferSelec
   const [property] = await db.select().from(propertiesTable).where(eq(propertiesTable.id, plan.propertyId));
   const lookupClusterCandidates = makeClusterLookup(plan.tenantId);
 
+  // Pre-load off-season data for every service referenced by this plan
+  const serviceIds = serviceState.map(s => s.serviceId);
+  const serviceRows = serviceIds.length > 0
+    ? await db.select({ id: servicesTable.id, offSeasonStart: servicesTable.offSeasonStart, offSeasonEnd: servicesTable.offSeasonEnd })
+        .from(servicesTable)
+        .where(inArray(servicesTable.id, serviceIds))
+    : [];
+  const svcOffSeasonMap = new Map(serviceRows.map(s => [s.id, s]));
+
   let generated = 0;
   const nextState: ServiceStateEntry[] = [];
 
   for (const svc of serviceState) {
+    const svcRecord = svcOffSeasonMap.get(svc.serviceId);
+
     // `cursor` tracks the last occurrence date on the frequency rule (not the
     // clustered/snapped date), so each iteration always advances forward by
     // exactly `frequencyDays` regardless of where a visit actually landed.
@@ -68,7 +80,15 @@ async function generateVisitsForPlan(plan: typeof customerPlansTable.$inferSelec
     let iterations = 0;
 
     while (iterations < MAX_VISITS_PER_SERVICE_PER_RUN) {
-      const idealDate = new Date(cursor.getTime() + svc.frequencyDays * 24 * 60 * 60 * 1000);
+      let idealDate = new Date(cursor.getTime() + svc.frequencyDays * 24 * 60 * 60 * 1000);
+
+      // Off-season: if the ideal date falls in the service's off-season window,
+      // jump forward to the first day after the off-season ends instead.
+      if (svcRecord?.offSeasonStart && svcRecord?.offSeasonEnd &&
+          isInOffSeason(idealDate, svcRecord.offSeasonStart, svcRecord.offSeasonEnd)) {
+        idealDate = firstDayAfterOffSeason(idealDate, svcRecord.offSeasonEnd);
+      }
+
       if (idealDate > lookahead) break;
       if (idealDate > plan.endDate) break; // this period's visits are already generated at sale/renewal time
 

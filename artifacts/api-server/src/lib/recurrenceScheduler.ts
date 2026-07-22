@@ -15,11 +15,12 @@
  *  - Multi-instance safety: atomic CAS on recurrenceCount prevents duplicates.
  */
 
-import { db, jobsTable } from "@workspace/db";
+import { db, jobsTable, servicesTable } from "@workspace/db";
 import { eq, and, isNull, isNotNull, ne } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { logger } from "./logger";
 import { nthOccurrenceAfterRoot, type RecurrenceRule } from "./recurrenceEngine";
+import { isInOffSeason, firstDayAfterOffSeason } from "./offSeasonUtils";
 
 const LOOKAHEAD_DAYS = parseInt(process.env.RECURRENCE_LOOKAHEAD_DAYS ?? "60", 10);
 
@@ -61,6 +62,14 @@ async function processRecurring() {
 
   let generated = 0;
 
+  // Pre-load services for off-season checks (one query, shared across all roots)
+  const allServices = await db.select({
+    id: servicesTable.id,
+    offSeasonStart: servicesTable.offSeasonStart,
+    offSeasonEnd: servicesTable.offSeasonEnd,
+  }).from(servicesTable);
+  const serviceMap = new Map(allServices.map(s => [s.id, s]));
+
   for (const root of roots) {
     if (!root.recurrenceRule) continue;
 
@@ -68,8 +77,20 @@ async function processRecurring() {
     const currentCount = root.recurrenceCount ?? 0;
 
     // Deterministic: compute the next date from root + count (no DB child lookup)
-    const nextDate = nthOccurrenceAfterRoot(rule, root.scheduledAt, currentCount);
+    let nextDate = nthOccurrenceAfterRoot(rule, root.scheduledAt, currentCount);
     if (!nextDate) continue; // series exhausted
+
+    // Off-season: advance past any occurrences that fall in the service's off-season window.
+    // skipCount tracks how many occurrences we're skipping so the CAS bumps count correctly.
+    let skipCount = 0;
+    const service = root.serviceId ? serviceMap.get(root.serviceId) : null;
+    if (service?.offSeasonStart && service?.offSeasonEnd) {
+      while (nextDate && isInOffSeason(nextDate, service.offSeasonStart, service.offSeasonEnd)) {
+        skipCount++;
+        nextDate = nthOccurrenceAfterRoot(rule, root.scheduledAt, currentCount + skipCount);
+      }
+      if (!nextDate) continue; // series exhausted after skipping off-season occurrences
+    }
 
     // Only generate if within look-ahead window
     if (nextDate > lookahead) continue;
@@ -80,9 +101,10 @@ async function processRecurring() {
     try {
       await db.transaction(async tx => {
         // CAS guard inside the transaction: only proceed if count still matches.
+        // Bump by skipCount + 1 to atomically consume the skipped off-season slots.
         const claimed = await tx.execute(sql`
           UPDATE jobs
-          SET recurrence_count = recurrence_count + 1
+          SET recurrence_count = recurrence_count + ${skipCount + 1}
           WHERE id = ${root.id}
             AND recurrence_count = ${currentCount}
         `);
@@ -108,7 +130,7 @@ async function processRecurring() {
           lineItems: root.lineItems,
           totalAmount: root.totalAmount,
           recurrenceParentId: root.id,
-          recurrenceIndex: currentCount,
+          recurrenceIndex: currentCount + skipCount,
           smsReminderEnabled: root.smsReminderEnabled,
         });
 

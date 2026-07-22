@@ -65,7 +65,7 @@ router.post("/services", async (req, res): Promise<void> => {
   if (!await requireOfficeRole(req, res, tenantId)) return;
 
   const { name, description, category, basePrice, estimatedDuration, p4pPercentage, isActive,
-          pricingMode, pricingMatrix, linkedZoneTypeId } = req.body;
+          pricingMode, pricingMatrix, linkedZoneTypeId, offSeasonStart, offSeasonEnd } = req.body;
   if (!name) { res.status(400).json({ error: "name is required" }); return; }
 
   // Treat empty-string or non-numeric p4pPercentage as null (inherit global rate)
@@ -78,6 +78,23 @@ router.post("/services", async (req, res): Promise<void> => {
   }
 
   const resolvedMode = pricingMode === "matrix" ? "matrix" : "flat";
+
+  // Off-season: both must be provided together or neither
+  const mmddRe = /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+  const parsedStart = offSeasonStart || null;
+  const parsedEnd = offSeasonEnd || null;
+  if ((parsedStart === null) !== (parsedEnd === null)) {
+    res.status(400).json({ error: "offSeasonStart and offSeasonEnd must both be set or both be empty" });
+    return;
+  }
+  if (parsedStart && !mmddRe.test(parsedStart)) {
+    res.status(400).json({ error: "offSeasonStart must be MM-DD format" });
+    return;
+  }
+  if (parsedEnd && !mmddRe.test(parsedEnd)) {
+    res.status(400).json({ error: "offSeasonEnd must be MM-DD format" });
+    return;
+  }
 
   const [service] = await db
     .insert(servicesTable)
@@ -93,6 +110,8 @@ router.post("/services", async (req, res): Promise<void> => {
       pricingMode: resolvedMode,
       pricingMatrix: resolvedMode === "matrix" && Array.isArray(pricingMatrix) ? pricingMatrix : null,
       linkedZoneTypeId: linkedZoneTypeId || null,
+      offSeasonStart: parsedStart,
+      offSeasonEnd: parsedEnd,
     })
     .returning();
 
@@ -106,7 +125,7 @@ router.patch("/services/:id", async (req, res): Promise<void> => {
 
   const id = parseInt(req.params.id, 10);
   const { name, description, category, basePrice, estimatedDuration, p4pPercentage, isActive,
-          pricingMode, pricingMatrix, linkedZoneTypeId } = req.body;
+          pricingMode, pricingMatrix, linkedZoneTypeId, offSeasonStart, offSeasonEnd } = req.body;
 
   const updates: Partial<typeof servicesTable.$inferInsert> = {};
   if (name !== undefined) updates.name = name;
@@ -123,6 +142,27 @@ router.patch("/services/:id", async (req, res): Promise<void> => {
     updates.pricingMatrix = Array.isArray(pricingMatrix) ? pricingMatrix : null;
   }
   if (linkedZoneTypeId !== undefined) updates.linkedZoneTypeId = linkedZoneTypeId || null;
+
+  // Off-season: validate and update together
+  if (offSeasonStart !== undefined || offSeasonEnd !== undefined) {
+    const mmddRe = /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+    const parsedStart = offSeasonStart || null;
+    const parsedEnd = offSeasonEnd || null;
+    if ((parsedStart === null) !== (parsedEnd === null)) {
+      res.status(400).json({ error: "offSeasonStart and offSeasonEnd must both be set or both be empty" });
+      return;
+    }
+    if (parsedStart && !mmddRe.test(parsedStart)) {
+      res.status(400).json({ error: "offSeasonStart must be MM-DD format" });
+      return;
+    }
+    if (parsedEnd && !mmddRe.test(parsedEnd)) {
+      res.status(400).json({ error: "offSeasonEnd must be MM-DD format" });
+      return;
+    }
+    updates.offSeasonStart = parsedStart;
+    updates.offSeasonEnd = parsedEnd;
+  }
 
   const [updated] = await db
     .update(servicesTable)

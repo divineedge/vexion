@@ -1,17 +1,13 @@
 import { Router, type IRouter } from "express";
-import { db, servicesTable, usersTable } from "@workspace/db";
+import { db, servicesTable } from "@workspace/db";
 import { eq, and, ilike, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
-
-const OFFICE_ROLES = new Set(["owner", "office_manager", "super_admin"]);
+import { isAdminRole } from "../lib/roles";
 
 async function requireOfficeRole(req: import("express").Request, res: import("express").Response, tenantId: number): Promise<boolean> {
   const userId = getUserId(req);
-  const [user] = await db
-    .select({ role: usersTable.role })
-    .from(usersTable)
-    .where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId)));
-  if (!user || !OFFICE_ROLES.has(user.role ?? "")) {
+  const allowed = await isAdminRole(tenantId, userId);
+  if (!allowed) {
     res.status(403).json({ error: "Forbidden: office role required" });
     return false;
   }

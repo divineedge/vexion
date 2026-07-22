@@ -81,7 +81,7 @@ export default function ServicesPage() {
       qc.invalidateQueries({ queryKey: ['services'] });
       setSheetMode(null);
     },
-    onError: () => toast.error('Failed to create service'),
+    onError: (err: any) => toast.error(err?.message ?? 'Failed to create service'),
   });
 
   const updateMutation = useMutation({
@@ -92,7 +92,7 @@ export default function ServicesPage() {
       qc.invalidateQueries({ queryKey: ['services'] });
       setSheetMode(null);
     },
-    onError: () => toast.error('Failed to update service'),
+    onError: (err: any) => toast.error(err?.message ?? 'Failed to update service'),
   });
 
   const deleteMutation = useMutation({

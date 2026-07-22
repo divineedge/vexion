@@ -116,6 +116,22 @@ export const insertEquipmentReadingLogSchema = createInsertSchema(equipmentReadi
 export type InsertEquipmentReadingLog = z.infer<typeof insertEquipmentReadingLogSchema>;
 export type EquipmentReadingLog = typeof equipmentReadingLogsTable.$inferSelect;
 
+// ── Tenant Equipment Types ────────────────────────────────────────────────────
+// Per-tenant list of equipment type labels. Replaces the hardcoded frontend
+// constant; defaults are seeded on tenant creation.
+
+export const tenantEquipmentTypesTable = pgTable("tenant_equipment_types", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  label: text("label").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const insertTenantEquipmentTypeSchema = createInsertSchema(tenantEquipmentTypesTable).omit({ id: true, createdAt: true });
+export type InsertTenantEquipmentType = z.infer<typeof insertTenantEquipmentTypeSchema>;
+export type TenantEquipmentType = typeof tenantEquipmentTypesTable.$inferSelect;
+
 // ── Equipment Lifecycle Events (archive / restore audit trail) ────────────────
 
 import { usersTable } from "./users";

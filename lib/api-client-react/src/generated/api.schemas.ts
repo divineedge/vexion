@@ -3269,6 +3269,17 @@ export interface Equipment {
   updatedAt: string;
 }
 
+export interface EquipmentType {
+  id: number;
+  label: string;
+  sortOrder: number;
+}
+
+export interface EquipmentTypeInput {
+  label: string;
+  sortOrder?: number;
+}
+
 export interface EquipmentInput {
   name: string;
   type?: string;

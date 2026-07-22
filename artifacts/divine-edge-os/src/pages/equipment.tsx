@@ -24,6 +24,7 @@ import {
   useGetEquipmentLinkedParts, getGetEquipmentLinkedPartsQueryKey,
   useCreateTask,
   useListEquipmentLifecycleEvents, getListEquipmentLifecycleEventsQueryKey,
+  useListEquipmentTypes, getListEquipmentTypesQueryKey,
 } from '@workspace/api-client-react';
 import type { Equipment, EquipmentMaintenance, EquipmentFuelLog, EquipmentLinkedPart } from '@workspace/api-client-react';
 import { Link } from 'wouter';
@@ -50,16 +51,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-const EQUIPMENT_TYPES = [
-  { value: 'mower', label: 'Mower' },
-  { value: 'truck', label: 'Truck' },
-  { value: 'trailer', label: 'Trailer' },
-  { value: 'sprayer', label: 'Sprayer' },
-  { value: 'blower', label: 'Blower' },
-  { value: 'edger', label: 'Edger' },
-  { value: 'chainsaw', label: 'Chainsaw' },
-  { value: 'other', label: 'Other' },
-];
+// EQUIPMENT_TYPES is now loaded from the tenant's equipment types list via API.
+// The combobox below falls back to free-form entry for values not in the list.
 
 /**
  * The equipment list query is parameterized by `includeArchived`, so a plain
@@ -96,7 +89,7 @@ interface EquipmentFormState {
 }
 
 const EMPTY_EQ_FORM: EquipmentFormState = {
-  name: '', type: 'mower', purchaseDate: '', purchasePrice: '',
+  name: '', type: '', purchaseDate: '', purchasePrice: '',
   expectedLifespanYears: '', expectedLifespanHours: '', currentHours: '',
   currentMiles: '', notes: '',
 };
@@ -952,6 +945,7 @@ export default function EquipmentPage() {
     { includeArchived },
     { query: { queryKey: getListEquipmentQueryKey({ includeArchived }) } },
   );
+  const { data: equipmentTypes = [] } = useListEquipmentTypes({ query: { queryKey: getListEquipmentTypesQueryKey() } });
   const createEquipment = useCreateEquipment();
   const updateEquipment = useUpdateEquipment();
   const deleteEquipment = useDeleteEquipment();
@@ -1285,12 +1279,18 @@ export default function EquipmentPage() {
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Type</label>
-              <Select value={form.type} onValueChange={v => setForm(f => ({ ...f, type: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {EQUIPMENT_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              {/* Combobox: shows tenant-defined types as suggestions, allows free-form entry */}
+              <Input
+                list="equipment-type-options"
+                placeholder="e.g. Mower"
+                value={form.type}
+                onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
+              />
+              <datalist id="equipment-type-options">
+                {equipmentTypes.map(t => (
+                  <option key={t.id} value={t.label} />
+                ))}
+              </datalist>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">

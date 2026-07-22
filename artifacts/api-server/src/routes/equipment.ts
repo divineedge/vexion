@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, equipmentTable, equipmentMaintenanceTable, equipmentFuelLogsTable, equipmentReadingLogsTable, equipmentLifecycleEventsTable, tenantsTable, usersTable, jobsTable, taskBundlesItemsTable, inventoryItemsTable } from "@workspace/db";
+import { db, equipmentTable, equipmentMaintenanceTable, equipmentFuelLogsTable, equipmentReadingLogsTable, equipmentLifecycleEventsTable, tenantEquipmentTypesTable, tenantsTable, usersTable, jobsTable, taskBundlesItemsTable, inventoryItemsTable } from "@workspace/db";
 import { eq, and, desc, sum, isNull, isNotNull, inArray, or, gte, lte, ilike, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isOwnerRole } from "../lib/roles";
@@ -17,6 +17,60 @@ import {
 } from "../lib/importExport";
 
 const router: IRouter = Router();
+
+// ─── Equipment Types (tenant-scoped label list) ────────────────────────────────
+
+router.get("/equipment-types", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const rows = await db
+    .select()
+    .from(tenantEquipmentTypesTable)
+    .where(eq(tenantEquipmentTypesTable.tenantId, tenantId))
+    .orderBy(tenantEquipmentTypesTable.sortOrder, tenantEquipmentTypesTable.id);
+  res.json(rows.map(r => ({ id: r.id, label: r.label, sortOrder: r.sortOrder })));
+});
+
+router.post("/equipment-types", requireOfficeRole, async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const { label, sortOrder } = req.body;
+  if (!label || typeof label !== "string" || !label.trim()) {
+    res.status(400).json({ error: "label is required" });
+    return;
+  }
+  const [row] = await db
+    .insert(tenantEquipmentTypesTable)
+    .values({ tenantId, label: label.trim(), sortOrder: sortOrder ?? 0 })
+    .returning();
+  res.status(201).json({ id: row.id, label: row.label, sortOrder: row.sortOrder });
+});
+
+router.put("/equipment-types/:id", requireOfficeRole, async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+  const { label, sortOrder } = req.body;
+  const updates: Partial<typeof tenantEquipmentTypesTable.$inferInsert> = {};
+  if (label != null) updates.label = String(label).trim();
+  if (sortOrder != null) updates.sortOrder = Number(sortOrder);
+  if (Object.keys(updates).length === 0) { res.status(400).json({ error: "Nothing to update" }); return; }
+  const [row] = await db
+    .update(tenantEquipmentTypesTable)
+    .set(updates)
+    .where(and(eq(tenantEquipmentTypesTable.id, id), eq(tenantEquipmentTypesTable.tenantId, tenantId)))
+    .returning();
+  if (!row) { res.status(404).json({ error: "Equipment type not found" }); return; }
+  res.json({ id: row.id, label: row.label, sortOrder: row.sortOrder });
+});
+
+router.delete("/equipment-types/:id", requireOfficeRole, async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+  const result = await db
+    .delete(tenantEquipmentTypesTable)
+    .where(and(eq(tenantEquipmentTypesTable.id, id), eq(tenantEquipmentTypesTable.tenantId, tenantId)))
+    .returning({ id: tenantEquipmentTypesTable.id });
+  if (result.length === 0) { res.status(404).json({ error: "Equipment type not found" }); return; }
+  res.sendStatus(204);
+});
 
 // ---------------------------------------------------------------------------
 // Bulk import / export

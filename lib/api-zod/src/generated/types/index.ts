@@ -161,6 +161,8 @@ export * from './equipmentMaintenance';
 export * from './equipmentMaintenanceInput';
 export * from './equipmentReadingLog';
 export * from './equipmentReadingLogInput';
+export * from './equipmentType';
+export * from './equipmentTypeInput';
 export * from './estimate';
 export * from './estimatedPart';
 export * from './estimateLineItem';

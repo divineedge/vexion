@@ -13,10 +13,12 @@ import {
   useUpdateFollowupTriggerConfig,
   useGetGmailAuthorizeUrl, getGetGmailAuthorizeUrlQueryKey,
   useDisconnectGmail,
+  useListEquipmentTypes, getListEquipmentTypesQueryKey,
+  useCreateEquipmentType, useUpdateEquipmentType, useDeleteEquipmentType,
   customFetch,
 } from '@workspace/api-client-react';
 import type { FollowupTriggerConfig } from '@workspace/api-client-react';
-import type { ChemicalProduct, ChemicalMixture, ChemicalMixtureItem, PaymentReminderRule } from '@workspace/api-client-react';
+import type { ChemicalProduct, ChemicalMixture, ChemicalMixtureItem, PaymentReminderRule, EquipmentType } from '@workspace/api-client-react';
 import { Repeat as RepeatIcon, ClipboardList } from 'lucide-react';
 import { format } from 'date-fns';
 import PlanTemplatesSettings from '@/components/settings/PlanTemplatesSettings';
@@ -117,6 +119,15 @@ export default function SettingsPage() {
   // Equipment thresholds
   const [equipRepairPct, setEquipRepairPct] = useState('50');
   const [equipResalePct, setEquipResalePct] = useState('20');
+
+  // Equipment types
+  const { data: equipmentTypes = [] } = useListEquipmentTypes({ query: { queryKey: getListEquipmentTypesQueryKey() } });
+  const createEquipmentType = useCreateEquipmentType();
+  const updateEquipmentType = useUpdateEquipmentType();
+  const deleteEquipmentType = useDeleteEquipmentType();
+  const [newTypeLabel, setNewTypeLabel] = useState('');
+  const [editingTypeId, setEditingTypeId] = useState<number | null>(null);
+  const [editingTypeLabel, setEditingTypeLabel] = useState('');
 
   // Communications
   const [mainPhoneNumber, setMainPhoneNumber] = useState('');
@@ -1969,6 +1980,148 @@ export default function SettingsPage() {
               <Button onClick={saveEquipmentThresholds} disabled={updateSettings.isPending} variant="outline">
                 Save Equipment Thresholds
               </Button>
+            </CardContent>
+          </Card>
+
+          {/* Equipment Types */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">Equipment Types</CardTitle>
+              <CardDescription>
+                Define the type labels available when adding or editing equipment.
+                Staff can still type a custom value if a type isn't listed here.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Existing types list */}
+              {equipmentTypes.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No types defined yet. Add your first type below.</p>
+              ) : (
+                <div className="divide-y border rounded-lg">
+                  {equipmentTypes.map((et: EquipmentType) => (
+                    <div key={et.id} className="flex items-center gap-2 px-3 py-2">
+                      {editingTypeId === et.id ? (
+                        <>
+                          <Input
+                            className="h-7 text-sm flex-1"
+                            value={editingTypeLabel}
+                            onChange={e => setEditingTypeLabel(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                if (!editingTypeLabel.trim()) return;
+                                updateEquipmentType.mutate(
+                                  { id: et.id, data: { label: editingTypeLabel.trim() } },
+                                  {
+                                    onSuccess: () => {
+                                      qc.invalidateQueries({ queryKey: getListEquipmentTypesQueryKey() });
+                                      setEditingTypeId(null);
+                                    },
+                                    onError: () => toast.error('Failed to rename type'),
+                                  }
+                                );
+                              }
+                              if (e.key === 'Escape') setEditingTypeId(null);
+                            }}
+                            autoFocus
+                          />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => {
+                              if (!editingTypeLabel.trim()) return;
+                              updateEquipmentType.mutate(
+                                { id: et.id, data: { label: editingTypeLabel.trim() } },
+                                {
+                                  onSuccess: () => {
+                                    qc.invalidateQueries({ queryKey: getListEquipmentTypesQueryKey() });
+                                    setEditingTypeId(null);
+                                  },
+                                  onError: () => toast.error('Failed to rename type'),
+                                }
+                              );
+                            }}
+                          >Save</Button>
+                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setEditingTypeId(null)}>Cancel</Button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="flex-1 text-sm">{et.label}</span>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7"
+                            onClick={() => { setEditingTypeId(et.id); setEditingTypeLabel(et.label); }}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            onClick={() => {
+                              if (!window.confirm(`Remove "${et.label}" from the list? Existing equipment with this type will still display correctly.`)) return;
+                              deleteEquipmentType.mutate(
+                                { id: et.id },
+                                {
+                                  onSuccess: () => qc.invalidateQueries({ queryKey: getListEquipmentTypesQueryKey() }),
+                                  onError: () => toast.error('Failed to delete type'),
+                                }
+                              );
+                            }}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add new type */}
+              <div className="flex gap-2">
+                <Input
+                  className="flex-1"
+                  placeholder="New type label (e.g. Riding Mower)"
+                  value={newTypeLabel}
+                  onChange={e => setNewTypeLabel(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      if (!newTypeLabel.trim()) return;
+                      createEquipmentType.mutate(
+                        { data: { label: newTypeLabel.trim(), sortOrder: equipmentTypes.length } },
+                        {
+                          onSuccess: () => {
+                            qc.invalidateQueries({ queryKey: getListEquipmentTypesQueryKey() });
+                            setNewTypeLabel('');
+                          },
+                          onError: () => toast.error('Failed to add type'),
+                        }
+                      );
+                    }
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  disabled={!newTypeLabel.trim() || createEquipmentType.isPending}
+                  onClick={() => {
+                    if (!newTypeLabel.trim()) return;
+                    createEquipmentType.mutate(
+                      { data: { label: newTypeLabel.trim(), sortOrder: equipmentTypes.length } },
+                      {
+                        onSuccess: () => {
+                          qc.invalidateQueries({ queryKey: getListEquipmentTypesQueryKey() });
+                          setNewTypeLabel('');
+                        },
+                        onError: () => toast.error('Failed to add type'),
+                      }
+                    );
+                  }}
+                >
+                  <Plus className="w-4 h-4 mr-1" /> Add
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

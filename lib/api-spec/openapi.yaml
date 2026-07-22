@@ -2638,6 +2638,81 @@ paths:
                 items:
                   $ref: "#/components/schemas/Plan"
 
+  # EQUIPMENT TYPES
+  /equipment-types:
+    get:
+      operationId: listEquipmentTypes
+      tags: [equipment]
+      summary: List tenant-defined equipment type labels
+      responses:
+        "200":
+          description: List of equipment types
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EquipmentType"
+    post:
+      operationId: createEquipmentType
+      tags: [equipment]
+      summary: Create an equipment type label (admin/office only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EquipmentTypeInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EquipmentType"
+
+  /equipment-types/{id}:
+    put:
+      operationId: updateEquipmentType
+      tags: [equipment]
+      summary: Update an equipment type label (admin/office only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EquipmentTypeInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EquipmentType"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteEquipmentType
+      tags: [equipment]
+      summary: Delete an equipment type label (admin/office only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+
   # EQUIPMENT
   /equipment:
     get:
@@ -10606,6 +10681,26 @@ components:
           type: string
         updatedAt:
           type: string
+
+    EquipmentType:
+      type: object
+      required: [id, label, sortOrder]
+      properties:
+        id:
+          type: integer
+        label:
+          type: string
+        sortOrder:
+          type: integer
+
+    EquipmentTypeInput:
+      type: object
+      required: [label]
+      properties:
+        label:
+          type: string
+        sortOrder:
+          type: integer
 
     EquipmentInput:
       type: object

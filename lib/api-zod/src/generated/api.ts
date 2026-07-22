@@ -4413,6 +4413,61 @@ export const ListPlansResponse = zod.array(ListPlansResponseItem)
 
 
 /**
+ * @summary List tenant-defined equipment type labels
+ */
+export const ListEquipmentTypesResponseItem = zod.object({
+  "id": zod.number(),
+  "label": zod.string(),
+  "sortOrder": zod.number()
+})
+export const ListEquipmentTypesResponse = zod.array(ListEquipmentTypesResponseItem)
+
+
+/**
+ * @summary Create an equipment type label (admin/office only)
+ */
+export const CreateEquipmentTypeBody = zod.object({
+  "label": zod.string(),
+  "sortOrder": zod.number().optional()
+})
+
+export const CreateEquipmentTypeResponse = zod.object({
+  "id": zod.number(),
+  "label": zod.string(),
+  "sortOrder": zod.number()
+})
+
+
+/**
+ * @summary Update an equipment type label (admin/office only)
+ */
+export const UpdateEquipmentTypeParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateEquipmentTypeBody = zod.object({
+  "label": zod.string(),
+  "sortOrder": zod.number().optional()
+})
+
+export const UpdateEquipmentTypeResponse = zod.object({
+  "id": zod.number(),
+  "label": zod.string(),
+  "sortOrder": zod.number()
+})
+
+
+/**
+ * @summary Delete an equipment type label (admin/office only)
+ */
+export const DeleteEquipmentTypeParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteEquipmentTypeResponse = zod.void()
+
+
+/**
  * @summary List all equipment
  */
 export const ListEquipmentQueryParams = zod.object({

@@ -64,7 +64,8 @@ router.post("/services", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   if (!await requireOfficeRole(req, res, tenantId)) return;
 
-  const { name, description, category, basePrice, estimatedDuration, p4pPercentage, isActive } = req.body;
+  const { name, description, category, basePrice, estimatedDuration, p4pPercentage, isActive,
+          pricingMode, pricingMatrix, linkedZoneTypeId } = req.body;
   if (!name) { res.status(400).json({ error: "name is required" }); return; }
 
   // Treat empty-string or non-numeric p4pPercentage as null (inherit global rate)
@@ -75,6 +76,8 @@ router.post("/services", async (req, res): Promise<void> => {
     res.status(400).json({ error: "p4pPercentage must be a number or empty" });
     return;
   }
+
+  const resolvedMode = pricingMode === "matrix" ? "matrix" : "flat";
 
   const [service] = await db
     .insert(servicesTable)
@@ -87,6 +90,9 @@ router.post("/services", async (req, res): Promise<void> => {
       estimatedDuration: estimatedDuration ? parseInt(estimatedDuration, 10) : null,
       p4pPercentage: parsedP4p,
       isActive: isActive !== false,
+      pricingMode: resolvedMode,
+      pricingMatrix: resolvedMode === "matrix" && Array.isArray(pricingMatrix) ? pricingMatrix : null,
+      linkedZoneTypeId: linkedZoneTypeId || null,
     })
     .returning();
 
@@ -99,7 +105,8 @@ router.patch("/services/:id", async (req, res): Promise<void> => {
   if (!await requireOfficeRole(req, res, tenantId)) return;
 
   const id = parseInt(req.params.id, 10);
-  const { name, description, category, basePrice, estimatedDuration, p4pPercentage, isActive } = req.body;
+  const { name, description, category, basePrice, estimatedDuration, p4pPercentage, isActive,
+          pricingMode, pricingMatrix, linkedZoneTypeId } = req.body;
 
   const updates: Partial<typeof servicesTable.$inferInsert> = {};
   if (name !== undefined) updates.name = name;
@@ -109,6 +116,13 @@ router.patch("/services/:id", async (req, res): Promise<void> => {
   if (estimatedDuration !== undefined) updates.estimatedDuration = estimatedDuration ? parseInt(estimatedDuration, 10) : null;
   if (p4pPercentage !== undefined) updates.p4pPercentage = p4pPercentage !== "" && p4pPercentage != null ? parseFloat(p4pPercentage) : null;
   if (isActive !== undefined) updates.isActive = Boolean(isActive);
+  if (pricingMode !== undefined) {
+    updates.pricingMode = pricingMode === "matrix" ? "matrix" : "flat";
+    updates.pricingMatrix = pricingMode === "matrix" && Array.isArray(pricingMatrix) ? pricingMatrix : null;
+  } else if (pricingMatrix !== undefined) {
+    updates.pricingMatrix = Array.isArray(pricingMatrix) ? pricingMatrix : null;
+  }
+  if (linkedZoneTypeId !== undefined) updates.linkedZoneTypeId = linkedZoneTypeId || null;
 
   const [updated] = await db
     .update(servicesTable)

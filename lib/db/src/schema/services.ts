@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, real, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, boolean, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -16,6 +16,19 @@ export const servicesTable = pgTable("services", {
   /** Service-level P4P payout %. null = use tenant p4pMasterPercentage. */
   p4pPercentage: real("p4p_percentage"),
   isActive: boolean("is_active").notNull().default(true),
+  /** 'flat' = fixed basePrice; 'matrix' = tiered by sqft using pricingMatrix */
+  pricingMode: text("pricing_mode").notNull().default("flat"),
+  /**
+   * Area-based pricing tiers.
+   * Array<{ minSqft: number, maxSqft: number | null, price: number, perSqftRate?: number }>
+   * When maxSqft is null it is the catch-all "above X sqft" tier; perSqftRate is used if set.
+   */
+  pricingMatrix: jsonb("pricing_matrix"),
+  /**
+   * Optional tenant zone type id (from tenantsTable.measurementZoneTypes).
+   * When set, the resolver uses the area of this zone type from the property's measurement polygons.
+   */
+  linkedZoneTypeId: text("linked_zone_type_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

@@ -488,6 +488,7 @@ export default function PropertyDetailPage() {
               propertyId={id}
               zones={currentZones}
               preferredAreaUnit={preferredAreaUnit}
+              zoneTypes={zoneTypes}
             />
           </Suspense>
 

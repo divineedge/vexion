@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, quotesTable, propertiesTable, customersTable, servicesTable, jobsTable, blueprintsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { getTenantId } from "../lib/tenantHelper";
+import { resolveServicePrice, type PricingTier } from "../lib/pricingMatrix";
 import crypto from "crypto";
 
 const router: IRouter = Router();
@@ -62,14 +63,29 @@ router.post("/properties/:id/quotes", async (req, res): Promise<void> => {
     if (service) {
       serviceName = service.name;
       serviceDescription = service.description ?? null;
-      if (resolvedPriceType === "per_sqft" && totalAreaSqft) {
-        calculatedPrice = service.basePrice * totalAreaSqft;
+
+      // Server always resolves the authoritative price from service configuration.
+      // Client-supplied calculatedPrice is intentionally ignored for service-backed quotes
+      // to prevent price manipulation.
+      if ((service.pricingMode ?? "flat") === "matrix" && service.pricingMatrix) {
+        // Resolve via the area-based matrix; area comes from the sum of selected zones sent by client
+        calculatedPrice = resolveServicePrice(
+          "matrix",
+          service.basePrice,
+          service.pricingMatrix as PricingTier[],
+          totalAreaSqft ? parseFloat(totalAreaSqft) : null,
+        );
+      } else if (resolvedPriceType === "per_sqft" && totalAreaSqft) {
+        calculatedPrice = service.basePrice * parseFloat(totalAreaSqft);
       } else {
         calculatedPrice = service.basePrice;
       }
     }
-  } else if (req.body.calculatedPrice !== undefined) {
-    calculatedPrice = parseFloat(req.body.calculatedPrice);
+  } else {
+    // No serviceId — custom quote; client supplies price and name
+    if (req.body.calculatedPrice !== undefined) {
+      calculatedPrice = parseFloat(req.body.calculatedPrice);
+    }
     serviceName = req.body.serviceName ?? "Custom Quote";
   }
 

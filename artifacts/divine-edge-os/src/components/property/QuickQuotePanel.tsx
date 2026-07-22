@@ -3,7 +3,7 @@
  * Lets staff select a service + measurement zones, calculate a price,
  * and generate an instant-quote link to send to the customer.
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { customFetch } from '@workspace/api-client-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,8 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
-import { DollarSign, Copy, ExternalLink, CheckCircle2, Calculator, Ruler } from 'lucide-react';
+import { DollarSign, Copy, ExternalLink, CheckCircle2, Calculator, Ruler, Grid3X3 } from 'lucide-react';
 import { toast } from 'sonner';
+import { resolveServicePrice, type PricingTier } from '@/lib/pricingMatrix';
 
 export interface MeasurementZone {
   id: string;
@@ -22,18 +23,29 @@ export interface MeasurementZone {
   color: string;
 }
 
+interface ZoneType {
+  id: string;
+  name: string;
+  color: string;
+}
+
 interface Service {
   id: number;
   name: string;
   description: string | null;
   basePrice: number;
   category: string | null;
+  pricingMode?: string;
+  pricingMatrix?: PricingTier[] | null;
+  linkedZoneTypeId?: string | null;
 }
 
 interface QuickQuotePanelProps {
   propertyId: number;
   zones: MeasurementZone[];
   preferredAreaUnit?: 'sqft' | 'acres';
+  /** Tenant zone types so we can resolve linkedZoneTypeId → zone label */
+  zoneTypes?: ZoneType[];
 }
 
 function formatArea(sqft: number, unit: 'sqft' | 'acres'): string {
@@ -41,7 +53,7 @@ function formatArea(sqft: number, unit: 'sqft' | 'acres'): string {
   return `${sqft.toLocaleString(undefined, { maximumFractionDigits: 0 })} sqft`;
 }
 
-export default function QuickQuotePanel({ propertyId, zones, preferredAreaUnit = 'sqft' }: QuickQuotePanelProps) {
+export default function QuickQuotePanel({ propertyId, zones, preferredAreaUnit = 'sqft', zoneTypes = [] }: QuickQuotePanelProps) {
   const [services, setServices] = useState<Service[] | null>(null);
   const [loadingServices, setLoadingServices] = useState(false);
   const [selectedServiceId, setSelectedServiceId] = useState<string>('');
@@ -67,12 +79,47 @@ export default function QuickQuotePanel({ propertyId, zones, preferredAreaUnit =
   };
 
   const selectedService = services?.find(s => String(s.id) === selectedServiceId);
+
+  // When service changes, auto-select zones linked to its linkedZoneTypeId
+  useEffect(() => {
+    if (!selectedService) return;
+    const linkedId = selectedService.linkedZoneTypeId;
+    if (!linkedId || zones.length === 0) return;
+
+    // Find the zone type name from tenant zone types
+    const zoneType = zoneTypes.find(zt => zt.id === linkedId);
+    if (!zoneType) return;
+
+    // Find property zones whose label matches the zone type name
+    const matchingZones = zones.filter(z => z.label === zoneType.name);
+    if (matchingZones.length === 0) return;
+
+    setSelectedZones(new Set(matchingZones.map(z => z.id)));
+  }, [selectedService?.linkedZoneTypeId, zones, zoneTypes]);
+
   const selectedZoneList = zones.filter(z => selectedZones.has(z.id));
   const totalAreaSqft = selectedZoneList.reduce((s, z) => s + z.areaSqft, 0);
+
+  // Determine the linked zone type name for display
+  const linkedZoneTypeName = selectedService?.linkedZoneTypeId
+    ? zoneTypes.find(zt => zt.id === selectedService.linkedZoneTypeId)?.name
+    : null;
+
+  const isMatrixService = selectedService?.pricingMode === 'matrix';
 
   const calculatedPrice = (() => {
     if (overridePrice) return parseFloat(overridePrice) || 0;
     if (!selectedService) return 0;
+
+    if (isMatrixService && selectedService.pricingMatrix) {
+      return resolveServicePrice(
+        'matrix',
+        selectedService.basePrice,
+        selectedService.pricingMatrix,
+        totalAreaSqft > 0 ? totalAreaSqft : null,
+      );
+    }
+
     if (priceType === 'per_sqft' && totalAreaSqft > 0) {
       return selectedService.basePrice * totalAreaSqft;
     }
@@ -98,7 +145,7 @@ export default function QuickQuotePanel({ propertyId, zones, preferredAreaUnit =
       const payload: Record<string, unknown> = {
         selectedZoneLabels: selectedZoneList.map(z => z.label),
         totalAreaSqft: totalAreaSqft || null,
-        priceType,
+        priceType: isMatrixService ? 'matrix' : priceType,
         calculatedPrice,
         serviceName: selectedService?.name ?? 'Custom Quote',
       };
@@ -141,7 +188,7 @@ export default function QuickQuotePanel({ propertyId, zones, preferredAreaUnit =
           <label className="text-sm font-medium">Service</label>
           <Select
             value={selectedServiceId}
-            onValueChange={setSelectedServiceId}
+            onValueChange={v => { setSelectedServiceId(v); setOverridePrice(''); }}
             onOpenChange={open => { if (open) loadServices(); }}
           >
             <SelectTrigger>
@@ -152,16 +199,35 @@ export default function QuickQuotePanel({ propertyId, zones, preferredAreaUnit =
                 <SelectItem key={s.id} value={String(s.id)}>
                   <div className="flex items-center justify-between gap-4 w-full">
                     <span>{s.name}</span>
-                    <span className="text-muted-foreground text-xs">${s.basePrice.toFixed(2)}</span>
+                    {s.pricingMode === 'matrix' ? (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-0.5 text-violet-600 border-violet-300 bg-violet-50">
+                        <Grid3X3 className="w-2.5 h-2.5" /> matrix
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">${s.basePrice.toFixed(2)}</span>
+                    )}
                   </div>
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+
+          {/* Show linked zone info for matrix services */}
+          {selectedService && isMatrixService && (
+            <div className="flex items-center gap-1.5 text-xs text-violet-600 bg-violet-50 border border-violet-200 rounded px-2.5 py-1.5">
+              <Grid3X3 className="w-3 h-3 shrink-0" />
+              <span>
+                Area-based pricing
+                {linkedZoneTypeName
+                  ? <> — auto-using <strong>{linkedZoneTypeName}</strong> zone area</>
+                  : ' — select zones below to determine price'}
+              </span>
+            </div>
+          )}
         </div>
 
-        {/* Price type (only relevant when service has a basePrice) */}
-        {selectedService && (
+        {/* Price type (only for flat-rate services) */}
+        {selectedService && !isMatrixService && (
           <div className="flex items-center gap-3">
             <span className="text-sm text-muted-foreground">Price type:</span>
             <div className="flex border rounded-lg overflow-hidden text-sm">
@@ -183,6 +249,11 @@ export default function QuickQuotePanel({ propertyId, zones, preferredAreaUnit =
           <div className="space-y-2">
             <label className="text-sm font-medium flex items-center gap-1.5">
               <Ruler className="w-3.5 h-3.5 text-primary" /> Include Zones
+              {linkedZoneTypeName && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 ml-1 text-violet-600 border-violet-300">
+                  auto-selected: {linkedZoneTypeName}
+                </Badge>
+              )}
             </label>
             <div className="space-y-1.5">
               {zones.map(zone => (
@@ -234,7 +305,12 @@ export default function QuickQuotePanel({ propertyId, zones, preferredAreaUnit =
             <p className="text-2xl font-bold text-primary mt-0.5">
               ${calculatedPrice.toFixed(2)}
             </p>
-            {priceType === 'per_sqft' && selectedService && totalAreaSqft > 0 && (
+            {isMatrixService && selectedService?.pricingMatrix && totalAreaSqft > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Matrix price for {formatArea(totalAreaSqft, preferredAreaUnit)}
+              </p>
+            )}
+            {!isMatrixService && priceType === 'per_sqft' && selectedService && totalAreaSqft > 0 && (
               <p className="text-xs text-muted-foreground">
                 ${selectedService.basePrice}/sqft × {formatArea(totalAreaSqft, preferredAreaUnit)}
               </p>

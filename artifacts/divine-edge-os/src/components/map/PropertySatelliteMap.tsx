@@ -16,6 +16,12 @@ export interface MeasurementZone {
   color: string;
 }
 
+export interface ZoneType {
+  id: string;
+  name: string;
+  color: string;
+}
+
 interface PropertySatelliteMapProps {
   lat?: number | null;
   lng?: number | null;
@@ -25,6 +31,9 @@ interface PropertySatelliteMapProps {
   geofenceLat?: number | null;
   geofenceLng?: number | null;
   preferredAreaUnit?: 'sqft' | 'acres';
+  /** Structured zone types from tenant settings — preferred over defaultZoneLabels */
+  zoneTypes?: ZoneType[];
+  /** @deprecated use zoneTypes instead */
   defaultZoneLabels?: string[];
   onPinChange?: (lat: number, lng: number) => void;
   onMeasurementsChange?: (zones: MeasurementZone[], totalSqft: number) => void;
@@ -70,6 +79,14 @@ function generateId(): string {
   return Math.random().toString(36).slice(2, 9);
 }
 
+const DEFAULT_ZONE_TYPES: ZoneType[] = [
+  { id: '1', name: 'Front Lawn', color: '#3B82F6' },
+  { id: '2', name: 'Back Yard', color: '#10B981' },
+  { id: '3', name: 'Bed Areas', color: '#F59E0B' },
+  { id: '4', name: 'Side Yard', color: '#EF4444' },
+  { id: '5', name: 'Common Area', color: '#8B5CF6' },
+];
+
 export default function PropertySatelliteMap({
   lat,
   lng,
@@ -79,12 +96,25 @@ export default function PropertySatelliteMap({
   geofenceLat,
   geofenceLng,
   preferredAreaUnit = 'sqft',
-  defaultZoneLabels = ['Front Lawn', 'Back Yard', 'Bed Areas', 'Side Yard', 'Common Area'],
+  zoneTypes,
+  defaultZoneLabels,
   onPinChange,
   onMeasurementsChange,
   onGeofenceChange,
   readonly = false,
 }: PropertySatelliteMapProps) {
+  // Resolve effective zone types: prefer structured zoneTypes, fall back to legacy labels, then built-in defaults
+  const effectiveZoneTypes: ZoneType[] = React.useMemo(() => {
+    if (zoneTypes && zoneTypes.length > 0) return zoneTypes;
+    if (defaultZoneLabels && defaultZoneLabels.length > 0) {
+      return defaultZoneLabels.map((name, i) => ({
+        id: String(i + 1),
+        name,
+        color: ZONE_COLORS[i % ZONE_COLORS.length],
+      }));
+    }
+    return DEFAULT_ZONE_TYPES;
+  }, [zoneTypes, defaultZoneLabels]);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import('leaflet').Map | null>(null);
   const markersRef = useRef<{
@@ -99,7 +129,7 @@ export default function PropertySatelliteMap({
   const [zones, setZones] = useState<MeasurementZone[]>(measurementPolygons);
   const [drawingMode, setDrawingMode] = useState(false);
   const [drawingPoints, setDrawingPoints] = useState<[number, number][]>([]);
-  const [newZoneLabel, setNewZoneLabel] = useState(defaultZoneLabels[0] ?? 'Front Lawn');
+  const [selectedZoneTypeId, setSelectedZoneTypeId] = useState<string>('');
   const [editingGeofence, setEditingGeofence] = useState(false);
   const [currentLat, setCurrentLat] = useState(lat ?? 25.7617);
   const [currentLng, setCurrentLng] = useState(lng ?? -80.1918);
@@ -110,6 +140,16 @@ export default function PropertySatelliteMap({
   useEffect(() => {
     setZones(measurementPolygons);
   }, [measurementPolygons]);
+
+  // Keep selectedZoneTypeId in sync with effectiveZoneTypes (default to first)
+  useEffect(() => {
+    if (effectiveZoneTypes.length > 0) {
+      setSelectedZoneTypeId(prev => {
+        const stillExists = effectiveZoneTypes.some(z => z.id === prev);
+        return stillExists ? prev : effectiveZoneTypes[0].id;
+      });
+    }
+  }, [effectiveZoneTypes]);
 
   // Initialize map
   useEffect(() => {
@@ -297,14 +337,15 @@ export default function PropertySatelliteMap({
     const points = pointsOverride ?? drawingPoints;
     if (points.length < 3) return;
     const areaSqft = polygonAreaSqft(points);
-    const colorIndex = zones.length % ZONE_COLORS.length;
+    // Resolve the selected zone type (fall back to index-based color if not found)
+    const selectedType = effectiveZoneTypes.find(z => z.id === selectedZoneTypeId) ?? effectiveZoneTypes[zones.length % effectiveZoneTypes.length];
     const newZone: MeasurementZone = {
       id: generateId(),
-      label: newZoneLabel,
+      label: selectedType?.name ?? 'Zone',
       vertices: points,
       areaSqft,
       enabled: true,
-      color: ZONE_COLORS[colorIndex],
+      color: selectedType?.color ?? ZONE_COLORS[zones.length % ZONE_COLORS.length],
     };
     const next = [...zones, newZone];
     setZones(next);
@@ -405,23 +446,24 @@ export default function PropertySatelliteMap({
           {!drawingMode ? (
             <>
               <div className="flex items-center gap-2 flex-1">
-                <select
-                  className="text-sm border rounded px-2 py-1.5 bg-background flex-1 max-w-[180px]"
-                  value={newZoneLabel}
-                  onChange={e => setNewZoneLabel(e.target.value)}
-                >
-                  {defaultZoneLabels.map(l => (
-                    <option key={l} value={l}>{l}</option>
-                  ))}
-                  <option value="Custom">Custom...</option>
-                </select>
-                {newZoneLabel === 'Custom' && (
-                  <input
-                    className="text-sm border rounded px-2 py-1.5 bg-background w-32"
-                    placeholder="Zone name..."
-                    onBlur={e => setNewZoneLabel(e.target.value || 'Custom')}
-                  />
-                )}
+                {/* Zone type selector with color swatch */}
+                <div className="flex items-center gap-1.5 flex-1 max-w-[220px]">
+                  {(() => {
+                    const sel = effectiveZoneTypes.find(z => z.id === selectedZoneTypeId);
+                    return sel ? (
+                      <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: sel.color }} />
+                    ) : null;
+                  })()}
+                  <select
+                    className="text-sm border rounded px-2 py-1.5 bg-background flex-1"
+                    value={selectedZoneTypeId}
+                    onChange={e => setSelectedZoneTypeId(e.target.value)}
+                  >
+                    {effectiveZoneTypes.map(zt => (
+                      <option key={zt.id} value={zt.id}>{zt.name}</option>
+                    ))}
+                  </select>
+                </div>
                 <button
                   className="text-sm px-3 py-1.5 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition font-medium"
                   onClick={() => { setDrawingMode(true); setDrawingPoints([]); }}

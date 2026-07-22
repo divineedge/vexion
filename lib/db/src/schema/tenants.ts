@@ -34,8 +34,10 @@ export const tenantsTable = pgTable("tenants", {
   defaultGeofenceUnit: text("default_geofence_unit").notNull().default("m"),
   /** Whether to auto-create a geofence when a property is added */
   autoCreateGeofence: boolean("auto_create_geofence").notNull().default(false),
-  /** Default zone label presets shown in the measurement polygon tool */
+  /** @deprecated use measurementZoneTypes instead — kept for backward-compat migration */
   measurementZoneLabels: jsonb("measurement_zone_labels").default('["Front Lawn","Back Yard","Bed Areas","Side Yard","Common Area"]'),
+  /** Structured zone type definitions: Array<{ id: string, name: string, color: string }> */
+  measurementZoneTypes: jsonb("measurement_zone_types").default('[]'),
   /** Preferred area unit for measurements: 'sqft' | 'acres' */
   preferredAreaUnit: text("preferred_area_unit").notNull().default("sqft"),
   // ── Communications ───────────────────────────────────────────────────────

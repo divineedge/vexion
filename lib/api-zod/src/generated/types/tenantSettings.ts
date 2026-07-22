@@ -11,6 +11,7 @@ import type { PaymentReminderRule } from './paymentReminderRule';
 import type { TenantSettingsAutoInvoiceFrequency } from './tenantSettingsAutoInvoiceFrequency';
 import type { TenantSettingsDefaultGeofenceUnit } from './tenantSettingsDefaultGeofenceUnit';
 import type { TenantSettingsDurationUnit } from './tenantSettingsDurationUnit';
+import type { TenantSettingsMeasurementZoneTypesItem } from './tenantSettingsMeasurementZoneTypesItem';
 import type { TenantSettingsNonRecurringInvoiceCadence } from './tenantSettingsNonRecurringInvoiceCadence';
 import type { TenantSettingsPaymentReminderChannelsItem } from './tenantSettingsPaymentReminderChannelsItem';
 import type { TenantSettingsPlanTier } from './tenantSettingsPlanTier';
@@ -58,8 +59,10 @@ export interface TenantSettings {
   defaultGeofenceUnit?: TenantSettingsDefaultGeofenceUnit;
   /** Auto-create geofence when a property is added */
   autoCreateGeofence?: boolean;
-  /** Default zone label presets shown in the polygon tool */
+  /** Deprecated: use measurementZoneTypes instead */
   measurementZoneLabels?: string[];
+  /** Structured zone type definitions with name and color */
+  measurementZoneTypes?: TenantSettingsMeasurementZoneTypesItem[];
   /** Preferred area unit for property measurements */
   preferredAreaUnit?: TenantSettingsPreferredAreaUnit;
   /** @nullable */

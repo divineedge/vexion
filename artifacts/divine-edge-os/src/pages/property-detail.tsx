@@ -142,9 +142,12 @@ export default function PropertyDetailPage() {
   const deleteRepairLog = useDeleteRepairLog();
 
   const preferredAreaUnit = (tenantSettings?.preferredAreaUnit as 'sqft' | 'acres') ?? 'sqft';
-  const defaultZoneLabels: string[] = (tenantSettings?.measurementZoneLabels as string[]) ?? [
-    'Front Lawn', 'Back Yard', 'Bed Areas', 'Side Yard', 'Common Area',
-  ];
+  const ZONE_COLORS = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#84CC16','#F97316','#EC4899','#6366F1'];
+  const rawZoneTypes = (tenantSettings as any)?.measurementZoneTypes as Array<{ id: string; name: string; color: string }> | undefined;
+  const zoneTypes = rawZoneTypes && rawZoneTypes.length > 0
+    ? rawZoneTypes
+    : ((tenantSettings?.measurementZoneLabels as string[] | undefined) ?? ['Front Lawn', 'Back Yard', 'Bed Areas', 'Side Yard', 'Common Area'])
+        .map((name, i) => ({ id: String(i + 1), name, color: ZONE_COLORS[i % ZONE_COLORS.length] }));
   const defaultGeofenceRadius = tenantSettings?.defaultGeofenceRadius ?? 100;
 
   const updateProperty = useUpdateProperty();
@@ -462,7 +465,7 @@ export default function PropertyDetailPage() {
                   geofenceLat={property.geofenceLat}
                   geofenceLng={property.geofenceLng}
                   preferredAreaUnit={preferredAreaUnit}
-                  defaultZoneLabels={defaultZoneLabels}
+                  zoneTypes={zoneTypes}
                   onPinChange={handlePinChange}
                   onMeasurementsChange={handleMeasurementsChange}
                   onGeofenceChange={handleGeofenceChange}

@@ -2330,6 +2330,12 @@ export const TenantSettingsDefaultGeofenceUnit = {
   ft: 'ft',
 } as const;
 
+export type TenantSettingsMeasurementZoneTypesItem = {
+  id: string;
+  name: string;
+  color: string;
+};
+
 /**
  * Preferred area unit for property measurements
  */
@@ -2450,8 +2456,10 @@ export interface TenantSettings {
   defaultGeofenceUnit?: TenantSettingsDefaultGeofenceUnit;
   /** Auto-create geofence when a property is added */
   autoCreateGeofence?: boolean;
-  /** Default zone label presets shown in the polygon tool */
+  /** Deprecated: use measurementZoneTypes instead */
   measurementZoneLabels?: string[];
+  /** Structured zone type definitions with name and color */
+  measurementZoneTypes?: TenantSettingsMeasurementZoneTypesItem[];
   /** Preferred area unit for property measurements */
   preferredAreaUnit?: TenantSettingsPreferredAreaUnit;
   /** @nullable */
@@ -2740,6 +2748,12 @@ export const TenantSettingsUpdateDefaultGeofenceUnit = {
   ft: 'ft',
 } as const;
 
+export type TenantSettingsUpdateMeasurementZoneTypesItem = {
+  id: string;
+  name: string;
+  color: string;
+};
+
 export type TenantSettingsUpdatePreferredAreaUnit = typeof TenantSettingsUpdatePreferredAreaUnit[keyof typeof TenantSettingsUpdatePreferredAreaUnit];
 
 
@@ -2779,6 +2793,7 @@ export interface TenantSettingsUpdate {
   defaultGeofenceUnit?: TenantSettingsUpdateDefaultGeofenceUnit;
   autoCreateGeofence?: boolean;
   measurementZoneLabels?: string[];
+  measurementZoneTypes?: TenantSettingsUpdateMeasurementZoneTypesItem[];
   preferredAreaUnit?: TenantSettingsUpdatePreferredAreaUnit;
   businessPhone?: string;
   businessEmail?: string;

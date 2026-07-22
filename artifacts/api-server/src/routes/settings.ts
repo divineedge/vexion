@@ -16,6 +16,13 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
   const cfJson = tenant.customFields as Record<string, unknown> | null;
   const rolePerms = tenant.rolePermissions as Record<string, Record<string, boolean>> | null;
   const defaultZoneLabels = (tenant.measurementZoneLabels as string[] | null) ?? ["Front Lawn", "Back Yard", "Bed Areas", "Side Yard", "Common Area"];
+  const DEFAULT_ZONE_COLORS = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#84CC16','#F97316','#EC4899','#6366F1'];
+  // If measurementZoneTypes is populated, use it; otherwise derive from legacy labels
+  const rawZoneTypes = tenant.measurementZoneTypes as Array<{ id: string; name: string; color: string }> | null;
+  const measurementZoneTypes: Array<{ id: string; name: string; color: string }> =
+    rawZoneTypes && rawZoneTypes.length > 0
+      ? rawZoneTypes
+      : defaultZoneLabels.map((name, i) => ({ id: String(i + 1), name, color: DEFAULT_ZONE_COLORS[i % DEFAULT_ZONE_COLORS.length] }));
   const phonePlatformConfig = (tenant.phonePlatformConfig as Record<string, string>) ?? {};
   const emailProviderConfig = (tenant.emailProviderConfig as Record<string, string>) ?? {};
   return {
@@ -46,6 +53,7 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     defaultGeofenceUnit: (tenant.defaultGeofenceUnit ?? "m") as "m" | "ft",
     autoCreateGeofence: tenant.autoCreateGeofence ?? false,
     measurementZoneLabels: defaultZoneLabels,
+    measurementZoneTypes,
     preferredAreaUnit: (tenant.preferredAreaUnit ?? "sqft") as "sqft" | "acres",
     // Communications
     mainPhoneNumber: tenant.mainPhoneNumber ?? null,
@@ -139,7 +147,7 @@ router.patch("/settings", async (req, res): Promise<void> => {
     rolePermissions, customerFields,
     equipmentRepairThresholdPct, equipmentResaleThresholdPct,
     defaultGeofenceRadius, defaultGeofenceUnit, autoCreateGeofence,
-    measurementZoneLabels, preferredAreaUnit,
+    measurementZoneLabels, measurementZoneTypes, preferredAreaUnit,
     // Communications
     mainPhoneNumber, marketingPhoneNumber,
     phonePlatform, phonePlatformConfig,
@@ -192,6 +200,7 @@ router.patch("/settings", async (req, res): Promise<void> => {
   if (defaultGeofenceUnit !== undefined) updates.defaultGeofenceUnit = defaultGeofenceUnit;
   if (autoCreateGeofence !== undefined) updates.autoCreateGeofence = autoCreateGeofence;
   if (measurementZoneLabels !== undefined) updates.measurementZoneLabels = measurementZoneLabels;
+  if (measurementZoneTypes !== undefined) updates.measurementZoneTypes = measurementZoneTypes;
   if (preferredAreaUnit !== undefined) updates.preferredAreaUnit = preferredAreaUnit;
   // Communications
   if (mainPhoneNumber !== undefined) updates.mainPhoneNumber = mainPhoneNumber || null;

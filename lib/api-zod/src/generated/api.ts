@@ -3700,7 +3700,12 @@ export const GetTenantSettingsResponse = zod.object({
   "defaultGeofenceRadius": zod.number().optional().describe('Default geofence radius applied when auto-creating a geofence'),
   "defaultGeofenceUnit": zod.enum(['m', 'ft']).optional().describe('Unit for geofence radius'),
   "autoCreateGeofence": zod.boolean().optional().describe('Auto-create geofence when a property is added'),
-  "measurementZoneLabels": zod.array(zod.string()).optional().describe('Default zone label presets shown in the polygon tool'),
+  "measurementZoneLabels": zod.array(zod.string()).optional().describe('Deprecated: use measurementZoneTypes instead'),
+  "measurementZoneTypes": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "color": zod.string()
+})).optional().describe('Structured zone type definitions with name and color'),
   "preferredAreaUnit": zod.enum(['sqft', 'acres']).optional().describe('Preferred area unit for property measurements'),
   "businessPhone": zod.string().nullish(),
   "businessEmail": zod.string().nullish(),
@@ -3783,6 +3788,11 @@ export const UpdateTenantSettingsBody = zod.object({
   "defaultGeofenceUnit": zod.enum(['m', 'ft']).optional(),
   "autoCreateGeofence": zod.boolean().optional(),
   "measurementZoneLabels": zod.array(zod.string()).optional(),
+  "measurementZoneTypes": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "color": zod.string()
+})).optional(),
   "preferredAreaUnit": zod.enum(['sqft', 'acres']).optional(),
   "businessPhone": zod.string().optional(),
   "businessEmail": zod.string().optional(),
@@ -3846,7 +3856,12 @@ export const UpdateTenantSettingsResponse = zod.object({
   "defaultGeofenceRadius": zod.number().optional().describe('Default geofence radius applied when auto-creating a geofence'),
   "defaultGeofenceUnit": zod.enum(['m', 'ft']).optional().describe('Unit for geofence radius'),
   "autoCreateGeofence": zod.boolean().optional().describe('Auto-create geofence when a property is added'),
-  "measurementZoneLabels": zod.array(zod.string()).optional().describe('Default zone label presets shown in the polygon tool'),
+  "measurementZoneLabels": zod.array(zod.string()).optional().describe('Deprecated: use measurementZoneTypes instead'),
+  "measurementZoneTypes": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "color": zod.string()
+})).optional().describe('Structured zone type definitions with name and color'),
   "preferredAreaUnit": zod.enum(['sqft', 'acres']).optional().describe('Preferred area unit for property measurements'),
   "businessPhone": zod.string().nullish(),
   "businessEmail": zod.string().nullish(),

@@ -144,7 +144,13 @@ export default function SettingsPage() {
   const [defaultGeofenceUnit, setDefaultGeofenceUnit] = useState<'m' | 'ft'>('m');
   const [autoCreateGeofence, setAutoCreateGeofence] = useState(false);
   const [preferredAreaUnit, setPreferredAreaUnit] = useState<'sqft' | 'acres'>('sqft');
-  const [zoneLabelsRaw, setZoneLabelsRaw] = useState('Front Lawn, Back Yard, Bed Areas, Side Yard, Common Area');
+  const [zoneTypes, setZoneTypes] = useState<Array<{ id: string; name: string; color: string }>>([
+    { id: '1', name: 'Front Lawn', color: '#3B82F6' },
+    { id: '2', name: 'Back Yard', color: '#10B981' },
+    { id: '3', name: 'Bed Areas', color: '#F59E0B' },
+    { id: '4', name: 'Side Yard', color: '#EF4444' },
+    { id: '5', name: 'Common Area', color: '#8B5CF6' },
+  ]);
 
   // Team
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -220,8 +226,15 @@ export default function SettingsPage() {
       setDefaultGeofenceUnit(((settings as any).defaultGeofenceUnit as 'm' | 'ft') ?? 'm');
       setAutoCreateGeofence((settings as any).autoCreateGeofence ?? false);
       setPreferredAreaUnit(((settings as any).preferredAreaUnit as 'sqft' | 'acres') ?? 'sqft');
-      const labels: string[] = (settings as any).measurementZoneLabels ?? ['Front Lawn', 'Back Yard', 'Bed Areas', 'Side Yard', 'Common Area'];
-      setZoneLabelsRaw(labels.join(', '));
+      const rawZoneTypes = (settings as any).measurementZoneTypes as Array<{ id: string; name: string; color: string }> | undefined;
+      if (rawZoneTypes && rawZoneTypes.length > 0) {
+        setZoneTypes(rawZoneTypes);
+      } else {
+        // Derive from legacy labels with default colors
+        const ZONE_COLORS = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#84CC16','#F97316','#EC4899','#6366F1'];
+        const labels: string[] = (settings as any).measurementZoneLabels ?? ['Front Lawn', 'Back Yard', 'Bed Areas', 'Side Yard', 'Common Area'];
+        setZoneTypes(labels.map((name, i) => ({ id: String(i + 1), name, color: ZONE_COLORS[i % ZONE_COLORS.length] })));
+      }
       setCustomerFields(getActiveCustomerFields(settings));
       // Branding
       setLogoUrl(settings.logoUrl ?? null);
@@ -836,7 +849,7 @@ export default function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Ruler className="w-5 h-5 text-primary" /> Measurement Settings
+                <Ruler className="w-5 h-5 text-primary" /> Measurement Defaults
               </CardTitle>
               <CardDescription>
                 Control how measurements and satellite map zones work across all properties.
@@ -853,22 +866,97 @@ export default function SettingsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Default Zone Labels</label>
-                <Input
-                  value={zoneLabelsRaw}
-                  onChange={e => setZoneLabelsRaw(e.target.value)}
-                  placeholder="Front Lawn, Back Yard, Bed Areas, Side Yard, Common Area"
-                />
+
+              {/* Zone Type Manager */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Zone Types</label>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1 text-xs h-7"
+                    onClick={() => {
+                      const ZONE_COLORS = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#84CC16','#F97316','#EC4899','#6366F1'];
+                      const color = ZONE_COLORS[zoneTypes.length % ZONE_COLORS.length];
+                      setZoneTypes(z => [...z, { id: crypto.randomUUID(), name: 'New Zone', color }]);
+                    }}
+                  >
+                    <Plus className="w-3 h-3" /> Add Zone Type
+                  </Button>
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  Comma-separated list of label presets shown in the polygon drawing tool.
+                  Define the zone types available when drawing measurement areas on the satellite map. Each type gets a unique color.
                 </p>
+                <div className="space-y-2">
+                  {zoneTypes.map((zt, idx) => (
+                    <div key={zt.id} className="flex items-center gap-2 p-2 border rounded-lg bg-muted/20">
+                      {/* Color swatch / picker */}
+                      <div className="relative shrink-0">
+                        <div
+                          className="w-7 h-7 rounded-md border-2 border-white shadow-sm cursor-pointer ring-1 ring-border"
+                          style={{ backgroundColor: zt.color }}
+                          onClick={() => document.getElementById(`color-picker-${zt.id}`)?.click()}
+                        />
+                        <input
+                          id={`color-picker-${zt.id}`}
+                          type="color"
+                          value={zt.color}
+                          className="absolute inset-0 opacity-0 w-7 h-7 cursor-pointer"
+                          onChange={e => setZoneTypes(z => z.map(z2 => z2.id === zt.id ? { ...z2, color: e.target.value } : z2))}
+                        />
+                      </div>
+                      {/* Name input */}
+                      <Input
+                        className="h-8 text-sm flex-1"
+                        value={zt.name}
+                        onChange={e => setZoneTypes(z => z.map(z2 => z2.id === zt.id ? { ...z2, name: e.target.value } : z2))}
+                        placeholder="Zone name"
+                      />
+                      {/* Move up */}
+                      <button
+                        className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 transition"
+                        disabled={idx === 0}
+                        title="Move up"
+                        onClick={() => setZoneTypes(z => {
+                          const next = [...z];
+                          [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                          return next;
+                        })}
+                      >
+                        ↑
+                      </button>
+                      {/* Move down */}
+                      <button
+                        className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 transition"
+                        disabled={idx === zoneTypes.length - 1}
+                        title="Move down"
+                        onClick={() => setZoneTypes(z => {
+                          const next = [...z];
+                          [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+                          return next;
+                        })}
+                      >
+                        ↓
+                      </button>
+                      {/* Delete */}
+                      <button
+                        className="p-1 text-muted-foreground hover:text-destructive disabled:opacity-30 transition"
+                        disabled={zoneTypes.length <= 1}
+                        title="Delete zone type"
+                        onClick={() => setZoneTypes(z => z.filter(z2 => z2.id !== zt.id))}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
+
               <Button
                 onClick={() => {
-                  const labels = zoneLabelsRaw.split(',').map(s => s.trim()).filter(Boolean);
+                  const validZoneTypes = zoneTypes.filter(z => z.name.trim());
                   updateSettings.mutate(
-                    { data: { preferredAreaUnit, measurementZoneLabels: labels } as Parameters<typeof updateSettings.mutate>[0]['data'] },
+                    { data: { preferredAreaUnit, measurementZoneTypes: validZoneTypes } as Parameters<typeof updateSettings.mutate>[0]['data'] },
                     { onSuccess: () => toast.success('Measurement settings saved'), onError: () => toast.error('Failed to save') }
                   );
                 }}

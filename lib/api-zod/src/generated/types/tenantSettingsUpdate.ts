@@ -10,6 +10,7 @@ import type { PaymentReminderRule } from './paymentReminderRule';
 import type { TenantSettingsUpdateAutoInvoiceFrequency } from './tenantSettingsUpdateAutoInvoiceFrequency';
 import type { TenantSettingsUpdateDefaultGeofenceUnit } from './tenantSettingsUpdateDefaultGeofenceUnit';
 import type { TenantSettingsUpdateDurationUnit } from './tenantSettingsUpdateDurationUnit';
+import type { TenantSettingsUpdateMeasurementZoneTypesItem } from './tenantSettingsUpdateMeasurementZoneTypesItem';
 import type { TenantSettingsUpdateNonRecurringInvoiceCadence } from './tenantSettingsUpdateNonRecurringInvoiceCadence';
 import type { TenantSettingsUpdatePaymentReminderChannelsItem } from './tenantSettingsUpdatePaymentReminderChannelsItem';
 import type { TenantSettingsUpdatePreferredAreaUnit } from './tenantSettingsUpdatePreferredAreaUnit';
@@ -38,6 +39,7 @@ export interface TenantSettingsUpdate {
   defaultGeofenceUnit?: TenantSettingsUpdateDefaultGeofenceUnit;
   autoCreateGeofence?: boolean;
   measurementZoneLabels?: string[];
+  measurementZoneTypes?: TenantSettingsUpdateMeasurementZoneTypesItem[];
   preferredAreaUnit?: TenantSettingsUpdatePreferredAreaUnit;
   businessPhone?: string;
   businessEmail?: string;

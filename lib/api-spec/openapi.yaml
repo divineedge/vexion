@@ -9496,7 +9496,20 @@ components:
           type: array
           items:
             type: string
-          description: "Default zone label presets shown in the polygon tool"
+          description: "Deprecated: use measurementZoneTypes instead"
+        measurementZoneTypes:
+          type: array
+          description: "Structured zone type definitions with name and color"
+          items:
+            type: object
+            required: [id, name, color]
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              color:
+                type: string
         preferredAreaUnit:
           type: string
           enum: [sqft, acres]
@@ -9933,6 +9946,18 @@ components:
           type: array
           items:
             type: string
+        measurementZoneTypes:
+          type: array
+          items:
+            type: object
+            required: [id, name, color]
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+              color:
+                type: string
         preferredAreaUnit:
           type: string
           enum: [sqft, acres]

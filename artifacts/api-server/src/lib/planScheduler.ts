@@ -148,7 +148,7 @@ async function processJobGeneration() {
   if (totalGenerated > 0) logger.info({ totalGenerated }, "Plan scheduler: job generation pass complete");
 }
 
-async function processRenewals() {
+export async function processRenewals() {
   const today = new Date().toISOString().slice(0, 10);
   const duePlans = await db.select().from(customerPlansTable).where(and(
     eq(customerPlansTable.status, "active"),

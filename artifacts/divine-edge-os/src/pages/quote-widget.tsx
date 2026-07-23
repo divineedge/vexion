@@ -72,10 +72,11 @@ export default function QuoteWidgetPage() {
   const [error, setError] = useState<string | null>(null);
 
   const addressInputRef = useRef<HTMLInputElement>(null);
-  const autocompleteRef = useRef<ReturnType<NonNullable<NonNullable<Window['google']>['maps']>['places']>['Autocomplete'] extends new (...a: any[]) => infer R ? R : never | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const autocompleteRef = useRef<any>(null);
 
   /* ── Google Places autocomplete ────────────────────────────────────────── */
-  const attachAutocomplete = useCallback(() => {
+  const attachAutocomplete = useCallback((): void => {
     if (!addressInputRef.current || !window.google?.maps?.places) return;
     if (autocompleteRef.current) return; // already attached
 
@@ -128,10 +129,10 @@ export default function QuoteWidgetPage() {
   // Re-attach when the address step becomes active (step could change)
   useEffect(() => {
     if (step === 'address' && MAPS_KEY) {
-      // Small delay so the input is mounted
       const t = setTimeout(attachAutocomplete, 100);
       return () => clearTimeout(t);
     }
+    return undefined;
   }, [step, attachAutocomplete]);
 
   /* ── Load services ─────────────────────────────────────────────────────── */

@@ -502,14 +502,14 @@ export default function PropertyDetailPage() {
             </CardHeader>
             <CardContent>
               <div className="rounded-md bg-muted/50 border p-3 font-mono text-xs overflow-x-auto whitespace-nowrap">
-                {`<iframe src="${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}/widget/quote?address=${encodeURIComponent(property.address)}" width="420" height="600" frameborder="0" style="border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.12)"></iframe>`}
+                {`<iframe src="${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}/widget/quote?address=${encodeURIComponent(property?.address ?? '')}" width="420" height="600" frameborder="0" style="border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.12)"></iframe>`}
               </div>
               <Button
                 size="sm"
                 variant="outline"
                 className="mt-3 gap-2 text-xs"
                 onClick={() => {
-                  const snippet = `<iframe src="${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}/widget/quote?address=${encodeURIComponent(property.address)}" width="420" height="600" frameborder="0" style="border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.12)"></iframe>`;
+                  const snippet = `<iframe src="${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}/widget/quote?address=${encodeURIComponent(property?.address ?? '')}" width="420" height="600" frameborder="0" style="border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.12)"></iframe>`;
                   navigator.clipboard.writeText(snippet).then(() => toast.success('Embed code copied!'));
                 }}
               >

@@ -13,7 +13,7 @@ import { db, tenantsTable, invoicesTable, customersTable, jobsTable, communicati
 import { eq, and, sql, ne, isNull } from "drizzle-orm";
 import { logger } from "./logger";
 import { sendSms, type SmsProviderConfig } from "./smsProvider";
-import { sendEmail, type EmailProviderConfig } from "./emailProvider";
+import { sendEmail, applyTemplate, type EmailProviderConfig } from "./emailProvider";
 
 export interface ReminderRule {
   offsetDays: number;

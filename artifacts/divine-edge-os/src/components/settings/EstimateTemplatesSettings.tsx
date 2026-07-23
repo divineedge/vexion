@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { Plus, Trash2, FileText, Copy } from 'lucide-react';
+import { Plus, Trash2, FileText, Copy, ChevronUp, ChevronDown, AlignLeft } from 'lucide-react';
 
 interface LineItem {
   id: string;
@@ -45,7 +45,7 @@ function calcItem(item: LineItem) {
   return afterMarkup * (1 - item.discount / 100);
 }
 
-const EMPTY_FORM = { name: '', description: '' };
+const EMPTY_FORM = { name: '', description: '', introText: '', termsText: '' };
 
 export default function EstimateTemplatesSettings() {
   const qc = useQueryClient();
@@ -53,6 +53,16 @@ export default function EstimateTemplatesSettings() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [lineItems, setLineItems] = useState<LineItem[]>([emptyItem()]);
+
+  const moveItem = (idx: number, dir: -1 | 1) => {
+    setLineItems(items => {
+      const next = [...items];
+      const swapIdx = idx + dir;
+      if (swapIdx < 0 || swapIdx >= next.length) return items;
+      [next[idx], next[swapIdx]] = [next[swapIdx], next[idx]];
+      return next;
+    });
+  };
 
   const { data: templates, isLoading } = useListEstimateTemplates({
     query: { queryKey: getListEstimateTemplatesQueryKey() },
@@ -72,9 +82,19 @@ export default function EstimateTemplatesSettings() {
   };
 
   const openEdit = (t: NonNullable<typeof templates>[number]) => {
-    setForm({ name: t.name, description: t.description ?? '' });
+    const allItems: any[] = (t.lineItems as any[]) ?? [];
+    const introItem = allItems.find((i: any) => i.type === 'text_block' && i.role === 'intro');
+    const termsItem = allItems.find((i: any) => i.type === 'text_block' && i.role === 'terms');
+    const regularItems = allItems.filter((i: any) => i.type !== 'text_block');
+
+    setForm({
+      name: t.name,
+      description: t.description ?? '',
+      introText: introItem?.content ?? '',
+      termsText: termsItem?.content ?? '',
+    });
     setSelectedId(t.id);
-    const items: LineItem[] = ((t.lineItems as any[]) ?? []).map((i: any) => ({
+    const items: LineItem[] = regularItems.map((i: any) => ({
       id: i.id ?? crypto.randomUUID(),
       description: i.description ?? '',
       qty: i.qty ?? 1,
@@ -112,20 +132,32 @@ export default function EstimateTemplatesSettings() {
       return;
     }
 
+    // Build text-block sentinel items for intro and terms so they round-trip through JSONB
+    const textBlocks: any[] = [];
+    if (form.introText.trim()) {
+      textBlocks.push({ id: `intro-${Date.now()}`, type: 'text_block', role: 'intro', content: form.introText.trim(), description: '', qty: 1, unitPrice: 0, markup: 0, discount: 0, isOptional: false });
+    }
+    if (form.termsText.trim()) {
+      textBlocks.push({ id: `terms-${Date.now()}`, type: 'text_block', role: 'terms', content: form.termsText.trim(), description: '', qty: 1, unitPrice: 0, markup: 0, discount: 0, isOptional: false });
+    }
+
     const payload = {
       name: form.name.trim(),
       description: form.description.trim() || undefined,
-      lineItems: lineItems.map(i => ({
-        id: i.id,
-        description: i.description,
-        qty: i.qty,
-        unitPrice: i.unitPrice,
-        markup: i.markup,
-        discount: i.discount,
-        isOptional: i.isOptional,
-        optionalPitchLine: i.optionalPitchLine || null,
-        acceptedByCustomer: !i.isOptional,
-      })),
+      lineItems: [
+        ...textBlocks,
+        ...lineItems.map(i => ({
+          id: i.id,
+          description: i.description,
+          qty: i.qty,
+          unitPrice: i.unitPrice,
+          markup: i.markup,
+          discount: i.discount,
+          isOptional: i.isOptional,
+          optionalPitchLine: i.optionalPitchLine || null,
+          acceptedByCustomer: !i.isOptional,
+        })),
+      ],
     };
 
     if (sheetMode === 'create') {
@@ -287,6 +319,22 @@ export default function EstimateTemplatesSettings() {
 
             <Separator />
 
+            {/* Intro / Header section */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium flex items-center gap-1.5">
+                <AlignLeft className="w-3.5 h-3.5 text-muted-foreground" />
+                Intro / Header Text
+              </label>
+              <Textarea
+                rows={3}
+                placeholder="Opening paragraph shown at the top of the estimate — e.g. 'Thank you for the opportunity to serve your property…'"
+                value={form.introText}
+                onChange={e => setForm(f => ({ ...f, introText: e.target.value }))}
+              />
+            </div>
+
+            <Separator />
+
             {/* Line items */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -308,6 +356,29 @@ export default function EstimateTemplatesSettings() {
                   }`}
                 >
                   <div className="flex items-start gap-2">
+                    {/* Reorder buttons */}
+                    <div className="flex flex-col gap-0.5 shrink-0 pt-0.5">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 w-6 p-0 text-muted-foreground/60 hover:text-foreground"
+                        onClick={() => moveItem(idx, -1)}
+                        disabled={idx === 0}
+                        title="Move up"
+                      >
+                        <ChevronUp className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 w-6 p-0 text-muted-foreground/60 hover:text-foreground"
+                        onClick={() => moveItem(idx, 1)}
+                        disabled={idx === lineItems.length - 1}
+                        title="Move down"
+                      >
+                        <ChevronDown className="w-3 h-3" />
+                      </Button>
+                    </div>
                     <div className="flex-1">
                       <Input
                         placeholder="Description"
@@ -399,6 +470,22 @@ export default function EstimateTemplatesSettings() {
                   <p className="text-lg font-bold">${subtotal.toFixed(2)}</p>
                 </div>
               </div>
+            </div>
+
+            <Separator />
+
+            {/* Terms & Conditions section */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium flex items-center gap-1.5">
+                <AlignLeft className="w-3.5 h-3.5 text-muted-foreground" />
+                Terms &amp; Conditions
+              </label>
+              <Textarea
+                rows={4}
+                placeholder="Terms shown at the bottom — e.g. payment due upon completion, cancellation policy, warranty…"
+                value={form.termsText}
+                onChange={e => setForm(f => ({ ...f, termsText: e.target.value }))}
+              />
             </div>
 
             <Separator />

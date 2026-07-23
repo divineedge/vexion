@@ -679,8 +679,21 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
+  // Fetch current description so we can append the completion date
+  const [current] = await db
+    .select({ description: jobsTable.description })
+    .from(jobsTable)
+    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  const existing = current?.description ?? '';
+  const newDescription = existing
+    ? `${existing}\n\nService completed: ${dateStr}`
+    : `Service completed: ${dateStr}`;
+
   const [updated] = await db.update(jobsTable)
-    .set({ status: "completed", completedAt: new Date() })
+    .set({ status: "completed", completedAt: now, description: newDescription })
     .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
     .returning();
 

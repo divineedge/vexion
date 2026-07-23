@@ -191,6 +191,9 @@ export default function SettingsPage() {
   const [paymentReminderSchedule, setPaymentReminderSchedule] = useState<PaymentReminderRule[]>([]);
   const [paymentReminderChannels, setPaymentReminderChannels] = useState<Array<'email' | 'sms'>>([]);
   const [stopServiceRuleEnabled, setStopServiceRuleEnabled] = useState(false);
+
+  // Notification Templates
+  const [notificationTemplates, setNotificationTemplates] = useState<Record<string, string | undefined>>({});
   const DEFAULT_FOLLOWUP_CONFIG: FollowupTriggerConfig = {
     sentEstimate: { enabled: true, delayDays: 3, repeatDays: 4 },
     sentInvoice: { enabled: true, delayDays: 5, repeatDays: 5 },

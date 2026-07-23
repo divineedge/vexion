@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   useListCustomers, getListCustomersQueryKey,
   useCreateCustomer,
@@ -14,12 +14,49 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
-import { Search, Plus, Building, Phone, Mail, Save, X, User, Tag, FileText, Home, AlertTriangle, Filter, Zap } from 'lucide-react';
+import { Search, Plus, Building, Phone, Mail, Save, X, User, Tag, FileText, Home, AlertTriangle, Filter, Zap, MapPin } from 'lucide-react';
 import { useLocation } from 'wouter';
 import { useDebounce } from '@/hooks/use-debounce';
 import { toast } from 'sonner';
 import { getActiveCustomerFields } from '@/lib/fieldConfig';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
+
+interface NominatimResult {
+  place_id: number;
+  display_name: string;
+  address: {
+    house_number?: string;
+    road?: string;
+    city?: string;
+    town?: string;
+    village?: string;
+    state?: string;
+    postcode?: string;
+  };
+}
+
+function useAddressAutocomplete(query: string) {
+  const [suggestions, setSuggestions] = useState<NominatimResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  const debounced = useDebounce(query, 400);
+
+  useEffect(() => {
+    if (!debounced || debounced.length < 4) { setSuggestions([]); return; }
+    let cancelled = false;
+    setLoading(true);
+    fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=us&limit=5&q=${encodeURIComponent(debounced)}`,
+      { headers: { 'Accept-Language': 'en' } },
+    )
+      .then(r => r.json())
+      .then((data: NominatimResult[]) => { if (!cancelled) setSuggestions(data); })
+      .catch(() => { if (!cancelled) setSuggestions([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [debounced]);
+
+  return { suggestions, loading, clear: () => setSuggestions([]) };
+}
 
 type FormData = Record<string, string | string[]>;
 
@@ -60,6 +97,11 @@ export default function CustomersPage() {
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<FormData>(BLANK);
   const [tagInput, setTagInput] = useState('');
+  const addrInputRef = useRef<HTMLInputElement>(null);
+  const [addrFocused, setAddrFocused] = useState(false);
+  const { suggestions: addrSuggestions, loading: addrLoading, clear: clearAddrSuggestions } = useAddressAutocomplete(
+    addrFocused ? (form.billingAddress as string) : '',
+  );
 
   // Open create sheet when arriving via quick-add shortcut (?action=create)
   useEffect(() => {
@@ -295,7 +337,52 @@ export default function CustomersPage() {
             {activeFields.some(f => f.key === 'billingAddress' && f.visible) && (
               <Section title="Billing Address" icon={<Home className="w-4 h-4" />}>
                 <Field label="Street Address" required={activeFields.find(f => f.key === 'billingAddress')?.required}>
-                  <Input value={form.billingAddress as string} onChange={e => setField('billingAddress', e.target.value)} placeholder="123 Main St" />
+                  <div className="relative">
+                    <Input
+                      ref={addrInputRef}
+                      value={form.billingAddress as string}
+                      onChange={e => setField('billingAddress', e.target.value)}
+                      onFocus={() => setAddrFocused(true)}
+                      onBlur={() => setTimeout(() => setAddrFocused(false), 200)}
+                      placeholder="123 Main St"
+                    />
+                    {addrFocused && (addrSuggestions.length > 0 || addrLoading) && (
+                      <div className="absolute z-50 left-0 right-0 top-full mt-1 rounded-md border bg-popover shadow-lg overflow-hidden">
+                        {addrLoading && (
+                          <div className="px-3 py-2 text-xs text-muted-foreground flex items-center gap-2">
+                            <MapPin className="w-3.5 h-3.5 animate-pulse" /> Searching…
+                          </div>
+                        )}
+                        {addrSuggestions.map(s => {
+                          const street = [s.address.house_number, s.address.road].filter(Boolean).join(' ');
+                          const city = s.address.city ?? s.address.town ?? s.address.village ?? '';
+                          const state = s.address.state ?? '';
+                          const zip = s.address.postcode ?? '';
+                          return (
+                            <button
+                              key={s.place_id}
+                              type="button"
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors border-b last:border-b-0"
+                              onMouseDown={() => {
+                                setField('billingAddress', street || (form.billingAddress as string));
+                                setField('billingCity', city);
+                                setField('billingState', state.length <= 20 ? state : '');
+                                setField('billingZip', zip.slice(0, 5));
+                                clearAddrSuggestions();
+                                setAddrFocused(false);
+                              }}
+                            >
+                              <span className="font-medium">{street}</span>
+                              {(city || state) && (
+                                <span className="text-muted-foreground ml-1">{[city, state, zip].filter(Boolean).join(', ')}</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                        <div className="px-3 py-1 text-[10px] text-muted-foreground/60 border-t">Powered by OpenStreetMap</div>
+                      </div>
+                    )}
+                  </div>
                 </Field>
                 <div className="grid grid-cols-3 gap-4">
                   <div className="col-span-1">

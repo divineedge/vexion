@@ -368,12 +368,39 @@ export default function ServicesPage() {
 
   // Matrix tier helpers
   const addTier = () => {
-    const tiers = form.pricingMatrix;
-    const lastBounded = tiers.filter(t => t.maxSqft !== null);
-    const lastMax = lastBounded.length > 0 ? (lastBounded[lastBounded.length - 1].maxSqft ?? 0) : 0;
-    const hasOpen = tiers.some(t => t.maxSqft === null);
-    const newTier: PricingTier = { minSqft: lastMax + 1, maxSqft: hasOpen ? lastMax + 1000 : null, price: 0 };
-    setForm(f => ({ ...f, pricingMatrix: [...f.pricingMatrix, newTier] }));
+    setForm(f => {
+      const tiers = f.pricingMatrix;
+      const hasOpen = tiers.some(t => t.maxSqft === null);
+      const boundedTiers = tiers.filter(t => t.maxSqft !== null);
+      const lastBounded = boundedTiers[boundedTiers.length - 1];
+
+      let newMin: number;
+      let newMax: number | null;
+
+      if (tiers.length === 0) {
+        // First tier: always create a bounded starter tier
+        newMin = 0;
+        newMax = 4999;
+      } else if (!hasOpen) {
+        // All tiers are bounded → add an open-ended catch-all above the last
+        const lastMax = (tiers[tiers.length - 1].maxSqft ?? 0);
+        newMin = lastMax + 1;
+        newMax = null;
+      } else {
+        // Has an open-ended tier → insert a bounded tier before it
+        newMin = lastBounded ? (lastBounded.maxSqft! + 1) : 0;
+        newMax = newMin + 4999;
+      }
+
+      const newTier: PricingTier = { minSqft: newMin, maxSqft: newMax, price: 0 };
+
+      if (hasOpen) {
+        const openIdx = tiers.findIndex(t => t.maxSqft === null);
+        const updated = [...tiers.slice(0, openIdx), newTier, ...tiers.slice(openIdx)];
+        return { ...f, pricingMatrix: updated };
+      }
+      return { ...f, pricingMatrix: [...f.pricingMatrix, newTier] };
+    });
   };
 
   const updateTier = (i: number, t: PricingTier) =>

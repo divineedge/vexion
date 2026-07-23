@@ -441,6 +441,14 @@ export function buildReminderEmailBody(params: {
   return { subject, body };
 }
 
+/**
+ * Substitute {{variable}} placeholders in a template string.
+ * Unknown variables are left as-is.
+ */
+export function applyTemplate(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
+}
+
 export function buildReminderSmsBody(params: {
   customerName: string;
   jobTitle: string;

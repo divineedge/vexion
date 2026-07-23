@@ -13,7 +13,7 @@ import { eq, and, or, inArray } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { logger } from "./logger";
 import { sendSms, type SmsProviderConfig } from "./smsProvider";
-import { sendEmail, buildReminderEmailBody, buildReminderSmsBody, type EmailProviderConfig } from "./emailProvider";
+import { sendEmail, buildReminderEmailBody, buildReminderSmsBody, applyTemplate, type EmailProviderConfig } from "./emailProvider";
 
 interface RemindersSent {
   sent7d?: boolean;

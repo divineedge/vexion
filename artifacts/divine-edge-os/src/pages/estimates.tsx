@@ -31,7 +31,7 @@ import {
 import { format } from 'date-fns';
 import {
   Plus, FileText, DollarSign, TrendingUp, Send, Briefcase, Trash2,
-  ChevronRight, Eye, Clock, User, MapPin, CheckCircle2, XCircle, Phone, Mail, Globe, Building2,
+  ChevronRight, Eye, Clock, User, MapPin, CheckCircle2, XCircle, Phone, Mail, Globe, Building2, Printer,
 } from 'lucide-react';
 import { Link, useSearch } from 'wouter';
 const STATUS_COLORS: Record<string, string> = {
@@ -70,6 +70,136 @@ function calcItem(item: LineItem) {
   return afterMarkup * (1 - item.discount / 100);
 }
 
+// ── Inline Estimate Preview ──────────────────────────────────────────────────
+function EstimatePreviewDialog({ estimate, settings, open, onClose }: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  estimate: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  settings: any;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const items = (estimate?.lineItems ?? []) as LineItem[];
+  const required = items.filter(i => !i.isOptional);
+  const optional = items.filter(i => i.isOptional);
+  const total = items.reduce((s, i) => s + calcItem(i), 0);
+  const apiBase = (() => {
+    const base = import.meta.env.BASE_URL ?? '/';
+    return base.endsWith('/') ? base.slice(0, -1) : base;
+  })();
+
+  if (!estimate) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0">
+        <div className="bg-muted/30 min-h-full">
+          <div className="max-w-2xl mx-auto p-6 space-y-5">
+            {/* Branding header */}
+            <div className="text-center space-y-2">
+              <img
+                src={`${apiBase}/api/public/tenants/${estimate.tenantId}/logo`}
+                alt="Company logo"
+                className="h-14 w-auto mx-auto object-contain"
+                onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+              />
+              {settings?.companyName && <h1 className="text-xl font-bold">{settings.companyName}</h1>}
+              {settings?.businessTagline && <p className="text-xs text-muted-foreground italic">{settings.businessTagline}</p>}
+              <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                {settings?.businessPhone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{settings.businessPhone}</span>}
+                {settings?.businessEmail && <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{settings.businessEmail}</span>}
+                {settings?.businessWebsite && <span className="flex items-center gap-1"><Globe className="w-3 h-3" />{settings.businessWebsite}</span>}
+              </div>
+            </div>
+
+            {/* Estimate header */}
+            <div className="bg-white rounded-xl border p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-bold">Estimate #{estimate.id}</h2>
+                  <p className="text-sm text-muted-foreground">Prepared {estimate.createdAt ? format(new Date(estimate.createdAt), 'MMMM d, yyyy') : ''}</p>
+                </div>
+                <span className={`px-3 py-1 rounded-full text-xs font-semibold capitalize ${STATUS_COLORS[estimate.status] ?? ''}`}>{estimate.status}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                {estimate.customerName && (
+                  <div><p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-0.5">Customer</p><p className="font-medium">{estimate.customerName}</p></div>
+                )}
+                {estimate.propertyAddress && (
+                  <div><p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-0.5">Property</p><p>{estimate.propertyAddress}</p></div>
+                )}
+                {estimate.scheduledAt && (
+                  <div><p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-0.5">Scheduled</p><p>{format(new Date(estimate.scheduledAt), 'MMM d, yyyy h:mm a')}</p></div>
+                )}
+                {estimate.expiresAt && (
+                  <div><p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-0.5">Expires</p><p>{format(new Date(estimate.expiresAt), 'MMM d, yyyy')}</p></div>
+                )}
+              </div>
+              {estimate.notes && <p className="text-sm text-muted-foreground italic border-t pt-3">{estimate.notes}</p>}
+            </div>
+
+            {/* Line items */}
+            <div className="bg-white rounded-xl border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="text-left px-4 py-2.5 font-semibold text-xs uppercase tracking-wide">Service</th>
+                    <th className="text-center px-3 py-2.5 font-semibold text-xs uppercase tracking-wide w-16">Qty</th>
+                    <th className="text-right px-4 py-2.5 font-semibold text-xs uppercase tracking-wide">Price</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {required.map(item => (
+                    <tr key={item.id}>
+                      <td className="px-4 py-3">
+                        <p className="font-medium">{item.description || '—'}</p>
+                        {(item.markup > 0 || item.discount > 0) && (
+                          <p className="text-xs text-muted-foreground">
+                            ${item.unitPrice.toFixed(2)} each{item.markup > 0 && ` + ${item.markup}% markup`}{item.discount > 0 && ` − ${item.discount}% off`}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-center text-muted-foreground">{item.qty}</td>
+                      <td className="px-4 py-3 text-right font-medium">${calcItem(item).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                  {optional.length > 0 && (
+                    <>
+                      <tr className="bg-amber-50/60">
+                        <td colSpan={3} className="px-4 py-2 text-xs font-semibold text-amber-700 uppercase tracking-wide">Optional Add-Ons</td>
+                      </tr>
+                      {optional.map(item => (
+                        <tr key={item.id} className="bg-amber-50/30">
+                          <td className="px-4 py-3">
+                            <p className="font-medium">{item.description || '—'}</p>
+                            {item.optionalPitchLine && <p className="text-xs text-muted-foreground italic">{item.optionalPitchLine}</p>}
+                          </td>
+                          <td className="px-3 py-3 text-center text-muted-foreground">{item.qty}</td>
+                          <td className="px-4 py-3 text-right font-medium">${calcItem(item).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </>
+                  )}
+                </tbody>
+                <tfoot className="bg-muted/30 border-t-2">
+                  <tr>
+                    <td colSpan={2} className="px-4 py-3 font-bold text-right">Total</td>
+                    <td className="px-4 py-3 text-right text-lg font-bold">${total.toFixed(2)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            <p className="text-center text-xs text-muted-foreground pb-4">
+              Staff preview — the customer sees this after you send the estimate.
+            </p>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function EstimatesPage() {
   const { canManageOffice } = useAuth();
   const qc = useQueryClient();
@@ -78,6 +208,7 @@ export default function EstimatesPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   // Auto-select an estimate when navigated here with ?highlight=<id>
   // Also open create sheet when arriving via quick-add shortcut (?action=create)
@@ -554,10 +685,13 @@ export default function EstimatesPage() {
                       <Send className="w-3.5 h-3.5" /> Resend Email
                     </Button>
                   )}
+                  <Button size="sm" variant="outline" className="gap-2" onClick={() => setPreviewOpen(true)}>
+                    <Eye className="w-3.5 h-3.5" /> Preview
+                  </Button>
                   {selectedEstimate.approvalToken && selectedEstimate.status === 'sent' && (
                     <Button size="sm" variant="outline" className="gap-2" asChild>
                       <a href={`/estimate/${selectedEstimate.approvalToken}`} target="_blank" rel="noopener noreferrer">
-                        <Eye className="w-3.5 h-3.5" /> Preview Link
+                        <Printer className="w-3.5 h-3.5" /> Customer View
                       </a>
                     </Button>
                   )}
@@ -681,6 +815,16 @@ export default function EstimatesPage() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Estimate Preview */}
+      {selectedEstimate && (
+        <EstimatePreviewDialog
+          estimate={selectedEstimate}
+          settings={settings}
+          open={previewOpen}
+          onClose={() => setPreviewOpen(false)}
+        />
+      )}
 
       {/* Delete Confirm */}
       <Dialog open={deleteDialogId != null} onOpenChange={open => { if (!open) setDeleteDialogId(null); }}>

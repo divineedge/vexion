@@ -825,19 +825,112 @@ router.post("/customer-plans/:id/visits/:jobId/cancel", async (req, res): Promis
   res.json({ id: updated.id, status: updated.status, cancelReason: updated.cancelReason });
 });
 
+// ── Plan price resolver (exported for use by planScheduler) ──────────────────
+
+/**
+ * Resolves the current billing price for a customer plan by looking up the
+ * template's pricing mode and the property's current satellite measurements.
+ * Returns the resolved price and a human-readable note explaining the source
+ * (e.g. "Resolved from property area (8,200 sqft)") for non-flat plans.
+ */
+export async function resolvePlanCurrentPrice(
+  tenantId: number,
+  templateId: number,
+  propertyId: number,
+): Promise<{ resolvedPrice: number; areaNote: string | null; pricingMode: string }> {
+  const [template] = await db.select().from(planTemplatesTable)
+    .where(and(eq(planTemplatesTable.id, templateId), eq(planTemplatesTable.tenantId, tenantId)));
+  if (!template) return { resolvedPrice: 0, areaNote: null, pricingMode: "flat" };
+
+  const [property] = await db.select().from(propertiesTable)
+    .where(and(eq(propertiesTable.id, propertyId), eq(propertiesTable.tenantId, tenantId)));
+  if (!property) return { resolvedPrice: template.price, areaNote: null, pricingMode: template.pricingMode ?? "flat" };
+
+  const mode = template.pricingMode ?? "flat";
+
+  if (mode === "flat") {
+    return { resolvedPrice: template.price, areaNote: null, pricingMode: "flat" };
+  }
+
+  if (mode === "matrix") {
+    const matrix = (template.pricingMatrix as PlanPricingTier[] | null) ?? [];
+    const areaSqft = property.serviceableAreaSqft ?? 0;
+    const resolved = resolvePlanMatrixPrice(matrix, areaSqft);
+    return {
+      resolvedPrice: resolved ?? template.price,
+      areaNote: areaSqft > 0 ? `Resolved from property area (${areaSqft.toLocaleString()} sqft)` : null,
+      pricingMode: "matrix",
+    };
+  }
+
+  if (mode === "sum_services") {
+    const planServices = ((template.services as unknown[]) ?? []) as PlanServiceRule[];
+    const serviceIds = planServices.map(s => s.serviceId);
+    if (serviceIds.length === 0) {
+      return { resolvedPrice: template.price, areaNote: null, pricingMode: "sum_services" };
+    }
+
+    const svcRows = await db.select({
+      id: servicesTable.id,
+      basePrice: servicesTable.basePrice,
+      pricingMode: servicesTable.pricingMode,
+      pricingMatrix: servicesTable.pricingMatrix,
+      linkedZoneTypeId: servicesTable.linkedZoneTypeId,
+    }).from(servicesTable)
+      .where(and(inArray(servicesTable.id, serviceIds), eq(servicesTable.tenantId, tenantId)));
+
+    const polygons = ((property.measurementPolygons as unknown[]) ?? []) as MeasurementPolygon[];
+    const zoneAreaMap = new Map<string, number>();
+    for (const poly of polygons) {
+      if (poly.enabled === false) continue;
+      if (!poly.zoneTypeId || !poly.areaSqft) continue;
+      zoneAreaMap.set(poly.zoneTypeId, (zoneAreaMap.get(poly.zoneTypeId) ?? 0) + poly.areaSqft);
+    }
+    const totalAreaSqft = property.serviceableAreaSqft ?? 0;
+
+    let total = 0;
+    for (const svc of svcRows) {
+      const areaSqft = svc.linkedZoneTypeId
+        ? (zoneAreaMap.get(svc.linkedZoneTypeId) ?? totalAreaSqft)
+        : totalAreaSqft;
+      total += resolveServiceMatrixPrice(svc.pricingMode, svc.basePrice, svc.pricingMatrix, areaSqft);
+    }
+
+    return {
+      resolvedPrice: total,
+      areaNote: totalAreaSqft > 0 ? `Resolved from property area (${totalAreaSqft.toLocaleString()} sqft)` : null,
+      pricingMode: "sum_services",
+    };
+  }
+
+  return { resolvedPrice: template.price, areaNote: null, pricingMode: mode };
+}
+
 // ── Manual renewal ────────────────────────────────────────────────────────────
 
-export async function billPlanPeriod(tenantId: number, planId: number, userId: number): Promise<{ invoiceId: number }> {
+export async function billPlanPeriod(
+  tenantId: number,
+  planId: number,
+  userId: number,
+  options?: { resolvedPrice?: number; areaNote?: string | null },
+): Promise<{ invoiceId: number }> {
   const [plan] = await db.select().from(customerPlansTable).where(and(eq(customerPlansTable.id, planId), eq(customerPlansTable.tenantId, tenantId)));
   if (!plan) throw new Error("Plan not found");
 
   const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, plan.customerId));
   const [tenant] = await db.select({ taxRate: tenantsTable.taxRate }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
   const taxRate = tenant?.taxRate ?? 0;
-  const subtotal = plan.billingPrice;
+  const subtotal = options?.resolvedPrice ?? plan.billingPrice;
   const tax = subtotal * (taxRate / 100);
   const total = subtotal + tax;
   const invoiceNum = `INV-${Date.now().toString().slice(-8)}`;
+
+  // Build the line item description — append the area note for non-flat pricing
+  // so the customer can see exactly why this amount was charged.
+  const baseDescription = `${plan.templateName} — ${plan.billingCycle} plan`;
+  const lineItemDescription = options?.areaNote
+    ? `${baseDescription} (${options.areaNote})`
+    : baseDescription;
 
   let invoiceId!: number;
   await db.transaction(async tx => {
@@ -851,7 +944,7 @@ export async function billPlanPeriod(tenantId: number, planId: number, userId: n
       subtotal,
       tax,
       total,
-      lineItems: [{ description: `${plan.templateName} — ${plan.billingCycle} plan`, quantity: 1, unitPrice: subtotal, total: subtotal }],
+      lineItems: [{ description: lineItemDescription, quantity: 1, unitPrice: subtotal, total: subtotal }],
       dueDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000),
     }).returning();
     invoiceId = invoice.id;
@@ -882,7 +975,21 @@ router.post("/customer-plans/:id/renew", async (req, res): Promise<void> => {
   const newEndDate = new Date(plan.endDate.getTime() + periodDays * 24 * 60 * 60 * 1000);
   const newNextBillingDate = newEndDate.toISOString().slice(0, 10);
 
-  const { invoiceId } = await billPlanPeriod(tenantId, id, userId);
+  // Resolve the current price for area-based plans so the renewal invoice
+  // reflects the property's current measurements, not the original sale price.
+  const { resolvedPrice, areaNote, pricingMode } = await resolvePlanCurrentPrice(tenantId, plan.templateId, plan.propertyId);
+  const billingOptions = pricingMode !== "flat"
+    ? { resolvedPrice, areaNote }
+    : undefined;
+
+  // Update billingPrice on the plan if it has drifted from the resolved value.
+  if (pricingMode !== "flat" && resolvedPrice !== plan.billingPrice) {
+    await db.update(customerPlansTable)
+      .set({ billingPrice: resolvedPrice })
+      .where(eq(customerPlansTable.id, id));
+  }
+
+  const { invoiceId } = await billPlanPeriod(tenantId, id, userId, billingOptions);
 
   const [updated] = await db.update(customerPlansTable)
     .set({ endDate: newEndDate, nextBillingDate: newNextBillingDate, status: "active", renewalReminderSentAt: null })

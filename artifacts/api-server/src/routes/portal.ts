@@ -1190,6 +1190,12 @@ router.get("/portal/plans/:id", requirePortalAuth, async (req: any, res): Promis
       dueDate: i.dueDate?.toISOString() ?? null,
       paidAt: i.paidAt?.toISOString() ?? null,
       createdAt: i.createdAt.toISOString(),
+      // Include the first line item description so the customer can see
+      // area-resolved pricing notes (e.g. "Resolved from property area (8,200 sqft)").
+      lineItemNote: (() => {
+        const items = (i.lineItems as Array<{ description?: string }> | null) ?? [];
+        return items[0]?.description ?? null;
+      })(),
     })),
   });
 });

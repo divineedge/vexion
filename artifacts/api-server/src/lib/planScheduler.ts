@@ -9,13 +9,13 @@
  *      renewal reminder when auto-renew is off.
  */
 
-import { db, customerPlansTable, jobsTable, usersTable, propertiesTable, customersTable, activityLogTable, tenantsTable, stopServiceFlagsTable, invoicesTable, servicesTable } from "@workspace/db";
+import { db, customerPlansTable, jobsTable, usersTable, propertiesTable, customersTable, activityLogTable, tenantsTable, stopServiceFlagsTable, invoicesTable, servicesTable, planTemplatesTable } from "@workspace/db";
 import { eq, and, sql, ne, inArray, lt, isNotNull, gt } from "drizzle-orm";
 import { isInOffSeason, firstDayAfterOffSeason } from "./offSeasonUtils";
 import { logger } from "./logger";
 import { sendEmail } from "./emailProvider";
 import { snapToCluster, billingCycleDays, type ClusterCandidate } from "./planSchedulingEngine";
-import { billPlanPeriod } from "../routes/servicePlans";
+import { billPlanPeriod, resolvePlanCurrentPrice } from "../routes/servicePlans";
 
 const LOOKAHEAD_DAYS = parseInt(process.env.PLAN_LOOKAHEAD_DAYS ?? "60", 10);
 const MAX_VISITS_PER_SERVICE_PER_RUN = 6; // safety cap against runaway generation
@@ -162,7 +162,25 @@ async function processRenewals() {
       const newEndDate = new Date(plan.endDate.getTime() + periodDays * 24 * 60 * 60 * 1000);
       const newNextBillingDate = newEndDate.toISOString().slice(0, 10);
 
-      const { invoiceId } = await billPlanPeriod(plan.tenantId, plan.id, 1);
+      // Resolve the current price for area-based plans so the renewal invoice
+      // reflects the property's current measurements, not the stale sale price.
+      const { resolvedPrice, areaNote, pricingMode } = await resolvePlanCurrentPrice(
+        plan.tenantId, plan.templateId, plan.propertyId,
+      );
+      const billingOptions = pricingMode !== "flat" ? { resolvedPrice, areaNote } : undefined;
+
+      // Persist the updated billingPrice on the plan if it drifted.
+      if (pricingMode !== "flat" && resolvedPrice !== plan.billingPrice) {
+        await db.update(customerPlansTable)
+          .set({ billingPrice: resolvedPrice })
+          .where(eq(customerPlansTable.id, plan.id));
+        logger.info(
+          { planId: plan.id, oldPrice: plan.billingPrice, newPrice: resolvedPrice, pricingMode },
+          "Plan scheduler: updated billingPrice for area-based plan on renewal",
+        );
+      }
+
+      const { invoiceId } = await billPlanPeriod(plan.tenantId, plan.id, 1, billingOptions);
 
       await db.update(customerPlansTable)
         .set({ endDate: newEndDate, nextBillingDate: newNextBillingDate, renewalReminderSentAt: null })

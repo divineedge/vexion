@@ -523,6 +523,11 @@ function PlanDetail({ planId }: { planId: number }) {
                   <p className="text-xs text-muted-foreground">
                     {entry.paidAt ? `Paid ${formatDate(entry.paidAt)}` : entry.dueDate ? `Due ${formatDate(entry.dueDate)}` : formatDate(entry.createdAt)}
                   </p>
+                  {(entry as any).lineItemNote && (
+                    <p className="text-xs text-muted-foreground/70 mt-0.5 italic">
+                      {(entry as any).lineItemNote}
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-3">
                   {invoiceStatusBadge(entry.status)}

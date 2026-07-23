@@ -77,6 +77,28 @@ export default function PlanDetailPage() {
   });
   const { data: users = [] } = useListUsers();
 
+  // Fetch the current resolved price from the template's pricing matrix so staff
+  // can see what the next renewal will cost even if property areas changed.
+  // We always fetch when templateId + propertyId are available; the API response's
+  // pricingMode tells us whether to show area-based messaging.
+  const templateId: number | undefined = (plan as any)?.templateId;
+  const propertyId: number | undefined = (plan as any)?.propertyId;
+  const { data: resolvedPriceInfo } = useQuery<{
+    resolvedPrice: number;
+    pricingMode: string;
+    breakdown?: Array<{ serviceId: number; serviceName: string; areaSqft: number; price: number }>;
+  } | null>({
+    queryKey: ['plan-resolved-price', templateId, propertyId],
+    queryFn: async () => {
+      if (!templateId || !propertyId) return null;
+      return customFetch<{ resolvedPrice: number; pricingMode: string }>('/api/plan-templates/resolve-price', {
+        method: 'POST',
+        body: JSON.stringify({ templateId, propertyId }),
+      });
+    },
+    enabled: !!plan && !!templateId && !!propertyId,
+  });
+
   // Fetch services to display off-season windows
   const { data: allServices = [] } = useQuery<ServiceRecord[]>({
     queryKey: ['services'],
@@ -179,8 +201,16 @@ export default function PlanDetailPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card><CardContent className="p-6">
-          <p className="text-sm text-muted-foreground flex items-center gap-1"><DollarSign className="w-3.5 h-3.5" />Price</p>
+          <p className="text-sm text-muted-foreground flex items-center gap-1"><DollarSign className="w-3.5 h-3.5" />Billed Price</p>
           <p className="text-2xl font-bold mt-1">${plan.billingPrice.toFixed(2)} <span className="text-sm font-normal text-muted-foreground">/ {plan.billingCycle}</span></p>
+          {resolvedPriceInfo && resolvedPriceInfo.pricingMode !== 'flat' && resolvedPriceInfo.resolvedPrice !== plan.billingPrice && (
+            <p className="text-xs text-amber-600 mt-1">
+              Current resolved: ${resolvedPriceInfo.resolvedPrice.toFixed(2)} — will apply on next renewal
+            </p>
+          )}
+          {resolvedPriceInfo && resolvedPriceInfo.pricingMode !== 'flat' && resolvedPriceInfo.resolvedPrice === plan.billingPrice && (
+            <p className="text-xs text-emerald-600 mt-1">Area-based pricing · up to date</p>
+          )}
         </CardContent></Card>
         <Card><CardContent className="p-6">
           <p className="text-sm text-muted-foreground flex items-center gap-1"><CalendarClock className="w-3.5 h-3.5" />Next Billing</p>

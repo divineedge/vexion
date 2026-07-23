@@ -1035,7 +1035,7 @@ export default function SettingsPage() {
                     <p className="text-sm text-muted-foreground">Accept credit cards and ACH</p>
                   </div>
                 </div>
-                <Switch checked={settings?.stripeEnabled} onCheckedChange={v => updateSettings.mutate({ data: { stripeEnabled: v } })} />
+                <Switch checked={settings?.stripeEnabled} onCheckedChange={v => updateSettings.mutate({ data: { stripeEnabled: v } }, { onSuccess: () => qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }) })} />
               </div>
             </CardContent>
           </Card>
@@ -1058,7 +1058,7 @@ export default function SettingsPage() {
                     </p>
                   </div>
                 </div>
-                <Switch checked={settings?.quickbooksEnabled} onCheckedChange={v => updateSettings.mutate({ data: { quickbooksEnabled: v } })} />
+                <Switch checked={settings?.quickbooksEnabled} onCheckedChange={v => updateSettings.mutate({ data: { quickbooksEnabled: v } }, { onSuccess: () => qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }) })} />
               </div>
 
               {settings?.quickbooksEnabled && (

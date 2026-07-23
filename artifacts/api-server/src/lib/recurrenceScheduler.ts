@@ -74,81 +74,89 @@ async function processRecurring() {
     if (!root.recurrenceRule) continue;
 
     const rule = root.recurrenceRule as unknown as RecurrenceRule;
-    const currentCount = root.recurrenceCount ?? 0;
-
-    // Deterministic: compute the next date from root + count (no DB child lookup)
-    let nextDate = nthOccurrenceAfterRoot(rule, root.scheduledAt, currentCount);
-    if (!nextDate) continue; // series exhausted
-
-    // Off-season: advance past any occurrences that fall in the service's off-season window.
-    // skipCount tracks how many occurrences we're skipping so the CAS bumps count correctly.
-    let skipCount = 0;
     const service = root.serviceId ? serviceMap.get(root.serviceId) : null;
-    if (service?.offSeasonStart && service?.offSeasonEnd) {
-      while (nextDate && isInOffSeason(nextDate, service.offSeasonStart, service.offSeasonEnd)) {
-        skipCount++;
-        nextDate = nthOccurrenceAfterRoot(rule, root.scheduledAt, currentCount + skipCount);
-      }
-      if (!nextDate) continue; // series exhausted after skipping off-season occurrences
-    }
 
-    // Only generate if within look-ahead window
-    if (nextDate > lookahead) continue;
+    // localCount tracks how many slots we've consumed for this root during this
+    // scheduler run. It starts at the DB value and advances with each generated
+    // or skipped occurrence, letting us fill the entire look-ahead window in one
+    // pass rather than waiting for the next hourly tick.
+    let localCount = root.recurrenceCount ?? 0;
+    const MAX_PER_ROOT = 52; // safety cap — one year of weekly jobs max per run
 
-    // Wrap claim + insert in a transaction: if the insert fails, the count
-    // increment is rolled back, preventing a permanently skipped occurrence.
-    let didGenerate = false;
-    try {
-      await db.transaction(async tx => {
-        // CAS guard inside the transaction: only proceed if count still matches.
-        // Bump by skipCount + 1 to atomically consume the skipped off-season slots.
-        const claimed = await tx.execute(sql`
-          UPDATE jobs
-          SET recurrence_count = recurrence_count + ${skipCount + 1}
-          WHERE id = ${root.id}
-            AND recurrence_count = ${currentCount}
-        `);
-        if ((claimed as unknown as { rowCount: number }).rowCount === 0) {
-          // Another instance beat us; roll back by throwing (transaction aborts).
-          throw new Error("CAS_MISS");
+    for (let safety = 0; safety < MAX_PER_ROOT; safety++) {
+      // Deterministic: compute the next date from root + localCount
+      let nextDate = nthOccurrenceAfterRoot(rule, root.scheduledAt, localCount);
+      if (!nextDate) break; // series exhausted
+
+      // Off-season: skip occurrences that fall inside the off-season window.
+      let skipCount = 0;
+      if (service?.offSeasonStart && service?.offSeasonEnd) {
+        while (nextDate && isInOffSeason(nextDate, service.offSeasonStart, service.offSeasonEnd)) {
+          skipCount++;
+          nextDate = nthOccurrenceAfterRoot(rule, root.scheduledAt, localCount + skipCount);
         }
-
-        await tx.insert(jobsTable).values({
-          tenantId: root.tenantId,
-          title: root.title,
-          description: root.description,
-          status: "scheduled",
-          priority: root.priority,
-          customerId: root.customerId,
-          propertyId: root.propertyId,
-          assigneeId: root.assigneeId,
-          crewId: root.crewId,
-          blueprintId: root.blueprintId,
-          planId: root.planId,
-          scheduledAt: nextDate,
-          estimatedDuration: root.estimatedDuration,
-          lineItems: root.lineItems,
-          totalAmount: root.totalAmount,
-          recurrenceParentId: root.id,
-          recurrenceIndex: currentCount + skipCount,
-          smsReminderEnabled: root.smsReminderEnabled,
-        });
-
-        didGenerate = true;
-      });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg !== "CAS_MISS") {
-        logger.error({ err, rootJobId: root.id }, "Failed to generate recurring job instance");
+        if (!nextDate) break; // series exhausted after skipping
       }
-    }
 
-    if (didGenerate) {
-      generated++;
-      logger.info(
-        { rootJobId: root.id, nextDate: nextDate.toISOString(), index: currentCount },
-        "Generated recurring job instance",
-      );
+      // Stop filling once we're past the look-ahead window
+      if (nextDate > lookahead) break;
+
+      // Wrap claim + insert in a transaction; CAS on the current localCount.
+      let didGenerate = false;
+      try {
+        await db.transaction(async tx => {
+          const claimed = await tx.execute(sql`
+            UPDATE jobs
+            SET recurrence_count = recurrence_count + ${skipCount + 1}
+            WHERE id = ${root.id}
+              AND recurrence_count = ${localCount}
+          `);
+          if ((claimed as unknown as { rowCount: number }).rowCount === 0) {
+            throw new Error("CAS_MISS");
+          }
+
+          await tx.insert(jobsTable).values({
+            tenantId: root.tenantId,
+            title: root.title,
+            description: root.description,
+            status: "scheduled",
+            priority: root.priority,
+            customerId: root.customerId,
+            propertyId: root.propertyId,
+            assigneeId: root.assigneeId,
+            crewId: root.crewId,
+            blueprintId: root.blueprintId,
+            planId: root.planId,
+            scheduledAt: nextDate,
+            estimatedDuration: root.estimatedDuration,
+            lineItems: root.lineItems,
+            totalAmount: root.totalAmount,
+            recurrenceParentId: root.id,
+            recurrenceIndex: localCount + skipCount,
+            smsReminderEnabled: root.smsReminderEnabled,
+          });
+
+          didGenerate = true;
+        });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg === "CAS_MISS") {
+          // Another instance is generating for this root concurrently — stop
+          // filling this root for now; the other instance will handle it.
+          break;
+        }
+        logger.error({ err, rootJobId: root.id }, "Failed to generate recurring job instance");
+        break; // don't spin on a hard error
+      }
+
+      if (didGenerate) {
+        generated++;
+        logger.info(
+          { rootJobId: root.id, nextDate: nextDate.toISOString(), index: localCount + skipCount },
+          "Generated recurring job instance",
+        );
+        localCount += skipCount + 1; // advance past what we just consumed
+      }
     }
   }
 

@@ -119,6 +119,17 @@ async function sendReminder(params: {
 }) {
   const { job, customer, tenant, propertyAddress, reminderType, now } = params;
   const companyName = tenant.name;
+  const firstName = customer.name.split(" ")[0] ?? customer.name;
+  const notifTemplates = (tenant.notificationTemplates as Record<string, string> | null) ?? {};
+  // Pre-compute date strings for template variable interpolation
+  const templateVars: Record<string, string> = {
+    firstName,
+    companyName,
+    jobTitle: job.title,
+    date: job.scheduledAt.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" }),
+    time: job.scheduledAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }),
+    address: propertyAddress ?? "",
+  };
 
   const smsProviderConfig: SmsProviderConfig = {
     platform: (tenant.phonePlatform as "openphone" | "grasshopper" | "twilio" | "quo" | null) ?? null,
@@ -138,13 +149,9 @@ async function sendReminder(params: {
 
   // Send SMS if customer has a phone, hasn't opted out globally, and this job has SMS reminders enabled
   if (customer.phone && !customer.smsOptOut && job.smsReminderEnabled) {
-    const smsBody = buildReminderSmsBody({
-      customerName: customer.name.split(" ")[0] ?? customer.name,
-      jobTitle: job.title,
-      scheduledAt: job.scheduledAt,
-      propertyAddress,
-      companyName,
-    });
+    const smsBody = notifTemplates.serviceReminderSms
+      ? applyTemplate(notifTemplates.serviceReminderSms, templateVars)
+      : buildReminderSmsBody({ customerName: firstName, jobTitle: job.title, scheduledAt: job.scheduledAt, propertyAddress, companyName });
 
     const smsResult = await sendSms(smsProviderConfig, customer.phone, smsBody);
 
@@ -172,13 +179,9 @@ async function sendReminder(params: {
 
   // Send email if customer has an email and hasn't opted out
   if (customer.email && !customer.emailOptOut) {
-    const { subject, body } = buildReminderEmailBody({
-      customerName: customer.name.split(" ")[0] ?? customer.name,
-      jobTitle: job.title,
-      scheduledAt: job.scheduledAt,
-      propertyAddress,
-      companyName,
-    });
+    const defaultEmail = buildReminderEmailBody({ customerName: firstName, jobTitle: job.title, scheduledAt: job.scheduledAt, propertyAddress, companyName });
+    const subject = notifTemplates.serviceReminderEmailSubject ? applyTemplate(notifTemplates.serviceReminderEmailSubject, templateVars) : defaultEmail.subject;
+    const body = notifTemplates.serviceReminderEmailBody ? applyTemplate(notifTemplates.serviceReminderEmailBody, templateVars) : defaultEmail.body;
 
     const emailResult = await sendEmail(emailProviderConfig, customer.email, subject, body);
 

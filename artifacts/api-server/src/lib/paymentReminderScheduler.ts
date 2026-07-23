@@ -131,11 +131,20 @@ export async function sendPaymentReminder(params: {
   const isOverdue = rule.offsetDays > 0;
   let delivered = false;
 
+  const notifTemplates = (tenant.notificationTemplates as Record<string, string> | null) ?? {};
+  const templateVars: Record<string, string> = {
+    firstName,
+    companyName,
+    invoiceNumber: invoice.invoiceNumber,
+    amount: invoice.total.toFixed(2),
+    dueMessage: isOverdue ? "is now overdue" : "is due soon",
+  };
+
   if (channels.includes("email") && customer.email && !customer.emailOptOut) {
-    const subject = isOverdue
+    const defaultSubject = isOverdue
       ? `Payment overdue — Invoice ${invoice.invoiceNumber}`
       : `Payment reminder — Invoice ${invoice.invoiceNumber} due soon`;
-    const body = [
+    const defaultBody = [
       `Hi ${firstName},`,
       "",
       isOverdue
@@ -147,6 +156,8 @@ export async function sendPaymentReminder(params: {
       "Thank you,",
       companyName,
     ].join("\n");
+    const subject = notifTemplates.paymentReminderEmailSubject ? applyTemplate(notifTemplates.paymentReminderEmailSubject, templateVars) : defaultSubject;
+    const body = notifTemplates.paymentReminderEmailBody ? applyTemplate(notifTemplates.paymentReminderEmailBody, templateVars) : defaultBody;
 
     const emailProviderConfig: EmailProviderConfig = {
       provider: (tenant.emailProvider as "smtp" | "sendgrid" | "mailgun" | "resend" | null) ?? null,
@@ -165,9 +176,10 @@ export async function sendPaymentReminder(params: {
   }
 
   if (channels.includes("sms") && customer.phone && !customer.smsOptOut) {
-    const smsBody = isOverdue
+    const defaultSms = isOverdue
       ? `Hi ${firstName}, invoice ${invoice.invoiceNumber} ($${invoice.total.toFixed(2)}) from ${companyName} is overdue. Please arrange payment. Reply STOP to opt out.`
       : `Hi ${firstName}, reminder: invoice ${invoice.invoiceNumber} ($${invoice.total.toFixed(2)}) from ${companyName} is due soon. Reply STOP to opt out.`;
+    const smsBody = notifTemplates.paymentReminderSms ? applyTemplate(notifTemplates.paymentReminderSms, templateVars) : defaultSms;
 
     const smsProviderConfig: SmsProviderConfig = {
       platform: (tenant.phonePlatform as "openphone" | "grasshopper" | "twilio" | "quo" | null) ?? null,

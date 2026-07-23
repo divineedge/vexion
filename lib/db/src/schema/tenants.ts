@@ -133,6 +133,14 @@ export const tenantsTable = pgTable("tenants", {
   nonRecurringInvoiceCadence: text("non_recurring_invoice_cadence").notNull().default("immediate"),
   /** Ordered array of shortcut IDs shown in the quick-add bar (tenant-wide). E.g. ["new-job","new-customer","new-invoice"] */
   quickShortcuts: jsonb("quick_shortcuts").default('["new-job","new-customer","new-invoice"]'),
+  /**
+   * Tenant-customisable message templates for automated notifications.
+   * Keys: serviceReminderSms, serviceReminderEmailSubject, serviceReminderEmailBody,
+   *       paymentReminderEmailSubject, paymentReminderEmailBody, paymentReminderSms
+   * Variables: {{firstName}}, {{companyName}}, {{jobTitle}}, {{date}}, {{time}}, {{address}},
+   *             {{invoiceNumber}}, {{amount}}, {{dueMessage}}
+   */
+  notificationTemplates: jsonb("notification_templates").default('{}'),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

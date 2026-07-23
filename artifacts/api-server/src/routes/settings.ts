@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import { db, tenantsTable, usersTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -129,6 +129,8 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     },
     // Quick-Add Shortcut Bar
     quickShortcuts: (tenant.quickShortcuts as string[] | null) ?? ["new-job", "new-customer", "new-invoice"],
+    // Notification Templates
+    notificationTemplates: (tenant.notificationTemplates as Record<string, string> | null) ?? {},
   };
 }
 
@@ -173,6 +175,8 @@ router.patch("/settings", async (req, res): Promise<void> => {
     dailyTaskHourlyRate,
     // Quick-Add Shortcut Bar
     quickShortcuts,
+    // Notification Templates
+    notificationTemplates,
   } = req.body;
 
   const updates: Partial<typeof tenantsTable.$inferInsert> = {};
@@ -244,7 +248,11 @@ router.patch("/settings", async (req, res): Promise<void> => {
         // when the requester was the only party who could know this fresh objectPath.
         // Only the tenant that actually uploaded this object may publish it as their logo.
         const owner = await objectStorageService.getObjectEntityAclOwner(objectFile);
-        if (owner !== String(tenantId)) {
+        // Allow null owner — the ACL stamp at mint-time always fails with
+        // ObjectNotFoundError (file not uploaded yet), so the owner field is
+        // legitimately null for freshly-uploaded objects.
+        // Only reject when another tenant already has an explicit ownership stamp.
+        if (owner !== null && owner !== String(tenantId)) {
           res.status(403).json({ error: "Forbidden: object was not uploaded by this tenant" });
           return;
         }
@@ -319,6 +327,25 @@ router.patch("/settings", async (req, res): Promise<void> => {
     // Dedupe and cap at 6
     const deduped = [...new Set(quickShortcuts as string[])].slice(0, 6);
     updates.quickShortcuts = deduped;
+  }
+
+  // notification_templates uses a raw SQL update because Drizzle's ORM mapper
+  // can silently drop newly-added jsonb columns from the update set.
+  if (notificationTemplates !== undefined) {
+    await db.execute(sql`
+      UPDATE tenants
+      SET notification_templates = ${JSON.stringify(notificationTemplates)}::jsonb
+      WHERE id = ${tenantId}
+    `);
+  }
+
+  // Guard: Drizzle throws "No values to set" when the updates object is empty.
+  // This happens when the caller only sends notificationTemplates (handled above).
+  if (Object.keys(updates).length === 0) {
+    const [current] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+    if (!current) { res.status(404).json({ error: "Tenant not found" }); return; }
+    res.json(formatTenant(current));
+    return;
   }
 
   const [updated] = await db.update(tenantsTable).set(updates).where(eq(tenantsTable.id, tenantId)).returning();

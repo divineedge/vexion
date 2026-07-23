@@ -21,7 +21,9 @@
 - [Line items CSV convention](line-items-csv-convention.md) — jobs/estimates lineItems packed into one "Line Items" cell via key=value|... mini-syntax; reuse, don't reinvent
 - [Quo (quo.com) API integration](quo-openphone-integration.md) — Quo = rebranded OpenPhone; same data model but a different svix-style webhook signing scheme
 - [Blueprint canvas element data model](blueprint-canvas-data-model.md) — canvasData stays untyped jsonb; extend frontend unions only; reuse scalePxPerFt for any length calc; estimate merges canvas-linked + manual parts
-- [Object storage mint-time ACL](object-storage-mint-time-acl.md) — POST /storage/uploads/request-url's ACL stamp always throws ObjectNotFoundError (object not uploaded yet); catch it there, don't let it 500 the whole upload flow
+- [Object storage mint-time ACL](object-storage-mint-time-acl.md) — ACL stamp at mint-time always fails (file not uploaded yet); logo save must allow null owner and stamp on PATCH /settings, not at request-url time
+- [Drizzle empty-updates guard](drizzle-empty-updates-guard.md) — Drizzle throws "No values to set" when set({}) is called; guard with Object.keys(updates).length===0 before calling db.update()
+- [Drizzle new jsonb column silent drop](drizzle-new-jsonb-column.md) — newly-added jsonb columns are silently ignored by Drizzle's set() mapper even when present in the schema; use raw sql`` UPDATE for them
 - [Recurring billing completed-work mode](recurring-billing-completed-work.md) — period window is (lastGeneratedAt/createdAt, now]; jobs gated by invoiceId IS NULL; service-only scope fans out to one invoice per customer
 - [Blueprint legacy canvas shape](blueprint-legacy-canvas-shape.md) — some blueprints store {nodes,lines{from,to}} not {points,lines{startId,endId}}; normalize on every DB read or saves discard the old layout
 - [Blueprint PDF file size storage](blueprint-pdf-size-storage.md) — pdfSizeBytes lives on media_attachments, not a column on blueprintsTable; update both sides when replacing a PDF

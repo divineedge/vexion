@@ -264,6 +264,9 @@ export default function SettingsPage() {
       setStopServiceRuleEnabled((settings as any).stopServiceRuleEnabled ?? false);
       setStopServiceThresholdDays(String((settings as any).stopServiceThresholdDays ?? 30));
 
+      // Notification Templates
+      setNotificationTemplates((settings as any).notificationTemplates ?? {});
+
       // Reviews
       setReviewRequestOnInvoicePaid((settings as any).reviewRequestOnInvoicePaid ?? false);
       setReviewRequestOnEstimateApproved((settings as any).reviewRequestOnEstimateApproved ?? false);
@@ -348,6 +351,16 @@ export default function SettingsPage() {
       {
         onSuccess: () => { toast.success('Payment reminder settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
         onError: () => toast.error('Failed to save'),
+      },
+    );
+  };
+
+  const saveNotificationTemplates = () => {
+    updateSettings.mutate(
+      { data: { notificationTemplates } as Parameters<typeof updateSettings.mutate>[0]['data'] },
+      {
+        onSuccess: () => { toast.success('Notification templates saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
+        onError: () => toast.error('Failed to save templates'),
       },
     );
   };
@@ -565,6 +578,7 @@ export default function SettingsPage() {
           <TabsTrigger value="branding"><ImageIcon className="w-4 h-4 mr-2" />Branding</TabsTrigger>
           <TabsTrigger value="payment-reminders"><Bell className="w-4 h-4 mr-2" />Payment Reminders</TabsTrigger>
           <TabsTrigger value="followups"><PhoneMissedIcon className="w-4 h-4 mr-2" />Follow-Ups</TabsTrigger>
+          <TabsTrigger value="notification-templates"><MessageSquare className="w-4 h-4 mr-2" />Msg Templates</TabsTrigger>
           <TabsTrigger value="reviews"><StarIcon className="w-4 h-4 mr-2" />Reviews</TabsTrigger>
           {isOwner && <TabsTrigger value="advanced"><Shield className="w-4 h-4 mr-2" />Advanced</TabsTrigger>}
         </TabsList>
@@ -3049,6 +3063,101 @@ export default function SettingsPage() {
 
               <Button onClick={saveReviews} disabled={updateSettings.isPending} variant="outline">
                 {updateSettings.isPending ? 'Saving…' : 'Save Review Settings'}
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Notification Templates ── */}
+        <TabsContent value="notification-templates" className="space-y-6 focus-visible:outline-none">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><MessageSquare className="w-5 h-5" /> Notification Templates</CardTitle>
+              <CardDescription>
+                Customize the message content for automated reminders. Leave a field blank to use the built-in default. Use double-brace variables to insert dynamic values.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Variable reference */}
+              <div className="rounded-lg bg-muted/50 border p-3 space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Available variables</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {['{{firstName}}','{{companyName}}','{{jobTitle}}','{{date}}','{{time}}','{{address}}','{{invoiceNumber}}','{{amount}}','{{dueMessage}}'].map(v => (
+                    <code key={v} className="text-xs bg-background border rounded px-1.5 py-0.5 font-mono">{v}</code>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-medium">Service reminder vars:</span> firstName, companyName, jobTitle, date, time, address.&ensp;
+                  <span className="font-medium">Payment reminder vars:</span> firstName, companyName, invoiceNumber, amount, dueMessage.
+                </p>
+              </div>
+
+              {/* ── Service Reminders ── */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold flex items-center gap-1.5"><Bell className="w-4 h-4" /> Service Reminder (7-day &amp; 24-hour)</h3>
+                <div className="space-y-1.5">
+                  <Label>SMS Body</Label>
+                  <Textarea
+                    rows={3}
+                    placeholder={'Default: Hi {{firstName}}, reminder: {{companyName}} will be at your property on {{date}} at {{time}} for "{{jobTitle}}". Reply STOP to opt out.'}
+                    value={notificationTemplates.serviceReminderSms ?? ''}
+                    onChange={e => setNotificationTemplates(t => ({ ...t, serviceReminderSms: e.target.value || undefined as any }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Email Subject</Label>
+                  <Input
+                    placeholder="Default: Upcoming Service Reminder — {{jobTitle}} on {{date}}"
+                    value={notificationTemplates.serviceReminderEmailSubject ?? ''}
+                    onChange={e => setNotificationTemplates(t => ({ ...t, serviceReminderEmailSubject: e.target.value || undefined as any }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Email Body</Label>
+                  <Textarea
+                    rows={6}
+                    placeholder={'Default: Hi {{firstName}},\n\nThis is a reminder that {{companyName}} will be servicing your property on {{date}} at {{time}}.\n\nProperty: {{address}}\n\nIf you have questions, please contact us.\n\nThank you,\n{{companyName}}'}
+                    value={notificationTemplates.serviceReminderEmailBody ?? ''}
+                    onChange={e => setNotificationTemplates(t => ({ ...t, serviceReminderEmailBody: e.target.value || undefined as any }))}
+                  />
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* ── Payment Reminders ── */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold flex items-center gap-1.5"><CreditCard className="w-4 h-4" /> Payment Reminder</h3>
+                <div className="space-y-1.5">
+                  <Label>Email Subject</Label>
+                  <Input
+                    placeholder="Default: Payment reminder — Invoice {{invoiceNumber}} (or 'Payment overdue' when past due)"
+                    value={notificationTemplates.paymentReminderEmailSubject ?? ''}
+                    onChange={e => setNotificationTemplates(t => ({ ...t, paymentReminderEmailSubject: e.target.value || undefined as any }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Email Body</Label>
+                  <Textarea
+                    rows={6}
+                    placeholder={'Default: Hi {{firstName}},\n\nInvoice {{invoiceNumber}} for ${{amount}} {{dueMessage}}.\n\nPlease arrange payment at your earliest convenience.\n\nThank you,\n{{companyName}}'}
+                    value={notificationTemplates.paymentReminderEmailBody ?? ''}
+                    onChange={e => setNotificationTemplates(t => ({ ...t, paymentReminderEmailBody: e.target.value || undefined as any }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>SMS Body</Label>
+                  <Textarea
+                    rows={2}
+                    placeholder="Default: Hi {{firstName}}, reminder: invoice {{invoiceNumber}} (${{amount}}) from {{companyName}} {{dueMessage}}. Reply STOP to opt out."
+                    value={notificationTemplates.paymentReminderSms ?? ''}
+                    onChange={e => setNotificationTemplates(t => ({ ...t, paymentReminderSms: e.target.value || undefined as any }))}
+                  />
+                </div>
+              </div>
+
+              <Button onClick={saveNotificationTemplates} disabled={updateSettings.isPending} variant="outline">
+                {updateSettings.isPending ? 'Saving…' : 'Save Templates'}
               </Button>
             </CardContent>
           </Card>

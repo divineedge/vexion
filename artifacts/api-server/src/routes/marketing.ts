@@ -82,8 +82,8 @@ router.post("/marketing/campaigns", async (req, res): Promise<void> => {
       name,
       channel,
       budget: String(budget ?? 0),
-      startDate: startDate ?? null,
-      endDate: endDate ?? null,
+      startDate: startDate || null,
+      endDate: endDate || null,
       notes: notes ?? null,
     })
     .returning();

@@ -24,6 +24,7 @@ import {
   customerPlansTable,
   invoicesTable,
   activityLogTable,
+  servicesTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
@@ -316,5 +317,377 @@ describe.skipIf(!RUN)("processRenewals — area-based pricing DB integration", (
     // billingPrice should remain at the original sale price
     const unchanged = await getPlan(plan.id);
     expect(unchanged.billingPrice).toBe(100);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// sum_services mode: zone area changes re-price on renewal
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe.skipIf(!RUN)("processRenewals — sum_services pricing DB integration", () => {
+  let tenantId: number;
+  let customerId: number;
+  let propertyId: number;
+  let templateId: number;
+  let serviceId: number;
+  let service2Id: number;
+
+  // Two-tier matrix for each service: ≤6000 sqft → $80, >6000 sqft → $160
+  const SVC_MATRIX = [
+    { minSqft: 0, maxSqft: 6000, price: 80 },
+    { minSqft: 6001, maxSqft: null, price: 160 },
+  ];
+
+  const ZONE_TYPE_ID = "zone-lawn";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // ── Fixture helpers ──────────────────────────────────────────────────────────
+
+  async function setupTenant(): Promise<void> {
+    const [t] = await db
+      .insert(tenantsTable)
+      .values({ name: `__test_sum_svc_renewal_${Date.now()}__`, taxRate: 0 })
+      .returning();
+    tenantId = t.id;
+  }
+
+  async function setupCustomer(): Promise<void> {
+    const [c] = await db
+      .insert(customersTable)
+      .values({
+        tenantId,
+        name: "Sum Svc Renewal Customer",
+        email: `sum_svc_test_${Date.now()}@example.com`,
+        phone: "555-0300",
+      })
+      .returning();
+    customerId = c.id;
+  }
+
+  /** Sets up a property with a single lawn-zone polygon at the given area. */
+  async function setupProperty(
+    zoneAreaSqft: number,
+    fallbackAreaSqft: number = zoneAreaSqft,
+  ): Promise<void> {
+    const measurementPolygons = [
+      { id: "poly-1", zoneTypeId: ZONE_TYPE_ID, areaSqft: zoneAreaSqft, enabled: true },
+    ];
+    const [p] = await db
+      .insert(propertiesTable)
+      .values({
+        tenantId,
+        customerId,
+        address: "99 Zone Ave",
+        serviceableAreaSqft: fallbackAreaSqft,
+        measurementPolygons,
+      })
+      .returning();
+    propertyId = p.id;
+  }
+
+  /** Creates a service with matrix pricing linked to the lawn zone type. */
+  async function setupZoneLinkedService(): Promise<void> {
+    const [svc] = await db
+      .insert(servicesTable)
+      .values({
+        tenantId,
+        name: "Lawn Treatment",
+        basePrice: 80,
+        pricingMode: "matrix",
+        pricingMatrix: SVC_MATRIX,
+        linkedZoneTypeId: ZONE_TYPE_ID,
+      })
+      .returning();
+    serviceId = svc.id;
+  }
+
+  /** Creates a second service with matrix pricing but NO linked zone (uses serviceableAreaSqft). */
+  async function setupNoZoneService(): Promise<void> {
+    const [svc] = await db
+      .insert(servicesTable)
+      .values({
+        tenantId,
+        name: "General Maintenance",
+        basePrice: 80,
+        pricingMode: "matrix",
+        pricingMatrix: SVC_MATRIX,
+        linkedZoneTypeId: null,
+      })
+      .returning();
+    service2Id = svc.id;
+  }
+
+  async function setupSumServicesTemplate(svcIds: number[]): Promise<void> {
+    const services = svcIds.map((id, i) => ({
+      serviceId: id,
+      serviceName: i === 0 ? "Lawn Treatment" : "General Maintenance",
+      frequencyDays: 30,
+    }));
+    const [tmpl] = await db
+      .insert(planTemplatesTable)
+      .values({
+        tenantId,
+        name: "Sum Services Plan",
+        services,
+        visitCount: svcIds.length,
+        billingCycle: "monthly",
+        price: 0,
+        pricingMode: "sum_services",
+      })
+      .returning();
+    templateId = tmpl.id;
+  }
+
+  /** Creates a plan due for renewal today. */
+  async function setupDuePlan(
+    billingPrice: number,
+    overrides: Partial<typeof customerPlansTable.$inferInsert> = {},
+  ): Promise<typeof customerPlansTable.$inferSelect> {
+    const today = new Date().toISOString().slice(0, 10);
+    const start = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const end = new Date();
+    const [plan] = await db
+      .insert(customerPlansTable)
+      .values({
+        tenantId,
+        customerId,
+        propertyId,
+        templateId,
+        templateName: "Sum Services Plan",
+        startDate: start,
+        endDate: end,
+        billingCycle: "monthly",
+        billingPrice,
+        autoRenew: true,
+        status: "active",
+        nextBillingDate: today,
+        serviceState: [],
+        ...overrides,
+      })
+      .returning();
+    return plan;
+  }
+
+  // ── Cleanup ─────────────────────────────────────────────────────────────────
+
+  afterEach(async () => {
+    if (!tenantId) return;
+    await db.delete(activityLogTable).where(eq(activityLogTable.tenantId, tenantId));
+    await db.delete(invoicesTable).where(eq(invoicesTable.tenantId, tenantId));
+    await db.delete(customerPlansTable).where(eq(customerPlansTable.tenantId, tenantId));
+    await db.delete(planTemplatesTable).where(eq(planTemplatesTable.tenantId, tenantId));
+    await db.delete(servicesTable).where(eq(servicesTable.tenantId, tenantId));
+    await db.delete(propertiesTable).where(eq(propertiesTable.tenantId, tenantId));
+    await db.delete(customersTable).where(eq(customersTable.tenantId, tenantId));
+    await db.delete(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  });
+
+  // ── Helper queries ───────────────────────────────────────────────────────────
+
+  async function getPlan(id: number) {
+    const [row] = await db.select().from(customerPlansTable).where(eq(customerPlansTable.id, id));
+    return row;
+  }
+
+  async function getInvoicesForPlan(planId: number) {
+    return db.select().from(invoicesTable).where(eq(invoicesTable.planId, planId));
+  }
+
+  // ── Tests ────────────────────────────────────────────────────────────────────
+
+  it("re-prices on renewal when the linked zone polygon area grows into a higher tier", async () => {
+    // Service linked to 'zone-lawn': 4000 sqft → $80 (tier 1)
+    await setupTenant();
+    await setupCustomer();
+    await setupProperty(4000);
+    await setupZoneLinkedService();
+    await setupSumServicesTemplate([serviceId]);
+    const plan = await setupDuePlan(80); // original sale at $80
+
+    // Zone area updated to 8000 sqft → tier 2 → $160
+    await db.update(propertiesTable)
+      .set({
+        measurementPolygons: [
+          { id: "poly-1", zoneTypeId: ZONE_TYPE_ID, areaSqft: 8000, enabled: true },
+        ],
+        serviceableAreaSqft: 8000,
+      })
+      .where(eq(propertiesTable.id, propertyId));
+
+    await processRenewals();
+
+    const updatedPlan = await getPlan(plan.id);
+    expect(updatedPlan.billingPrice).toBe(160);
+
+    const invoices = await getInvoicesForPlan(plan.id);
+    expect(invoices).toHaveLength(1);
+    expect(invoices[0].subtotal).toBe(160);
+    expect(invoices[0].total).toBe(160); // taxRate = 0
+  });
+
+  it("re-prices on renewal when the linked zone polygon area shrinks into a lower tier", async () => {
+    // Service linked to 'zone-lawn': 8000 sqft → $160 (tier 2)
+    await setupTenant();
+    await setupCustomer();
+    await setupProperty(8000);
+    await setupZoneLinkedService();
+    await setupSumServicesTemplate([serviceId]);
+    const plan = await setupDuePlan(160); // original sale at $160
+
+    // Zone area shrinks to 3000 sqft → tier 1 → $80
+    await db.update(propertiesTable)
+      .set({
+        measurementPolygons: [
+          { id: "poly-1", zoneTypeId: ZONE_TYPE_ID, areaSqft: 3000, enabled: true },
+        ],
+        serviceableAreaSqft: 3000,
+      })
+      .where(eq(propertiesTable.id, propertyId));
+
+    await processRenewals();
+
+    const updatedPlan = await getPlan(plan.id);
+    expect(updatedPlan.billingPrice).toBe(80);
+
+    const invoices = await getInvoicesForPlan(plan.id);
+    expect(invoices).toHaveLength(1);
+    expect(invoices[0].subtotal).toBe(80);
+    expect(invoices[0].total).toBe(80);
+  });
+
+  it("sums multiple services: zone-linked + fallback each re-price when their areas change", async () => {
+    // Service 1 linked to zone-lawn: initial 4000 sqft → $80
+    // Service 2 no zone (uses serviceableAreaSqft): initial 4000 sqft → $80
+    // Total initial: $160
+    await setupTenant();
+    await setupCustomer();
+    await setupProperty(4000);
+    await setupZoneLinkedService();
+    await setupNoZoneService();
+    await setupSumServicesTemplate([serviceId, service2Id]);
+    const plan = await setupDuePlan(160); // $80 + $80
+
+    // Both zone and serviceableArea move to 8000 sqft → each service jumps to $160
+    // Total renewal: $320
+    await db.update(propertiesTable)
+      .set({
+        measurementPolygons: [
+          { id: "poly-1", zoneTypeId: ZONE_TYPE_ID, areaSqft: 8000, enabled: true },
+        ],
+        serviceableAreaSqft: 8000,
+      })
+      .where(eq(propertiesTable.id, propertyId));
+
+    await processRenewals();
+
+    const updatedPlan = await getPlan(plan.id);
+    expect(updatedPlan.billingPrice).toBe(320);
+
+    const invoices = await getInvoicesForPlan(plan.id);
+    expect(invoices).toHaveLength(1);
+    expect(invoices[0].subtotal).toBe(320);
+    expect(invoices[0].total).toBe(320);
+  });
+
+  it("service with no linked zone falls back to serviceableAreaSqft for renewal pricing", async () => {
+    // No-zone service: initial serviceableAreaSqft 4000 → $80
+    await setupTenant();
+    await setupCustomer();
+    await setupProperty(4000);
+    await setupNoZoneService();
+    await setupSumServicesTemplate([service2Id]);
+    const plan = await setupDuePlan(80);
+
+    // serviceableAreaSqft updated to 9000 sqft → tier 2 → $160
+    await db.update(propertiesTable)
+      .set({ serviceableAreaSqft: 9000 })
+      .where(eq(propertiesTable.id, propertyId));
+
+    await processRenewals();
+
+    const updatedPlan = await getPlan(plan.id);
+    expect(updatedPlan.billingPrice).toBe(160);
+
+    const invoices = await getInvoicesForPlan(plan.id);
+    expect(invoices).toHaveLength(1);
+    expect(invoices[0].subtotal).toBe(160);
+    expect(invoices[0].total).toBe(160);
+  });
+
+  it("service linked to a zone not present in measurementPolygons falls back to serviceableAreaSqft", async () => {
+    // Property has NO polygon for ZONE_TYPE_ID — service must fall back to serviceableAreaSqft
+    // serviceableAreaSqft = 8000 → tier 2 → $160
+    await setupTenant();
+    await setupCustomer();
+
+    // Intentionally create property with empty measurementPolygons but large serviceableAreaSqft
+    const [p] = await db
+      .insert(propertiesTable)
+      .values({
+        tenantId,
+        customerId,
+        address: "99 No-Zone St",
+        serviceableAreaSqft: 8000,
+        measurementPolygons: [], // no polygons → zone lookup will miss
+      })
+      .returning();
+    propertyId = p.id;
+
+    await setupZoneLinkedService();
+    await setupSumServicesTemplate([serviceId]);
+    // Sold at $80 (wrong — would have been calculated from serviceableAreaSqft 8000 → $160,
+    // but we simulate a price mismatch to confirm renewal corrects it)
+    const plan = await setupDuePlan(80);
+
+    await processRenewals();
+
+    // Renewal resolves: zone 'zone-lawn' not found → falls back to serviceableAreaSqft (8000) → $160
+    const updatedPlan = await getPlan(plan.id);
+    expect(updatedPlan.billingPrice).toBe(160);
+
+    const invoices = await getInvoicesForPlan(plan.id);
+    expect(invoices).toHaveLength(1);
+    expect(invoices[0].subtotal).toBe(160);
+    expect(invoices[0].total).toBe(160);
+  });
+
+  it("disabled zone polygon is excluded — service falls back to serviceableAreaSqft", async () => {
+    // Polygon for the zone exists but is disabled → should not count
+    // serviceableAreaSqft = 5000 → tier 1 → $80
+    await setupTenant();
+    await setupCustomer();
+
+    const [p] = await db
+      .insert(propertiesTable)
+      .values({
+        tenantId,
+        customerId,
+        address: "77 Disabled Zone Rd",
+        serviceableAreaSqft: 5000,
+        measurementPolygons: [
+          { id: "poly-1", zoneTypeId: ZONE_TYPE_ID, areaSqft: 9000, enabled: false },
+        ],
+      })
+      .returning();
+    propertyId = p.id;
+
+    await setupZoneLinkedService();
+    await setupSumServicesTemplate([serviceId]);
+    // Sold at $160 (as if the polygon had been enabled); renewal should correct this
+    const plan = await setupDuePlan(160);
+
+    await processRenewals();
+
+    // Disabled polygon is skipped → zone not found → falls back to serviceableAreaSqft (5000) → $80
+    const updatedPlan = await getPlan(plan.id);
+    expect(updatedPlan.billingPrice).toBe(80);
+
+    const invoices = await getInvoicesForPlan(plan.id);
+    expect(invoices).toHaveLength(1);
+    expect(invoices[0].subtotal).toBe(80);
+    expect(invoices[0].total).toBe(80);
   });
 });

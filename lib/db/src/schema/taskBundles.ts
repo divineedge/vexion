@@ -19,10 +19,12 @@ export const taskBundlesTable = pgTable("task_bundles", {
   description: text("description"),
   /** daily | per_shift | weekly | monthly */
   frequency: text("frequency").notNull().default("daily"),
-  /** Assigned to a specific person, if not assigned to a role bucket */
+  /** Assigned to a specific person, if not assigned to a role bucket or crew */
   assignedToUserId: integer("assigned_to_user_id").references(() => usersTable.id),
   /** Role bucket: 'admin_office' | 'manager' | 'technician' */
   assignedToRole: text("assigned_to_role"),
+  /** Assigned to a specific crew (all members of that crew share this bundle) */
+  assignedToCrewId: integer("assigned_to_crew_id"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

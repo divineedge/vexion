@@ -10,6 +10,8 @@ export interface PricingTier {
   price: number;
   /** Per-sqft rate for the open-ended tier; takes precedence over price when set */
   perSqftRate?: number;
+  /** Estimated job duration in minutes for this sqft range (optional, overrides service-level estimatedDuration) */
+  estimatedMinutes?: number;
 }
 
 /**
@@ -44,4 +46,28 @@ export function resolveServicePrice(
     return matched.perSqftRate * area;
   }
   return matched.price;
+}
+
+/**
+ * Resolve the estimated duration (minutes) for a service given its pricing config and area.
+ * Falls back to the service-level estimatedDuration when tiers don't specify one.
+ */
+export function resolveServiceDuration(
+  pricingMode: string,
+  estimatedDuration: number | null | undefined,
+  pricingMatrix: PricingTier[] | null | undefined,
+  areaSqft: number | null | undefined,
+): number | null {
+  if (pricingMode === 'matrix' && pricingMatrix && pricingMatrix.length > 0) {
+    const area = areaSqft ?? 0;
+    const sorted = [...pricingMatrix].sort((a, b) => a.minSqft - b.minSqft);
+    for (const tier of sorted) {
+      if (area >= tier.minSqft && (tier.maxSqft === null || area <= tier.maxSqft)) {
+        if (tier.estimatedMinutes != null && tier.estimatedMinutes > 0) {
+          return tier.estimatedMinutes;
+        }
+      }
+    }
+  }
+  return estimatedDuration ?? null;
 }

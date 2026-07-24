@@ -97,6 +97,24 @@ router.post("/time-tracking/sub-timers", async (req, res): Promise<void> => {
 
   if (!label || !type) { res.status(400).json({ error: "label and type required" }); return; }
 
+  // Prevent clocking into a second job while one is already active
+  const activeTimers = await db
+    .select({ id: subTimersTable.id, label: subTimersTable.label })
+    .from(subTimersTable)
+    .where(and(
+      eq(subTimersTable.tenantId, tenantId),
+      eq(subTimersTable.userId, userId),
+      eq(subTimersTable.isActive, true),
+    ));
+  if (activeTimers.length > 0) {
+    res.status(409).json({
+      error: "Already clocked in",
+      message: `You are already clocked in to "${activeTimers[0].label}". Clock out first before starting another job.`,
+      activeTimerId: activeTimers[0].id,
+    });
+    return;
+  }
+
   const [timer] = await db.insert(subTimersTable).values({
     tenantId,
     userId,

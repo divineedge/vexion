@@ -159,6 +159,19 @@ function TierRow({
           />
         </div>
       )}
+      <div className="flex items-center gap-1">
+        <Clock className="w-3 h-3 text-muted-foreground shrink-0" />
+        <Input
+          type="number"
+          min={0}
+          step={5}
+          placeholder="min"
+          title="Estimated duration in minutes for this sqft range"
+          value={tier.estimatedMinutes != null ? String(tier.estimatedMinutes) : ''}
+          onChange={e => onChange({ ...tier, estimatedMinutes: e.target.value ? parseInt(e.target.value, 10) : undefined })}
+          className="w-16 text-sm"
+        />
+      </div>
       <Button
         type="button"
         variant="ghost"

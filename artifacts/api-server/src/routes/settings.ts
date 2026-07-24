@@ -131,6 +131,14 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     quickShortcuts: (tenant.quickShortcuts as string[] | null) ?? ["new-job", "new-customer", "new-invoice"],
     // Notification Templates
     notificationTemplates: (tenant.notificationTemplates as Record<string, string> | null) ?? {},
+    // Estimate & Invoice defaults
+    estimateExpiryDays: tenant.estimateExpiryDays ?? 30,
+    invoiceDueDays: tenant.invoiceDueDays ?? 30,
+    taxEnabled: tenant.taxEnabled ?? true,
+    // Callback due-date defaults
+    callbackDueDaysHigh: tenant.callbackDueDaysHigh ?? 1,
+    callbackDueDaysNormal: tenant.callbackDueDaysNormal ?? 3,
+    callbackDueDaysLow: tenant.callbackDueDaysLow ?? 7,
   };
 }
 
@@ -177,6 +185,10 @@ router.patch("/settings", async (req, res): Promise<void> => {
     quickShortcuts,
     // Notification Templates
     notificationTemplates,
+    // Estimate & Invoice defaults
+    estimateExpiryDays, invoiceDueDays, taxEnabled,
+    // Callback due-date defaults
+    callbackDueDaysHigh, callbackDueDaysNormal, callbackDueDaysLow,
   } = req.body;
 
   const updates: Partial<typeof tenantsTable.$inferInsert> = {};
@@ -310,6 +322,15 @@ router.patch("/settings", async (req, res): Promise<void> => {
   if (equipmentRuntimeHourlyRate !== undefined) updates.equipmentRuntimeHourlyRate = parseFloat(equipmentRuntimeHourlyRate);
   if (equipmentDowntimeHourlyRate !== undefined) updates.equipmentDowntimeHourlyRate = parseFloat(equipmentDowntimeHourlyRate);
   if (dailyTaskHourlyRate !== undefined) updates.dailyTaskHourlyRate = parseFloat(dailyTaskHourlyRate);
+  // Estimate & Invoice defaults
+  if (estimateExpiryDays !== undefined) updates.estimateExpiryDays = parseInt(estimateExpiryDays, 10);
+  if (invoiceDueDays !== undefined) updates.invoiceDueDays = parseInt(invoiceDueDays, 10);
+  if (taxEnabled !== undefined) updates.taxEnabled = taxEnabled;
+  // Callback due-date defaults
+  if (callbackDueDaysHigh !== undefined) updates.callbackDueDaysHigh = parseInt(callbackDueDaysHigh, 10);
+  if (callbackDueDaysNormal !== undefined) updates.callbackDueDaysNormal = parseInt(callbackDueDaysNormal, 10);
+  if (callbackDueDaysLow !== undefined) updates.callbackDueDaysLow = parseInt(callbackDueDaysLow, 10);
+
   if (quickShortcuts !== undefined) {
     const VALID_IDS = new Set([
       'new-job', 'new-customer', 'new-invoice', 'new-estimate',
@@ -465,6 +486,7 @@ router.get("/settings/users", async (req, res): Promise<void> => {
     isActive: u.isActive,
     hourlyRate: u.hourlyRate ?? null,
     hireDate: u.hireDate?.toISOString() ?? null,
+    applicatorLicense: u.applicatorLicense ?? null,
     createdAt: u.createdAt.toISOString(),
   })));
 });
@@ -507,7 +529,7 @@ router.patch("/settings/users/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const { name, role, isActive, assignedLocationId, hourlyRate, hireDate, password } = req.body;
+  const { name, role, isActive, assignedLocationId, hourlyRate, hireDate, password, applicatorLicense } = req.body;
   const updates: Partial<typeof usersTable.$inferInsert> = {};
   if (name) updates.name = name;
   if (role) updates.role = role;
@@ -516,12 +538,13 @@ router.patch("/settings/users/:id", async (req, res): Promise<void> => {
   if (assignedLocationId !== undefined) updates.assignedLocationId = assignedLocationId ? parseInt(String(assignedLocationId), 10) : null;
   if (hourlyRate !== undefined) updates.hourlyRate = hourlyRate === null ? null : parseFloat(hourlyRate);
   if (hireDate !== undefined) updates.hireDate = hireDate ? new Date(hireDate) : null;
+  if (applicatorLicense !== undefined) updates.applicatorLicense = applicatorLicense || null;
 
   const [updated] = await db.update(usersTable).set(updates).where(and(eq(usersTable.id, id), eq(usersTable.tenantId, tenantId))).returning();
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
 
   const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
-  res.json({ id: updated.id, email: updated.email, name: updated.name, role: updated.role, tenantId: updated.tenantId, planTier: tenant?.planTier ?? "starter", avatarUrl: updated.avatarUrl ?? null, isActive: updated.isActive, assignedLocationId: updated.assignedLocationId ?? null, hourlyRate: updated.hourlyRate ?? null, hireDate: updated.hireDate?.toISOString() ?? null, createdAt: updated.createdAt.toISOString() });
+  res.json({ id: updated.id, email: updated.email, name: updated.name, role: updated.role, tenantId: updated.tenantId, planTier: tenant?.planTier ?? "starter", avatarUrl: updated.avatarUrl ?? null, isActive: updated.isActive, assignedLocationId: updated.assignedLocationId ?? null, hourlyRate: updated.hourlyRate ?? null, hireDate: updated.hireDate?.toISOString() ?? null, applicatorLicense: updated.applicatorLicense ?? null, createdAt: updated.createdAt.toISOString() });
 });
 
 router.delete("/settings/users/:id", async (req, res): Promise<void> => {

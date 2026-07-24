@@ -8,6 +8,7 @@ import {
   useListTaskBundleCompletions, getListTaskBundleCompletionsQueryKey,
   useListShrinkageReports, getListShrinkageReportsQueryKey,
   useListUsers, getListUsersQueryKey,
+  useListCrews, getListCrewsQueryKey,
   useListEquipment, getListEquipmentQueryKey,
   useListInventoryItems, getListInventoryItemsQueryKey,
   type TaskBundle, type TaskBundleItem, type TaskBundleCompletion,
@@ -87,6 +88,7 @@ function BundleBuilderSheet({
     query: { queryKey: getGetTaskBundleQueryKey(bundle?.id ?? 0), enabled: open && isEdit },
   });
   const { data: users = [] } = useListUsers({ query: { queryKey: getListUsersQueryKey(), enabled: open } });
+  const { data: crews = [] } = useListCrews({ query: { queryKey: getListCrewsQueryKey(), enabled: open } });
   const { data: equipmentList = [] } = useListEquipment(undefined, { query: { queryKey: getListEquipmentQueryKey(), enabled: open } });
   const { data: inventory = [] } = useListInventoryItems(undefined, { query: { queryKey: getListInventoryItemsQueryKey(), enabled: open } });
 
@@ -111,7 +113,7 @@ function BundleBuilderSheet({
       setName(detail.name);
       setDescription(detail.description ?? '');
       setFrequency(detail.frequency);
-      setAssignee(detail.assignedToUserId ? `user:${detail.assignedToUserId}` : detail.assignedToRole ? `role:${detail.assignedToRole}` : '');
+      setAssignee(detail.assignedToUserId ? `user:${detail.assignedToUserId}` : detail.assignedToRole ? `role:${detail.assignedToRole}` : (detail as any).assignedToCrewId ? `crew:${(detail as any).assignedToCrewId}` : '');
       setItems(detail.items.map(i => ({
         key: String(i.id), id: i.id, type: i.type, label: i.label,
         linkedEquipmentId: i.linkedEquipmentId ?? undefined,
@@ -142,11 +144,12 @@ function BundleBuilderSheet({
     const [kind, value] = assignee.split(':');
     const assignedToUserId = kind === 'user' ? parseInt(value, 10) : undefined;
     const assignedToRole = kind === 'role' ? value : undefined;
+    const assignedToCrewId = kind === 'crew' ? parseInt(value, 10) : undefined;
 
     if (isEdit && bundle) {
       updateBundle.mutate({
         id: bundle.id,
-        data: { name, description: description || undefined, frequency, assignedToUserId: assignedToUserId ?? null, assignedToRole: assignedToRole ?? null },
+        data: { name, description: description || undefined, frequency, assignedToUserId: assignedToUserId ?? null, assignedToRole: assignedToRole ?? null, assignedToCrewId: assignedToCrewId ?? null } as Parameters<typeof updateBundle.mutate>[0]['data'],
       }, {
         onSuccess: () => {
           // Persist item changes: update existing, create new
@@ -164,9 +167,9 @@ function BundleBuilderSheet({
     } else {
       createBundle.mutate({
         data: {
-          name, description: description || undefined, frequency, assignedToUserId, assignedToRole,
+          name, description: description || undefined, frequency, assignedToUserId, assignedToRole, assignedToCrewId,
           items: items.map(it => ({ type: it.type, label: it.label, linkedEquipmentId: it.linkedEquipmentId, config: it.config })),
-        },
+        } as Parameters<typeof createBundle.mutate>[0]['data'],
       }, {
         onSuccess: () => { toast.success('Bundle created'); invalidate(); onOpenChange(false); },
         onError: () => toast.error('Failed to create bundle'),
@@ -218,6 +221,7 @@ function BundleBuilderSheet({
                 <SelectTrigger><SelectValue placeholder="Select person or role" /></SelectTrigger>
                 <SelectContent>
                   {users.map(u => <SelectItem key={`user:${u.id}`} value={`user:${u.id}`}>{u.name}</SelectItem>)}
+                  {(crews as any[]).filter(c => c.isActive !== false).map(c => <SelectItem key={`crew:${c.id}`} value={`crew:${c.id}`}>🚐 {c.name} (crew)</SelectItem>)}
                   {TASK_ROLE_BUCKETS.map(r => <SelectItem key={`role:${r.value}`} value={`role:${r.value}`}>{r.label}</SelectItem>)}
                 </SelectContent>
               </Select>

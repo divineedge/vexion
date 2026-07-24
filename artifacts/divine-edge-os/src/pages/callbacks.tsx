@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
-import { useListJobs, getListJobsQueryKey } from '@workspace/api-client-react';
+import { useListJobs, getListJobsQueryKey, useGetTenantSettings, getGetTenantSettingsQueryKey } from '@workspace/api-client-react';
+import { addDays, format as fnsFormat } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -60,6 +61,7 @@ export default function CallbacksPage() {
     originalJobId: '',
     reason: '',
     scheduledFixDate: '',
+    priority: 'normal' as 'high' | 'normal' | 'low',
   });
 
   // Resolve dialog state
@@ -82,6 +84,21 @@ export default function CallbacksPage() {
     queryFn: () => customFetch<CallbackStats>('/api/callbacks/stats'),
   });
 
+  const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
+
+  // Auto-compute due date from priority when priority changes
+  useEffect(() => {
+    if (!createOpen) return;
+    const s = settings as any;
+    const days = form.priority === 'high'
+      ? (s?.callbackDueDaysHigh ?? 1)
+      : form.priority === 'low'
+        ? (s?.callbackDueDaysLow ?? 7)
+        : (s?.callbackDueDaysNormal ?? 3);
+    setForm(f => ({ ...f, scheduledFixDate: fnsFormat(addDays(new Date(), days), 'yyyy-MM-dd') }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.priority, createOpen]);
+
   const { data: completedJobs } = useListJobs(
     { status: 'completed' },
     { query: { enabled: createOpen, queryKey: getListJobsQueryKey({ status: 'completed' }) } },
@@ -95,7 +112,7 @@ export default function CallbacksPage() {
       qc.invalidateQueries({ queryKey: ['callbacks'] });
       qc.invalidateQueries({ queryKey: ['callback-stats'] });
       setCreateOpen(false);
-      setForm({ originalJobId: '', reason: '', scheduledFixDate: '' });
+      setForm({ originalJobId: '', reason: '', scheduledFixDate: '', priority: 'normal' });
     },
     onError: () => toast.error('Failed to create callback'),
   });
@@ -374,7 +391,7 @@ export default function CallbacksPage() {
       </Card>
 
       {/* Create Sheet */}
-      <Sheet open={createOpen} onOpenChange={open => { if (!open) { setCreateOpen(false); setForm({ originalJobId: '', reason: '', scheduledFixDate: '' }); } }}>
+      <Sheet open={createOpen} onOpenChange={open => { if (!open) { setCreateOpen(false); setForm({ originalJobId: '', reason: '', scheduledFixDate: '', priority: 'normal' }); } }}>
         <SheetContent className="w-full sm:max-w-md overflow-y-auto">
           <SheetHeader className="pb-4">
             <SheetTitle>Log Callback Ticket</SheetTitle>
@@ -402,6 +419,19 @@ export default function CallbacksPage() {
             </div>
 
             <div className="space-y-1.5">
+              <label className="text-sm font-medium">Priority</label>
+              <Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v as 'high' | 'normal' | 'low' }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="high">🔴 High — fix within {(settings as any)?.callbackDueDaysHigh ?? 1} day(s)</SelectItem>
+                  <SelectItem value="normal">🟡 Normal — fix within {(settings as any)?.callbackDueDaysNormal ?? 3} day(s)</SelectItem>
+                  <SelectItem value="low">⚪ Low — fix within {(settings as any)?.callbackDueDaysLow ?? 7} day(s)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Sets the auto-calculated fix date below. Adjust thresholds in Settings.</p>
+            </div>
+
+            <div className="space-y-1.5">
               <label className="text-sm font-medium">Reason / Description</label>
               <Textarea
                 placeholder="What was missed or done incorrectly? e.g. 'Missed edging on back gate area'"
@@ -418,7 +448,7 @@ export default function CallbacksPage() {
                 value={form.scheduledFixDate}
                 onChange={e => setForm(f => ({ ...f, scheduledFixDate: e.target.value }))}
               />
-              <p className="text-xs text-muted-foreground">When should this be fixed by?</p>
+              <p className="text-xs text-muted-foreground">Auto-set from priority — adjust if needed.</p>
             </div>
 
             <Separator />

@@ -160,6 +160,7 @@ export default function SchedulePage() {
     mixtureId: '', productId: '', volumeApplied: '', volumeUnit: 'gal',
     targetPest: '', applicationMethod: '', windSpeed: '', windDirection: '',
     temperature: '', applicatorLicenseNumber: '', notes: '', appliedAt: '',
+    treatedArea: '', areaUnit: 'sqft',
   });
 
   // Repair log state
@@ -233,7 +234,7 @@ export default function SchedulePage() {
   }, [customerProperties]);
 
   const { data: users } = useListUsers({
-    query: { enabled: createOpen, queryKey: getListUsersQueryKey() },
+    query: { enabled: createOpen || chemFormOpen, queryKey: getListUsersQueryKey() },
   });
 
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
@@ -1220,7 +1221,17 @@ export default function SchedulePage() {
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1.5">
                       <FlaskConical className="w-3.5 h-3.5" /> Chemical Applications
                     </p>
-                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setChemFormOpen(true)}>
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => {
+                      // Default appliedAt to current local datetime
+                      const now = new Date();
+                      const pad = (n: number) => String(n).padStart(2, '0');
+                      const localDT = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+                      // Auto-fill applicator license from current user's profile
+                      const currentUser = (users ?? []).find((u: any) => u.id === user?.id);
+                      const license = (currentUser as any)?.applicatorLicense ?? '';
+                      setChemForm(f => ({ ...f, appliedAt: localDT, applicatorLicenseNumber: license || f.applicatorLicenseNumber }));
+                      setChemFormOpen(true);
+                    }}>
                       <Plus className="w-3 h-3" /> Log Application
                     </Button>
                   </div>
@@ -1453,13 +1464,20 @@ export default function SchedulePage() {
       </Sheet>
 
       {/* Chemical Application Log Sheet */}
-      <Sheet open={chemFormOpen} onOpenChange={open => { if (!open) { setChemFormOpen(false); setChemForm({ mixtureId: '', productId: '', volumeApplied: '', volumeUnit: 'gal', targetPest: '', applicationMethod: '', windSpeed: '', windDirection: '', temperature: '', applicatorLicenseNumber: '', notes: '', appliedAt: '' }); } }}>
+      <Sheet open={chemFormOpen} onOpenChange={open => { if (!open) { setChemFormOpen(false); setChemForm({ mixtureId: '', productId: '', volumeApplied: '', volumeUnit: 'gal', targetPest: '', applicationMethod: '', windSpeed: '', windDirection: '', temperature: '', applicatorLicenseNumber: '', notes: '', appliedAt: '', treatedArea: '', areaUnit: 'sqft' }); } }}>
         <SheetContent className="w-full sm:max-w-md overflow-y-auto">
           <SheetHeader className="pb-4">
             <SheetTitle>Log Chemical Application</SheetTitle>
             <SheetDescription>Record a pesticide or fertilizer application for compliance.</SheetDescription>
           </SheetHeader>
           <div className="space-y-4 pb-6">
+            {/* Empty state when no products or mixtures configured */}
+            {(chemMixtures?.length ?? 0) === 0 && (chemProducts?.length ?? 0) === 0 && (
+              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground text-center space-y-1">
+                <p className="font-medium">No chemical products set up yet.</p>
+                <p className="text-xs">Go to Settings → Chemicals to add products or tank mixes. You can still log by volume below.</p>
+              </div>
+            )}
             {/* Mixture or Product */}
             {(chemMixtures?.length ?? 0) > 0 && (
               <div className="space-y-1.5">
@@ -1512,6 +1530,24 @@ export default function SchedulePage() {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Applied At</label>
               <Input type="datetime-local" value={chemForm.appliedAt} onChange={e => setChemForm(f => ({ ...f, appliedAt: e.target.value }))} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Treated Area</label>
+                <Input type="number" min={0} step={1} placeholder="e.g. 5000" value={chemForm.treatedArea} onChange={e => setChemForm(f => ({ ...f, treatedArea: e.target.value }))} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Area Unit</label>
+                <Select value={chemForm.areaUnit} onValueChange={v => setChemForm(f => ({ ...f, areaUnit: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sqft">Sq ft</SelectItem>
+                    <SelectItem value="acres">Acres</SelectItem>
+                    <SelectItem value="sqm">Sq m</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -1591,12 +1627,14 @@ export default function SchedulePage() {
                       appliedAt: chemForm.appliedAt ? new Date(chemForm.appliedAt).toISOString() : undefined,
                       applicatorLicenseNumber: chemForm.applicatorLicenseNumber || undefined,
                       notes: chemForm.notes || undefined,
+                      treatedArea: chemForm.treatedArea ? parseFloat(chemForm.treatedArea) : undefined,
+                      areaUnit: chemForm.areaUnit || undefined,
                     },
                   }, {
                     onSuccess: () => {
                       toast.success('Application logged');
                       setChemFormOpen(false);
-                      setChemForm({ mixtureId: '', productId: '', volumeApplied: '', volumeUnit: 'gal', targetPest: '', applicationMethod: '', windSpeed: '', windDirection: '', temperature: '', applicatorLicenseNumber: '', notes: '', appliedAt: '' });
+                      setChemForm({ mixtureId: '', productId: '', volumeApplied: '', volumeUnit: 'gal', targetPest: '', applicationMethod: '', windSpeed: '', windDirection: '', temperature: '', applicatorLicenseNumber: '', notes: '', appliedAt: '', treatedArea: '', areaUnit: 'sqft' });
                       qc.invalidateQueries({ queryKey: getListJobChemicalApplicationsQueryKey(selectedJobId!) });
                     },
                     onError: () => toast.error('Failed to log application'),

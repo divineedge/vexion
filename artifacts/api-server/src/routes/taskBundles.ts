@@ -128,9 +128,9 @@ router.get("/task-bundles/:id", async (req, res): Promise<void> => {
 
 router.post("/task-bundles", requireAdminRole, async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { name, description, frequency, assignedToUserId, assignedToRole, items } = req.body;
+  const { name, description, frequency, assignedToUserId, assignedToRole, assignedToCrewId, items } = req.body;
   if (!name) { res.status(400).json({ error: "name is required" }); return; }
-  if (!assignedToUserId && !assignedToRole) { res.status(400).json({ error: "Bundle must be assigned to a person or a role" }); return; }
+  if (!assignedToUserId && !assignedToRole && !assignedToCrewId) { res.status(400).json({ error: "Bundle must be assigned to a person, role, or crew" }); return; }
 
   const [bundle] = await db.insert(taskBundlesTable).values({
     tenantId,
@@ -139,6 +139,7 @@ router.post("/task-bundles", requireAdminRole, async (req, res): Promise<void> =
     frequency: frequency ?? "daily",
     assignedToUserId: assignedToUserId ?? null,
     assignedToRole: assignedToRole ?? null,
+    assignedToCrewId: assignedToCrewId ? parseInt(String(assignedToCrewId), 10) : null,
   }).returning();
 
   let createdItems: BundleItem[] = [];
@@ -174,20 +175,21 @@ router.patch("/task-bundles/:id", requireAdminRole, async (req, res): Promise<vo
   const owned = await requireBundleOwnership(id, tenantId, res);
   if (!owned) return;
 
-  const { name, description, frequency, assignedToUserId, assignedToRole, isActive } = req.body;
+  const { name, description, frequency, assignedToUserId, assignedToRole, assignedToCrewId, isActive } = req.body;
   const updates: Partial<typeof taskBundlesTable.$inferInsert> = {};
   if (name !== undefined) updates.name = name;
   if (description !== undefined) updates.description = description || null;
   if (frequency !== undefined) updates.frequency = frequency;
-  if (assignedToUserId !== undefined || assignedToRole !== undefined) {
-    const nextUserId = assignedToUserId !== undefined ? assignedToUserId : owned.assignedToUserId;
-    const nextRole = assignedToRole !== undefined ? assignedToRole : owned.assignedToRole;
-    if (!nextUserId && !nextRole) { res.status(400).json({ error: "Bundle must be assigned to a person or a role" }); return; }
-    updates.assignedToUserId = nextUserId ?? null;
-    updates.assignedToRole = nextRole ?? null;
-    // Assigning to a role clears the specific person, and vice versa
-    if (assignedToUserId !== undefined && assignedToUserId != null) updates.assignedToRole = null;
-    if (assignedToRole !== undefined && assignedToRole != null) updates.assignedToUserId = null;
+  if (assignedToUserId !== undefined || assignedToRole !== undefined || assignedToCrewId !== undefined) {
+    // Clear all three, then set whichever was provided
+    updates.assignedToUserId = null;
+    updates.assignedToRole = null;
+    updates.assignedToCrewId = null;
+    if (assignedToUserId != null) updates.assignedToUserId = parseInt(String(assignedToUserId), 10);
+    else if (assignedToRole != null) updates.assignedToRole = assignedToRole;
+    else if (assignedToCrewId != null) updates.assignedToCrewId = parseInt(String(assignedToCrewId), 10);
+    const hasAssignment = updates.assignedToUserId != null || updates.assignedToRole != null || updates.assignedToCrewId != null;
+    if (!hasAssignment) { res.status(400).json({ error: "Bundle must be assigned to a person, role, or crew" }); return; }
   }
   if (isActive !== undefined) updates.isActive = isActive;
 

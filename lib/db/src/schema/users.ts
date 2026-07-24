@@ -18,6 +18,8 @@ export const usersTable = pgTable("users", {
   hourlyRate: real("hourly_rate"),
   /** Date this team member was hired. */
   hireDate: timestamp("hire_date", { withTimezone: true }),
+  /** Pesticide applicator license number. Required before the user can be assigned to a chemical application job. */
+  applicatorLicense: text("applicator_license"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

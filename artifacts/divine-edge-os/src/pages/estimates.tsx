@@ -224,6 +224,21 @@ export default function EstimatesPage() {
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, [search]);
+
+  // Auto-populate expiresAt when the create dialog opens
+  useEffect(() => {
+    if (!createOpen) return;
+    const days = (settings as any)?.estimateExpiryDays ?? 30;
+    if (days > 0) {
+      const expiry = new Date();
+      expiry.setDate(expiry.getDate() + days);
+      const yyyy = expiry.getFullYear();
+      const mm = String(expiry.getMonth() + 1).padStart(2, '0');
+      const dd = String(expiry.getDate()).padStart(2, '0');
+      setForm(f => f.expiresAt ? f : { ...f, expiresAt: `${yyyy}-${mm}-${dd}` });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createOpen]);
   const [deleteDialogId, setDeleteDialogId] = useState<number | null>(null);
 
   // Form state for create

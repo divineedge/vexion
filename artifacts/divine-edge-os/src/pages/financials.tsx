@@ -378,9 +378,10 @@ interface CreateInvoiceSheetProps {
   open: boolean;
   onClose: () => void;
   customers: Array<{ id: number; name: string }>;
+  invoiceDueDays?: number | null;
 }
 
-function CreateInvoiceSheet({ open, onClose, customers }: CreateInvoiceSheetProps) {
+function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays }: CreateInvoiceSheetProps) {
   const qc = useQueryClient();
   const createInvoice = useCreateInvoice();
 
@@ -392,11 +393,15 @@ function CreateInvoiceSheet({ open, onClose, customers }: CreateInvoiceSheetProp
   React.useEffect(() => {
     if (open) {
       setCustomerId('');
-      setDueDate('');
+      // Auto-compute due date from tenant setting (default 30 days)
+      const days = invoiceDueDays ?? 30;
+      const due = new Date();
+      due.setDate(due.getDate() + days);
+      setDueDate(due.toISOString().slice(0, 10));
       setNotes('');
       setLineItems([{ description: '', quantity: 1, unitPrice: 0, total: 0 }]);
     }
-  }, [open]);
+  }, [open, invoiceDueDays]);
 
   const updateLineItem = (index: number, field: keyof LineItemRow, value: string | number) => {
     setLineItems(prev => prev.map((li, i) => {
@@ -1857,10 +1862,12 @@ export default function FinancialsPage() {
                     <span>Subtotal</span>
                     <span>${selectedInvoice.subtotal.toFixed(2)}</span>
                   </div>
+                  {((settings as any)?.taxEnabled !== false) && (
                   <div className="flex justify-between px-3 py-2 text-muted-foreground">
                     <span>Tax</span>
                     <span>${selectedInvoice.tax.toFixed(2)}</span>
                   </div>
+                  )}
                   <div className="flex justify-between px-3 py-2.5 font-semibold bg-muted/30">
                     <span>Total</span>
                     <span>${selectedInvoice.total.toFixed(2)}</span>
@@ -1892,6 +1899,7 @@ export default function FinancialsPage() {
         open={createInvoiceOpen}
         onClose={() => setCreateInvoiceOpen(false)}
         customers={customerOptions}
+        invoiceDueDays={(settings as any)?.invoiceDueDays}
       />
 
       {/* Preview Billing Dialog */}

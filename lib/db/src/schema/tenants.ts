@@ -141,6 +141,20 @@ export const tenantsTable = pgTable("tenants", {
    *             {{invoiceNumber}}, {{amount}}, {{dueMessage}}
    */
   notificationTemplates: jsonb("notification_templates").default('{}'),
+  // ── Estimate & Invoice Defaults ───────────────────────────────────────────
+  /** Days until an estimate expires (0 = no expiry). Used to auto-populate expiresAt on new estimates. */
+  estimateExpiryDays: integer("estimate_expiry_days").notNull().default(30),
+  /** Invoice net terms in days. 0 = due on receipt. */
+  invoiceDueDays: integer("invoice_due_days").notNull().default(30),
+  /** Whether this business charges sales tax. When false, tax is hidden from all estimates, invoices, and reports. */
+  taxEnabled: boolean("tax_enabled").notNull().default(true),
+  // ── Callback / Task Due-Date Defaults ────────────────────────────────────
+  /** Days from today a HIGH priority callback is due */
+  callbackDueDaysHigh: integer("callback_due_days_high").notNull().default(1),
+  /** Days from today a NORMAL priority callback is due */
+  callbackDueDaysNormal: integer("callback_due_days_normal").notNull().default(3),
+  /** Days from today a LOW priority callback is due */
+  callbackDueDaysLow: integer("callback_due_days_low").notNull().default(7),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

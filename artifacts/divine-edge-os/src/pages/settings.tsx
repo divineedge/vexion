@@ -115,6 +115,14 @@ export default function SettingsPage() {
   const [maxClockInHours, setMaxClockInHours] = useState('');
   const [p4pMasterPct, setP4pMasterPct] = useState('0');
   const [dailyTaskHourlyRate, setDailyTaskHourlyRate] = useState('0');
+  // Estimate & Invoice defaults
+  const [estimateExpiryDays, setEstimateExpiryDays] = useState('30');
+  const [invoiceDueDays, setInvoiceDueDays] = useState('30');
+  const [taxEnabled, setTaxEnabled] = useState(true);
+  // Callback due-date defaults
+  const [callbackDueDaysHigh, setCallbackDueDaysHigh] = useState('1');
+  const [callbackDueDaysNormal, setCallbackDueDaysNormal] = useState('3');
+  const [callbackDueDaysLow, setCallbackDueDaysLow] = useState('7');
 
   // Equipment thresholds
   const [equipRepairPct, setEquipRepairPct] = useState('50');
@@ -167,7 +175,7 @@ export default function SettingsPage() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: 'technician', password: '', hourlyRate: '', hireDate: '' });
   const [editUserOpen, setEditUserOpen] = useState(false);
-  const [editUserForm, setEditUserForm] = useState<{ id: number; name: string; role: string; hourlyRate: string; hireDate: string } | null>(null);
+  const [editUserForm, setEditUserForm] = useState<{ id: number; name: string; role: string; hourlyRate: string; hireDate: string; applicatorLicense: string } | null>(null);
 
   // Chemicals – Product form
   const [prodFormOpen, setProdFormOpen] = useState(false);
@@ -234,6 +242,12 @@ export default function SettingsPage() {
       setMaxClockInHours((settings as any).maxClockInHours != null ? String((settings as any).maxClockInHours) : '');
       setP4pMasterPct(String((settings as any).p4pMasterPercentage ?? 0));
       setDailyTaskHourlyRate(String(settings.dailyTaskHourlyRate ?? 0));
+      setEstimateExpiryDays(String((settings as any).estimateExpiryDays ?? 30));
+      setInvoiceDueDays(String((settings as any).invoiceDueDays ?? 30));
+      setTaxEnabled((settings as any).taxEnabled ?? true);
+      setCallbackDueDaysHigh(String((settings as any).callbackDueDaysHigh ?? 1));
+      setCallbackDueDaysNormal(String((settings as any).callbackDueDaysNormal ?? 3));
+      setCallbackDueDaysLow(String((settings as any).callbackDueDaysLow ?? 7));
       setEquipRepairPct(String((settings as any).equipmentRepairThresholdPct ?? 50));
       setEquipResalePct(String((settings as any).equipmentResaleThresholdPct ?? 20));
       setDefaultGeofenceRadius(String((settings as any).defaultGeofenceRadius ?? 100));
@@ -390,7 +404,7 @@ export default function SettingsPage() {
 
   const saveGeneral = () => {
     updateSettings.mutate(
-      { data: { companyName, timezone, taxRate: parseFloat(taxRate), overageMaterialBuffer: parseFloat(buffer) } },
+      { data: { companyName, timezone, taxRate: parseFloat(taxRate), overageMaterialBuffer: parseFloat(buffer), taxEnabled, estimateExpiryDays: parseInt(estimateExpiryDays, 10) || 30, invoiceDueDays: parseInt(invoiceDueDays, 10) || 30, callbackDueDaysHigh: parseInt(callbackDueDaysHigh, 10) || 1, callbackDueDaysNormal: parseInt(callbackDueDaysNormal, 10) || 3, callbackDueDaysLow: parseInt(callbackDueDaysLow, 10) || 7 } as Parameters<typeof updateSettings.mutate>[0]['data'] },
       {
         onSuccess: () => { toast.success('Settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
         onError: () => toast.error('Failed to save settings'),
@@ -503,6 +517,7 @@ export default function SettingsPage() {
       role: u.role,
       hourlyRate: u.hourlyRate != null ? String(u.hourlyRate) : '',
       hireDate: u.hireDate ? u.hireDate.slice(0, 10) : '',
+      applicatorLicense: (u as any).applicatorLicense ?? '',
     });
     setEditUserOpen(true);
   };
@@ -516,6 +531,7 @@ export default function SettingsPage() {
         role: editUserForm.role,
         hourlyRate: editUserForm.hourlyRate ? parseFloat(editUserForm.hourlyRate) : null,
         hireDate: editUserForm.hireDate ? new Date(editUserForm.hireDate).toISOString() : null,
+        applicatorLicense: editUserForm.applicatorLicense || null,
       } as Parameters<typeof updateUser.mutate>[0]['data'],
     }, {
       onSuccess: () => {
@@ -612,15 +628,63 @@ export default function SettingsPage() {
 
           <Card>
             <CardHeader><CardTitle>Operational Defaults</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-5">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Default Tax Rate (%)</label>
-                  <Input type="number" value={taxRate} onChange={e => setTaxRate(e.target.value)} />
+                  <Input type="number" min={0} step={0.1} value={taxRate} onChange={e => setTaxRate(e.target.value)} disabled={!taxEnabled} />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Default Material Buffer (%)</label>
                   <Input type="number" value={buffer} onChange={e => setBuffer(e.target.value)} />
+                </div>
+              </div>
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div>
+                  <p className="text-sm font-medium">Charge Sales Tax</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">When off, tax is hidden from all estimates, invoices, and revenue reports.</p>
+                </div>
+                <Switch checked={taxEnabled} onCheckedChange={setTaxEnabled} />
+              </div>
+              <div className="grid grid-cols-2 gap-4 pt-2 border-t">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Estimate Expiry (days)</label>
+                  <p className="text-xs text-muted-foreground">Auto-sets expiry date on new estimates. 0 = no expiry.</p>
+                  <Input type="number" min={0} value={estimateExpiryDays} onChange={e => setEstimateExpiryDays(e.target.value)} className="w-28" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Invoice Net Terms (days)</label>
+                  <p className="text-xs text-muted-foreground">Default due date on new invoices. 0 = due on receipt.</p>
+                  <Input type="number" min={0} value={invoiceDueDays} onChange={e => setInvoiceDueDays(e.target.value)} className="w-28" />
+                </div>
+              </div>
+              <div className="space-y-3 pt-2 border-t">
+                <div>
+                  <p className="text-sm font-medium">Callback Due-Date Defaults</p>
+                  <p className="text-xs text-muted-foreground">Days from today a callback fix is due based on priority.</p>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-red-600">High priority</label>
+                    <div className="flex items-center gap-1">
+                      <Input type="number" min={1} value={callbackDueDaysHigh} onChange={e => setCallbackDueDaysHigh(e.target.value)} className="w-16 text-sm" />
+                      <span className="text-xs text-muted-foreground">days</span>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-amber-600">Normal priority</label>
+                    <div className="flex items-center gap-1">
+                      <Input type="number" min={1} value={callbackDueDaysNormal} onChange={e => setCallbackDueDaysNormal(e.target.value)} className="w-16 text-sm" />
+                      <span className="text-xs text-muted-foreground">days</span>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground">Low priority</label>
+                    <div className="flex items-center gap-1">
+                      <Input type="number" min={1} value={callbackDueDaysLow} onChange={e => setCallbackDueDaysLow(e.target.value)} className="w-16 text-sm" />
+                      <span className="text-xs text-muted-foreground">days</span>
+                    </div>
+                  </div>
                 </div>
               </div>
               <Button onClick={saveGeneral} disabled={updateSettings.isPending} variant="outline">Save Defaults</Button>
@@ -1747,6 +1811,11 @@ export default function SettingsPage() {
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium">Hire Date</label>
                     <Input type="date" value={editUserForm.hireDate} onChange={e => setEditUserForm(f => f && ({ ...f, hireDate: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Pesticide Applicator License #</label>
+                    <Input placeholder="e.g. LIC-12345" value={editUserForm.applicatorLicense} onChange={e => setEditUserForm(f => f && ({ ...f, applicatorLicense: e.target.value }))} />
+                    <p className="text-xs text-muted-foreground">Required before assigning this person to chemical application jobs.</p>
                   </div>
                   <Separator />
                   <div className="flex gap-3 justify-end">

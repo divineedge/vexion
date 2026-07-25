@@ -2381,8 +2381,8 @@ export default function SchedulePage() {
             <DialogDescription>You've clocked out. Do you want to mark this job as completed?</DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => { toast.success('Clocked out'); setClockOutJobId(null); }}>Not yet</Button>
-            <Button onClick={() => {
+            <Button variant="outline" title="Clock out without marking the job complete" onClick={() => { toast.success('Clocked out'); setClockOutJobId(null); }}>Not yet</Button>
+            <Button title="Clock out and mark this job as completed" onClick={() => {
               if (!clockOutJobId) return;
               updateJob.mutate({ id: clockOutJobId, data: { status: 'completed' } }, {
                 onSuccess: () => {
@@ -2393,7 +2393,7 @@ export default function SchedulePage() {
                 },
                 onError: () => toast.error('Failed to update job'),
               });
-            }} title="Mark this job as completed" disabled={updateJob.isPending}>
+            }} disabled={updateJob.isPending}>
               {updateJob.isPending ? 'Saving…' : 'Mark Complete'}
             </Button>
           </div>
@@ -2442,9 +2442,10 @@ export default function SchedulePage() {
             <DialogDescription>Permanently delete this job? This cannot be undone.</DialogDescription>
           </DialogHeader>
           <div className="flex gap-3 justify-end pt-2">
-            <Button variant="outline" onClick={() => setDeleteJobPending(false)}>Cancel</Button>
+            <Button variant="outline" title="Cancel without deleting this job" onClick={() => setDeleteJobPending(false)}>Cancel</Button>
             <Button
               variant="destructive"
+              title="Permanently delete this job — this cannot be undone"
               disabled={deleteJob.isPending}
               onClick={() => {
                 if (!selectedJobId) return;
@@ -2515,8 +2516,9 @@ export default function SchedulePage() {
             <DialogDescription>Skip the next scheduled occurrence of this series? The series will continue from the occurrence after it.</DialogDescription>
           </DialogHeader>
           <div className="flex gap-3 justify-end pt-2">
-            <Button variant="outline" onClick={() => setSkipNextDialogId(null)}>Cancel</Button>
+            <Button variant="outline" title="Keep the next occurrence as scheduled" onClick={() => setSkipNextDialogId(null)}>Cancel</Button>
             <Button
+              title="Skip the next scheduled occurrence — the series continues from the one after it"
               disabled={skipNextOccurrence.isPending}
               onClick={() => {
                 if (!skipNextDialogId) return;

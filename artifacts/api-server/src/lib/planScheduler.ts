@@ -225,11 +225,36 @@ async function processRenewalReminders() {
     try {
       const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, plan.customerId));
       if (customer?.email) {
+        const expiryDate = plan.endDate.toISOString().slice(0, 10);
+        const subject = `Your ${plan.templateName} plan is expiring soon`;
+        const plainBody = `Hi ${customer.name},\n\nYour "${plan.templateName}" plan is set to expire on ${expiryDate}. Contact us to renew and keep your service going without interruption.`;
+        const html = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/><title>Plan Renewal Reminder</title></head>
+<body style="margin:0;padding:0;background-color:#f4f4f5;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f4f5;padding:40px 0;">
+    <tr><td align="center">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;background-color:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+        <tr><td style="background-color:#1a1a2e;padding:24px 32px;">
+          <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:700;">Plan Renewal Reminder</h1>
+        </td></tr>
+        <tr><td style="padding:32px;">
+          <p style="margin:0 0 16px;color:#374151;font-size:16px;">Hi ${customer.name ?? "there"},</p>
+          <p style="margin:0 0 16px;color:#374151;font-size:15px;">Your <strong>${plan.templateName}</strong> service plan is set to expire on <strong>${expiryDate}</strong>.</p>
+          <p style="margin:0 0 24px;color:#374151;font-size:15px;">Contact us to renew and keep your service going without interruption.</p>
+        </td></tr>
+        <tr><td style="background-color:#f9fafb;padding:16px 32px;border-top:1px solid #e5e7eb;">
+          <p style="margin:0;color:#9ca3af;font-size:12px;">You are receiving this because you have an active service plan.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
         await sendEmail(
           { provider: null, config: {}, fromAddress: null },
           customer.email,
-          `Your ${plan.templateName} plan is expiring soon`,
-          `Hi ${customer.name},\n\nYour "${plan.templateName}" plan is set to expire on ${plan.endDate.toISOString().slice(0, 10)}. Contact us to renew and keep your service going without interruption.`,
+          subject,
+          plainBody,
+          html,
         ).catch(err => logger.warn({ err, planId: plan.id }, "Renewal reminder email failed"));
       }
       await db.update(customerPlansTable).set({ renewalReminderSentAt: new Date(), status: "pending_renewal" }).where(eq(customerPlansTable.id, plan.id));

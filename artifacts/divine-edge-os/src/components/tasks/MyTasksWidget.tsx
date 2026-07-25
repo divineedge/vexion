@@ -25,7 +25,7 @@ export function MyTasksWidget() {
           <ListTodo className="w-4 h-4" /> My Tasks
           {open.length > 0 && <Badge variant="secondary" className="ml-1">{open.length}</Badge>}
         </CardTitle>
-        <Button size="sm" variant="ghost" className="h-7 gap-1 text-xs" onClick={() => setCreateOpen(true)}>
+        <Button size="sm" variant="ghost" title="Create a new task" className="h-7 gap-1 text-xs" onClick={() => setCreateOpen(true)}>
           <Plus className="w-3.5 h-3.5" /> New
         </Button>
       </CardHeader>

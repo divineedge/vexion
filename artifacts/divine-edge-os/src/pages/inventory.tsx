@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useLocation } from 'wouter';
 import {
   useListInventoryItems, getListInventoryItemsQueryKey,
   useGetInventoryItem, getGetInventoryItemQueryKey,
@@ -84,6 +85,7 @@ const EMPTY_FORM: ItemForm = {
 };
 
 export default function InventoryPage() {
+  const [, setLocation] = useLocation();
   const { user, isTechnician } = useAuth();
   const canManage = !isTechnician;
   const qc = useQueryClient();
@@ -328,19 +330,19 @@ export default function InventoryPage() {
           <ImportExportControls
             entity="inventory"
             entityLabel="Inventory"
-            exportQuery={{ q: search || undefined }}
+            exportQuery={{ q: search || undefined, ...(typeof selectedLocationId === 'number' ? { locationId: String(selectedLocationId) } : {}) }}
             onImportComplete={() => {
               qc.invalidateQueries({ queryKey: getListInventoryItemsQueryKey() });
               qc.invalidateQueries({ queryKey: getGetInventorySummaryQueryKey() });
             }}
           />
           {canManage && (
-            <Button variant="outline" className="gap-2" onClick={() => { setTransferDialogOpen(true); }}>
+            <Button variant="outline" title="Transfer stock between locations" className="gap-2" onClick={() => { setTransferDialogOpen(true); }}>
               <ArrowLeftRight className="w-4 h-4" /> Transfer
             </Button>
           )}
           {canManage && (
-            <Button className="gap-2" onClick={openCreate}>
+            <Button title="Add a new inventory item" className="gap-2" onClick={openCreate}>
               <Plus className="w-4 h-4" /> Add Item
             </Button>
           )}
@@ -350,6 +352,7 @@ export default function InventoryPage() {
       {/* Location filter bar */}
       <div className="flex items-center gap-2 flex-wrap">
         <button
+          title="Show inventory across all locations"
           onClick={() => { setActiveTab('all'); setSelectedLocationId('all'); }}
           className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${activeTab === 'all' && selectedLocationId === 'all' ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-muted border-border'}`}
         >
@@ -369,6 +372,7 @@ export default function InventoryPage() {
           <Button
             variant="ghost"
             size="sm"
+            title="Add a new storage location (warehouse, trailer, vehicle)"
             className="h-8 px-2 text-xs text-muted-foreground gap-1"
             onClick={() => { setEditingLocId(null); setLocForm({ name: '', description: '', type: 'warehouse' }); setLocDialogOpen(true); }}
           >
@@ -383,7 +387,7 @@ export default function InventoryPage() {
           <CardContent className="p-6 flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-muted-foreground">Total Value</p>
-              <p className="text-3xl font-bold">${(summary?.totalValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              <p className="text-3xl font-bold" title={`Total inventory value at sell price: $${(summary?.totalValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}>${(summary?.totalValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
             </div>
             <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
               <DollarSign className="w-5 h-5" />
@@ -394,7 +398,7 @@ export default function InventoryPage() {
           <CardContent className="p-6 flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-muted-foreground">Total Items</p>
-              <p className="text-3xl font-bold">{summary?.totalItems ?? 0}</p>
+              <p className="text-3xl font-bold" title={`${summary?.totalItems ?? 0} distinct inventory items`}>{summary?.totalItems ?? 0}</p>
             </div>
             <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500">
               <Package className="w-5 h-5" />
@@ -405,7 +409,7 @@ export default function InventoryPage() {
           <CardContent className="p-6 flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-destructive">Low Stock Alerts</p>
-              <p className="text-3xl font-bold text-destructive">{summary?.lowStockCount ?? 0}</p>
+              <p className="text-3xl font-bold text-destructive" title={`${summary?.lowStockCount ?? 0} item${(summary?.lowStockCount ?? 0) !== 1 ? 's' : ''} at or below their reorder threshold`}>{summary?.lowStockCount ?? 0}</p>
             </div>
             <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center text-destructive">
               <AlertTriangle className="w-5 h-5" />
@@ -431,6 +435,7 @@ export default function InventoryPage() {
                   size="sm"
                   variant="outline"
                   className="gap-1 text-xs"
+                  title="Edit this location's name, type, or description"
                   onClick={() => {
                     const loc = locations?.find(l => l.id === selectedLocationId);
                     if (!loc) return;
@@ -466,17 +471,17 @@ export default function InventoryPage() {
                     key={entry.id}
                     className={entry.isLowStock ? 'bg-destructive/5' : ''}
                   >
-                    <TableCell className="font-medium flex items-center gap-1.5">
+                    <TableCell className="font-medium flex items-center gap-1.5" title={entry.itemName}>
                       {entry.isLowStock && <AlertTriangle className="w-3.5 h-3.5 text-destructive" />}
                       {entry.itemName}
                     </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">{entry.itemSku}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="font-mono text-xs text-muted-foreground" title={entry.itemSku ? `SKU: ${entry.itemSku}` : undefined}>{entry.itemSku}</TableCell>
+                    <TableCell className="text-right" title={`${entry.quantity} in stock at this location${entry.isLowStock ? ' — low stock' : ''}`}>
                       <span className={`font-bold ${entry.isLowStock ? 'text-destructive' : ''}`}>{entry.quantity}</span>
                       {entry.isLowStock && <Badge variant="destructive" className="ml-2 text-[10px]">Low</Badge>}
                     </TableCell>
-                    <TableCell className="text-right text-muted-foreground">{entry.reorderPoint}</TableCell>
-                    <TableCell className="text-right">${(entry.unitPrice ?? 0).toFixed(2)}</TableCell>
+                    <TableCell className="text-right text-muted-foreground" title={`Reorder at: ${entry.reorderPoint}`}>{entry.reorderPoint}</TableCell>
+                    <TableCell className="text-right" title={`Sell price: $${(entry.unitPrice ?? 0).toFixed(2)}`}>${(entry.unitPrice ?? 0).toFixed(2)}</TableCell>
                     <TableCell className="text-right">
                       <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => openView(entry.inventoryItemId)}>
                         View
@@ -497,6 +502,7 @@ export default function InventoryPage() {
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
+                title="Search inventory by SKU or item name"
                 placeholder="Search by SKU or name..."
                 className="pl-9"
                 value={search}
@@ -538,29 +544,33 @@ export default function InventoryPage() {
                     className={`cursor-pointer ${item.isLowStock ? 'bg-destructive/5 hover:bg-destructive/10' : 'hover:bg-muted/50'}`}
                     onClick={() => openView(item.id)}
                   >
-                    <TableCell className="font-medium">{item.name}</TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">{item.sku}</TableCell>
+                    <TableCell className="font-medium" title={item.name}>{item.name}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground" title={item.sku ? `SKU: ${item.sku}` : undefined}>{item.sku}</TableCell>
                     <TableCell>
-                      {item.category && <Badge variant="outline">{item.category}</Badge>}
+                      {item.category && <Badge variant="outline" title={`Category: ${item.category}`}>{item.category}</Badge>}
                     </TableCell>
                     {canSeeCost && (
-                      <TableCell className="text-right text-muted-foreground text-sm">
+                      <TableCell className="text-right text-muted-foreground text-sm" title={item.costPrice != null ? `Cost price: $${item.costPrice.toFixed(2)}` : 'No cost price set'}>
                         {item.costPrice != null ? `$${item.costPrice.toFixed(2)}` : '—'}
                       </TableCell>
                     )}
                     <TableCell className="text-right">
-                      <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded font-medium">
+                      <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded font-medium" title={`Markup: ${(item.markupPct ?? defaultMarkupPct).toFixed(0)}%`}>
                         {(item.markupPct ?? defaultMarkupPct).toFixed(0)}%
                       </span>
                     </TableCell>
-                    <TableCell className="text-right font-medium">${item.unitPrice.toFixed(2)}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right font-medium" title={`Sell price: $${item.unitPrice.toFixed(2)}`}>${item.unitPrice.toFixed(2)}</TableCell>
+                    <TableCell className="text-right" title={`${item.quantity} ${item.unit || 'units'} in stock`}>
                       <span className={`font-medium ${item.isLowStock ? 'text-destructive' : ''}`}>
                         {item.quantity} {item.unit || ''}
                       </span>
                     </TableCell>
                     <TableCell>
-                      {item.isLowStock && <AlertTriangle className="w-4 h-4 text-destructive" />}
+                      {item.isLowStock && (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive" title={`Low stock — reorder point is ${item.reorderPoint} ${item.unit || 'units'}`}>
+                          <AlertTriangle className="w-3.5 h-3.5" /> Low
+                        </span>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))
@@ -578,11 +588,20 @@ export default function InventoryPage() {
               <SheetHeader className="pb-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
-                    <SheetTitle>{selectedItem.name}</SheetTitle>
-                    <SheetDescription className="font-mono mt-1">{selectedItem.sku}</SheetDescription>
+                    <SheetTitle title={selectedItem.name}>{selectedItem.name}</SheetTitle>
+                    <SheetDescription className="font-mono mt-1" title={selectedItem.sku ? `SKU: ${selectedItem.sku}` : undefined}>{selectedItem.sku}</SheetDescription>
                   </div>
                   <div className="flex items-center gap-2">
-                    {selectedItem.isLowStock && <Badge variant="destructive" className="gap-1"><AlertTriangle className="w-3 h-3" /> Low Stock</Badge>}
+                    {selectedItem.isLowStock && (
+                      <>
+                        <Badge variant="destructive" className="gap-1" title={`Stock below reorder point of ${selectedItem.reorderPoint} ${selectedItem.unit ?? 'units'}`}><AlertTriangle className="w-3 h-3" /> Low Stock</Badge>
+                        {canManage && (
+                          <Button size="sm" variant="outline" className="gap-1.5 text-amber-700 border-amber-300 hover:bg-amber-50" onClick={() => { const prefill = encodeURIComponent(JSON.stringify({ title: `Reorder: ${selectedItem.name}`, description: `Item ${selectedItem.sku ?? ''} is below reorder point (${selectedItem.reorderPoint ?? '?'} ${selectedItem.unit ?? 'units'}). Current quantity: ${selectedItem.quantity}.` })); setLocation(`/tasks?prefill=${prefill}`); }}>
+                            <Plus className="w-3.5 h-3.5" /> Reorder Task
+                          </Button>
+                        )}
+                      </>
+                    )}
                     {selectedItem.availableForBlueprint && <Badge variant="outline" className="text-primary border-primary/40">Blueprint Ready</Badge>}
                     {canManage && (
                       <Button size="sm" variant="outline" className="gap-1.5" onClick={() => { setSheetMode(null); setTimeout(() => openEdit(selectedItem.id), 50); }}>
@@ -604,7 +623,7 @@ export default function InventoryPage() {
                           {canSeeCost ? <Eye className="w-4 h-4 text-muted-foreground" /> : <EyeOff className="w-4 h-4 text-muted-foreground" />}
                           <span className="text-muted-foreground">Buy Price</span>
                         </div>
-                        <span className="font-medium">${selectedItem.costPrice.toFixed(2)}</span>
+                        <span className="font-medium" title={`Buy/cost price: $${selectedItem.costPrice.toFixed(2)}`}>${selectedItem.costPrice.toFixed(2)}</span>
                       </div>
                     )}
                     <div className="flex items-center justify-between px-4 py-3">
@@ -612,14 +631,14 @@ export default function InventoryPage() {
                         <TrendingUp className="w-4 h-4 text-primary" />
                         <span className="text-muted-foreground">Markup</span>
                       </div>
-                      <span className="font-medium text-primary">+{(selectedItem.markupPct ?? defaultMarkupPct).toFixed(0)}%</span>
+                      <span className="font-medium text-primary" title={`Markup applied to cost price: +${(selectedItem.markupPct ?? defaultMarkupPct).toFixed(0)}%`}>+{(selectedItem.markupPct ?? defaultMarkupPct).toFixed(0)}%</span>
                     </div>
                     <div className="flex items-center justify-between px-4 py-3 bg-primary/5">
                       <div className="flex items-center gap-2 text-sm font-semibold">
                         <ArrowRight className="w-4 h-4 text-primary" />
                         <span>Sell Price</span>
                       </div>
-                      <span className="text-lg font-bold text-primary">${selectedItem.unitPrice.toFixed(2)}</span>
+                      <span className="text-lg font-bold text-primary" title={`Sell price charged to customers: $${selectedItem.unitPrice.toFixed(2)}`}>${selectedItem.unitPrice.toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
@@ -630,18 +649,18 @@ export default function InventoryPage() {
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">In Stock</p>
-                    <p className={`text-2xl font-bold ${selectedItem.isLowStock ? 'text-destructive' : ''}`}>
+                    <p className={`text-2xl font-bold ${selectedItem.isLowStock ? 'text-destructive' : ''}`} title={`${selectedItem.quantity} ${selectedItem.unit ?? 'units'} in stock${selectedItem.isLowStock ? ' — below reorder point' : ''}`}>
                       {selectedItem.quantity} <span className="text-sm font-normal text-muted-foreground">{selectedItem.unit}</span>
                     </p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Reorder At</p>
-                    <p className="text-2xl font-bold">{selectedItem.reorderPoint} <span className="text-sm font-normal text-muted-foreground">{selectedItem.unit}</span></p>
+                    <p className="text-2xl font-bold" title={`Reorder when stock falls below ${selectedItem.reorderPoint} ${selectedItem.unit ?? 'units'}`}>{selectedItem.reorderPoint} <span className="text-sm font-normal text-muted-foreground">{selectedItem.unit}</span></p>
                   </div>
                   {selectedItem.category && (
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Category</p>
-                      <Badge variant="outline">{selectedItem.category}</Badge>
+                      <Badge variant="outline" title={`Category: ${selectedItem.category}`}>{selectedItem.category}</Badge>
                     </div>
                   )}
                 </div>
@@ -702,15 +721,15 @@ export default function InventoryPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5 col-span-2">
                 <label className="text-sm font-medium">Name <span className="text-destructive">*</span></label>
-                <Input placeholder="e.g. Brass Gate Valve 1in" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+                <Input title="Item name as it appears in inventory and on invoices" placeholder="e.g. Brass Gate Valve 1in" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">SKU <span className="text-destructive">*</span></label>
-                <Input placeholder="BGV-1IN" className="font-mono" value={form.sku} onChange={e => setForm(f => ({ ...f, sku: e.target.value }))} />
+                <Input title="Unique stock-keeping unit identifier for this item" placeholder="BGV-1IN" className="font-mono" value={form.sku} onChange={e => setForm(f => ({ ...f, sku: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Category</label>
-                <Input placeholder="Valves" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} />
+                <Input title="Item category for filtering and reporting" placeholder="Valves" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} />
               </div>
             </div>
 
@@ -725,6 +744,7 @@ export default function InventoryPage() {
                   <Input
                     type="number"
                     step="0.01"
+                    title="Cost to purchase this item (not shown to technicians)"
                     placeholder="0.00"
                     value={form.costPrice}
                     onChange={e => {
@@ -738,6 +758,7 @@ export default function InventoryPage() {
                   <Input
                     type="number"
                     step="1"
+                    title="Markup percentage applied to buy price to calculate the sell price"
                     placeholder={String(defaultMarkupPct)}
                     value={form.markupPct}
                     onChange={e => {
@@ -765,21 +786,21 @@ export default function InventoryPage() {
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Quantity</label>
-                <Input type="number" min={0} value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
+                <Input type="number" min={0} title="Current stock quantity on hand" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Reorder At</label>
-                <Input type="number" min={0} value={form.reorderPoint} onChange={e => setForm(f => ({ ...f, reorderPoint: e.target.value }))} />
+                <Input type="number" min={0} title="Stock level that triggers a reorder alert" value={form.reorderPoint} onChange={e => setForm(f => ({ ...f, reorderPoint: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Unit</label>
-                <Input placeholder="each" value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))} />
+                <Input title="Unit of measure (e.g. each, ft, gallon)" placeholder="each" value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))} />
               </div>
             </div>
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Description</label>
-              <Input placeholder="Optional notes" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+              <Input title="Optional description or notes about this item" placeholder="Optional notes" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
             </div>
 
             <div className="space-y-1.5">
@@ -789,6 +810,7 @@ export default function InventoryPage() {
                 step="0.1"
                 min="0"
                 max="100"
+                title="Percentage of gross margin paid as commission to the salesperson on this item"
                 placeholder="0"
                 value={form.commissionPct}
                 onChange={e => setForm(f => ({ ...f, commissionPct: e.target.value }))}
@@ -804,6 +826,7 @@ export default function InventoryPage() {
                 <p className="text-xs text-muted-foreground">Show this item as a pickable option in the Blueprint canvas palette.</p>
               </div>
               <Switch
+                title={form.availableForBlueprint ? 'Available for blueprint canvas palette — click to disable' : 'Not in blueprint palette — click to enable'}
                 checked={form.availableForBlueprint}
                 onCheckedChange={v => setForm(f => ({ ...f, availableForBlueprint: v }))}
               />
@@ -812,7 +835,7 @@ export default function InventoryPage() {
             <Separator />
             <div className="flex gap-3 justify-end">
               <Button variant="outline" onClick={() => setSheetMode(null)}>Cancel</Button>
-              <Button onClick={handleSave} disabled={createItem.isPending || updateItem.isPending}>
+              <Button title={sheetMode === 'create' ? 'Add this item to inventory' : 'Save changes to this inventory item'} onClick={handleSave} disabled={createItem.isPending || updateItem.isPending}>
                 {createItem.isPending || updateItem.isPending ? 'Saving...' : sheetMode === 'create' ? 'Add Item' : 'Save Changes'}
               </Button>
             </div>

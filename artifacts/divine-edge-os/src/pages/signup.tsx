@@ -120,6 +120,7 @@ export default function SignupPage() {
                     <Building2 className="w-3.5 h-3.5 text-muted-foreground" /> Company Name
                   </label>
                   <Input
+                    title="Your company or business name"
                     value={form.companyName}
                     onChange={set('companyName')}
                     placeholder="Torres Field Services"
@@ -131,6 +132,7 @@ export default function SignupPage() {
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Your Name</label>
                   <Input
+                    title="Your full name — used as the account owner"
                     value={form.ownerName}
                     onChange={set('ownerName')}
                     placeholder="Mike Torres"
@@ -142,6 +144,7 @@ export default function SignupPage() {
                   <label className="text-sm font-medium">Work Email</label>
                   <Input
                     type="email"
+                    title="Work email address — used to log in"
                     value={form.email}
                     onChange={set('email')}
                     placeholder="mike@company.com"
@@ -155,6 +158,7 @@ export default function SignupPage() {
                   <div className="relative">
                     <Input
                       type={showPassword ? 'text' : 'password'}
+                      title="Password — at least 8 characters"
                       value={form.password}
                       onChange={set('password')}
                       placeholder="At least 8 characters"
@@ -164,6 +168,7 @@ export default function SignupPage() {
                     />
                     <button
                       type="button"
+                      title={showPassword ? 'Hide password' : 'Show password'}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                       onClick={() => setShowPassword(v => !v)}
                       tabIndex={-1}
@@ -177,6 +182,7 @@ export default function SignupPage() {
                   <label className="text-sm font-medium">Confirm Password</label>
                   <Input
                     type="password"
+                    title="Re-enter your password to confirm"
                     value={form.confirmPassword}
                     onChange={set('confirmPassword')}
                     placeholder="••••••••"
@@ -185,7 +191,7 @@ export default function SignupPage() {
                   />
                 </div>
 
-                <Button type="submit" className="w-full" disabled={loading}>
+                <Button type="submit" title="Create your Divine Edge OS account" className="w-full" disabled={loading}>
                   {loading ? 'Creating your account…' : 'Create Account'}
                 </Button>
               </form>

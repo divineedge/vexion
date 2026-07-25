@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -21,10 +22,11 @@ import {
   useConvertVisitToJob,
   useListCustomers, getListCustomersQueryKey,
   useListUsers, getListUsersQueryKey,
+  useListProperties, getListPropertiesQueryKey,
 } from '@workspace/api-client-react';
 import { format } from 'date-fns';
 import {
-  Plus, MapPin, User, Clock, CheckCircle2, ChevronRight, FileText, Briefcase, Footprints,
+  Plus, MapPin, User, Clock, CheckCircle2, ChevronRight, FileText, Briefcase, Footprints, Search, Edit2,
 } from 'lucide-react';
 
 const VISIT_MODE_COLORS: Record<string, string> = {
@@ -42,15 +44,32 @@ const VISIT_MODE_LABELS: Record<string, string> = {
 export default function VisitsPage() {
   const { canManageJobs } = useAuth();
   const qc = useQueryClient();
+  const [, setLocation] = useLocation();
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [completeOpen, setCompleteOpen] = useState<number | null>(null);
   const [outcomeNotes, setOutcomeNotes] = useState('');
+  const [createFollowUp, setCreateFollowUp] = useState(false);
+  const [visitSearch, setVisitSearch] = useState('');
+  const [visitStatusFilter, setVisitStatusFilter] = useState<'all' | 'upcoming' | 'completed'>('all');
+
+  // Read URL search params to support prefill and auto-open
+  const { prefillCustomerId, prefillPropertyId, openVisitId } = React.useMemo(() => {
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      return {
+        prefillCustomerId: p.get('customerId') ?? '',
+        prefillPropertyId: p.get('propertyId') ?? '',
+        openVisitId: p.get('visitId') ? parseInt(p.get('visitId')!, 10) : null,
+      };
+    }
+    return { prefillCustomerId: '', prefillPropertyId: '', openVisitId: null };
+  }, []);
 
   const [form, setForm] = useState({
-    customerId: '',
-    propertyId: '',
+    customerId: prefillCustomerId,
+    propertyId: prefillPropertyId,
     assigneeId: '',
     visitMode: 'scheduled',
     purpose: '',
@@ -59,14 +78,28 @@ export default function VisitsPage() {
     smsReminderEnabled: false,
   });
 
-  const { data: visits, isLoading } = useListVisits({}, { query: { queryKey: getListVisitsQueryKey({}) } });
+  // Open create dialog or visit detail automatically when URL params are present
+  React.useEffect(() => {
+    if (prefillCustomerId || prefillPropertyId) setCreateOpen(true);
+    if (openVisitId) setSelectedId(openVisitId);
+  }, [prefillCustomerId, prefillPropertyId, openVisitId]);
+
+  const visitsQuery = prefillPropertyId ? { propertyId: parseInt(prefillPropertyId, 10) } : {};
+  const { data: visits, isLoading } = useListVisits(visitsQuery as any, { query: { queryKey: getListVisitsQueryKey(visitsQuery as any) } });
   const { data: selectedVisit } = useGetVisit(selectedId!, {
     query: { enabled: selectedId != null, queryKey: getGetVisitQueryKey(selectedId!) },
   });
   const { data: customers } = useListCustomers({}, { query: { enabled: createOpen, queryKey: getListCustomersQueryKey({}) } });
   const { data: users } = useListUsers({ query: { enabled: createOpen, queryKey: getListUsersQueryKey() } });
+  const { data: customerProperties } = useListProperties(
+    { customerId: form.customerId ? parseInt(form.customerId, 10) : undefined },
+    { query: { enabled: createOpen && !!form.customerId, queryKey: [...getListPropertiesQueryKey({}), form.customerId] } },
+  );
+
+  const [editingVisit, setEditingVisit] = useState<{ id: number; purpose: string; notes: string | null; scheduledAt?: string } | null>(null);
 
   const createVisit = useCreateVisit();
+  const updateVisit = useUpdateVisit();
   const deleteVisit = useDeleteVisit();
   const completeVisit = useCompleteVisit();
   const convertToEstimate = useConvertVisitToEstimate();
@@ -82,6 +115,7 @@ export default function VisitsPage() {
     createVisit.mutate({
       data: {
         customerId: form.customerId ? parseInt(form.customerId, 10) : undefined,
+        propertyId: form.propertyId ? parseInt(form.propertyId, 10) : undefined,
         assigneeId: form.assigneeId ? parseInt(form.assigneeId, 10) : undefined,
         visitMode: form.visitMode as 'scheduled' | 'drop_by' | 'drive_by',
         purpose: form.purpose,
@@ -102,12 +136,21 @@ export default function VisitsPage() {
   }
 
   function handleComplete(id: number) {
+    const shouldFollowUp = createFollowUp;
+    const visit = visits?.find(v => v.id === id) ?? (selectedVisit?.id === id ? selectedVisit : null);
     completeVisit.mutate({ id, data: { outcomeNotes: outcomeNotes || undefined } }, {
       onSuccess: () => {
         toast.success('Visit marked complete');
         invalidate();
         setCompleteOpen(null);
         setOutcomeNotes('');
+        setCreateFollowUp(false);
+        if (shouldFollowUp) {
+          const params = new URLSearchParams({ action: 'create' });
+          if ((visit as any)?.customerId) params.set('customerId', String((visit as any).customerId));
+          if ((visit as any)?.propertyId) params.set('propertyId', String((visit as any).propertyId));
+          setLocation(`/schedule?${params}`);
+        }
       },
       onError: () => toast.error('Failed to complete visit'),
     });
@@ -127,8 +170,14 @@ export default function VisitsPage() {
     });
   }
 
-  const upcoming = visits?.filter(v => !v.completedAt) ?? [];
-  const completed = visits?.filter(v => v.completedAt) ?? [];
+  const matchesSearch = (v: { purpose?: string | null; customerName?: string | null; assigneeName?: string | null }) =>
+    !visitSearch.trim() ||
+    (v.purpose ?? '').toLowerCase().includes(visitSearch.toLowerCase()) ||
+    (v.customerName ?? '').toLowerCase().includes(visitSearch.toLowerCase()) ||
+    (v.assigneeName ?? '').toLowerCase().includes(visitSearch.toLowerCase());
+
+  const upcoming = (visits?.filter(v => !v.completedAt) ?? []).filter(matchesSearch);
+  const completed = (visits?.filter(v => v.completedAt) ?? []).filter(matchesSearch);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -136,20 +185,48 @@ export default function VisitsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Visits</h1>
-          <p className="text-muted-foreground mt-1">Track customer visits, follow-ups, and site check-ins.</p>
+          <p className="text-muted-foreground mt-1">Track customer visits, follow-ups, and site check-ins.{visits && visits.length > 0 ? ` ${visits.length} total.` : ''}</p>
         </div>
         {canManageJobs && (
-          <Button onClick={() => setCreateOpen(true)} className="gap-2">
+          <Button title="Log a new customer visit or site check-in" onClick={() => setCreateOpen(true)} className="gap-2">
             <Plus className="w-4 h-4" /> Log Visit
           </Button>
         )}
       </div>
+
+      {/* Search + status filter bar */}
+      {visits && visits.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <Input
+              title="Search visits by customer name, address, or note"
+              placeholder="Search visits…"
+              className="pl-9"
+              value={visitSearch}
+              onChange={e => setVisitSearch(e.target.value)}
+            />
+          </div>
+          <Select value={visitStatusFilter} onValueChange={v => setVisitStatusFilter(v as typeof visitStatusFilter)}>
+            <SelectTrigger className="w-36 h-9 text-sm" title="Filter visits by completion status"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Visits</SelectItem>
+              <SelectItem value="upcoming">Upcoming Only</SelectItem>
+              <SelectItem value="completed">Completed Only</SelectItem>
+            </SelectContent>
+          </Select>
+          {(visitSearch || visitStatusFilter !== 'all') && (
+            <button className="text-xs text-muted-foreground hover:text-foreground" onClick={() => { setVisitSearch(''); setVisitStatusFilter('all'); }}>Clear</button>
+          )}
+        </div>
+      )}
 
       {isLoading ? (
         <div className="py-12 text-center text-muted-foreground">Loading visits...</div>
       ) : (
         <div className="space-y-6">
           {/* Upcoming */}
+          {visitStatusFilter !== 'completed' && (
           <div>
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">Upcoming & Pending</h2>
             {upcoming.length === 0 ? (
@@ -171,7 +248,14 @@ export default function VisitsPage() {
                             </Badge>
                           </div>
                           <div className="text-sm text-muted-foreground mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
-                            {visit.customerName && <span className="flex items-center gap-1"><User className="w-3 h-3" />{visit.customerName}</span>}
+                            {visit.customerName && (
+                              <button
+                                className="flex items-center gap-1 hover:text-primary hover:underline"
+                                onClick={e => { e.stopPropagation(); setLocation(`/customers/${(visit as any).customerId}`); }}
+                              >
+                                <User className="w-3 h-3" />{visit.customerName}
+                              </button>
+                            )}
                             {visit.assigneeName && <span className="flex items-center gap-1"><User className="w-3 h-3" />{visit.assigneeName}</span>}
                             {visit.scheduledAt && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{format(new Date(visit.scheduledAt), 'MMM d, h:mm a')}</span>}
                           </div>
@@ -184,9 +268,10 @@ export default function VisitsPage() {
               </Card>
             )}
           </div>
+          )}
 
           {/* Completed */}
-          {completed.length > 0 && (
+          {visitStatusFilter !== 'upcoming' && completed.length > 0 && (
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">Completed</h2>
               <Card>
@@ -222,13 +307,13 @@ export default function VisitsPage() {
           <div className="space-y-4 pb-6">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Purpose <span className="text-destructive">*</span></label>
-              <Input placeholder="e.g. Follow up on irrigation repair" value={form.purpose} onChange={e => setForm(f => ({ ...f, purpose: e.target.value }))} />
+              <Input title="Brief description of why this visit is being made" placeholder="e.g. Follow up on irrigation repair" value={form.purpose} onChange={e => setForm(f => ({ ...f, purpose: e.target.value }))} />
             </div>
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Visit Mode</label>
               <Select value={form.visitMode} onValueChange={v => setForm(f => ({ ...f, visitMode: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger title="How this visit is structured — scheduled, drop-by, or drive-by"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="scheduled">Scheduled Appointment</SelectItem>
                   <SelectItem value="drop_by">Drop By / Flexible</SelectItem>
@@ -240,29 +325,42 @@ export default function VisitsPage() {
             {form.visitMode === 'scheduled' && (
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Date & Time</label>
-                <Input type="datetime-local" value={form.scheduledAt} onChange={e => setForm(f => ({ ...f, scheduledAt: e.target.value }))} />
+                <Input type="datetime-local" title="Scheduled date and time for this visit" value={form.scheduledAt} onChange={e => setForm(f => ({ ...f, scheduledAt: e.target.value }))} />
               </div>
             )}
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Customer</label>
-              <Select value={form.customerId} onValueChange={v => setForm(f => ({ ...f, customerId: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select customer..." /></SelectTrigger>
+              <Select value={form.customerId} onValueChange={v => setForm(f => ({ ...f, customerId: v, propertyId: '' }))}>
+                <SelectTrigger title="Customer this visit is for"><SelectValue placeholder="Select customer..." /></SelectTrigger>
                 <SelectContent>{(customers?.items ?? []).map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
 
+            {form.customerId && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Property</label>
+                <Select value={form.propertyId} onValueChange={v => setForm(f => ({ ...f, propertyId: v }))}>
+                  <SelectTrigger title="Property to visit — leave blank for any property"><SelectValue placeholder="Any property..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Any property</SelectItem>
+                    {(customerProperties ?? []).map((p: any) => <SelectItem key={p.id} value={String(p.id)}>{p.address}{p.city ? `, ${p.city}` : ''}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Assign To</label>
               <Select value={form.assigneeId} onValueChange={v => setForm(f => ({ ...f, assigneeId: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select assignee..." /></SelectTrigger>
+                <SelectTrigger title="Staff member assigned to conduct this visit"><SelectValue placeholder="Select assignee..." /></SelectTrigger>
                 <SelectContent>{(users ?? []).map(u => <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Notes</label>
-              <Textarea rows={3} placeholder="Additional context..." value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+              <Textarea rows={3} title="Additional context or instructions for this visit" placeholder="Additional context..." value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
             </div>
 
             <Separator />
@@ -309,16 +407,19 @@ export default function VisitsPage() {
                 {/* Actions */}
                 {!selectedVisit.completedAt && (
                   <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" className="gap-2" onClick={() => { setCompleteOpen(selectedVisit.id); }}>
+                    <Button size="sm" variant="outline" title="Edit this visit's details" className="gap-2" onClick={() => setEditingVisit({ id: selectedVisit.id, purpose: selectedVisit.purpose, notes: (selectedVisit as any).notes ?? null, scheduledAt: selectedVisit.scheduledAt ? new Date(selectedVisit.scheduledAt).toISOString().slice(0, 16) : undefined })}>
+                      <Edit2 className="w-3.5 h-3.5" /> Edit
+                    </Button>
+                    <Button size="sm" variant="outline" title="Mark this visit as completed" className="gap-2" onClick={() => { setCompleteOpen(selectedVisit.id); }}>
                       <CheckCircle2 className="w-3.5 h-3.5" /> Mark Complete
                     </Button>
                     {!selectedVisit.convertedToEstimateId && (
-                      <Button size="sm" variant="outline" className="gap-2" onClick={() => handleConvertToEstimate(selectedVisit.id)} disabled={convertToEstimate.isPending}>
+                      <Button size="sm" variant="outline" title="Create a new estimate based on this visit" className="gap-2" onClick={() => handleConvertToEstimate(selectedVisit.id)} disabled={convertToEstimate.isPending}>
                         <FileText className="w-3.5 h-3.5" /> Convert to Estimate
                       </Button>
                     )}
                     {!selectedVisit.convertedToJobId && (
-                      <Button size="sm" variant="outline" className="gap-2" onClick={() => handleConvertToJob(selectedVisit.id)} disabled={convertToJob.isPending}>
+                      <Button size="sm" variant="outline" title="Create a new job based on this visit" className="gap-2" onClick={() => handleConvertToJob(selectedVisit.id)} disabled={convertToJob.isPending}>
                         <Briefcase className="w-3.5 h-3.5" /> Convert to Job
                       </Button>
                     )}
@@ -326,10 +427,14 @@ export default function VisitsPage() {
                 )}
 
                 {selectedVisit.convertedToEstimateId && (
-                  <p className="text-sm text-emerald-700 flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> → Estimate #{selectedVisit.convertedToEstimateId}</p>
+                  <button className="text-sm text-emerald-700 flex items-center gap-1 hover:underline" onClick={() => { setSelectedId(null); setLocation(`/estimates?highlight=${selectedVisit.convertedToEstimateId}`); }}>
+                    <CheckCircle2 className="w-4 h-4" /> → Estimate #{selectedVisit.convertedToEstimateId}
+                  </button>
                 )}
                 {selectedVisit.convertedToJobId && (
-                  <p className="text-sm text-emerald-700 flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> → Job #{selectedVisit.convertedToJobId}</p>
+                  <button className="text-sm text-emerald-700 flex items-center gap-1 hover:underline" onClick={() => { setSelectedId(null); setLocation(`/schedule?jobId=${selectedVisit.convertedToJobId}`); }}>
+                    <CheckCircle2 className="w-4 h-4" /> → Job #{selectedVisit.convertedToJobId}
+                  </button>
                 )}
 
                 <Separator />
@@ -338,7 +443,12 @@ export default function VisitsPage() {
                   {selectedVisit.customerName && (
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Customer</p>
-                      <div className="flex items-center gap-2"><User className="w-4 h-4 text-muted-foreground" />{selectedVisit.customerName}</div>
+                      <div className="flex items-center gap-2">
+                        <User className="w-4 h-4 text-muted-foreground" />
+                        {(selectedVisit as any).customerId ? (
+                          <button className="text-sm text-primary hover:underline" onClick={() => { setSelectedId(null); setLocation(`/customers/${(selectedVisit as any).customerId}`); }}>{selectedVisit.customerName}</button>
+                        ) : selectedVisit.customerName}
+                      </div>
                     </div>
                   )}
                   {selectedVisit.assigneeName && (
@@ -350,7 +460,18 @@ export default function VisitsPage() {
                   {selectedVisit.scheduledAt && (
                     <div className="col-span-2 space-y-1">
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Scheduled</p>
-                      <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-muted-foreground" />{format(new Date(selectedVisit.scheduledAt), 'MMM d, yyyy h:mm a')}</div>
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-muted-foreground" />
+                        {format(new Date(selectedVisit.scheduledAt), 'MMM d, yyyy h:mm a')}
+                        {(selectedVisit as any).status !== 'completed' && (
+                          <button
+                            className="ml-1 text-xs text-primary hover:underline"
+                            onClick={() => setEditingVisit({ id: selectedVisit.id, purpose: selectedVisit.purpose, notes: (selectedVisit as any).notes ?? null, scheduledAt: selectedVisit.scheduledAt ? new Date(selectedVisit.scheduledAt).toISOString().slice(0, 16) : undefined })}
+                          >
+                            Reschedule
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -383,6 +504,69 @@ export default function VisitsPage() {
         </SheetContent>
       </Sheet>
 
+      {/* Edit Visit Dialog */}
+      <Sheet open={editingVisit != null} onOpenChange={open => { if (!open) setEditingVisit(null); }}>
+        <SheetContent className="w-full sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>Edit Visit</SheetTitle>
+            <SheetDescription>Update visit details or reschedule.</SheetDescription>
+          </SheetHeader>
+          <div className="space-y-4 mt-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Scheduled Date & Time</label>
+              <Input
+                type="datetime-local"
+                title="Rescheduled date and time for this visit"
+                value={editingVisit?.scheduledAt ?? ''}
+                onChange={e => setEditingVisit(v => v ? { ...v, scheduledAt: e.target.value } : v)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Purpose</label>
+              <Input
+                title="Brief description of the visit purpose"
+                value={editingVisit?.purpose ?? ''}
+                onChange={e => setEditingVisit(v => v ? { ...v, purpose: e.target.value } : v)}
+                placeholder="Visit purpose..."
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Notes</label>
+              <Textarea
+                rows={4}
+                title="Additional context or instructions for this visit"
+                value={editingVisit?.notes ?? ''}
+                onChange={e => setEditingVisit(v => v ? { ...v, notes: e.target.value } : v)}
+                placeholder="Notes (optional)..."
+              />
+            </div>
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" onClick={() => setEditingVisit(null)}>Cancel</Button>
+              <Button
+                title="Save changes to this visit"
+                disabled={updateVisit.isPending}
+                onClick={() => {
+                  if (!editingVisit || !editingVisit.purpose.trim()) { toast.error('Purpose is required'); return; }
+                  updateVisit.mutate(
+                    { id: editingVisit.id, data: { purpose: editingVisit.purpose, notes: editingVisit.notes ?? undefined, ...(editingVisit.scheduledAt ? { scheduledAt: new Date(editingVisit.scheduledAt).toISOString() } : {}) } as any },
+                    {
+                      onSuccess: () => {
+                        toast.success('Visit updated');
+                        invalidate();
+                        setEditingVisit(null);
+                      },
+                      onError: () => toast.error('Failed to update visit'),
+                    },
+                  );
+                }}
+              >
+                {updateVisit.isPending ? 'Saving...' : 'Save Changes'}
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
       {/* Complete Dialog */}
       <Sheet open={completeOpen != null} onOpenChange={open => { if (!open) setCompleteOpen(null); }}>
         <SheetContent className="w-full sm:max-w-md">
@@ -393,13 +577,23 @@ export default function VisitsPage() {
           <div className="space-y-4 mt-4">
             <Textarea
               rows={4}
+              title="Notes describing what happened during this visit (optional)"
               placeholder="Outcome notes (optional)..."
               value={outcomeNotes}
               onChange={e => setOutcomeNotes(e.target.value)}
             />
+            <label className="flex items-center gap-2.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="w-4 h-4 rounded border-input"
+                checked={createFollowUp}
+                onChange={e => setCreateFollowUp(e.target.checked)}
+              />
+              <span className="text-sm">Create a follow-up job after completing</span>
+            </label>
             <div className="flex gap-3 justify-end">
               <Button variant="outline" onClick={() => setCompleteOpen(null)}>Cancel</Button>
-              <Button onClick={() => completeOpen && handleComplete(completeOpen)} disabled={completeVisit.isPending}>
+              <Button title="Mark this visit as completed" onClick={() => completeOpen && handleComplete(completeOpen)} disabled={completeVisit.isPending}>
                 {completeVisit.isPending ? 'Saving...' : 'Mark Complete'}
               </Button>
             </div>

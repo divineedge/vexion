@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   useListEmployeeHistory,
   useCreateEmployeeHistoryEntry,
@@ -8,6 +8,7 @@ import {
   getListEmployeeFormTemplatesQueryKey,
   useListUsers,
   getListUsersQueryKey,
+  useListJobs, getListJobsQueryKey,
 } from '@workspace/api-client-react';
 import type { EmployeeFormTemplate, EmployeeHistoryEntry } from '@workspace/api-client-react';
 import { useParams, useLocation } from 'wouter';
@@ -23,10 +24,12 @@ import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   ArrowLeft, Plus, User, FileText, Star, AlertTriangle, Phone, MessageSquare,
-  ClipboardList, Settings, Trash2,
+  ClipboardList, Settings, Trash2, Briefcase, BarChart2,
+  Copy,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { customFetch } from '@workspace/api-client-react';
 import { format } from 'date-fns';
 
 const ENTRY_TYPE_CONFIG: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
@@ -45,6 +48,38 @@ interface FormField {
   [key: string]: unknown;
 }
 
+function HourlyRateEditor({ userId, currentRate }: { userId: number; currentRate: number | null }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(currentRate != null ? String(currentRate) : '');
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    setSaving(true);
+    try {
+      await customFetch(`/api/settings/users/${userId}`, { method: 'PATCH', body: JSON.stringify({ hourlyRate: val ? parseFloat(val) : null }), headers: { 'Content-Type': 'application/json' } });
+      qc.invalidateQueries({ queryKey: getListUsersQueryKey() });
+      toast.success('Hourly rate updated');
+      setEditing(false);
+    } catch { toast.error('Failed to update rate'); }
+    finally { setSaving(false); }
+  };
+  if (!editing) {
+    return (
+      <div className="flex items-center gap-2">
+        <p className="font-medium">{currentRate != null ? `$${currentRate.toFixed(2)}/hr` : '—'}</p>
+        <button type="button" title="Edit this employee's hourly rate" className="text-xs text-primary hover:underline" onClick={() => { setVal(currentRate != null ? String(currentRate) : ''); setEditing(true); }}>Edit</button>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <Input type="number" step="0.01" min="0" title="Hourly rate in dollars" value={val} onChange={e => setVal(e.target.value)} className="h-7 w-24 text-sm" />
+      <Button size="sm" title="Save the updated hourly rate" className="h-7 text-xs" onClick={save} disabled={saving}>{saving ? '…' : 'Save'}</Button>
+      <Button size="sm" variant="ghost" title="Discard hourly rate changes" className="h-7 text-xs" onClick={() => setEditing(false)}>Cancel</Button>
+    </div>
+  );
+}
+
 const BLANK_ENTRY = { type: 'review' as 'review' | 'complaint' | 'callback' | 'custom_form', title: '', notes: '', formTemplateId: '', formData: {} as Record<string, string> };
 const BLANK_TEMPLATE = { name: '', description: '' };
 const BLANK_FIELD: Partial<FormField> = { label: '', type: 'text', required: false };
@@ -55,6 +90,8 @@ export default function EmployeeDetailPage() {
   const [, setLocation] = useLocation();
   const { canManageOffice, isOwner } = useAuth();
   const qc = useQueryClient();
+
+  const [empJobFilter, setEmpJobFilter] = useState<'all' | 'scheduled' | 'in_progress' | 'completed'>('all');
 
   // History entry state
   const [addEntryOpen, setAddEntryOpen] = useState(false);
@@ -78,6 +115,11 @@ export default function EmployeeDetailPage() {
   const { data: templates } = useListEmployeeFormTemplates({
     query: { queryKey: getListEmployeeFormTemplatesQueryKey() },
   });
+
+  const { data: recentJobs = [] } = useListJobs(
+    { assigneeId: userId },
+    { query: { enabled: !!userId, queryKey: getListJobsQueryKey({ assigneeId: userId }) } },
+  );
 
   const createEntry = useCreateEmployeeHistoryEntry();
   const createTemplate = useCreateEmployeeFormTemplate();
@@ -202,7 +244,7 @@ export default function EmployeeDetailPage() {
           <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
             <div className="space-y-0.5">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">Role</p>
-              <Badge variant="secondary" className="capitalize">{roleLabel}</Badge>
+              <Badge variant="secondary" className="capitalize" title={`Role: ${roleLabel}`}>{roleLabel}</Badge>
             </div>
             <div className="space-y-0.5">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">Status</p>
@@ -213,14 +255,20 @@ export default function EmployeeDetailPage() {
             </div>
             <div className="space-y-0.5">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">Hourly Rate</p>
-              <p className="font-medium">{(employee as any).hourlyRate != null ? `$${(employee as any).hourlyRate.toFixed(2)}/hr` : '—'}</p>
+              {canManageOffice ? (
+                <HourlyRateEditor userId={userId} currentRate={(employee as any).hourlyRate ?? null} />
+              ) : (
+                <p className="font-medium">{(employee as any).hourlyRate != null ? `$${(employee as any).hourlyRate.toFixed(2)}/hr` : '—'}</p>
+              )}
             </div>
             <div className="space-y-0.5">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">Hire Date</p>
               <p className="font-medium">
-                {(employee as any).hireDate
-                  ? format(new Date((employee as any).hireDate), 'MMM d, yyyy')
-                  : '—'}
+                <span title={(employee as any).hireDate ? `Hire date: ${format(new Date((employee as any).hireDate), 'EEEE, MMMM d, yyyy')}` : 'No hire date set'}>
+                  {(employee as any).hireDate
+                    ? format(new Date((employee as any).hireDate), 'MMM d, yyyy')
+                    : '—'}
+                </span>
               </p>
             </div>
           </div>
@@ -237,7 +285,7 @@ export default function EmployeeDetailPage() {
               </CardTitle>
               <CardDescription className="mt-0.5">Admin-defined forms used when logging custom entries.</CardDescription>
             </div>
-            <Button size="sm" variant="outline" className="gap-1.5 shrink-0" onClick={() => setAddTemplateOpen(true)}>
+            <Button size="sm" variant="outline" title="Create a new custom form template for employee file entries" className="gap-1.5 shrink-0" onClick={() => setAddTemplateOpen(true)}>
               <Plus className="w-3.5 h-3.5" /> New Template
             </Button>
           </CardHeader>
@@ -257,6 +305,84 @@ export default function EmployeeDetailPage() {
                 ))}
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Performance stats */}
+      {recentJobs.length > 0 && (() => {
+        const completedJobs = recentJobs.filter((j: any) => j.status === 'completed');
+        const totalRevenue = completedJobs.reduce((sum: number, j: any) => sum + (j.totalAmount ?? 0), 0);
+        const now = new Date();
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const thisMonthCompleted = completedJobs.filter((j: any) => j.completedAt ? new Date(j.completedAt) >= monthStart : new Date(j.scheduledAt) >= monthStart);
+        return (
+          <div className="grid grid-cols-3 gap-3">
+            <Card><CardContent className="p-4 text-center">
+              <p className="text-2xl font-bold" title={`Total jobs: ${recentJobs.length}`}>{recentJobs.length}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Total Jobs</p>
+            </CardContent></Card>
+            <Card><CardContent className="p-4 text-center">
+              <p className="text-2xl font-bold text-emerald-600" title={`Completed this month: ${thisMonthCompleted.length}`}>{thisMonthCompleted.length}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Completed This Month</p>
+            </CardContent></Card>
+            <Card><CardContent className="p-4 text-center">
+              <p className="text-2xl font-bold" title={`Total revenue: $${totalRevenue.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}>${totalRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Total Revenue</p>
+            </CardContent></Card>
+          </div>
+        );
+      })()}
+
+      {/* Efficiency link */}
+      {employee && (
+        <a
+          href={`${import.meta.env.BASE_URL}efficiency`}
+          className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+        >
+          <BarChart2 className="w-4 h-4" /> View efficiency metrics →
+        </a>
+      )}
+
+      {/* Recent Jobs */}
+      {recentJobs.length > 0 && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2 flex-wrap gap-2">
+            <div>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Briefcase className="w-4 h-4 text-primary" /> Jobs
+              </CardTitle>
+              <CardDescription>Jobs assigned to this employee.</CardDescription>
+            </div>
+            <div className="flex gap-1.5">
+              {(['all', 'scheduled', 'in_progress', 'completed'] as const).map(s => (
+                <button key={s} onClick={() => setEmpJobFilter(s)} className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${empJobFilter === s ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted'}`}>
+                  {s === 'all' ? 'All' : s === 'in_progress' ? 'In Progress' : s.charAt(0).toUpperCase() + s.slice(1)}
+                </button>
+              ))}
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Title</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Scheduled</TableHead>
+                  <TableHead className="text-right">Amount</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {recentJobs.filter((job: any) => empJobFilter === 'all' || job.status === empJobFilter).slice(0, 20).map((job: any) => (
+                  <TableRow key={job.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setLocation(`/schedule?jobId=${job.id}`)}>
+                    <TableCell className="font-medium">{job.title}</TableCell>
+                    <TableCell><Badge variant="outline" className="capitalize text-xs">{job.status.replace(/_/g, ' ')}</Badge></TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{new Date(job.scheduledAt).toLocaleDateString()}</TableCell>
+                    <TableCell className="text-right font-medium">${(job.totalAmount ?? 0).toLocaleString()}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
       )}
@@ -289,17 +415,28 @@ export default function EmployeeDetailPage() {
                   <div key={entry.id} className="rounded-lg border p-4 space-y-2">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Badge className={`gap-1 ${cfg.color}`}>
+                        <Badge className={`gap-1 ${cfg.color}`} title={`Entry type: ${cfg.label}`}>
                           {cfg.icon} {cfg.label}
                         </Badge>
-                        <span className="font-medium text-sm">{entry.title}</span>
+                        <span className="font-medium text-sm" title={entry.title}>{entry.title}</span>
                         {(entry as any).formTemplateName && (
                           <span className="text-xs text-muted-foreground">({(entry as any).formTemplateName})</span>
                         )}
                       </div>
-                      <span className="text-xs text-muted-foreground shrink-0">
-                        {format(new Date(entry.createdAt), 'MMM d, yyyy')}
-                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {entry.notes && (
+                          <button
+                            className="text-xs text-muted-foreground hover:text-foreground transition-colors p-0.5 rounded"
+                            title="Copy note"
+                            onClick={() => { navigator.clipboard.writeText(entry.notes!); toast.success('Copied'); }}
+                          >
+                            <Copy className="w-3 h-3" />
+                          </button>
+                        )}
+                        <span className="text-xs text-muted-foreground">
+                          {format(new Date(entry.createdAt), 'MMM d, yyyy')}
+                        </span>
+                      </div>
                     </div>
                     {entry.notes && (
                       <p className="text-sm text-muted-foreground whitespace-pre-wrap">{entry.notes}</p>
@@ -338,7 +475,7 @@ export default function EmployeeDetailPage() {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Entry Type <span className="text-destructive">*</span></label>
               <Select value={entryForm.type} onValueChange={v => setEntryForm(f => ({ ...f, type: v as typeof entryForm.type, formTemplateId: '', formData: {} }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger title="Select the type of employee file entry"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="review">Review</SelectItem>
                   <SelectItem value="complaint">Complaint</SelectItem>
@@ -352,7 +489,7 @@ export default function EmployeeDetailPage() {
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Form Template</label>
                 <Select value={entryForm.formTemplateId} onValueChange={handleTemplateSelect}>
-                  <SelectTrigger><SelectValue placeholder="Select a template…" /></SelectTrigger>
+                  <SelectTrigger title="Choose a custom form template to fill in for this entry"><SelectValue placeholder="Select a template…" /></SelectTrigger>
                   <SelectContent>
                     {(templates ?? []).map(t => (
                       <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
@@ -365,6 +502,7 @@ export default function EmployeeDetailPage() {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Title / Summary <span className="text-destructive">*</span></label>
               <Input
+                title="Short summary or title of this file entry"
                 placeholder="e.g. Q2 Performance Review"
                 value={entryForm.title}
                 onChange={e => setEntryForm(f => ({ ...f, title: e.target.value }))}
@@ -374,6 +512,7 @@ export default function EmployeeDetailPage() {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Notes / Details</label>
               <Textarea
+                title="Detailed notes or observations for this file entry"
                 placeholder="Add any free-text notes here…"
                 value={entryForm.notes}
                 onChange={e => setEntryForm(f => ({ ...f, notes: e.target.value }))}
@@ -393,13 +532,14 @@ export default function EmployeeDetailPage() {
                     </label>
                     {field.type === 'textarea' ? (
                       <Textarea
+                        title={field.label}
                         value={entryForm.formData[field.id] ?? ''}
                         onChange={e => handleEntryFieldChange(field.id, e.target.value)}
                         rows={3}
                       />
                     ) : field.type === 'select' && field.options ? (
                       <Select value={entryForm.formData[field.id] ?? ''} onValueChange={v => handleEntryFieldChange(field.id, v)}>
-                        <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                        <SelectTrigger title={field.label}><SelectValue placeholder="Select…" /></SelectTrigger>
                         <SelectContent>
                           {field.options.map(opt => (
                             <SelectItem key={opt} value={opt}>{opt}</SelectItem>
@@ -408,6 +548,7 @@ export default function EmployeeDetailPage() {
                       </Select>
                     ) : (
                       <Input
+                        title={field.label}
                         type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
                         value={entryForm.formData[field.id] ?? ''}
                         onChange={e => handleEntryFieldChange(field.id, e.target.value)}
@@ -420,8 +561,8 @@ export default function EmployeeDetailPage() {
 
             <Separator />
             <div className="flex gap-3 justify-end">
-              <Button variant="outline" onClick={() => setAddEntryOpen(false)}>Cancel</Button>
-              <Button onClick={handleAddEntry} disabled={createEntry.isPending}>
+              <Button variant="outline" title="Discard this file entry" onClick={() => setAddEntryOpen(false)}>Cancel</Button>
+              <Button title="Save this employee file entry" onClick={handleAddEntry} disabled={createEntry.isPending}>
                 {createEntry.isPending ? 'Saving…' : 'Add Entry'}
               </Button>
             </div>
@@ -467,7 +608,7 @@ export default function EmployeeDetailPage() {
                         <Badge variant="outline" className="text-xs capitalize">{f.type}</Badge>
                         {f.required && <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">Required</Badge>}
                       </div>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => removeTemplateField(f.id)}>
+                      <Button variant="ghost" size="icon" title="Remove this field from the template" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => removeTemplateField(f.id)}>
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     </div>
@@ -527,8 +668,8 @@ export default function EmployeeDetailPage() {
 
               <Separator />
               <div className="flex gap-3 justify-end">
-                <Button variant="outline" onClick={() => setAddTemplateOpen(false)}>Cancel</Button>
-                <Button onClick={handleCreateTemplate} disabled={createTemplate.isPending}>
+                <Button variant="outline" title="Discard this template" onClick={() => setAddTemplateOpen(false)}>Cancel</Button>
+                <Button title="Create this custom form template" onClick={handleCreateTemplate} disabled={createTemplate.isPending}>
                   {createTemplate.isPending ? 'Creating…' : 'Create Template'}
                 </Button>
               </div>

@@ -19,7 +19,7 @@ import { sendEmail, type EmailProviderConfig } from "./emailProvider";
  * Resolves the owner email from businessEmail on the tenant, falling back to the first user with
  * role='owner'. Silently skips if no email address can be found.
  */
-async function notifyBroadcastFailed(
+export async function notifyBroadcastFailed(
   tenantId: number,
   broadcastId: number,
   sent: number,
@@ -153,7 +153,8 @@ async function dispatchBroadcast(
     .set({ status: finalStatus, sentAt: new Date(), stats: { sent, failed, optedOut: 0 } })
     .where(eq(broadcastsTable.id, broadcastId));
 
-  if (finalStatus === "failed") {
+  // Notify staff on full failure OR partial failure (some sent, some failed)
+  if (failed > 0) {
     await notifyBroadcastFailed(tenantId, broadcastId, sent, failed);
   }
 }

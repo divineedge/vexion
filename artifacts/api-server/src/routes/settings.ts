@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import { db, tenantsTable, usersTable } from "@workspace/db";
+import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
 import { eq, and, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
@@ -135,10 +136,12 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     estimateExpiryDays: tenant.estimateExpiryDays ?? 30,
     invoiceDueDays: tenant.invoiceDueDays ?? 30,
     taxEnabled: tenant.taxEnabled ?? true,
-    // Callback due-date defaults
-    callbackDueDaysHigh: tenant.callbackDueDaysHigh ?? 1,
-    callbackDueDaysNormal: tenant.callbackDueDaysNormal ?? 3,
-    callbackDueDaysLow: tenant.callbackDueDaysLow ?? 7,
+    // Callback due-date defaults (hours — use these; days columns are legacy)
+    callbackDueHoursHigh: tenant.callbackDueHoursHigh ?? 4,
+    callbackDueHoursNormal: tenant.callbackDueHoursNormal ?? 24,
+    callbackDueHoursLow: tenant.callbackDueHoursLow ?? 72,
+    // Plan renewal warning threshold
+    renewalWarningDays: tenant.renewalWarningDays ?? 30,
   };
 }
 
@@ -187,8 +190,10 @@ router.patch("/settings", async (req, res): Promise<void> => {
     notificationTemplates,
     // Estimate & Invoice defaults
     estimateExpiryDays, invoiceDueDays, taxEnabled,
-    // Callback due-date defaults
-    callbackDueDaysHigh, callbackDueDaysNormal, callbackDueDaysLow,
+    // Callback due-date defaults (hours)
+    callbackDueHoursHigh, callbackDueHoursNormal, callbackDueHoursLow,
+    // Plan renewal warning threshold
+    renewalWarningDays,
   } = req.body;
 
   const updates: Partial<typeof tenantsTable.$inferInsert> = {};
@@ -220,7 +225,13 @@ router.patch("/settings", async (req, res): Promise<void> => {
   if (defaultGeofenceUnit !== undefined) updates.defaultGeofenceUnit = defaultGeofenceUnit;
   if (autoCreateGeofence !== undefined) updates.autoCreateGeofence = autoCreateGeofence;
   if (measurementZoneLabels !== undefined) updates.measurementZoneLabels = measurementZoneLabels;
-  if (measurementZoneTypes !== undefined) updates.measurementZoneTypes = measurementZoneTypes;
+  if (measurementZoneTypes !== undefined) {
+    updates.measurementZoneTypes = measurementZoneTypes;
+    // Migrate away from the old comma-separated zone labels column once types are saved;
+    // the labels can always be derived from the richer zone types array, so keeping
+    // both columns in sync would just bloat tenant data over time.
+    updates.measurementZoneLabels = null as unknown as string[];
+  }
   if (preferredAreaUnit !== undefined) updates.preferredAreaUnit = preferredAreaUnit;
   // Communications
   if (mainPhoneNumber !== undefined) updates.mainPhoneNumber = mainPhoneNumber || null;
@@ -326,10 +337,11 @@ router.patch("/settings", async (req, res): Promise<void> => {
   if (estimateExpiryDays !== undefined) updates.estimateExpiryDays = parseInt(estimateExpiryDays, 10);
   if (invoiceDueDays !== undefined) updates.invoiceDueDays = parseInt(invoiceDueDays, 10);
   if (taxEnabled !== undefined) updates.taxEnabled = taxEnabled;
-  // Callback due-date defaults
-  if (callbackDueDaysHigh !== undefined) updates.callbackDueDaysHigh = parseInt(callbackDueDaysHigh, 10);
-  if (callbackDueDaysNormal !== undefined) updates.callbackDueDaysNormal = parseInt(callbackDueDaysNormal, 10);
-  if (callbackDueDaysLow !== undefined) updates.callbackDueDaysLow = parseInt(callbackDueDaysLow, 10);
+  // Callback due-date defaults (hours)
+  if (callbackDueHoursHigh !== undefined) updates.callbackDueHoursHigh = parseInt(callbackDueHoursHigh, 10);
+  if (callbackDueHoursNormal !== undefined) updates.callbackDueHoursNormal = parseInt(callbackDueHoursNormal, 10);
+  if (callbackDueHoursLow !== undefined) updates.callbackDueHoursLow = parseInt(callbackDueHoursLow, 10);
+  if (renewalWarningDays !== undefined) updates.renewalWarningDays = parseInt(renewalWarningDays, 10);
 
   if (quickShortcuts !== undefined) {
     const VALID_IDS = new Set([
@@ -545,6 +557,27 @@ router.patch("/settings/users/:id", async (req, res): Promise<void> => {
 
   const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
   res.json({ id: updated.id, email: updated.email, name: updated.name, role: updated.role, tenantId: updated.tenantId, planTier: tenant?.planTier ?? "starter", avatarUrl: updated.avatarUrl ?? null, isActive: updated.isActive, assignedLocationId: updated.assignedLocationId ?? null, hourlyRate: updated.hourlyRate ?? null, hireDate: updated.hireDate?.toISOString() ?? null, applicatorLicense: updated.applicatorLicense ?? null, createdAt: updated.createdAt.toISOString() });
+});
+
+// POST /settings/test-email — send a test email to the calling user's address
+router.post("/settings/test-email", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  const [user] = await db.select({ email: usersTable.email, name: usersTable.name }).from(usersTable).where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId)));
+  if (!user?.email) { res.status(400).json({ error: "No email on file for your account" }); return; }
+  const emailProviderConfig = (tenant as any).emailProviderConfig as Record<string, string> ?? {};
+  const cfg: EmailProviderConfig = {
+    provider: (emailProviderConfig.provider as EmailProviderConfig['provider']) ?? null,
+    config: emailProviderConfig,
+    fromAddress: emailProviderConfig.fromAddress ?? null,
+  };
+  const result = await sendEmail(cfg, user.email, "Test Email from Divine Edge OS", "This is a test email from Divine Edge OS.", `<p>Hi ${user.name ?? 'there'},</p><p>This is a test email confirming your notification templates are configured correctly.</p><p>— Divine Edge OS</p>`);
+  if (result.success) {
+    res.json({ ok: true, devOnly: result.devOnly ?? false });
+  } else {
+    res.status(500).json({ error: result.error ?? "Failed to send" });
+  }
 });
 
 router.delete("/settings/users/:id", async (req, res): Promise<void> => {

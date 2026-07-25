@@ -42,6 +42,7 @@ interface Service {
 
 interface QuickQuotePanelProps {
   propertyId: number;
+  customerId?: number;
   zones: MeasurementZone[];
   preferredAreaUnit?: 'sqft' | 'acres';
   /** Tenant zone types so we can resolve linkedZoneTypeId → zone label */
@@ -53,7 +54,7 @@ function formatArea(sqft: number, unit: 'sqft' | 'acres'): string {
   return `${sqft.toLocaleString(undefined, { maximumFractionDigits: 0 })} sqft`;
 }
 
-export default function QuickQuotePanel({ propertyId, zones, preferredAreaUnit = 'sqft', zoneTypes = [] }: QuickQuotePanelProps) {
+export default function QuickQuotePanel({ propertyId, customerId, zones, preferredAreaUnit = 'sqft', zoneTypes = [] }: QuickQuotePanelProps) {
   const [services, setServices] = useState<Service[] | null>(null);
   const [loadingServices, setLoadingServices] = useState(false);
   const [selectedServiceId, setSelectedServiceId] = useState<string>('');
@@ -191,7 +192,7 @@ export default function QuickQuotePanel({ propertyId, zones, preferredAreaUnit =
             onValueChange={v => { setSelectedServiceId(v); setOverridePrice(''); }}
             onOpenChange={open => { if (open) loadServices(); }}
           >
-            <SelectTrigger>
+            <SelectTrigger title="Select a service to generate a quote for">
               <SelectValue placeholder={loadingServices ? 'Loading services...' : 'Select a service...'} />
             </SelectTrigger>
             <SelectContent>
@@ -234,6 +235,7 @@ export default function QuickQuotePanel({ propertyId, zones, preferredAreaUnit =
               {(['flat', 'per_sqft'] as const).map(t => (
                 <button
                   key={t}
+                  title={t === 'flat' ? 'Charge a single flat rate for this service' : 'Charge per square foot based on selected zone areas'}
                   className={`px-3 py-1.5 transition ${priceType === t ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
                   onClick={() => setPriceType(t)}
                 >
@@ -275,7 +277,7 @@ export default function QuickQuotePanel({ propertyId, zones, preferredAreaUnit =
             </div>
             {selectedZoneList.length > 0 && (
               <div className="text-xs text-muted-foreground text-right">
-                Selected: {formatArea(totalAreaSqft, preferredAreaUnit)}
+                {selectedZoneList.length} zone{selectedZoneList.length !== 1 ? 's' : ''} · {formatArea(totalAreaSqft, preferredAreaUnit)}
               </div>
             )}
           </div>
@@ -290,6 +292,7 @@ export default function QuickQuotePanel({ propertyId, zones, preferredAreaUnit =
               type="number"
               min="0"
               step="0.01"
+              title="Override the calculated price — leave blank to use the auto-calculated amount"
               placeholder={selectedService ? `${calculatedPrice.toFixed(2)} (calculated)` : '0.00'}
               value={overridePrice}
               onChange={e => setOverridePrice(e.target.value)}
@@ -316,11 +319,40 @@ export default function QuickQuotePanel({ propertyId, zones, preferredAreaUnit =
               </p>
             )}
           </div>
-          {!generatedQuote && (
-            <Button onClick={createQuote} disabled={creating} className="gap-2">
-              {creating ? 'Generating...' : 'Generate Quote Link'}
-            </Button>
-          )}
+          <div className="flex flex-col gap-2">
+            {!generatedQuote && (
+              <Button title="Generate a shareable quote link to send to the customer" onClick={createQuote} disabled={creating} className="gap-2">
+                {creating ? 'Generating...' : 'Generate Quote Link'}
+              </Button>
+            )}
+            {customerId && selectedServiceId && calculatedPrice > 0 && (
+              <Button
+                variant="outline"
+                title="Save this quote as a draft estimate in the estimates list"
+                className="gap-2"
+                onClick={async () => {
+                  try {
+                    const r = await customFetch<{ id: number }>('/api/estimates', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        customerId,
+                        propertyId,
+                        visitMode: 'service',
+                        lineItems: [{ serviceId: parseInt(selectedServiceId, 10), quantity: 1, unitPrice: calculatedPrice }],
+                      }),
+                    });
+                    toast.success(`Estimate #${r.id} created`);
+                    window.location.href = `${import.meta.env.BASE_URL}estimates?highlight=${r.id}`;
+                  } catch {
+                    toast.error('Failed to create estimate');
+                  }
+                }}
+              >
+                <Copy className="w-4 h-4" /> Save as Estimate
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Generated quote link */}
@@ -332,6 +364,7 @@ export default function QuickQuotePanel({ propertyId, zones, preferredAreaUnit =
             <div className="flex gap-2">
               <Input
                 readOnly
+                title="Shareable quote link — copy and send to the customer"
                 value={quoteUrl}
                 className="text-xs font-mono bg-white"
               />
@@ -345,6 +378,7 @@ export default function QuickQuotePanel({ propertyId, zones, preferredAreaUnit =
             <Button
               variant="outline"
               size="sm"
+              title="Clear this quote and generate a new one"
               className="w-full text-xs"
               onClick={() => setGeneratedQuote(null)}
             >

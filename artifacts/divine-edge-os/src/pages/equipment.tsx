@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { format } from 'date-fns';
 import {
   useListEquipment,
   getListEquipmentQueryKey,
@@ -47,7 +48,8 @@ import MediaGallery from '@/components/media/MediaGallery';
 import {
   Wrench, Plus, Trash2, AlertTriangle, TrendingUp, Fuel, Clock, DollarSign,
   ChevronRight, ChevronDown, X, CheckCircle2, BarChart3, Archive, Paperclip,
-  Eye, Gauge, RotateCcw, ShoppingCart, PackageSearch, AlertCircle, History,
+  Eye, Gauge, RotateCcw, ShoppingCart, PackageSearch, AlertCircle, History, Search,
+  CalendarCheck2, Pencil,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -140,7 +142,7 @@ function MaintenanceRecordItem({
             <p className="text-sm font-medium">{record.description}</p>
             <Badge variant="outline" className="text-xs">{fmt$(record.cost)}</Badge>
           </div>
-          <p className="text-xs text-muted-foreground mt-0.5">{record.date}{record.vendor ? ` · ${record.vendor}` : ''}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{record.date ? new Date(record.date + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}{record.vendor ? ` · ${record.vendor}` : ''}</p>
           {(record.nextServiceDueDate || record.nextServiceDueHours || record.nextServiceDueMiles) && (
             <p className="text-xs text-primary mt-1">
               Next service: {[
@@ -161,7 +163,7 @@ function MaintenanceRecordItem({
           </button>
         </div>
         {!isTechnician && (
-          <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground hover:text-destructive shrink-0" onClick={() => onDelete(record.id)}>
+          <Button variant="ghost" size="icon" title="Delete this maintenance record" className="w-7 h-7 text-muted-foreground hover:text-destructive shrink-0 disabled:opacity-40" onClick={() => onDelete(record.id)}>
             <Trash2 className="w-3.5 h-3.5" />
           </Button>
         )}
@@ -175,10 +177,27 @@ function MaintenanceRecordItem({
             onMediaAdded={refetchAttachments}
             onMediaDeleted={refetchAttachments}
             readOnly={isTechnician}
-            documentsOnly
           />
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Maintenance Records with search ──────────────────────────────────────────────
+function MaintSearch({ records, isTechnician, onDelete }: { records: EquipmentMaintenance[]; isTechnician: boolean; onDelete: (id: number) => void }) {
+  const [q, setQ] = useState('');
+  const visible = q ? records.filter(r => r.description.toLowerCase().includes(q.toLowerCase()) || (r.vendor ?? '').toLowerCase().includes(q.toLowerCase())) : records;
+  return (
+    <div className="space-y-2">
+      <div className="relative">
+        <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+        <Input placeholder="Search records…" title="Search maintenance records" value={q} onChange={e => setQ(e.target.value)} className="h-8 text-sm pl-8" />
+      </div>
+      {visible.map(m => (
+        <MaintenanceRecordItem key={m.id} record={m} isTechnician={isTechnician} onDelete={onDelete} />
+      ))}
+      {visible.length === 0 && <p className="text-xs text-muted-foreground text-center py-4">No records match "{q}"</p>}
     </div>
   );
 }
@@ -198,11 +217,11 @@ function EquipmentLedgerPanel({ equipmentId }: { equipmentId: number }) {
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <label className="text-xs font-medium">From</label>
-          <Input type="date" value={from} onChange={e => setFrom(e.target.value)} />
+          <Input type="date" title="Ledger from date" value={from} onChange={e => setFrom(e.target.value)} />
         </div>
         <div className="space-y-1">
           <label className="text-xs font-medium">To</label>
-          <Input type="date" value={to} onChange={e => setTo(e.target.value)} />
+          <Input type="date" title="Ledger to date" value={to} onChange={e => setTo(e.target.value)} />
         </div>
       </div>
 
@@ -225,7 +244,7 @@ function EquipmentLedgerPanel({ equipmentId }: { equipmentId: number }) {
               <div className="pt-2 border-t space-y-1 max-h-40 overflow-y-auto">
                 {ledger.operating.fuelLogs.map(f => (
                   <div key={f.id} className="flex justify-between text-[11px] text-muted-foreground">
-                    <span>{f.date} · {f.gallons} gal</span>
+                    <span>{f.date ? new Date(f.date + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'} · {f.gallons} gal</span>
                     <span className="font-mono">{fmt$(f.cost)}</span>
                   </div>
                 ))}
@@ -249,8 +268,8 @@ function EquipmentLedgerPanel({ equipmentId }: { equipmentId: number }) {
               <div className="pt-2 border-t space-y-1 max-h-40 overflow-y-auto">
                 {ledger.maintenance.records.map(m => (
                   <div key={m.id} className="flex justify-between text-[11px] text-muted-foreground">
-                    <span className="truncate max-w-[140px]">{m.date} · {m.description}</span>
-                    <span className="font-mono shrink-0">{fmt$(m.partsCost + m.laborCost)}</span>
+                    <span className="truncate max-w-[140px]" title={`${m.date} — ${m.description}`}>{m.date} · {m.description}</span>
+                    <span className="font-mono shrink-0" title={`Cost: ${fmt$(m.partsCost + m.laborCost)}`}>{fmt$(m.partsCost + m.laborCost)}</span>
                   </div>
                 ))}
               </div>
@@ -264,7 +283,7 @@ function EquipmentLedgerPanel({ equipmentId }: { equipmentId: number }) {
 
 // ── Equipment Detail Panel ─────────────────────────────────────────────────────
 
-function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; onClose: () => void }) {
+function EquipmentDetailPanel({ equipment, onClose, onEdit }: { equipment: Equipment; onClose: () => void; onEdit?: () => void }) {
   const qc = useQueryClient();
   const { isTechnician } = useAuth();
 
@@ -285,8 +304,11 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
   const createFuelLog = useCreateEquipmentFuelLog();
   const deleteFuelLog = useDeleteEquipmentFuelLog();
 
-  const [fuelForm, setFuelForm] = useState({ date: '', gallons: '', cost: '', odometerReading: '', jobId: '' });
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [fuelForm, setFuelForm] = useState({ date: todayStr, gallons: '', costPerGallon: '', cost: '', odometerReading: '', jobId: '' });
   const [fuelOpen, setFuelOpen] = useState(false);
+  useEffect(() => { if (maintOpen) setMaintForm(f => ({ ...f, date: todayStr })); }, [maintOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (fuelOpen) setFuelForm(f => ({ ...f, date: todayStr })); }, [fuelOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Recent jobs for linking a fuel fill to a specific job
   const { data: recentJobs = [] } = useListJobs(
@@ -332,29 +354,32 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
 
   const handleAddFuel = () => {
     if (!fuelForm.date || !fuelForm.gallons) { toast.error('Date and gallons are required'); return; }
+    const gallons = parseFloat(fuelForm.gallons);
+    const cpg = fuelForm.costPerGallon ? parseFloat(fuelForm.costPerGallon) : null;
+    const totalCost = fuelForm.cost ? parseFloat(fuelForm.cost) : (cpg ? gallons * cpg : 0);
     createFuelLog.mutate({
       id: equipment.id,
       data: {
         date: fuelForm.date,
-        gallons: parseFloat(fuelForm.gallons),
-        cost: fuelForm.cost ? parseFloat(fuelForm.cost) : 0,
+        gallons,
+        costPerGallon: cpg ?? undefined,
+        cost: totalCost,
         odometerReading: fuelForm.odometerReading ? parseFloat(fuelForm.odometerReading) : undefined,
         jobId: fuelForm.jobId ? parseInt(fuelForm.jobId, 10) : undefined,
-      },
+      } as Parameters<typeof createFuelLog.mutate>[0]['data'],
     }, {
       onSuccess: () => {
         toast.success('Fuel log added');
         qc.invalidateQueries({ queryKey: getListEquipmentFuelLogsQueryKey(equipment.id) });
         qc.invalidateQueries({ queryKey: getListEquipmentQueryKey() });
         setFuelOpen(false);
-        setFuelForm({ date: '', gallons: '', cost: '', odometerReading: '', jobId: '' });
+        setFuelForm({ date: '', gallons: '', costPerGallon: '', cost: '', odometerReading: '', jobId: '' });
       },
       onError: () => toast.error('Failed to add fuel log'),
     });
   };
 
   const handleDeleteMaintenance = (id: number) => {
-    if (!window.confirm('Delete this maintenance record?')) return;
     deleteMaintenance.mutate({ equipmentId: equipment.id, id }, {
       onSuccess: () => {
         toast.success('Record deleted');
@@ -366,7 +391,6 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
   };
 
   const handleDeleteFuel = (id: number) => {
-    if (!window.confirm('Delete this fuel log?')) return;
     deleteFuelLog.mutate({ equipmentId: equipment.id, id }, {
       onSuccess: () => {
         toast.success('Fuel log deleted');
@@ -394,10 +418,26 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between p-6 border-b">
         <div>
-          <h2 className="text-xl font-bold">{equipment.name}</h2>
-          <p className="text-sm text-muted-foreground capitalize">{equipment.type}</p>
+          <h2 className="text-xl font-bold" title={equipment.name}>{equipment.name}</h2>
+          <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+            <span className="text-sm text-muted-foreground capitalize">{equipment.type}</span>
+            {((equipment as any).make || (equipment as any).model || (equipment as any).year) && (
+              <>
+                <span className="text-muted-foreground/40">·</span>
+                {(equipment as any).year && <span className="text-xs text-muted-foreground" title={`Year: ${(equipment as any).year}`}>{(equipment as any).year}</span>}
+                {(equipment as any).make && <span className="text-xs text-muted-foreground" title={`Make: ${(equipment as any).make}`}>{(equipment as any).make}</span>}
+                {(equipment as any).model && <span className="text-xs text-muted-foreground font-medium" title={`Model: ${(equipment as any).model}`}>{(equipment as any).model}</span>}
+              </>
+            )}
+            {(equipment as any).serialNumber && (
+              <span className="text-xs text-muted-foreground/70 font-mono">#{(equipment as any).serialNumber}</span>
+            )}
+          </div>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClose}><X className="w-4 h-4" /></Button>
+        <div className="flex items-center gap-1">
+          {!isTechnician && onEdit && <Button variant="outline" size="sm" title="Edit this equipment record" className="gap-1.5 text-xs h-8" onClick={onEdit}><Pencil className="w-3 h-3" /> Edit</Button>}
+          <Button variant="ghost" size="icon" title="Close equipment detail panel" onClick={onClose}><X className="w-4 h-4" /></Button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -414,10 +454,10 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
 
         {/* Maintenance status banner */}
         {equipment.maintenanceDue ? (
-          <div className="flex items-start gap-3 p-4 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive">
+          <div className="flex items-start gap-3 p-4 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive cursor-pointer" onClick={() => { const el = document.getElementById('equipment-maint-tab'); el?.click(); el?.scrollIntoView({ behavior: 'smooth' }); }}>
             <AlertTriangle className="w-5 h-5 mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm">Maintenance Overdue</p>
+              <p className="font-semibold text-sm">Maintenance Overdue <span className="font-normal text-xs opacity-70">— click to log service</span></p>
               <div className="flex flex-wrap gap-3 mt-1.5">
                 {equipment.hoursUntilService != null && (
                   <span className="text-xs flex items-center gap-1">
@@ -491,6 +531,7 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
           <div className="rounded-lg border p-3 space-y-1">
             <p className="text-xs text-muted-foreground flex items-center gap-1.5"><DollarSign className="w-3 h-3" /> Purchase Price</p>
             <p className="font-semibold">{fmt$(equipment.purchasePrice)}</p>
+            {equipment.purchaseDate && <p className="text-[10px] text-muted-foreground" title={new Date(equipment.purchaseDate).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}>{new Date(equipment.purchaseDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</p>}
           </div>
           <div className="rounded-lg border p-3 space-y-1">
             <p className="text-xs text-muted-foreground flex items-center gap-1.5"><Clock className="w-3 h-3" /> Cost / Hour</p>
@@ -503,6 +544,11 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
           <div className="rounded-lg border p-3 space-y-1">
             <p className="text-xs text-muted-foreground flex items-center gap-1.5"><Fuel className="w-3 h-3" /> Total Fuel</p>
             <p className="font-semibold">{fmt$(equipment.totalFuelCost)}</p>
+            {fuelLogs && fuelLogs.length > 0 && (
+              <p className="text-[10px] text-muted-foreground" title={`Last fuel fill: ${format(new Date(fuelLogs[0].date), 'EEEE, MMMM d, yyyy')}`}>
+                Last fill: {format(new Date(fuelLogs[0].date), 'MMM d, yyyy')}
+              </p>
+            )}
           </div>
         </div>
 
@@ -513,7 +559,7 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
               <p className="text-xs text-muted-foreground">Est. Resale Value (depreciated)</p>
               <p className="font-semibold">{fmt$(equipment.estimatedResaleValue)}</p>
             </div>
-            <Badge variant={equipment.sellRecommended ? 'destructive' : 'secondary'}>
+            <Badge variant={equipment.sellRecommended ? 'destructive' : 'secondary'} title={equipment.sellRecommended ? 'Resale value is low relative to purchase price — consider selling' : 'Resale value relative to purchase price'}>
               {Math.round((equipment.estimatedResaleValue / equipment.purchasePrice) * 100)}% of purchase
             </Badge>
           </div>
@@ -535,7 +581,7 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
                 </TableHeader>
                 <TableBody>
                   {projections.map(p => (
-                    <TableRow key={p.hours} className={p.hours === Math.round(equipment.currentHours / 500) * 500 ? 'bg-primary/5' : ''}>
+                    <TableRow key={p.hours} className={p.hours === Math.round(equipment.currentHours / 500) * 500 ? 'bg-primary/5' : ''} title={`At ${p.hours.toLocaleString()} hours: CPH = ${fmt$(p.cph)}`}>
                       <TableCell className="text-sm">{p.hours.toLocaleString()}</TableCell>
                       <TableCell className="text-sm text-right font-mono">{fmt$(p.cph)}</TableCell>
                     </TableRow>
@@ -551,19 +597,19 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
         {/* Tabs for maintenance / fuel */}
         <Tabs defaultValue="maintenance">
           <TabsList className="w-full">
-            <TabsTrigger value="maintenance" className="flex-1 flex items-center gap-1.5">
+            <TabsTrigger id="equipment-maint-tab" value="maintenance" title="Maintenance records and service history" className="flex-1 flex items-center gap-1.5">
               <Wrench className="w-3.5 h-3.5" /> Maintenance ({maintenance?.length ?? 0})
             </TabsTrigger>
-            <TabsTrigger value="fuel" className="flex-1 flex items-center gap-1.5">
+            <TabsTrigger value="fuel" title="Fuel log and consumption records" className="flex-1 flex items-center gap-1.5">
               <Fuel className="w-3.5 h-3.5" /> Fuel ({fuelLogs?.length ?? 0})
             </TabsTrigger>
-            <TabsTrigger value="tasks" className="flex-1 flex items-center gap-1.5">
+            <TabsTrigger value="tasks" title="Linked tasks for this equipment" className="flex-1 flex items-center gap-1.5">
               <CheckCircle2 className="w-3.5 h-3.5" /> Tasks ({equipmentTasks?.length ?? 0})
             </TabsTrigger>
-            <TabsTrigger value="ledger" className="flex-1 flex items-center gap-1.5">
+            <TabsTrigger value="ledger" title="Cost ledger — operating and repair expenses" className="flex-1 flex items-center gap-1.5">
               <Gauge className="w-3.5 h-3.5" /> Ledger
             </TabsTrigger>
-            <TabsTrigger value="activity" className="flex-1 flex items-center gap-1.5">
+            <TabsTrigger value="activity" title="Audit trail of changes to this equipment record" className="flex-1 flex items-center gap-1.5">
               <History className="w-3.5 h-3.5" /> Activity
             </TabsTrigger>
           </TabsList>
@@ -571,7 +617,7 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
           {/* Maintenance tab */}
           <TabsContent value="maintenance" className="space-y-3 mt-4">
             {!isTechnician && !equipment.archivedAt && (
-              <Button size="sm" className="w-full gap-2" onClick={() => setMaintOpen(true)}>
+              <Button size="sm" title="Log a new maintenance event or repair for this equipment" className="w-full gap-2" onClick={() => setMaintOpen(true)}>
                 <Plus className="w-4 h-4" /> Log Maintenance / Repair
               </Button>
             )}
@@ -586,54 +632,46 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <label className="text-xs font-medium">Date *</label>
-                      <Input type="date" value={maintForm.date} onChange={e => setMaintForm(f => ({ ...f, date: e.target.value }))} />
+                      <Input type="date" title="Date maintenance was performed" value={maintForm.date} onChange={e => setMaintForm(f => ({ ...f, date: e.target.value }))} />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-medium">Cost ($)</label>
-                      <Input type="number" placeholder="0.00" value={maintForm.cost} onChange={e => setMaintForm(f => ({ ...f, cost: e.target.value }))} />
+                      <Input type="number" title="Total cost of this maintenance in dollars" placeholder="0.00" value={maintForm.cost} onChange={e => setMaintForm(f => ({ ...f, cost: e.target.value }))} />
                     </div>
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium">Description *</label>
-                    <Input placeholder="e.g. Oil change, blade replacement" value={maintForm.description} onChange={e => setMaintForm(f => ({ ...f, description: e.target.value }))} />
+                    <Input title="What was done (e.g. oil change, blade replacement)" placeholder="e.g. Oil change, blade replacement" value={maintForm.description} onChange={e => setMaintForm(f => ({ ...f, description: e.target.value }))} />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium">Vendor / Shop</label>
-                    <Input placeholder="e.g. ABC Repair" value={maintForm.vendor} onChange={e => setMaintForm(f => ({ ...f, vendor: e.target.value }))} />
+                    <Input title="Repair shop or vendor that performed the maintenance" placeholder="e.g. ABC Repair" value={maintForm.vendor} onChange={e => setMaintForm(f => ({ ...f, vendor: e.target.value }))} />
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     <div className="space-y-1">
                       <label className="text-xs font-medium">Next Due Date</label>
-                      <Input type="date" value={maintForm.nextServiceDueDate} onChange={e => setMaintForm(f => ({ ...f, nextServiceDueDate: e.target.value }))} />
+                      <Input type="date" title="Calendar date when next service is due" value={maintForm.nextServiceDueDate} onChange={e => setMaintForm(f => ({ ...f, nextServiceDueDate: e.target.value }))} />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-medium">Next @ Hours</label>
-                      <Input type="number" placeholder="250" value={maintForm.nextServiceDueHours} onChange={e => setMaintForm(f => ({ ...f, nextServiceDueHours: e.target.value }))} />
+                      <Input type="number" title="Engine hour reading at which next service is due" placeholder="250" value={maintForm.nextServiceDueHours} onChange={e => setMaintForm(f => ({ ...f, nextServiceDueHours: e.target.value }))} />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-medium">Next @ Miles</label>
-                      <Input type="number" placeholder="5000" value={maintForm.nextServiceDueMiles} onChange={e => setMaintForm(f => ({ ...f, nextServiceDueMiles: e.target.value }))} />
+                      <Input type="number" title="Odometer reading (miles) at which next service is due" placeholder="5000" value={maintForm.nextServiceDueMiles} onChange={e => setMaintForm(f => ({ ...f, nextServiceDueMiles: e.target.value }))} />
                     </div>
                   </div>
                   <div className="flex gap-2 justify-end">
-                    <Button variant="outline" size="sm" onClick={() => setMaintOpen(false)}>Cancel</Button>
-                    <Button size="sm" onClick={handleAddMaintenance} disabled={createMaintenance.isPending}>Save</Button>
+                    <Button variant="outline" size="sm" title="Discard this maintenance entry" disabled={createMaintenance.isPending} onClick={() => setMaintOpen(false)}>Cancel</Button>
+                    <Button size="sm" title="Save this maintenance record" onClick={handleAddMaintenance} disabled={createMaintenance.isPending}>{createMaintenance.isPending ? 'Saving…' : 'Save'}</Button>
                   </div>
                 </CardContent>
               </Card>
             )}
-            {maintenance && maintenance.length > 0 ? (
-              <div className="space-y-2">
-                {maintenance.map(m => (
-                  <MaintenanceRecordItem
-                    key={m.id}
-                    record={m}
-                    isTechnician={isTechnician}
-                    onDelete={handleDeleteMaintenance}
-                  />
-                ))}
-              </div>
-            ) : (
+            {maintenance && maintenance.length > 0 && (
+              <MaintSearch records={maintenance} isTechnician={isTechnician} onDelete={handleDeleteMaintenance} />
+            )}
+            {maintenance && maintenance.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-6">No maintenance records yet.</p>
             )}
           </TabsContent>
@@ -641,7 +679,7 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
           {/* Fuel tab */}
           <TabsContent value="fuel" className="space-y-3 mt-4">
             {!equipment.archivedAt && (
-              <Button size="sm" className="w-full gap-2" onClick={() => setFuelOpen(true)}>
+              <Button size="sm" className="w-full gap-2" title="Log a new fuel fill for this equipment" onClick={() => setFuelOpen(true)}>
                 <Plus className="w-4 h-4" /> Log Fuel Fill
               </Button>
             )}
@@ -656,25 +694,39 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <label className="text-xs font-medium">Date *</label>
-                      <Input type="date" value={fuelForm.date} onChange={e => setFuelForm(f => ({ ...f, date: e.target.value }))} />
+                      <Input type="date" title="Date this fuel fill-up occurred" value={fuelForm.date} onChange={e => setFuelForm(f => ({ ...f, date: e.target.value }))} />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-medium">Gallons *</label>
-                      <Input type="number" placeholder="5.0" step="0.1" value={fuelForm.gallons} onChange={e => setFuelForm(f => ({ ...f, gallons: e.target.value }))} />
+                      <Input type="number" title="Number of gallons filled" placeholder="5.0" step="0.1" value={fuelForm.gallons}
+                        onChange={e => {
+                          const gals = e.target.value;
+                          const cpg = parseFloat(fuelForm.costPerGallon) || 0;
+                          setFuelForm(f => ({ ...f, gallons: gals, cost: cpg && gals ? String((parseFloat(gals) * cpg).toFixed(2)) : f.cost }));
+                        }} />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs font-medium">Cost ($)</label>
-                      <Input type="number" placeholder="0.00" value={fuelForm.cost} onChange={e => setFuelForm(f => ({ ...f, cost: e.target.value }))} />
+                      <label className="text-xs font-medium">$ / Gallon</label>
+                      <Input type="number" title="Price paid per gallon — used to calculate total fuel cost" placeholder="e.g. 3.89" step="0.001" value={fuelForm.costPerGallon}
+                        onChange={e => {
+                          const cpg = e.target.value;
+                          const gals = parseFloat(fuelForm.gallons) || 0;
+                          setFuelForm(f => ({ ...f, costPerGallon: cpg, cost: cpg && gals ? String((parseFloat(cpg) * gals).toFixed(2)) : f.cost }));
+                        }} />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium">Total Cost ($)</label>
+                      <Input type="number" title="Total amount paid for this fill-up (auto-calculated from gallons × price/gallon)" placeholder="0.00" value={fuelForm.cost} onChange={e => setFuelForm(f => ({ ...f, cost: e.target.value }))} />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-medium">Hours Reading</label>
-                      <Input type="number" placeholder="Current hours" value={fuelForm.odometerReading} onChange={e => setFuelForm(f => ({ ...f, odometerReading: e.target.value }))} />
+                      <Input type="number" title="Engine hour-meter reading at the time of fill-up (used for fuel efficiency calculations)" placeholder="Current hours" value={fuelForm.odometerReading} onChange={e => setFuelForm(f => ({ ...f, odometerReading: e.target.value }))} />
                     </div>
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium">Job (optional)</label>
                     <Select value={fuelForm.jobId || '__none__'} onValueChange={v => setFuelForm(f => ({ ...f, jobId: v === '__none__' ? '' : v }))}>
-                      <SelectTrigger className="w-full text-sm">
+                      <SelectTrigger className="w-full text-sm" title="Optionally associate this fuel cost with a specific job">
                         <SelectValue placeholder="No job — fleet overhead" />
                       </SelectTrigger>
                       <SelectContent>
@@ -689,23 +741,24 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
                     <p className="text-xs text-muted-foreground">Linking to a job attributes the fuel cost directly to that job's profitability.</p>
                   </div>
                   <div className="flex gap-2 justify-end">
-                    <Button variant="outline" size="sm" onClick={() => setFuelOpen(false)}>Cancel</Button>
-                    <Button size="sm" onClick={handleAddFuel} disabled={createFuelLog.isPending}>Save</Button>
+                    <Button variant="outline" size="sm" disabled={createFuelLog.isPending} onClick={() => setFuelOpen(false)}>Cancel</Button>
+                    <Button size="sm" title="Save this fuel fill-up record" onClick={handleAddFuel} disabled={createFuelLog.isPending}>{createFuelLog.isPending ? 'Saving…' : 'Save'}</Button>
                   </div>
                 </CardContent>
               </Card>
             )}
             {fuelLogs && fuelLogs.length > 0 ? (
               <div className="space-y-2">
+                {(() => { const totalGal = fuelLogs.reduce((s, f) => s + (f.gallons ?? 0), 0); const totalCost = fuelLogs.reduce((s, f) => s + (f.cost ?? 0), 0); return totalGal > 0 ? <div className="flex items-center gap-3 px-3 py-2 bg-muted/50 rounded-lg text-sm"><span className="text-muted-foreground">Total:</span><span className="font-medium">{totalGal.toFixed(1)} gal</span><span className="font-medium">${totalCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div> : null; })()}
                 {fuelLogs.map(f => {
                   const linkedJob = f.jobId != null ? recentJobs.find(j => j.id === f.jobId) : null;
                   return (
                     <div key={f.id} className="rounded-lg border p-3 flex items-start gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-sm font-medium">{f.gallons} gal</p>
-                          <Badge variant="outline" className="text-xs">{fmt$(f.cost)}</Badge>
-                          {f.odometerReading != null && <span className="text-xs text-muted-foreground">@ {f.odometerReading} hrs</span>}
+                          <p className="text-sm font-medium" title={`${f.gallons} gallons`}>{f.gallons} gal</p>
+                          <Badge variant="outline" className="text-xs" title={`Fuel cost: ${fmt$(f.cost)}`}>{fmt$(f.cost)}</Badge>
+                          {f.odometerReading != null && <span className="text-xs text-muted-foreground" title={`Hour meter reading: ${f.odometerReading} hrs`}>@ {f.odometerReading} hrs</span>}
                           {f.jobId != null && (
                             <Badge variant="secondary" className="text-xs gap-1">
                               <Fuel className="w-3 h-3" />
@@ -713,10 +766,10 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
                             </Badge>
                           )}
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">{f.date}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5" title={f.date ? new Date(f.date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : undefined}>{f.date ? new Date(f.date + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</p>
                       </div>
                       {!isTechnician && (
-                        <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground hover:text-destructive shrink-0" onClick={() => handleDeleteFuel(f.id)}>
+                        <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground hover:text-destructive shrink-0 disabled:opacity-40" disabled={deleteFuelLog.isPending} onClick={() => handleDeleteFuel(f.id)}>
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       )}
@@ -731,7 +784,7 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
 
           {/* Maintenance Tasks tab — internal to-do queue linked to this equipment */}
           <TabsContent value="tasks" className="space-y-3 mt-4">
-            <Button size="sm" className="w-full gap-2" onClick={() => setTaskFormOpen(true)}>
+            <Button size="sm" title="Flag this equipment for repair or scheduled maintenance" className="w-full gap-2" onClick={() => setTaskFormOpen(true)}>
               <Plus className="w-4 h-4" /> Flag for Repair / Maintenance
             </Button>
             {equipmentTasks && equipmentTasks.length > 0 ? (
@@ -739,9 +792,9 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
                 {equipmentTasks.map(t => (
                   <div key={t.id} className="rounded-lg border p-3 space-y-2">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-medium flex-1 min-w-0 truncate">{t.title}</p>
-                      <Badge variant="outline" className={priorityBadgeClass(t.priority) + ' text-[10px]'}>{t.priority}</Badge>
-                      <Badge variant="outline" className={statusBadgeClass(t.status) + ' text-[10px]'}>{t.status.replace('_', ' ')}</Badge>
+                      <p className="text-sm font-medium flex-1 min-w-0 truncate" title={t.title}>{t.title}</p>
+                      <Badge variant="outline" className={priorityBadgeClass(t.priority) + ' text-[10px]'} title={`Priority: ${t.priority}`}>{t.priority}</Badge>
+                      <Badge variant="outline" className={statusBadgeClass(t.status) + ' text-[10px]'} title={`Status: ${t.status.replace('_', ' ')}`}>{t.status.replace('_', ' ')}</Badge>
                     </div>
                     {t.description && <p className="text-xs text-muted-foreground">{t.description}</p>}
                     <div className="flex items-center justify-between">
@@ -773,8 +826,8 @@ function EquipmentDetailPanel({ equipment, onClose }: { equipment: Equipment; on
                         : <RotateCcw className="w-3.5 h-3.5" />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium capitalize">{event.eventType}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
+                      <p className="text-sm font-medium capitalize" title={event.eventType.replace(/_/g, ' ')}>{event.eventType}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5" title={new Date(event.createdAt).toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}>
                         {event.performedByName ?? 'Unknown user'} · {new Date(event.createdAt).toLocaleString()}
                       </p>
                     </div>
@@ -941,6 +994,7 @@ export default function EquipmentPage() {
   const { isTechnician, isOwner } = useAuth();
 
   const [includeArchived, setIncludeArchived] = useState(false);
+  const [equipmentSearch, setEquipmentSearch] = useState('');
   const { data: equipment, isLoading } = useListEquipment(
     { includeArchived },
     { query: { queryKey: getListEquipmentQueryKey({ includeArchived }) } },
@@ -964,6 +1018,23 @@ export default function EquipmentPage() {
   // Reorder suggestion sheet state
   const [reorderEquipmentId, setReorderEquipmentId] = useState<number | null>(null);
   const reorderEquipment = equipment?.find(e => e.id === reorderEquipmentId) ?? null;
+
+  const [equipmentStatusFilter, setEquipmentStatusFilter] = useState<'all' | 'maintenance' | 'sell'>('all');
+  const [equipmentTypeFilter, setEquipmentTypeFilter] = useState('');
+  const [equipmentSort, setEquipmentSort] = useState<'name' | 'type' | 'age' | 'hours'>('name');
+
+  const filteredEquipment = (equipment ?? [])
+    .filter(e => !equipmentSearch.trim() || e.name.toLowerCase().includes(equipmentSearch.toLowerCase()) || (e.type ?? '').toLowerCase().includes(equipmentSearch.toLowerCase()))
+    .filter(e => !equipmentTypeFilter || (e.type ?? '') === equipmentTypeFilter)
+    .filter(e => equipmentStatusFilter === 'all' || (equipmentStatusFilter === 'maintenance' && e.maintenanceDue) || (equipmentStatusFilter === 'sell' && e.sellRecommended))
+    .sort((a, b) => {
+      if (equipmentSort === 'type') return (a.type ?? '').localeCompare(b.type ?? '');
+      if (equipmentSort === 'age') return new Date(a.purchaseDate ?? '9999').getTime() - new Date(b.purchaseDate ?? '9999').getTime();
+      if (equipmentSort === 'hours') return ((b as any).currentHours ?? 0) - ((a as any).currentHours ?? 0);
+      return a.name.localeCompare(b.name);
+    });
+
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string; action: 'archive' | 'delete' } | null>(null);
 
   const selectedEquipment = equipment?.find(e => e.id === selectedId) ?? null;
 
@@ -1015,27 +1086,37 @@ export default function EquipmentPage() {
   };
 
   const handleDelete = (id: number, name: string) => {
-    if (!window.confirm(`Archive "${name}"? It will be hidden from the active list, but its maintenance and fuel history will be kept.`)) return;
-    deleteEquipment.mutate({ id }, {
-      onSuccess: () => {
-        toast.success(`${name} archived`);
-        invalidateEquipmentLists(qc);
-        if (selectedId === id) setSelectedId(null);
-      },
-      onError: () => toast.error('Failed to archive equipment'),
-    });
+    setDeleteConfirm({ id, name, action: 'archive' });
   };
 
   const handleHardDelete = (id: number, name: string) => {
-    if (!window.confirm(`Permanently delete "${name}"? This cannot be undone and will remove all maintenance and fuel records.`)) return;
-    hardDeleteEquipment.mutate({ id }, {
-      onSuccess: () => {
-        toast.success(`${name} permanently deleted`);
-        invalidateEquipmentLists(qc);
-        if (selectedId === id) setSelectedId(null);
-      },
-      onError: () => toast.error('Failed to permanently delete equipment'),
-    });
+    setDeleteConfirm({ id, name, action: 'delete' });
+  };
+
+  const confirmEquipmentAction = () => {
+    if (!deleteConfirm) return;
+    const { id, name, action } = deleteConfirm;
+    if (action === 'archive') {
+      deleteEquipment.mutate({ id }, {
+        onSuccess: () => {
+          toast.success(`${name} archived`);
+          invalidateEquipmentLists(qc);
+          if (selectedId === id) setSelectedId(null);
+          setDeleteConfirm(null);
+        },
+        onError: () => toast.error('Failed to archive equipment'),
+      });
+    } else {
+      hardDeleteEquipment.mutate({ id }, {
+        onSuccess: () => {
+          toast.success(`${name} permanently deleted`);
+          invalidateEquipmentLists(qc);
+          if (selectedId === id) setSelectedId(null);
+          setDeleteConfirm(null);
+        },
+        onError: () => toast.error('Failed to permanently delete equipment'),
+      });
+    }
   };
 
   const handleRestore = (id: number, name: string) => {
@@ -1053,15 +1134,63 @@ export default function EquipmentPage() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Equipment</h1>
-          <p className="text-muted-foreground mt-1">Track operating costs, maintenance, and fuel for your fleet.</p>
+          <p className="text-muted-foreground mt-1">Track operating costs, maintenance, and fuel for your fleet.{(equipment?.length ?? 0) > 0 && <span className="ml-2 text-xs font-medium bg-muted px-1.5 py-0.5 rounded-full">{equipment?.length}</span>}</p>
         </div>
         <div className="flex items-center gap-3">
+          <div className="relative hidden sm:block">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+            <Input
+              value={equipmentSearch}
+              onChange={e => setEquipmentSearch(e.target.value)}
+              placeholder="Search equipment…"
+              title="Search by equipment name, make, or model"
+              className="h-9 text-sm pl-7 w-44"
+            />
+            {equipmentSearch && <button onClick={() => setEquipmentSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>}
+          </div>
+          <div className="flex items-center gap-1">
+            {(['all', 'maintenance', 'sell'] as const).map(s => (
+              <button
+                key={s}
+                title={s === 'all' ? 'Show all equipment' : s === 'maintenance' ? 'Show equipment flagged for maintenance' : 'Show equipment flagged to sell'}
+                className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${equipmentStatusFilter === s ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
+                onClick={() => setEquipmentStatusFilter(s)}
+              >
+                {s === 'all' ? 'All' : s === 'maintenance' ? `Maintenance (${maintenanceDueCount})` : `Sell (${sellCount})`}
+              </button>
+            ))}
+          </div>
+          {equipmentTypes.length > 0 && (
+            <select
+              value={equipmentTypeFilter}
+              onChange={e => setEquipmentTypeFilter(e.target.value)}
+              className="h-9 text-sm px-2.5 rounded-md border border-input bg-background"
+              title="Filter by type"
+            >
+              <option value="">All types</option>
+              {equipmentTypes.map((t: { id: number; label: string }) => (
+                <option key={t.id} value={t.label}>{t.label}</option>
+              ))}
+            </select>
+          )}
+          <select
+            value={equipmentSort}
+            onChange={e => setEquipmentSort(e.target.value as typeof equipmentSort)}
+            className="h-9 text-sm px-2.5 rounded-md border border-input bg-background"
+            title="Sort by"
+          >
+            <option value="name">Sort: Name</option>
+            <option value="type">Sort: Type</option>
+            <option value="age">Sort: Oldest first</option>
+            <option value="hours">Sort: Highest hours</option>
+          </select>
           <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
             <input
               type="checkbox"
+              title="Show archived (retired) equipment alongside active equipment"
               className="w-4 h-4 rounded border-input"
               checked={includeArchived}
               onChange={e => setIncludeArchived(e.target.checked)}
@@ -1077,7 +1206,7 @@ export default function EquipmentPage() {
             />
           )}
           {!isTechnician && (
-            <Button onClick={openCreate} className="gap-2">
+            <Button onClick={openCreate} className="gap-2" title="Add a new piece of equipment">
               <Plus className="w-4 h-4" /> Add Equipment
             </Button>
           )}
@@ -1121,6 +1250,7 @@ export default function EquipmentPage() {
                     {t.contextId != null && (
                       <button
                         type="button"
+                        title="Suggest a replacement equipment order for this concern"
                         onClick={() => setReorderEquipmentId(t.contextId!)}
                         className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded border border-amber-500/40 hover:bg-amber-500/20 transition-colors"
                       >
@@ -1152,11 +1282,14 @@ export default function EquipmentPage() {
                   <p className="font-semibold text-lg">No equipment yet</p>
                   <p className="text-muted-foreground text-sm mt-1">Add your first piece of equipment to start tracking costs.</p>
                 </div>
-                {!isTechnician && <Button onClick={openCreate} className="gap-2"><Plus className="w-4 h-4" /> Add Equipment</Button>}
+                {!isTechnician && <Button onClick={openCreate} className="gap-2" title="Add a new piece of equipment"><Plus className="w-4 h-4" /> Add Equipment</Button>}
               </CardContent>
             </Card>
           )}
-          {equipment?.map(item => {
+          {!isLoading && (equipment?.length ?? 0) > 0 && filteredEquipment.length < (equipment?.length ?? 0) && (
+            <p className="text-xs text-muted-foreground px-1">Showing {filteredEquipment.length} of {equipment?.length} items</p>
+          )}
+          {filteredEquipment.map(item => {
             const repairRatio = item.purchasePrice > 0 ? (item.totalRepairCost / item.purchasePrice) * 100 : 0;
             return (
               <Card
@@ -1171,10 +1304,10 @@ export default function EquipmentPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-semibold">{item.name}</p>
-                        <Badge variant="secondary" className="text-xs capitalize">{item.type}</Badge>
+                        <p className="font-semibold" title={item.name}>{item.name}</p>
+                        <Badge variant="secondary" className="text-xs capitalize cursor-pointer hover:bg-secondary/70" title={`Show only ${item.type} equipment`} onClick={e => { e.stopPropagation(); setEquipmentTypeFilter(item.type); }}>{item.type}</Badge>
                         {item.sellRecommended && (
-                          <Badge variant="destructive" className="text-xs gap-1">
+                          <Badge variant="destructive" className="text-xs gap-1" title="Recommended for sale or retirement">
                             <AlertTriangle className="w-3 h-3" /> Sell Rec.
                           </Badge>
                         )}
@@ -1196,18 +1329,36 @@ export default function EquipmentPage() {
                             <AlertCircle className="w-3 h-3" /> Service Soon
                           </Badge>
                         )}
+                        {!item.archivedAt && !item.maintenanceDue && (item as any).nextServiceDueDate && (
+                          <Badge variant="outline" className="text-xs gap-1 text-muted-foreground">
+                            <CalendarCheck2 className="w-3 h-3" /> Due {new Date((item as any).nextServiceDueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                          </Badge>
+                        )}
                       </div>
+                      {(item as any).notes && (
+                        <p className="text-xs text-muted-foreground mt-1.5 line-clamp-1">{(item as any).notes}</p>
+                      )}
                       <div className="flex items-center gap-4 mt-2 flex-wrap">
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground flex items-center gap-1" title={`Hour meter: ${fmtHours(item.currentHours)}`}>
                           <Clock className="w-3 h-3" /> {fmtHours(item.currentHours)}
                         </span>
+                        {(item as any).currentMileage != null && (item as any).currentMileage > 0 && (
+                          <span className="text-xs text-muted-foreground flex items-center gap-1" title={`Odometer: ${((item as any).currentMileage as number).toLocaleString()} miles`}>
+                            <Gauge className="w-3 h-3" /> {((item as any).currentMileage as number).toLocaleString()} mi
+                          </span>
+                        )}
+                        {(item as any).lastServicedAt && (
+                          <span className="text-xs text-muted-foreground flex items-center gap-1" title={`Last serviced: ${new Date((item as any).lastServicedAt).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`}>
+                            <CalendarCheck2 className="w-3 h-3" /> Last: {new Date((item as any).lastServicedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </span>
+                        )}
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <DollarSign className="w-3 h-3" /> CPH: {item.costPerHour != null ? fmt$(item.costPerHour) : '—'}
+                          <DollarSign className="w-3 h-3" /> <span title="Cost Per Hour = (purchase + repairs + fuel) ÷ total hours">CPH:</span> {item.costPerHour != null ? fmt$(item.costPerHour) : '—'}
                         </span>
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground flex items-center gap-1" title={`Total repair cost: ${fmt$(item.totalRepairCost)}`}>
                           <Wrench className="w-3 h-3" /> Repairs: {fmt$(item.totalRepairCost)}
                         </span>
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground flex items-center gap-1" title={`Total fuel cost: ${fmt$(item.totalFuelCost)}`}>
                           <Fuel className="w-3 h-3" /> Fuel: {fmt$(item.totalFuelCost)}
                         </span>
                       </div>
@@ -1215,7 +1366,7 @@ export default function EquipmentPage() {
                       {item.purchasePrice > 0 && (
                         <div className="mt-2">
                           <div className="flex items-center justify-between mb-0.5">
-                            <span className="text-[10px] text-muted-foreground">Repair cost vs purchase</span>
+                            <span className="text-[10px] text-muted-foreground" title={`Total repairs: ${fmt$(item.totalRepairCost)} vs purchase: ${fmt$(item.purchasePrice)}`}>Repair cost vs purchase</span>
                             <span className="text-[10px] text-muted-foreground">{Math.round(repairRatio)}%</span>
                           </div>
                           <div className="h-1.5 rounded-full bg-muted overflow-hidden">
@@ -1230,10 +1381,10 @@ export default function EquipmentPage() {
                     <div className="flex items-center gap-1 shrink-0">
                       {!isTechnician && !item.archivedAt && (
                         <>
-                          <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-primary" onClick={e => { e.stopPropagation(); openEdit(item); }}>
+                          <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-primary" title="Edit equipment" onClick={e => { e.stopPropagation(); openEdit(item); }}>
                             <Wrench className="w-3.5 h-3.5" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-destructive" onClick={e => { e.stopPropagation(); handleDelete(item.id, item.name); }}>
+                          <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-destructive" title="Archive equipment" onClick={e => { e.stopPropagation(); handleDelete(item.id, item.name); }}>
                             <Archive className="w-3.5 h-3.5" />
                           </Button>
                         </>
@@ -1260,7 +1411,7 @@ export default function EquipmentPage() {
         {/* Detail panel */}
         {selectedEquipment && (
           <div className="w-1/2 border rounded-xl bg-background overflow-hidden sticky top-0 max-h-[calc(100vh-12rem)]">
-            <EquipmentDetailPanel equipment={selectedEquipment} onClose={() => setSelectedId(null)} />
+            <EquipmentDetailPanel equipment={selectedEquipment} onClose={() => setSelectedId(null)} onEdit={() => openEdit(selectedEquipment)} />
           </div>
         )}
       </div>
@@ -1275,13 +1426,14 @@ export default function EquipmentPage() {
           <div className="space-y-4 overflow-y-auto max-h-[calc(100vh-10rem)] pb-6">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Name *</label>
-              <Input placeholder="e.g. Husqvarna 60&quot; Zero-Turn" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+              <Input title="Equipment name (e.g. make, model, and descriptor)" placeholder="e.g. Husqvarna 60&quot; Zero-Turn" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Type</label>
               {/* Combobox: shows tenant-defined types as suggestions, allows free-form entry */}
               <Input
                 list="equipment-type-options"
+                title="Equipment category — choose from saved types or enter a custom value"
                 placeholder="e.g. Mower"
                 value={form.type}
                 onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
@@ -1295,42 +1447,42 @@ export default function EquipmentPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Purchase Date</label>
-                <Input type="date" value={form.purchaseDate} onChange={e => setForm(f => ({ ...f, purchaseDate: e.target.value }))} />
+                <Input type="date" title="Date the equipment was purchased" max={new Date().toISOString().split('T')[0]} value={form.purchaseDate} onChange={e => setForm(f => ({ ...f, purchaseDate: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Purchase Price ($)</label>
-                <Input type="number" placeholder="0.00" value={form.purchasePrice} onChange={e => setForm(f => ({ ...f, purchasePrice: e.target.value }))} />
+                <Input type="number" title="Original purchase price in dollars — used for repair cost threshold calculations" placeholder="0.00" value={form.purchasePrice} onChange={e => setForm(f => ({ ...f, purchasePrice: e.target.value }))} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Expected Lifespan (yrs)</label>
-                <Input type="number" placeholder="10" value={form.expectedLifespanYears} onChange={e => setForm(f => ({ ...f, expectedLifespanYears: e.target.value }))} />
+                <Input type="number" title="Expected useful life in years — used to estimate resale value decline" placeholder="10" value={form.expectedLifespanYears} onChange={e => setForm(f => ({ ...f, expectedLifespanYears: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Expected Lifespan (hrs)</label>
-                <Input type="number" placeholder="2000" value={form.expectedLifespanHours} onChange={e => setForm(f => ({ ...f, expectedLifespanHours: e.target.value }))} />
+                <Input type="number" title="Expected useful life in engine hours — used for cost-per-hour projections" placeholder="2000" value={form.expectedLifespanHours} onChange={e => setForm(f => ({ ...f, expectedLifespanHours: e.target.value }))} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Current Hours</label>
-                <Input type="number" placeholder="0" value={form.currentHours} onChange={e => setForm(f => ({ ...f, currentHours: e.target.value }))} />
+                <Input type="number" title="Current engine hour-meter reading" placeholder="0" value={form.currentHours} onChange={e => setForm(f => ({ ...f, currentHours: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Current Miles (optional)</label>
-                <Input type="number" placeholder="0" value={form.currentMiles} onChange={e => setForm(f => ({ ...f, currentMiles: e.target.value }))} />
+                <Input type="number" title="Current odometer reading in miles (optional — for vehicles only)" placeholder="0" value={form.currentMiles} onChange={e => setForm(f => ({ ...f, currentMiles: e.target.value }))} />
               </div>
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Notes</label>
-              <Input placeholder="Any notes about this equipment" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+              <Input title="Free-form notes about this equipment (condition, quirks, storage location, etc.)" placeholder="Any notes about this equipment" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
             </div>
             <Separator />
             <div className="flex gap-3 justify-end">
-              <Button variant="outline" onClick={() => setFormOpen(false)}>Cancel</Button>
-              <Button onClick={handleSave} disabled={createEquipment.isPending || updateEquipment.isPending}>
-                {editingItem ? 'Save Changes' : 'Add Equipment'}
+              <Button variant="outline" title="Discard equipment form changes" onClick={() => setFormOpen(false)}>Cancel</Button>
+              <Button title={editingItem ? 'Save changes to this equipment record' : 'Add this equipment to the fleet'} onClick={handleSave} disabled={createEquipment.isPending || updateEquipment.isPending}>
+                {(createEquipment.isPending || updateEquipment.isPending) ? 'Saving…' : editingItem ? 'Save Changes' : 'Add Equipment'}
               </Button>
             </div>
           </div>
@@ -1344,6 +1496,43 @@ export default function EquipmentPage() {
         open={reorderEquipmentId != null}
         onClose={() => setReorderEquipmentId(null)}
       />
+
+      {/* Archive / Hard-delete Confirmation */}
+      {deleteConfirm != null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={() => setDeleteConfirm(null)}
+        >
+          <div
+            className="bg-card rounded-xl shadow-xl p-6 max-w-sm w-full mx-4 space-y-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <h2 className="text-base font-semibold">
+              {deleteConfirm.action === 'archive' ? 'Archive Equipment' : 'Permanently Delete Equipment'}
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              {deleteConfirm.action === 'archive'
+                ? `Archive "${deleteConfirm.name}"? It will be hidden from the active list but its history will be kept.`
+                : `Permanently delete "${deleteConfirm.name}"? This cannot be undone and will remove all maintenance and fuel records.`}
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                className="text-sm px-3 py-1.5 rounded-md border hover:bg-muted transition-colors"
+                onClick={() => setDeleteConfirm(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="text-sm px-3 py-1.5 rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
+                onClick={confirmEquipmentAction}
+                disabled={deleteEquipment.isPending || hardDeleteEquipment.isPending}
+              >
+                {(deleteEquipment.isPending || hardDeleteEquipment.isPending) ? (deleteConfirm.action === 'archive' ? 'Archiving…' : 'Deleting…') : (deleteConfirm.action === 'archive' ? 'Archive' : 'Delete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -117,7 +117,7 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" className="gap-2" disabled={exporting}>
+          <Button variant="outline" className="gap-2" title="Export data as CSV or Excel" disabled={exporting}>
             {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
             Export
           </Button>
@@ -128,11 +128,11 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Button variant="outline" className="gap-2" onClick={openWizard}>
+      <Button variant="outline" className="gap-2" title="Import records from a CSV or Excel file" onClick={openWizard}>
         <Upload className="w-4 h-4" /> Import
       </Button>
 
-      <Button variant="outline" className="gap-2" onClick={() => setHistoryOpen(true)}>
+      <Button variant="outline" className="gap-2" title="View previous import batches and undo them if needed" onClick={() => setHistoryOpen(true)}>
         <History className="w-4 h-4" /> Import History
       </Button>
 
@@ -209,7 +209,7 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
                             value={mapping[field.key] ?? '__none__'}
                             onValueChange={(v) => setMapping((m) => ({ ...m, [field.key]: v === '__none__' ? null : v }))}
                           >
-                            <SelectTrigger className="w-full">
+                            <SelectTrigger title="Choose which CSV column maps to this field" className="w-full">
                               <SelectValue placeholder="Not mapped" />
                             </SelectTrigger>
                             <SelectContent>
@@ -279,7 +279,7 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
 
               <p className="text-xs text-muted-foreground">
                 Import #{result.batchId} — made a mistake? Undo it anytime from{' '}
-                <button type="button" className="underline underline-offset-2" onClick={() => { setWizardOpen(false); setHistoryOpen(true); }}>
+                <button type="button" title="View all past imports and undo options" className="underline underline-offset-2" onClick={() => { setWizardOpen(false); setHistoryOpen(true); }}>
                   Import History
                 </button>.
               </p>
@@ -314,15 +314,15 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
           <DialogFooter>
             {step === 'mapping' && (
               <>
-                <Button variant="outline" onClick={() => setStep('upload')}>Back</Button>
-                <Button onClick={handleCommit} disabled={!requiredFieldsMapped || commitImport.isPending}>
+                <Button variant="outline" title="Go back to re-upload the file" onClick={() => setStep('upload')}>Back</Button>
+                <Button title="Commit the import using the current field mapping" onClick={handleCommit} disabled={!requiredFieldsMapped || commitImport.isPending}>
                   {commitImport.isPending && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
                   Import {preview?.totalRows} row{preview?.totalRows === 1 ? '' : 's'}
                 </Button>
               </>
             )}
             {step === 'result' && (
-              <Button onClick={() => setWizardOpen(false)}>Done</Button>
+              <Button title="Close this dialog" onClick={() => setWizardOpen(false)}>Done</Button>
             )}
           </DialogFooter>
         </DialogContent>

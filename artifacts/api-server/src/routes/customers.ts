@@ -5,6 +5,7 @@ import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { syncCustomerToMailchimp } from "../lib/mailchimpSync";
 import { isAdminRole } from "../lib/roles";
 import { getStripeClient } from "../lib/stripe";
+import { logger } from "../lib/logger";
 import {
   importUpload,
   handleExportRequest,
@@ -18,6 +19,16 @@ import {
 } from "../lib/importExport";
 
 const router: IRouter = Router();
+
+async function requireAdmin(req: import("express").Request, res: import("express").Response): Promise<boolean> {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  if (!(await isAdminRole(tenantId, userId))) {
+    res.status(403).json({ error: "Restricted to owner/office/department manager roles" });
+    return false;
+  }
+  return true;
+}
 
 // ---------------------------------------------------------------------------
 // Bulk import / export
@@ -260,6 +271,7 @@ function formatCustomer(
     propertyCount: extras?.propertyCount ?? 0,
     paymentStanding: extras?.paymentStanding ?? null,
     lastReminderFailure: extras?.lastReminderFailure ?? null,
+    hasPaymentMethod: !!c.stripeDefaultPaymentMethodId,
     createdAt: c.createdAt.toISOString(),
   };
 }
@@ -345,22 +357,28 @@ router.get("/customers", async (req, res): Promise<void> => {
     .limit(limitNum)
     .offset(offset);
 
-  const [propCounts, failureMap] = await Promise.all([
+  const [propCounts, failureMap, lastServiceRows] = await Promise.all([
     db
       .select({ customerId: propertiesTable.customerId, count: sql<number>`count(*)::int` })
       .from(propertiesTable)
       .where(eq(propertiesTable.tenantId, tenantId))
       .groupBy(propertiesTable.customerId),
     fetchLastReminderFailures(tenantId, rows.map(r => r.id)),
+    db
+      .select({ customerId: jobsTable.customerId, lastDate: sql<string>`max(${jobsTable.scheduledAt})` })
+      .from(jobsTable)
+      .where(and(eq(jobsTable.tenantId, tenantId), inArray(jobsTable.customerId, rows.map(r => r.id)), eq(jobsTable.status, 'completed')))
+      .groupBy(jobsTable.customerId),
   ]);
 
   const propMap = Object.fromEntries(propCounts.map(p => [p.customerId, p.count]));
+  const lastServiceMap = Object.fromEntries(lastServiceRows.map(r => [r.customerId, r.lastDate]));
 
   res.json({
-    items: rows.map(c => formatCustomer(c, {
+    items: rows.map(c => ({ ...formatCustomer(c, {
       propertyCount: propMap[c.id] ?? 0,
       lastReminderFailure: failureMap.get(c.id) ?? null,
-    })),
+    }), lastServiceDate: lastServiceMap[c.id] ?? null })),
     total: count,
     page: pageNum,
     limit: limitNum,
@@ -545,6 +563,40 @@ router.get("/customers/:id/payment-method", async (req, res): Promise<void> => {
   } catch {
     res.json({ paymentMethod: null });
   }
+});
+
+// Remove saved payment method from a customer
+router.delete("/customers/:id/payment-method", async (req, res): Promise<void> => {
+  if (!(await requireAdmin(req, res))) return;
+  const tenantId = getTenantId(req);
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+
+  const [customer] = await db.select().from(customersTable)
+    .where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)));
+  if (!customer) { res.status(404).json({ error: "Not found" }); return; }
+
+  if (!customer.stripeDefaultPaymentMethodId) {
+    res.status(400).json({ error: "Customer has no saved payment method" });
+    return;
+  }
+
+  // Attempt to detach from Stripe (best-effort; still clear our record even if Stripe fails)
+  const stripe = getStripeClient();
+  if (stripe) {
+    try {
+      await stripe.paymentMethods.detach(customer.stripeDefaultPaymentMethodId);
+    } catch (err) {
+      // Log but don't block — we'll still clear our reference
+      logger.warn({ err, customerId: id }, "Stripe detach failed; clearing local reference anyway");
+    }
+  }
+
+  await db.update(customersTable)
+    .set({ stripeDefaultPaymentMethodId: null })
+    .where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)));
+
+  res.json({ success: true });
 });
 
 // Property history — properties this customer previously owned

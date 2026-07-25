@@ -5,6 +5,7 @@ import {
   useResolveFollowupQueueItem,
   useAssignFollowupQueueItem,
   useListUsers, getListUsersQueryKey,
+  customFetch,
   type FollowupQueueItem,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -17,7 +18,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ListChecks, Phone, Mail, Voicemail, FileText, PhoneMissed, CheckCircle2, Clock, UserCircle2 } from 'lucide-react';
+import { ListChecks, Phone, Mail, Voicemail, FileText, PhoneMissed, CheckCircle2, Clock, UserCircle2, Search } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 
 const TRIGGER_META: Record<string, { label: string; icon: React.ElementType }> = {
@@ -44,6 +46,9 @@ export default function FollowupQueuePage() {
   const [triggerFilter, setTriggerFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'open' | 'resolved'>('open');
   const [assigneeFilter, setAssigneeFilter] = useState<'all' | 'me'>('all');
+  const [queueSearch, setQueueSearch] = useState('');
+  const [dueDateFrom, setDueDateFrom] = useState('');
+  const [dueDateTo, setDueDateTo] = useState('');
   const [selected, setSelected] = useState<FollowupQueueItem | null>(null);
 
   const params = {
@@ -56,9 +61,24 @@ export default function FollowupQueuePage() {
     query: { queryKey: getListFollowupQueueItemsQueryKey(params), refetchInterval: 60000 },
   });
 
+  const openCountParams = { ...(triggerFilter !== 'all' ? { triggerType: triggerFilter } : {}), status: 'open' as const, ...(assigneeFilter === 'me' ? { assignedToUserId: 'me' } : {}) };
+  const resolvedCountParams = { ...(triggerFilter !== 'all' ? { triggerType: triggerFilter } : {}), status: 'resolved' as const, ...(assigneeFilter === 'me' ? { assignedToUserId: 'me' } : {}) };
+  const { data: openItems = [] } = useListFollowupQueueItems(openCountParams, { query: { queryKey: getListFollowupQueueItemsQueryKey(openCountParams), refetchInterval: 60000 } });
+  const { data: resolvedItems = [] } = useListFollowupQueueItems(resolvedCountParams, { query: { queryKey: getListFollowupQueueItemsQueryKey(resolvedCountParams), refetchInterval: 60000 } });
+
   const { data: users = [] } = useListUsers({ query: { queryKey: getListUsersQueryKey() } });
 
-  const sorted = useMemo(() => [...items].sort((a, b) => b.ageDays - a.ageDays), [items]);
+  const sorted = useMemo(() => {
+    let filtered = queueSearch.trim()
+      ? items.filter(i =>
+          (i.customerName ?? '').toLowerCase().includes(queueSearch.toLowerCase()) ||
+          triggerLabel(i.triggerType).toLowerCase().includes(queueSearch.toLowerCase()),
+        )
+      : items;
+    if (dueDateFrom) filtered = filtered.filter(i => !(i as any).dueDate || (i as any).dueDate >= dueDateFrom);
+    if (dueDateTo) filtered = filtered.filter(i => !(i as any).dueDate || (i as any).dueDate <= dueDateTo);
+    return [...filtered].sort((a, b) => b.ageDays - a.ageDays);
+  }, [items, queueSearch, dueDateFrom, dueDateTo]);
 
   const handleAssigned = (item: FollowupQueueItem) => {
     // Refresh selected item if it's the one being updated
@@ -76,6 +96,15 @@ export default function FollowupQueuePage() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+            <Input
+              value={queueSearch}
+              onChange={e => setQueueSearch(e.target.value)}
+              placeholder="Search customers…"
+              className="h-9 text-sm pl-7 w-44"
+            />
+          </div>
           <Select value={assigneeFilter} onValueChange={v => setAssigneeFilter(v as 'all' | 'me')}>
             <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -99,7 +128,29 @@ export default function FollowupQueuePage() {
               <SelectItem value="resolved">Resolved</SelectItem>
             </SelectContent>
           </Select>
+          <Input type="date" value={dueDateFrom} onChange={e => setDueDateFrom(e.target.value)} className="h-9 w-36 text-sm" title="Due date from" />
+          <Input type="date" value={dueDateTo} onChange={e => setDueDateTo(e.target.value)} className="h-9 w-36 text-sm" title="Due date to" />
+          {(dueDateFrom || dueDateTo) && (
+            <button className="text-xs text-muted-foreground hover:text-foreground underline" onClick={() => { setDueDateFrom(''); setDueDateTo(''); }}>Clear dates</button>
+          )}
         </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <button
+          className={`rounded-lg border p-4 text-left transition-all ${statusFilter === 'open' ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/20 ring-1 ring-amber-400' : 'hover:bg-muted/50'}`}
+          onClick={() => setStatusFilter('open')}
+        >
+          <div className="text-2xl font-bold text-amber-600">{openItems.length}</div>
+          <div className="text-sm text-muted-foreground">Open Items</div>
+        </button>
+        <button
+          className={`rounded-lg border p-4 text-left transition-all ${statusFilter === 'resolved' ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 ring-1 ring-emerald-400' : 'hover:bg-muted/50'}`}
+          onClick={() => setStatusFilter('resolved')}
+        >
+          <div className="text-2xl font-bold text-emerald-600">{resolvedItems.length}</div>
+          <div className="text-sm text-muted-foreground">Resolved</div>
+        </button>
       </div>
 
       <Card>
@@ -112,7 +163,9 @@ export default function FollowupQueuePage() {
         <CardContent>
           {sorted.length === 0 ? (
             <p className="text-sm text-muted-foreground py-10 text-center">
-              {statusFilter === 'open' ? 'Nothing needs follow-up right now.' : 'No resolved items yet.'}
+              {queueSearch.trim()
+                ? 'No items match your search.'
+                : statusFilter === 'open' ? 'Nothing needs follow-up right now.' : 'No resolved items yet.'}
             </p>
           ) : (
             <Table>
@@ -123,7 +176,7 @@ export default function FollowupQueuePage() {
                   <TableHead>Reason</TableHead>
                   <TableHead>Priority</TableHead>
                   <TableHead>Assigned to</TableHead>
-                  <TableHead>Age</TableHead>
+                  <TableHead>{statusFilter === 'resolved' ? 'Resolved' : 'Age'}</TableHead>
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
@@ -144,22 +197,59 @@ export default function FollowupQueuePage() {
                         <Badge variant="outline" className={priorityBadgeClass(item.priority) + ' text-[10px]'}>{item.priority}</Badge>
                       </TableCell>
                       <TableCell onClick={e => e.stopPropagation()}>
-                        <InlineAssignSelect
-                          item={item}
-                          users={users}
-                          currentUserId={user?.id}
-                          onAssigned={handleAssigned}
-                        />
+                        {item.status === 'resolved' ? (
+                          <span className="text-sm text-muted-foreground">{item.assignedToUserName ?? '—'}</span>
+                        ) : (
+                          <InlineAssignSelect
+                            item={item}
+                            users={users}
+                            currentUserId={user?.id}
+                            onAssigned={handleAssigned}
+                          />
+                        )}
                       </TableCell>
                       <TableCell>
-                        <span className="inline-flex items-center gap-1 text-sm">
-                          <Clock className="w-3.5 h-3.5 text-muted-foreground" /> {item.ageDays}d
-                        </span>
+                        {statusFilter === 'resolved' && item.resolvedAt ? (
+                          <div className="space-y-0.5">
+                            <span className="inline-flex items-center gap-1 text-sm text-emerald-600">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> {new Date(item.resolvedAt).toLocaleDateString()}
+                            </span>
+                            {item.resolvedByUserId && (
+                              <p className="text-xs text-muted-foreground">
+                                by {users?.find(u => u.id === item.resolvedByUserId)?.name ?? `#${item.resolvedByUserId}`}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-sm">
+                            <Clock className="w-3.5 h-3.5 text-muted-foreground" /> {item.ageDays}d
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setSelected(item); }}>
-                          {item.status === 'open' ? 'Handle' : 'View'}
-                        </Button>
+                        <div className="flex items-center gap-1.5 justify-end">
+                          {item.status === 'open' && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-emerald-600 hover:bg-emerald-50"
+                              title="Quick close"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  await customFetch(`/api/followup-queue/${item.id}/resolve`, { method: 'POST', body: JSON.stringify({ notes: 'Closed' }) });
+                                  qc.invalidateQueries({ queryKey: getListFollowupQueueItemsQueryKey(params) });
+                                  toast.success('Closed');
+                                } catch { toast.error('Failed to close'); }
+                              }}
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                            </Button>
+                          )}
+                          <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setSelected(item); }}>
+                            {item.status === 'open' ? 'Handle' : 'View'}
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );

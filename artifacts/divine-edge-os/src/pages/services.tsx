@@ -101,6 +101,7 @@ function TierRow({
       <Input
         type="number"
         min={0}
+        title="Minimum property area (sq ft) for this pricing tier"
         placeholder="From sqft"
         value={tier.minSqft === 0 && index === 0 ? '0' : String(tier.minSqft || '')}
         onChange={e => onChange({ ...tier, minSqft: parseFloat(e.target.value) || 0 })}
@@ -113,6 +114,7 @@ function TierRow({
         <Input
           type="number"
           min={0}
+          title="Maximum property area (sq ft) for this tier — leave blank to make it open-ended"
           placeholder="Up to sqft"
           value={tier.maxSqft != null ? String(tier.maxSqft) : ''}
           onChange={e => {
@@ -124,26 +126,21 @@ function TierRow({
       )}
       {isOpenEnded ? (
         <div className="flex items-center gap-1 flex-1">
-          <span className="text-xs text-muted-foreground shrink-0">$/sqft</span>
+          <span className="text-xs text-muted-foreground shrink-0">$</span>
           <Input
             type="number"
             min={0}
             step="0.001"
+            title="Per square foot rate for properties larger than the min sqft of this open-ended tier"
             placeholder="0.000"
             value={tier.perSqftRate != null ? String(tier.perSqftRate) : ''}
-            onChange={e => onChange({ ...tier, perSqftRate: parseFloat(e.target.value) || undefined })}
+            onChange={e => {
+              const v = e.target.value;
+              onChange({ ...tier, perSqftRate: v === '' ? undefined : parseFloat(v) });
+            }}
             className="flex-1 text-sm"
           />
-          <span className="text-xs text-muted-foreground shrink-0">or flat $</span>
-          <Input
-            type="number"
-            min={0}
-            step="0.01"
-            placeholder="0.00"
-            value={String(tier.price || '')}
-            onChange={e => onChange({ ...tier, price: parseFloat(e.target.value) || 0 })}
-            className="flex-1 text-sm"
-          />
+          <span className="text-xs text-muted-foreground shrink-0 whitespace-nowrap">per sq ft</span>
         </div>
       ) : (
         <div className="flex items-center gap-1 flex-1">
@@ -152,6 +149,7 @@ function TierRow({
             type="number"
             min={0}
             step="0.01"
+            title="Flat price charged for properties within this sqft tier"
             placeholder="0.00"
             value={String(tier.price || '')}
             onChange={e => onChange({ ...tier, price: parseFloat(e.target.value) || 0 })}
@@ -434,7 +432,7 @@ export default function ServicesPage() {
           <p className="text-muted-foreground mt-1">Define the services your company offers and their pricing.</p>
         </div>
         {canManageOffice && (
-          <Button className="gap-2" onClick={openCreate}>
+          <Button className="gap-2" title="Create a new service offered by this business" onClick={openCreate}>
             <Plus className="w-4 h-4" /> Add Service
           </Button>
         )}
@@ -484,6 +482,7 @@ export default function ServicesPage() {
             <div className="relative max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
+                title="Search services by name, category, or description"
                 placeholder="Search services..."
                 className="pl-9"
                 value={search}
@@ -520,30 +519,30 @@ export default function ServicesPage() {
                   <TableRow key={s.id} className={`hover:bg-muted/50 ${!s.isActive ? 'opacity-60' : ''}`}>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <span className="font-medium">{s.name}</span>
+                        <span className="font-medium" title={s.name}>{s.name}</span>
                         {s.pricingMode === 'matrix' && (
                           <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1 text-violet-600 border-violet-300 bg-violet-50">
                             <Grid3X3 className="w-2.5 h-2.5" /> matrix
                           </Badge>
                         )}
                       </div>
-                      {s.description && <div className="text-xs text-muted-foreground truncate max-w-xs mt-0.5">{s.description}</div>}
+                      {s.description && <div className="text-xs text-muted-foreground truncate max-w-xs mt-0.5" title={s.description}>{s.description}</div>}
                     </TableCell>
                     <TableCell>
-                      {s.category ? <Badge variant="outline">{s.category}</Badge> : <span className="text-muted-foreground text-sm">—</span>}
+                      {s.category ? <Badge variant="outline" title={`Category: ${s.category}`}>{s.category}</Badge> : <span className="text-muted-foreground text-sm">—</span>}
                     </TableCell>
                     <TableCell className="text-right font-medium">
                       {s.pricingMode === 'matrix' ? (
-                        <span className="text-xs text-violet-600 font-medium">
+                        <span className="text-xs text-violet-600 font-medium" title={`Area-based matrix pricing — ${Array.isArray(s.pricingMatrix) ? s.pricingMatrix.length : 0} sqft tier(s)`}>
                           {Array.isArray(s.pricingMatrix) ? `${s.pricingMatrix.length} tier${s.pricingMatrix.length !== 1 ? 's' : ''}` : 'matrix'}
                         </span>
                       ) : (
-                        `$${s.basePrice.toFixed(2)}`
+                        <span title={`Base price: $${s.basePrice.toFixed(2)}`}>${s.basePrice.toFixed(2)}</span>
                       )}
                     </TableCell>
                     <TableCell className="text-right text-sm text-muted-foreground">
                       {s.estimatedDuration != null ? (
-                        <span className="flex items-center justify-end gap-1">
+                        <span className="flex items-center justify-end gap-1" title={`Estimated duration: ${s.estimatedDuration} minutes`}>
                           <Clock className="w-3.5 h-3.5" />
                           {s.estimatedDuration >= 60
                             ? `${Math.floor(s.estimatedDuration / 60)}h ${s.estimatedDuration % 60 > 0 ? `${s.estimatedDuration % 60}m` : ''}`
@@ -553,11 +552,11 @@ export default function ServicesPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       {s.p4pPercentage != null ? (
-                        <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded font-medium">
+                        <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded font-medium" title={`Service-specific P4P rate: ${s.p4pPercentage}%`}>
                           {s.p4pPercentage}%
                         </span>
                       ) : (
-                        <span className="text-xs text-muted-foreground">Global ({globalP4pRate}%)</span>
+                        <span className="text-xs text-muted-foreground" title={`Using global P4P rate: ${globalP4pRate}%`}>Global ({globalP4pRate}%)</span>
                       )}
                     </TableCell>
                     <TableCell>
@@ -571,7 +570,7 @@ export default function ServicesPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-center">
-                      <Badge variant={s.isActive ? 'default' : 'secondary'} className={s.isActive ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : ''}>
+                      <Badge variant={s.isActive ? 'default' : 'secondary'} title={s.isActive ? 'Service is active and available for scheduling' : 'Service is inactive and hidden from scheduling'} className={s.isActive ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : ''}>
                         {s.isActive ? 'Active' : 'Inactive'}
                       </Badge>
                     </TableCell>
@@ -606,6 +605,7 @@ export default function ServicesPage() {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Service Name <span className="text-destructive">*</span></label>
               <Input
+                title="Name of this service as it appears on jobs, estimates, and invoices"
                 placeholder="e.g. Full Lawn Service"
                 value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -615,6 +615,7 @@ export default function ServicesPage() {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Category</label>
               <Input
+                title="Optional grouping category for filtering and reporting"
                 placeholder="e.g. Landscaping, Irrigation"
                 value={form.category}
                 onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
@@ -624,6 +625,7 @@ export default function ServicesPage() {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Description</label>
               <Textarea
+                title="Description shown to customers on estimates and invoices"
                 placeholder="What does this service include?"
                 rows={3}
                 value={form.description}
@@ -658,6 +660,7 @@ export default function ServicesPage() {
                     <Input
                       type="number"
                       step="0.01"
+                      title="Base price charged for this service (before any markup or area-based adjustments)"
                       placeholder="0.00"
                       value={form.basePrice}
                       onChange={e => setForm(f => ({ ...f, basePrice: e.target.value }))}
@@ -668,6 +671,7 @@ export default function ServicesPage() {
                     <Input
                       type="number"
                       min={0}
+                      title="Estimated duration for this service in minutes"
                       placeholder="e.g. 60"
                       value={form.estimatedDuration}
                       onChange={e => setForm(f => ({ ...f, estimatedDuration: e.target.value }))}
@@ -724,7 +728,7 @@ export default function ServicesPage() {
                       value={form.linkedZoneTypeId || '__none__'}
                       onValueChange={v => setForm(f => ({ ...f, linkedZoneTypeId: v === '__none__' ? '' : v }))}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger title="Tie this service to a specific zone type so the area is auto-selected from satellite measurements">
                         <SelectValue placeholder="Auto-select from satellite zones…" />
                       </SelectTrigger>
                       <SelectContent>
@@ -750,6 +754,7 @@ export default function ServicesPage() {
                     <Input
                       type="number"
                       min={0}
+                      title="Estimated duration for this service in minutes"
                       placeholder="e.g. 60"
                       value={form.estimatedDuration}
                       onChange={e => setForm(f => ({ ...f, estimatedDuration: e.target.value }))}
@@ -764,6 +769,7 @@ export default function ServicesPage() {
               <Input
                 type="number"
                 step="0.1"
+                title="P4P payout percentage for this service specifically — overrides the global rate when set"
                 placeholder={`Leave blank to use global (${globalP4pRate}%)`}
                 value={form.p4pPercentage}
                 onChange={e => setForm(f => ({ ...f, p4pPercentage: e.target.value }))}
@@ -788,6 +794,7 @@ export default function ServicesPage() {
                   </p>
                 </div>
                 <Switch
+                  title={form.offSeasonEnabled ? 'Off-season pause is on — click to disable' : 'Enable an annual date window when jobs for this service are skipped'}
                   checked={form.offSeasonEnabled}
                   onCheckedChange={v => setForm(f => ({ ...f, offSeasonEnabled: v }))}
                 />
@@ -824,6 +831,7 @@ export default function ServicesPage() {
                 <p className="text-xs text-muted-foreground">Inactive services are hidden from scheduling.</p>
               </div>
               <Switch
+                title={form.isActive ? 'Service is active — click to deactivate (hides from scheduling)' : 'Service is inactive — click to re-activate'}
                 checked={form.isActive}
                 onCheckedChange={v => setForm(f => ({ ...f, isActive: v }))}
               />

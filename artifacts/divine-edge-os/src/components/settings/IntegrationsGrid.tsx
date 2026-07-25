@@ -80,9 +80,9 @@ export default function IntegrationsGrid() {
                   </div>
                 </div>
                 <div className="flex flex-col gap-1.5 items-end">
-                  <Button size="sm" variant="outline" onClick={() => setOpenName(i.name)}>Configure</Button>
+                  <Button size="sm" variant="outline" title={`Configure ${i.displayName || i.name} integration`} onClick={() => setOpenName(i.name)}>Configure</Button>
                   {i.name === 'bank' && i.connected && (
-                    <Button size="sm" variant="ghost" className="text-xs" onClick={() => setBankTxnOpen(true)}>View transactions</Button>
+                    <Button size="sm" variant="ghost" className="text-xs" title="View recent bank transactions" onClick={() => setBankTxnOpen(true)}>View transactions</Button>
                   )}
                 </div>
               </div>

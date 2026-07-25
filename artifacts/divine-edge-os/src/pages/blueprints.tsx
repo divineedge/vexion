@@ -45,6 +45,7 @@ export default function BlueprintsPage() {
   const { data: blueprints, isLoading } = useListBlueprints(undefined, { query: { queryKey: getListBlueprintsQueryKey() } });
 
   // New Blueprint dialog
+  const [bpSearch, setBpSearch] = useState('');
   const [newBpOpen, setNewBpOpen] = useState(false);
   const [newBpName, setNewBpName] = useState('');
   const [newBpMode, setNewBpMode] = useState<BlueprintInputMode>('landscape');
@@ -339,8 +340,9 @@ export default function BlueprintsPage() {
   };
 
   // All blueprints (non-templates shown in main list, but user can tab); archived excluded
-  const instanceBlueprints = (blueprints ?? []).filter(bp => !(bp as any).isTemplate && !(bp as any).isArchived);
-  const templateBlueprints = (blueprints ?? []).filter(bp => (bp as any).isTemplate && !(bp as any).isArchived);
+  const bpQ = bpSearch.trim().toLowerCase();
+  const instanceBlueprints = (blueprints ?? []).filter(bp => !(bp as any).isTemplate && !(bp as any).isArchived && (!bpQ || bp.name.toLowerCase().includes(bpQ) || (bp as any).propertyAddress?.toLowerCase().includes(bpQ) || (bp as any).customerName?.toLowerCase().includes(bpQ)));
+  const templateBlueprints = (blueprints ?? []).filter(bp => (bp as any).isTemplate && !(bp as any).isArchived && (!bpQ || bp.name.toLowerCase().includes(bpQ)));
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -350,26 +352,36 @@ export default function BlueprintsPage() {
           <p className="text-muted-foreground mt-1">Interactive schematics and material estimation. Set a per-service P4P rate on each blueprint.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" className="gap-2" onClick={() => setTemplateBrowserOpen(true)}>
+          <Button variant="outline" title="Browse pre-built blueprint templates for irrigation or landscape" className="gap-2" onClick={() => setTemplateBrowserOpen(true)}>
             <Library className="w-4 h-4" /> Browse Templates
           </Button>
-          <Button variant="outline" className="gap-2" onClick={() => setAiDialogOpen(true)}>
+          <Button variant="outline" title="Generate a blueprint automatically using AI based on a description" className="gap-2" onClick={() => setAiDialogOpen(true)}>
             <Wand2 className="w-4 h-4" /> Generate with AI
           </Button>
-          <Button variant="outline" className="gap-2" onClick={() => setPdfUploadOpen(true)}>
+          <Button variant="outline" title="Upload a PDF to use as a blueprint background or reference" className="gap-2" onClick={() => setPdfUploadOpen(true)}>
             <Upload className="w-4 h-4" /> Upload PDF
           </Button>
-          <Button className="gap-2" onClick={() => setNewBpOpen(true)}>
+          <Button title="Create a new blank blueprint" className="gap-2" onClick={() => setNewBpOpen(true)}>
             <Plus className="w-4 h-4" /> New Blueprint
           </Button>
         </div>
       </div>
 
       <Tabs defaultValue="instances">
-        <TabsList>
-          <TabsTrigger value="instances">Blueprints ({instanceBlueprints.length})</TabsTrigger>
-          <TabsTrigger value="templates">Templates ({templateBlueprints.length})</TabsTrigger>
-        </TabsList>
+        <div className="flex items-center gap-3 mb-2">
+          <TabsList>
+            <TabsTrigger value="instances">Blueprints ({instanceBlueprints.length})</TabsTrigger>
+            <TabsTrigger value="templates">Templates ({templateBlueprints.length})</TabsTrigger>
+          </TabsList>
+          <input
+            type="text"
+            title="Search blueprints by name, property address, or customer name"
+            placeholder="Search by name, property or customer…"
+            value={bpSearch}
+            onChange={e => setBpSearch(e.target.value)}
+            className="flex-1 h-9 rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          />
+        </div>
 
         {/* ── Instance blueprints ── */}
         <TabsContent value="instances" className="mt-4">
@@ -588,12 +600,12 @@ export default function BlueprintsPage() {
           <div className="space-y-4">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Name <span className="text-destructive">*</span></label>
-              <Input value={newBpName} onChange={e => setNewBpName(e.target.value)} placeholder="e.g. Smith Front Yard Irrigation" onKeyDown={e => { if (e.key === 'Enter') handleCreateBlueprint(); }} />
+              <Input title="Blueprint name" value={newBpName} onChange={e => setNewBpName(e.target.value)} placeholder="e.g. Smith Front Yard Irrigation" onKeyDown={e => { if (e.key === 'Enter') handleCreateBlueprint(); }} />
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Type</label>
               <Select value={newBpMode} onValueChange={v => setNewBpMode(v as BlueprintInputMode)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger title="Blueprint type (landscape, irrigation, concrete, or general)"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="landscape">Landscape</SelectItem>
                   <SelectItem value="irrigation">Irrigation</SelectItem>
@@ -605,7 +617,7 @@ export default function BlueprintsPage() {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Property (optional)</label>
               <Select value={newBpPropertyId || '__none__'} onValueChange={v => setNewBpPropertyId(v === '__none__' ? '' : v)}>
-                <SelectTrigger><SelectValue placeholder="Link to a property" /></SelectTrigger>
+                <SelectTrigger title="Optionally link this blueprint to a customer property"><SelectValue placeholder="Link to a property" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">No property</SelectItem>
                   {properties?.map(p => (<SelectItem key={p.id} value={String(p.id)}>{p.address}</SelectItem>))}
@@ -618,7 +630,7 @@ export default function BlueprintsPage() {
                   <p className="text-sm font-medium">Save as reusable template</p>
                   <p className="text-xs text-muted-foreground">Templates can be applied to any job/property later.</p>
                 </div>
-                <Switch checked={newBpIsTemplate} onCheckedChange={setNewBpIsTemplate} />
+                <Switch title={newBpIsTemplate ? 'Will be saved as a reusable template — click to save as a property-specific blueprint instead' : 'Will be saved as a property-specific blueprint — click to save as a reusable template instead'} checked={newBpIsTemplate} onCheckedChange={setNewBpIsTemplate} />
               </div>
             )}
           </div>
@@ -666,7 +678,7 @@ export default function BlueprintsPage() {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Property (optional)</label>
               <Select value={pdfPropertyId || '__none__'} onValueChange={v => setPdfPropertyId(v === '__none__' ? '' : v)}>
-                <SelectTrigger><SelectValue placeholder="Link to a property" /></SelectTrigger>
+                <SelectTrigger title="Optionally link this blueprint to a customer property"><SelectValue placeholder="Link to a property" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">No property</SelectItem>
                   {pdfProperties?.map(p => (<SelectItem key={p.id} value={String(p.id)}>{p.address}</SelectItem>))}
@@ -723,7 +735,7 @@ export default function BlueprintsPage() {
           <div className="space-y-3 py-2">
             <label className="text-sm font-medium">Property (optional)</label>
             <Select value={applyPropertyId || '__none__'} onValueChange={v => setApplyPropertyId(v === '__none__' ? '' : v)}>
-              <SelectTrigger><SelectValue placeholder="Link to a property" /></SelectTrigger>
+              <SelectTrigger title="Optionally link this blueprint instance to a customer property"><SelectValue placeholder="Link to a property" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">No property</SelectItem>
                 {applyProperties?.map(p => (<SelectItem key={p.id} value={String(p.id)}>{p.address}</SelectItem>))}
@@ -752,6 +764,7 @@ export default function BlueprintsPage() {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Description <span className="text-destructive">*</span></label>
               <Textarea
+                title="Describe the layout you want — include shapes, zones, beds, paths, or coverage areas"
                 value={aiDescription}
                 onChange={e => setAiDescription(e.target.value)}
                 placeholder="e.g. Front lawn with two flower beds and a walkway, backyard with shrubs along the fence"
@@ -761,7 +774,7 @@ export default function BlueprintsPage() {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Blueprint Type</label>
               <Select value={aiMode} onValueChange={v => setAiMode(v as BlueprintInputMode)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger title="Blueprint type the AI should generate (landscape, irrigation, concrete, or general)"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="landscape">Landscape</SelectItem>
                   <SelectItem value="irrigation">Irrigation</SelectItem>
@@ -773,7 +786,7 @@ export default function BlueprintsPage() {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Property (optional)</label>
               <Select value={aiPropertyId || '__none__'} onValueChange={v => setAiPropertyId(v === '__none__' ? '' : v)}>
-                <SelectTrigger><SelectValue placeholder="Link to a property" /></SelectTrigger>
+                <SelectTrigger title="Optionally link this AI-generated blueprint to a customer property"><SelectValue placeholder="Link to a property" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">No property</SelectItem>
                   {aiProperties?.map(p => (<SelectItem key={p.id} value={String(p.id)}>{p.address}</SelectItem>))}
@@ -783,7 +796,7 @@ export default function BlueprintsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAiDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleGenerateAi} disabled={generateAi.isPending} className="gap-2">
+            <Button title="Generate a starter blueprint layout from the description" onClick={handleGenerateAi} disabled={generateAi.isPending} className="gap-2">
               <Wand2 className="w-4 h-4" />
               {generateAi.isPending ? 'Generating...' : 'Generate Layout'}
             </Button>
@@ -933,6 +946,13 @@ function BlueprintCard({ bp, globalPct, p4pEditing, p4pOpen, setP4pEditing, setP
           </div>
         )}
 
+        {((bp as any).customerName || (bp as any).propertyAddress) && (
+          <p className="text-xs text-muted-foreground truncate">
+            {(bp as any).customerName && <span>{(bp as any).customerName}</span>}
+            {(bp as any).customerName && (bp as any).propertyAddress && <span> · </span>}
+            {(bp as any).propertyAddress && <span>{(bp as any).propertyAddress}</span>}
+          </p>
+        )}
         <p className="text-xs text-muted-foreground mt-auto">
           Created {format(new Date(bp.createdAt), 'MMM d, yyyy')}
         </p>
@@ -943,7 +963,7 @@ function BlueprintCard({ bp, globalPct, p4pEditing, p4pOpen, setP4pEditing, setP
 
         {/* Materials breakdown — the parts list the last estimate was computed from, viewable outside the editor */}
         {bp.lastEstimate && (
-          <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs h-7 mt-1"
+          <Button size="sm" variant="outline" title="View the parts and materials calculated in the last estimate run" className="w-full gap-1.5 text-xs h-7 mt-1"
             onClick={e => { e.stopPropagation(); setEstimateViewBp(bp); setEstimateViewOpen(true); }}>
             <Calculator className="w-3 h-3" /> View Materials Breakdown
           </Button>
@@ -951,7 +971,7 @@ function BlueprintCard({ bp, globalPct, p4pEditing, p4pOpen, setP4pEditing, setP
 
         {/* Suggested Parts button */}
         {canManageOffice && (
-          <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs h-7 mt-1"
+          <Button size="sm" variant="outline" title="AI-suggested parts and materials for this blueprint" className="w-full gap-1.5 text-xs h-7 mt-1"
             onClick={e => { e.stopPropagation(); setSuggestedPartsBpId(bp.id); setSuggestedPartsOpen(true); }}>
             <Package className="w-3 h-3" /> Suggested Parts
           </Button>
@@ -995,7 +1015,7 @@ function BlueprintCard({ bp, globalPct, p4pEditing, p4pOpen, setP4pEditing, setP
               }}
             >
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-6 text-xs px-2">
+                <Button variant="ghost" size="sm" title={hasOverride ? 'Edit the P4P percentage override for this service on this blueprint' : 'Set a P4P percentage override for this service on this blueprint'} className="h-6 text-xs px-2">
                   {hasOverride ? 'Edit' : 'Set rate'}
                 </Button>
               </PopoverTrigger>

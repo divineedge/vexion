@@ -11363,6 +11363,8 @@ components:
           type: ["string", "null"]
         totalAmount:
           type: number
+        assignedToName:
+          type: ["string", "null"]
 
     PortalInvoice:
       type: object

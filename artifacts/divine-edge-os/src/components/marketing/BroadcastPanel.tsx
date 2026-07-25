@@ -15,7 +15,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { MessageSquare, Mail, Users, Send, Loader2, Clock, X, Pencil, Check } from 'lucide-react';
+import { MessageSquare, Mail, Users, Send, Loader2, Clock, X, Pencil, Check, Copy } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface Campaign {
@@ -49,7 +49,9 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
   const [sendMode, setSendMode] = useState<'now' | 'later'>('now');
   const [scheduledFor, setScheduledFor] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [estimatedCount, setEstimatedCount] = useState<number | null>(null);
   const [selectedBroadcastId, setSelectedBroadcastId] = useState<number | null>(null);
+  const [historyFilter, setHistoryFilter] = useState<string>('all');
   const [editMode, setEditMode] = useState(false);
   const [editBody, setEditBody] = useState('');
   const [editSubject, setEditSubject] = useState('');
@@ -72,7 +74,14 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
     mutation: {
       onSuccess: (data) => {
         const isScheduled = data.status === 'scheduled';
-        toast.success(isScheduled ? 'Broadcast scheduled' : 'Broadcast is sending');
+        const stats = (data as any).stats as { sent?: number; failed?: number } | null;
+        if (!isScheduled && stats && (stats.failed ?? 0) > 0 && (stats.sent ?? 0) > 0) {
+          toast.warning(`Broadcast partially failed — ${stats.sent} sent, ${stats.failed} failed. Check broadcast history for details.`);
+        } else if (!isScheduled && stats && (stats.failed ?? 0) > 0 && (stats.sent ?? 0) === 0) {
+          toast.error(`Broadcast failed to send. Check broadcast history for details.`);
+        } else {
+          toast.success(isScheduled ? 'Broadcast scheduled' : 'Broadcast is sending');
+        }
         qc.invalidateQueries({ queryKey: getListBroadcastsQueryKey() });
         setConfirmOpen(false);
         setSubject('');
@@ -114,7 +123,9 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
   });
 
   const handlePreview = () => {
-    previewMutation.mutate({ data: { channel, filter } });
+    previewMutation.mutate({ data: { channel, filter } }, {
+      onSuccess: (data: any) => { if (typeof data?.count === 'number') setEstimatedCount(data.count); },
+    });
   };
 
   const handleSendClick = () => {
@@ -171,13 +182,14 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
             {channel === 'email' && (
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Subject</label>
-                <Input placeholder="e.g. Spring lawn care specials" value={subject} onChange={e => setSubject(e.target.value)} />
+                <Input title="Email subject line for this broadcast" placeholder="e.g. Spring lawn care specials" value={subject} onChange={e => setSubject(e.target.value)} />
               </div>
             )}
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Message</label>
               <Textarea
                 rows={5}
+                title={`Broadcast message body — use {{name}} to personalize with the customer's first name`}
                 placeholder={`Write your ${channel === 'sms' ? 'text message' : 'email'}... Use {{name}} to personalize with the customer's first name.`}
                 value={body}
                 onChange={e => setBody(e.target.value)}
@@ -194,28 +206,33 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
               </div>
             </div>
 
+            {!allCustomers && estimatedCount !== null && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <span className="font-medium text-foreground">{estimatedCount}</span> estimated recipients
+              </p>
+            )}
             {!allCustomers && (
               <div className="grid grid-cols-2 gap-3">
-                <Input placeholder="Tag" value={tag} onChange={e => setTag(e.target.value)} />
+                <Input title="Filter recipients who have this tag" placeholder="Tag" value={tag} onChange={e => setTag(e.target.value)} />
                 <Select value={customerType || 'any'} onValueChange={v => setCustomerType(v === 'any' ? '' : v)}>
-                  <SelectTrigger><SelectValue placeholder="Customer type" /></SelectTrigger>
+                  <SelectTrigger title="Filter recipients by customer type"><SelectValue placeholder="Customer type" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="any">Any customer type</SelectItem>
                     {CUSTOMER_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <Input placeholder="City" value={city} onChange={e => setCity(e.target.value)} />
-                <Input placeholder="State (e.g. TX)" value={state} onChange={e => setState(e.target.value)} maxLength={2} />
+                <Input title="Filter recipients in this city" placeholder="City" value={city} onChange={e => setCity(e.target.value)} />
+                <Input title="Filter recipients in this state (2-letter code)" placeholder="State (e.g. TX)" value={state} onChange={e => setState(e.target.value)} maxLength={2} />
                 <div className="space-y-1">
                   <label className="text-xs text-muted-foreground">Last service after</label>
-                  <Input type="date" value={lastServiceAfter} onChange={e => setLastServiceAfter(e.target.value)} />
+                  <Input type="date" title="Only send to customers whose last service was after this date" value={lastServiceAfter} onChange={e => setLastServiceAfter(e.target.value)} />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs text-muted-foreground">Last service before</label>
-                  <Input type="date" value={lastServiceBefore} onChange={e => setLastServiceBefore(e.target.value)} />
+                  <Input type="date" title="Only send to customers whose last service was before this date" value={lastServiceBefore} onChange={e => setLastServiceBefore(e.target.value)} />
                 </div>
                 <Select value={campaignId || 'none'} onValueChange={v => setCampaignId(v === 'none' ? '' : v)}>
-                  <SelectTrigger className="col-span-2"><SelectValue placeholder="Campaign membership" /></SelectTrigger>
+                  <SelectTrigger className="col-span-2" title="Only send to recipients enrolled in a specific campaign"><SelectValue placeholder="Campaign membership" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Any campaign</SelectItem>
                     {campaigns.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
@@ -266,7 +283,7 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
                 {previewMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Users className="w-3.5 h-3.5" />}
                 Preview Recipients
               </Button>
-              <Button onClick={handleSendClick} disabled={sendMutation.isPending}>
+              <Button title={sendMode === 'later' ? 'Schedule this broadcast for later delivery' : 'Send this broadcast to all matching recipients now'} onClick={handleSendClick} disabled={sendMutation.isPending}>
                 {sendMode === 'later' ? 'Schedule Broadcast' : 'Send Broadcast'}
               </Button>
             </div>
@@ -287,9 +304,22 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
 
         {/* History */}
         <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-base">Send History</CardTitle>
-            <CardDescription>Recent broadcasts and their delivery stats.</CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between pb-3 flex-wrap gap-2">
+            <div>
+              <CardTitle className="text-base">Send History</CardTitle>
+              <CardDescription>Recent broadcasts and their delivery stats.</CardDescription>
+            </div>
+            <Select value={historyFilter} onValueChange={setHistoryFilter}>
+              <SelectTrigger title="Filter broadcast history by status" className="h-7 text-xs w-32">
+                <SelectValue placeholder="All" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-xs">All</SelectItem>
+                <SelectItem value="completed" className="text-xs">Sent</SelectItem>
+                <SelectItem value="scheduled" className="text-xs">Scheduled</SelectItem>
+                <SelectItem value="failed" className="text-xs">Failed</SelectItem>
+              </SelectContent>
+            </Select>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
@@ -301,16 +331,16 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(history ?? []).length === 0 ? (
-                  <TableRow><TableCell colSpan={3} className="py-8 text-center text-muted-foreground text-sm">No broadcasts sent yet.</TableCell></TableRow>
-                ) : (history ?? []).map(b => (
+                {(() => { const filtered = (history ?? []).filter(b => historyFilter === 'all' || b.status === historyFilter); return filtered.length === 0 ? (
+                  <TableRow><TableCell colSpan={3} className="py-8 text-center text-muted-foreground text-sm">{(history ?? []).length === 0 ? 'No broadcasts sent yet.' : 'No broadcasts match this filter.'}</TableCell></TableRow>
+                ) : filtered.map(b => (
                   <TableRow key={b.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setSelectedBroadcastId(b.id)}>
                     <TableCell>
                       <div className="flex items-center gap-1.5 text-sm">
                         {b.channel === 'sms' ? <MessageSquare className="w-3.5 h-3.5" /> : <Mail className="w-3.5 h-3.5" />}
                         {b.recipientCount}
                       </div>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs text-muted-foreground" title={b.status === 'scheduled' && b.scheduledFor ? `Scheduled for ${new Date(b.scheduledFor).toLocaleString()}` : `Created ${new Date(b.createdAt).toLocaleString()}`}>
                         {b.status === 'scheduled' && b.scheduledFor
                           ? <>Scheduled: {format(new Date(b.scheduledFor), 'MMM d, h:mm a')}</>
                           : format(new Date(b.createdAt), 'MMM d, h:mm a')
@@ -321,13 +351,13 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
                       {b.status === 'scheduled' || b.status === 'cancelled' ? '—' : `${b.stats?.sent ?? 0} / ${b.recipientCount}`}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Badge variant={statusBadgeVariant(b.status)} className="text-xs">
+                      <Badge variant={statusBadgeVariant(b.status)} className="text-xs" title={`Broadcast status: ${b.status}`}>
                         {b.status === 'scheduled' && <Clock className="w-3 h-3 mr-1 inline" />}
                         {b.status}
                       </Badge>
                     </TableCell>
                   </TableRow>
-                ))}
+                )); })()}
               </TableBody>
             </Table>
           </CardContent>
@@ -356,7 +386,7 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
               )}
             </div>
             <div className="flex gap-3 justify-end">
-              <Button variant="outline" onClick={() => setConfirmOpen(false)}>Cancel</Button>
+              <Button variant="outline" title="Cancel and do not send this broadcast" onClick={() => setConfirmOpen(false)}>Cancel</Button>
               <Button onClick={handleConfirmSend} disabled={sendMutation.isPending}>
                 {sendMutation.isPending
                   ? (sendMode === 'later' ? 'Scheduling...' : 'Sending...')
@@ -392,37 +422,56 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
                     {detail.status === 'scheduled' && <Clock className="w-3 h-3 mr-1 inline" />}
                     {detail.status}
                   </Badge>
-                  {detail.status === 'scheduled' && !editMode && (
-                    <div className="flex gap-2">
+                  <div className="flex gap-2">
+                    {((['completed', 'failed', 'cancelled'] as string[]).includes(detail.status)) && (
                       <Button
                         variant="outline"
                         size="sm"
                         className="gap-1.5"
                         onClick={() => {
-                          setEditBody(detail.body ?? '');
-                          setEditSubject(detail.subject ?? '');
-                          setEditScheduledFor(
-                            detail.scheduledFor
-                              ? toDatetimeLocal(new Date(detail.scheduledFor))
-                              : ''
-                          );
-                          setEditMode(true);
+                          setChannel(detail.channel as 'sms' | 'email');
+                          setSubject(detail.subject ?? '');
+                          setBody(detail.body ?? '');
+                          setSelectedBroadcastId(null);
                         }}
+                        title="Use as template for a new broadcast"
                       >
-                        <Pencil className="w-3.5 h-3.5" /> Edit
+                        <Copy className="w-3.5 h-3.5" /> Duplicate
                       </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        className="gap-1.5"
-                        disabled={cancelMutation.isPending}
-                        onClick={() => cancelMutation.mutate({ id: detail.id })}
-                      >
-                        {cancelMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
-                        Cancel
-                      </Button>
-                    </div>
-                  )}
+                    )}
+                    {detail.status === 'scheduled' && !editMode && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5"
+                          onClick={() => {
+                            setEditBody(detail.body ?? '');
+                            setEditSubject(detail.subject ?? '');
+                            setEditScheduledFor(
+                              detail.scheduledFor
+                                ? toDatetimeLocal(new Date(detail.scheduledFor))
+                                : ''
+                            );
+                            setEditMode(true);
+                          }}
+                        >
+                          <Pencil className="w-3.5 h-3.5" /> Edit
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          title="Cancel this scheduled broadcast — it will not be sent"
+                          className="gap-1.5"
+                          disabled={cancelMutation.isPending}
+                          onClick={() => cancelMutation.mutate({ id: detail.id })}
+                        >
+                          {cancelMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                          Cancel
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 {/* Edit form for scheduled broadcasts */}
@@ -432,13 +481,14 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
                     {detail.channel === 'email' && (
                       <div className="space-y-1.5">
                         <label className="text-xs font-medium text-muted-foreground">Subject</label>
-                        <Input value={editSubject} onChange={e => setEditSubject(e.target.value)} placeholder="Subject" />
+                        <Input title="Updated email subject line for this broadcast" value={editSubject} onChange={e => setEditSubject(e.target.value)} placeholder="Subject" />
                       </div>
                     )}
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-muted-foreground">Message</label>
                       <Textarea
                         rows={5}
+                        title="Updated broadcast message body"
                         value={editBody}
                         onChange={e => setEditBody(e.target.value)}
                         placeholder="Message body"
@@ -448,6 +498,7 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
                       <label className="text-xs font-medium text-muted-foreground">Send date &amp; time</label>
                       <Input
                         type="datetime-local"
+                        title="Updated date and time to send this broadcast"
                         min={minDateTime}
                         value={editScheduledFor}
                         onChange={e => setEditScheduledFor(e.target.value)}
@@ -486,11 +537,25 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
                 ) : (
                   <>
                     {detail.status !== 'scheduled' && detail.status !== 'cancelled' && (
-                      <div className="grid grid-cols-3 gap-3 text-center">
-                        <div className="p-3 bg-muted/40 rounded-lg"><p className="text-lg font-bold">{detail.recipientCount}</p><p className="text-xs text-muted-foreground">Targeted</p></div>
-                        <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 rounded-lg"><p className="text-lg font-bold text-emerald-700">{detail.stats?.sent ?? 0}</p><p className="text-xs text-muted-foreground">Sent</p></div>
-                        <div className="p-3 bg-red-50 dark:bg-red-950/20 rounded-lg"><p className="text-lg font-bold text-red-600">{detail.stats?.failed ?? 0}</p><p className="text-xs text-muted-foreground">Failed</p></div>
-                      </div>
+                      <>
+                        <div className="grid grid-cols-3 gap-3 text-center">
+                          <div className="p-3 bg-muted/40 rounded-lg"><p className="text-lg font-bold">{detail.recipientCount}</p><p className="text-xs text-muted-foreground">Targeted</p></div>
+                          <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 rounded-lg"><p className="text-lg font-bold text-emerald-700">{detail.stats?.sent ?? 0}</p><p className="text-xs text-muted-foreground">Sent</p></div>
+                          <div className="p-3 bg-red-50 dark:bg-red-950/20 rounded-lg"><p className="text-lg font-bold text-red-600">{detail.stats?.failed ?? 0}</p><p className="text-xs text-muted-foreground">Failed</p></div>
+                        </div>
+                        {(detail.stats?.failed ?? 0) > 0 && (detail.stats?.sent ?? 0) > 0 && (
+                          <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+                            <span className="text-amber-500">⚠</span>
+                            <span>Broadcast partially failed — {detail.stats!.failed} of {detail.recipientCount} recipients were not reached. Check provider settings or recipient contact info.</span>
+                          </div>
+                        )}
+                        {(detail.stats?.failed ?? 0) > 0 && (detail.stats?.sent ?? 0) === 0 && (
+                          <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800 px-3 py-2 text-sm text-red-800 dark:text-red-300">
+                            <span>⛔</span>
+                            <span>Broadcast failed entirely — no messages were delivered. Check your messaging provider configuration.</span>
+                          </div>
+                        )}
+                      </>
                     )}
 
                     {detail.status === 'scheduled' && (

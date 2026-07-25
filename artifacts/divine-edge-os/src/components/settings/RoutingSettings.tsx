@@ -102,9 +102,12 @@ export default function RoutingSettings() {
     }
   };
 
+  const [deleteDivisionPending, setDeleteDivisionPending] = useState(false);
+
   const handleDeleteDivision = () => {
     if (!selectedDivId) return;
-    if (!window.confirm('Delete this division? Route templates must be removed first.')) return;
+    if (!deleteDivisionPending) { setDeleteDivisionPending(true); return; }
+    setDeleteDivisionPending(false);
     deleteDivision.mutate({ id: selectedDivId }, {
       onSuccess: () => { toast.success('Division deleted'); invalidateDivisions(); setDivSheet(null); },
       onError: (err: any) => toast.error(err?.data?.error ?? 'Failed to delete division — remove its route templates first'),
@@ -143,9 +146,12 @@ export default function RoutingSettings() {
     }
   };
 
+  const [deleteTemplatePending, setDeleteTemplatePending] = useState(false);
+
   const handleDeleteTemplate = () => {
     if (!selectedTplId) return;
-    if (!window.confirm('Delete this route template?')) return;
+    if (!deleteTemplatePending) { setDeleteTemplatePending(true); return; }
+    setDeleteTemplatePending(false);
     deleteTemplate.mutate({ id: selectedTplId }, {
       onSuccess: () => { toast.success('Route template deleted'); invalidateTemplates(); setTplSheet(null); },
       onError: () => toast.error('Failed to delete route template'),
@@ -170,6 +176,7 @@ export default function RoutingSettings() {
             <span className="text-sm text-muted-foreground">$</span>
             <Input
               type="number" step="0.01" className="w-28"
+              title="Default trip charge added when a job is rescheduled off its regular route"
               value={exceptionFee}
               onChange={e => setExceptionFee(e.target.value)}
               onBlur={() => updateSettings.mutate({ data: { routeExceptionFee: Number(exceptionFee) || 0 } }, {
@@ -188,7 +195,7 @@ export default function RoutingSettings() {
             <h3 className="text-lg font-semibold">Divisions</h3>
             <p className="text-sm text-muted-foreground">Group crews and technicians under a depot with a daily shift-hours budget.</p>
           </div>
-          <Button size="sm" className="gap-2" onClick={openCreateDivision}><Plus className="w-4 h-4" /> Add Division</Button>
+          <Button size="sm" title="Create a new service division" className="gap-2" onClick={openCreateDivision}><Plus className="w-4 h-4" /> Add Division</Button>
         </div>
         <Card>
           <CardContent className="p-0">
@@ -231,7 +238,7 @@ export default function RoutingSettings() {
             <h3 className="text-lg font-semibold">Route Templates</h3>
             <p className="text-sm text-muted-foreground">Recurring routes with a fixed day of week and cadence, used to sequence and cap stops for the Routes Dashboard.</p>
           </div>
-          <Button size="sm" className="gap-2" onClick={openCreateTemplate} disabled={!divisions?.length}><Plus className="w-4 h-4" /> Add Route Template</Button>
+          <Button size="sm" title="Create a new route template — requires at least one division" className="gap-2" onClick={openCreateTemplate} disabled={!divisions?.length}><Plus className="w-4 h-4" /> Add Route Template</Button>
         </div>
         <Card>
           <CardContent className="p-0">
@@ -268,7 +275,7 @@ export default function RoutingSettings() {
       </div>
 
       {/* Division Sheet */}
-      <Sheet open={divSheet !== null} onOpenChange={open => { if (!open) setDivSheet(null); }}>
+      <Sheet open={divSheet !== null} onOpenChange={open => { if (!open) { setDivSheet(null); setDeleteDivisionPending(false); } }}>
         <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
           <SheetHeader className="pb-4">
             <SheetTitle>{divSheet === 'create' ? 'Add Division' : 'Edit Division'}</SheetTitle>
@@ -277,25 +284,25 @@ export default function RoutingSettings() {
           <div className="space-y-4 pb-6">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Division Name <span className="text-destructive">*</span></label>
-              <Input placeholder="e.g. North Territory" value={divForm.name} onChange={e => setDivForm(f => ({ ...f, name: e.target.value }))} />
+              <Input title="Name for this service division or territory" placeholder="e.g. North Territory" value={divForm.name} onChange={e => setDivForm(f => ({ ...f, name: e.target.value }))} />
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Depot Label</label>
-              <Input placeholder="e.g. North Yard" value={divForm.depotLabel} onChange={e => setDivForm(f => ({ ...f, depotLabel: e.target.value }))} />
+              <Input title="Label for the starting depot location" placeholder="e.g. North Yard" value={divForm.depotLabel} onChange={e => setDivForm(f => ({ ...f, depotLabel: e.target.value }))} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Depot Latitude</label>
-                <Input type="number" step="any" value={divForm.depotLat} onChange={e => setDivForm(f => ({ ...f, depotLat: e.target.value }))} />
+                <Input type="number" step="any" title="Latitude of the depot starting point" value={divForm.depotLat} onChange={e => setDivForm(f => ({ ...f, depotLat: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Depot Longitude</label>
-                <Input type="number" step="any" value={divForm.depotLng} onChange={e => setDivForm(f => ({ ...f, depotLng: e.target.value }))} />
+                <Input type="number" step="any" title="Longitude of the depot starting point" value={divForm.depotLng} onChange={e => setDivForm(f => ({ ...f, depotLng: e.target.value }))} />
               </div>
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Shift Hours / Day</label>
-              <Input type="number" step="0.5" min="1" value={divForm.shiftHoursPerDay} onChange={e => setDivForm(f => ({ ...f, shiftHoursPerDay: e.target.value }))} />
+              <Input type="number" step="0.5" min="1" title="Maximum crew shift hours per day for this division — used to cap route capacity" value={divForm.shiftHoursPerDay} onChange={e => setDivForm(f => ({ ...f, shiftHoursPerDay: e.target.value }))} />
             </div>
 
             <Separator />
@@ -328,13 +335,20 @@ export default function RoutingSettings() {
 
             <Separator />
             {divSheet === 'edit' && selectedDivId && (
-              <Button variant="ghost" className="text-destructive hover:text-destructive w-full gap-2" onClick={handleDeleteDivision} disabled={deleteDivision.isPending}>
-                <Trash2 className="w-4 h-4" /> Delete Division
+              <Button
+                variant={deleteDivisionPending ? 'destructive' : 'ghost'}
+                className={deleteDivisionPending ? 'w-full gap-2' : 'text-destructive hover:text-destructive w-full gap-2'}
+                title="Delete this division — this cannot be undone"
+                onClick={handleDeleteDivision}
+                disabled={deleteDivision.isPending}
+              >
+                <Trash2 className="w-4 h-4" />
+                {deleteDivisionPending ? 'Confirm delete?' : 'Delete Division'}
               </Button>
             )}
             <div className="flex gap-3 justify-end">
               <Button variant="outline" onClick={() => setDivSheet(null)}>Cancel</Button>
-              <Button onClick={handleSaveDivision} disabled={createDivision.isPending || updateDivision.isPending}>
+              <Button title={divSheet === 'create' ? 'Create this division' : 'Save changes to this division'} onClick={handleSaveDivision} disabled={createDivision.isPending || updateDivision.isPending}>
                 {createDivision.isPending || updateDivision.isPending ? 'Saving...' : divSheet === 'create' ? 'Create Division' : 'Save Changes'}
               </Button>
             </div>
@@ -343,7 +357,7 @@ export default function RoutingSettings() {
       </Sheet>
 
       {/* Route Template Sheet */}
-      <Sheet open={tplSheet !== null} onOpenChange={open => { if (!open) setTplSheet(null); }}>
+      <Sheet open={tplSheet !== null} onOpenChange={open => { if (!open) { setTplSheet(null); setDeleteTemplatePending(false); } }}>
         <SheetContent className="w-full sm:max-w-md overflow-y-auto">
           <SheetHeader className="pb-4">
             <SheetTitle>{tplSheet === 'create' ? 'Add Route Template' : 'Edit Route Template'}</SheetTitle>
@@ -361,13 +375,13 @@ export default function RoutingSettings() {
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Route Name <span className="text-destructive">*</span></label>
-              <Input placeholder="e.g. North Monday Route" value={tplForm.name} onChange={e => setTplForm(f => ({ ...f, name: e.target.value }))} />
+              <Input title="Name for this route template" placeholder="e.g. North Monday Route" value={tplForm.name} onChange={e => setTplForm(f => ({ ...f, name: e.target.value }))} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Frequency</label>
                 <Select value={tplForm.frequency} onValueChange={v => setTplForm(f => ({ ...f, frequency: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger title="How often this route runs — weekly, biweekly, or monthly"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {Object.entries(FREQUENCY_LABEL).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
                   </SelectContent>
@@ -376,7 +390,7 @@ export default function RoutingSettings() {
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Day of Week</label>
                 <Select value={tplForm.dayOfWeek} onValueChange={v => setTplForm(f => ({ ...f, dayOfWeek: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger title="Day of the week this route runs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {DAY_LABEL.map((l, i) => <SelectItem key={i} value={String(i)}>{l}</SelectItem>)}
                   </SelectContent>
@@ -385,18 +399,25 @@ export default function RoutingSettings() {
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Exception Fee Override</label>
-              <Input type="number" step="0.01" placeholder="Leave blank to use the tenant default" value={tplForm.exceptionFeeOverride} onChange={e => setTplForm(f => ({ ...f, exceptionFeeOverride: e.target.value }))} />
+              <Input type="number" step="0.01" title="Override the tenant default exception fee for this route — leave blank to use the default" placeholder="Leave blank to use the tenant default" value={tplForm.exceptionFeeOverride} onChange={e => setTplForm(f => ({ ...f, exceptionFeeOverride: e.target.value }))} />
             </div>
 
             <Separator />
             {tplSheet === 'edit' && selectedTplId && (
-              <Button variant="ghost" className="text-destructive hover:text-destructive w-full gap-2" onClick={handleDeleteTemplate} disabled={deleteTemplate.isPending}>
-                <Trash2 className="w-4 h-4" /> Delete Route Template
+              <Button
+                variant={deleteTemplatePending ? 'destructive' : 'ghost'}
+                className={deleteTemplatePending ? 'w-full gap-2' : 'text-destructive hover:text-destructive w-full gap-2'}
+                title="Delete this route template — this cannot be undone"
+                onClick={handleDeleteTemplate}
+                disabled={deleteTemplate.isPending}
+              >
+                <Trash2 className="w-4 h-4" />
+                {deleteTemplatePending ? 'Confirm delete?' : 'Delete Route Template'}
               </Button>
             )}
             <div className="flex gap-3 justify-end">
               <Button variant="outline" onClick={() => setTplSheet(null)}>Cancel</Button>
-              <Button onClick={handleSaveTemplate} disabled={createTemplate.isPending || updateTemplate.isPending}>
+              <Button title={tplSheet === 'create' ? 'Create this route template' : 'Save changes to this route template'} onClick={handleSaveTemplate} disabled={createTemplate.isPending || updateTemplate.isPending}>
                 {createTemplate.isPending || updateTemplate.isPending ? 'Saving...' : tplSheet === 'create' ? 'Create Route' : 'Save Changes'}
               </Button>
             </div>

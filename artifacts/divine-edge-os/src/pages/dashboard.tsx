@@ -13,11 +13,24 @@ import { Users, Briefcase, FileText, DollarSign, Clock, CheckCircle, Gauge, Phon
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { MyTasksWidget } from '@/components/tasks/MyTasksWidget';
 import { FollowupQueueWidget } from '@/components/followups/FollowupQueueWidget';
+import { useAuth } from '@/contexts/AuthContext';
+import { Link } from 'wouter';
+import { useListJobs, getListJobsQueryKey } from '@workspace/api-client-react';
+import { useLocation } from 'wouter';
+import { format as fmtDate } from 'date-fns';
 
 interface EfficiencyResponse { companyEfficiencyRate: number | null; companyCallbackRatio: number; technicians: { hasWarning: boolean }[] }
 interface RoasEntry { name: string; roas: number | null }
 
 export default function DashboardPage() {
+  const { user, isTechnician } = useAuth();
+  const [, setLocation] = useLocation();
+  const todayStr = fmtDate(new Date(), 'yyyy-MM-dd');
+  const { data: myTodayJobs } = useListJobs(
+    { assigneeId: user?.id, startDate: todayStr, endDate: todayStr },
+    { query: { enabled: isTechnician && !!user?.id, queryKey: getListJobsQueryKey({ assigneeId: user?.id, startDate: todayStr, endDate: todayStr }) } }
+  );
+
   const { data: summary } = useGetDashboardSummary({ query: { queryKey: getGetDashboardSummaryQueryKey() }});
   const { data: jobsByStatus } = useGetJobsByStatus({ query: { queryKey: getGetJobsByStatusQueryKey() }});
   const { data: revenueTrend } = useGetRevenueTrend({ query: { queryKey: getGetRevenueTrendQueryKey() }});
@@ -33,14 +46,46 @@ export default function DashboardPage() {
 
   const topRoas = roasLeaderboard?.[0];
   const qualityWarnings = efficiency?.technicians.filter(t => t.hasWarning).length ?? 0;
+  const { data: financialsSummary } = useQuery<{ totalOverdue?: number }>({
+    queryKey: ['financials-summary'],
+    queryFn: () => customFetch<{ totalOverdue?: number }>('/api/invoices/financials-summary'),
+    enabled: !isTechnician,
+  });
 
   const COLORS = ['#2563EB', '#10B981', '#F59E0B', '#F43F5E', '#6B7280'];
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground mt-1">Overview of your business operations today.</p>
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-muted-foreground mt-1">Overview of your business operations today.</p>
+        </div>
+        {!isTechnician && (
+          <div className="flex gap-2">
+            <button
+              className="inline-flex items-center gap-1.5 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-3 py-1.5 transition-colors"
+              title="Create a new job"
+              onClick={() => setLocation('/schedule?action=create')}
+            >
+              + New Job
+            </button>
+            <button
+              className="inline-flex items-center gap-1.5 text-sm font-medium border border-border hover:bg-muted rounded-md px-3 py-1.5 transition-colors"
+              title="Create a new estimate"
+              onClick={() => setLocation('/estimates?action=create')}
+            >
+              + Estimate
+            </button>
+            <button
+              className="inline-flex items-center gap-1.5 text-sm font-medium border border-border hover:bg-muted rounded-md px-3 py-1.5 transition-colors"
+              title="Add a new customer"
+              onClick={() => setLocation('/customers?action=create')}
+            >
+              + Customer
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -50,6 +95,14 @@ export default function DashboardPage() {
         <MetricCard title="Revenue (MTD)" value={`${summary?.revenueThisMonth?.toLocaleString() || 0}`} icon={DollarSign} />
         <MetricCard title="Completed Jobs (MTD)" value={summary?.completedJobsThisMonth} icon={CheckCircle} />
         <MetricCard title="Techs Clocked In" value={summary?.techniciansClockedIn} icon={Clock} />
+        {!isTechnician && financialsSummary?.totalOverdue != null && financialsSummary.totalOverdue > 0 && (
+          <MetricCard
+            title="Overdue Invoices"
+            value={`$${financialsSummary.totalOverdue.toLocaleString()}`}
+            icon={AlertTriangle}
+            accent="red"
+          />
+        )}
       </div>
 
       {/* P4P & Quality row */}
@@ -61,13 +114,15 @@ export default function DashboardPage() {
           icon={Gauge}
           accent={efficiency?.companyEfficiencyRate != null ? (efficiency.companyEfficiencyRate >= 80 ? 'green' : efficiency.companyEfficiencyRate >= 60 ? 'amber' : 'red') : undefined}
         />
-        <MetricCard
-          title="Company Callback Ratio"
-          value={efficiency?.companyCallbackRatio != null ? `${efficiency.companyCallbackRatio}%` : '—'}
-          subtitle={qualityWarnings > 0 ? `⚠ ${qualityWarnings} tech${qualityWarnings > 1 ? 's' : ''} above threshold` : '✓ All within threshold'}
-          icon={PhoneCall}
-          accent={qualityWarnings > 0 ? 'red' : 'green'}
-        />
+        <Link href="/callbacks" className="contents">
+          <MetricCard
+            title="Company Callback Ratio"
+            value={efficiency?.companyCallbackRatio != null ? `${efficiency.companyCallbackRatio}%` : '—'}
+            subtitle={qualityWarnings > 0 ? `⚠ ${qualityWarnings} tech${qualityWarnings > 1 ? 's' : ''} above threshold` : '✓ All within threshold'}
+            icon={PhoneCall}
+            accent={qualityWarnings > 0 ? 'red' : 'green'}
+          />
+        </Link>
         <MetricCard
           title="Top Campaign ROAS"
           value={topRoas?.roas != null ? `${topRoas.roas.toFixed(1)}x` : '—'}
@@ -155,6 +210,36 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-6">
+          {isTechnician && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Briefcase className="w-4 h-4 text-primary" /> My Jobs Today
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                {!myTodayJobs || myTodayJobs.length === 0 ? (
+                  <p className="px-4 pb-4 text-sm text-muted-foreground">No jobs scheduled today.</p>
+                ) : (
+                  <div className="divide-y">
+                    {myTodayJobs.map(j => (
+                      <div
+                        key={j.id}
+                        className="px-4 py-2.5 flex items-start justify-between gap-2 cursor-pointer hover:bg-muted/40 transition-colors"
+                        onClick={() => setLocation(`/schedule?jobId=${j.id}`)}
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{j.title}</p>
+                          <p className="text-xs text-muted-foreground">{j.customerName ?? ''}{j.scheduledAt ? ` · ${new Date(j.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}</p>
+                        </div>
+                        <Badge className="capitalize shrink-0 text-xs">{(j.status ?? 'scheduled').replace(/_/g, ' ')}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
           <MyTasksWidget />
           <FollowupQueueWidget />
         </div>
@@ -164,22 +249,37 @@ export default function DashboardPage() {
           </CardHeader>
         <CardContent>
           <div className="space-y-6">
-            {recentActivity?.map((activity) => (
-              <div key={activity.id} className="flex gap-4">
-                <div className="relative flex flex-col items-center">
-                  <div className="w-2 h-2 bg-primary rounded-full z-10" />
-                  <div className="w-px h-full bg-border absolute top-2" />
+            {recentActivity?.map((activity) => {
+              const href = activity.entityId != null ? (() => {
+                if (activity.type === 'job_created' || activity.type === 'job_completed') return `schedule?jobId=${activity.entityId}`;
+                if (activity.type === 'invoice_sent' || activity.type === 'payment_received') return `financials?invoiceId=${activity.entityId}`;
+                if (activity.type === 'customer_added') return `customers/${activity.entityId}`;
+                return null;
+              })() : null;
+              return (
+                <div key={activity.id} className="flex gap-4">
+                  <div className="relative flex flex-col items-center">
+                    <div className="w-2 h-2 bg-primary rounded-full z-10" />
+                    <div className="w-px h-full bg-border absolute top-2" />
+                  </div>
+                  <div className="flex-1 pb-6">
+                    <p
+                      className={`text-sm font-medium ${href ? 'cursor-pointer hover:underline text-primary' : ''}`}
+                      title={activity.message}
+                      onClick={href ? () => setLocation(href) : undefined}
+                    >{activity.message}</p>
+                    <p className="text-xs text-muted-foreground mt-1" title={new Date(activity.createdAt).toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}>
+                      {new Date(activity.createdAt).toLocaleString()} {activity.userName && `• by ${activity.userName}`}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex-1 pb-6">
-                  <p className="text-sm font-medium">{activity.message}</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {new Date(activity.createdAt).toLocaleString()} {activity.userName && `• by ${activity.userName}`}
-                  </p>
-                </div>
-              </div>
-            ))}
+              );
+            })}
             {(!recentActivity || recentActivity.length === 0) && (
               <div className="text-center py-6 text-muted-foreground">No recent activity</div>
+            )}
+            {recentActivity && recentActivity.length >= 15 && (
+              <p className="text-xs text-center text-muted-foreground pt-1">Showing last 15 events</p>
             )}
           </div>
         </CardContent>
@@ -203,7 +303,7 @@ function MetricCard({ title, value, subtitle, icon: Icon, accent }: { title: str
         <div className="flex justify-between items-start">
           <div className="space-y-2">
             <p className="text-sm font-medium text-muted-foreground">{title}</p>
-            <p className={`text-3xl font-bold tracking-tight ${accentStyle?.value ?? ''}`}>{value !== undefined ? value : '-'}</p>
+            <p className={`text-3xl font-bold tracking-tight ${accentStyle?.value ?? ''}`} title={value !== undefined ? `${title}: ${value}` : undefined}>{value !== undefined ? value : '-'}</p>
             {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
           </div>
           <div className={`w-10 h-10 rounded-full flex items-center justify-center ${accentStyle?.icon ?? 'bg-primary/10 text-primary'}`}>

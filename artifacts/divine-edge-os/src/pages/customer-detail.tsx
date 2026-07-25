@@ -13,6 +13,8 @@ import {
   useResumeCustomerService,
   useCreateEstimate,
   useGetCustomerPaymentMethod, getGetCustomerPaymentMethodQueryKey,
+  useListInvoices, getListInvoicesQueryKey,
+  useListCustomerPlans, getListCustomerPlansQueryKey,
 } from '@workspace/api-client-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
@@ -31,10 +33,11 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import {
   ArrowLeft, Building, Phone, Mail, Edit, Plus, Calendar, MapPin,
-  Save, X, User, FileText, Tag, DollarSign, Home, Briefcase, Megaphone, AlertTriangle, Link,
+  Save, X, User, FileText, Tag, DollarSign, Home, Briefcase, Megaphone, AlertTriangle, Link as LinkIcon,
   MessageSquare, Send, PhoneOff, MailMinus, ChevronRight, PlayCircle, ClipboardList, Eye, RefreshCw,
-  MailWarning, CreditCard,
+  MailWarning, CreditCard, Pencil,
 } from 'lucide-react';
+import { Link } from 'wouter';
 import CustomerAvatar from '@/components/media/CustomerAvatar';
 import PropertyThumbnail from '@/components/media/PropertyThumbnail';
 import CustomerPlansTab from '@/components/customer/CustomerPlansTab';
@@ -79,6 +82,95 @@ interface Campaign {
   name: string;
 }
 
+function InlineNotesEditor({ customerId, initialNotes }: { customerId: number; initialNotes: string }) {
+  const [editing, setEditing] = React.useState(false);
+  const [value, setValue] = React.useState(initialNotes);
+  const updateCustomer = useUpdateCustomer();
+  const qc = useQueryClient();
+
+  React.useEffect(() => { setValue(initialNotes); }, [initialNotes]);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Notes</p>
+        {!editing && (
+          <button onClick={() => setEditing(true)} className="text-xs text-primary hover:underline" title={initialNotes ? 'Edit customer notes' : 'Add notes for this customer'}>
+            {initialNotes ? 'Edit' : '+ Add'}
+          </button>
+        )}
+      </div>
+      {editing ? (
+        <div className="space-y-2">
+          <Textarea
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            rows={4}
+            title="Internal notes about this customer"
+            placeholder="Internal notes about this customer…"
+            className="text-sm"
+            autoFocus
+            onBlur={() => {
+              if (value !== initialNotes) {
+                updateCustomer.mutate(
+                  { id: customerId, data: { notes: value } as Parameters<typeof updateCustomer.mutate>[0]['data'] },
+                  {
+                    onSuccess: () => {
+                      setEditing(false);
+                      qc.invalidateQueries({ queryKey: ['customers', customerId] });
+                      toast.success('Notes saved');
+                    },
+                    onError: () => toast.error('Failed to save notes'),
+                  },
+                );
+              } else {
+                setEditing(false);
+              }
+            }}
+          />
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              title="Save customer notes"
+              disabled={updateCustomer.isPending}
+              onClick={() => {
+                updateCustomer.mutate(
+                  { id: customerId, data: { notes: value } as Parameters<typeof updateCustomer.mutate>[0]['data'] },
+                  {
+                    onSuccess: () => {
+                      setEditing(false);
+                      qc.invalidateQueries({ queryKey: ['customers', customerId] });
+                      toast.success('Notes saved');
+                    },
+                    onError: () => toast.error('Failed to save notes'),
+                  },
+                );
+              }}
+            >
+              {updateCustomer.isPending ? 'Saving…' : 'Save'}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs"
+              title="Discard notes changes"
+              onClick={() => { setValue(initialNotes); setEditing(false); }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : initialNotes ? (
+        <p className="whitespace-pre-wrap text-sm" title={initialNotes ?? undefined}>{initialNotes}</p>
+      ) : (
+        <p className="text-sm text-muted-foreground italic">No notes yet</p>
+      )}
+    </div>
+  );
+}
+
 export default function CustomerDetailPage() {
   const params = useParams();
   const id = Number(params.id);
@@ -105,6 +197,9 @@ export default function CustomerDetailPage() {
   const [duplicates, setDuplicates] = useState<DuplicateProperty[]>([]);
   const [transferTarget, setTransferTarget] = useState<DuplicateProperty | null>(null);
   const [addingProperty, setAddingProperty] = useState(false);
+  const [custJobStatusFilter, setCustJobStatusFilter] = useState<'all' | 'scheduled' | 'in_progress' | 'completed' | 'cancelled'>('all');
+  const [invSearch, setInvSearch] = useState('');
+  const [invStatusFilter, setInvStatusFilter] = useState('all');
 
   const debouncedAddress = useDebounce(propForm.address, 500);
 
@@ -127,9 +222,18 @@ export default function CustomerDetailPage() {
     { customerId: id },
     { query: { enabled: !!id, queryKey: getListVisitsQueryKey({ customerId: id }) } },
   );
+  const invParams = { customerId: id };
+  const { data: custInvoices, isLoading: invLoading } = useListInvoices(
+    invParams,
+    { query: { enabled: !!id, queryKey: getListInvoicesQueryKey(invParams) } },
+  );
   const { data: settings } = useGetTenantSettings({
     query: { queryKey: getGetTenantSettingsQueryKey() },
   });
+  const { data: customerPlans } = useListCustomerPlans(
+    { customerId: id } as Parameters<typeof useListCustomerPlans>[0],
+    { query: { enabled: !!id, queryKey: getListCustomerPlansQueryKey({ customerId: id } as Parameters<typeof useListCustomerPlans>[0]) } },
+  );
   const { data: campaigns } = useQuery<Campaign[]>({
     queryKey: ['marketing-campaigns-slim'],
     queryFn: () => customFetch<Campaign[]>('/api/marketing/campaigns'),
@@ -220,6 +324,8 @@ export default function CustomerDetailPage() {
   };
 
   const handleSave = () => {
+    const name = (form.name as string | undefined ?? '').trim();
+    if (!name) { toast.error('Customer name is required.'); return; }
     const customFieldValues: Record<string, string> = {};
     const body: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(form)) {
@@ -336,8 +442,26 @@ export default function CustomerDetailPage() {
               </Badge>
             )}
             {paymentMethodData?.paymentMethod && (
-              <Badge variant="outline" className="gap-1 text-emerald-700 border-emerald-200 bg-emerald-50">
+              <Badge variant="outline" className="gap-1 text-emerald-700 border-emerald-200 bg-emerald-50 pr-1">
                 <CreditCard className="w-3 h-3" /> {paymentMethodData.paymentMethod.label}
+                <button
+                  onClick={async e => {
+                    e.stopPropagation();
+                    if (!confirm('Remove this saved card?')) return;
+                    try {
+                      await customFetch(`/api/customers/${id}/payment-method`, { method: 'DELETE' });
+                      qc.invalidateQueries({ queryKey: getGetCustomerPaymentMethodQueryKey(id) });
+                      qc.invalidateQueries({ queryKey: getGetCustomerQueryKey(id) });
+                      toast.success('Saved card removed');
+                    } catch {
+                      toast.error('Failed to remove card');
+                    }
+                  }}
+                  className="ml-1 rounded-full hover:bg-emerald-200 p-0.5 transition-colors"
+                  title="Remove saved card"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
               </Badge>
             )}
             {customer.paymentStanding && (() => {
@@ -355,14 +479,14 @@ export default function CustomerDetailPage() {
                 ps.status === 'flagged'  ? 'bg-red-100 text-red-800 border-transparent' :
                 ps.status === 'paused'   ? 'bg-red-100 text-red-700 border-transparent' : '';
               return (
-                <Badge variant="outline" className={cls}>{label}</Badge>
+                <Badge variant="outline" className={cls} title={`Payment standing: ${label}`}>{label}</Badge>
               );
             })()}
           </div>
           <div className="flex flex-wrap gap-4 mt-2 text-sm text-muted-foreground">
-            {customer.company && <span className="flex items-center gap-1"><Building className="w-4 h-4" />{customer.company}</span>}
-            <span className="flex items-center gap-1"><Phone className="w-4 h-4" />{customer.phone}</span>
-            <span className="flex items-center gap-1"><Mail className="w-4 h-4" />{customer.email}</span>
+            {customer.company && <span className="flex items-center gap-1" title={customer.company}><Building className="w-4 h-4" />{customer.company}</span>}
+            <span className="flex items-center gap-1" title={customer.phone}><Phone className="w-4 h-4" />{customer.phone}</span>
+            <span className="flex items-center gap-1" title={customer.email}><Mail className="w-4 h-4" />{customer.email}</span>
             {customer.paymentStanding && (customer.paymentStanding.overdueAmount ?? 0) > 0 && customer.paymentStanding.status !== 'overdue' && (
               <span className="flex items-center gap-1 text-orange-600">
                 <AlertTriangle className="w-3.5 h-3.5" />
@@ -373,21 +497,37 @@ export default function CustomerDetailPage() {
         </div>
         <div className="flex gap-2 shrink-0">
           {portalLink && (
-            <Button
-              variant="outline"
-              className="gap-2"
-              onClick={() => {
-                navigator.clipboard.writeText(portalLink.url);
-                toast.success('Portal link copied to clipboard');
-              }}
-            >
-              <Link className="w-4 h-4" /> Copy Portal Link
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                className="gap-2"
+                title="Copy the customer portal link to clipboard"
+                onClick={() => {
+                  navigator.clipboard.writeText(portalLink.url);
+                  toast.success('Portal link copied to clipboard');
+                }}
+              >
+                <LinkIcon className="w-4 h-4" /> Copy Portal Link
+              </Button>
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={() => {
+                  const subject = encodeURIComponent('Your Customer Portal Access');
+                  const body = encodeURIComponent(`Hi ${customer.name},\n\nHere is your link to access your customer portal:\n\n${portalLink.url}\n\nPlease let us know if you have any questions.`);
+                  window.open(`mailto:${customer.email}?subject=${subject}&body=${body}`, '_blank');
+                }}
+                title="Open email client with portal link"
+              >
+                <Mail className="w-4 h-4" /> Send Invite
+              </Button>
+            </>
           )}
           {canManageOffice && customer.paymentStanding?.isServicePaused && (
             <Button
               variant="outline"
               className="gap-2 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+              title="Resume active service for this customer"
               disabled={resumeService.isPending}
               onClick={() => {
                 resumeService.mutate(
@@ -406,7 +546,10 @@ export default function CustomerDetailPage() {
               {resumeService.isPending ? 'Resuming...' : 'Resume Service'}
             </Button>
           )}
-          <Button onClick={openEdit} className="gap-2">
+          <Button variant="outline" className="gap-2" title="View all invoices for this customer" onClick={() => setLocation(`/financials?customerIdFilter=${id}`)}>
+            <FileText className="w-4 h-4" /> View Invoices
+          </Button>
+          <Button onClick={openEdit} className="gap-2" title="Edit this customer's information">
             <Edit className="w-4 h-4" /> Edit Customer
           </Button>
         </div>
@@ -415,18 +558,21 @@ export default function CustomerDetailPage() {
       {/* KPI bar */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {[
-          { label: 'Lifetime Spend', value: `${(customer.totalSpend ?? 0).toLocaleString()}`, icon: DollarSign, color: 'text-emerald-600' },
+          { label: 'Lifetime Spend', value: `$${(customer.totalSpend ?? 0).toLocaleString()}`, icon: DollarSign, color: 'text-emerald-600' },
+          ...(() => { const open = (custInvoices ?? []).filter(i => i.status !== 'paid' && i.status !== 'cancelled').reduce((s, i) => s + i.total, 0); return open > 0 ? [{ label: 'Open Balance', value: `$${open.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, icon: DollarSign, color: 'text-destructive' }] : []; })(),
+          ...(() => { const yrs = (Date.now() - new Date(customer.createdAt).getTime()) / (365.25 * 86400000); const avg = yrs >= 0.5 && (customer.totalSpend ?? 0) > 0 ? Math.round((customer.totalSpend ?? 0) / yrs) : null; return avg != null ? [{ label: 'Yearly Avg', value: `$${avg.toLocaleString()}`, icon: DollarSign, color: 'text-sky-600' }] : []; })(),
           { label: `${new Date().getFullYear()} Spend`, value: (customer as any).thisYearSpend != null ? `${(customer as any).thisYearSpend.toLocaleString()}` : '—', icon: DollarSign, color: 'text-teal-600' },
           { label: `${new Date().getFullYear() - 1} Spend`, value: (customer as any).lastYearSpend != null ? `${(customer as any).lastYearSpend.toLocaleString()}` : '—', icon: DollarSign, color: 'text-cyan-600' },
           { label: 'Properties', value: String(properties?.length ?? 0), icon: Home, color: 'text-blue-600' },
           { label: 'Total Jobs', value: String(jobs?.length ?? 0), icon: Briefcase, color: 'text-violet-600' },
+          ...(() => { const openJobs = (jobs ?? []).filter(j => j.status === 'scheduled' || j.status === 'in_progress').length; return openJobs > 0 ? [{ label: 'Open Jobs', value: String(openJobs), icon: Briefcase, color: 'text-orange-600' }] : []; })(),
           { label: 'Completed', value: String(completedJobs), icon: Calendar, color: 'text-amber-600' },
         ].map(({ label, value, icon: Icon, color }) => (
           <Card key={label}>
             <CardContent className="p-4 flex items-center gap-3">
               <div className={`p-2 rounded-lg bg-muted ${color}`}><Icon className="w-5 h-5" /></div>
               <div>
-                <p className="text-2xl font-bold">{value}</p>
+                <p className="text-2xl font-bold" title={`${label}: ${value}`}>{value}</p>
                 <p className="text-xs text-muted-foreground">{label}</p>
               </div>
             </CardContent>
@@ -437,12 +583,13 @@ export default function CustomerDetailPage() {
       {/* Tabs */}
       <Tabs defaultValue="overview" className="w-full">
         <TabsList className="mb-4">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="timeline">Timeline</TabsTrigger>
-          <TabsTrigger value="properties">Properties ({properties?.length ?? 0})</TabsTrigger>
-          <TabsTrigger value="jobs">Jobs ({jobs?.length ?? 0})</TabsTrigger>
-          <TabsTrigger value="messages">Messages ({messages?.length ?? 0})</TabsTrigger>
-          <TabsTrigger value="plans">Plans</TabsTrigger>
+          <TabsTrigger value="overview" title="Customer overview, contact info, and notes">Overview</TabsTrigger>
+          <TabsTrigger value="timeline" title="Activity timeline for this customer">Timeline</TabsTrigger>
+          <TabsTrigger value="properties" title="Properties associated with this customer">Properties ({properties?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="jobs" title="Job history for this customer">Jobs ({jobs?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="invoices" title="Invoices and billing history">Invoices {custInvoices && custInvoices.length > 0 ? `(${custInvoices.filter(i => i.status !== 'paid' && i.status !== 'cancelled').length > 0 ? `${custInvoices.filter(i => i.status !== 'paid' && i.status !== 'cancelled').length} open` : custInvoices.length})` : ''}</TabsTrigger>
+          <TabsTrigger value="messages" title="SMS and email message history">Messages ({messages?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="plans" title="Active and past service plans">Plans {customerPlans && customerPlans.length > 0 ? `(${customerPlans.filter(p => p.status === 'active').length} active)` : ''}</TabsTrigger>
         </TabsList>
 
         {/* Overview tab */}
@@ -452,9 +599,13 @@ export default function CustomerDetailPage() {
               <CardHeader><CardTitle className="text-base flex items-center gap-2"><User className="w-4 h-4" />Contact Information</CardTitle></CardHeader>
               <CardContent className="space-y-3 text-sm">
                 <Row label="Name" value={customer.name} />
-                <Row label="Email" value={customer.email} />
-                <Row label="Phone" value={customer.phone} />
-                {customer.secondaryPhone && <Row label="Secondary Phone" value={customer.secondaryPhone} />}
+                {customer.email
+                  ? <div className="flex justify-between"><span className="text-muted-foreground">Email</span><a href={`mailto:${customer.email}`} title={`Send email to ${customer.email}`} className="hover:underline text-primary">{customer.email}</a></div>
+                  : <Row label="Email" value={customer.email} />}
+                {customer.phone
+                  ? <div className="flex justify-between"><span className="text-muted-foreground">Phone</span><a href={`tel:${customer.phone}`} title={`Call ${customer.phone}`} className="hover:underline text-primary">{customer.phone}</a></div>
+                  : <Row label="Phone" value={customer.phone} />}
+                {customer.secondaryPhone && <div className="flex justify-between"><span className="text-muted-foreground">Secondary Phone</span><a href={`tel:${customer.secondaryPhone}`} title={`Call ${customer.secondaryPhone}`} className="hover:underline text-primary">{customer.secondaryPhone}</a></div>}
                 {customer.company && <Row label="Company" value={customer.company} />}
                 {customer.customerType && <Row label="Customer Type" value={customer.customerType} />}
                 {customer.referralSource && <Row label="Referral Source" value={customer.referralSource} />}
@@ -474,6 +625,7 @@ export default function CustomerDetailPage() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      title="Unlink this marketing campaign"
                       className="text-muted-foreground hover:text-destructive"
                       onClick={() => {
                         updateCustomer.mutate(
@@ -503,7 +655,7 @@ export default function CustomerDetailPage() {
                           );
                         }}
                       >
-                        <SelectTrigger className="w-full">
+                        <SelectTrigger className="w-full" title="Associate this customer with a marketing campaign">
                           <SelectValue placeholder="Link to a campaign..." />
                         </SelectTrigger>
                         <SelectContent>
@@ -519,40 +671,44 @@ export default function CustomerDetailPage() {
             </Card>
           </div>
 
-          {(customer.billingAddress || customer.notes) && (
-            <Card>
-              <CardHeader><CardTitle className="text-base flex items-center gap-2"><FileText className="w-4 h-4" />Billing & Notes</CardTitle></CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                {customer.billingAddress && (
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Billing Address</p>
-                    <p>{customer.billingAddress}</p>
-                    {(customer.billingCity || customer.billingState) && (
-                      <p className="text-muted-foreground">{[customer.billingCity, customer.billingState, customer.billingZip].filter(Boolean).join(', ')}</p>
-                    )}
-                  </div>
-                )}
-                {customer.notes && (
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Notes</p>
-                    <p className="whitespace-pre-wrap">{customer.notes}</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
+          <Card>
+            <CardHeader><CardTitle className="text-base flex items-center gap-2"><FileText className="w-4 h-4" />Billing & Notes</CardTitle></CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              {customer.billingAddress && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Billing Address</p>
+                  <p>{customer.billingAddress}</p>
+                  {(customer.billingCity || customer.billingState) && (
+                    <p className="text-muted-foreground">{[customer.billingCity, customer.billingState, customer.billingZip].filter(Boolean).join(', ')}</p>
+                  )}
+                </div>
+              )}
+              <InlineNotesEditor customerId={customer.id} initialNotes={customer.notes ?? ''} />
+            </CardContent>
+          </Card>
 
           {/* Tags */}
-          {(customer.tags ?? []).length > 0 && (
-            <Card>
-              <CardHeader><CardTitle className="text-base flex items-center gap-2"><Tag className="w-4 h-4" />Tags</CardTitle></CardHeader>
-              <CardContent>
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base flex items-center gap-2"><Tag className="w-4 h-4" />Tags</CardTitle>
+                {canManageOffice && (
+                  <Button variant="ghost" size="sm" title="Edit customer tags" className="h-7 text-xs gap-1" onClick={() => setEditing(true)}>
+                    <Pencil className="w-3 h-3" /> Edit
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {(customer.tags ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">No tags.</p>
+              ) : (
                 <div className="flex flex-wrap gap-2">
-                  {(customer.tags ?? []).map(tag => <Badge key={tag} variant="secondary">{tag}</Badge>)}
+                  {(customer.tags ?? []).map(tag => <Badge key={tag} variant="secondary" title={`Tag: ${tag}`}>{tag}</Badge>)}
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              )}
+            </CardContent>
+          </Card>
 
           {/* Custom fields */}
           {(() => {
@@ -576,9 +732,10 @@ export default function CustomerDetailPage() {
             type TimelineItem =
               | { kind: 'job'; date: Date; id: number; title: string; status: string; amount: number | null; propertyAddress: string | null }
               | { kind: 'estimate'; date: Date; id: number; status: string; total: number | null; sentAt: string | null; approvedAt: string | null; propertyAddress: string | null }
-              | { kind: 'visit'; date: Date; id: number; purpose: string; completedAt: string | null; outcomeNotes: string | null; propertyAddress: string | null };
+              | { kind: 'visit'; date: Date; id: number; purpose: string; completedAt: string | null; outcomeNotes: string | null; propertyAddress: string | null }
+              | { kind: 'invoice'; date: Date; id: number; invoiceNumber: string; status: string; total: number | null };
 
-            const items: TimelineItem[] = [
+            const allItems: TimelineItem[] = [
               ...(jobs ?? []).map(j => ({
                 kind: 'job' as const,
                 date: new Date(j.scheduledAt),
@@ -607,7 +764,18 @@ export default function CustomerDetailPage() {
                 outcomeNotes: (v as any).outcomeNotes ?? null,
                 propertyAddress: (v as any).propertyAddress ?? null,
               })),
+              ...(custInvoices ?? []).map(inv => ({
+                kind: 'invoice' as const,
+                date: new Date((inv as any).issuedAt ?? (inv as any).createdAt ?? inv.dueDate ?? new Date()),
+                id: inv.id,
+                invoiceNumber: (inv as any).invoiceNumber ?? `#${inv.id}`,
+                status: inv.status,
+                total: inv.total ?? null,
+              })),
             ].sort((a, b) => b.date.getTime() - a.date.getTime());
+
+            const [timelineFilter, setTimelineFilter] = React.useState<'all' | 'job' | 'estimate' | 'visit' | 'invoice'>('all');
+            const items = timelineFilter === 'all' ? allItems : allItems.filter(i => i.kind === timelineFilter);
 
             const ESTIMATE_STATUS_COLORS: Record<string, string> = {
               draft: 'bg-gray-100 text-gray-600 border-transparent',
@@ -621,7 +789,15 @@ export default function CustomerDetailPage() {
               pending: 'bg-amber-100 text-amber-700 border-transparent',
             };
 
-            if (!items.length) {
+            const filterOptions = [
+              { value: 'all' as const, label: 'All' },
+              { value: 'job' as const, label: 'Jobs' },
+              { value: 'estimate' as const, label: 'Estimates' },
+              { value: 'visit' as const, label: 'Visits' },
+              { value: 'invoice' as const, label: 'Invoices' },
+            ];
+
+            if (!items.length && timelineFilter === 'all') {
               return (
                 <Card>
                   <CardContent className="py-16 text-center text-muted-foreground">
@@ -644,9 +820,29 @@ export default function CustomerDetailPage() {
             return (
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between pb-3">
-                  <div>
-                    <CardTitle className="text-base">Customer Timeline</CardTitle>
-                    <CardDescription>All jobs, estimates, and visits in chronological order.</CardDescription>
+                  <div className="space-y-2">
+                    <div>
+                      <CardTitle className="text-base">Customer Timeline</CardTitle>
+                      <CardDescription>All jobs, estimates, and visits in chronological order.</CardDescription>
+                    </div>
+                    <div className="flex gap-1">
+                      {filterOptions.map(opt => (
+                        <Button
+                          key={opt.value}
+                          variant={timelineFilter === opt.value ? 'default' : 'ghost'}
+                          size="sm"
+                          className="h-6 text-xs px-2"
+                          onClick={() => setTimelineFilter(opt.value)}
+                        >
+                          {opt.label}
+                          {opt.value !== 'all' && (
+                            <span className="ml-1 text-[10px] opacity-70">
+                              {allItems.filter(i => i.kind === opt.value).length}
+                            </span>
+                          )}
+                        </Button>
+                      ))}
+                    </div>
                   </div>
                   <Button
                     size="sm"
@@ -667,11 +863,13 @@ export default function CustomerDetailPage() {
                           <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
                             item.kind === 'job' ? 'bg-violet-100 text-violet-600' :
                             item.kind === 'estimate' ? 'bg-blue-100 text-blue-600' :
+                            item.kind === 'invoice' ? 'bg-emerald-100 text-emerald-600' :
                             'bg-amber-100 text-amber-600'
                           }`}>
                             {item.kind === 'job' && <Briefcase className="w-4 h-4" />}
                             {item.kind === 'estimate' && <ClipboardList className="w-4 h-4" />}
                             {item.kind === 'visit' && <Eye className="w-4 h-4" />}
+                            {item.kind === 'invoice' && <FileText className="w-4 h-4" />}
                           </div>
                           {idx < items.length - 1 && <div className="w-px flex-1 bg-border mt-1" style={{ minHeight: 16 }} />}
                         </div>
@@ -681,41 +879,51 @@ export default function CustomerDetailPage() {
                           <div className="flex items-start justify-between gap-2 flex-wrap">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                {item.kind === 'job' ? 'Job' : item.kind === 'estimate' ? 'Estimate' : 'Visit'}
+                                {item.kind === 'job' ? 'Job' : item.kind === 'estimate' ? 'Estimate' : item.kind === 'invoice' ? 'Invoice' : 'Visit'}
                               </span>
                               {item.kind === 'job' && (
-                                <Badge className={`capitalize text-xs ${STATUS_COLORS[item.status] ?? ''}`}>
+                                <Badge className={`capitalize text-xs ${STATUS_COLORS[item.status] ?? ''}`} title={`Job status: ${item.status.replace(/_/g, ' ')}`}>
                                   {item.status.replace(/_/g, ' ')}
                                 </Badge>
                               )}
                               {item.kind === 'estimate' && (
-                                <Badge className={`capitalize text-xs ${ESTIMATE_STATUS_COLORS[item.status] ?? ''}`}>
+                                <Badge className={`capitalize text-xs ${ESTIMATE_STATUS_COLORS[item.status] ?? ''}`} title={`Estimate status: ${item.status}`}>
                                   {item.status}
                                 </Badge>
                               )}
                               {item.kind === 'visit' && (
-                                <Badge className={`text-xs ${item.completedAt ? VISIT_STATUS_COLORS.completed : VISIT_STATUS_COLORS.pending}`}>
+                                <Badge className={`text-xs ${item.completedAt ? VISIT_STATUS_COLORS.completed : VISIT_STATUS_COLORS.pending}`} title={item.completedAt ? `Completed ${new Date(item.completedAt).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}` : 'Visit not yet completed'}>
                                   {item.completedAt ? 'Completed' : 'Pending'}
                                 </Badge>
                               )}
+                              {item.kind === 'invoice' && (
+                                <Badge className={`capitalize text-xs ${item.status === 'paid' ? 'bg-emerald-100 text-emerald-700 border-transparent' : item.status === 'overdue' ? 'bg-red-100 text-red-700 border-transparent' : 'bg-muted text-muted-foreground border-transparent'}`} title={`Invoice status: ${item.status}`}>
+                                  {item.status}
+                                </Badge>
+                              )}
                             </div>
-                            <span className="text-xs text-muted-foreground shrink-0">
+                            <span className="text-xs text-muted-foreground shrink-0" title={item.date.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}>
                               {item.date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                             </span>
                           </div>
 
                           <p className="text-sm font-medium mt-0.5 truncate">
-                            {item.kind === 'job' && item.title}
+                            {item.kind === 'job' && <button title={item.title} className="hover:underline text-primary" onClick={() => setLocation(`/schedule?jobId=${item.id}`)}>{item.title}</button>}
                             {item.kind === 'estimate' && (
-                              <>Estimate #{item.id}{item.total != null ? ` — ${item.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : ''}</>
+                              <Link href={`/estimates?highlight=${item.id}`} title={`View Estimate #${item.id}`} className="hover:underline text-primary">
+                                Estimate #{item.id}{item.total != null ? ` — $${item.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : ''}
+                              </Link>
                             )}
                             {item.kind === 'visit' && item.purpose}
+                            {item.kind === 'invoice' && (
+                              <span>Invoice {item.invoiceNumber}{item.total != null ? ` — $${item.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : ''}</span>
+                            )}
                           </p>
 
                           <div className="flex items-center gap-3 mt-1 flex-wrap">
-                            {item.propertyAddress && (
-                              <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                <MapPin className="w-3 h-3" />{item.propertyAddress}
+                            {'propertyAddress' in item && (item as any).propertyAddress && (
+                              <span className="text-xs text-muted-foreground flex items-center gap-1" title={(item as any).propertyAddress}>
+                                <MapPin className="w-3 h-3" />{(item as any).propertyAddress}
                               </span>
                             )}
                             {item.kind === 'estimate' && item.sentAt && (
@@ -729,7 +937,7 @@ export default function CustomerDetailPage() {
                               </span>
                             )}
                             {item.kind === 'job' && item.amount != null && (
-                              <span className="text-xs font-medium text-muted-foreground">
+                              <span className="text-xs font-medium text-muted-foreground" title={`Job total: $${item.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}>
                                 ${item.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                               </span>
                             )}
@@ -776,7 +984,7 @@ export default function CustomerDetailPage() {
                 <CardTitle>Properties</CardTitle>
                 <CardDescription>Properties currently associated with this customer.</CardDescription>
               </div>
-              <Button size="sm" className="gap-2" onClick={openAddProperty}>
+              <Button size="sm" className="gap-2" title="Link a new property to this customer" onClick={openAddProperty}>
                 <Plus className="w-4 h-4" /> Add Property
               </Button>
             </CardHeader>
@@ -785,7 +993,7 @@ export default function CustomerDetailPage() {
                 <div className="text-center py-12 text-muted-foreground">
                   <Home className="w-10 h-10 mx-auto mb-3 opacity-30" />
                   <p>No properties linked to this customer.</p>
-                  <Button variant="outline" size="sm" className="mt-3 gap-2" onClick={openAddProperty}>
+                  <Button variant="outline" size="sm" className="mt-3 gap-2" title="Link a new property to this customer" onClick={openAddProperty}>
                     <Plus className="w-4 h-4" /> Add First Property
                   </Button>
                 </div>
@@ -795,6 +1003,7 @@ export default function CustomerDetailPage() {
                     <TableRow>
                       <TableHead>Address</TableHead>
                       <TableHead>Type</TableHead>
+                      <TableHead className="text-right">Size</TableHead>
                       <TableHead>Geofence</TableHead>
                       <TableHead></TableHead>
                     </TableRow>
@@ -806,19 +1015,22 @@ export default function CustomerDetailPage() {
                           <div className="flex items-start gap-2">
                             <PropertyThumbnail profilePhotoUrl={(p as any).profilePhotoUrl} />
                             <div>
-                              <div className="font-medium">{p.address}</div>
+                              <div className="font-medium" title={p.address}>{p.address}</div>
                               <div className="text-xs text-muted-foreground">{[p.city, p.state, p.zip].filter(Boolean).join(', ')}</div>
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>{p.type ? <Badge variant="secondary" className="capitalize">{p.type}</Badge> : '-'}</TableCell>
-                        <TableCell>
-                          {p.geofenceLat ? (
-                            <span className="text-xs text-emerald-600 font-medium">Set ({p.geofenceRadius}m)</span>
-                          ) : <span className="text-xs text-muted-foreground">Not set</span>}
+                        <TableCell>{p.type ? <Badge variant="secondary" className="capitalize" title={`Property type: ${p.type}`}>{p.type}</Badge> : '-'}</TableCell>
+                        <TableCell className="text-right text-sm text-muted-foreground" title={(p as any).serviceableAreaSqft ? `Serviceable area: ${((p as any).serviceableAreaSqft as number).toLocaleString()} sqft` : 'No area data'}>
+                          {(p as any).serviceableAreaSqft ? `${((p as any).serviceableAreaSqft as number).toLocaleString()} sqft` : '—'}
                         </TableCell>
                         <TableCell>
-                          <Button variant="ghost" size="sm" onClick={e => { e.stopPropagation(); setLocation(`/properties/${p.id}`); }}>
+                          {p.geofenceLat ? (
+                            <span className="text-xs text-emerald-600 font-medium" title={`Geofence set — radius: ${p.geofenceRadius}m`}>Set ({p.geofenceRadius}m)</span>
+                          ) : <span className="text-xs text-muted-foreground" title="No geofence configured">Not set</span>}
+                        </TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="sm" title="View property details" onClick={e => { e.stopPropagation(); setLocation(`/properties/${p.id}`); }}>
                             View →
                           </Button>
                         </TableCell>
@@ -906,7 +1118,7 @@ export default function CustomerDetailPage() {
                     <MailMinus className="w-3 h-3" /> Email opt-out
                   </Badge>
                 )}
-                <Button size="sm" className="gap-2" onClick={() => setComposeOpen(true)}>
+                <Button size="sm" className="gap-2" title="Send SMS or email to this customer" onClick={() => setComposeOpen(true)}>
                   <MessageSquare className="w-4 h-4" /> Send Message
                 </Button>
               </div>
@@ -931,12 +1143,14 @@ export default function CustomerDetailPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <span className="text-xs font-medium text-muted-foreground capitalize">
+                          <span className="text-xs font-medium text-muted-foreground capitalize flex items-center gap-1" title={`${msg.direction === 'outbound' ? 'Sent' : 'Received'} via ${msg.channel.toUpperCase()}`}>
+                            {msg.channel === 'sms' ? <Phone className="w-3 h-3" /> : <Mail className="w-3 h-3" />}
                             {msg.direction} · {msg.channel.toUpperCase()}
                           </span>
                           {msg.subject && <span className="text-xs text-muted-foreground">· {msg.subject}</span>}
                           <Badge
                             variant="outline"
+                            title={`Message status: ${msg.status}`}
                             className={`text-[10px] px-1.5 py-0 ml-auto ${
                               msg.status === 'sent' || msg.status === 'delivered' ? 'text-emerald-600 border-emerald-200' :
                               msg.status === 'received' ? 'text-blue-600 border-blue-200' :
@@ -947,7 +1161,7 @@ export default function CustomerDetailPage() {
                           </Badge>
                         </div>
                         <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
-                        <p className="text-xs text-muted-foreground mt-1">
+                        <p className="text-xs text-muted-foreground mt-1" title={new Date(msg.createdAt).toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}>
                           {new Date(msg.createdAt).toLocaleString()}
                         </p>
                       </div>
@@ -1029,6 +1243,31 @@ export default function CustomerDetailPage() {
                 <CardTitle>Job History</CardTitle>
                 <CardDescription>All jobs associated with this customer.</CardDescription>
               </div>
+              {canManageOffice && (
+                <div className="flex gap-1.5 mr-2">
+                  <Button size="sm" variant="outline" className="gap-1.5" title="Create a new job for this customer" onClick={() => setLocation(`/schedule?action=create&customerId=${customer.id}`)}>
+                    <Plus className="w-3.5 h-3.5" /> New Job
+                  </Button>
+                  <Button size="sm" variant="outline" className="gap-1.5" title="Create a new estimate for this customer" onClick={() => setLocation(`/estimates?action=create&customerId=${customer.id}`)}>
+                    <Plus className="w-3.5 h-3.5" /> New Estimate
+                  </Button>
+                  <Button size="sm" variant="outline" className="gap-1.5" title="Log a completed visit for this customer" onClick={() => setLocation(`/visits?customerId=${customer.id}`)}>
+                    <Plus className="w-3.5 h-3.5" /> Log Visit
+                  </Button>
+                </div>
+              )}
+              <div className="flex items-center gap-1.5 ml-auto">
+                {(['all', 'scheduled', 'in_progress', 'completed', 'cancelled'] as const).map(s => (
+                  <button
+                    key={s}
+                    title={s === 'all' ? 'Show all jobs' : s === 'in_progress' ? 'Show in-progress jobs' : `Show ${s} jobs`}
+                    className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${custJobStatusFilter === s ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
+                    onClick={() => setCustJobStatusFilter(s)}
+                  >
+                    {s === 'all' ? 'All' : s === 'in_progress' ? 'In Progress' : s.charAt(0).toUpperCase() + s.slice(1)}
+                  </button>
+                ))}
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               <Table>
@@ -1042,19 +1281,19 @@ export default function CustomerDetailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(jobs ?? []).map(job => (
-                    <TableRow key={job.id} className="cursor-pointer hover:bg-muted/50">
-                      <TableCell className="font-medium">{job.title}</TableCell>
+                  {(jobs ?? []).filter(j => custJobStatusFilter === 'all' || j.status === custJobStatusFilter).map(job => (
+                    <TableRow key={job.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setLocation(`/schedule?jobId=${job.id}`)}>
+                      <TableCell className="font-medium" title={job.title}>{job.title}</TableCell>
                       <TableCell>
-                        <Badge className={`capitalize ${STATUS_COLORS[job.status] ?? ''}`}>
+                        <Badge className={`capitalize ${STATUS_COLORS[job.status] ?? ''}`} title={`Job status: ${job.status.replace(/_/g, ' ')}`}>
                           {job.status.replace(/_/g, ' ')}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-muted-foreground text-sm">
+                      <TableCell className="text-muted-foreground text-sm" title={new Date(job.scheduledAt).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}>
                         {new Date(job.scheduledAt).toLocaleDateString()}
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{job.propertyAddress ?? '-'}</TableCell>
-                      <TableCell className="text-right font-medium">${(job.totalAmount ?? 0).toLocaleString()}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground" title={job.propertyAddress ?? undefined}>{job.propertyAddress ?? '-'}</TableCell>
+                      <TableCell className="text-right font-medium" title={`Job total: $${(job.totalAmount ?? 0).toLocaleString()}`}>${(job.totalAmount ?? 0).toLocaleString()}</TableCell>
                     </TableRow>
                   ))}
                   {!jobs?.length && (
@@ -1069,6 +1308,115 @@ export default function CustomerDetailPage() {
               </Table>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Invoices tab */}
+        <TabsContent value="invoices" className="focus-visible:outline-none">
+          {(() => {
+            const INVOICE_STATUS_COLORS: Record<string, string> = {
+              paid: 'bg-emerald-100 text-emerald-700 border-transparent',
+              overdue: 'bg-red-100 text-red-700 border-transparent',
+              sent: 'bg-blue-100 text-blue-700 border-transparent',
+              draft: 'bg-gray-100 text-gray-600 border-transparent',
+              cancelled: 'bg-gray-200 text-gray-500 border-transparent',
+            };
+            const filteredInvoices = (custInvoices ?? []).filter(inv => {
+              if (invStatusFilter !== 'all' && inv.status !== invStatusFilter) return false;
+              if (invSearch) {
+                const q = invSearch.toLowerCase();
+                return (inv.invoiceNumber ?? '').toLowerCase().includes(q) || inv.status.includes(q);
+              }
+              return true;
+            });
+            return (
+              <Card>
+                <CardHeader className="pb-3 flex flex-row items-center justify-between flex-wrap gap-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <FileText className="w-4 h-4" /> Invoice History
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      title="Search by invoice number or status"
+                      placeholder="Search invoices…"
+                      value={invSearch}
+                      onChange={e => setInvSearch(e.target.value)}
+                      className="h-8 text-sm w-40"
+                    />
+                    <Select value={invStatusFilter} onValueChange={setInvStatusFilter}>
+                      <SelectTrigger className="h-8 text-sm w-32" title="Filter invoices by status"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All</SelectItem>
+                        <SelectItem value="paid">Paid</SelectItem>
+                        <SelectItem value="sent">Sent</SelectItem>
+                        <SelectItem value="overdue">Overdue</SelectItem>
+                        <SelectItem value="draft">Draft</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button size="sm" className="gap-1.5 shrink-0" title="Create a new invoice for this customer" onClick={() => setLocation(`/financials?action=create&customerId=${customer.id}`)}>
+                      <Plus className="w-3.5 h-3.5" /> New Invoice
+                    </Button>
+                  </div>
+                </CardHeader>
+                {(() => {
+                  const outstanding = (custInvoices ?? []).filter(i => i.status !== 'paid' && i.status !== 'cancelled').reduce((s, i) => s + i.total, 0);
+                  const overdue = (custInvoices ?? []).filter(i => i.status === 'overdue').reduce((s, i) => s + i.total, 0);
+                  if (!outstanding && !overdue) return null;
+                  return (
+                    <div className="px-4 py-2 border-b bg-muted/30 flex items-center gap-4 text-xs">
+                      {outstanding > 0 && <span className="text-muted-foreground">Outstanding: <span className="font-semibold text-foreground">${outstanding.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></span>}
+                      {overdue > 0 && <span className="text-destructive font-medium">Overdue: ${overdue.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>}
+                    </div>
+                  );
+                })()}
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Invoice #</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Issued</TableHead>
+                        <TableHead>Due</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                        <TableHead className="text-right">Days Overdue</TableHead>
+                        <TableHead />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {invLoading ? (
+                        <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Loading…</TableCell></TableRow>
+                      ) : !filteredInvoices.length ? (
+                        <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">{custInvoices?.length ? 'No invoices match your filters.' : 'No invoices yet.'}</TableCell></TableRow>
+                      ) : (
+                        filteredInvoices.map(inv => (
+                          <TableRow key={inv.id} className="text-sm cursor-pointer hover:bg-muted/50" onClick={() => setLocation(`/financials?invoiceId=${inv.id}`)}>
+                            <TableCell className="font-mono font-medium" title={`Invoice ${inv.invoiceNumber}`}>{inv.invoiceNumber}</TableCell>
+                            <TableCell>
+                              <Badge className={`capitalize text-xs ${INVOICE_STATUS_COLORS[inv.status] ?? ''}`} variant="outline" title={`Invoice status: ${inv.status}`}>
+                                {inv.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground" title={new Date(inv.createdAt).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}>{new Date(inv.createdAt).toLocaleDateString()}</TableCell>
+                            <TableCell className={`${(inv as any).dueDate && inv.status !== 'paid' && new Date((inv as any).dueDate) < new Date() ? 'text-destructive font-medium' : 'text-muted-foreground'}`} title={(inv as any).dueDate ? `Due: ${new Date((inv as any).dueDate).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}` : 'No due date'}>
+                              {(inv as any).dueDate ? new Date((inv as any).dueDate).toLocaleDateString() : '—'}
+                            </TableCell>
+                            <TableCell className="text-right font-medium" title={`Invoice total: $${inv.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}>${inv.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                            <TableCell className="text-right text-xs">
+                              {(inv as any).dueDate && inv.status !== 'paid' && new Date((inv as any).dueDate) < new Date()
+                                ? <span className="text-destructive font-medium" title={`${Math.floor((Date.now() - new Date((inv as any).dueDate).getTime()) / 86400000)} days overdue`}>{Math.floor((Date.now() - new Date((inv as any).dueDate).getTime()) / 86400000)}d</span>
+                                : <span className="text-muted-foreground">—</span>}
+                            </TableCell>
+                            <TableCell>
+                              <span className="text-xs text-primary whitespace-nowrap" title="Open this invoice">View →</span>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            );
+          })()}
         </TabsContent>
 
         {/* Plans tab */}
@@ -1126,6 +1474,7 @@ export default function CustomerDetailPage() {
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Subject</label>
                 <Input
+                  title="Email subject line"
                   placeholder="Subject..."
                   value={composeSubject}
                   onChange={e => setComposeSubject(e.target.value)}
@@ -1136,6 +1485,7 @@ export default function CustomerDetailPage() {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Message</label>
               <Textarea
+                title={composeChannel === 'sms' ? 'SMS message content (max 1600 characters)' : 'Email message body'}
                 placeholder={composeChannel === 'sms' ? 'Type your SMS message...' : 'Type your email body...'}
                 rows={composeChannel === 'sms' ? 4 : 8}
                 value={composeBody}
@@ -1313,30 +1663,30 @@ export default function CustomerDetailPage() {
           <div className="space-y-6 pb-6">
             <Section title="Contact Information" icon={<User className="w-4 h-4" />}>
               <Field label="Full Name" required>
-                <Input value={form.name as string} onChange={e => setField('name', e.target.value)} placeholder="Jane Smith" />
+                <Input title="Customer's full name" value={form.name as string} onChange={e => setField('name', e.target.value)} placeholder="Jane Smith" />
               </Field>
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Email" required>
-                  <Input type="email" value={form.email as string} onChange={e => setField('email', e.target.value)} placeholder="jane@example.com" />
+                  <Input type="email" title="Customer's email address" value={form.email as string} onChange={e => setField('email', e.target.value)} placeholder="jane@example.com" />
                 </Field>
                 <Field label="Phone" required>
-                  <Input value={form.phone as string} onChange={e => setField('phone', e.target.value)} placeholder="(555) 000-0000" />
+                  <Input title="Customer's primary phone number" value={form.phone as string} onChange={e => setField('phone', e.target.value)} placeholder="(555) 000-0000" />
                 </Field>
               </div>
               {activeFields.filter(f => f.isBuiltIn && f.visible && f.key === 'secondaryPhone').map(f => (
                 <Field key={f.key} label={f.label} required={f.required}>
-                  <Input value={form.secondaryPhone as string} onChange={e => setField('secondaryPhone', e.target.value)} placeholder="(555) 000-0001" />
+                  <Input title="Customer's secondary phone number" value={form.secondaryPhone as string} onChange={e => setField('secondaryPhone', e.target.value)} placeholder="(555) 000-0001" />
                 </Field>
               ))}
               {activeFields.filter(f => f.isBuiltIn && f.visible && f.key === 'company').map(f => (
                 <Field key={f.key} label={f.label} required={f.required}>
-                  <Input value={form.company as string} onChange={e => setField('company', e.target.value)} placeholder="Acme Corp" />
+                  <Input title="Company or organization name" value={form.company as string} onChange={e => setField('company', e.target.value)} placeholder="Acme Corp" />
                 </Field>
               ))}
               {activeFields.filter(f => f.isBuiltIn && f.visible && f.key === 'customerType').map(f => (
                 <Field key={f.key} label={f.label} required={f.required}>
                   <Select value={form.customerType as string} onValueChange={v => setField('customerType', v)}>
-                    <SelectTrigger><SelectValue placeholder="Select type..." /></SelectTrigger>
+                    <SelectTrigger title="Customer type (residential, commercial, etc.)"><SelectValue placeholder="Select type..." /></SelectTrigger>
                     <SelectContent>
                       {['residential', 'commercial', 'hoa', 'government', 'other'].map(t => (
                         <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>
@@ -1348,7 +1698,7 @@ export default function CustomerDetailPage() {
               {activeFields.filter(f => f.isBuiltIn && f.visible && f.key === 'referralSource').map(f => (
                 <Field key={f.key} label={f.label} required={f.required}>
                   <Select value={form.referralSource as string} onValueChange={v => setField('referralSource', v)}>
-                    <SelectTrigger><SelectValue placeholder="Select source..." /></SelectTrigger>
+                    <SelectTrigger title="How this customer originally found you"><SelectValue placeholder="Select source..." /></SelectTrigger>
                     <SelectContent>
                       {['Google', 'Word of Mouth', 'Flyer', 'Repeat Customer', 'Social Media', 'Referral', 'Other'].map(s => (
                         <SelectItem key={s} value={s}>{s}</SelectItem>
@@ -1382,19 +1732,19 @@ export default function CustomerDetailPage() {
             {activeFields.some(f => f.key === 'billingAddress' && f.visible) && (
               <Section title="Billing Address" icon={<Home className="w-4 h-4" />}>
                 <Field label="Street Address" required={activeFields.find(f => f.key === 'billingAddress')?.required}>
-                  <Input value={form.billingAddress as string} onChange={e => setField('billingAddress', e.target.value)} placeholder="123 Main St" />
+                  <Input title="Customer's billing street address" value={form.billingAddress as string} onChange={e => setField('billingAddress', e.target.value)} placeholder="123 Main St" />
                 </Field>
                 <div className="grid grid-cols-3 gap-4">
                   <div className="col-span-1">
                     <Field label="City">
-                      <Input value={form.billingCity as string} onChange={e => setField('billingCity', e.target.value)} placeholder="Los Angeles" />
+                      <Input title="City" value={form.billingCity as string} onChange={e => setField('billingCity', e.target.value)} placeholder="Los Angeles" />
                     </Field>
                   </div>
                   <Field label="State">
-                    <Input value={form.billingState as string} onChange={e => setField('billingState', e.target.value)} placeholder="CA" maxLength={2} />
+                    <Input title="2-letter state code" value={form.billingState as string} onChange={e => setField('billingState', e.target.value)} placeholder="CA" maxLength={2} />
                   </Field>
                   <Field label="ZIP">
-                    <Input value={form.billingZip as string} onChange={e => setField('billingZip', e.target.value)} placeholder="90210" />
+                    <Input title="ZIP/postal code" value={form.billingZip as string} onChange={e => setField('billingZip', e.target.value)} placeholder="90210" />
                   </Field>
                 </div>
               </Section>
@@ -1415,9 +1765,9 @@ export default function CustomerDetailPage() {
               <Section title="Tags" icon={<Tag className="w-4 h-4" />}>
                 <div className="flex flex-wrap gap-2 mb-2">
                   {((form.tags as string[]) ?? []).map(tag => (
-                    <Badge key={tag} variant="secondary" className="gap-1 pr-1">
+                    <Badge key={tag} variant="secondary" className="gap-1 pr-1" title={`Tag: ${tag}`}>
                       {tag}
-                      <button onClick={() => removeTag(tag)} className="ml-1 hover:text-destructive">
+                      <button onClick={() => removeTag(tag)} className="ml-1 hover:text-destructive" title={`Remove tag "${tag}"`}>
                         <X className="w-3 h-3" />
                       </button>
                     </Badge>
@@ -1425,13 +1775,14 @@ export default function CustomerDetailPage() {
                 </div>
                 <div className="flex gap-2">
                   <Input
+                    title="Type a tag and press Enter or click Add"
                     placeholder="Add tag..."
                     value={tagInput}
                     onChange={e => setTagInput(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
                     className="flex-1"
                   />
-                  <Button variant="outline" size="sm" onClick={addTag} type="button">Add</Button>
+                  <Button variant="outline" size="sm" title="Add this tag to the customer" onClick={addTag} type="button">Add</Button>
                 </div>
               </Section>
             )}
@@ -1512,7 +1863,7 @@ export default function CustomerDetailPage() {
             <Separator />
             <div className="flex gap-3 justify-end pt-2">
               <Button variant="outline" onClick={() => setEditing(false)}>Cancel</Button>
-              <Button onClick={handleSave} disabled={updateCustomer.isPending} className="gap-2">
+              <Button title="Save changes to this customer's profile" onClick={handleSave} disabled={updateCustomer.isPending} className="gap-2">
                 <Save className="w-4 h-4" />
                 {updateCustomer.isPending ? 'Saving...' : 'Save Changes'}
               </Button>

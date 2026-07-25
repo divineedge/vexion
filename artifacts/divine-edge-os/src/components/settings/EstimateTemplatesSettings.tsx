@@ -181,16 +181,20 @@ export default function EstimateTemplatesSettings() {
     }
   };
 
+  const [deleteTemplatePending, setDeleteTemplatePending] = useState(false);
+
   const handleDelete = () => {
     if (selectedId == null) return;
-    if (!window.confirm('Delete this estimate template? This cannot be undone.')) return;
+    if (!deleteTemplatePending) { setDeleteTemplatePending(true); return; }
+    setDeleteTemplatePending(false);
     deleteMutation.mutate({ id: selectedId }, {
       onSuccess: () => {
         toast.success('Estimate template deleted');
         invalidate();
         setSheetMode(null);
+        setDeleteTemplatePending(false);
       },
-      onError: () => toast.error('Failed to delete estimate template'),
+      onError: () => { toast.error('Failed to delete estimate template'); setDeleteTemplatePending(false); },
     });
   };
 
@@ -284,7 +288,7 @@ export default function EstimateTemplatesSettings() {
         </CardContent>
       </Card>
 
-      <Sheet open={sheetMode !== null} onOpenChange={open => { if (!open) setSheetMode(null); }}>
+      <Sheet open={sheetMode !== null} onOpenChange={open => { if (!open) { setSheetMode(null); setDeleteTemplatePending(false); } }}>
         <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
           <SheetHeader className="pb-4">
             <SheetTitle>
@@ -302,6 +306,7 @@ export default function EstimateTemplatesSettings() {
                 Template Name <span className="text-destructive">*</span>
               </label>
               <Input
+                title="Name used to identify this estimate template in the list"
                 placeholder="e.g. Lawn Mow Quote, Hedge Trim Quote"
                 value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -311,6 +316,7 @@ export default function EstimateTemplatesSettings() {
               <label className="text-sm font-medium">Description</label>
               <Textarea
                 rows={2}
+                title="Optional description of when or how to use this template"
                 placeholder="Optional — describe when to use this template."
                 value={form.description}
                 onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
@@ -327,6 +333,7 @@ export default function EstimateTemplatesSettings() {
               </label>
               <Textarea
                 rows={3}
+                title="Opening paragraph shown at the top of the estimate"
                 placeholder="Opening paragraph shown at the top of the estimate — e.g. 'Thank you for the opportunity to serve your property…'"
                 value={form.introText}
                 onChange={e => setForm(f => ({ ...f, introText: e.target.value }))}
@@ -381,6 +388,7 @@ export default function EstimateTemplatesSettings() {
                     </div>
                     <div className="flex-1">
                       <Input
+                        title="Line item description shown on the estimate"
                         placeholder="Description"
                         value={item.description}
                         onChange={e => updateLineItem(idx, { description: e.target.value })}
@@ -389,6 +397,7 @@ export default function EstimateTemplatesSettings() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      title="Remove this line item from the template"
                       className="text-muted-foreground h-9 w-9 p-0 shrink-0"
                       onClick={() => setLineItems(items => items.filter((_, j) => j !== idx))}
                       disabled={lineItems.length === 1}
@@ -404,6 +413,7 @@ export default function EstimateTemplatesSettings() {
                         type="number"
                         min={1}
                         step={1}
+                        title="Quantity of units"
                         value={item.qty}
                         onChange={e => updateLineItem(idx, { qty: parseFloat(e.target.value) || 1 })}
                       />
@@ -414,6 +424,7 @@ export default function EstimateTemplatesSettings() {
                         type="number"
                         min={0}
                         step={0.01}
+                        title="Price per unit before markup or discount"
                         value={item.unitPrice}
                         onChange={e => updateLineItem(idx, { unitPrice: parseFloat(e.target.value) || 0 })}
                       />
@@ -424,6 +435,7 @@ export default function EstimateTemplatesSettings() {
                         type="number"
                         min={0}
                         step={1}
+                        title="Markup percentage added on top of unit price"
                         value={item.markup}
                         onChange={e => updateLineItem(idx, { markup: parseFloat(e.target.value) || 0 })}
                       />
@@ -434,6 +446,7 @@ export default function EstimateTemplatesSettings() {
                         type="number"
                         min={0}
                         step={1}
+                        title="Discount percentage applied to the line item total"
                         value={item.discount}
                         onChange={e => updateLineItem(idx, { discount: parseFloat(e.target.value) || 0 })}
                       />
@@ -482,6 +495,7 @@ export default function EstimateTemplatesSettings() {
               </label>
               <Textarea
                 rows={4}
+                title="Terms and conditions shown at the bottom of this estimate"
                 placeholder="Terms shown at the bottom — e.g. payment due upon completion, cancellation policy, warranty…"
                 value={form.termsText}
                 onChange={e => setForm(f => ({ ...f, termsText: e.target.value }))}
@@ -492,12 +506,14 @@ export default function EstimateTemplatesSettings() {
 
             {sheetMode === 'edit' && selectedId != null && (
               <Button
-                variant="ghost"
-                className="text-destructive hover:text-destructive w-full gap-2"
+                variant={deleteTemplatePending ? 'destructive' : 'ghost'}
+                title="Delete this estimate template — this cannot be undone"
+                className={deleteTemplatePending ? 'w-full gap-2' : 'text-destructive hover:text-destructive w-full gap-2'}
                 onClick={handleDelete}
                 disabled={deleteMutation.isPending}
               >
-                <Trash2 className="w-4 h-4" /> Delete Template
+                <Trash2 className="w-4 h-4" />
+                {deleteTemplatePending ? 'Confirm delete?' : 'Delete Template'}
               </Button>
             )}
 

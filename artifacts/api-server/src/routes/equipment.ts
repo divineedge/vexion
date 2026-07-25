@@ -724,7 +724,7 @@ router.post("/equipment/:id/fuel-logs", async (req, res): Promise<void> => {
     return;
   }
 
-  const { date, gallons, cost, odometerReading, jobId } = req.body;
+  const { date, gallons, cost, costPerGallon, odometerReading, jobId } = req.body;
   if (!date || gallons == null) { res.status(400).json({ error: "date and gallons are required" }); return; }
 
   // Validate jobId belongs to this tenant when provided
@@ -737,14 +737,18 @@ router.post("/equipment/:id/fuel-logs", async (req, res): Promise<void> => {
     if (!job) { res.status(400).json({ error: "jobId not found or does not belong to this tenant" }); return; }
   }
 
-  const parsedCost = cost != null ? parseFloat(cost) : 0;
+  const parsedGallons = parseFloat(gallons);
+  const parsedCpg = costPerGallon != null ? parseFloat(costPerGallon) : null;
+  // If total cost not provided but cost-per-gallon is, derive it
+  const parsedCost = cost != null ? parseFloat(cost) : (parsedCpg ? parsedGallons * parsedCpg : 0);
 
   const [row] = await db.insert(equipmentFuelLogsTable).values({
     equipmentId,
     tenantId,
     jobId: parsedJobId,
     date,
-    gallons: parseFloat(gallons),
+    gallons: parsedGallons,
+    costPerGallon: parsedCpg,
     cost: parsedCost,
     odometerReading: odometerReading != null ? parseFloat(odometerReading) : null,
   }).returning();

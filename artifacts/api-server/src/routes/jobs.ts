@@ -218,7 +218,7 @@ router.post("/jobs/import/commit", importUpload.single("file"), async (req, res)
 
 function formatJob(
   j: typeof jobsTable.$inferSelect,
-  extras?: { customerName?: string | null; assigneeName?: string | null; propertyAddress?: string | null; crewName?: string | null; planName?: string | null; routeName?: string | null }
+  extras?: { customerName?: string | null; customerPhone?: string | null; customerNotes?: string | null; assigneeName?: string | null; propertyAddress?: string | null; propertyNotes?: string | null; crewName?: string | null; planName?: string | null; routeName?: string | null }
 ) {
   const rule = j.recurrenceRule as unknown as RecurrenceRule | null;
   return {
@@ -229,9 +229,12 @@ function formatJob(
     completedAt: j.completedAt?.toISOString() ?? null,
     createdAt: j.createdAt.toISOString(),
     customerName: extras?.customerName ?? null,
+    customerPhone: extras?.customerPhone ?? null,
+    customerNotes: extras?.customerNotes ?? null,
     assigneeName: extras?.assigneeName ?? null,
     crewName: extras?.crewName ?? null,
     propertyAddress: extras?.propertyAddress ?? null,
+    propertyNotes: extras?.propertyNotes ?? null,
     invoiceId: j.invoiceId ?? null,
     blueprintId: j.blueprintId ?? null,
     crewId: j.crewId ?? null,
@@ -274,8 +277,11 @@ router.get("/jobs", async (req, res): Promise<void> => {
     .select({
       job: jobsTable,
       customerName: customersTable.name,
+      customerPhone: customersTable.phone,
+      customerNotes: customersTable.notes,
       assigneeName: usersTable.name,
       propertyAddress: propertiesTable.address,
+      propertyNotes: propertiesTable.notes,
       crewName: crewsTable.name,
       planName: customerPlansTable.templateName,
       routeName: routeTemplatesTable.name,
@@ -290,7 +296,7 @@ router.get("/jobs", async (req, res): Promise<void> => {
     .where(where)
     .orderBy(jobsTable.scheduledAt);
 
-  res.json(rows.map(r => formatJob(r.job, { customerName: r.customerName, assigneeName: r.assigneeName, propertyAddress: r.propertyAddress, crewName: r.crewName, planName: r.planName, routeName: r.routeName })));
+  res.json(rows.map(r => formatJob(r.job, { customerName: r.customerName, customerPhone: r.customerPhone, customerNotes: r.customerNotes, assigneeName: r.assigneeName, propertyAddress: r.propertyAddress, propertyNotes: r.propertyNotes, crewName: r.crewName, planName: r.planName, routeName: r.routeName })));
 });
 
 // ── Recurring series list ────────────────────────────────────────────────────
@@ -430,7 +436,7 @@ router.get("/jobs/:id", async (req, res): Promise<void> => {
   const id = parseInt(rawId, 10);
 
   const [row] = await db
-    .select({ job: jobsTable, customerName: customersTable.name, assigneeName: usersTable.name, propertyAddress: propertiesTable.address, crewName: crewsTable.name, planName: customerPlansTable.templateName, routeName: routeTemplatesTable.name })
+    .select({ job: jobsTable, customerName: customersTable.name, customerPhone: customersTable.phone, customerNotes: customersTable.notes, assigneeName: usersTable.name, propertyAddress: propertiesTable.address, propertyNotes: propertiesTable.notes, crewName: crewsTable.name, planName: customerPlansTable.templateName, routeName: routeTemplatesTable.name })
     .from(jobsTable)
     .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
     .leftJoin(usersTable, eq(jobsTable.assigneeId, usersTable.id))
@@ -441,7 +447,7 @@ router.get("/jobs/:id", async (req, res): Promise<void> => {
     .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
 
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
-  res.json(formatJob(row.job, { customerName: row.customerName, assigneeName: row.assigneeName, propertyAddress: row.propertyAddress, crewName: row.crewName, planName: row.planName, routeName: row.routeName }));
+  res.json(formatJob(row.job, { customerName: row.customerName, customerPhone: row.customerPhone, customerNotes: row.customerNotes, assigneeName: row.assigneeName, propertyAddress: row.propertyAddress, propertyNotes: row.propertyNotes, crewName: row.crewName, planName: row.planName, routeName: row.routeName }));
 });
 
 router.patch("/jobs/:id", async (req, res): Promise<void> => {

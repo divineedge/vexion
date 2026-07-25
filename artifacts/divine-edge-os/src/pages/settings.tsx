@@ -19,7 +19,7 @@ import {
 } from '@workspace/api-client-react';
 import type { FollowupTriggerConfig } from '@workspace/api-client-react';
 import type { ChemicalProduct, ChemicalMixture, ChemicalMixtureItem, PaymentReminderRule, EquipmentType } from '@workspace/api-client-react';
-import { Repeat as RepeatIcon, ClipboardList } from 'lucide-react';
+import { Repeat as RepeatIcon, ClipboardList, Search } from 'lucide-react';
 import { format } from 'date-fns';
 import PlanTemplatesSettings from '@/components/settings/PlanTemplatesSettings';
 import EstimateTemplatesSettings from '@/components/settings/EstimateTemplatesSettings';
@@ -120,9 +120,14 @@ export default function SettingsPage() {
   const [invoiceDueDays, setInvoiceDueDays] = useState('30');
   const [taxEnabled, setTaxEnabled] = useState(true);
   // Callback due-date defaults
-  const [callbackDueDaysHigh, setCallbackDueDaysHigh] = useState('1');
-  const [callbackDueDaysNormal, setCallbackDueDaysNormal] = useState('3');
-  const [callbackDueDaysLow, setCallbackDueDaysLow] = useState('7');
+  const [callbackDueHoursHigh, setCallbackDueHoursHigh] = useState('4');
+  const [callbackDueHoursNormal, setCallbackDueHoursNormal] = useState('24');
+  const [callbackDueHoursLow, setCallbackDueHoursLow] = useState('72');
+  const [callbackWarningThresholdPct, setCallbackWarningThresholdPct] = useState('10');
+  // Plan renewal warning
+  const [renewalWarningDays, setRenewalWarningDays] = useState('30');
+  const [teamSearch, setTeamSearch] = useState('');
+  const [teamRoleFilter, setTeamRoleFilter] = useState('all');
 
   // Equipment thresholds
   const [equipRepairPct, setEquipRepairPct] = useState('50');
@@ -202,6 +207,7 @@ export default function SettingsPage() {
 
   // Notification Templates
   const [notificationTemplates, setNotificationTemplates] = useState<Record<string, string | undefined>>({});
+  const [testEmailSending, setTestEmailSending] = useState(false);
   const DEFAULT_FOLLOWUP_CONFIG: FollowupTriggerConfig = {
     sentEstimate: { enabled: true, delayDays: 3, repeatDays: 4 },
     sentInvoice: { enabled: true, delayDays: 5, repeatDays: 5 },
@@ -245,9 +251,11 @@ export default function SettingsPage() {
       setEstimateExpiryDays(String((settings as any).estimateExpiryDays ?? 30));
       setInvoiceDueDays(String((settings as any).invoiceDueDays ?? 30));
       setTaxEnabled((settings as any).taxEnabled ?? true);
-      setCallbackDueDaysHigh(String((settings as any).callbackDueDaysHigh ?? 1));
-      setCallbackDueDaysNormal(String((settings as any).callbackDueDaysNormal ?? 3));
-      setCallbackDueDaysLow(String((settings as any).callbackDueDaysLow ?? 7));
+      setCallbackDueHoursHigh(String((settings as any).callbackDueHoursHigh ?? 4));
+      setCallbackDueHoursNormal(String((settings as any).callbackDueHoursNormal ?? 24));
+      setCallbackDueHoursLow(String((settings as any).callbackDueHoursLow ?? 72));
+      setCallbackWarningThresholdPct(String((settings as any).callbackWarningThresholdPct ?? 10));
+      setRenewalWarningDays(String((settings as any).renewalWarningDays ?? 30));
       setEquipRepairPct(String((settings as any).equipmentRepairThresholdPct ?? 50));
       setEquipResalePct(String((settings as any).equipmentResaleThresholdPct ?? 20));
       setDefaultGeofenceRadius(String((settings as any).defaultGeofenceRadius ?? 100));
@@ -404,7 +412,7 @@ export default function SettingsPage() {
 
   const saveGeneral = () => {
     updateSettings.mutate(
-      { data: { companyName, timezone, taxRate: parseFloat(taxRate), overageMaterialBuffer: parseFloat(buffer), taxEnabled, estimateExpiryDays: parseInt(estimateExpiryDays, 10) || 30, invoiceDueDays: parseInt(invoiceDueDays, 10) || 30, callbackDueDaysHigh: parseInt(callbackDueDaysHigh, 10) || 1, callbackDueDaysNormal: parseInt(callbackDueDaysNormal, 10) || 3, callbackDueDaysLow: parseInt(callbackDueDaysLow, 10) || 7 } as Parameters<typeof updateSettings.mutate>[0]['data'] },
+      { data: { companyName, timezone, taxRate: parseFloat(taxRate), overageMaterialBuffer: parseFloat(buffer), taxEnabled, estimateExpiryDays: parseInt(estimateExpiryDays, 10) || 30, invoiceDueDays: parseInt(invoiceDueDays, 10) || 30, callbackDueHoursHigh: parseInt(callbackDueHoursHigh, 10) || 4, callbackDueHoursNormal: parseInt(callbackDueHoursNormal, 10) || 24, callbackDueHoursLow: parseInt(callbackDueHoursLow, 10) || 72, renewalWarningDays: parseInt(renewalWarningDays, 10) || 30, callbackWarningThresholdPct: parseInt(callbackWarningThresholdPct, 10) || 10 } as Parameters<typeof updateSettings.mutate>[0]['data'] },
       {
         onSuccess: () => { toast.success('Settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
         onError: () => toast.error('Failed to save settings'),
@@ -554,15 +562,10 @@ export default function SettingsPage() {
     });
   };
 
+  const [deleteUserPending, setDeleteUserPending] = useState<{ id: number; name: string } | null>(null);
+
   const handleDeleteUser = (id: number, name: string) => {
-    if (!window.confirm(`Remove ${name} from your team?`)) return;
-    deleteUser.mutate({ id }, {
-      onSuccess: () => {
-        toast.success(`${name} removed`);
-        qc.invalidateQueries({ queryKey: getListUsersQueryKey() });
-      },
-      onError: () => toast.error('Failed to remove user'),
-    });
+    setDeleteUserPending({ id, name });
   };
 
   // Live sell price preview in inventory pricing card
@@ -580,7 +583,7 @@ export default function SettingsPage() {
         <p className="text-muted-foreground mt-1">Manage company profile, integrations, and team access.</p>
       </div>
 
-      <Tabs defaultValue="general" className="w-full">
+      <Tabs defaultValue={new URLSearchParams(window.location.search).get('tab') ?? 'general'} className="w-full">
         <TabsList className="flex flex-wrap gap-1 h-auto mb-6">
           <TabsTrigger value="general"><Building className="w-4 h-4 mr-2" />General</TabsTrigger>
           <TabsTrigger value="customer-fields"><SettingsIcon className="w-4 h-4 mr-2" />Customer Fields</TabsTrigger>
@@ -613,11 +616,11 @@ export default function SettingsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Company Name</label>
-                  <Input value={companyName} onChange={e => setCompanyName(e.target.value)} />
+                  <Input title="Your company or business name" value={companyName} onChange={e => setCompanyName(e.target.value)} />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Timezone</label>
-                  <Input value={timezone} onChange={e => setTimezone(e.target.value)} />
+                  <Input title="Timezone used for scheduling and date display (e.g. America/New_York)" value={timezone} onChange={e => setTimezone(e.target.value)} />
                 </div>
               </div>
               <Button onClick={saveGeneral} disabled={updateSettings.isPending}>
@@ -632,11 +635,11 @@ export default function SettingsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Default Tax Rate (%)</label>
-                  <Input type="number" min={0} step={0.1} value={taxRate} onChange={e => setTaxRate(e.target.value)} disabled={!taxEnabled} />
+                  <Input type="number" min={0} step={0.1} title="Default sales tax rate applied to new estimates and invoices" value={taxRate} onChange={e => setTaxRate(e.target.value)} disabled={!taxEnabled} />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Default Material Buffer (%)</label>
-                  <Input type="number" value={buffer} onChange={e => setBuffer(e.target.value)} />
+                  <Input type="number" title="Percentage markup added to material costs on estimates" value={buffer} onChange={e => setBuffer(e.target.value)} />
                 </div>
               </div>
               <div className="flex items-center justify-between rounded-lg border p-3">
@@ -650,41 +653,59 @@ export default function SettingsPage() {
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Estimate Expiry (days)</label>
                   <p className="text-xs text-muted-foreground">Auto-sets expiry date on new estimates. 0 = no expiry.</p>
-                  <Input type="number" min={0} value={estimateExpiryDays} onChange={e => setEstimateExpiryDays(e.target.value)} className="w-28" />
+                  <Input type="number" min={0} title="Number of days before a new estimate expires automatically (0 = no expiry)" value={estimateExpiryDays} onChange={e => setEstimateExpiryDays(e.target.value)} className="w-28" />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Invoice Net Terms (days)</label>
                   <p className="text-xs text-muted-foreground">Default due date on new invoices. 0 = due on receipt.</p>
-                  <Input type="number" min={0} value={invoiceDueDays} onChange={e => setInvoiceDueDays(e.target.value)} className="w-28" />
+                  <Input type="number" min={0} title="Default payment due date on new invoices in days (0 = due on receipt)" value={invoiceDueDays} onChange={e => setInvoiceDueDays(e.target.value)} className="w-28" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4 pt-2 border-t">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Plan Renewal Warning (days)</label>
+                  <p className="text-xs text-muted-foreground">Plans expiring within this window are flagged as "expiring soon" on the Plans dashboard.</p>
+                  <div className="flex items-center gap-1">
+                    <Input type="number" min={1} value={renewalWarningDays} onChange={e => setRenewalWarningDays(e.target.value)} className="w-20" />
+                    <span className="text-xs text-muted-foreground">days</span>
+                  </div>
                 </div>
               </div>
               <div className="space-y-3 pt-2 border-t">
                 <div>
-                  <p className="text-sm font-medium">Callback Due-Date Defaults</p>
-                  <p className="text-xs text-muted-foreground">Days from today a callback fix is due based on priority.</p>
+                  <p className="text-sm font-medium">Callback Due-Time Defaults</p>
+                  <p className="text-xs text-muted-foreground">Hours from today a callback fix must be completed, by priority.</p>
                 </div>
                 <div className="grid grid-cols-3 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-red-600">High priority</label>
+                    <label className="text-xs font-medium text-red-600">🔴 High</label>
                     <div className="flex items-center gap-1">
-                      <Input type="number" min={1} value={callbackDueDaysHigh} onChange={e => setCallbackDueDaysHigh(e.target.value)} className="w-16 text-sm" />
-                      <span className="text-xs text-muted-foreground">days</span>
+                      <Input type="number" min={1} value={callbackDueHoursHigh} onChange={e => setCallbackDueHoursHigh(e.target.value)} className="w-16 text-sm" />
+                      <span className="text-xs text-muted-foreground">hrs</span>
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-amber-600">Normal priority</label>
+                    <label className="text-xs font-medium text-amber-600">🟡 Normal</label>
                     <div className="flex items-center gap-1">
-                      <Input type="number" min={1} value={callbackDueDaysNormal} onChange={e => setCallbackDueDaysNormal(e.target.value)} className="w-16 text-sm" />
-                      <span className="text-xs text-muted-foreground">days</span>
+                      <Input type="number" min={1} value={callbackDueHoursNormal} onChange={e => setCallbackDueHoursNormal(e.target.value)} className="w-16 text-sm" />
+                      <span className="text-xs text-muted-foreground">hrs</span>
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-muted-foreground">Low priority</label>
+                    <label className="text-xs font-medium text-muted-foreground">⚪ Low</label>
                     <div className="flex items-center gap-1">
-                      <Input type="number" min={1} value={callbackDueDaysLow} onChange={e => setCallbackDueDaysLow(e.target.value)} className="w-16 text-sm" />
-                      <span className="text-xs text-muted-foreground">days</span>
+                      <Input type="number" min={1} value={callbackDueHoursLow} onChange={e => setCallbackDueHoursLow(e.target.value)} className="w-16 text-sm" />
+                      <span className="text-xs text-muted-foreground">hrs</span>
                     </div>
                   </div>
+                </div>
+              </div>
+              <div className="space-y-2 pt-2 border-t">
+                <p className="text-sm font-medium">Callback Warning Threshold</p>
+                <p className="text-xs text-muted-foreground">Technicians with a callback ratio above this percentage will be flagged on the callbacks page.</p>
+                <div className="flex items-center gap-2">
+                  <Input type="number" min={1} max={100} value={callbackWarningThresholdPct} onChange={e => setCallbackWarningThresholdPct(e.target.value)} className="w-20" />
+                  <span className="text-xs text-muted-foreground">%</span>
                 </div>
               </div>
               <Button onClick={saveGeneral} disabled={updateSettings.isPending} variant="outline">Save Defaults</Button>
@@ -708,6 +729,7 @@ export default function SettingsPage() {
                     type="number"
                     min={0}
                     step={1}
+                    title="Default markup percentage applied to inventory item cost prices"
                     value={markupPct}
                     onChange={e => setMarkupPct(e.target.value)}
                     placeholder="20"
@@ -738,6 +760,7 @@ export default function SettingsPage() {
                   </p>
                 </div>
                 <Switch
+                  title={showCostToTech ? 'Technicians can see item cost prices — click to hide' : 'Technicians cannot see cost prices — click to allow'}
                   checked={showCostToTech}
                   onCheckedChange={v => setShowCostToTech(v)}
                 />
@@ -761,7 +784,7 @@ export default function SettingsPage() {
                   Core fields (Name, Email, Phone) are always required.
                 </CardDescription>
               </div>
-              <Button size="sm" onClick={() => setAddFieldOpen(true)} className="gap-2 shrink-0 ml-4">
+              <Button size="sm" title="Add a new custom field to customer forms" onClick={() => setAddFieldOpen(true)} className="gap-2 shrink-0 ml-4">
                 <Plus className="w-4 h-4" /> Add Custom Field
               </Button>
             </CardHeader>
@@ -795,21 +818,21 @@ export default function SettingsPage() {
                     <GripVertical className="w-4 h-4 text-muted-foreground/40 cursor-grab shrink-0" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-sm">{field.label}</span>
-                        {field.isBuiltIn && <Badge variant="outline" className="text-[10px] px-1">Built-in</Badge>}
-                        <span className="text-xs text-muted-foreground capitalize">{field.type}</span>
+                        <span className="font-medium text-sm" title={field.label}>{field.label}</span>
+                        {field.isBuiltIn && <Badge variant="outline" className="text-[10px] px-1" title="Built-in field — cannot be deleted">Built-in</Badge>}
+                        <span className="text-xs text-muted-foreground capitalize" title={`Field type: ${field.type}`}>{field.type}</span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0" title={field.visible ? 'Field is visible on customer records' : 'Field is hidden from customer records'}>
                       {field.visible ? <Eye className="w-3.5 h-3.5 text-muted-foreground" /> : <EyeOff className="w-3.5 h-3.5 text-muted-foreground/40" />}
                       <Switch checked={field.visible} onCheckedChange={() => toggleFieldProp(field.key, 'visible')} />
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0" title={field.required ? 'Field is required when creating customers' : 'Field is optional'}>
                       <Star className={`w-3.5 h-3.5 ${field.required ? 'text-amber-500' : 'text-muted-foreground/40'}`} />
                       <Switch checked={field.required} disabled={!field.visible} onCheckedChange={() => toggleFieldProp(field.key, 'required')} />
                     </div>
                     {!field.isBuiltIn ? (
-                      <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-destructive" onClick={() => removeCustomField(field.key)}>
+                      <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-destructive" title="Delete this custom field" onClick={() => removeCustomField(field.key)}>
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     ) : <div className="w-8" />}
@@ -830,6 +853,7 @@ export default function SettingsPage() {
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Field Label <span className="text-destructive">*</span></label>
                   <Input
+                    title="Human-readable label shown on customer forms"
                     placeholder="e.g. License Number"
                     value={newField.label ?? ''}
                     onChange={e => setNewField(f => ({ ...f, label: e.target.value, key: e.target.value.replace(/\s+/g, '_').toLowerCase() }))}
@@ -838,6 +862,7 @@ export default function SettingsPage() {
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Field Key <span className="text-destructive">*</span></label>
                   <Input
+                    title="Unique machine key — lowercase with underscores only"
                     placeholder="license_number"
                     value={newField.key ?? ''}
                     onChange={e => setNewField(f => ({ ...f, key: e.target.value }))}
@@ -848,7 +873,7 @@ export default function SettingsPage() {
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Field Type</label>
                   <Select value={newField.type} onValueChange={v => setNewField(f => ({ ...f, type: v as CustomerFieldConfig['type'] }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger title="Data type for this custom field — determines how it renders on forms"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="text">Text</SelectItem>
                       <SelectItem value="number">Number</SelectItem>
@@ -861,7 +886,7 @@ export default function SettingsPage() {
                 {newField.type === 'select' && (
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium">Options <span className="text-destructive">*</span></label>
-                    <Input placeholder="Option 1, Option 2, Option 3" value={newOptions} onChange={e => setNewOptions(e.target.value)} />
+                    <Input title="Comma-separated list of dropdown options for this field" placeholder="Option 1, Option 2, Option 3" value={newOptions} onChange={e => setNewOptions(e.target.value)} />
                     <p className="text-xs text-muted-foreground">Comma-separated list of dropdown options.</p>
                   </div>
                 )}
@@ -870,12 +895,12 @@ export default function SettingsPage() {
                     <p className="text-sm font-medium">Required field</p>
                     <p className="text-xs text-muted-foreground">Team must fill this in to save a customer</p>
                   </div>
-                  <Switch checked={newField.required ?? false} onCheckedChange={v => setNewField(f => ({ ...f, required: v }))} />
+                  <Switch title={newField.required ? 'Field is required — uncheck to make it optional' : 'Field is optional — check to make it required'} checked={newField.required ?? false} onCheckedChange={v => setNewField(f => ({ ...f, required: v }))} />
                 </div>
                 <Separator />
                 <div className="flex gap-3 justify-end">
                   <Button variant="outline" onClick={() => setAddFieldOpen(false)}>Cancel</Button>
-                  <Button onClick={addCustomField}>Add Field</Button>
+                  <Button title="Save this custom field and add it to customer forms" onClick={addCustomField}>Add Field</Button>
                 </div>
               </div>
             </SheetContent>
@@ -900,6 +925,7 @@ export default function SettingsPage() {
                   <Input
                     type="number"
                     min={10}
+                    title="Default geofence radius applied when a new property is added"
                     value={defaultGeofenceRadius}
                     onChange={e => setDefaultGeofenceRadius(e.target.value)}
                     placeholder="100"
@@ -908,7 +934,7 @@ export default function SettingsPage() {
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Unit</label>
                   <Select value={defaultGeofenceUnit} onValueChange={v => setDefaultGeofenceUnit(v as 'm' | 'ft')}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger title="Unit of measurement for the geofence radius"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="m">Meters (m)</SelectItem>
                       <SelectItem value="ft">Feet (ft)</SelectItem>
@@ -966,6 +992,7 @@ export default function SettingsPage() {
                   <Button
                     size="sm"
                     variant="outline"
+                    title="Add a new zone type with a default color"
                     className="gap-1 text-xs h-7"
                     onClick={() => {
                       const ZONE_COLORS = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#84CC16','#F97316','#EC4899','#6366F1'];
@@ -986,6 +1013,7 @@ export default function SettingsPage() {
                       <div className="relative shrink-0">
                         <div
                           className="w-7 h-7 rounded-md border-2 border-white shadow-sm cursor-pointer ring-1 ring-border"
+                          title={`Zone color: ${zt.color} — click to change`}
                           style={{ backgroundColor: zt.color }}
                           onClick={() => document.getElementById(`color-picker-${zt.id}`)?.click()}
                         />
@@ -1000,6 +1028,7 @@ export default function SettingsPage() {
                       {/* Name input */}
                       <Input
                         className="h-8 text-sm flex-1"
+                        title="Zone type name (e.g. Front Lawn, Backyard, Bed)"
                         value={zt.name}
                         onChange={e => setZoneTypes(z => z.map(z2 => z2.id === zt.id ? { ...z2, name: e.target.value } : z2))}
                         placeholder="Zone name"
@@ -1045,6 +1074,7 @@ export default function SettingsPage() {
               </div>
 
               <Button
+                title="Save measurement settings and zone type definitions"
                 onClick={() => {
                   const validZoneTypes = zoneTypes.filter(z => z.name.trim());
                   updateSettings.mutate(
@@ -1116,7 +1146,7 @@ export default function SettingsPage() {
                     <p className="text-sm text-muted-foreground">Accept credit cards and ACH</p>
                   </div>
                 </div>
-                <Switch checked={settings?.stripeEnabled} onCheckedChange={v => updateSettings.mutate({ data: { stripeEnabled: v } }, { onSuccess: () => qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }) })} />
+                <Switch title={settings?.stripeEnabled ? 'Stripe is enabled — click to disable credit card and ACH payments' : 'Enable Stripe to accept credit card and ACH payments'} checked={settings?.stripeEnabled} onCheckedChange={v => updateSettings.mutate({ data: { stripeEnabled: v } }, { onSuccess: () => qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }) })} />
               </div>
             </CardContent>
           </Card>
@@ -1139,7 +1169,7 @@ export default function SettingsPage() {
                     </p>
                   </div>
                 </div>
-                <Switch checked={settings?.quickbooksEnabled} onCheckedChange={v => updateSettings.mutate({ data: { quickbooksEnabled: v } }, { onSuccess: () => qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }) })} />
+                <Switch title={settings?.quickbooksEnabled ? 'QuickBooks sync is enabled — click to disable' : 'Enable to push invoices and customers to QuickBooks'} checked={settings?.quickbooksEnabled} onCheckedChange={v => updateSettings.mutate({ data: { quickbooksEnabled: v } }, { onSuccess: () => qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }) })} />
               </div>
 
               {settings?.quickbooksEnabled && (
@@ -1176,6 +1206,7 @@ export default function SettingsPage() {
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Main Number <span className="text-xs text-muted-foreground">(reminders & transactional)</span></label>
                   <Input
+                    title="Primary phone number used for transactional SMS and service reminders"
                     placeholder="+15551234567"
                     value={mainPhoneNumber}
                     onChange={e => setMainPhoneNumber(e.target.value)}
@@ -1184,6 +1215,7 @@ export default function SettingsPage() {
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Marketing Number <span className="text-xs text-muted-foreground">(campaigns)</span></label>
                   <Input
+                    title="Marketing phone number used for broadcast campaigns"
                     placeholder="+15559876543"
                     value={marketingPhoneNumber}
                     onChange={e => setMarketingPhoneNumber(e.target.value)}
@@ -1640,11 +1672,33 @@ export default function SettingsPage() {
                 <CardTitle>Team Members</CardTitle>
                 <CardDescription>Manage access and roles for your team.</CardDescription>
               </div>
-              {isOwner && (
-                <Button size="sm" onClick={() => setInviteOpen(true)} className="gap-2">
-                  <Plus className="w-4 h-4" /> Add Member
-                </Button>
-              )}
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                  <Input
+                    title="Search team members by name or email"
+                    value={teamSearch}
+                    onChange={e => setTeamSearch(e.target.value)}
+                    placeholder="Search staff…"
+                    className="h-8 text-sm pl-7 w-40"
+                  />
+                </div>
+                <Select value={teamRoleFilter} onValueChange={setTeamRoleFilter}>
+                  <SelectTrigger className="h-8 text-sm w-36" title="Filter team members by role"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Roles</SelectItem>
+                    <SelectItem value="owner">Owner</SelectItem>
+                    <SelectItem value="office_manager">Office Manager</SelectItem>
+                    <SelectItem value="crew_manager">Crew Manager</SelectItem>
+                    <SelectItem value="technician">Technician</SelectItem>
+                  </SelectContent>
+                </Select>
+                {isOwner && (
+                  <Button size="sm" title="Add a new team member to your organization" onClick={() => setInviteOpen(true)} className="gap-2">
+                    <Plus className="w-4 h-4" /> Add Member
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               <Table>
@@ -1660,20 +1714,23 @@ export default function SettingsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(users ?? []).map(u => (
-                    <TableRow key={u.id}>
-                      <TableCell className="font-medium">{u.name}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm">{u.email}</TableCell>
+                  {(users ?? []).filter(u => !teamSearch.trim() || u.name.toLowerCase().includes(teamSearch.toLowerCase()) || u.email.toLowerCase().includes(teamSearch.toLowerCase())).filter(u => teamRoleFilter === 'all' || u.role === teamRoleFilter).map(u => {
+                    const highlightUserId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('userId') : null;
+                    const isHighlighted = highlightUserId && String(u.id) === highlightUserId;
+                    return (
+                    <TableRow key={u.id} id={`user-row-${u.id}`} className={isHighlighted ? 'bg-primary/5 ring-1 ring-primary/20' : ''}>
+                      <TableCell className="font-medium" title={u.name}>{u.name}</TableCell>
+                      <TableCell className="text-muted-foreground text-sm" title={`Email: ${u.email}`}>{u.email}</TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className="capitalize">{u.role.replace(/_/g, ' ')}</Badge>
+                        <Badge variant="secondary" className="capitalize" title={`Role: ${u.role.replace(/_/g, ' ')}`}>{u.role.replace(/_/g, ' ')}</Badge>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{(u as any).hourlyRate != null ? `${(u as any).hourlyRate.toFixed(2)}/hr` : '—'}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{(u as any).hireDate ? format(new Date((u as any).hireDate), 'MMM d, yyyy') : '—'}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground" title={(u as any).hourlyRate != null ? `Hourly rate: $${(u as any).hourlyRate.toFixed(2)}/hr` : 'No hourly rate set'}>{(u as any).hourlyRate != null ? `${(u as any).hourlyRate.toFixed(2)}/hr` : '—'}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground" title={(u as any).hireDate ? `Hire date: ${format(new Date((u as any).hireDate), 'EEEE, MMMM d, yyyy')}` : 'No hire date set'}>{(u as any).hireDate ? format(new Date((u as any).hireDate), 'MMM d, yyyy') : '—'}</TableCell>
                       <TableCell>
                         {u.isActive !== false ? (
-                          <Badge className="bg-emerald-500/10 text-emerald-600 border-transparent">Active</Badge>
+                          <Badge className="bg-emerald-500/10 text-emerald-600 border-transparent" title="This team member is active">Active</Badge>
                         ) : (
-                          <Badge variant="outline" className="text-muted-foreground">Inactive</Badge>
+                          <Badge variant="outline" className="text-muted-foreground" title="This team member is inactive">Inactive</Badge>
                         )}
                       </TableCell>
                       <TableCell>
@@ -1693,6 +1750,7 @@ export default function SettingsPage() {
                                 variant="ghost"
                                 size="sm"
                                 className="h-7 text-xs px-2"
+                                title="Edit this team member's profile and role"
                                 onClick={() => openEditUser(u as any)}
                               >
                                 Edit
@@ -1701,6 +1759,7 @@ export default function SettingsPage() {
                                 variant="ghost"
                                 size="sm"
                                 className="h-7 text-xs px-2"
+                                title={u.isActive !== false ? 'Deactivate this team member (they will lose access)' : 'Reactivate this team member (they will regain access)'}
                                 onClick={() => toggleUserActive(u.id, u.isActive !== false)}
                                 disabled={updateUser.isPending}
                               >
@@ -1710,6 +1769,7 @@ export default function SettingsPage() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                title="Permanently delete this team member"
                                 onClick={() => handleDeleteUser(u.id, u.name)}
                                 disabled={deleteUser.isPending}
                               >
@@ -1720,7 +1780,7 @@ export default function SettingsPage() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ); })}
                 </TableBody>
               </Table>
             </CardContent>
@@ -1736,16 +1796,16 @@ export default function SettingsPage() {
               <div className="space-y-4 pb-6">
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Full Name <span className="text-destructive">*</span></label>
-                  <Input value={inviteForm.name} onChange={e => setInviteForm(f => ({ ...f, name: e.target.value }))} placeholder="Jane Smith" />
+                  <Input title="Team member's full name" value={inviteForm.name} onChange={e => setInviteForm(f => ({ ...f, name: e.target.value }))} placeholder="Jane Smith" />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Email <span className="text-destructive">*</span></label>
-                  <Input type="email" value={inviteForm.email} onChange={e => setInviteForm(f => ({ ...f, email: e.target.value }))} placeholder="jane@company.com" />
+                  <Input type="email" title="Team member's login email address" value={inviteForm.email} onChange={e => setInviteForm(f => ({ ...f, email: e.target.value }))} placeholder="jane@company.com" />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Role</label>
                   <Select value={inviteForm.role} onValueChange={v => setInviteForm(f => ({ ...f, role: v }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger title="Role determines what this team member can see and do in the system"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="company_owner">Company Owner</SelectItem>
                       <SelectItem value="office_manager">Office Manager</SelectItem>
@@ -1757,20 +1817,20 @@ export default function SettingsPage() {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Password <span className="text-muted-foreground font-normal">(required to sign in)</span></label>
-                  <Input type="password" value={inviteForm.password} onChange={e => setInviteForm(f => ({ ...f, password: e.target.value }))} placeholder="Min. 8 characters" autoComplete="new-password" />
+                  <Input type="password" title="Initial password for this team member — they can change it after signing in" value={inviteForm.password} onChange={e => setInviteForm(f => ({ ...f, password: e.target.value }))} placeholder="Min. 8 characters" autoComplete="new-password" />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Hourly Pay Rate</label>
-                  <Input type="number" min="0" step="0.01" value={inviteForm.hourlyRate} onChange={e => setInviteForm(f => ({ ...f, hourlyRate: e.target.value }))} placeholder="e.g. 22.50" />
+                  <Input type="number" min="0" step="0.01" title="Hourly pay rate in dollars — used for labor cost calculations" value={inviteForm.hourlyRate} onChange={e => setInviteForm(f => ({ ...f, hourlyRate: e.target.value }))} placeholder="e.g. 22.50" />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Hire Date</label>
-                  <Input type="date" value={inviteForm.hireDate} onChange={e => setInviteForm(f => ({ ...f, hireDate: e.target.value }))} />
+                  <Input type="date" title="Date this team member was hired" value={inviteForm.hireDate} onChange={e => setInviteForm(f => ({ ...f, hireDate: e.target.value }))} />
                 </div>
                 <Separator />
                 <div className="flex gap-3 justify-end">
                   <Button variant="outline" onClick={() => setInviteOpen(false)}>Cancel</Button>
-                  <Button onClick={handleInvite} disabled={createUser.isPending}>
+                  <Button title="Add this team member to your organization" onClick={handleInvite} disabled={createUser.isPending}>
                     {createUser.isPending ? 'Adding...' : 'Add Member'}
                   </Button>
                 </div>
@@ -1789,12 +1849,12 @@ export default function SettingsPage() {
                 <div className="space-y-4 pb-6">
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium">Full Name</label>
-                    <Input value={editUserForm.name} onChange={e => setEditUserForm(f => f && ({ ...f, name: e.target.value }))} />
+                    <Input title="Team member's full name" value={editUserForm.name} onChange={e => setEditUserForm(f => f && ({ ...f, name: e.target.value }))} />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium">Role</label>
                     <Select value={editUserForm.role} onValueChange={v => setEditUserForm(f => f && ({ ...f, role: v }))}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger title="Role determines what this team member can see and do in the system"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="company_owner">Company Owner</SelectItem>
                         <SelectItem value="office_manager">Office Manager</SelectItem>
@@ -1806,21 +1866,21 @@ export default function SettingsPage() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium">Hourly Pay Rate</label>
-                    <Input type="number" min="0" step="0.01" value={editUserForm.hourlyRate} onChange={e => setEditUserForm(f => f && ({ ...f, hourlyRate: e.target.value }))} placeholder="e.g. 22.50" />
+                    <Input type="number" min="0" step="0.01" title="Hourly pay rate in dollars — used for labor cost calculations" value={editUserForm.hourlyRate} onChange={e => setEditUserForm(f => f && ({ ...f, hourlyRate: e.target.value }))} placeholder="e.g. 22.50" />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium">Hire Date</label>
-                    <Input type="date" value={editUserForm.hireDate} onChange={e => setEditUserForm(f => f && ({ ...f, hireDate: e.target.value }))} />
+                    <Input type="date" title="Date this team member was hired" value={editUserForm.hireDate} onChange={e => setEditUserForm(f => f && ({ ...f, hireDate: e.target.value }))} />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium">Pesticide Applicator License #</label>
-                    <Input placeholder="e.g. LIC-12345" value={editUserForm.applicatorLicense} onChange={e => setEditUserForm(f => f && ({ ...f, applicatorLicense: e.target.value }))} />
+                    <Input title="Pesticide applicator license number — required for chemical application jobs" placeholder="e.g. LIC-12345" value={editUserForm.applicatorLicense} onChange={e => setEditUserForm(f => f && ({ ...f, applicatorLicense: e.target.value }))} />
                     <p className="text-xs text-muted-foreground">Required before assigning this person to chemical application jobs.</p>
                   </div>
                   <Separator />
                   <div className="flex gap-3 justify-end">
                     <Button variant="outline" onClick={() => setEditUserOpen(false)}>Cancel</Button>
-                    <Button onClick={handleSaveEditUser} disabled={updateUser.isPending}>
+                    <Button title="Save changes to this team member's profile" onClick={handleSaveEditUser} disabled={updateUser.isPending}>
                       {updateUser.isPending ? 'Saving...' : 'Save Changes'}
                     </Button>
                   </div>
@@ -1899,12 +1959,14 @@ export default function SettingsPage() {
                   <div className="flex items-center rounded-md border p-1 bg-muted/50 w-fit gap-1">
                     <Button
                       size="sm"
+                      title="Field staff enter job duration in minutes"
                       variant={durationUnit === 'minutes' ? 'secondary' : 'ghost'}
                       className="h-8 px-4 text-sm"
                       onClick={() => setDurationUnit('minutes')}
                     >Minutes</Button>
                     <Button
                       size="sm"
+                      title="Field staff enter job duration in hours"
                       variant={durationUnit === 'hours' ? 'secondary' : 'ghost'}
                       className="h-8 px-4 text-sm"
                       onClick={() => setDurationUnit('hours')}
@@ -1917,7 +1979,7 @@ export default function SettingsPage() {
                   <label className="text-sm font-medium">Auto-Invoice Frequency</label>
                   <p className="text-xs text-muted-foreground">Automatically generate invoices for completed jobs on a schedule.</p>
                   <Select value={autoInvoiceFrequency} onValueChange={v => setAutoInvoiceFrequency(v as typeof autoInvoiceFrequency)}>
-                    <SelectTrigger className="w-64"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="w-64" title="How often the system automatically generates invoices for completed jobs"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="off">Off (manual only)</SelectItem>
                       <SelectItem value="daily">Daily</SelectItem>
@@ -1936,7 +1998,7 @@ export default function SettingsPage() {
                   <label className="text-sm font-medium">Invoicing for Completed (Non-Recurring) Jobs</label>
                   <p className="text-xs text-muted-foreground">Controls when an invoice is generated after a one-off job with auto-invoicing is completed.</p>
                   <Select value={nonRecurringInvoiceCadence} onValueChange={v => setNonRecurringInvoiceCadence(v as typeof nonRecurringInvoiceCadence)}>
-                    <SelectTrigger className="w-64"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="w-64" title="When to generate an invoice after a one-off job is completed with auto-invoicing enabled"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="immediate">Immediately on completion</SelectItem>
                       <SelectItem value="weekly">Batch weekly (every Monday)</SelectItem>
@@ -1950,6 +2012,7 @@ export default function SettingsPage() {
                   <p className="text-xs text-muted-foreground">Auto clock-out staff who forget to clock out after this many hours. Leave blank to disable.</p>
                   <Input
                     type="number" min="0" step="0.5" className="w-40"
+                    title="Staff are automatically clocked out after this many hours — leave blank to disable"
                     value={maxClockInHours}
                     onChange={e => setMaxClockInHours(e.target.value)}
                     placeholder="e.g. 12"
@@ -1974,6 +2037,7 @@ export default function SettingsPage() {
                     max={100}
                     step={0.5}
                     className="w-24 text-right"
+                    title="Global P4P payout percentage (0 = P4P disabled; individual services can override this)"
                     value={p4pMasterPct}
                     onChange={e => setP4pMasterPct(e.target.value)}
                   />
@@ -2001,6 +2065,7 @@ export default function SettingsPage() {
                     type="number"
                     min={0}
                     step={0.25}
+                    title="Hourly rate for daily task / compliance time — used to calculate Task Pay in the Payroll report"
                     className="w-28 text-right"
                     value={dailyTaskHourlyRate}
                     onChange={e => setDailyTaskHourlyRate(e.target.value)}
@@ -2038,6 +2103,7 @@ export default function SettingsPage() {
                     <Input
                       type="number" min={0} max={200} step={5}
                       className="w-24 text-right"
+                      title="Flag equipment for review when cumulative repair costs exceed this percentage of its purchase price"
                       value={equipRepairPct}
                       onChange={e => setEquipRepairPct(e.target.value)}
                     />
@@ -2053,6 +2119,7 @@ export default function SettingsPage() {
                     <Input
                       type="number" min={0} max={100} step={5}
                       className="w-24 text-right"
+                      title="Flag equipment when its estimated resale value falls below this percentage of the purchase price"
                       value={equipResalePct}
                       onChange={e => setEquipResalePct(e.target.value)}
                     />
@@ -2063,7 +2130,7 @@ export default function SettingsPage() {
                   </p>
                 </div>
               </div>
-              <Button onClick={saveEquipmentThresholds} disabled={updateSettings.isPending} variant="outline">
+              <Button title="Save equipment condition thresholds" onClick={saveEquipmentThresholds} disabled={updateSettings.isPending} variant="outline">
                 Save Equipment Thresholds
               </Button>
             </CardContent>
@@ -2137,6 +2204,7 @@ export default function SettingsPage() {
                             size="icon"
                             variant="ghost"
                             className="h-7 w-7"
+                            title="Edit this equipment type label"
                             onClick={() => { setEditingTypeId(et.id); setEditingTypeLabel(et.label); }}
                           >
                             <Pencil className="w-3.5 h-3.5" />
@@ -2145,15 +2213,12 @@ export default function SettingsPage() {
                             size="icon"
                             variant="ghost"
                             className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            title="Delete this equipment type"
                             onClick={() => {
-                              if (!window.confirm(`Remove "${et.label}" from the list? Existing equipment with this type will still display correctly.`)) return;
-                              deleteEquipmentType.mutate(
-                                { id: et.id },
-                                {
-                                  onSuccess: () => qc.invalidateQueries({ queryKey: getListEquipmentTypesQueryKey() }),
-                                  onError: () => toast.error('Failed to delete type'),
-                                }
-                              );
+                              deleteEquipmentType.mutate({ id: et.id }, {
+                                onSuccess: () => qc.invalidateQueries({ queryKey: getListEquipmentTypesQueryKey() }),
+                                onError: () => toast.error('Failed to delete type'),
+                              });
                             }}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -2169,6 +2234,7 @@ export default function SettingsPage() {
               <div className="flex gap-2">
                 <Input
                   className="flex-1"
+                  title="Enter a new equipment type name"
                   placeholder="New type label (e.g. Riding Mower)"
                   value={newTypeLabel}
                   onChange={e => setNewTypeLabel(e.target.value)}
@@ -2264,7 +2330,6 @@ export default function SettingsPage() {
                           <Pencil className="w-3.5 h-3.5" />
                         </Button>
                         <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground hover:text-destructive" onClick={() => {
-                          if (!window.confirm(`Delete ${p.name}?`)) return;
                           deleteChemProduct.mutate({ id: p.id }, {
                             onSuccess: () => { toast.success('Product deleted'); qc.invalidateQueries({ queryKey: getListChemicalProductsQueryKey() }); },
                             onError: () => toast.error('Failed to delete'),
@@ -2325,7 +2390,6 @@ export default function SettingsPage() {
                             <Pencil className="w-3.5 h-3.5" />
                           </Button>
                           <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground hover:text-destructive" onClick={() => {
-                            if (!window.confirm(`Delete ${m.name}?`)) return;
                             deleteChemMixture.mutate({ id: m.id }, {
                               onSuccess: () => { toast.success('Mixture deleted'); qc.invalidateQueries({ queryKey: getListChemicalMixturesQueryKey() }); },
                               onError: () => toast.error('Failed to delete'),
@@ -2575,6 +2639,7 @@ export default function SettingsPage() {
                     <Button
                       variant="outline"
                       size="sm"
+                      title={logoUrl ? 'Replace the current company logo with a new image' : 'Upload a company logo — shown on invoices and estimates'}
                       className="gap-2"
                       onClick={() => logoFileRef.current?.click()}
                       disabled={logoUploading}
@@ -2590,6 +2655,7 @@ export default function SettingsPage() {
                       <Button
                         variant="ghost"
                         size="sm"
+                        title="Remove the current company logo"
                         className="text-muted-foreground hover:text-destructive"
                         disabled={updateSettings.isPending}
                         onClick={() => {
@@ -2624,6 +2690,7 @@ export default function SettingsPage() {
                   <Label htmlFor="bp-phone">Business Phone</Label>
                   <Input
                     id="bp-phone"
+                    title="Business phone number printed on invoices and emails"
                     placeholder="+1 (555) 000-0000"
                     value={businessPhone}
                     onChange={e => setBusinessPhone(e.target.value)}
@@ -2634,6 +2701,7 @@ export default function SettingsPage() {
                   <Input
                     id="bp-email"
                     type="email"
+                    title="Business email address printed on invoices and customer communications"
                     placeholder="contact@yourcompany.com"
                     value={businessEmail}
                     onChange={e => setBusinessEmail(e.target.value)}
@@ -2644,6 +2712,7 @@ export default function SettingsPage() {
                   <Input
                     id="bp-website"
                     type="url"
+                    title="Your business website URL printed on customer documents"
                     placeholder="https://yourcompany.com"
                     value={businessWebsite}
                     onChange={e => setBusinessWebsite(e.target.value)}
@@ -2653,6 +2722,7 @@ export default function SettingsPage() {
                   <Label htmlFor="bp-license">License Number</Label>
                   <Input
                     id="bp-license"
+                    title="Your contractor or business license number"
                     placeholder="LIC-123456"
                     value={businessLicenseNumber}
                     onChange={e => setBusinessLicenseNumber(e.target.value)}
@@ -2663,6 +2733,7 @@ export default function SettingsPage() {
                 <Label htmlFor="bp-address">Business Address</Label>
                 <Input
                   id="bp-address"
+                  title="Business address shown on invoices and estimates"
                   placeholder="123 Main St, City, State 00000"
                   value={businessAddress}
                   onChange={e => setBusinessAddress(e.target.value)}
@@ -2672,6 +2743,7 @@ export default function SettingsPage() {
                 <Label htmlFor="bp-tagline">Tagline</Label>
                 <Input
                   id="bp-tagline"
+                  title="Short slogan shown below your company name on documents"
                   placeholder="Your trusted local lawn care experts"
                   value={businessTagline}
                   onChange={e => setBusinessTagline(e.target.value)}
@@ -2682,6 +2754,7 @@ export default function SettingsPage() {
                 <Label htmlFor="bp-footer">Invoice Footer Text</Label>
                 <Textarea
                   id="bp-footer"
+                  title="Text that appears at the bottom of every invoice — use for payment terms or a thank-you note"
                   rows={3}
                   placeholder="Thank you for your business! Payment is due within 30 days."
                   value={invoiceFooterText}
@@ -2714,7 +2787,7 @@ export default function SettingsPage() {
                     When on, the system sends reminders to customers according to the schedule below.
                   </p>
                 </div>
-                <Switch checked={paymentRemindersEnabled} onCheckedChange={setPaymentRemindersEnabled} />
+                <Switch title={paymentRemindersEnabled ? 'Payment reminders are enabled — click to disable' : 'Payment reminders are disabled — click to enable'} checked={paymentRemindersEnabled} onCheckedChange={setPaymentRemindersEnabled} />
               </div>
 
               {/* Default channels for newly-added rules */}
@@ -2725,6 +2798,7 @@ export default function SettingsPage() {
                   <div className="flex items-center gap-2">
                     <Checkbox
                       id="channel-email"
+                      title="Send payment reminders via email by default"
                       checked={paymentReminderChannels.includes('email')}
                       onCheckedChange={v => setPaymentReminderChannels(prev =>
                         v ? [...prev.filter(c => c !== 'email'), 'email'] : prev.filter(c => c !== 'email')
@@ -2737,6 +2811,7 @@ export default function SettingsPage() {
                   <div className="flex items-center gap-2">
                     <Checkbox
                       id="channel-sms"
+                      title="Send payment reminders via SMS by default"
                       checked={paymentReminderChannels.includes('sms')}
                       onCheckedChange={v => setPaymentReminderChannels(prev =>
                         v ? [...prev.filter(c => c !== 'sms'), 'sms'] : prev.filter(c => c !== 'sms')
@@ -2786,6 +2861,7 @@ export default function SettingsPage() {
                           <Input
                             type="number"
                             className="h-8 text-sm w-24"
+                            title="Negative = days before due date; positive = days overdue; 0 = on due date"
                             value={rule.offsetDays}
                             onChange={e => setPaymentReminderSchedule(prev =>
                               prev.map((r, i) => i === idx ? { ...r, offsetDays: parseInt(e.target.value, 10) || 0 } : r)
@@ -2801,6 +2877,7 @@ export default function SettingsPage() {
                         <label className="text-xs text-muted-foreground">Label</label>
                         <Input
                           className="h-8 text-sm"
+                          title="Display name for this reminder rule"
                           placeholder="e.g. 3 days before due"
                           value={rule.label}
                           onChange={e => setPaymentReminderSchedule(prev =>
@@ -2814,6 +2891,7 @@ export default function SettingsPage() {
                           <div className="flex items-center gap-1.5">
                             <Checkbox
                               id={`rule-${idx}-email`}
+                              title="Send this reminder via email"
                               checked={(rule.channels ?? []).includes('email')}
                               onCheckedChange={v => setPaymentReminderSchedule(prev =>
                                 prev.map((r, i) => {
@@ -2830,6 +2908,7 @@ export default function SettingsPage() {
                           <div className="flex items-center gap-1.5">
                             <Checkbox
                               id={`rule-${idx}-sms`}
+                              title="Send this reminder via SMS text message"
                               checked={(rule.channels ?? []).includes('sms')}
                               onCheckedChange={v => setPaymentReminderSchedule(prev =>
                                 prev.map((r, i) => {
@@ -2891,6 +2970,7 @@ export default function SettingsPage() {
                     type="number"
                     min={1}
                     step={1}
+                    title="Number of days an invoice must be overdue before the account is flagged for stop-service review"
                     className="w-24"
                     value={stopServiceThresholdDays}
                     onChange={e => setStopServiceThresholdDays(e.target.value)}
@@ -2926,6 +3006,7 @@ export default function SettingsPage() {
                     <p className="text-xs text-muted-foreground mt-0.5">Flag estimates that were sent but never approved or declined.</p>
                   </div>
                   <Switch
+                    title={followupConfig.sentEstimate?.enabled !== false ? 'Sent-estimate follow-ups are on — click to disable' : 'Enable follow-ups for sent estimates with no response'}
                     checked={followupConfig.sentEstimate?.enabled ?? true}
                     onCheckedChange={(v) => setFollowupConfig(c => ({ ...c, sentEstimate: { ...c.sentEstimate, enabled: v } }))}
                   />
@@ -2933,12 +3014,12 @@ export default function SettingsPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Wait before flagging (days)</Label>
-                    <Input type="number" min={1} value={followupConfig.sentEstimate?.delayDays ?? 3}
+                    <Input type="number" min={1} title="Days after sending before the estimate is flagged for follow-up" value={followupConfig.sentEstimate?.delayDays ?? 3}
                       onChange={e => setFollowupConfig(c => ({ ...c, sentEstimate: { ...c.sentEstimate, delayDays: parseInt(e.target.value, 10) || 1 } }))} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Re-surface every (days)</Label>
-                    <Input type="number" min={1} value={followupConfig.sentEstimate?.repeatDays ?? 4}
+                    <Input type="number" min={1} title="How often to re-surface the follow-up if not resolved" value={followupConfig.sentEstimate?.repeatDays ?? 4}
                       onChange={e => setFollowupConfig(c => ({ ...c, sentEstimate: { ...c.sentEstimate, repeatDays: parseInt(e.target.value, 10) || 1 } }))} />
                   </div>
                 </div>
@@ -2951,6 +3032,7 @@ export default function SettingsPage() {
                     <p className="text-xs text-muted-foreground mt-0.5">Flag invoices that were sent but remain unpaid.</p>
                   </div>
                   <Switch
+                    title={followupConfig.sentInvoice?.enabled !== false ? 'Sent-invoice follow-ups are on — click to disable' : 'Enable follow-ups for sent invoices that remain unpaid'}
                     checked={followupConfig.sentInvoice?.enabled ?? true}
                     onCheckedChange={(v) => setFollowupConfig(c => ({ ...c, sentInvoice: { ...c.sentInvoice, enabled: v } }))}
                   />
@@ -2958,12 +3040,12 @@ export default function SettingsPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Wait before flagging (days)</Label>
-                    <Input type="number" min={1} value={followupConfig.sentInvoice?.delayDays ?? 5}
+                    <Input type="number" min={1} title="Days after sending before the invoice is flagged for follow-up" value={followupConfig.sentInvoice?.delayDays ?? 5}
                       onChange={e => setFollowupConfig(c => ({ ...c, sentInvoice: { ...c.sentInvoice, delayDays: parseInt(e.target.value, 10) || 1 } }))} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Re-surface every (days)</Label>
-                    <Input type="number" min={1} value={followupConfig.sentInvoice?.repeatDays ?? 5}
+                    <Input type="number" min={1} title="How often to re-surface the follow-up if unpaid" value={followupConfig.sentInvoice?.repeatDays ?? 5}
                       onChange={e => setFollowupConfig(c => ({ ...c, sentInvoice: { ...c.sentInvoice, repeatDays: parseInt(e.target.value, 10) || 1 } }))} />
                   </div>
                 </div>
@@ -2976,13 +3058,14 @@ export default function SettingsPage() {
                     <p className="text-xs text-muted-foreground mt-0.5">Flag inbound customer emails that haven't been replied to.</p>
                   </div>
                   <Switch
+                    title={followupConfig.unansweredEmail?.enabled !== false ? 'Unanswered-email follow-ups are on — click to disable' : 'Enable follow-ups for inbound emails with no reply'}
                     checked={followupConfig.unansweredEmail?.enabled ?? true}
                     onCheckedChange={(v) => setFollowupConfig(c => ({ ...c, unansweredEmail: { ...c.unansweredEmail, enabled: v } }))}
                   />
                 </div>
                 <div className="space-y-1 w-1/2">
                   <Label className="text-xs">Wait before flagging (hours)</Label>
-                  <Input type="number" min={1} value={followupConfig.unansweredEmail?.hours ?? 48}
+                  <Input type="number" min={1} title="Hours after receiving the email before it's flagged for follow-up" value={followupConfig.unansweredEmail?.hours ?? 48}
                     onChange={e => setFollowupConfig(c => ({ ...c, unansweredEmail: { ...c.unansweredEmail, hours: parseInt(e.target.value, 10) || 1 } }))} />
                 </div>
               </div>
@@ -2993,6 +3076,7 @@ export default function SettingsPage() {
                   <p className="text-xs text-muted-foreground mt-0.5">Immediately flag missed calls and voicemails from known customers.</p>
                 </div>
                 <Switch
+                  title={followupConfig.missedCall?.enabled !== false ? 'Missed-call follow-ups are on — click to disable' : 'Enable follow-ups for missed calls and voicemails'}
                   checked={followupConfig.missedCall?.enabled ?? true}
                   onCheckedChange={(v) => setFollowupConfig(c => ({ ...c, missedCall: { ...c.missedCall, enabled: v } }))}
                 />
@@ -3022,7 +3106,7 @@ export default function SettingsPage() {
                     Automatically sends a review request when a customer's invoice is marked as paid.
                   </p>
                 </div>
-                <Switch checked={reviewRequestOnInvoicePaid} onCheckedChange={setReviewRequestOnInvoicePaid} />
+                <Switch title={reviewRequestOnInvoicePaid ? 'Review request on paid invoice is on — click to disable' : 'Enable automatic review requests when invoices are paid'} checked={reviewRequestOnInvoicePaid} onCheckedChange={setReviewRequestOnInvoicePaid} />
               </div>
               <div className="flex items-center justify-between rounded-lg border p-4">
                 <div>
@@ -3031,7 +3115,7 @@ export default function SettingsPage() {
                     Automatically sends a review request when a customer approves an estimate.
                   </p>
                 </div>
-                <Switch checked={reviewRequestOnEstimateApproved} onCheckedChange={setReviewRequestOnEstimateApproved} />
+                <Switch title={reviewRequestOnEstimateApproved ? 'Review request on approved estimate is on — click to disable' : 'Enable automatic review requests when estimates are approved'} checked={reviewRequestOnEstimateApproved} onCheckedChange={setReviewRequestOnEstimateApproved} />
               </div>
             </CardContent>
           </Card>
@@ -3171,6 +3255,7 @@ export default function SettingsPage() {
                   <Label>SMS Body</Label>
                   <Textarea
                     rows={3}
+                    title="SMS text sent to customers before their service visit — use {{firstName}}, {{date}}, {{time}}, {{jobTitle}} as placeholders"
                     placeholder={'Default: Hi {{firstName}}, reminder: {{companyName}} will be at your property on {{date}} at {{time}} for "{{jobTitle}}". Reply STOP to opt out.'}
                     value={notificationTemplates.serviceReminderSms ?? ''}
                     onChange={e => setNotificationTemplates(t => ({ ...t, serviceReminderSms: e.target.value || undefined as any }))}
@@ -3179,6 +3264,7 @@ export default function SettingsPage() {
                 <div className="space-y-1.5">
                   <Label>Email Subject</Label>
                   <Input
+                    title="Email subject line for service reminders — use {{jobTitle}}, {{date}} as placeholders"
                     placeholder="Default: Upcoming Service Reminder — {{jobTitle}} on {{date}}"
                     value={notificationTemplates.serviceReminderEmailSubject ?? ''}
                     onChange={e => setNotificationTemplates(t => ({ ...t, serviceReminderEmailSubject: e.target.value || undefined as any }))}
@@ -3188,6 +3274,7 @@ export default function SettingsPage() {
                   <Label>Email Body</Label>
                   <Textarea
                     rows={6}
+                    title="Email body for service reminders — use {{firstName}}, {{companyName}}, {{date}}, {{time}}, {{address}} as placeholders"
                     placeholder={'Default: Hi {{firstName}},\n\nThis is a reminder that {{companyName}} will be servicing your property on {{date}} at {{time}}.\n\nProperty: {{address}}\n\nIf you have questions, please contact us.\n\nThank you,\n{{companyName}}'}
                     value={notificationTemplates.serviceReminderEmailBody ?? ''}
                     onChange={e => setNotificationTemplates(t => ({ ...t, serviceReminderEmailBody: e.target.value || undefined as any }))}
@@ -3203,6 +3290,7 @@ export default function SettingsPage() {
                 <div className="space-y-1.5">
                   <Label>Email Subject</Label>
                   <Input
+                    title="Email subject line for payment reminders — use {{invoiceNumber}} as a placeholder"
                     placeholder="Default: Payment reminder — Invoice {{invoiceNumber}} (or 'Payment overdue' when past due)"
                     value={notificationTemplates.paymentReminderEmailSubject ?? ''}
                     onChange={e => setNotificationTemplates(t => ({ ...t, paymentReminderEmailSubject: e.target.value || undefined as any }))}
@@ -3212,6 +3300,7 @@ export default function SettingsPage() {
                   <Label>Email Body</Label>
                   <Textarea
                     rows={6}
+                    title="Email body for payment reminders — use {{firstName}}, {{invoiceNumber}}, {{amount}}, {{dueMessage}}, {{companyName}} as placeholders"
                     placeholder={'Default: Hi {{firstName}},\n\nInvoice {{invoiceNumber}} for ${{amount}} {{dueMessage}}.\n\nPlease arrange payment at your earliest convenience.\n\nThank you,\n{{companyName}}'}
                     value={notificationTemplates.paymentReminderEmailBody ?? ''}
                     onChange={e => setNotificationTemplates(t => ({ ...t, paymentReminderEmailBody: e.target.value || undefined as any }))}
@@ -3221,6 +3310,7 @@ export default function SettingsPage() {
                   <Label>SMS Body</Label>
                   <Textarea
                     rows={2}
+                    title="SMS text for payment reminders — use {{firstName}}, {{invoiceNumber}}, {{amount}}, {{companyName}}, {{dueMessage}} as placeholders"
                     placeholder="Default: Hi {{firstName}}, reminder: invoice {{invoiceNumber}} (${{amount}}) from {{companyName}} {{dueMessage}}. Reply STOP to opt out."
                     value={notificationTemplates.paymentReminderSms ?? ''}
                     onChange={e => setNotificationTemplates(t => ({ ...t, paymentReminderSms: e.target.value || undefined as any }))}
@@ -3228,13 +3318,57 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <Button onClick={saveNotificationTemplates} disabled={updateSettings.isPending} variant="outline">
-                {updateSettings.isPending ? 'Saving…' : 'Save Templates'}
-              </Button>
+              <div className="flex gap-2 flex-wrap">
+                <Button onClick={saveNotificationTemplates} disabled={updateSettings.isPending} variant="outline">
+                  {updateSettings.isPending ? 'Saving…' : 'Save Templates'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  disabled={testEmailSending}
+                  onClick={async () => {
+                    setTestEmailSending(true);
+                    try {
+                      await customFetch('/api/settings/test-email', { method: 'POST' });
+                      toast.success('Test email sent to your account email');
+                    } catch {
+                      toast.error('Failed to send test email');
+                    } finally {
+                      setTestEmailSending(false);
+                    }
+                  }}
+                >
+                  {testEmailSending ? 'Sending…' : 'Send Test Email'}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Remove User Confirmation */}
+      {deleteUserPending != null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setDeleteUserPending(null)}>
+          <div className="bg-card rounded-xl shadow-xl p-6 max-w-sm w-full mx-4 space-y-4" onClick={e => e.stopPropagation()}>
+            <h2 className="text-base font-semibold">Remove Team Member</h2>
+            <p className="text-sm text-muted-foreground">Remove <strong>{deleteUserPending.name}</strong> from your team? They will lose access to the system.</p>
+            <div className="flex gap-3 justify-end">
+              <button className="text-sm px-3 py-1.5 rounded-md border hover:bg-muted transition-colors" onClick={() => setDeleteUserPending(null)}>Cancel</button>
+              <button
+                className="text-sm px-3 py-1.5 rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
+                disabled={deleteUser.isPending}
+                onClick={() => {
+                  deleteUser.mutate({ id: deleteUserPending.id }, {
+                    onSuccess: () => { toast.success(`${deleteUserPending.name} removed`); qc.invalidateQueries({ queryKey: getListUsersQueryKey() }); setDeleteUserPending(null); },
+                    onError: () => toast.error('Failed to remove user'),
+                  });
+                }}
+              >
+                {deleteUser.isPending ? 'Removing…' : 'Remove'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -82,7 +82,9 @@ export const equipmentFuelLogsTable = pgTable("equipment_fuel_logs", {
   date: text("date").notNull(), // ISO date YYYY-MM-DD
   /** Gallons added */
   gallons: real("gallons").notNull(),
-  /** Cost of this fill */
+  /** Price per gallon at time of fill (informational; cost = gallons × costPerGallon when set) */
+  costPerGallon: real("cost_per_gallon"),
+  /** Total cost of this fill */
   cost: real("cost").notNull().default(0),
   /** Odometer reading at fill (hours for equipment, miles for vehicles) */
   odometerReading: real("odometer_reading"),

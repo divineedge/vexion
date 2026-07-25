@@ -144,17 +144,24 @@ export const tenantsTable = pgTable("tenants", {
   // ── Estimate & Invoice Defaults ───────────────────────────────────────────
   /** Days until an estimate expires (0 = no expiry). Used to auto-populate expiresAt on new estimates. */
   estimateExpiryDays: integer("estimate_expiry_days").notNull().default(30),
+  renewalWarningDays: integer("renewal_warning_days").notNull().default(30),
   /** Invoice net terms in days. 0 = due on receipt. */
   invoiceDueDays: integer("invoice_due_days").notNull().default(30),
   /** Whether this business charges sales tax. When false, tax is hidden from all estimates, invoices, and reports. */
   taxEnabled: boolean("tax_enabled").notNull().default(true),
   // ── Callback / Task Due-Date Defaults ────────────────────────────────────
-  /** Days from today a HIGH priority callback is due */
+  /** Days from today a HIGH priority callback is due (legacy — use callbackDueHoursHigh) */
   callbackDueDaysHigh: integer("callback_due_days_high").notNull().default(1),
-  /** Days from today a NORMAL priority callback is due */
+  /** Days from today a NORMAL priority callback is due (legacy) */
   callbackDueDaysNormal: integer("callback_due_days_normal").notNull().default(3),
-  /** Days from today a LOW priority callback is due */
+  /** Days from today a LOW priority callback is due (legacy) */
   callbackDueDaysLow: integer("callback_due_days_low").notNull().default(7),
+  /** Hours until a HIGH priority callback fix is due (default 4 h) */
+  callbackDueHoursHigh: integer("callback_due_hours_high").notNull().default(4),
+  /** Hours until a NORMAL priority callback fix is due (default 24 h) */
+  callbackDueHoursNormal: integer("callback_due_hours_normal").notNull().default(24),
+  /** Hours until a LOW priority callback fix is due (default 72 h = 3 days) */
+  callbackDueHoursLow: integer("callback_due_hours_low").notNull().default(72),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

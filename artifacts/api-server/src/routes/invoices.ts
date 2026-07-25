@@ -302,14 +302,21 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
   if (dueDate !== undefined) updates.dueDate = dueDate ? new Date(dueDate) : null;
   if (status === "paid") { updates.paidAt = new Date(); }
   // Generate a public token the first time an invoice is sent so customers can view it via a shareable link
+  let newlyMadeSent = false;
   if (status === "sent") {
-    const [existing] = await db.select({ publicToken: invoicesTable.publicToken }).from(invoicesTable).where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId)));
+    const [existing] = await db.select({ publicToken: invoicesTable.publicToken, status: invoicesTable.status }).from(invoicesTable).where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId)));
     if (!existing?.publicToken) {
       updates.publicToken = generateInvoiceToken();
     }
+    if (existing?.status !== "sent") newlyMadeSent = true;
   }
 
   const [updated] = await db.update(invoicesTable).set(updates).where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId))).returning();
+
+  // Auto-send the invoice email link when first marked as "sent"
+  if (newlyMadeSent && updated) {
+    await enqueueInvoiceEmail(tenantId, id).catch(err => logger.error({ err, invoiceId: id }, "Failed to auto-enqueue invoice email on status=sent"));
+  }
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
 
   if (status === "paid") {

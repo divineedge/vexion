@@ -17,10 +17,11 @@ import {
   useDeleteRepairLog,
   useListUsers, getListUsersQueryKey,
   useUpdateBlueprint,
+  useListCustomerPlans, getListCustomerPlansQueryKey,
   customFetch,
 } from '@workspace/api-client-react';
 import type { MeasurementZone, Quote } from '@workspace/api-client-react';
-import { useParams, useLocation } from 'wouter';
+import { useParams, useLocation, Link } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -93,6 +94,8 @@ export default function PropertyDetailPage() {
 
   // ── Repair log state ──────────────────────────────────────────────────────
   const [repairDialogOpen, setRepairDialogOpen] = useState(false);
+  const [isEditingPropertyNotes, setIsEditingPropertyNotes] = useState(false);
+  const [propertyNotesVal, setPropertyNotesVal] = useState('');
   const [repairFilterElementId, setRepairFilterElementId] = useState<string | null>(null);
   const EMPTY_REPAIR = {
     componentType: 'sprinkler', replacedWhat: '', replacedWithName: '',
@@ -125,6 +128,13 @@ export default function PropertyDetailPage() {
     { query: { enabled: !!id, queryKey: getListBlueprintsQueryKey({ propertyId: id, includeArchived: true } as Parameters<typeof useListBlueprints>[0]) } },
   );
   const { data: tenantSettings } = useGetTenantSettings();
+
+  // ── Service plans for this property ────────────────────────────────────
+  const { data: allPropertyPlans } = useListCustomerPlans(
+    { customerId: property?.customerId } as Parameters<typeof useListCustomerPlans>[0],
+    { query: { enabled: !!property?.customerId, queryKey: getListCustomerPlansQueryKey({ customerId: property?.customerId } as Parameters<typeof useListCustomerPlans>[0]) } },
+  );
+  const propertyPlans = (allPropertyPlans ?? []).filter(p => p.propertyId === id);
 
   // ── Repair log data ────────────────────────────────────────────────────
   const repairLogsQuery = { propertyId: id } as Parameters<typeof useListRepairLogs>[0];
@@ -347,19 +357,25 @@ export default function PropertyDetailPage() {
     <div className="space-y-6 animate-in fade-in duration-500">
       {/* Header */}
       <div className="flex items-start gap-4">
-        <Button variant="ghost" size="icon" onClick={() => setLocation('/properties')}>
+        <Button variant="ghost" size="icon" title="Back to properties list" onClick={() => setLocation('/properties')}>
           <ArrowLeft className="w-5 h-5" />
         </Button>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3">
             <MapPin className="w-6 h-6 text-primary shrink-0" />
-            <h1 className="text-3xl font-bold tracking-tight truncate">{property.address}</h1>
+            <a
+              href={`https://maps.google.com/?q=${encodeURIComponent([property.address, property.city, property.state, property.zip].filter(Boolean).join(', '))}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Open in Google Maps"
+              className="text-3xl font-bold tracking-tight truncate hover:underline text-foreground"
+            >{property.address}</a>
           </div>
           <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground flex-wrap">
             <span>{[property.city, property.state, property.zip].filter(Boolean).join(', ')}</span>
             {property.type && <Badge variant="secondary" className="capitalize">{property.type}</Badge>}
             {property.serviceableAreaSqft && (
-              <span className="flex items-center gap-1">
+              <span className="flex items-center gap-1" title={`Serviceable area: ${property.serviceableAreaSqft.toLocaleString(undefined, { maximumFractionDigits: 0 })} sqft`}>
                 <Ruler className="w-3.5 h-3.5" />
                 {property.serviceableAreaSqft.toLocaleString(undefined, { maximumFractionDigits: 0 })} sqft
               </span>
@@ -368,18 +384,43 @@ export default function PropertyDetailPage() {
               Owner:{' '}
               <button
                 className="text-primary hover:underline font-medium"
+                title={`View ${property.customerName}`}
                 onClick={() => setLocation(`/customers/${property.customerId}`)}
               >
                 {property.customerName}
               </button>
+              {(property as any).customerPhone && (
+                <a href={`tel:${(property as any).customerPhone}`} title={`Call ${(property as any).customerPhone}`} className="ml-2 hover:underline">
+                  {(property as any).customerPhone}
+                </a>
+              )}
+              {(property as any).customerEmail && (
+                <a href={`mailto:${(property as any).customerEmail}`} title={`Email ${(property as any).customerEmail}`} className="ml-2 hover:underline text-xs">
+                  {(property as any).customerEmail}
+                </a>
+              )}
             </span>
           </div>
         </div>
         <div className="flex gap-2 shrink-0 flex-wrap">
-          <Button variant="outline" onClick={() => setTransferOpen(true)} className="gap-2">
+          <Button variant="outline" size="sm" title="Log a completed service visit for this property" onClick={() => setLocation(`/visits?customerId=${property.customerId}`)} className="gap-2">
+            <Calendar className="w-4 h-4" /> Log Visit
+          </Button>
+          {property.address && (
+            <Button
+              variant="outline"
+              size="sm"
+              title="Open property address in Google Maps"
+              className="gap-2"
+              onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(property.address)}`, '_blank')}
+            >
+              <MapPin className="w-4 h-4" /> Map
+            </Button>
+          )}
+          <Button variant="outline" title="Transfer this property to a different customer" onClick={() => setTransferOpen(true)} className="gap-2">
             <GitMerge className="w-4 h-4" /> Transfer
           </Button>
-          <Button onClick={() => setEditing(true)} className="gap-2">
+          <Button title="Edit property details" onClick={() => setEditing(true)} className="gap-2">
             <Edit className="w-4 h-4" /> Edit
           </Button>
         </div>
@@ -393,6 +434,7 @@ export default function PropertyDetailPage() {
             <p className="mt-0.5 text-amber-800 dark:text-amber-300">
               The address could not be geocoded — the map pin is missing. Check for typos or an incomplete address, then save again.{' '}
               <button
+                title="Switch to the satellite map tab to manually place the property pin"
                 className="font-medium underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-100"
                 onClick={() => { setActiveTab('satellite'); setGeocodeFailed(false); }}
               >
@@ -402,6 +444,7 @@ export default function PropertyDetailPage() {
           </div>
           <button
             aria-label="Dismiss"
+            title="Dismiss this geocoding warning"
             className="text-amber-600 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-100"
             onClick={() => setGeocodeFailed(false)}
           >
@@ -412,25 +455,26 @@ export default function PropertyDetailPage() {
 
       <Tabs value={activeTab} className="w-full" onValueChange={v => { setActiveTab(v); if (v === 'history') loadOwnershipHistory(); }}>
         <TabsList className="mb-4 flex flex-wrap h-auto gap-1">
-          <TabsTrigger value="satellite" className="gap-1.5">
+          <TabsTrigger value="satellite" className="gap-1.5" title="View satellite imagery and serviceable area">
             <Satellite className="w-4 h-4" /> Satellite Map
           </TabsTrigger>
-          <TabsTrigger value="quote" className="gap-1.5">
+          <TabsTrigger value="quote" className="gap-1.5" title="Generate a quick estimate from this property">
             <Calculator className="w-4 h-4" /> Quick Quote
           </TabsTrigger>
-          <TabsTrigger value="details">Details & Geofence</TabsTrigger>
-          <TabsTrigger value="jobs">Jobs ({jobs?.length ?? 0})</TabsTrigger>
-          <TabsTrigger value="quotes">Quotes ({quotes?.length ?? 0})</TabsTrigger>
-          <TabsTrigger value="blueprints" className="gap-1.5">
+          <TabsTrigger value="details" title="Property details, contacts, and geofence settings">Details & Geofence</TabsTrigger>
+          <TabsTrigger value="jobs" title="Job history for this property">Jobs ({jobs?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="plans" title="Active and past service plans for this property">Plans ({propertyPlans.length})</TabsTrigger>
+          <TabsTrigger value="quotes" title="Estimates and quotes for this property">Quotes ({quotes?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="blueprints" className="gap-1.5" title="Property blueprints and site maps">
             <DraftingCompass className="w-4 h-4" /> Blueprints ({propertyBlueprints?.length ?? 0})
           </TabsTrigger>
-          <TabsTrigger value="media" className="gap-1.5">
+          <TabsTrigger value="media" className="gap-1.5" title="Photos and media attachments for this property">
             <Images className="w-4 h-4" /> Media ({propertyMedia?.length ?? 0})
           </TabsTrigger>
-          <TabsTrigger value="repairs" className="gap-1.5">
+          <TabsTrigger value="repairs" className="gap-1.5" title="Repair and damage logs for this property">
             <Wrench className="w-4 h-4" /> Repairs ({repairLogs?.length ?? 0})
           </TabsTrigger>
-          <TabsTrigger value="history">Ownership History</TabsTrigger>
+          <TabsTrigger value="history" title="Ownership and service history">Ownership History</TabsTrigger>
         </TabsList>
 
         {/* ── Satellite Map tab ── */}
@@ -448,7 +492,7 @@ export default function PropertyDetailPage() {
                   </CardDescription>
                 </div>
                 {(!property.lat || !property.lng) && (
-                  <Button size="sm" variant="outline" onClick={handleAutoMeasure} className="gap-2 shrink-0">
+                  <Button size="sm" variant="outline" title="Automatically detect this property's GPS coordinates from its address" onClick={handleAutoMeasure} className="gap-2 shrink-0">
                     <MapPin className="w-4 h-4" /> Auto-Detect Location
                   </Button>
                 )}
@@ -480,12 +524,13 @@ export default function PropertyDetailPage() {
           {currentZones.length === 0 && (
             <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground">
               <Ruler className="w-8 h-8 mx-auto mb-2 opacity-30" />
-              <p className="text-sm">No measurement zones yet. Go to the <strong>Satellite Map</strong> tab to draw zones first.</p>
+              <p className="text-sm">No measurement zones yet. <button className="text-primary underline font-medium" onClick={() => setActiveTab('satellite')}>Open Satellite Map</button> to draw zones first.</p>
             </div>
           )}
           <Suspense fallback={<div className="h-40 flex items-center justify-center text-muted-foreground">Loading...</div>}>
             <QuickQuotePanel
               propertyId={id}
+              customerId={property.customerId}
               zones={currentZones}
               preferredAreaUnit={preferredAreaUnit}
               zoneTypes={zoneTypes}
@@ -507,6 +552,7 @@ export default function PropertyDetailPage() {
               <Button
                 size="sm"
                 variant="outline"
+                title="Copy the iframe embed code for this property's quote widget"
                 className="mt-3 gap-2 text-xs"
                 onClick={() => {
                   const snippet = `<iframe src="${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}/widget/quote?address=${encodeURIComponent(property?.address ?? '')}" width="420" height="600" frameborder="0" style="border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.12)"></iframe>`;
@@ -525,11 +571,20 @@ export default function PropertyDetailPage() {
             <Card>
               <CardHeader><CardTitle>Property Information</CardTitle></CardHeader>
               <CardContent className="space-y-3 text-sm">
-                <Row label="Address" value={property.address} />
+                <Row label="Address" value={property.address} href={`https://maps.google.com/?q=${encodeURIComponent([property.address, property.city, property.state, property.zip].filter(Boolean).join(', '))}`} />
                 <Row label="City" value={property.city} />
                 <Row label="State" value={property.state} />
                 <Row label="ZIP" value={property.zip} />
                 <Row label="Type" value={property.type} />
+                {(() => {
+                  const owner = (allCustomers as any)?.items?.find((c: any) => c.id === (property as any).customerId);
+                  return owner ? (
+                    <div className="flex items-center justify-between">
+                      <p className="text-muted-foreground">Owner</p>
+                      <Link href={`/customers/${(property as any).customerId}`} className="text-sm text-primary hover:underline font-medium">{owner.name}</Link>
+                    </div>
+                  ) : null;
+                })()}
                 {property.lat && <Row label="Coordinates" value={`${property.lat?.toFixed(5)}, ${property.lng?.toFixed(5)}`} />}
                 {property.serviceableAreaSqft && (
                   <Row label="Serviceable Area" value={`${property.serviceableAreaSqft.toLocaleString(undefined, { maximumFractionDigits: 0 })} sqft`} />
@@ -537,12 +592,30 @@ export default function PropertyDetailPage() {
                 {property.size != null && (
                   <Row label="Property Size" value={`${property.size.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${property.sizeUnit ?? 'sqft'}`} />
                 )}
-                {property.notes && (
-                  <div>
-                    <p className="text-muted-foreground mb-1">Notes</p>
-                    <p className="whitespace-pre-wrap">{property.notes}</p>
-                  </div>
+                {(property as any).lastServicedAt && (
+                  <Row label="Last Serviced" value={new Date((property as any).lastServicedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />
                 )}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-muted-foreground">Notes</p>
+                    {!isEditingPropertyNotes && (
+                      <button className="text-xs text-muted-foreground hover:text-foreground" title={property.notes ? 'Edit property notes' : 'Add notes for this property'} onClick={() => { setPropertyNotesVal(property.notes ?? ''); setIsEditingPropertyNotes(true); }}>
+                        Edit
+                      </button>
+                    )}
+                  </div>
+                  {isEditingPropertyNotes ? (
+                    <div className="space-y-2">
+                      <Textarea value={propertyNotesVal} onChange={e => setPropertyNotesVal(e.target.value)} rows={4} className="text-sm" />
+                      <div className="flex gap-2">
+                        <Button size="sm" title="Save property notes" className="h-7 text-xs" onClick={() => updateProperty.mutate({ id: Number(id), data: { notes: propertyNotesVal } as any }, { onSuccess: () => { toast.success('Notes saved'); setIsEditingPropertyNotes(false); qc.invalidateQueries({ queryKey: getGetPropertyQueryKey(id) }); } })}>Save</Button>
+                        <Button size="sm" variant="ghost" title="Discard notes changes" className="h-7 text-xs" onClick={() => setIsEditingPropertyNotes(false)}>Cancel</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="whitespace-pre-wrap text-sm" title={property.notes || undefined}>{property.notes || <span className="text-muted-foreground italic">No notes yet</span>}</p>
+                  )}
+                </div>
               </CardContent>
             </Card>
 
@@ -568,7 +641,7 @@ export default function PropertyDetailPage() {
                       <div className="w-20 h-20 rounded-full bg-primary/20 border-2 border-primary/40 flex items-center justify-center">
                         <div className="w-3 h-3 bg-primary rounded-full" />
                       </div>
-                      <span className="mt-2 font-mono text-xs text-muted-foreground bg-background px-2 py-0.5 rounded border shadow-sm">
+                      <span className="mt-2 font-mono text-xs text-muted-foreground bg-background px-2 py-0.5 rounded border shadow-sm" title={`Geofence center: ${property.geofenceLat.toFixed(6)}, ${property.geofenceLng?.toFixed(6)} — radius: ${property.geofenceRadius}m`}>
                         {property.geofenceLat.toFixed(4)}, {property.geofenceLng?.toFixed(4)} · {property.geofenceRadius}m
                       </span>
                     </div>
@@ -582,15 +655,15 @@ export default function PropertyDetailPage() {
                 <div className="grid grid-cols-3 gap-3 mb-3">
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium">Latitude</label>
-                    <Input placeholder="34.0522" value={geoInput.lat} onChange={e => setGeoInput(g => ({ ...g, lat: e.target.value }))} />
+                    <Input title="Latitude of the geofence center pin" placeholder="34.0522" value={geoInput.lat} onChange={e => setGeoInput(g => ({ ...g, lat: e.target.value }))} />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium">Longitude</label>
-                    <Input placeholder="-118.2437" value={geoInput.lng} onChange={e => setGeoInput(g => ({ ...g, lng: e.target.value }))} />
+                    <Input title="Longitude of the geofence center pin" placeholder="-118.2437" value={geoInput.lng} onChange={e => setGeoInput(g => ({ ...g, lng: e.target.value }))} />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium">Radius (m)</label>
-                    <Input type="number" placeholder="50" value={geoInput.radius} onChange={e => setGeoInput(g => ({ ...g, radius: e.target.value }))} />
+                    <Input type="number" title="Geofence radius in meters — technicians inside this circle are considered on-site" placeholder="50" value={geoInput.radius} onChange={e => setGeoInput(g => ({ ...g, radius: e.target.value }))} />
                   </div>
                 </div>
                 <Button onClick={handleSaveGeofence} disabled={updateGeofence.isPending} className="w-full">
@@ -604,7 +677,12 @@ export default function PropertyDetailPage() {
         {/* ── Jobs tab ── */}
         <TabsContent value="jobs" className="focus-visible:outline-none">
           <Card>
-            <CardHeader><CardTitle>Job History at This Property</CardTitle></CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Job History at This Property</CardTitle>
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setLocation(`/schedule?action=create&propertyId=${property.id}&customerId=${property.customerId}&address=${encodeURIComponent([property.address, property.city, property.state].filter(Boolean).join(', '))}`)}>
+                <Plus className="w-3.5 h-3.5" /> Create Job
+              </Button>
+            </CardHeader>
             <CardContent className="p-0">
               <Table>
                 <TableHeader>
@@ -617,31 +695,91 @@ export default function PropertyDetailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(jobs ?? []).map(job => (
-                    <TableRow key={job.id} className="hover:bg-muted/50">
-                      <TableCell className="font-medium">{job.title}</TableCell>
+                  {[...(jobs ?? [])].sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime()).map(job => (
+                    <TableRow key={job.id} className="hover:bg-muted/50 cursor-pointer" onClick={() => setLocation(`/schedule?jobId=${job.id}`)}>
+                      <TableCell className="font-medium" title={job.title}>{job.title}</TableCell>
                       <TableCell>
-                        <Badge className={`capitalize ${STATUS_COLORS[job.status] ?? ''}`}>
-                          {job.status.replace(/_/g, ' ')}
-                        </Badge>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <Badge className={`capitalize ${STATUS_COLORS[job.status] ?? ''}`} title={`Job status: ${job.status.replace(/_/g, ' ')}`}>
+                            {job.status.replace(/_/g, ' ')}
+                          </Badge>
+                          {(job as any).invoiceStatus && (
+                            <Badge variant="outline" className={`capitalize text-xs ${(job as any).invoiceStatus === 'paid' ? 'border-emerald-300 text-emerald-700' : (job as any).invoiceStatus === 'overdue' ? 'border-red-300 text-red-700' : 'border-amber-300 text-amber-700'}`} title={`Invoice status: ${(job as any).invoiceStatus}`}>
+                              {(job as any).invoiceStatus}
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
+                      <TableCell className="text-sm text-muted-foreground" title={new Date(job.scheduledAt).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}>
                         {new Date(job.scheduledAt).toLocaleDateString()}
                       </TableCell>
-                      <TableCell className="text-sm">{job.assigneeName ?? '-'}</TableCell>
-                      <TableCell className="text-right font-medium">${(job.totalAmount ?? 0).toLocaleString()}</TableCell>
+                      <TableCell className="text-sm" title={job.assigneeName ?? undefined}>{job.assigneeName ?? '-'}</TableCell>
+                      <TableCell className="text-right font-medium" title={`Job total: $${(job.totalAmount ?? 0).toLocaleString()}`}>${(job.totalAmount ?? 0).toLocaleString()}</TableCell>
                     </TableRow>
                   ))}
                   {!jobs?.length && (
                     <TableRow>
                       <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
                         <Calendar className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                        No jobs recorded at this property.
+                        <p className="mb-3">No jobs recorded at this property.</p>
+                        <Button size="sm" variant="outline" onClick={() => setLocation(`/schedule?propertyId=${property.id}`)}>Schedule a Job</Button>
                       </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
               </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Plans tab ── */}
+        <TabsContent value="plans" className="focus-visible:outline-none">
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between gap-3">
+              <div>
+                <CardTitle>Service Plans</CardTitle>
+                <CardDescription>All service plans associated with this property.</CardDescription>
+              </div>
+              <Button size="sm" variant="outline" className="gap-1.5 shrink-0" title="Create a new service plan for this property" onClick={() => setLocation(`/plans/new?propertyId=${id}&customerId=${property.customerId}`)}>
+                <Plus className="w-3.5 h-3.5" /> Add Plan
+              </Button>
+            </CardHeader>
+            <CardContent className="p-0">
+              {propertyPlans.length === 0 ? (
+                <div className="py-8 text-center flex flex-col items-center gap-3">
+                  <p className="text-sm text-muted-foreground">No service plans for this property.</p>
+                  <Button size="sm" variant="outline" className="gap-1.5" title="Create a new service plan for this property" onClick={() => setLocation(`/plans/new?propertyId=${id}&customerId=${property.customerId}`)}>
+                    <Plus className="w-3.5 h-3.5" /> Add Plan
+                  </Button>
+                </div>
+              ) : (
+                <div className="divide-y">
+                  {propertyPlans.map(plan => (
+                    <div
+                      key={plan.id}
+                      className="flex items-center justify-between gap-4 px-4 py-3 cursor-pointer hover:bg-muted/50"
+                      onClick={() => setLocation(`/plans/${plan.id}`)}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{plan.templateName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(plan.startDate).toLocaleDateString()} – {new Date(plan.endDate).toLocaleDateString()} · ${plan.billingPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })} / {plan.billingCycle.replace(/_/g, ' ')}
+                          {(plan as any).nextBillingDate && <> · <span className="text-amber-600">Next: {new Date((plan as any).nextBillingDate + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span></>}
+                        </p>
+                      </div>
+                      {(plan as any).remainingVisits != null && (
+                        <span className="text-xs text-muted-foreground shrink-0">{(plan as any).remainingVisits} visit{(plan as any).remainingVisits !== 1 ? 's' : ''} left</span>
+                      )}
+                      <Badge
+                        variant="outline"
+                        className={`capitalize shrink-0 ${plan.status === 'active' ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : plan.status === 'cancelled' ? 'text-muted-foreground' : 'bg-amber-50 text-amber-700 border-amber-300'}`}
+                      >
+                        {plan.status}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -670,17 +808,17 @@ export default function PropertyDetailPage() {
                 <TableBody>
                   {(quotes ?? []).map((q: Quote) => (
                     <TableRow key={q.id}>
-                      <TableCell className="font-medium">{q.serviceName}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
+                      <TableCell className="font-medium" title={q.serviceName}>{q.serviceName}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground" title={q.totalAreaSqft ? `Area: ${q.totalAreaSqft.toLocaleString(undefined, { maximumFractionDigits: 0 })} sqft` : undefined}>
                         {q.totalAreaSqft ? `${q.totalAreaSqft.toLocaleString(undefined, { maximumFractionDigits: 0 })} sqft` : '—'}
                       </TableCell>
-                      <TableCell className="font-medium">${q.calculatedPrice.toFixed(2)}</TableCell>
+                      <TableCell className="font-medium" title={`Quote price: $${q.calculatedPrice.toFixed(2)}`}>${q.calculatedPrice.toFixed(2)}</TableCell>
                       <TableCell>
-                        <Badge className={`capitalize ${QUOTE_STATUS_COLORS[q.status] ?? ''}`}>
+                        <Badge className={`capitalize ${QUOTE_STATUS_COLORS[q.status] ?? ''}`} title={`Quote status: ${q.status}`}>
                           {q.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
+                      <TableCell className="text-sm text-muted-foreground" title={new Date(q.createdAt).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}>
                         {new Date(q.createdAt).toLocaleDateString()}
                       </TableCell>
                       <TableCell className="text-right">
@@ -699,7 +837,13 @@ export default function PropertyDetailPage() {
                     <TableRow>
                       <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
                         <Calculator className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                        No quotes generated yet. Use the Quick Quote tab to create one.
+                        No quotes generated yet.{' '}
+                        <button
+                          className="underline text-primary hover:opacity-80"
+                          onClick={() => setActiveTab('quote')}
+                        >
+                          Open Quick Quote →
+                        </button>
                       </TableCell>
                     </TableRow>
                   )}
@@ -712,15 +856,20 @@ export default function PropertyDetailPage() {
         {/* ── Blueprints tab ── */}
         <TabsContent value="blueprints" className="focus-visible:outline-none">
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <DraftingCompass className="w-5 h-5" /> Blueprints
-              </CardTitle>
-              <CardDescription>
-                Every canvas design created for this property, including archived ones. A blueprint is archived
-                automatically once its job is completed or its estimate is declined — it drops off the main
-                Blueprints list but stays here and remains fully reusable.
-              </CardDescription>
+            <CardHeader className="flex flex-row items-start justify-between gap-3">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <DraftingCompass className="w-5 h-5" /> Blueprints
+                </CardTitle>
+                <CardDescription>
+                  Every canvas design created for this property, including archived ones. A blueprint is archived
+                  automatically once its job is completed or its estimate is declined — it drops off the main
+                  Blueprints list but stays here and remains fully reusable.
+                </CardDescription>
+              </div>
+              <Button size="sm" variant="outline" title="Create a new irrigation or landscape blueprint for this property" className="gap-1.5 shrink-0" onClick={() => setLocation(`/blueprints/new?propertyId=${id}`)}>
+                <Plus className="w-3.5 h-3.5" /> New Blueprint
+              </Button>
             </CardHeader>
             <CardContent className="p-0">
               <Table>
@@ -741,8 +890,8 @@ export default function PropertyDetailPage() {
                       className="hover:bg-muted/50 cursor-pointer"
                       onClick={() => setLocation(`/blueprints/${bp.id}`)}
                     >
-                      <TableCell className="font-medium">{bp.name}</TableCell>
-                      <TableCell><Badge variant="outline" className="capitalize text-[10px]">{bp.mode}</Badge></TableCell>
+                      <TableCell className="font-medium" title={bp.name}>{bp.name}</TableCell>
+                      <TableCell><Badge variant="outline" className="capitalize text-[10px]" title={`Blueprint mode: ${bp.mode}`}>{bp.mode}</Badge></TableCell>
                       <TableCell>
                         {bp.isArchived ? (
                           <Badge variant="outline" className="gap-1 text-[10px] text-muted-foreground">
@@ -752,10 +901,10 @@ export default function PropertyDetailPage() {
                           <Badge className="bg-emerald-500/10 text-emerald-700 border-transparent text-[10px]">Active</Badge>
                         )}
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
+                      <TableCell className="text-sm text-muted-foreground" title={new Date(bp.createdAt).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}>
                         {new Date(bp.createdAt).toLocaleDateString()}
                       </TableCell>
-                      <TableCell className="text-right font-medium">
+                      <TableCell className="text-right font-medium" title={bp.totalEstimate != null ? `Blueprint estimate: $${bp.totalEstimate.toLocaleString()}` : undefined}>
                         {bp.totalEstimate != null ? `${bp.totalEstimate.toLocaleString()}` : '—'}
                       </TableCell>
                       <TableCell className="text-right">
@@ -764,10 +913,11 @@ export default function PropertyDetailPage() {
                             size="sm"
                             variant="outline"
                             className="gap-1.5 text-xs h-7"
+                            title="Restore this blueprint from the archive"
                             disabled={updateBlueprint.isPending}
                             onClick={e => handleUnarchiveBlueprint(e, bp.id)}
                           >
-                            <ArchiveRestore className="w-3 h-3" /> Unarchive
+                            <ArchiveRestore className="w-3 h-3" /> {updateBlueprint.isPending ? 'Restoring…' : 'Unarchive'}
                           </Button>
                         )}
                       </TableCell>
@@ -853,16 +1003,16 @@ export default function PropertyDetailPage() {
                       <ArrowRight className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
                       <div className="flex-1 space-y-1">
                         <div className="flex items-center gap-2 text-sm">
-                          <button className="font-medium hover:text-primary hover:underline" onClick={() => setLocation(`/customers/${h.previousCustomerId}`)}>
+                          <button className="font-medium hover:text-primary hover:underline" title={`View ${h.previousCustomerName ?? 'Unknown'}`} onClick={() => setLocation(`/customers/${h.previousCustomerId}`)}>
                             {h.previousCustomerName ?? 'Unknown'}
                           </button>
                           <ArrowRight className="w-3 h-3 text-muted-foreground" />
-                          <button className="font-medium hover:text-primary hover:underline" onClick={() => setLocation(`/customers/${h.newCustomerId}`)}>
+                          <button className="font-medium hover:text-primary hover:underline" title={`View ${h.newCustomerName ?? 'Unknown'}`} onClick={() => setLocation(`/customers/${h.newCustomerId}`)}>
                             {h.newCustomerName ?? 'Unknown'}
                           </button>
                         </div>
-                        {h.notes && <p className="text-xs text-muted-foreground">{h.notes}</p>}
-                        <p className="text-xs text-muted-foreground">
+                        {h.notes && <p className="text-xs text-muted-foreground" title={h.notes}>{h.notes}</p>}
+                        <p className="text-xs text-muted-foreground" title={new Date(h.transferredAt).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}>
                           {new Date(h.transferredAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
                         </p>
                       </div>
@@ -911,13 +1061,14 @@ export default function PropertyDetailPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-medium">Repair History</h3>
+              {repairLogs && repairLogs.length > 0 && <Badge variant="secondary" className="text-xs">{repairLogs.length}</Badge>}
               {repairFilterElementId && (
                 <Badge variant="secondary" className="gap-1 text-xs cursor-pointer" onClick={() => setRepairFilterElementId(null)}>
                   Element: {repairFilterElementId} ✕
                 </Badge>
               )}
             </div>
-            <Button size="sm" className="gap-1.5" onClick={() => { setRepairForm(EMPTY_REPAIR); setRepairDialogOpen(true); }}>
+            <Button size="sm" title="Log a new irrigation system repair at this property" className="gap-1.5" onClick={() => { setRepairForm(EMPTY_REPAIR); setRepairDialogOpen(true); }}>
               <Plus className="w-3.5 h-3.5" /> Log Repair
             </Button>
           </div>
@@ -939,23 +1090,24 @@ export default function PropertyDetailPage() {
                 {(repairFilterElementId
                   ? repairLogs?.filter(r => r.elementId === repairFilterElementId)
                   : repairLogs
-                )?.map(r => (
+                )?.slice().sort((a, b) => new Date(b.performedAt).getTime() - new Date(a.performedAt).getTime()).map(r => (
                   <TableRow key={r.id} className="cursor-pointer hover:bg-muted/40" onClick={() => setRepairFilterElementId(r.elementId ?? null)}>
-                    <TableCell className="text-sm">{new Date(r.performedAt).toLocaleDateString()}</TableCell>
+                    <TableCell className="text-sm" title={new Date(r.performedAt).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}>{new Date(r.performedAt).toLocaleDateString()}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="capitalize text-xs">{r.componentType}</Badge>
+                      <Badge variant="outline" className="capitalize text-xs" title={`Component type: ${r.componentType}`}>{r.componentType}</Badge>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{r.replacedWhat ?? '—'}</TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell className="text-sm text-muted-foreground" title={r.replacedWhat ?? undefined}>{r.replacedWhat ?? '—'}</TableCell>
+                    <TableCell className="text-sm" title={r.replacedWithName ? `Replaced with: ${r.replacedWithName}${r.nozzleBrand ? ` (${r.nozzleBrand})` : ''}` : undefined}>
                       {r.replacedWithName ?? '—'}
                       {r.nozzleBrand && <span className="text-xs text-muted-foreground ml-1">({r.nozzleBrand})</span>}
                     </TableCell>
-                    <TableCell className="text-right font-medium text-sm">${r.totalCost.toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-medium text-sm" title={`Repair cost: $${r.totalCost.toFixed(2)}`}>${r.totalCost.toFixed(2)}</TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive disabled:opacity-40"
+                        title="Delete this repair record"
+                        disabled={deleteRepairLog.isPending}
                         onClick={e => {
                           e.stopPropagation();
-                          if (!window.confirm('Delete this repair log?')) return;
                           deleteRepairLog.mutate({ id: r.id }, {
                             onSuccess: () => { toast.success('Repair log deleted'); refetchRepairLogs(); },
                             onError: () => toast.error('Failed to delete'),
@@ -971,6 +1123,13 @@ export default function PropertyDetailPage() {
                     <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                       No repairs logged yet. Click "Log Repair" to record the first one.
                     </TableCell>
+                  </TableRow>
+                )}
+                {(repairLogs?.length ?? 0) > 1 && (
+                  <TableRow className="bg-muted/30 font-semibold">
+                    <TableCell colSpan={4} className="text-sm">Total</TableCell>
+                    <TableCell className="text-right text-sm">${(repairLogs ?? []).reduce((s, r) => s + r.totalCost, 0).toFixed(2)}</TableCell>
+                    <TableCell />
                   </TableRow>
                 )}
               </TableBody>
@@ -991,7 +1150,7 @@ export default function PropertyDetailPage() {
               <div className="space-y-1 col-span-2">
                 <Label className="text-xs">Component Type</Label>
                 <Select value={repairForm.componentType} onValueChange={v => setRepairForm(f => ({ ...f, componentType: v }))}>
-                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-9" title="Select the type of irrigation component that was repaired"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="sprinkler">Sprinkler Head</SelectItem>
                     <SelectItem value="valve">Valve / Valve Box</SelectItem>
@@ -1006,11 +1165,11 @@ export default function PropertyDetailPage() {
               </div>
               <div className="space-y-1 col-span-2">
                 <Label className="text-xs">What was replaced / repaired?</Label>
-                <Input className="h-9" placeholder="e.g. Broken rotor head, leaking valve body" value={repairForm.replacedWhat} onChange={e => setRepairForm(f => ({ ...f, replacedWhat: e.target.value }))} />
+                <Input className="h-9" title="Describe what was repaired or replaced (e.g. broken rotor head, leaking valve body)" placeholder="e.g. Broken rotor head, leaking valve body" value={repairForm.replacedWhat} onChange={e => setRepairForm(f => ({ ...f, replacedWhat: e.target.value }))} />
               </div>
               <div className="space-y-1 col-span-2">
                 <Label className="text-xs">Replaced with (name / model)</Label>
-                <Input className="h-9" placeholder="e.g. Hunter PGP Ultra, Rain Bird 5000" value={repairForm.replacedWithName} onChange={e => setRepairForm(f => ({ ...f, replacedWithName: e.target.value }))} />
+                <Input className="h-9" title="Name or model of the replacement part (e.g. Hunter PGP Ultra, Rain Bird 5000)" placeholder="e.g. Hunter PGP Ultra, Rain Bird 5000" value={repairForm.replacedWithName} onChange={e => setRepairForm(f => ({ ...f, replacedWithName: e.target.value }))} />
               </div>
             </div>
             {(repairForm.componentType === 'sprinkler') && (
@@ -1019,12 +1178,12 @@ export default function PropertyDetailPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1">
                     <Label className="text-xs">Brand</Label>
-                    <Input className="h-8" placeholder="Hunter, Rain Bird…" value={repairForm.nozzleBrand} onChange={e => setRepairForm(f => ({ ...f, nozzleBrand: e.target.value }))} />
+                    <Input className="h-8" title="Nozzle manufacturer brand name" placeholder="Hunter, Rain Bird…" value={repairForm.nozzleBrand} onChange={e => setRepairForm(f => ({ ...f, nozzleBrand: e.target.value }))} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Type</Label>
                     <Select value={repairForm.nozzleType} onValueChange={v => setRepairForm(f => ({ ...f, nozzleType: v }))}>
-                      <SelectTrigger className="h-8"><SelectValue placeholder="Type" /></SelectTrigger>
+                      <SelectTrigger className="h-8" title="Type of irrigation nozzle being replaced"><SelectValue placeholder="Type" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="rotor">Rotor</SelectItem>
                         <SelectItem value="popup">Popup / Fixed Spray</SelectItem>
@@ -1036,11 +1195,11 @@ export default function PropertyDetailPage() {
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">GPM</Label>
-                    <Input type="number" step="0.01" className="h-8" placeholder="0.00" value={repairForm.nozzleGpm} onChange={e => setRepairForm(f => ({ ...f, nozzleGpm: e.target.value }))} />
+                    <Input type="number" step="0.01" className="h-8" title="Nozzle flow rate in gallons per minute" placeholder="0.00" value={repairForm.nozzleGpm} onChange={e => setRepairForm(f => ({ ...f, nozzleGpm: e.target.value }))} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Radius (ft)</Label>
-                    <Input type="number" step="0.5" className="h-8" placeholder="12" value={repairForm.nozzleRadiusFt} onChange={e => setRepairForm(f => ({ ...f, nozzleRadiusFt: e.target.value }))} />
+                    <Input type="number" step="0.5" className="h-8" title="Nozzle spray radius in feet" placeholder="12" value={repairForm.nozzleRadiusFt} onChange={e => setRepairForm(f => ({ ...f, nozzleRadiusFt: e.target.value }))} />
                   </div>
                 </div>
               </div>
@@ -1048,15 +1207,15 @@ export default function PropertyDetailPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Parts Cost ($)</Label>
-                <Input type="number" step="0.01" min="0" className="h-9" placeholder="0.00" value={repairForm.partsCost} onChange={e => setRepairForm(f => ({ ...f, partsCost: e.target.value }))} />
+                <Input type="number" step="0.01" min="0" title="Cost of parts used in this repair" className="h-9" placeholder="0.00" value={repairForm.partsCost} onChange={e => setRepairForm(f => ({ ...f, partsCost: e.target.value }))} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Labor Cost ($)</Label>
-                <Input type="number" step="0.01" min="0" className="h-9" placeholder="0.00" value={repairForm.laborCost} onChange={e => setRepairForm(f => ({ ...f, laborCost: e.target.value }))} />
+                <Input type="number" step="0.01" min="0" title="Labor cost for this repair" className="h-9" placeholder="0.00" value={repairForm.laborCost} onChange={e => setRepairForm(f => ({ ...f, laborCost: e.target.value }))} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Date Performed</Label>
-                <Input type="date" className="h-9" value={repairForm.performedAt} onChange={e => setRepairForm(f => ({ ...f, performedAt: e.target.value }))} />
+                <Input type="date" title="Date the repair was performed" className="h-9" value={repairForm.performedAt} onChange={e => setRepairForm(f => ({ ...f, performedAt: e.target.value }))} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Performed By</Label>
@@ -1069,13 +1228,13 @@ export default function PropertyDetailPage() {
               </div>
               <div className="space-y-1 col-span-2">
                 <Label className="text-xs">Notes</Label>
-                <Textarea className="text-sm" rows={2} placeholder="Describe what was done…" value={repairForm.notes} onChange={e => setRepairForm(f => ({ ...f, notes: e.target.value }))} />
+                <Textarea className="text-sm" title="Additional notes about this repair" rows={2} placeholder="Describe what was done…" value={repairForm.notes} onChange={e => setRepairForm(f => ({ ...f, notes: e.target.value }))} />
               </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRepairDialogOpen(false)}>Cancel</Button>
-            <Button disabled={createRepairLog.isPending} onClick={() => {
+            <Button variant="outline" title="Discard this repair log entry" onClick={() => setRepairDialogOpen(false)}>Cancel</Button>
+            <Button title="Save this irrigation repair record" disabled={createRepairLog.isPending} onClick={() => {
               createRepairLog.mutate({
                 data: {
                   propertyId: id,
@@ -1118,26 +1277,26 @@ export default function PropertyDetailPage() {
           <div className="space-y-4 pb-6">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Street Address <span className="text-destructive">*</span></label>
-              <Input value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} placeholder="123 Main St" />
+              <Input title="Property street address" value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} placeholder="123 Main St" />
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div className="col-span-1 space-y-1.5">
                 <label className="text-sm font-medium">City</label>
-                <Input value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} placeholder="Los Angeles" />
+                <Input title="City" value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} placeholder="Los Angeles" />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">State</label>
-                <Input value={form.state} onChange={e => setForm(f => ({ ...f, state: e.target.value }))} placeholder="CA" maxLength={2} />
+                <Input title="2-letter state code" value={form.state} onChange={e => setForm(f => ({ ...f, state: e.target.value }))} placeholder="CA" maxLength={2} />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">ZIP</label>
-                <Input value={form.zip} onChange={e => setForm(f => ({ ...f, zip: e.target.value }))} placeholder="90210" />
+                <Input title="ZIP / postal code" value={form.zip} onChange={e => setForm(f => ({ ...f, zip: e.target.value }))} placeholder="90210" />
               </div>
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Property Type</label>
               <Select value={form.type} onValueChange={v => setForm(f => ({ ...f, type: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select type..." /></SelectTrigger>
+                <SelectTrigger title="Property type (residential, commercial, etc.)"><SelectValue placeholder="Select type..." /></SelectTrigger>
                 <SelectContent>
                   {['residential', 'commercial', 'hoa', 'industrial', 'other'].map(t => (
                     <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>
@@ -1152,13 +1311,14 @@ export default function PropertyDetailPage() {
                   type="number"
                   min="0"
                   step="any"
+                  title="Total lot or service area size"
                   value={form.size}
                   onChange={e => setForm(f => ({ ...f, size: e.target.value }))}
                   placeholder="e.g. 5000"
                   className="flex-1"
                 />
                 <Select value={form.sizeUnit || 'sqft'} onValueChange={v => setForm(f => ({ ...f, sizeUnit: v }))}>
-                  <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="w-28" title="Unit of measurement for the property size"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="sqft">sqft</SelectItem>
                     <SelectItem value="acres">acres</SelectItem>
@@ -1289,12 +1449,16 @@ export default function PropertyDetailPage() {
   );
 }
 
-function Row({ label, value }: { label: string; value: string | null | undefined }) {
+function Row({ label, value, href }: { label: string; value: string | null | undefined; href?: string }) {
   if (!value) return null;
   return (
     <div className="flex gap-2">
       <span className="text-muted-foreground min-w-[100px] shrink-0">{label}</span>
-      <span className="font-medium">{value}</span>
+      {href ? (
+        <a href={href} target="_blank" rel="noopener noreferrer" className="font-medium hover:underline text-primary" title={`${label}: ${value}`}>{value}</a>
+      ) : (
+        <span className="font-medium" title={`${label}: ${value}`}>{value}</span>
+      )}
     </div>
   );
 }

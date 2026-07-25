@@ -1,4 +1,5 @@
 import React, { useCallback, useState, useEffect } from 'react';
+import { Linking } from 'react-native';
 import {
   View,
   Text,
@@ -9,6 +10,7 @@ import {
   RefreshControl,
   Platform,
   Alert,
+  TextInput,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -397,6 +399,76 @@ function formatDate(iso: string): string {
   });
 }
 
+function JobNotesSection({ jobId, job, colors }: { jobId: number; job: { description?: string | null } | null; colors: ReturnType<typeof useColors> }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(job?.description ?? '');
+  const updateJob = useUpdateJob();
+
+  React.useEffect(() => { setValue(job?.description ?? ''); }, [job?.description]);
+
+  return (
+    <View style={[styles.section, { marginBottom: 16 }]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 0 }]}>Job Notes</Text>
+        {!editing && (
+          <TouchableOpacity onPress={() => setEditing(true)}>
+            <Text style={{ color: colors.primary, fontSize: 13, fontFamily: 'Inter_500Medium' }}>
+              {job?.description ? 'Edit' : '+ Add'}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+      {editing ? (
+        <View style={[{ backgroundColor: colors.card, borderRadius: 10, borderWidth: 1, borderColor: colors.border, padding: 12 }]}>
+          <TextInput
+            value={value}
+            onChangeText={setValue}
+            placeholder="Add notes for this job…"
+            placeholderTextColor={colors.mutedForeground}
+            multiline
+            numberOfLines={4}
+            style={{ color: colors.foreground, fontSize: 13, fontFamily: 'Inter_400Regular', minHeight: 80, textAlignVertical: 'top' }}
+            autoFocus
+          />
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+            <TouchableOpacity
+              style={{ backgroundColor: colors.primary, borderRadius: 6, paddingHorizontal: 14, paddingVertical: 7 }}
+              disabled={updateJob.isPending}
+              onPress={() => {
+                updateJob.mutate(
+                  { id: jobId, data: { description: value || undefined } as any },
+                  {
+                    onSuccess: () => { setEditing(false); },
+                    onError: () => Alert.alert('Error', 'Failed to save notes'),
+                  },
+                );
+              }}
+            >
+              <Text style={{ color: '#fff', fontSize: 13, fontFamily: 'Inter_500Medium' }}>
+                {updateJob.isPending ? 'Saving…' : 'Save'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ borderRadius: 6, paddingHorizontal: 14, paddingVertical: 7 }}
+              onPress={() => { setValue(job?.description ?? ''); setEditing(false); }}
+            >
+              <Text style={{ color: colors.mutedForeground, fontSize: 13, fontFamily: 'Inter_400Regular' }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : job?.description ? (
+        <View style={[{ backgroundColor: colors.card, borderRadius: 10, borderWidth: 1, borderColor: colors.border, padding: 12 }]}>
+          <Text style={{ color: colors.foreground, fontSize: 13, fontFamily: 'Inter_400Regular', lineHeight: 20 }}>{job.description}</Text>
+        </View>
+      ) : (
+        <View style={[{ backgroundColor: colors.muted, borderRadius: 10, borderWidth: 1, borderColor: colors.border, padding: 16, alignItems: 'center' }]}>
+          <Text style={{ color: colors.mutedForeground, fontSize: 13, fontFamily: 'Inter_400Regular' }}>No notes for this job yet</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
 export default function JobDetailScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -573,6 +645,33 @@ export default function JobDetailScreen() {
               </Text>
             </View>
           ) : null}
+          {(displayJob as { customerPhone?: string | null }).customerPhone ? (
+            <TouchableOpacity
+              style={styles.infoRow}
+              onPress={() => Linking.openURL(`tel:${(displayJob as { customerPhone: string }).customerPhone}`)}
+            >
+              <Ionicons name="call-outline" size={15} color={colors.primary} />
+              <Text style={[styles.infoText, { color: colors.primary }]}>
+                {(displayJob as { customerPhone: string }).customerPhone}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+          {(displayJob as { assignedToName?: string | null }).assignedToName ? (
+            <View style={styles.infoRow}>
+              <Ionicons name="person-circle-outline" size={15} color={colors.mutedForeground} />
+              <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
+                {(displayJob as { assignedToName: string }).assignedToName}
+              </Text>
+            </View>
+          ) : null}
+          {(displayJob as { crewName?: string | null }).crewName ? (
+            <View style={styles.infoRow}>
+              <Ionicons name="people-outline" size={15} color={colors.mutedForeground} />
+              <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
+                {(displayJob as { crewName: string }).crewName}
+              </Text>
+            </View>
+          ) : null}
           <View style={styles.infoRow}>
             <Ionicons name="calendar-outline" size={15} color={colors.mutedForeground} />
             <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
@@ -732,6 +831,30 @@ export default function JobDetailScreen() {
               <Ionicons name="chevron-forward" size={16} color={colors.mutedForeground} />
             </TouchableOpacity>
           </View>
+        )}
+
+        {/* Customer / Property notes (read-only, from dispatch) */}
+        {((job as any)?.customerNotes || (job as any)?.propertyNotes) && (
+          <View style={[styles.section, { marginBottom: 8 }]}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Notes from Dispatch</Text>
+            {(job as any).customerNotes ? (
+              <View style={[styles.emptyCard, { backgroundColor: colors.muted, borderColor: colors.border, alignItems: 'flex-start', padding: 12 }]}>
+                <Text style={[{ fontSize: 11, fontFamily: 'Inter_600SemiBold', color: colors.mutedForeground, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }]}>Customer</Text>
+                <Text style={[{ fontSize: 14, fontFamily: 'Inter_400Regular', color: colors.foreground }]}>{(job as any).customerNotes}</Text>
+              </View>
+            ) : null}
+            {(job as any).propertyNotes ? (
+              <View style={[styles.emptyCard, { backgroundColor: colors.muted, borderColor: colors.border, alignItems: 'flex-start', padding: 12, marginTop: 8 }]}>
+                <Text style={[{ fontSize: 11, fontFamily: 'Inter_600SemiBold', color: colors.mutedForeground, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }]}>Property</Text>
+                <Text style={[{ fontSize: 14, fontFamily: 'Inter_400Regular', color: colors.foreground }]}>{(job as any).propertyNotes}</Text>
+              </View>
+            ) : null}
+          </View>
+        )}
+
+        {/* Job Notes section */}
+        {!isOffline && (
+          <JobNotesSection jobId={jobId} job={job as any} colors={colors} />
         )}
 
         {/* Applications section */}

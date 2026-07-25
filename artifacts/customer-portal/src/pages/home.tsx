@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { ArrowRight, Bell, CalendarClock, Briefcase, FileText, MapPin, CheckCircle2, Clock, ClipboardList } from "lucide-react";
+import { ArrowRight, Bell, CalendarClock, Briefcase, FileText, MapPin, CheckCircle2, Clock, ClipboardList, ClipboardCheck, User } from "lucide-react";
 
 export default function Home() {
   const { data: summary, isLoading: isSummaryLoading } = usePortalGetSummary();
@@ -73,47 +73,52 @@ export default function Home() {
       ) : null}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Card className="shadow-sm hover-elevate transition-all">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-medium flex items-center gap-2 text-muted-foreground">
-              <Briefcase className="w-4 h-4" />
-              Upcoming Jobs
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-4xl font-bold text-foreground">
-              {isSummaryLoading ? <Skeleton className="h-10 w-16" /> : summary?.upcomingJobs?.length ?? 0}
-            </div>
-          </CardContent>
-        </Card>
+        <Link href="/jobs">
+          <Card className="shadow-sm hover-elevate transition-all cursor-pointer hover:border-primary/40">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg font-medium flex items-center gap-2 text-muted-foreground">
+                <Briefcase className="w-4 h-4" />
+                Upcoming Jobs
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-4xl font-bold text-foreground">
+                {isSummaryLoading ? <Skeleton className="h-10 w-16" /> : summary?.upcomingJobs?.length ?? 0}
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
         
-        <Card className="shadow-sm hover-elevate transition-all">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-medium flex items-center gap-2 text-muted-foreground">
-              <FileText className="w-4 h-4" />
-              Pending Invoices
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-4xl font-bold text-foreground">
-              {isSummaryLoading ? <Skeleton className="h-10 w-16" /> : invoices?.filter(i => i.status === 'sent' || i.status === 'overdue').length || 0}
-            </div>
-          </CardContent>
-        </Card>
+        <Link href="/invoices">
+          <Card className="shadow-sm hover-elevate transition-all cursor-pointer hover:border-primary/40">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg font-medium flex items-center gap-2 text-muted-foreground">
+                <FileText className="w-4 h-4" />
+                Pending Invoices
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-4xl font-bold text-foreground">
+                {isSummaryLoading ? <Skeleton className="h-10 w-16" /> : invoices?.filter(i => i.status === 'sent' || i.status === 'overdue').length || 0}
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
 
-        <Card className="shadow-sm hover-elevate transition-all">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-medium flex items-center gap-2 text-muted-foreground">
-              <MapPin className="w-4 h-4" />
-              Properties
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-4xl font-bold text-foreground">
-              <Link href="/properties" className="text-primary hover:underline text-sm font-normal">View your properties</Link>
-            </div>
-          </CardContent>
-        </Card>
+        <Link href="/properties">
+          <Card className="shadow-sm hover-elevate transition-all cursor-pointer hover:border-primary/40">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg font-medium flex items-center gap-2 text-muted-foreground">
+                <MapPin className="w-4 h-4" />
+                Properties
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex items-end justify-between">
+              <div className="text-sm text-muted-foreground">View your service locations</div>
+              <ArrowRight className="w-4 h-4 text-primary" />
+            </CardContent>
+          </Card>
+        </Link>
 
         {(summary?.openRequestCount ?? 0) > 0 && (
           <Card className="shadow-sm hover-elevate transition-all border-amber-200 dark:border-amber-800/40">
@@ -133,6 +138,40 @@ export default function Home() {
             </CardContent>
           </Card>
         )}
+
+        {((summary as any)?.pendingEstimateCount ?? 0) > 0 && (
+          <Card className="shadow-sm hover-elevate transition-all border-blue-200 dark:border-blue-800/40">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg font-medium flex items-center gap-2 text-muted-foreground">
+                <ClipboardCheck className="w-4 h-4" />
+                Estimates Awaiting Approval
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex items-end justify-between">
+              <div className="text-4xl font-bold text-foreground">
+                {isSummaryLoading ? <Skeleton className="h-10 w-16" /> : (summary as any)?.pendingEstimateCount ?? 0}
+              </div>
+              <Link href="/estimates" className="text-sm font-medium text-primary hover:underline flex items-center gap-1 pb-1">
+                Review <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+
+        <Card className="shadow-sm hover-elevate transition-all">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg font-medium flex items-center gap-2 text-muted-foreground">
+              <Bell className="w-4 h-4" />
+              Messages &amp; Alerts
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-end justify-between">
+            <div className="text-sm text-muted-foreground pt-1">Notifications from your service team</div>
+            <Link href="/alerts" className="text-sm font-medium text-primary hover:underline flex items-center gap-1 pb-1">
+              View <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -171,11 +210,22 @@ export default function Home() {
                         <CalendarClock className="w-3.5 h-3.5" />
                         <span>{formatDate(job.scheduledAt)}</span>
                       </div>
-                      <div className="flex items-center text-sm text-muted-foreground gap-1">
+                      <div className="flex items-center text-sm text-muted-foreground gap-1 mb-1">
                         <MapPin className="w-3.5 h-3.5" />
                         <span className="truncate">{job.propertyAddress}</span>
                       </div>
+                      {(job as any).assignedToName && (
+                        <div className="flex items-center text-sm text-muted-foreground gap-1">
+                          <User className="w-3.5 h-3.5" />
+                          <span>{(job as any).assignedToName}</span>
+                        </div>
+                      )}
                     </div>
+                    <Link href="/jobs">
+                      <Button variant="ghost" size="sm" className="shrink-0 gap-1 text-xs">
+                        View <ArrowRight className="w-3 h-3" />
+                      </Button>
+                    </Link>
                   </CardContent>
                 </Card>
               ))
@@ -232,7 +282,9 @@ export default function Home() {
                     <div className="text-right">
                       <p className="font-bold text-lg text-foreground">{formatCurrency(invoice.total)}</p>
                       {invoice.status === 'sent' || invoice.status === 'overdue' ? (
-                        <Button size="sm" className="mt-2 h-8">Pay Now</Button>
+                        <Link href="/invoices">
+                          <Button size="sm" className="mt-2 h-8">Pay Now</Button>
+                        </Link>
                       ) : null}
                     </div>
                   </CardContent>
@@ -250,6 +302,36 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* Contact Us */}
+      {summary && (summary as any).tenantPhone && (
+        <div className="rounded-xl border bg-muted/30 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <h3 className="font-semibold text-foreground">Need help? Contact us</h3>
+            <p className="text-sm text-muted-foreground mt-0.5">Our team is here to answer questions or schedule service.</p>
+          </div>
+          <div className="flex items-center gap-3 text-sm flex-wrap">
+            {(summary as any).tenantPhone && (
+              <a
+                href={`tel:${(summary as any).tenantPhone}`}
+                className="flex items-center gap-1.5 text-primary hover:underline font-medium"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 12 19.79 19.79 0 0 1 1.05 3.4 2 2 0 0 1 3 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.09 8.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21 16z"/></svg>
+                {(summary as any).tenantPhone}
+              </a>
+            )}
+            {(summary as any).tenantEmail && (
+              <a
+                href={`mailto:${(summary as any).tenantEmail}`}
+                className="flex items-center gap-1.5 text-primary hover:underline font-medium"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                {(summary as any).tenantEmail}
+              </a>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

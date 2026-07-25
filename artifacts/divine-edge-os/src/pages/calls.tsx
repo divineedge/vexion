@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PhoneIncoming, PhoneOutgoing, PhoneMissed, Voicemail, ListPlus } from 'lucide-react';
+import { PhoneIncoming, PhoneOutgoing, PhoneMissed, Voicemail, ListPlus, Search } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 
 function statusMeta(status: string, direction: string) {
@@ -29,6 +30,7 @@ function formatDuration(seconds: number | null) {
 export default function CallsPage() {
   const qc = useQueryClient();
   const [creatingId, setCreatingId] = useState<string | null>(null);
+  const [callSearch, setCallSearch] = useState('');
 
   const { data: calls, isLoading, error } = useListQuoCalls({
     query: { queryKey: getListQuoCallsQueryKey(), refetchInterval: 60000 },
@@ -61,10 +63,16 @@ export default function CallsPage() {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <PhoneIncoming className="w-4 h-4" /> Recent Calls
-            {calls && <Badge variant="secondary" className="ml-1">{calls.length}</Badge>}
-          </CardTitle>
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <PhoneIncoming className="w-4 h-4" /> Recent Calls
+              {calls && <Badge variant="secondary" className="ml-1">{calls.length}</Badge>}
+            </CardTitle>
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              <Input value={callSearch} onChange={e => setCallSearch(e.target.value)} placeholder="Search…" className="h-8 text-sm pl-7 w-44" />
+            </div>
+          </div>
           {notConfigured && (
             <CardDescription className="text-amber-700">
               Connect Quo under Settings → SMS Provider to see calls here.
@@ -92,7 +100,13 @@ export default function CallsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {calls.map(call => {
+                {(callSearch.trim()
+                  ? calls.filter(c =>
+                      (c.customerName ?? '').toLowerCase().includes(callSearch.toLowerCase()) ||
+                      (c.participants ?? []).some(p => p.toLowerCase().includes(callSearch.toLowerCase())),
+                    )
+                  : calls
+                ).map(call => {
                   const meta = statusMeta(call.status, call.direction);
                   const Icon = meta.icon;
                   return (

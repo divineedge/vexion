@@ -136,6 +136,7 @@ function CustomizePanel({
                       <span className="flex-1 text-sm font-medium">{def.label}</span>
                       <button
                         onClick={() => remove(id)}
+                        title={`Remove ${def.label} from shortcuts`}
                         className="text-muted-foreground hover:text-destructive transition-colors"
                         aria-label={`Remove ${def.label}`}
                       >
@@ -182,10 +183,10 @@ function CustomizePanel({
         </div>
 
         <SheetFooter className="px-6 py-4 border-t border-border shrink-0 flex gap-2">
-          <Button variant="outline" onClick={onClose} className="flex-1">
+          <Button variant="outline" title="Discard shortcut changes" onClick={onClose} className="flex-1">
             Cancel
           </Button>
-          <Button onClick={() => onSave(draft)} className="flex-1">
+          <Button title="Save your quick-add shortcut layout" onClick={() => onSave(draft)} className="flex-1">
             Save shortcuts
           </Button>
         </SheetFooter>

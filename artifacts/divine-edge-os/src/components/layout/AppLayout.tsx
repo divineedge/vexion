@@ -10,7 +10,9 @@ import { SidebarSection } from './SidebarSection';
 import { Breadcrumb } from './Breadcrumb';
 import { NotificationBell } from '@/components/tasks/NotificationBell';
 import { QuickAddBar } from './QuickAddBar';
-import { useListTasks, getListTasksQueryKey, useListFollowupQueueItems, getListFollowupQueueItemsQueryKey, useListStopServiceFlags, getListStopServiceFlagsQueryKey } from '@workspace/api-client-react';
+import { useListTasks, getListTasksQueryKey, useListFollowupQueueItems, getListFollowupQueueItemsQueryKey, useListStopServiceFlags, getListStopServiceFlagsQueryKey, useListEstimates } from '@workspace/api-client-react';
+import { useQuery } from '@tanstack/react-query';
+import { customFetch } from '@workspace/api-client-react';
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, logout, isTechnician, isCrewManager, canManageOffice } = useAuth();
@@ -33,10 +35,33 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { query: { enabled: isAuthenticated && canManageOffice, refetchInterval: 60000, queryKey: getListStopServiceFlagsQueryKey({ status: 'pending' }) } },
   );
 
+  const { data: sentEstimates = [] } = useListEstimates(
+    { status: 'sent' },
+    { query: { enabled: isAuthenticated && canManageOffice, refetchInterval: 120000, queryKey: ['estimates', 'sent-badge'] } },
+  );
+
+  const { data: inventorySummary } = useQuery<{ lowStockCount: number }>({
+    queryKey: ['inventory-summary-badge'],
+    queryFn: () => customFetch<{ lowStockCount: number }>('/api/inventory/summary'),
+    enabled: isAuthenticated && canManageOffice,
+    refetchInterval: 300000,
+  });
+
+  const { data: openCallbacksData } = useQuery<unknown[]>({
+    queryKey: ['callbacks-open-badge'],
+    queryFn: () => customFetch<unknown[]>('/api/callbacks?status=open'),
+    enabled: isAuthenticated && canManageOffice,
+    refetchInterval: 120000,
+  });
+  const openCallbackCount = Array.isArray(openCallbacksData) ? openCallbacksData.length : 0;
+
   const badgeCounts: Record<string, number> = {
     '/tasks': myOpenTaskCount,
     '/followup-queue': openFollowups.length,
     '/financials': pendingStopFlags.length,
+    ...(sentEstimates.length > 0 ? { '/estimates': sentEstimates.length } : {}),
+    ...(openCallbackCount > 0 ? { '/callbacks': openCallbackCount } : {}),
+    ...((inventorySummary?.lowStockCount ?? 0) > 0 ? { '/inventory': inventorySummary!.lowStockCount } : {}),
   };
 
   useEffect(() => {

@@ -20,9 +20,15 @@ const router: IRouter = Router();
 // GET /efficiency — company-wide + per-technician efficiency summary
 router.get("/efficiency", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { period = "today" } = req.query as Record<string, string>;
+  const { period = "today", startDate, endDate } = req.query as Record<string, string>;
 
-  const { rangeStart, rangeEnd } = getPeriodRange(period);
+  let rangeStart: Date, rangeEnd: Date;
+  if (startDate && endDate) {
+    rangeStart = new Date(startDate + 'T00:00:00');
+    rangeEnd = new Date(endDate + 'T23:59:59');
+  } else {
+    ({ rangeStart, rangeEnd } = getPeriodRange(period));
+  }
 
   // ── Master clock minutes per user in period ──────────────────────────────
   const clockRows = await db

@@ -136,7 +136,7 @@ router.get("/plan-templates", async (req, res): Promise<void> => {
 router.post("/plan-templates", async (req, res): Promise<void> => {
   if (!(await requireAdmin(req, res))) return;
   const tenantId = getTenantId(req);
-  const { name, description, services, visitCount, billingCycle, customCycleDays, price, autoRenewDefault, isActive, pricingMode, pricingMatrix } = req.body;
+  const { name, description, services, visitCount, billingCycle, customCycleDays, price, autoRenewDefault, isActive, pricingMode, pricingMatrix, offSeasonStart, offSeasonEnd } = req.body;
   if (!name || !Array.isArray(services) || services.length === 0) {
     res.status(400).json({ error: "name and at least one service are required" });
     return;
@@ -159,6 +159,8 @@ router.post("/plan-templates", async (req, res): Promise<void> => {
     isActive: isActive ?? true,
     pricingMode: resolvedMode,
     pricingMatrix: resolvedMode === "matrix" && Array.isArray(pricingMatrix) ? pricingMatrix : null,
+    offSeasonStart: offSeasonStart ?? null,
+    offSeasonEnd: offSeasonEnd ?? null,
   }).returning();
   res.status(201).json(fmtTemplate(t));
 });
@@ -175,7 +177,7 @@ router.patch("/plan-templates/:id", async (req, res): Promise<void> => {
   if (!(await requireAdmin(req, res))) return;
   const tenantId = getTenantId(req);
   const id = parseInt(req.params.id, 10);
-  const { name, description, services, visitCount, billingCycle, customCycleDays, price, autoRenewDefault, isActive, pricingMode, pricingMatrix } = req.body;
+  const { name, description, services, visitCount, billingCycle, customCycleDays, price, autoRenewDefault, isActive, pricingMode, pricingMatrix, offSeasonStart, offSeasonEnd } = req.body;
   const update: Partial<typeof planTemplatesTable.$inferInsert> = {};
   if (name !== undefined) update.name = name;
   if (description !== undefined) update.description = description;
@@ -186,6 +188,8 @@ router.patch("/plan-templates/:id", async (req, res): Promise<void> => {
   if (price !== undefined) update.price = price;
   if (autoRenewDefault !== undefined) update.autoRenewDefault = autoRenewDefault;
   if (isActive !== undefined) update.isActive = isActive;
+  if (offSeasonStart !== undefined) update.offSeasonStart = offSeasonStart ?? null;
+  if (offSeasonEnd !== undefined) update.offSeasonEnd = offSeasonEnd ?? null;
   if (pricingMode !== undefined) {
     const resolvedMode = ["flat", "matrix", "sum_services"].includes(pricingMode) ? pricingMode : "flat";
     if (resolvedMode === "matrix") {
@@ -727,6 +731,10 @@ router.post("/customer-plans/:id/visits/:jobId/reschedule", async (req, res): Pr
     return;
   }
 
+  // Load the plan so we can validate the new date falls within the active period
+  const [plan] = await db.select().from(customerPlansTable).where(and(eq(customerPlansTable.id, id), eq(customerPlansTable.tenantId, tenantId)));
+  if (!plan) { res.status(404).json({ error: "Plan not found" }); return; }
+
   // Verify the job belongs to this plan and is still schedulable
   const [job] = await db
     .select()
@@ -735,6 +743,16 @@ router.post("/customer-plans/:id/visits/:jobId/reschedule", async (req, res): Pr
   if (!job) { res.status(404).json({ error: "Visit not found on this plan" }); return; }
   if (job.status !== "scheduled") {
     res.status(400).json({ error: "Only scheduled visits can be rescheduled" });
+    return;
+  }
+
+  // Guard: new date must fall within the plan's active period
+  if (plan.startDate && newDate < plan.startDate) {
+    res.status(400).json({ error: `Visit cannot be rescheduled before the plan start date (${plan.startDate.toISOString().slice(0, 10)})` });
+    return;
+  }
+  if (plan.endDate && newDate > plan.endDate) {
+    res.status(400).json({ error: `Visit cannot be rescheduled after the plan end date (${plan.endDate.toISOString().slice(0, 10)})` });
     return;
   }
 
@@ -932,6 +950,17 @@ export async function billPlanPeriod(
     ? `${baseDescription} (${options.areaNote})`
     : baseDescription;
 
+  // Guard against silently billing $0 — this can happen when a sum-services plan's services
+  // have all been deleted since the plan was sold, or when a matrix plan has no matching tier.
+  // Surface a clear error instead of creating a $0 invoice that looks like a system bug.
+  if (subtotal === 0) {
+    throw new Error(
+      `Cannot bill plan "${plan.templateName}": the resolved price is $0. ` +
+      "This usually means all services linked to the plan template have been deleted, or no pricing tier matched. " +
+      "Update the plan template pricing before billing."
+    );
+  }
+
   let invoiceId!: number;
   await db.transaction(async tx => {
     const [invoice] = await tx.insert(invoicesTable).values({
@@ -1004,7 +1033,9 @@ router.post("/customer-plans/:id/renew", async (req, res): Promise<void> => {
 router.get("/plans/dashboard", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const now = new Date();
-  const in30 = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const [tenantRow] = await db.select({ renewalWarningDays: tenantsTable.renewalWarningDays }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  const warningDays = tenantRow?.renewalWarningDays ?? 30;
+  const inWarning = new Date(now.getTime() + warningDays * 24 * 60 * 60 * 1000);
 
   const plans = await db
     .select({ plan: customerPlansTable, customerName: customersTable.name, propertyAddress: propertiesTable.address })
@@ -1020,7 +1051,7 @@ router.get("/plans/dashboard", async (req, res): Promise<void> => {
   };
   const mrr = activePlans.reduce((sum, p) => sum + monthlyEquivalent(p.plan), 0);
   const autoRenewCount = activePlans.filter(p => p.plan.autoRenew).length;
-  const expiringSoon = plans.filter(p => p.plan.status !== "cancelled" && p.plan.endDate <= in30 && p.plan.endDate >= now);
+  const expiringSoon = plans.filter(p => p.plan.status !== "cancelled" && p.plan.endDate <= inWarning && p.plan.endDate >= now);
 
   const planIds = plans.map(p => p.plan.id);
   const overdueInvoices = planIds.length > 0
@@ -1038,6 +1069,7 @@ router.get("/plans/dashboard", async (req, res): Promise<void> => {
     mrr,
     autoRenewCount,
     expiringSoonCount: expiringSoon.length,
+    renewalWarningDays: warningDays,
     overdueCount: overduePlanIds.size,
     plans: plans.map(p => ({
       ...fmtPlan(p.plan, { customerName: p.customerName, propertyAddress: p.propertyAddress }),

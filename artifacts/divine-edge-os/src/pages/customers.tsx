@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
-import { Search, Plus, Building, Phone, Mail, Save, X, User, Tag, FileText, Home, AlertTriangle, Filter, Zap, MapPin } from 'lucide-react';
+import { Search, Plus, Building, Phone, Mail, Save, X, User, Tag, FileText, Home, AlertTriangle, Filter, Zap, MapPin, CreditCard, DollarSign, Briefcase } from 'lucide-react';
 import { useLocation } from 'wouter';
 import { useDebounce } from '@/hooks/use-debounce';
 import { toast } from 'sonner';
@@ -93,6 +93,11 @@ export default function CustomersPage() {
   const [, setLocation] = useLocation();
   const qc = useQueryClient();
   const [reminderFailureFilter, setReminderFailureFilter] = useState(false);
+  const [openBalanceFilter, setOpenBalanceFilter] = useState(false);
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [tagFilter, setTagFilter] = useState('__all__');
+  const [sortField, setSortField] = useState<'name' | 'totalSpend' | 'createdAt' | 'lastServiceDate'>('name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<FormData>(BLANK);
@@ -116,7 +121,7 @@ export default function CustomersPage() {
 
   const queryParams = {
     q: debouncedSearch || undefined,
-    limit: 50,
+    limit: 200,
     hasReminderFailure: reminderFailureFilter ? true : undefined,
   };
 
@@ -179,10 +184,10 @@ export default function CustomersPage() {
           <ImportExportControls
             entity="customers"
             entityLabel="Customers"
-            exportQuery={{ q: debouncedSearch || undefined }}
+            exportQuery={{ q: debouncedSearch || undefined, hasReminderFailure: reminderFailureFilter ? 'true' : undefined, ...(typeFilter !== 'all' ? { customerType: typeFilter } : {}) }}
             onImportComplete={() => qc.invalidateQueries({ queryKey: getListCustomersQueryKey() })}
           />
-          <Button onClick={() => setCreating(true)} className="gap-2">
+          <Button title="Create a new customer" onClick={() => { setForm(f => ({ ...f, name: search.trim() || f.name })); setCreating(true); }} className="gap-2">
             <Plus className="w-4 h-4" /> Add Customer
           </Button>
         </div>
@@ -195,15 +200,31 @@ export default function CustomersPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 placeholder="Search customers..."
-                className="pl-9"
+                title="Search by name, company, email, or phone"
+                className="pl-9 pr-8"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />
+              {search && <button title="Clear search" onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>}
             </div>
+            {data?.total != null && (
+              <span className="text-sm text-muted-foreground whitespace-nowrap" title="Customers matching current filters">{data.total.toLocaleString()} customer{data.total !== 1 ? 's' : ''}</span>
+            )}
+            <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <SelectTrigger className="h-9 w-40 text-sm" title="Filter by customer type">
+                <SelectValue placeholder="All types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="residential">Residential</SelectItem>
+                <SelectItem value="commercial">Commercial</SelectItem>
+              </SelectContent>
+            </Select>
             <Button
               variant={reminderFailureFilter ? 'default' : 'outline'}
               size="sm"
               className="gap-2 shrink-0"
+              title="Filter to customers with failed reminder emails"
               onClick={() => setReminderFailureFilter(v => !v)}
             >
               <AlertTriangle className="w-4 h-4" />
@@ -212,68 +233,161 @@ export default function CustomersPage() {
                 <Badge variant="secondary" className="ml-1 bg-white/20 text-white border-0">{data.total}</Badge>
               )}
             </Button>
+            <Button
+              variant={openBalanceFilter ? 'default' : 'outline'}
+              size="sm"
+              className="gap-2 shrink-0"
+              onClick={() => setOpenBalanceFilter(v => !v)}
+              title="Show customers with unpaid invoices"
+            >
+              <DollarSign className="w-4 h-4" />
+              Open Balance
+            </Button>
+            {(() => {
+              const allTags = Array.from(new Set((data?.items ?? []).flatMap(c => (c as any).tags ?? []))).sort() as string[];
+              return allTags.length > 0 ? (
+                <Select value={tagFilter} onValueChange={setTagFilter}>
+                  <SelectTrigger className="h-9 w-36 text-sm" title="Filter by customer tag">
+                    <SelectValue placeholder="All tags" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All tags</SelectItem>
+                    {allTags.map(tag => <SelectItem key={tag} value={tag}>{tag}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              ) : null;
+            })()}
+            {(search || typeFilter !== 'all' || reminderFailureFilter || openBalanceFilter || tagFilter !== '__all__') && (
+              <Button
+                variant="ghost"
+                size="sm"
+                title="Reset all filters"
+                className="gap-1.5 text-muted-foreground"
+                onClick={() => { setSearch(''); setTypeFilter('all'); setReminderFailureFilter(false); setOpenBalanceFilter(false); setTagFilter('__all__'); }}
+              >
+                <X className="w-3.5 h-3.5" /> Clear filters
+              </Button>
+            )}
           </div>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
+                <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => { if (sortField === 'name') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortField('name'); setSortDir('asc'); } }}>
+                  Name {sortField === 'name' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                </TableHead>
                 <TableHead>Contact</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Properties</TableHead>
-                <TableHead className="text-right">Total Spend</TableHead>
+                <TableHead className="text-right cursor-pointer select-none hover:text-foreground" onClick={() => { if (sortField === 'totalSpend') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortField('totalSpend'); setSortDir('desc'); } }}>
+                  Total Spend {sortField === 'totalSpend' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                </TableHead>
+                <TableHead className="text-right cursor-pointer select-none hover:text-foreground" onClick={() => { if (sortField === 'lastServiceDate') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortField('lastServiceDate'); setSortDir('desc'); } }}>
+                  Last Service {sortField === 'lastServiceDate' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                </TableHead>
+                <TableHead className="text-right cursor-pointer select-none hover:text-foreground" onClick={() => { if (sortField === 'createdAt') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortField('createdAt'); setSortDir('desc'); } }}>
+                  Joined {sortField === 'createdAt' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                </TableHead>
+                <TableHead className="w-24" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Loading customers...</TableCell></TableRow>
-              ) : data?.items.length === 0 ? (
-                <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                  {reminderFailureFilter ? 'No customers with reminder failures found.' : 'No customers found.'}
+                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading customers...</TableCell></TableRow>
+              ) : (data?.items ?? []).filter(c => typeFilter === 'all' || (c as any).customerType === typeFilter).filter(c => !openBalanceFilter || ((c as any).paymentStanding?.overdueAmount ?? 0) > 0).filter(c => tagFilter === '__all__' || ((c as any).tags ?? []).includes(tagFilter)).length === 0 ? (
+                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                  {reminderFailureFilter ? 'No customers with reminder failures found.' : openBalanceFilter ? 'No customers with open balances found.' : (<span>No customers found.{!search && !tagFilter && typeFilter === 'all' && <> <button className="text-primary hover:underline" onClick={() => setCreating(true)}>Add one →</button></>}</span>)}
                 </TableCell></TableRow>
               ) : (
-                data?.items.map(customer => {
+                (data?.items ?? []).filter(c => typeFilter === 'all' || (c as any).customerType === typeFilter).filter(c => !openBalanceFilter || ((c as any).paymentStanding?.overdueAmount ?? 0) > 0).filter(c => tagFilter === '__all__' || ((c as any).tags ?? []).includes(tagFilter)).sort((a, b) => {
+                  let cmp = 0;
+                  if (sortField === 'name') cmp = a.name.localeCompare(b.name);
+                  else if (sortField === 'totalSpend') cmp = ((a as any).totalSpend ?? 0) - ((b as any).totalSpend ?? 0);
+                  else if (sortField === 'createdAt') cmp = new Date((a as any).createdAt ?? 0).getTime() - new Date((b as any).createdAt ?? 0).getTime();
+                  else if (sortField === 'lastServiceDate') cmp = new Date((a as any).lastServiceDate ?? 0).getTime() - new Date((b as any).lastServiceDate ?? 0).getTime();
+                  return sortDir === 'asc' ? cmp : -cmp;
+                }).map(customer => {
                   const failure = (customer as any).lastReminderFailure as { channel: string; errorNote: string; failedAt: string } | null;
                   return (
                     <TableRow
                       key={customer.id}
-                      className="cursor-pointer hover:bg-muted/50"
+                      className="cursor-pointer hover:bg-muted/50 group"
                       onClick={() => setLocation(`/customers/${customer.id}`)}
                     >
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <div className="font-medium">{customer.name}</div>
+                          <div className="font-medium truncate max-w-[200px]" title={customer.name}>{customer.name}</div>
                           {customer.autoInvoiceOnCompletion && (
-                            <Badge variant="outline" className="gap-1 text-emerald-700 border-emerald-300 bg-emerald-50 text-[10px] px-1.5 py-0 shrink-0">
+                            <Badge variant="outline" className="gap-1 text-emerald-700 border-emerald-300 bg-emerald-50 text-[10px] px-1.5 py-0 shrink-0" title="Auto-invoice on job completion">
                               <Zap className="w-3 h-3" /> Auto-Invoice
                             </Badge>
                           )}
+                          {(customer as any).hasPaymentMethod && (
+                            <Badge variant="outline" className="gap-1 text-blue-600 border-blue-200 bg-blue-50 text-[10px] px-1.5 py-0 shrink-0 cursor-default" title="Saved payment method on file">
+                              <CreditCard className="w-3 h-3" /> Card on file
+                            </Badge>
+                          )}
                           {failure && (
-                            <Badge variant="outline" className="gap-1 text-red-600 border-red-200 text-[10px] px-1.5 py-0 shrink-0">
-                              <AlertTriangle className="w-3 h-3" /> Reminder failed
+                            <Badge variant="outline" className="gap-1 text-red-600 border-red-200 text-[10px] px-1.5 py-0 shrink-0" title={failure.errorNote ?? `Failed via ${failure.channel}`}>
+                              <AlertTriangle className="w-3 h-3" /> Reminder failed · {failure.channel}
                             </Badge>
                           )}
                         </div>
-                        {customer.company && <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5"><Building className="w-3 h-3" />{customer.company}</div>}
+                        {customer.company && <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5" title={`Company: ${customer.company}`}><Building className="w-3 h-3" />{customer.company}</div>}
+                        {((customer as any).tags ?? []).length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {((customer as any).tags as string[]).slice(0, 3).map((tag: string) => (
+                              <Badge key={tag} variant="outline" className="text-[10px] px-1.5 py-0 bg-violet-50 text-violet-700 border-violet-200 cursor-pointer hover:bg-violet-100" title={`Filter by tag: ${tag}`} onClick={e => { e.stopPropagation(); setTagFilter(tag); }}>{tag}</Badge>
+                            ))}
+                            {((customer as any).tags as string[]).length > 3 && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground" title={(customer as any).tags.slice(3).join(', ')}>+{((customer as any).tags as string[]).length - 3}</Badge>
+                            )}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="text-sm flex flex-col gap-0.5">
-                          <div className="flex items-center gap-2 text-muted-foreground"><Phone className="w-3 h-3" />{customer.phone}</div>
-                          <div className="flex items-center gap-2 text-muted-foreground"><Mail className="w-3 h-3" />{customer.email}</div>
+                          {customer.phone && <a href={`tel:${customer.phone}`} title={`Call ${customer.phone}`} className="flex items-center gap-2 text-muted-foreground hover:text-primary" onClick={e => e.stopPropagation()}><Phone className="w-3 h-3" />{customer.phone}</a>}
+                          {customer.email && <a href={`mailto:${customer.email}`} title={`Email ${customer.email}`} className="flex items-center gap-2 text-muted-foreground hover:text-primary" onClick={e => e.stopPropagation()}><Mail className="w-3 h-3" />{customer.email}</a>}
                         </div>
                       </TableCell>
                       <TableCell>
                         {(customer as { customerType?: string }).customerType ? (
-                          <Badge variant="secondary" className="capitalize">{(customer as { customerType?: string }).customerType}</Badge>
+                          <Badge variant="secondary" className="capitalize cursor-pointer hover:bg-secondary/70" title={`Filter by ${(customer as any).customerType}`} onClick={e => { e.stopPropagation(); setTypeFilter((customer as any).customerType); }}>{(customer as { customerType?: string }).customerType}</Badge>
                         ) : '-'}
                       </TableCell>
-                      <TableCell><Badge variant="secondary">{customer.propertyCount || 0}</Badge></TableCell>
-                      <TableCell className="text-right font-medium">${(customer.totalSpend ?? 0).toLocaleString()}</TableCell>
+                      <TableCell><Badge variant="secondary" title={`${customer.propertyCount || 0} propert${(customer.propertyCount || 0) !== 1 ? 'ies' : 'y'}`}>{customer.propertyCount || 0}</Badge></TableCell>
+                      <TableCell className="text-right font-medium" title={`Total spend: $${(customer.totalSpend ?? 0).toLocaleString()}`}>${(customer.totalSpend ?? 0).toLocaleString()}</TableCell>
+                      <TableCell className="text-right text-sm text-muted-foreground whitespace-nowrap" title={(customer as any).lastServiceDate ? new Date((customer as any).lastServiceDate).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : undefined}>
+                        {(customer as any).lastServiceDate ? new Date((customer as any).lastServiceDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                      </TableCell>
+                      <TableCell className="text-right text-sm text-muted-foreground whitespace-nowrap" title={customer.createdAt ? `Customer since ${new Date(customer.createdAt).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}` : undefined}>
+                        {customer.createdAt ? new Date(customer.createdAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) : '—'}
+                      </TableCell>
+                      <TableCell className="w-24 p-1">
+                        <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            title="New job"
+                            className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                            onClick={e => { e.stopPropagation(); setLocation(`/schedule?action=create&customerId=${customer.id}`); }}
+                          ><Briefcase className="w-3.5 h-3.5" /></button>
+                          <button
+                            title="New invoice"
+                            className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                            onClick={e => { e.stopPropagation(); setLocation(`/financials?action=create&customerId=${customer.id}`); }}
+                          ><FileText className="w-3.5 h-3.5" /></button>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   );
                 })
               )}
             </TableBody>
           </Table>
+          {data && data.items.length >= 200 && data.total > 200 && (
+            <div className="px-4 py-3 border-t text-xs text-muted-foreground text-center">
+              Showing 200 of {data.total.toLocaleString()} customers — refine your search to find others
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -288,30 +402,30 @@ export default function CustomersPage() {
           <div className="space-y-6 pb-6">
             <Section title="Contact Information" icon={<User className="w-4 h-4" />}>
               <Field label="Full Name" required>
-                <Input value={form.name as string} onChange={e => setField('name', e.target.value)} placeholder="Jane Smith" />
+                <Input title="Customer's full name" value={form.name as string} onChange={e => setField('name', e.target.value)} placeholder="Jane Smith" />
               </Field>
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Email" required>
-                  <Input type="email" value={form.email as string} onChange={e => setField('email', e.target.value)} placeholder="jane@example.com" />
+                  <Input type="email" title="Customer's email address for invoices and notifications" value={form.email as string} onChange={e => setField('email', e.target.value)} placeholder="jane@example.com" />
                 </Field>
                 <Field label="Phone" required>
-                  <Input value={form.phone as string} onChange={e => setField('phone', e.target.value)} placeholder="(555) 000-0000" />
+                  <Input title="Customer's primary phone number" value={form.phone as string} onChange={e => setField('phone', e.target.value)} placeholder="(555) 000-0000" />
                 </Field>
               </div>
               {activeFields.filter(f => f.isBuiltIn && f.visible && f.key === 'secondaryPhone').map(f => (
                 <Field key={f.key} label={f.label} required={f.required}>
-                  <Input value={form.secondaryPhone as string} onChange={e => setField('secondaryPhone', e.target.value)} placeholder="(555) 000-0001" />
+                  <Input title="Customer's secondary or alternate phone number" value={form.secondaryPhone as string} onChange={e => setField('secondaryPhone', e.target.value)} placeholder="(555) 000-0001" />
                 </Field>
               ))}
               {activeFields.filter(f => f.isBuiltIn && f.visible && f.key === 'company').map(f => (
                 <Field key={f.key} label={f.label} required={f.required}>
-                  <Input value={form.company as string} onChange={e => setField('company', e.target.value)} placeholder="Acme Corp" />
+                  <Input title="Customer's company or organization name" value={form.company as string} onChange={e => setField('company', e.target.value)} placeholder="Acme Corp" />
                 </Field>
               ))}
               {activeFields.filter(f => f.isBuiltIn && f.visible && f.key === 'customerType').map(f => (
                 <Field key={f.key} label={f.label} required={f.required}>
                   <Select value={form.customerType as string} onValueChange={v => setField('customerType', v)}>
-                    <SelectTrigger><SelectValue placeholder="Select type..." /></SelectTrigger>
+                    <SelectTrigger title="Customer category (Residential, Commercial, HOA, etc.)"><SelectValue placeholder="Select type..." /></SelectTrigger>
                     <SelectContent>
                       {['residential', 'commercial', 'hoa', 'government', 'other'].map(t => (
                         <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>
@@ -323,7 +437,7 @@ export default function CustomersPage() {
               {activeFields.filter(f => f.isBuiltIn && f.visible && f.key === 'referralSource').map(f => (
                 <Field key={f.key} label={f.label} required={f.required}>
                   <Select value={form.referralSource as string} onValueChange={v => setField('referralSource', v)}>
-                    <SelectTrigger><SelectValue placeholder="Select source..." /></SelectTrigger>
+                    <SelectTrigger title="How this customer found the business"><SelectValue placeholder="Select source..." /></SelectTrigger>
                     <SelectContent>
                       {['Google', 'Word of Mouth', 'Flyer', 'Repeat Customer', 'Social Media', 'Referral', 'Other'].map(s => (
                         <SelectItem key={s} value={s}>{s}</SelectItem>
@@ -340,6 +454,7 @@ export default function CustomersPage() {
                   <div className="relative">
                     <Input
                       ref={addrInputRef}
+                      title="Customer's billing street address"
                       value={form.billingAddress as string}
                       onChange={e => setField('billingAddress', e.target.value)}
                       onFocus={() => setAddrFocused(true)}
@@ -387,14 +502,14 @@ export default function CustomersPage() {
                 <div className="grid grid-cols-3 gap-4">
                   <div className="col-span-1">
                     <Field label="City">
-                      <Input value={form.billingCity as string} onChange={e => setField('billingCity', e.target.value)} placeholder="Los Angeles" />
+                      <Input title="City" value={form.billingCity as string} onChange={e => setField('billingCity', e.target.value)} placeholder="Los Angeles" />
                     </Field>
                   </div>
                   <Field label="State">
-                    <Input value={form.billingState as string} onChange={e => setField('billingState', e.target.value)} placeholder="CA" maxLength={2} />
+                    <Input title="2-letter state code" value={form.billingState as string} onChange={e => setField('billingState', e.target.value)} placeholder="CA" maxLength={2} />
                   </Field>
                   <Field label="ZIP">
-                    <Input value={form.billingZip as string} onChange={e => setField('billingZip', e.target.value)} placeholder="90210" />
+                    <Input title="ZIP/postal code" value={form.billingZip as string} onChange={e => setField('billingZip', e.target.value)} placeholder="90210" />
                   </Field>
                 </div>
               </Section>
@@ -402,7 +517,7 @@ export default function CustomersPage() {
 
             {activeFields.some(f => f.key === 'notes' && f.visible) && (
               <Section title="Notes" icon={<FileText className="w-4 h-4" />}>
-                <Textarea value={form.notes as string} onChange={e => setField('notes', e.target.value)} placeholder="Internal notes about this customer..." className="min-h-[80px]" />
+                <Textarea title="Internal notes about this customer (not visible to them)" value={form.notes as string} onChange={e => setField('notes', e.target.value)} placeholder="Internal notes about this customer..." className="min-h-[80px]" />
               </Section>
             )}
 
@@ -412,13 +527,13 @@ export default function CustomersPage() {
                   {((form.tags as string[]) ?? []).map(tag => (
                     <Badge key={tag} variant="secondary" className="gap-1 pr-1">
                       {tag}
-                      <button onClick={() => removeTag(tag)} className="ml-1 hover:text-destructive"><X className="w-3 h-3" /></button>
+                      <button onClick={() => removeTag(tag)} title={`Remove tag "${tag}"`} className="ml-1 hover:text-destructive"><X className="w-3 h-3" /></button>
                     </Badge>
                   ))}
                 </div>
                 <div className="flex gap-2">
-                  <Input placeholder="Add tag..." value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }} className="flex-1" />
-                  <Button variant="outline" size="sm" onClick={addTag} type="button">Add</Button>
+                  <Input title="Type a tag and press Enter or click Add" placeholder="Add tag..." value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }} className="flex-1" />
+                  <Button variant="outline" size="sm" title="Add this tag to the customer" onClick={addTag} type="button">Add</Button>
                 </div>
               </Section>
             )}

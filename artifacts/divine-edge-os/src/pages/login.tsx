@@ -16,10 +16,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [isServerError, setIsServerError] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (e?: React.FormEvent) => {
+    e?.preventDefault();
     setError('');
+    setIsServerError(false);
     loginMutation.mutate(
       { data: { email, password } },
       {
@@ -27,7 +29,15 @@ export default function LoginPage() {
           login(data.user);
           setLocation(data.user.role === 'technician' ? '/schedule' : '/dashboard');
         },
-        onError: () => setError('Invalid email or password. Please try again.'),
+        onError: (err: unknown) => {
+          const status = (err as { status?: number })?.status ?? (err as { response?: { status?: number } })?.response?.status;
+          if (status && status >= 500) {
+            setIsServerError(true);
+            setError('Server error — please try again in a moment.');
+          } else {
+            setError('Invalid email or password. Please try again.');
+          }
+        },
       },
     );
   };
@@ -47,14 +57,24 @@ export default function LoginPage() {
           <CardContent className="p-6">
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
-                <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 p-3 rounded-md">
-                  {error}
+                <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 p-3 rounded-md flex items-center justify-between gap-3">
+                  <span>{error}</span>
+                  {isServerError && (
+                    <button
+                      type="button"
+                      className="shrink-0 text-xs font-semibold underline hover:no-underline"
+                      onClick={() => handleSubmit()}
+                    >
+                      Retry
+                    </button>
+                  )}
                 </div>
               )}
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Email</label>
                 <Input
                   type="email"
+                  title="Your account email address"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   placeholder="you@company.com"
@@ -68,6 +88,7 @@ export default function LoginPage() {
                 <div className="relative">
                   <Input
                     type={showPassword ? 'text' : 'password'}
+                    title="Your account password"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     placeholder="••••••••"
@@ -76,6 +97,7 @@ export default function LoginPage() {
                   />
                   <button
                     type="button"
+                    title={showPassword ? 'Hide password' : 'Show password'}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                     onClick={() => setShowPassword(v => !v)}
                     tabIndex={-1}
@@ -84,7 +106,7 @@ export default function LoginPage() {
                   </button>
                 </div>
               </div>
-              <Button type="submit" className="w-full" disabled={loginMutation.isPending}>
+              <Button type="submit" title="Sign in to Divine Edge OS" className="w-full" disabled={loginMutation.isPending}>
                 {loginMutation.isPending ? 'Signing in…' : 'Sign In'}
               </Button>
             </form>

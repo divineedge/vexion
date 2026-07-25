@@ -30,7 +30,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { TASK_ROLE_BUCKETS, roleBucketLabel } from '@/lib/taskConstants';
 import {
   ClipboardList, Plus, Trash2, Edit, PlayCircle, CheckCircle2, XCircle, Eye,
-  Timer, ListChecks, History, PackageSearch, User as UserIcon, Users as UsersIcon,
+  Timer, ListChecks, History, PackageSearch, User as UserIcon, Users as UsersIcon, Search,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, formatDistanceStrict } from 'date-fns';
@@ -177,12 +177,14 @@ function BundleBuilderSheet({
     }
   };
 
+  const [deletePending, setDeletePending] = useState(false);
+
   const handleDelete = () => {
     if (!bundle) return;
-    if (!window.confirm(`Delete "${bundle.name}"? This cannot be undone.`)) return;
+    if (!deletePending) { setDeletePending(true); return; }
     deleteBundle.mutate({ id: bundle.id }, {
-      onSuccess: () => { toast.success('Bundle deleted'); invalidate(); onOpenChange(false); },
-      onError: () => toast.error('This bundle has completion history and cannot be deleted. Deactivate it instead.'),
+      onSuccess: () => { toast.success('Bundle deleted'); invalidate(); onOpenChange(false); setDeletePending(false); },
+      onError: () => { toast.error('This bundle has completion history and cannot be deleted. Deactivate it instead.'); setDeletePending(false); },
     });
   };
 
@@ -305,8 +307,9 @@ function BundleBuilderSheet({
           <Separator />
           <div className="flex items-center justify-between">
             {isEdit ? (
-              <Button variant="ghost" className="text-destructive hover:text-destructive gap-2" onClick={handleDelete}>
-                <Trash2 className="w-4 h-4" /> Delete
+              <Button variant="ghost" className="text-destructive hover:text-destructive gap-2" onClick={handleDelete} disabled={deleteBundle.isPending}>
+                <Trash2 className="w-4 h-4" />
+                {deletePending ? 'Confirm delete?' : 'Delete'}
               </Button>
             ) : <div />}
             <div className="flex gap-2">
@@ -537,17 +540,33 @@ function BundlesTab() {
   const { data: bundles = [], isLoading } = useListTaskBundles(undefined, { query: { queryKey: getListTaskBundlesQueryKey() } });
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<TaskBundle | null>(null);
+  const [bundleSearch, setBundleSearch] = useState('');
+
+  const filteredBundles = bundleSearch.trim()
+    ? bundles.filter(b => b.name.toLowerCase().includes(bundleSearch.toLowerCase()))
+    : bundles;
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
-        <Button className="gap-2" onClick={() => { setEditing(null); setSheetOpen(true); }}>
-          <Plus className="w-4 h-4" /> New Bundle
-        </Button>
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+          <Input
+            value={bundleSearch}
+            onChange={e => setBundleSearch(e.target.value)}
+            placeholder="Search bundles…"
+            className="h-9 text-sm pl-7"
+          />
+        </div>
+        <div className="ml-auto">
+          <Button className="gap-2" onClick={() => { setEditing(null); setSheetOpen(true); }}>
+            <Plus className="w-4 h-4" /> New Bundle
+          </Button>
+        </div>
       </div>
       {isLoading && <p className="text-sm text-muted-foreground text-center py-8">Loading bundles…</p>}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {bundles.map(b => (
+        {filteredBundles.map(b => (
           <Card key={b.id} className="cursor-pointer hover:shadow-md transition-all" onClick={() => { setEditing(b); setSheetOpen(true); }}>
             <CardContent className="p-4 space-y-2">
               <div className="flex items-center justify-between">
@@ -567,9 +586,14 @@ function BundlesTab() {
             </CardContent>
           </Card>
         ))}
-        {!isLoading && bundles.length === 0 && (
+        {!isLoading && filteredBundles.length === 0 && bundles.length === 0 && (
           <div className="col-span-full text-center py-12 text-muted-foreground border rounded-xl border-dashed">
             No task bundles yet. Click "New Bundle" to build your first checklist.
+          </div>
+        )}
+        {!isLoading && filteredBundles.length === 0 && bundles.length > 0 && (
+          <div className="col-span-full text-center py-8 text-muted-foreground">
+            No bundles match your search.
           </div>
         )}
       </div>

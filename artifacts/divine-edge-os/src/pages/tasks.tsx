@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
-import { useListTasks, useBulkArchiveTasks, getListTasksQueryKey, type InternalTask } from '@workspace/api-client-react';
+import { useListTasks, useBulkArchiveTasks, useUpdateTask, getListTasksQueryKey, type InternalTask } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { Plus, ListTodo, Calendar, Link2, Archive } from 'lucide-react';
+import { Plus, ListTodo, Calendar, Link2, Archive, CheckCircle2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { TaskFormDrawer } from '@/components/tasks/TaskFormDrawer';
@@ -18,17 +19,65 @@ import {
 } from '@/lib/taskConstants';
 import { Label } from '@/components/ui/label';
 
+function QuickCompleteButton({ task }: { task: InternalTask }) {
+  const qc = useQueryClient();
+  const updateTask = useUpdateTask({
+    mutation: {
+      onSuccess: () => { qc.invalidateQueries({ queryKey: getListTasksQueryKey() }); toast.success('Marked done'); },
+      onError: () => toast.error('Failed'),
+    },
+  });
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      className="h-7 w-7 p-0 text-muted-foreground hover:text-emerald-600 hover:bg-emerald-50 shrink-0"
+      title="Mark done"
+      disabled={updateTask.isPending}
+      onClick={() => updateTask.mutate({ id: task.id, data: { status: 'done' } })}
+    >
+      <CheckCircle2 className="w-4 h-4" />
+    </Button>
+  );
+}
+
+function TaskContextLink({ task }: { task: InternalTask }) {
+  const [, navigate] = useLocation();
+  const ctx = task as any;
+  const href = ctx.contextType === 'job' ? '/schedule'
+    : ctx.contextType === 'customer' ? `/customers/${ctx.contextId}`
+    : ctx.contextType === 'property' ? `/properties/${ctx.contextId}`
+    : ctx.contextType === 'equipment' ? '/equipment'
+    : null;
+  if (!href) return <span className="flex items-center gap-1"><Link2 className="w-3 h-3" /> {task.contextLabel}</span>;
+  return (
+    <button
+      className="flex items-center gap-1 hover:underline text-primary text-sm"
+      onClick={e => { e.stopPropagation(); navigate(href); }}
+    >
+      <Link2 className="w-3 h-3" /> {task.contextLabel}
+    </button>
+  );
+}
+
 export default function TasksPage() {
   const { user, isOwner, isManager, isDepartmentManager } = useAuth();
   const isAdmin = isOwner || isManager || isDepartmentManager;
   const qc = useQueryClient();
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [prefillData, setPrefillData] = useState<{ title?: string; description?: string; contextType?: string } | null>(null);
 
-  // Open create drawer when arriving via quick-add shortcut (?action=create)
+  // Open create drawer when arriving via quick-add shortcut (?action=create) or prefill from another page
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('action') === 'create') {
+    if (params.get('action') === 'create' || params.get('prefill')) {
+      const prefill = params.get('prefill');
+      if (prefill) {
+        try {
+          setPrefillData(JSON.parse(decodeURIComponent(prefill)));
+        } catch {}
+      }
       setCreateOpen(true);
       window.history.replaceState({}, '', window.location.pathname);
     }
@@ -37,6 +86,7 @@ export default function TasksPage() {
   const [scope, setScope] = useState<'mine' | 'all'>(isAdmin ? 'all' : 'mine');
   const [statusFilter, setStatusFilter] = useState('__open__');
   const [priorityFilter, setPriorityFilter] = useState('__all__');
+  const [assigneeFilter, setAssigneeFilter] = useState('__all__');
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
@@ -63,10 +113,20 @@ export default function TasksPage() {
     } else if (showArchived) {
       filtered = filtered.filter(t => !!t.archivedAt);
     }
+    if (assigneeFilter !== '__all__') {
+      filtered = filtered.filter(t => String((t as any).assignedToId ?? '') === assigneeFilter || t.assignedToRole === assigneeFilter);
+    }
     return filtered;
   })();
 
+  const [taskSort, setTaskSort] = useState<'priority' | 'due' | 'created'>('priority');
   const sorted = [...visibleTasks].sort((a, b) => {
+    if (taskSort === 'due') {
+      const aD = (a as any).dueDate ? new Date((a as any).dueDate).getTime() : Infinity;
+      const bD = (b as any).dueDate ? new Date((b as any).dueDate).getTime() : Infinity;
+      return aD - bD;
+    }
+    if (taskSort === 'created') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     const order: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
     return (order[a.priority] ?? 2) - (order[b.priority] ?? 2) || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
@@ -116,7 +176,7 @@ export default function TasksPage() {
           <h1 className="text-3xl font-bold tracking-tight">Tasks</h1>
           <p className="text-muted-foreground mt-1">Internal to-dos — separate from customer jobs. Assign, track, and close the loop.</p>
         </div>
-        <Button className="gap-2" onClick={() => setCreateOpen(true)}>
+        <Button className="gap-2" title="Create a new internal task" onClick={() => setCreateOpen(true)}>
           <Plus className="w-4 h-4" /> New Task
         </Button>
       </div>
@@ -126,7 +186,7 @@ export default function TasksPage() {
           <div className="p-4 border-b flex items-center gap-3 flex-wrap">
             {isAdmin && (
               <Select value={scope} onValueChange={v => changeScope(v as 'mine' | 'all')}>
-                <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-40" title="Filter by task scope"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Tasks</SelectItem>
                   <SelectItem value="mine">My Tasks</SelectItem>
@@ -134,7 +194,7 @@ export default function TasksPage() {
               </Select>
             )}
             <Select value={statusFilter} onValueChange={changeStatus}>
-              <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-40" title="Filter by task status"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__open__">Open + In Progress</SelectItem>
                 <SelectItem value="__all__">All statuses</SelectItem>
@@ -142,10 +202,32 @@ export default function TasksPage() {
               </SelectContent>
             </Select>
             <Select value={priorityFilter} onValueChange={changePriority}>
-              <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-36" title="Filter by priority"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all__">All priorities</SelectItem>
                 {TASK_PRIORITIES.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            {isAdmin && scope === 'all' && (() => {
+              const assignees = Array.from(
+                new Map(tasks.map(t => [(t as any).assignedToId ? `id:${(t as any).assignedToId}` : `role:${t.assignedToRole}`, { key: (t as any).assignedToId ? `id:${(t as any).assignedToId}` : `role:${t.assignedToRole}`, label: (t as any).assignedToName ?? roleBucketLabel(t.assignedToRole) }])).values()
+              );
+              return assignees.length > 1 ? (
+                <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
+                  <SelectTrigger className="w-40" title="Filter by assignee"><SelectValue placeholder="All assignees" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All assignees</SelectItem>
+                    {assignees.map(a => <SelectItem key={a.key} value={a.key}>{a.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              ) : null;
+            })()}
+            <Select value={taskSort} onValueChange={v => setTaskSort(v as typeof taskSort)}>
+              <SelectTrigger className="w-36" title="Sort tasks"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="priority">Sort: Priority</SelectItem>
+                <SelectItem value="due">Sort: Due Date</SelectItem>
+                <SelectItem value="created">Sort: Newest</SelectItem>
               </SelectContent>
             </Select>
 
@@ -207,7 +289,12 @@ export default function TasksPage() {
         </CardContent>
       </Card>
 
-      <TaskFormDrawer open={createOpen} onOpenChange={setCreateOpen} />
+      <TaskFormDrawer
+        open={createOpen}
+        onOpenChange={open => { setCreateOpen(open); if (!open) setPrefillData(null); }}
+        initialTitle={prefillData?.title}
+        initialDescription={prefillData?.description}
+      />
 
       <Dialog open={archiveConfirmOpen} onOpenChange={setArchiveConfirmOpen}>
         <DialogContent className="sm:max-w-md">
@@ -248,30 +335,36 @@ function TaskRow({ task, isAdmin, showArchived, selected, onToggle }: {
       )}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
-          <p className="font-medium truncate">{task.title}</p>
-          <Badge variant="outline" className={priorityBadgeClass(task.priority)}>{task.priority}</Badge>
-          <Badge variant="outline" className={statusBadgeClass(task.status)}>{task.status.replace('_', ' ')}</Badge>
+          <p className="font-medium truncate" title={task.title}>{task.title}</p>
+          <Badge variant="outline" className={priorityBadgeClass(task.priority)} title={`Priority: ${task.priority}`}>{task.priority}</Badge>
+          <Badge variant="outline" className={statusBadgeClass(task.status)} title={`Status: ${task.status.replace('_', ' ')}`}>{task.status.replace('_', ' ')}</Badge>
           {task.archivedAt && (
             <Badge variant="outline" className="text-muted-foreground border-muted-foreground/40 bg-muted/50">
               Archived {format(new Date(task.archivedAt), 'MMM d, yyyy')}
             </Badge>
           )}
         </div>
-        {task.description && <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{task.description}</p>}
+        {task.description && <p className="text-sm text-muted-foreground mt-1 line-clamp-2" title={task.description}>{task.description}</p>}
         {task.status === 'rejected' && task.rejectionReason && (
           <p className="text-xs text-destructive mt-1">Rejected: {task.rejectionReason}</p>
         )}
         <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground flex-wrap">
-          <span>From {task.createdByName ?? '—'}</span>
-          <span>→ {task.assignedToName ?? roleBucketLabel(task.assignedToRole)}</span>
-          {task.dueDate && (
-            <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {format(new Date(task.dueDate), 'MMM d, yyyy')}</span>
-          )}
-          {task.contextLabel && (
-            <span className="flex items-center gap-1"><Link2 className="w-3 h-3" /> {task.contextLabel}</span>
-          )}
+          <span title={task.createdByName ? `Created by ${task.createdByName}` : undefined}>From {task.createdByName ?? '—'}</span>
+          <span title={task.assignedToName ? `Assigned to ${task.assignedToName}` : `Assigned to ${roleBucketLabel(task.assignedToRole)}`}>→ {task.assignedToName ?? roleBucketLabel(task.assignedToRole)}</span>
+          {task.dueDate && (() => {
+            const isOverdue = task.status !== 'done' && task.status !== 'rejected' && !task.archivedAt && new Date(task.dueDate) < new Date();
+            return (
+              <span className={`flex items-center gap-1 ${isOverdue ? 'text-destructive font-medium' : ''}`} title={format(new Date(task.dueDate), 'EEEE, MMMM d, yyyy')}>
+                <Calendar className="w-3 h-3" /> {format(new Date(task.dueDate), 'MMM d, yyyy')}{isOverdue ? ' · Overdue' : ''}
+              </span>
+            );
+          })()}
+          {task.contextLabel && <TaskContextLink task={task} />}
         </div>
       </div>
+      {task.status !== 'done' && task.status !== 'rejected' && !task.archivedAt && (
+        <QuickCompleteButton task={task} />
+      )}
       <TaskActions task={task} />
     </div>
   );

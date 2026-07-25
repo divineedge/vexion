@@ -16,10 +16,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { Plus, Trash2, Repeat, Grid3X3, X, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Repeat, Grid3X3, X, ChevronRight, Snowflake } from 'lucide-react';
 import type { PricingTier } from '@/lib/pricingMatrix';
 
-interface ServiceRuleForm { serviceId: string; serviceName: string; frequencyDays: string; }
+interface ServiceRuleForm { serviceId: string; serviceName: string; frequencyDays: string; frequencyUnit: 'days' | 'weeks'; }
 
 const CYCLE_LABEL: Record<string, string> = { monthly: 'Monthly', quarterly: 'Quarterly', annual: 'Annual', custom: 'Custom' };
 
@@ -37,6 +37,9 @@ const EMPTY = {
   price: '', autoRenewDefault: true, isActive: true,
   pricingMode: 'flat' as PricingMode,
   pricingMatrix: [] as PlanPricingTier[],
+  offSeasonEnabled: false,
+  offSeasonStartMonth: '11', offSeasonStartDay: '15',
+  offSeasonEndMonth: '03', offSeasonEndDay: '14',
 };
 
 function TierRow({
@@ -78,7 +81,7 @@ function TierRow({
           onChange={e => onChange({ ...tier, price: parseFloat(e.target.value) || 0 })}
           className="flex-1 text-sm"
         />
-        <span className="text-xs text-muted-foreground shrink-0">/period</span>
+        <span className="text-xs text-muted-foreground shrink-0">/billing cycle</span>
       </div>
       {/* Only the last tier may be open-ended */}
       {isLast && (
@@ -93,6 +96,7 @@ function TierRow({
       )}
       <Button
         type="button" variant="ghost" size="icon"
+        title="Remove this pricing tier"
         className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
         onClick={onRemove}
       >
@@ -106,8 +110,9 @@ export default function PlanTemplatesSettings() {
   const qc = useQueryClient();
   const [sheetMode, setSheetMode] = useState<'create' | 'edit' | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [templateSearch, setTemplateSearch] = useState('');
   const [form, setForm] = useState(EMPTY);
-  const [rules, setRules] = useState<ServiceRuleForm[]>([{ serviceId: '', serviceName: '', frequencyDays: '7' }]);
+  const [rules, setRules] = useState<ServiceRuleForm[]>([{ serviceId: '', serviceName: '', frequencyDays: '1', frequencyUnit: 'weeks' }]);
 
   const { data: templates, isLoading } = useListPlanTemplates({ query: { queryKey: getListPlanTemplatesQueryKey() } });
   const { data: services } = useQuery<Array<{ id: number; name: string }>>({
@@ -122,7 +127,7 @@ export default function PlanTemplatesSettings() {
 
   const openCreate = () => {
     setForm(EMPTY);
-    setRules([{ serviceId: '', serviceName: '', frequencyDays: '7' }]);
+    setRules([{ serviceId: '', serviceName: '', frequencyDays: '1', frequencyUnit: 'weeks' }]);
     setSelectedId(null);
     setSheetMode('create');
   };
@@ -130,13 +135,23 @@ export default function PlanTemplatesSettings() {
   const openEdit = (t: NonNullable<typeof templates>[number]) => {
     const pm = (t as any).pricingMode as PricingMode ?? 'flat';
     const matrix = Array.isArray((t as any).pricingMatrix) ? (t as any).pricingMatrix as PlanPricingTier[] : [];
+    const hasOffSeason = !!(t as any).offSeasonStart && !!(t as any).offSeasonEnd;
+    const [osStartMonth = '11', osStartDay = '15'] = ((t as any).offSeasonStart ?? '11-15').split('-');
+    const [osEndMonth = '03', osEndDay = '14'] = ((t as any).offSeasonEnd ?? '03-14').split('-');
     setForm({
       name: t.name, description: t.description ?? '', visitCount: String(t.visitCount),
       billingCycle: t.billingCycle, customCycleDays: t.customCycleDays ? String(t.customCycleDays) : '',
       price: String(t.price), autoRenewDefault: t.autoRenewDefault, isActive: t.isActive,
       pricingMode: pm, pricingMatrix: matrix,
+      offSeasonEnabled: hasOffSeason,
+      offSeasonStartMonth: osStartMonth, offSeasonStartDay: osStartDay,
+      offSeasonEndMonth: osEndMonth, offSeasonEndDay: osEndDay,
     });
-    setRules((t.services as any[]).map(s => ({ serviceId: String(s.serviceId), serviceName: s.serviceName, frequencyDays: String(s.frequencyDays) })));
+    setRules((t.services as any[]).map(s => {
+      const fd = Number(s.frequencyDays) || 7;
+      const isWeeks = fd % 7 === 0;
+      return { serviceId: String(s.serviceId), serviceName: s.serviceName, frequencyDays: isWeeks ? String(fd / 7) : String(fd), frequencyUnit: isWeeks ? 'weeks' as const : 'days' as const };
+    }));
     setSelectedId(t.id);
     setSheetMode('edit');
   };
@@ -198,7 +213,7 @@ export default function PlanTemplatesSettings() {
     const payload = {
       name: form.name,
       description: form.description || undefined,
-      services: validRules.map(r => ({ serviceId: Number(r.serviceId), serviceName: r.serviceName, frequencyDays: Number(r.frequencyDays) })),
+      services: validRules.map(r => ({ serviceId: Number(r.serviceId), serviceName: r.serviceName, frequencyDays: r.frequencyUnit === 'weeks' ? Number(r.frequencyDays) * 7 : Number(r.frequencyDays) })),
       visitCount: Number(form.visitCount) || validRules.length,
       billingCycle: form.billingCycle as 'monthly' | 'quarterly' | 'annual' | 'custom',
       customCycleDays: form.billingCycle === 'custom' ? Number(form.customCycleDays) || 30 : undefined,
@@ -207,6 +222,8 @@ export default function PlanTemplatesSettings() {
       isActive: form.isActive,
       pricingMode: form.pricingMode,
       pricingMatrix: form.pricingMode === 'matrix' ? form.pricingMatrix : undefined,
+      offSeasonStart: form.offSeasonEnabled ? `${form.offSeasonStartMonth}-${form.offSeasonStartDay}` : null,
+      offSeasonEnd: form.offSeasonEnabled ? `${form.offSeasonEndMonth}-${form.offSeasonEndDay}` : null,
     };
 
     if (sheetMode === 'create') {
@@ -241,13 +258,21 @@ export default function PlanTemplatesSettings() {
       </div>
 
       <Card>
+        <div className="p-3 border-b">
+          <Input
+            placeholder="Search templates…"
+            value={templateSearch}
+            onChange={e => setTemplateSearch(e.target.value)}
+            className="max-w-xs h-8 text-sm"
+          />
+        </div>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Plan</TableHead>
                 <TableHead>Services</TableHead>
-                <TableHead className="text-right">Visits/Period</TableHead>
+                <TableHead className="text-right">Visits/Cycle</TableHead>
                 <TableHead className="text-right">Price</TableHead>
                 <TableHead className="text-center">Status</TableHead>
               </TableRow>
@@ -255,11 +280,11 @@ export default function PlanTemplatesSettings() {
             <TableBody>
               {isLoading ? (
                 <TableRow><TableCell colSpan={5} className="py-8 text-center text-muted-foreground">Loading...</TableCell></TableRow>
-              ) : (templates ?? []).length === 0 ? (
+              ) : (templates ?? []).filter(t => !templateSearch || t.name.toLowerCase().includes(templateSearch.toLowerCase())).length === 0 ? (
                 <TableRow><TableCell colSpan={5} className="py-12 text-center text-muted-foreground">
                   <Repeat className="w-8 h-8 mx-auto mb-2 opacity-30" />No plan templates yet.
                 </TableCell></TableRow>
-              ) : (templates ?? []).map(t => {
+              ) : (templates ?? []).filter(t => !templateSearch || t.name.toLowerCase().includes(templateSearch.toLowerCase())).map(t => {
                 const pm = (t as any).pricingMode as string ?? 'flat';
                 return (
                   <TableRow key={t.id} className="cursor-pointer hover:bg-muted/50" onClick={() => openEdit(t)}>
@@ -305,49 +330,55 @@ export default function PlanTemplatesSettings() {
           <div className="space-y-4 pb-6">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Plan Name <span className="text-destructive">*</span></label>
-              <Input placeholder="e.g. 12-Visit Lawn Program" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+              <Input title="Internal name for this plan template (shown to staff when selling plans)" placeholder="e.g. 12-Visit Lawn Program" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Description</label>
-              <Textarea rows={2} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+              <Textarea rows={2} title="Optional description shown to staff and customers when viewing this plan" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
             </div>
 
             <Separator />
             <label className="text-sm font-medium">Included Services</label>
             {rules.map((r, idx) => (
-              <div key={idx} className="flex gap-2 items-end">
+              <div key={idx} className="flex gap-2 items-center">
                 <div className="flex-1 space-y-1">
                   <Select value={r.serviceId} onValueChange={v => setRuleServiceId(idx, v)}>
-                    <SelectTrigger><SelectValue placeholder="Service" /></SelectTrigger>
+                    <SelectTrigger title="Select the service included in this plan rule"><SelectValue placeholder="Service" /></SelectTrigger>
                     <SelectContent>
                       {(services ?? []).map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="w-28 space-y-1">
-                  <Input type="number" min={1} placeholder="Days" value={r.frequencyDays}
-                    onChange={e => setRules(rs => rs.map((rr, i) => i === idx ? { ...rr, frequencyDays: e.target.value } : rr))} />
-                </div>
-                <Button variant="ghost" size="icon" onClick={() => setRules(rs => rs.filter((_, i) => i !== idx))} disabled={rules.length === 1}>
+                <span className="text-xs text-muted-foreground shrink-0">every</span>
+                <Input type="number" min={1} title="How often this service recurs (number of days or weeks)" className="w-16 text-sm" value={r.frequencyDays}
+                  onChange={e => setRules(rs => rs.map((rr, i) => i === idx ? { ...rr, frequencyDays: e.target.value } : rr))} />
+                <Select value={r.frequencyUnit} onValueChange={v => setRules(rs => rs.map((rr, i) => i === idx ? { ...rr, frequencyUnit: v as 'days' | 'weeks' } : rr))}>
+                  <SelectTrigger className="w-24" title="Unit for the service frequency (days or weeks)"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="days">days</SelectItem>
+                    <SelectItem value="weeks">weeks</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button variant="ghost" size="icon" title="Remove this service rule from the plan" onClick={() => setRules(rs => rs.filter((_, i) => i !== idx))} disabled={rules.length === 1}>
                   <Trash2 className="w-4 h-4" />
                 </Button>
               </div>
             ))}
-            <Button variant="outline" size="sm" className="gap-1" onClick={() => setRules(rs => [...rs, { serviceId: '', serviceName: '', frequencyDays: '7' }])}>
+            <Button variant="outline" size="sm" className="gap-1" onClick={() => setRules(rs => [...rs, { serviceId: '', serviceName: '', frequencyDays: '1', frequencyUnit: 'weeks' as const }])}>
               <Plus className="w-3.5 h-3.5" /> Add Service Rule
             </Button>
-            <p className="text-xs text-muted-foreground">Frequency is days between visits of that service (e.g. 7 = weekly, 42 = every 6 weeks).</p>
 
             <Separator />
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Visits per Period</label>
-                <Input type="number" min={1} value={form.visitCount} onChange={e => setForm(f => ({ ...f, visitCount: e.target.value }))} />
+                <label className="text-sm font-medium">Total Visits per Cycle</label>
+                <Input type="number" min={1} title="Number of service visits included in one billing cycle" value={form.visitCount} onChange={e => setForm(f => ({ ...f, visitCount: e.target.value }))} />
+                <p className="text-xs text-muted-foreground">How many visits are included in one billing cycle.</p>
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Billing Cycle</label>
                 <Select value={form.billingCycle} onValueChange={v => setForm(f => ({ ...f, billingCycle: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger title="How often the customer is billed for this plan"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="monthly">Monthly</SelectItem>
                     <SelectItem value="quarterly">Quarterly</SelectItem>
@@ -386,7 +417,7 @@ export default function PlanTemplatesSettings() {
               {form.pricingMode === 'flat' && (
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Price ($)</label>
-                  <Input type="number" step="0.01" placeholder="0.00" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} />
+                  <Input type="number" step="0.01" title="Fixed price charged each billing cycle" placeholder="0.00" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} />
                 </div>
               )}
 
@@ -409,7 +440,7 @@ export default function PlanTemplatesSettings() {
                   <div className="space-y-1.5 pt-1">
                     <label className="text-sm font-medium">Fallback / Default Price ($)</label>
                     <p className="text-xs text-muted-foreground">Used when no tier matches (e.g. property has no area measurement yet).</p>
-                    <Input type="number" step="0.01" placeholder="0.00" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} />
+                    <Input type="number" step="0.01" title="Fallback price used when no sqft tier matches the property's area" placeholder="0.00" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} />
                   </div>
                 </div>
               )}
@@ -427,7 +458,43 @@ export default function PlanTemplatesSettings() {
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium">Fallback / Default Price ($)</label>
                     <p className="text-xs text-muted-foreground">Used when zone areas can't be resolved.</p>
-                    <Input type="number" step="0.01" placeholder="0.00" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} />
+                    <Input type="number" step="0.01" title="Fallback price used when zone areas can't be resolved" placeholder="0.00" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <Separator />
+            {/* Off-Season */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium flex items-center gap-1.5"><Snowflake className="w-4 h-4 text-blue-500" /> Off-Season Pause</p>
+                  <p className="text-xs text-muted-foreground">Visits pause between these dates each year (month-day, e.g. Nov 15 → Mar 14).</p>
+                </div>
+                <Switch title={form.offSeasonEnabled ? 'Off-season pause is on — click to disable' : 'Enable an annual off-season window when visits pause'} checked={form.offSeasonEnabled} onCheckedChange={v => setForm(f => ({ ...f, offSeasonEnabled: v }))} />
+              </div>
+              {form.offSeasonEnabled && (
+                <div className="grid grid-cols-2 gap-4 pl-1">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Pause starts (MM-DD)</label>
+                    <div className="flex gap-1">
+                      <Input type="number" min={1} max={12} title="Month visits pause (1–12)" placeholder="MM" className="w-16 text-sm" value={form.offSeasonStartMonth}
+                        onChange={e => setForm(f => ({ ...f, offSeasonStartMonth: e.target.value.padStart(2, '0') }))} />
+                      <span className="self-center text-muted-foreground">-</span>
+                      <Input type="number" min={1} max={31} title="Day of month visits pause (1–31)" placeholder="DD" className="w-16 text-sm" value={form.offSeasonStartDay}
+                        onChange={e => setForm(f => ({ ...f, offSeasonStartDay: e.target.value.padStart(2, '0') }))} />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Pause ends (MM-DD)</label>
+                    <div className="flex gap-1">
+                      <Input type="number" min={1} max={12} title="Month visits resume (1–12)" placeholder="MM" className="w-16 text-sm" value={form.offSeasonEndMonth}
+                        onChange={e => setForm(f => ({ ...f, offSeasonEndMonth: e.target.value.padStart(2, '0') }))} />
+                      <span className="self-center text-muted-foreground">-</span>
+                      <Input type="number" min={1} max={31} title="Day of month visits resume (1–31)" placeholder="DD" className="w-16 text-sm" value={form.offSeasonEndDay}
+                        onChange={e => setForm(f => ({ ...f, offSeasonEndDay: e.target.value.padStart(2, '0') }))} />
+                    </div>
                   </div>
                 </div>
               )}
@@ -439,14 +506,14 @@ export default function PlanTemplatesSettings() {
                 <p className="text-sm font-medium">Auto-Renew by Default</p>
                 <p className="text-xs text-muted-foreground">Plans sold from this template default to auto-renew (can be overridden per customer).</p>
               </div>
-              <Switch checked={form.autoRenewDefault} onCheckedChange={v => setForm(f => ({ ...f, autoRenewDefault: v }))} />
+              <Switch title={form.autoRenewDefault ? 'Plans sold from this template default to auto-renew — click to change default' : 'Plans sold from this template default to NOT auto-renew — click to change default'} checked={form.autoRenewDefault} onCheckedChange={v => setForm(f => ({ ...f, autoRenewDefault: v }))} />
             </div>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium">Active</p>
                 <p className="text-xs text-muted-foreground">Inactive templates can't be sold to new customers.</p>
               </div>
-              <Switch checked={form.isActive} onCheckedChange={v => setForm(f => ({ ...f, isActive: v }))} />
+              <Switch title={form.isActive ? 'Template is active — click to deactivate (hides from new sales)' : 'Template is inactive — click to re-activate'} checked={form.isActive} onCheckedChange={v => setForm(f => ({ ...f, isActive: v }))} />
             </div>
 
             <Separator />
@@ -457,7 +524,7 @@ export default function PlanTemplatesSettings() {
             )}
             <div className="flex gap-3 justify-end">
               <Button variant="outline" onClick={() => setSheetMode(null)}>Cancel</Button>
-              <Button onClick={handleSave} disabled={createMutation.isPending || updateMutation.isPending}>
+              <Button title={sheetMode === 'create' ? 'Create this plan template' : 'Save changes to this plan template'} onClick={handleSave} disabled={createMutation.isPending || updateMutation.isPending}>
                 {createMutation.isPending || updateMutation.isPending ? 'Saving...' : sheetMode === 'create' ? 'Create Template' : 'Save Changes'}
               </Button>
             </div>

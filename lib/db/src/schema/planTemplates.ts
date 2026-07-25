@@ -39,6 +39,12 @@ export const planTemplatesTable = pgTable("plan_templates", {
    * [{ minSqft, maxSqft (null = open-ended), price }]
    */
   pricingMatrix: jsonb("pricing_matrix"),
+  /**
+   * Off-season window when visits are paused (format "MM-DD", e.g. "11-15").
+   * Null = no off-season for this plan.
+   */
+  offSeasonStart: text("off_season_start"),
+  offSeasonEnd: text("off_season_end"),
   /** Default for whether plans sold from this template auto-renew (can be overridden per plan). */
   autoRenewDefault: boolean("auto_renew_default").notNull().default(true),
   isActive: boolean("is_active").notNull().default(true),

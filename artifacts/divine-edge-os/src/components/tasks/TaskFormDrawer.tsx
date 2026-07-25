@@ -27,18 +27,21 @@ interface TaskFormDrawerProps {
   /** Pre-fill and lock the context link, e.g. when launched from an equipment detail page */
   lockedContext?: { contextType: 'customer' | 'job' | 'property' | 'equipment'; contextId: number; label: string };
   onCreated?: (task: InternalTask) => void;
+  /** Optional initial values to prefill the form (e.g. from inventory reorder shortcut) */
+  initialTitle?: string;
+  initialDescription?: string;
 }
 
 type Assignee = { kind: 'user'; userId: number } | { kind: 'role'; role: string };
 
-export function TaskFormDrawer({ open, onOpenChange, lockedContext, onCreated }: TaskFormDrawerProps) {
+export function TaskFormDrawer({ open, onOpenChange, lockedContext, onCreated, initialTitle, initialDescription }: TaskFormDrawerProps) {
   const { user, isOwner, isManager, isDepartmentManager, isCrewManager, isTechnician } = useAuth();
   const qc = useQueryClient();
   const isAdminOffice = isOwner || isManager || isDepartmentManager;
 
   const [quickAction, setQuickAction] = useState<string>('custom');
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
+  const [title, setTitle] = useState(initialTitle ?? '');
+  const [description, setDescription] = useState(initialDescription ?? '');
   const [priority, setPriority] = useState('normal');
   const [dueDate, setDueDate] = useState('');
   const [contextType, setContextType] = useState<string>(lockedContext?.contextType ?? '__none__');
@@ -84,7 +87,9 @@ export function TaskFormDrawer({ open, onOpenChange, lockedContext, onCreated }:
       setContextType(lockedContext.contextType);
       setContextId(String(lockedContext.contextId));
     }
-  }, [open, lockedContext]);
+    if (initialTitle) setTitle(initialTitle);
+    if (initialDescription) setDescription(initialDescription);
+  }, [open, lockedContext, initialTitle, initialDescription]);
 
   function applyQuickAction(value: string) {
     setQuickAction(value);
@@ -149,7 +154,7 @@ export function TaskFormDrawer({ open, onOpenChange, lockedContext, onCreated }:
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Quick Action</label>
             <Select value={quickAction} onValueChange={applyQuickAction}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger title="Pick a common task type to pre-fill the form"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {QUICK_ACTION_TYPES.map(a => <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>)}
               </SelectContent>
@@ -158,19 +163,19 @@ export function TaskFormDrawer({ open, onOpenChange, lockedContext, onCreated }:
 
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Title <span className="text-destructive">*</span></label>
-            <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Call back about reschedule" />
+            <Input title="Short title describing what needs to be done" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Call back about reschedule" />
           </div>
 
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Description</label>
-            <Textarea rows={3} value={description} onChange={e => setDescription(e.target.value)} placeholder="Any extra detail..." />
+            <Textarea rows={3} title="Optional extra context for the assignee" value={description} onChange={e => setDescription(e.target.value)} placeholder="Any extra detail..." />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Priority</label>
               <Select value={priority} onValueChange={setPriority}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger title="How urgently this task needs to be addressed"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {TASK_PRIORITIES.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
                 </SelectContent>
@@ -178,14 +183,14 @@ export function TaskFormDrawer({ open, onOpenChange, lockedContext, onCreated }:
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Due Date</label>
-              <Input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} />
+              <Input type="date" title="Date by which this task should be completed" value={dueDate} onChange={e => setDueDate(e.target.value)} />
             </div>
           </div>
 
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Assign To <span className="text-destructive">*</span></label>
             <Select value={assignee} onValueChange={setAssignee}>
-              <SelectTrigger><SelectValue placeholder="Select assignee..." /></SelectTrigger>
+              <SelectTrigger title="Team member or role responsible for completing this task"><SelectValue placeholder="Select assignee..." /></SelectTrigger>
               <SelectContent>
                 {assigneeOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
               </SelectContent>
@@ -197,7 +202,7 @@ export function TaskFormDrawer({ open, onOpenChange, lockedContext, onCreated }:
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Link to</label>
             <Select value={contextType} onValueChange={v => { setContextType(v); setContextId(''); }} disabled={!!lockedContext}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger title="Optionally link this task to a customer, job, or other record"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">Nothing specific</SelectItem>
                 {TASK_CONTEXT_TYPES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
@@ -211,7 +216,7 @@ export function TaskFormDrawer({ open, onOpenChange, lockedContext, onCreated }:
             <div className="space-y-1.5">
               <label className="text-sm font-medium">{TASK_CONTEXT_TYPES.find(c => c.value === contextType)?.label}</label>
               <Select value={contextId} onValueChange={setContextId}>
-                <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
+                <SelectTrigger title="Select the specific record to link this task to"><SelectValue placeholder="Select..." /></SelectTrigger>
                 <SelectContent>
                   {contextOptions.map((o: { id: number; label: string }) => <SelectItem key={o.id} value={String(o.id)}>{o.label}</SelectItem>)}
                 </SelectContent>
@@ -222,7 +227,7 @@ export function TaskFormDrawer({ open, onOpenChange, lockedContext, onCreated }:
           <Separator />
           <div className="flex gap-3 justify-end">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button onClick={handleSubmit} disabled={createTask.isPending}>
+            <Button title="Save and assign this task" onClick={handleSubmit} disabled={createTask.isPending}>
               {createTask.isPending ? 'Creating...' : 'Create Task'}
             </Button>
           </div>

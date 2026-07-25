@@ -15,6 +15,8 @@ import Alerts from '@/pages/alerts';
 import ServiceRequests from '@/pages/service-requests';
 import MyRequests from '@/pages/my-requests';
 import ServicePlans from '@/pages/service-plans';
+import Estimates from '@/pages/estimates';
+import Profile from '@/pages/profile';
 
 function NotFound() {
   return (
@@ -73,6 +75,12 @@ function Router() {
       </Route>
       <Route path="/plans/:id">
         <AppShell><ServicePlans /></AppShell>
+      </Route>
+      <Route path="/estimates">
+        <AppShell><Estimates /></AppShell>
+      </Route>
+      <Route path="/profile">
+        <AppShell><Profile /></AppShell>
       </Route>
 
       <Route>

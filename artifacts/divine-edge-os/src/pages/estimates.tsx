@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
@@ -31,9 +31,10 @@ import {
 import { format } from 'date-fns';
 import {
   Plus, FileText, DollarSign, TrendingUp, Send, Briefcase, Trash2,
-  ChevronRight, Eye, Clock, User, MapPin, CheckCircle2, XCircle, Phone, Mail, Globe, Building2, Printer,
+  ChevronRight, Eye, Clock, User, MapPin, CheckCircle2, XCircle, Phone, Mail, Globe, Building2, Printer, Search, Edit2, RefreshCw, Copy, X, Target,
 } from 'lucide-react';
-import { Link, useSearch } from 'wouter';
+import { Link, useSearch, useLocation } from 'wouter';
+import { printEstimate } from '@/lib/printUtils';
 const STATUS_COLORS: Record<string, string> = {
   draft:    'bg-gray-100 text-gray-700 border-gray-200',
   sent:     'bg-blue-100 text-blue-700 border-blue-200',
@@ -117,16 +118,16 @@ function EstimatePreviewDialog({ estimate, settings, open, onClose }: {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-bold">Estimate #{estimate.id}</h2>
-                  <p className="text-sm text-muted-foreground">Prepared {estimate.createdAt ? format(new Date(estimate.createdAt), 'MMMM d, yyyy') : ''}</p>
+                  <p className="text-sm text-muted-foreground" title={estimate.createdAt ? `Prepared on ${format(new Date(estimate.createdAt), 'EEEE, MMMM d, yyyy')}` : undefined}>Prepared {estimate.createdAt ? format(new Date(estimate.createdAt), 'MMMM d, yyyy') : ''}</p>
                 </div>
                 <span className={`px-3 py-1 rounded-full text-xs font-semibold capitalize ${STATUS_COLORS[estimate.status] ?? ''}`}>{estimate.status}</span>
               </div>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 {estimate.customerName && (
-                  <div><p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-0.5">Customer</p><p className="font-medium">{estimate.customerName}</p></div>
+                  <div><p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-0.5">Customer</p>{(estimate as any).customerId ? <a href={`${import.meta.env.BASE_URL}customers/${(estimate as any).customerId}`} className="font-medium text-primary hover:underline">{estimate.customerName}</a> : <p className="font-medium">{estimate.customerName}</p>}</div>
                 )}
                 {estimate.propertyAddress && (
-                  <div><p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-0.5">Property</p><p>{estimate.propertyAddress}</p></div>
+                  <div><p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-0.5">Property</p>{(estimate as any).propertyId ? <a href={`${import.meta.env.BASE_URL}properties/${(estimate as any).propertyId}`} className="font-medium text-primary hover:underline">{estimate.propertyAddress}</a> : <p>{estimate.propertyAddress}</p>}</div>
                 )}
                 {estimate.scheduledAt && (
                   <div><p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-0.5">Scheduled</p><p>{format(new Date(estimate.scheduledAt), 'MMM d, yyyy h:mm a')}</p></div>
@@ -190,7 +191,12 @@ function EstimatePreviewDialog({ estimate, settings, open, onClose }: {
               </table>
             </div>
 
-            <p className="text-center text-xs text-muted-foreground pb-4">
+            <div className="flex justify-center gap-3 pb-4">
+              <Button variant="outline" size="sm" className="gap-2" onClick={() => printEstimate(estimate as Record<string, unknown>, settings as Record<string, unknown>)}>
+                <Printer className="w-3.5 h-3.5" /> Print / Save PDF
+              </Button>
+            </div>
+            <p className="text-center text-xs text-muted-foreground pb-2">
               Staff preview — the customer sees this after you send the estimate.
             </p>
           </div>
@@ -204,11 +210,20 @@ export default function EstimatesPage() {
   const { canManageOffice } = useAuth();
   const qc = useQueryClient();
   const search = useSearch();
+  const [, setLocation] = useLocation();
 
   const [statusFilter, setStatusFilter] = useState('');
+  const [visitModeFilter, setVisitModeFilter] = useState('');
+  const [estimateDateFrom, setEstimateDateFrom] = useState('');
+  const [estimateDateTo, setEstimateDateTo] = useState('');
+  const [estimateSort, setEstimateSort] = useState<'newest' | 'oldest' | 'customer' | 'expiring' | 'value_desc' | 'value_asc'>('newest');
+  const [estimateSearch, setEstimateSearch] = useState('');
+  const [assigneeFilter, setAssigneeFilter] = useState<number | ''>('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [notesVal, setNotesVal] = useState('');
 
   // Auto-select an estimate when navigated here with ?highlight=<id>
   // Also open create sheet when arriving via quick-add shortcut (?action=create)
@@ -221,6 +236,10 @@ export default function EstimatesPage() {
     }
     if (params.get('action') === 'create') {
       setCreateOpen(true);
+      const custId = params.get('customerId');
+      if (custId && !Number.isNaN(parseInt(custId, 10))) {
+        setForm(f => ({ ...f, customerId: custId }));
+      }
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, [search]);
@@ -240,6 +259,8 @@ export default function EstimatesPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createOpen]);
   const [deleteDialogId, setDeleteDialogId] = useState<number | null>(null);
+  const [sendDialogId, setSendDialogId] = useState<number | null>(null);
+  const [sendExpiresAt, setSendExpiresAt] = useState('');
 
   // Form state for create
   const [form, setForm] = useState({
@@ -254,7 +275,7 @@ export default function EstimatesPage() {
   });
   const [lineItems, setLineItems] = useState<LineItem[]>([emptyItem()]);
 
-  const listParams = statusFilter ? { status: statusFilter } : {};
+  const listParams = { ...(statusFilter ? { status: statusFilter } : {}), ...(assigneeFilter ? { assigneeId: assigneeFilter } : {}) };
   const { data: estimates, isLoading } = useListEstimates(listParams, {
     query: { queryKey: getListEstimatesQueryKey(listParams) },
   });
@@ -263,10 +284,15 @@ export default function EstimatesPage() {
     query: { enabled: selectedId != null, queryKey: getGetEstimateQueryKey(selectedId!) },
   });
   const { data: customers } = useListCustomers({}, { query: { enabled: createOpen, queryKey: getListCustomersQueryKey({}) } });
-  const { data: users } = useListUsers({ query: { enabled: createOpen, queryKey: getListUsersQueryKey() } });
+  const { data: users } = useListUsers({ query: { queryKey: getListUsersQueryKey() } });
   const { data: properties } = useListProperties({}, { query: { enabled: createOpen, queryKey: getListPropertiesQueryKey({}) } });
   const { data: templates } = useListEstimateTemplates({ query: { enabled: createOpen, queryKey: getListEstimateTemplatesQueryKey() } });
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
+
+  useEffect(() => {
+    setNotesVal(selectedEstimate?.notes ?? '');
+    setEditingNotes(false);
+  }, [selectedId]);
 
   const createEstimate = useCreateEstimate();
   const updateEstimate = useUpdateEstimate();
@@ -343,6 +369,22 @@ export default function EstimatesPage() {
     });
   }
 
+  function openSendDialog(estimate: NonNullable<typeof estimates>[number]) {
+    if (estimate.expiresAt) {
+      const d = new Date(estimate.expiresAt);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      setSendExpiresAt(`${yyyy}-${mm}-${dd}`);
+    } else {
+      const days = (settings as any)?.estimateExpiryDays ?? 30;
+      const exp = new Date();
+      exp.setDate(exp.getDate() + days);
+      setSendExpiresAt(`${exp.getFullYear()}-${String(exp.getMonth() + 1).padStart(2, '0')}-${String(exp.getDate()).padStart(2, '0')}`);
+    }
+    setSendDialogId(estimate.id);
+  }
+
   function handleSend(id: number) {
     sendEstimate.mutate({ id }, {
       onSuccess: (r) => {
@@ -354,15 +396,24 @@ export default function EstimatesPage() {
         } else {
           toast.success('Estimate sent');
         }
+        setSendDialogId(null);
         invalidate();
       },
       onError: () => toast.error('Failed to send estimate'),
     });
   }
 
+  const [convertConfirmId, setConvertConfirmId] = useState<number | null>(null);
+
   function handleConvert(id: number) {
     convertToJob.mutate({ id }, {
-      onSuccess: (r) => { toast.success(`Job #${r.jobId} created`); invalidate(); },
+      onSuccess: (r) => {
+        toast.success(`Job #${r.jobId} created`, {
+          action: { label: 'View Job', onClick: () => setLocation(`/schedule?jobId=${r.jobId}`) },
+        });
+        invalidate();
+        setConvertConfirmId(null);
+      },
       onError: () => toast.error('Failed to convert estimate'),
     });
   }
@@ -384,7 +435,7 @@ export default function EstimatesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Estimates</h1>
-          <p className="text-muted-foreground mt-1">Manage price proposals and convert them to jobs.</p>
+          <p className="text-muted-foreground mt-1">Manage price proposals and convert them to jobs.{Array.isArray(estimates) && (estimates as any[]).length > 0 ? ` · ${(estimates as any[]).length} total` : ''}</p>
         </div>
         <div className="flex items-center gap-2">
           <ImportExportControls
@@ -394,7 +445,7 @@ export default function EstimatesPage() {
             onImportComplete={() => qc.invalidateQueries({ queryKey: getListEstimatesQueryKey() })}
           />
           {canManageOffice && (
-            <Button onClick={() => setCreateOpen(true)} className="gap-2">
+            <Button title="Create a new estimate" onClick={() => setCreateOpen(true)} className="gap-2">
               <Plus className="w-4 h-4" /> New Estimate
             </Button>
           )}
@@ -413,6 +464,7 @@ export default function EstimatesPage() {
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Pipeline Value</p>
                   <p className="text-2xl font-bold">${(pipeline.pipelineValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                  {(pipeline as any).sentCount > 0 && <p className="text-xs text-muted-foreground mt-0.5">{(pipeline as any).sentCount} sent</p>}
                 </div>
               </div>
             </CardContent>
@@ -426,17 +478,45 @@ export default function EstimatesPage() {
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Upsell Revenue</p>
                   <p className="text-2xl font-bold">${(pipeline.upsellRevenue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                  {(pipeline as any).approvedCount > 0 && <p className="text-xs text-emerald-600 mt-0.5">{(pipeline as any).approvedCount} approved</p>}
                 </div>
               </div>
             </CardContent>
           </Card>
+          {(() => { const sent = (pipeline as any).sentCount ?? 0; const approved = (pipeline as any).approvedCount ?? 0; if (sent === 0) return null; const rate = Math.round((approved / sent) * 100); return (
+            <Card>
+              <CardContent className="pt-5 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-amber-100">
+                    <Target className="w-5 h-5 text-amber-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Win Rate</p>
+                    <p className="text-2xl font-bold">{rate}%</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{approved} of {sent} sent</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ); })()}
         </div>
       )}
 
       {/* Filters */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+          <Input
+            value={estimateSearch}
+            onChange={e => setEstimateSearch(e.target.value)}
+            placeholder="Search estimates…"
+            title="Search by customer name, property address, or estimate number"
+            className="h-9 text-sm pl-7 w-52"
+          />
+          {estimateSearch && <button onClick={() => setEstimateSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>}
+        </div>
         <Select value={statusFilter || 'all'} onValueChange={v => setStatusFilter(v === 'all' ? '' : v)}>
-          <SelectTrigger className="w-44">
+          <SelectTrigger className="w-44" title="Filter by estimate status">
             <SelectValue placeholder="All statuses" />
           </SelectTrigger>
           <SelectContent>
@@ -444,10 +524,78 @@ export default function EstimatesPage() {
             <SelectItem value="draft">Draft</SelectItem>
             <SelectItem value="sent">Sent</SelectItem>
             <SelectItem value="approved">Approved</SelectItem>
+            <SelectItem value="accepted">Accepted</SelectItem>
             <SelectItem value="declined">Declined</SelectItem>
             <SelectItem value="expired">Expired</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={visitModeFilter || 'all'} onValueChange={v => setVisitModeFilter(v === 'all' ? '' : v)}>
+          <SelectTrigger className="w-36" title="Filter by visit mode (one-time, recurring, drive-by)">
+            <SelectValue placeholder="All visit modes" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Visit Modes</SelectItem>
+            <SelectItem value="one_time">One-time</SelectItem>
+            <SelectItem value="recurring">Recurring</SelectItem>
+            <SelectItem value="drive_by">Drive-by</SelectItem>
+          </SelectContent>
+        </Select>
+        {canManageOffice && (
+          <Select value={assigneeFilter ? String(assigneeFilter) : 'all'} onValueChange={v => setAssigneeFilter(v === 'all' ? '' : Number(v))}>
+            <SelectTrigger className="w-40" title="Filter by assigned salesperson">
+              <SelectValue placeholder="All assignees" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Assignees</SelectItem>
+              {(users ?? []).filter(u => u.role !== 'technician').map(u => (
+                <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        <Select value="" onValueChange={v => {
+          const now = new Date(); const y = now.getFullYear(); const m = now.getMonth();
+          if (v === 'thisMonth') { setEstimateDateFrom(new Date(y, m, 1).toISOString().slice(0, 10)); setEstimateDateTo(new Date(y, m + 1, 0).toISOString().slice(0, 10)); }
+          else if (v === 'lastMonth') { setEstimateDateFrom(new Date(y, m - 1, 1).toISOString().slice(0, 10)); setEstimateDateTo(new Date(y, m, 0).toISOString().slice(0, 10)); }
+          else if (v === 'thisYear') { setEstimateDateFrom(`${y}-01-01`); setEstimateDateTo(`${y}-12-31`); }
+          else if (v === 'last30') { setEstimateDateFrom(new Date(now.getTime() - 30 * 86400000).toISOString().slice(0, 10)); setEstimateDateTo(now.toISOString().slice(0, 10)); }
+        }}>
+          <SelectTrigger className="h-9 w-32 text-sm" title="Select a quick date range preset"><SelectValue placeholder="Quick…" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="last30">Last 30 days</SelectItem>
+            <SelectItem value="thisMonth">This Month</SelectItem>
+            <SelectItem value="lastMonth">Last Month</SelectItem>
+            <SelectItem value="thisYear">This Year</SelectItem>
+          </SelectContent>
+        </Select>
+        <input
+          type="date"
+          value={estimateDateFrom}
+          onChange={e => setEstimateDateFrom(e.target.value)}
+          className="h-9 text-sm px-2.5 rounded-md border border-input bg-background"
+          title="From date"
+        />
+        <input
+          type="date"
+          value={estimateDateTo}
+          onChange={e => setEstimateDateTo(e.target.value)}
+          className="h-9 text-sm px-2.5 rounded-md border border-input bg-background"
+          title="To date"
+        />
+        <Select value={estimateSort} onValueChange={v => setEstimateSort(v as typeof estimateSort)}>
+          <SelectTrigger className="w-36" title="Sort estimates"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="newest">Newest first</SelectItem>
+            <SelectItem value="oldest">Oldest first</SelectItem>
+            <SelectItem value="customer">Customer A–Z</SelectItem>
+            <SelectItem value="expiring">Expiring soon</SelectItem>
+            <SelectItem value="value_desc">Highest value</SelectItem>
+            <SelectItem value="value_asc">Lowest value</SelectItem>
+          </SelectContent>
+        </Select>
+        {(statusFilter || visitModeFilter || assigneeFilter || estimateDateFrom || estimateDateTo) && (
+          <Button variant="ghost" size="sm" title="Reset all active filters" onClick={() => { setStatusFilter(''); setVisitModeFilter(''); setAssigneeFilter(''); setEstimateDateFrom(''); setEstimateDateTo(''); }}>Clear filters</Button>
+        )}
       </div>
 
       {/* Estimates list */}
@@ -463,7 +611,24 @@ export default function EstimatesPage() {
             </div>
           ) : (
             <div className="divide-y">
-              {estimates.map(est => (
+              {(estimateSearch.trim() || visitModeFilter || estimateDateFrom || estimateDateTo || !!statusFilter || !!assigneeFilter) && (() => {
+                const n = (estimates ?? []).filter(e => !estimateSearch.trim() || `#${e.id}`.includes(estimateSearch) || (e.customerName ?? '').toLowerCase().includes(estimateSearch.toLowerCase()) || (e.propertyAddress ?? '').toLowerCase().includes(estimateSearch.toLowerCase())).filter(e => !visitModeFilter || e.visitMode === visitModeFilter).filter(e => !estimateDateFrom || (e.createdAt ?? '') >= estimateDateFrom).filter(e => !estimateDateTo || (e.createdAt ?? '') <= estimateDateTo + 'T23:59:59').filter(e => !statusFilter || e.status === statusFilter).filter(e => !assigneeFilter || (e as any).assigneeId === assigneeFilter).length;
+                return <div key="est-count" className="px-5 py-2 text-xs text-muted-foreground bg-muted/20" title={`${n} of ${(estimates ?? []).length} estimates match the active filters`}>Showing {n} of {(estimates ?? []).length} estimate{(estimates ?? []).length !== 1 ? 's' : ''}</div>;
+              })()}
+              {(estimates ?? [])
+                .filter(e => !estimateSearch.trim() || `#${e.id}`.includes(estimateSearch) || (e.customerName ?? '').toLowerCase().includes(estimateSearch.toLowerCase()) || (e.propertyAddress ?? '').toLowerCase().includes(estimateSearch.toLowerCase()))
+                .filter(e => !visitModeFilter || e.visitMode === visitModeFilter)
+                .filter(e => !estimateDateFrom || (e.createdAt ?? '') >= estimateDateFrom)
+                .filter(e => !estimateDateTo || (e.createdAt ?? '') <= estimateDateTo + 'T23:59:59')
+                .sort((a, b) => {
+                  if (estimateSort === 'oldest') return new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime();
+                  if (estimateSort === 'customer') return (a.customerName ?? '').localeCompare(b.customerName ?? '');
+                  if (estimateSort === 'expiring') return new Date((a as any).expiresAt ?? '9999').getTime() - new Date((b as any).expiresAt ?? '9999').getTime();
+                  if (estimateSort === 'value_desc') return ((b as any).total ?? 0) - ((a as any).total ?? 0);
+                  if (estimateSort === 'value_asc') return ((a as any).total ?? 0) - ((b as any).total ?? 0);
+                  return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime(); // newest
+                })
+                .map(est => (
                 <div
                   key={est.id}
                   className="flex items-center gap-4 px-5 py-4 hover:bg-muted/40 cursor-pointer transition-colors"
@@ -472,22 +637,33 @@ export default function EstimatesPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium">Estimate #{est.id}</span>
-                      <Badge className={`capitalize text-xs ${STATUS_COLORS[est.status] ?? ''}`} variant="outline">
+                      <Badge className={`capitalize text-xs ${STATUS_COLORS[est.status] ?? ''}`} variant="outline" title={`Estimate status: ${est.status}`}>
                         {est.status}
                       </Badge>
-                      <Badge variant="outline" className="text-xs text-muted-foreground border-muted">
+                      <Badge variant="outline" className="text-xs text-muted-foreground border-muted" title={`Visit mode: ${VISIT_MODE_LABELS[est.visitMode] ?? est.visitMode}`}>
                         {VISIT_MODE_LABELS[est.visitMode] ?? est.visitMode}
                       </Badge>
+                      {est.status === 'sent' && (est as any).expiresAt && (() => {
+                        const daysLeft = Math.ceil((new Date((est as any).expiresAt).getTime() - Date.now()) / 86400000);
+                        if (daysLeft <= 0) return <Badge variant="outline" className="text-xs bg-red-50 text-red-700 border-red-300">Expired</Badge>;
+                        if (daysLeft <= 5) return <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300">Expires in {daysLeft}d</Badge>;
+                        return null;
+                      })()}
                     </div>
                     <div className="text-sm text-muted-foreground mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
-                      {est.customerName && <span className="flex items-center gap-1"><User className="w-3 h-3" />{est.customerName}</span>}
-                      {est.propertyAddress && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{est.propertyAddress}</span>}
+                      {est.customerName && (
+                        (est as any).customerId
+                          ? <button className="flex items-center gap-1 text-primary hover:underline" title={`View ${est.customerName}`} onClick={e => { e.stopPropagation(); setLocation(`/customers/${(est as any).customerId}`); }}><User className="w-3 h-3" />{est.customerName}</button>
+                          : <span className="flex items-center gap-1"><User className="w-3 h-3" />{est.customerName}</span>
+                      )}
+                      {est.propertyAddress && <span className="flex items-center gap-1" title={est.propertyAddress}><MapPin className="w-3 h-3" />{est.propertyAddress}</span>}
                       {est.scheduledAt && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{format(new Date(est.scheduledAt), 'MMM d, yyyy')}</span>}
+                      {(est as any).assigneeName && <span className="flex items-center gap-1 text-muted-foreground" title={`Assigned to: ${(est as any).assigneeName}`}><User className="w-3 h-3" />{(est as any).assigneeName}</span>}
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="font-semibold">${(est.total ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                    <p className="text-xs text-muted-foreground">{format(new Date(est.createdAt), 'MMM d')}</p>
+                    <p className="font-semibold" title={`Total: $${(est.total ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`}>${(est.total ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                    <p className="text-xs text-muted-foreground" title={format(new Date(est.createdAt), 'EEEE, MMMM d, yyyy')}>{format(new Date(est.createdAt), 'MMM d')}</p>
                   </div>
                   <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
                 </div>
@@ -511,7 +687,7 @@ export default function EstimatesPage() {
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Apply Template</label>
                 <Select value={form.templateId} onValueChange={applyTemplate}>
-                  <SelectTrigger><SelectValue placeholder="No template" /></SelectTrigger>
+                  <SelectTrigger title="Apply a saved estimate template to pre-fill line items and settings"><SelectValue placeholder="No template" /></SelectTrigger>
                   <SelectContent>
                     {templates.map(t => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}
                   </SelectContent>
@@ -523,24 +699,38 @@ export default function EstimatesPage() {
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Customer</label>
                 <Select value={form.customerId} onValueChange={v => setForm(f => ({ ...f, customerId: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Select customer..." /></SelectTrigger>
+                  <SelectTrigger title="Select the customer this estimate is for"><SelectValue placeholder="Select customer..." /></SelectTrigger>
                   <SelectContent>{(customers?.items ?? []).map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Assign To</label>
                 <Select value={form.assigneeId} onValueChange={v => setForm(f => ({ ...f, assigneeId: v }))}>
-                  <SelectTrigger><SelectValue placeholder="Select assignee..." /></SelectTrigger>
+                  <SelectTrigger title="Assign this estimate to a staff member"><SelectValue placeholder="Select assignee..." /></SelectTrigger>
                   <SelectContent>{(users ?? []).map(u => <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
             </div>
 
+            {form.customerId && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Property <span className="text-muted-foreground font-normal">(optional)</span></label>
+                <Select value={form.propertyId} onValueChange={v => setForm(f => ({ ...f, propertyId: v }))}>
+                  <SelectTrigger title="Select the property where work will be performed"><SelectValue placeholder="Select property..." /></SelectTrigger>
+                  <SelectContent>
+                    {((properties as any)?.items ?? properties ?? [])
+                      .filter((p: any) => String(p.customerId) === form.customerId)
+                      .map((p: any) => <SelectItem key={p.id} value={String(p.id)}>{p.address || `Property #${p.id}`}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Visit Mode</label>
                 <Select value={form.visitMode} onValueChange={v => setForm(f => ({ ...f, visitMode: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger title="How the technician will visit the property for this estimate"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="scheduled">Scheduled Appointment</SelectItem>
                     <SelectItem value="drop_by">Drop By / Flexible</SelectItem>
@@ -551,19 +741,19 @@ export default function EstimatesPage() {
               {form.visitMode === 'scheduled' && (
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Scheduled At</label>
-                  <Input type="datetime-local" value={form.scheduledAt} onChange={e => setForm(f => ({ ...f, scheduledAt: e.target.value }))} />
+                  <Input type="datetime-local" title="Date and time the estimate visit is scheduled" value={form.scheduledAt} onChange={e => setForm(f => ({ ...f, scheduledAt: e.target.value }))} />
                 </div>
               )}
             </div>
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Expires At</label>
-              <Input type="date" value={form.expiresAt} onChange={e => setForm(f => ({ ...f, expiresAt: e.target.value }))} />
+              <Input type="date" title="Date after which this estimate is no longer valid" value={form.expiresAt} onChange={e => setForm(f => ({ ...f, expiresAt: e.target.value }))} />
             </div>
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Notes</label>
-              <Textarea rows={2} placeholder="Internal notes or scope..." value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+              <Textarea rows={2} title="Internal notes or scope of work (not shown on the customer-facing estimate)" placeholder="Internal notes or scope..." value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
             </div>
 
             <Separator />
@@ -581,7 +771,7 @@ export default function EstimatesPage() {
                 <div key={item.id} className={`rounded-lg border p-4 space-y-3 ${item.isOptional ? 'border-dashed border-amber-300 bg-amber-50/50' : ''}`}>
                   <div className="flex items-start gap-2">
                     <div className="flex-1">
-                      <Input placeholder="Description" value={item.description} onChange={e => updateLineItem(idx, { description: e.target.value })} />
+                      <Input title="Line item description" placeholder="Description" value={item.description} onChange={e => updateLineItem(idx, { description: e.target.value })} />
                     </div>
                     <Button variant="ghost" size="sm" className="text-muted-foreground h-9 w-9 p-0 shrink-0" onClick={() => setLineItems(i => i.filter((_, j) => j !== idx))} disabled={lineItems.length === 1}>
                       <Trash2 className="w-3.5 h-3.5" />
@@ -590,19 +780,19 @@ export default function EstimatesPage() {
                   <div className="grid grid-cols-4 gap-2">
                     <div className="space-y-1">
                       <label className="text-xs text-muted-foreground">Qty</label>
-                      <Input type="number" min={1} step={1} value={item.qty} onChange={e => updateLineItem(idx, { qty: parseFloat(e.target.value) || 1 })} />
+                      <Input type="number" min={1} step={1} title="Number of units" value={item.qty} onChange={e => updateLineItem(idx, { qty: parseFloat(e.target.value) || 1 })} />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs text-muted-foreground">Unit Price</label>
-                      <Input type="number" min={0} step={0.01} value={item.unitPrice} onChange={e => updateLineItem(idx, { unitPrice: parseFloat(e.target.value) || 0 })} />
+                      <Input type="number" min={0} step={0.01} title="Price per unit" value={item.unitPrice} onChange={e => updateLineItem(idx, { unitPrice: parseFloat(e.target.value) || 0 })} />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs text-muted-foreground">Markup %</label>
-                      <Input type="number" min={0} step={1} value={item.markup} onChange={e => updateLineItem(idx, { markup: parseFloat(e.target.value) || 0 })} />
+                      <Input type="number" min={0} step={1} title="Markup percentage added on top of unit price" value={item.markup} onChange={e => updateLineItem(idx, { markup: parseFloat(e.target.value) || 0 })} />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs text-muted-foreground">Discount %</label>
-                      <Input type="number" min={0} step={1} value={item.discount} onChange={e => updateLineItem(idx, { discount: parseFloat(e.target.value) || 0 })} />
+                      <Input type="number" min={0} step={1} title="Discount percentage subtracted from the marked-up price" value={item.discount} onChange={e => updateLineItem(idx, { discount: parseFloat(e.target.value) || 0 })} />
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
@@ -610,10 +800,10 @@ export default function EstimatesPage() {
                       <input type="checkbox" checked={item.isOptional} onChange={e => updateLineItem(idx, { isOptional: e.target.checked })} className="rounded" />
                       Mark as Optional (Add-On)
                     </label>
-                    <span className="ml-auto text-sm font-medium">${calcItem(item).toFixed(2)}</span>
+                    <span className="ml-auto text-sm font-medium" title={`Line total: $${calcItem(item).toFixed(2)}`}>${calcItem(item).toFixed(2)}</span>
                   </div>
                   {item.isOptional && (
-                    <Input placeholder="Pitch line (e.g. While we're there — trim your hedges for $45)" value={item.optionalPitchLine} onChange={e => updateLineItem(idx, { optionalPitchLine: e.target.value })} className="text-sm" />
+                    <Input title="Upsell pitch line shown to the customer when they view this estimate" placeholder="Pitch line (e.g. While we're there — trim your hedges for $45)" value={item.optionalPitchLine} onChange={e => updateLineItem(idx, { optionalPitchLine: e.target.value })} className="text-sm" />
                   )}
                 </div>
               ))}
@@ -628,8 +818,8 @@ export default function EstimatesPage() {
 
             <Separator />
             <div className="flex gap-3 justify-end">
-              <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-              <Button onClick={handleCreate} disabled={createEstimate.isPending}>
+              <Button variant="outline" title="Discard this new estimate" onClick={() => setCreateOpen(false)}>Cancel</Button>
+              <Button title="Create this estimate and open it for editing" onClick={handleCreate} disabled={createEstimate.isPending}>
                 {createEstimate.isPending ? 'Creating...' : 'Create Estimate'}
               </Button>
             </div>
@@ -645,13 +835,24 @@ export default function EstimatesPage() {
               <SheetHeader className="pb-4">
                 <div className="flex items-center justify-between gap-4">
                   <SheetTitle>Estimate #{selectedEstimate.id}</SheetTitle>
-                  <Badge className={`capitalize ${STATUS_COLORS[selectedEstimate.status] ?? ''}`} variant="outline">
+                  <Badge className={`capitalize ${STATUS_COLORS[selectedEstimate.status] ?? ''}`} variant="outline" title={`Estimate status: ${selectedEstimate.status}`}>
                     {selectedEstimate.status}
                   </Badge>
                 </div>
                 <SheetDescription>
-                  Created {format(new Date(selectedEstimate.createdAt), 'MMM d, yyyy')} ·{' '}
+                  <span title={format(new Date(selectedEstimate.createdAt), 'EEEE, MMMM d, yyyy')}>Created {format(new Date(selectedEstimate.createdAt), 'MMM d, yyyy')}</span> ·{' '}
                   {VISIT_MODE_LABELS[selectedEstimate.visitMode] ?? selectedEstimate.visitMode}
+                  {(selectedEstimate as any).sentAt && (
+                    <> · <span className="text-emerald-600">Sent {format(new Date((selectedEstimate as any).sentAt), 'MMM d, yyyy')}</span></>
+                  )}
+                  {(selectedEstimate as any).expiresAt && selectedEstimate.status === 'sent' && (() => {
+                    const daysLeft = Math.ceil((new Date((selectedEstimate as any).expiresAt).getTime() - Date.now()) / 86400000);
+                    return daysLeft <= 0
+                      ? <> · <span className="text-destructive font-medium">Expired</span></>
+                      : daysLeft <= 5
+                        ? <> · <span className="text-amber-600 font-medium">Expires in {daysLeft}d</span></>
+                        : null;
+                  })()}
                 </SheetDescription>
               </SheetHeader>
 
@@ -681,37 +882,124 @@ export default function EstimatesPage() {
                 {/* Actions */}
                 <div className="flex flex-wrap gap-2">
                   {selectedEstimate.status === 'draft' && canManageOffice && (
-                    <Button size="sm" variant="outline" className="gap-2" onClick={() => handleSend(selectedEstimate.id)} disabled={sendEstimate.isPending}>
+                    <Button size="sm" variant="outline" className="gap-2" title="Send this estimate to the customer by email" onClick={() => openSendDialog(selectedEstimate)} disabled={sendEstimate.isPending}>
                       <Send className="w-3.5 h-3.5" /> Send to Customer
                     </Button>
                   )}
                   {selectedEstimate.status === 'approved' && !selectedEstimate.convertedToJobId && canManageOffice && (
-                    <Button size="sm" className="gap-2" onClick={() => handleConvert(selectedEstimate.id)} disabled={convertToJob.isPending}>
-                      <Briefcase className="w-3.5 h-3.5" /> Convert to Job
-                    </Button>
+                    convertConfirmId === selectedEstimate.id ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">Create a new job from this estimate?</span>
+                        <Button size="sm" className="gap-1.5" title="Confirm and create a new job from this estimate" onClick={() => handleConvert(selectedEstimate.id)} disabled={convertToJob.isPending}>
+                          <Briefcase className="w-3.5 h-3.5" /> {convertToJob.isPending ? 'Converting…' : 'Confirm'}
+                        </Button>
+                        <Button size="sm" variant="outline" title="Cancel converting to a job" onClick={() => setConvertConfirmId(null)}>Cancel</Button>
+                      </div>
+                    ) : (
+                      <Button size="sm" className="gap-2" title="Create a new job from this approved estimate" onClick={() => setConvertConfirmId(selectedEstimate.id)} disabled={convertToJob.isPending}>
+                        <Briefcase className="w-3.5 h-3.5" /> Convert to Job
+                      </Button>
+                    )
                   )}
                   {selectedEstimate.convertedToJobId && (
                     <span className="text-sm text-emerald-700 flex items-center gap-1">
                       <CheckCircle2 className="w-4 h-4" /> Converted → Job #{selectedEstimate.convertedToJobId}
                     </span>
                   )}
-                  {selectedEstimate.status === 'sent' && canManageOffice && (
-                    <Button size="sm" variant="outline" className="gap-2" onClick={() => handleResend(selectedEstimate.id)} disabled={resendEstimate.isPending}>
-                      <Send className="w-3.5 h-3.5" /> Resend Email
+                  {(selectedEstimate.status === 'declined' || selectedEstimate.status === 'expired') && canManageOffice && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-2"
+                      title="Reset this estimate back to draft status"
+                      disabled={updateEstimate.isPending}
+                      onClick={() => updateEstimate.mutate(
+                        { id: selectedEstimate.id, data: { status: 'draft' } as any },
+                        { onSuccess: () => { toast.success('Estimate reset to draft'); qc.invalidateQueries({ queryKey: getListEstimatesQueryKey() }); } },
+                      )}
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" /> Reset to Draft
                     </Button>
                   )}
-                  <Button size="sm" variant="outline" className="gap-2" onClick={() => setPreviewOpen(true)}>
+                  {selectedEstimate.status === 'sent' && canManageOffice && (
+                    <>
+                      <Button size="sm" variant="outline" className="gap-2" title="Resend the estimate email to the customer" onClick={() => handleResend(selectedEstimate.id)} disabled={resendEstimate.isPending}>
+                        <Send className="w-3.5 h-3.5" /> {resendEstimate.isPending ? 'Resending…' : 'Resend Email'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-2 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                        title="Mark this estimate as approved by the customer"
+                        disabled={updateEstimate.isPending}
+                        onClick={() => updateEstimate.mutate(
+                          { id: selectedEstimate.id, data: { status: 'approved' } as any },
+                          { onSuccess: () => { toast.success('Estimate marked as approved'); qc.invalidateQueries({ queryKey: getListEstimatesQueryKey() }); } },
+                        )}
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" /> {updateEstimate.isPending ? 'Approving…' : 'Mark Approved'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-2 text-destructive border-destructive/30 hover:bg-destructive/5"
+                        title="Mark this estimate as declined by the customer"
+                        disabled={updateEstimate.isPending}
+                        onClick={() => updateEstimate.mutate(
+                          { id: selectedEstimate.id, data: { status: 'declined' } as any },
+                          { onSuccess: () => { toast.success('Estimate marked as declined'); qc.invalidateQueries({ queryKey: getListEstimatesQueryKey() }); } },
+                        )}
+                      >
+                        <XCircle className="w-3.5 h-3.5" /> {updateEstimate.isPending ? 'Declining…' : 'Decline'}
+                      </Button>
+                    </>
+                  )}
+                  {canManageOffice && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-2"
+                      title="Create a copy of this estimate"
+                      disabled={createEstimate.isPending}
+                      onClick={() => {
+                        const est = selectedEstimate;
+                        createEstimate.mutate(
+                          {
+                            data: {
+                              customerId: est.customerId,
+                              propertyId: (est as any).propertyId,
+                              visitMode: est.visitMode as any,
+                              lineItems: ((est as any).lineItems ?? []).map((li: any) => ({
+                                serviceId: li.serviceId, quantity: li.quantity, unitPrice: li.unitPrice, description: li.description,
+                              })),
+                            } as any,
+                          },
+                          {
+                            onSuccess: (r: any) => {
+                              toast.success(`Estimate #${r.id} created as copy`);
+                              qc.invalidateQueries({ queryKey: getListEstimatesQueryKey() });
+                              setSelectedId(r.id);
+                            },
+                            onError: () => toast.error('Failed to duplicate estimate'),
+                          },
+                        );
+                      }}
+                    >
+                      <Copy className="w-3.5 h-3.5" /> {createEstimate.isPending ? 'Duplicating…' : 'Duplicate'}
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" className="gap-2" title="Preview how this estimate looks to the customer" onClick={() => setPreviewOpen(true)}>
                     <Eye className="w-3.5 h-3.5" /> Preview
                   </Button>
                   {selectedEstimate.approvalToken && selectedEstimate.status === 'sent' && (
-                    <Button size="sm" variant="outline" className="gap-2" asChild>
+                    <Button size="sm" variant="outline" className="gap-2" title="Open the customer-facing estimate approval page" asChild>
                       <a href={`/estimate/${selectedEstimate.approvalToken}`} target="_blank" rel="noopener noreferrer">
                         <Printer className="w-3.5 h-3.5" /> Customer View
                       </a>
                     </Button>
                   )}
                   {canManageOffice && (
-                    <Button size="sm" variant="ghost" className="gap-2 text-destructive ml-auto" onClick={() => setDeleteDialogId(selectedEstimate.id)}>
+                    <Button size="sm" variant="ghost" className="gap-2 text-destructive ml-auto" title="Permanently delete this estimate" onClick={() => setDeleteDialogId(selectedEstimate.id)}>
                       <Trash2 className="w-3.5 h-3.5" /> Delete
                     </Button>
                   )}
@@ -724,7 +1012,12 @@ export default function EstimatesPage() {
                   {selectedEstimate.customerName && (
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Customer</p>
-                      <div className="flex items-center gap-2"><User className="w-4 h-4 text-muted-foreground" />{selectedEstimate.customerName}</div>
+                      <div className="flex items-center gap-2">
+                        <User className="w-4 h-4 text-muted-foreground" />
+                        {(selectedEstimate as any).customerId ? (
+                          <button className="text-sm text-primary hover:underline" title={`View ${selectedEstimate.customerName}`} onClick={() => { setSelectedId(null); setLocation(`/customers/${(selectedEstimate as any).customerId}`); }}>{selectedEstimate.customerName}</button>
+                        ) : selectedEstimate.customerName}
+                      </div>
                     </div>
                   )}
                   {selectedEstimate.assigneeName && (
@@ -736,25 +1029,39 @@ export default function EstimatesPage() {
                   {selectedEstimate.propertyAddress && (
                     <div className="col-span-2 space-y-1">
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Property</p>
-                      <div className="flex items-center gap-2"><MapPin className="w-4 h-4 text-muted-foreground shrink-0" />{selectedEstimate.propertyAddress}</div>
+                      <div className="flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-muted-foreground shrink-0" />
+                        {(selectedEstimate as any).propertyId ? (
+                          <button className="text-sm text-primary hover:underline text-left" title="View property details" onClick={() => { setSelectedId(null); setLocation(`/properties/${(selectedEstimate as any).propertyId}`); }}>{selectedEstimate.propertyAddress}</button>
+                        ) : selectedEstimate.propertyAddress}
+                      </div>
                     </div>
                   )}
                   {selectedEstimate.scheduledAt && (
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Scheduled</p>
-                      <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-muted-foreground" />{format(new Date(selectedEstimate.scheduledAt), 'MMM d, yyyy h:mm a')}</div>
+                      <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-muted-foreground" /><span title={format(new Date(selectedEstimate.scheduledAt), 'EEEE, MMMM d, yyyy h:mm a')}>{format(new Date(selectedEstimate.scheduledAt), 'MMM d, yyyy h:mm a')}</span></div>
                     </div>
                   )}
                   {selectedEstimate.expiresAt && (
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Expires</p>
-                      <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-muted-foreground" />{format(new Date(selectedEstimate.expiresAt), 'MMM d, yyyy')}</div>
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-muted-foreground" />
+                        <span title={format(new Date(selectedEstimate.expiresAt), 'EEEE, MMMM d, yyyy')}>{format(new Date(selectedEstimate.expiresAt), 'MMM d, yyyy')}</span>
+                        {selectedEstimate.status !== 'expired' && (() => {
+                          const daysLeft = Math.ceil((new Date(selectedEstimate.expiresAt).getTime() - Date.now()) / 86400000);
+                          if (daysLeft <= 0) return <span className="text-xs text-destructive ml-1">Expired</span>;
+                          if (daysLeft <= 7) return <span className="text-xs text-amber-600 ml-1">{daysLeft}d left</span>;
+                          return null;
+                        })()}
+                      </div>
                     </div>
                   )}
                   {selectedEstimate.sentAt && (
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Emailed</p>
-                      <div className="flex items-center gap-2 text-emerald-700"><Mail className="w-4 h-4" />{format(new Date(selectedEstimate.sentAt), 'MMM d, yyyy h:mm a')}</div>
+                      <div className="flex items-center gap-2 text-emerald-700"><Mail className="w-4 h-4" /><span title={format(new Date(selectedEstimate.sentAt), 'EEEE, MMMM d, yyyy h:mm a')}>{format(new Date(selectedEstimate.sentAt), 'MMM d, yyyy h:mm a')}</span></div>
                     </div>
                   )}
                 </div>
@@ -769,12 +1076,30 @@ export default function EstimatesPage() {
                   </div>
                 )}
 
-                {selectedEstimate.notes && (
-                  <div className="space-y-1">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Notes</p>
-                    <p className="text-sm">{selectedEstimate.notes}</p>
+                    {canManageOffice && !editingNotes && (
+                      <Button variant="ghost" size="sm" title="Edit estimate notes" className="h-6 text-xs gap-1" onClick={() => setEditingNotes(true)}>
+                        <Edit2 className="w-3 h-3" /> Edit
+                      </Button>
+                    )}
                   </div>
-                )}
+                  {editingNotes ? (
+                    <div className="space-y-2">
+                      <Textarea value={notesVal} onChange={e => setNotesVal(e.target.value)} rows={3} className="text-sm" />
+                      <div className="flex gap-2">
+                        <Button size="sm" title="Save estimate notes" className="h-7 text-xs" disabled={updateEstimate.isPending} onClick={() => updateEstimate.mutate(
+                          { id: selectedEstimate.id, data: { notes: notesVal } as any },
+                          { onSuccess: () => { toast.success('Notes saved'); setEditingNotes(false); qc.invalidateQueries({ queryKey: getListEstimatesQueryKey() }); } },
+                        )}>{updateEstimate.isPending ? 'Saving…' : 'Save'}</Button>
+                        <Button size="sm" variant="ghost" title="Discard notes changes" className="h-7 text-xs" onClick={() => { setEditingNotes(false); setNotesVal(selectedEstimate.notes ?? ''); }}>Cancel</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm">{selectedEstimate.notes || <span className="text-muted-foreground italic">No notes.</span>}</p>
+                  )}
+                </div>
 
                 {selectedEstimate.declineReason && (
                   <div className="rounded-lg bg-red-50 border border-red-200 p-3">
@@ -796,10 +1121,10 @@ export default function EstimatesPage() {
                       {required.map((item) => (
                         <div key={item.id} className="flex items-start justify-between gap-4 text-sm">
                           <div className="flex-1">
-                            <p className="font-medium">{item.description || '—'}</p>
+                            <p className="font-medium" title={item.description || undefined}>{item.description || '—'}</p>
                             <p className="text-muted-foreground text-xs">Qty {item.qty} × ${item.unitPrice.toFixed(2)}{item.markup > 0 && ` + ${item.markup}% markup`}{item.discount > 0 && ` − ${item.discount}% disc`}</p>
                           </div>
-                          <span className="font-medium shrink-0">${calcItem(item).toFixed(2)}</span>
+                          <span className="font-medium shrink-0" title={`Line total: $${calcItem(item).toFixed(2)}`}>${calcItem(item).toFixed(2)}</span>
                         </div>
                       ))}
                       {optional.length > 0 && (
@@ -812,16 +1137,34 @@ export default function EstimatesPage() {
                                 {item.optionalPitchLine && <p className="text-xs text-muted-foreground italic">{item.optionalPitchLine}</p>}
                                 <p className="text-muted-foreground text-xs">Qty {item.qty} × ${item.unitPrice.toFixed(2)}</p>
                               </div>
-                              <span className="font-medium shrink-0">${calcItem(item).toFixed(2)}</span>
+                              <span className="font-medium shrink-0" title={`Optional add-on total: $${calcItem(item).toFixed(2)}`}>${calcItem(item).toFixed(2)}</span>
                             </div>
                           ))}
                         </>
                       )}
                       <Separator />
-                      <div className="flex justify-between items-center">
-                        <span className="font-semibold">Total</span>
-                        <span className="text-xl font-bold">${(selectedEstimate.total ?? 0).toFixed(2)}</span>
-                      </div>
+                      {(() => {
+                        const subtotal = items.filter(i => !i.isOptional || i.acceptedByCustomer).reduce((s, i) => s + calcItem(i), 0);
+                        const tax = (selectedEstimate.total ?? 0) - subtotal;
+                        return (
+                          <div className="space-y-1.5 text-sm">
+                            <div className="flex justify-between text-muted-foreground">
+                              <span>Subtotal</span>
+                              <span title={`Subtotal: $${subtotal.toFixed(2)}`}>${subtotal.toFixed(2)}</span>
+                            </div>
+                            {Math.abs(tax) >= 0.01 && (
+                              <div className="flex justify-between text-muted-foreground">
+                                <span>Tax</span>
+                                <span title={`Tax: $${tax.toFixed(2)}`}>${tax.toFixed(2)}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between items-center pt-1 border-t">
+                              <span className="font-semibold">Total</span>
+                              <span className="text-xl font-bold" title={`Grand total: $${(selectedEstimate.total ?? 0).toFixed(2)}`}>${(selectedEstimate.total ?? 0).toFixed(2)}</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })()}
@@ -849,8 +1192,56 @@ export default function EstimatesPage() {
           </DialogHeader>
           <p className="text-sm text-muted-foreground">This action cannot be undone. Delete Estimate #{deleteDialogId}?</p>
           <div className="flex gap-3 justify-end mt-4">
-            <Button variant="outline" onClick={() => setDeleteDialogId(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={() => deleteDialogId && handleDelete(deleteDialogId)} disabled={deleteEstimate.isPending}>Delete</Button>
+            <Button variant="outline" title="Keep this estimate — do not delete" onClick={() => setDeleteDialogId(null)}>Cancel</Button>
+            <Button variant="destructive" title="Permanently delete this estimate" onClick={() => deleteDialogId && handleDelete(deleteDialogId)} disabled={deleteEstimate.isPending}>{deleteEstimate.isPending ? 'Deleting…' : 'Delete'}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Send Confirm — lets staff confirm/adjust expiry before sending */}
+      <Dialog open={sendDialogId != null} onOpenChange={open => { if (!open) setSendDialogId(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Send Estimate to Customer</DialogTitle>
+            <DialogDescription>
+              The customer will receive an email with a link to review and approve this estimate.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Expiry Date</label>
+              <Input
+                type="date"
+                title="The estimate link will stop accepting responses after this date"
+                value={sendExpiresAt}
+                onChange={e => setSendExpiresAt(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">The estimate link will stop accepting responses after this date.</p>
+            </div>
+          </div>
+          <div className="flex gap-3 justify-end mt-2">
+            <Button variant="outline" title="Close without sending this estimate" onClick={() => setSendDialogId(null)}>Cancel</Button>
+            <Button
+              title="Send this estimate to the customer by email"
+              disabled={sendEstimate.isPending}
+              onClick={async () => {
+                if (!sendDialogId) return;
+                // Patch expiry first if changed, then send
+                if (sendExpiresAt) {
+                  try {
+                    await fetch(`/api/estimates/${sendDialogId}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json', ...(window as any).__apiHeaders },
+                      body: JSON.stringify({ expiresAt: sendExpiresAt }),
+                    });
+                  } catch { /* non-fatal */ }
+                }
+                handleSend(sendDialogId);
+              }}
+            >
+              <Send className="w-3.5 h-3.5 mr-1.5" />
+              {sendEstimate.isPending ? 'Sending…' : 'Send to Customer'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

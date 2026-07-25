@@ -139,7 +139,7 @@ function periodToRange(period: string): { dateFrom: string; dateTo: string } {
 
 function pctBadge(pct: number, usingGlobal: boolean) {
   return (
-    <Badge variant="outline" className={`text-xs gap-1 ${usingGlobal ? 'text-muted-foreground' : 'text-primary border-primary/40'}`}>
+    <Badge variant="outline" title={`P4P rate: ${pct}% ${usingGlobal ? '(from global default)' : '(service-specific override)'}`} className={`text-xs gap-1 ${usingGlobal ? 'text-muted-foreground' : 'text-primary border-primary/40'}`}>
       {pct}%{usingGlobal ? ' (global)' : ' (service)'}
     </Badge>
   );
@@ -167,7 +167,7 @@ function JobRow({ job, highlightUserId }: { job: JobBreakdown; highlightUserId?:
           </TableCell>
           <TableCell className="text-right text-sm font-medium">{fmt(job.netLaborRevenue)}</TableCell>
           <TableCell className="text-right">{pctBadge(job.p4pPct, job.usingGlobalRate)}</TableCell>
-          <TableCell className="text-right text-sm font-semibold text-emerald-700">{fmt(myEarnings)}</TableCell>
+          <TableCell className="text-right text-sm font-semibold text-emerald-700" title={`P4P earnings: ${fmt(myEarnings)}`}>{fmt(myEarnings)}</TableCell>
         </TableRow>
       </CollapsibleTrigger>
       <CollapsibleContent asChild>
@@ -266,6 +266,7 @@ function TimesheetSection({
           variant="outline"
           size="sm"
           className="shrink-0 gap-1.5"
+          title="Export timesheet data as CSV for payroll processing"
           onClick={() => exportTimesheetCsv(rows, period)}
         >
           <Download className="w-3.5 h-3.5" />
@@ -295,18 +296,18 @@ function TimesheetSection({
               const total = r.clockInMinutes + r.taskMinutes;
               return (
                 <TableRow key={r.userId}>
-                  <TableCell className="font-medium">{r.name}</TableCell>
-                  <TableCell className="text-right text-sm">
+                  <TableCell className="font-medium" title={r.name}>{r.name}</TableCell>
+                  <TableCell className="text-right text-sm" title={r.clockInMinutes > 0 ? `Job clock-in time: ${fmtMinutes(r.clockInMinutes)} (${minutesToDecimalHours(r.clockInMinutes)}h)` : 'No job clock-in time'}>
                     {r.clockInMinutes > 0
                       ? <span className="text-foreground">{fmtMinutes(r.clockInMinutes)}<span className="text-muted-foreground ml-1 text-xs">({minutesToDecimalHours(r.clockInMinutes)}h)</span></span>
                       : <span className="text-muted-foreground">—</span>}
                   </TableCell>
-                  <TableCell className="text-right text-sm">
+                  <TableCell className="text-right text-sm" title={r.taskMinutes > 0 ? `Daily task time: ${fmtMinutes(r.taskMinutes)} (${minutesToDecimalHours(r.taskMinutes)}h)` : 'No daily task time'}>
                     {r.taskMinutes > 0
                       ? <span className="text-blue-700">{fmtMinutes(r.taskMinutes)}<span className="text-muted-foreground ml-1 text-xs">({minutesToDecimalHours(r.taskMinutes)}h)</span></span>
                       : <span className="text-muted-foreground">—</span>}
                   </TableCell>
-                  <TableCell className="text-right font-semibold">
+                  <TableCell className="text-right font-semibold" title={`Total hours: ${fmtMinutes(total)} (${minutesToDecimalHours(total)}h)`}>
                     {fmtMinutes(total)}
                     <span className="text-muted-foreground ml-1 text-xs font-normal">({minutesToDecimalHours(total)}h)</span>
                   </TableCell>
@@ -316,10 +317,10 @@ function TimesheetSection({
           </TableBody>
           <tfoot>
             <tr className="border-t-2 bg-muted/30">
-              <td className="px-4 py-3 text-sm font-semibold">{rows.length} employee{rows.length !== 1 ? 's' : ''}</td>
-              <td className="px-4 py-3 text-right text-sm font-semibold">{fmtMinutes(totalClockIn)}</td>
-              <td className="px-4 py-3 text-right text-sm font-semibold text-blue-700">{fmtMinutes(totalTask)}</td>
-              <td className="px-4 py-3 text-right text-sm font-bold">{fmtMinutes(totalCombined)}</td>
+              <td className="px-4 py-3 text-sm font-semibold" title={`${rows.length} employee${rows.length !== 1 ? 's' : ''}`}>{rows.length} employee{rows.length !== 1 ? 's' : ''}</td>
+              <td className="px-4 py-3 text-right text-sm font-semibold" title={`Total job clock-in time: ${fmtMinutes(totalClockIn)}`}>{fmtMinutes(totalClockIn)}</td>
+              <td className="px-4 py-3 text-right text-sm font-semibold text-blue-700" title={`Total daily task time: ${fmtMinutes(totalTask)}`}>{fmtMinutes(totalTask)}</td>
+              <td className="px-4 py-3 text-right text-sm font-bold" title={`Total combined hours: ${fmtMinutes(totalCombined)}`}>{fmtMinutes(totalCombined)}</td>
             </tr>
           </tfoot>
         </Table>
@@ -332,15 +333,26 @@ function TimesheetSection({
 export default function PayrollPage() {
   const { isTechnician, user, isOwner, canManageOffice } = useAuth();
   const [period, setPeriod] = useState('30d');
+  const [customDateFrom, setCustomDateFrom] = useState('');
+  const [customDateTo, setCustomDateTo] = useState('');
   const [selectedTechId, setSelectedTechId] = useState<number | null>(null);
 
   const { data: tenantSettings } = useGetTenantSettings();
   const dailyTaskHourlyRate: number = tenantSettings?.dailyTaskHourlyRate ?? 0;
 
   // Technicians cannot call /p4p/summary (403); their stats come via /p4p/jobs
+  // Admin: daily task hours per technician for the same period
+  const { dateFrom, dateTo } = period === 'custom' && customDateFrom && customDateTo
+    ? { dateFrom: customDateFrom, dateTo: customDateTo }
+    : periodToRange(period);
+
+  const periodQuery = period === 'custom' && customDateFrom && customDateTo
+    ? `dateFrom=${customDateFrom}&dateTo=${customDateTo}`
+    : `period=${period}`;
+
   const { data: summary, isLoading: summaryLoading } = useQuery<SummaryResponse>({
-    queryKey: ['p4p-summary', period],
-    queryFn: () => customFetch<SummaryResponse>(`/api/p4p/summary?period=${period}`),
+    queryKey: ['p4p-summary', period, dateFrom, dateTo],
+    queryFn: () => customFetch<SummaryResponse>(`/api/p4p/summary?${periodQuery}`),
     enabled: !isTechnician,
     retry: false,
   });
@@ -348,15 +360,12 @@ export default function PayrollPage() {
   const viewUserId = isTechnician ? user?.id : (selectedTechId ?? undefined);
 
   const { data: jobs, isLoading: jobsLoading } = useQuery<JobBreakdown[]>({
-    queryKey: ['p4p-jobs', period, viewUserId],
+    queryKey: ['p4p-jobs', period, dateFrom, dateTo, viewUserId],
     queryFn: () =>
       customFetch<JobBreakdown[]>(
-        `/api/p4p/jobs?period=${period}${viewUserId ? `&userId=${viewUserId}` : ''}`,
+        `/api/p4p/jobs?${periodQuery}${viewUserId ? `&userId=${viewUserId}` : ''}`,
       ),
   });
-
-  // Admin: daily task hours per technician for the same period
-  const { dateFrom, dateTo } = periodToRange(period);
   const { data: taskHoursSummary } = useQuery<DailyTaskUserSummary[]>({
     queryKey: ['daily-task-hours-summary', period],
     queryFn: () =>
@@ -443,7 +452,7 @@ export default function PayrollPage() {
         <div className="flex items-center gap-2">
           {!isTechnician && (
             <Select value={selectedTechId ? String(selectedTechId) : '__all__'} onValueChange={v => setSelectedTechId(v === '__all__' ? null : parseInt(v, 10))}>
-              <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-44" title="Filter payroll by technician"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all__">All technicians</SelectItem>
                 {summary?.technicians.map(t => (
@@ -453,14 +462,21 @@ export default function PayrollPage() {
             </Select>
           )}
           <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-36" title="Select the payroll period"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="today">Today</SelectItem>
               <SelectItem value="week">This Week</SelectItem>
               <SelectItem value="month">This Month</SelectItem>
               <SelectItem value="30d">Last 30 Days</SelectItem>
+              <SelectItem value="custom">Custom Range</SelectItem>
             </SelectContent>
           </Select>
+          {period === 'custom' && (
+            <>
+              <input type="date" value={customDateFrom} onChange={e => setCustomDateFrom(e.target.value)} className="h-8 text-xs px-2 rounded-md border border-input bg-background w-36" title="From date" />
+              <input type="date" value={customDateTo} onChange={e => setCustomDateTo(e.target.value)} className="h-8 text-xs px-2 rounded-md border border-input bg-background w-36" title="To date" />
+            </>
+          )}
         </div>
       </div>
 
@@ -483,7 +499,7 @@ export default function PayrollPage() {
                 <DollarSign className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-xl font-bold text-emerald-700">{fmt(totalP4P)}</p>
+                <p className="text-xl font-bold text-emerald-700" title={`Total P4P payout: ${fmt(totalP4P)}`}>{fmt(totalP4P)}</p>
                 <p className="text-xs text-muted-foreground">Total P4P Payout</p>
               </div>
             </CardContent>
@@ -494,7 +510,7 @@ export default function PayrollPage() {
                 <TrendingUp className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-xl font-bold">{fmt(totalNetLabor)}</p>
+                <p className="text-xl font-bold" title={`Total net labor revenue: ${fmt(totalNetLabor)}`}>{fmt(totalNetLabor)}</p>
                 <p className="text-xs text-muted-foreground">Net Labor Revenue</p>
               </div>
             </CardContent>
@@ -505,7 +521,7 @@ export default function PayrollPage() {
                 <Package className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-xl font-bold">{fmt(totalMaterials)}</p>
+                <p className="text-xl font-bold" title={`Total materials cost stripped out: ${fmt(totalMaterials)}`}>{fmt(totalMaterials)}</p>
                 <p className="text-xs text-muted-foreground">Materials Stripped Out</p>
               </div>
             </CardContent>
@@ -516,7 +532,7 @@ export default function PayrollPage() {
                 <Users className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-xl font-bold">{summary?.technicians.filter(t => t.p4pEarnings > 0).length ?? 0}</p>
+                <p className="text-xl font-bold" title={`${summary?.technicians.filter(t => t.p4pEarnings > 0).length ?? 0} technician${(summary?.technicians.filter(t => t.p4pEarnings > 0).length ?? 0) !== 1 ? 's' : ''} with P4P earnings this period`}>{summary?.technicians.filter(t => t.p4pEarnings > 0).length ?? 0}</p>
                 <p className="text-xs text-muted-foreground">Active Techs w/ Earnings</p>
               </div>
             </CardContent>
@@ -529,13 +545,13 @@ export default function PayrollPage() {
               <div>
                 {dailyTaskHourlyRate > 0 ? (
                   <>
-                    <p className="text-xl font-bold text-blue-700">{fmt(totalTaskPay)}</p>
+                    <p className="text-xl font-bold text-blue-700" title={`Total task pay: ${fmt(totalTaskPay)} for ${fmtMinutes(totalTaskMinutes)} @ $${dailyTaskHourlyRate}/hr`}>{fmt(totalTaskPay)}</p>
                     <p className="text-xs text-muted-foreground">Total Task Pay</p>
                     <p className="text-xs text-muted-foreground">{fmtMinutes(totalTaskMinutes)} @ ${dailyTaskHourlyRate}/hr</p>
                   </>
                 ) : (
                   <>
-                    <p className="text-xl font-bold text-blue-700">{fmtMinutes(totalTaskMinutes)}</p>
+                    <p className="text-xl font-bold text-blue-700" title={`Total daily task time: ${fmtMinutes(totalTaskMinutes)}`}>{fmtMinutes(totalTaskMinutes)}</p>
                     <p className="text-xs text-muted-foreground">Daily Task Hours</p>
                   </>
                 )}
@@ -607,25 +623,26 @@ export default function PayrollPage() {
                     return (
                       <TableRow
                         key={t.userId}
+                        title={`Click to view detailed payroll breakdown for ${t.name}`}
                         className="cursor-pointer hover:bg-muted/50"
                         onClick={() => setSelectedTechId(t.userId)}
                       >
                         <TableCell>
-                          <p className="font-medium">{t.name}</p>
-                          <p className="text-xs text-muted-foreground capitalize">{(t.role ?? '').replace(/_/g, ' ')}</p>
+                          <p className="font-medium" title={t.name}>{t.name}</p>
+                          <p className="text-xs text-muted-foreground capitalize" title={`Role: ${(t.role ?? '').replace(/_/g, ' ')}`}>{(t.role ?? '').replace(/_/g, ' ')}</p>
                         </TableCell>
-                        <TableCell className="text-right">{t.jobCount}</TableCell>
-                        <TableCell className="text-right">{fmt(t.totalRevenue)}</TableCell>
-                        <TableCell className="text-right text-destructive">−{fmt(t.totalMaterialCost)}</TableCell>
-                        <TableCell className="text-right font-medium">{fmt(t.netLaborRevenue)}</TableCell>
+                        <TableCell className="text-right" title={`${t.jobCount} job${t.jobCount !== 1 ? 's' : ''} completed`}>{t.jobCount}</TableCell>
+                        <TableCell className="text-right" title={`Gross revenue: ${fmt(t.totalRevenue)}`}>{fmt(t.totalRevenue)}</TableCell>
+                        <TableCell className="text-right text-destructive" title={`Materials cost: −${fmt(t.totalMaterialCost)}`}>−{fmt(t.totalMaterialCost)}</TableCell>
+                        <TableCell className="text-right font-medium" title={`Net labor revenue: ${fmt(t.netLaborRevenue)}`}>{fmt(t.netLaborRevenue)}</TableCell>
                         <TableCell className="text-right">
-                          <span className={`font-bold ${t.p4pEarnings > 0 ? 'text-emerald-700' : 'text-muted-foreground'}`}>
+                          <span className={`font-bold ${t.p4pEarnings > 0 ? 'text-emerald-700' : 'text-muted-foreground'}`} title={`P4P earnings: ${fmt(t.p4pEarnings)}`}>
                             {fmt(t.p4pEarnings)}
                           </span>
                         </TableCell>
                         <TableCell className="text-right">
                           {taskData ? (
-                            <span className="text-blue-700 font-medium text-sm">
+                            <span className="text-blue-700 font-medium text-sm" title={dailyTaskHourlyRate > 0 ? `Task pay: ${fmt(taskPayForMinutes(taskData.totalMinutes))} for ${fmtMinutes(taskData.totalMinutes)}` : `Task time: ${fmtMinutes(taskData.totalMinutes)} (${taskData.runCount} run${taskData.runCount !== 1 ? 's' : ''})`}>
                               {dailyTaskHourlyRate > 0 ? (
                                 <>
                                   {fmt(taskPayForMinutes(taskData.totalMinutes))}
@@ -678,7 +695,7 @@ export default function PayrollPage() {
               </CardDescription>
             </div>
             {!isTechnician && selectedTechId && (
-              <Button variant="ghost" size="sm" onClick={() => setSelectedTechId(null)}>← Back to all</Button>
+              <Button variant="ghost" size="sm" title="Return to the full payroll summary for all technicians" onClick={() => setSelectedTechId(null)}>← Back to all</Button>
             )}
           </CardHeader>
           <CardContent className="p-0">
@@ -713,14 +730,14 @@ export default function PayrollPage() {
                 <tfoot>
                   <tr className="border-t-2">
                     <td />
-                    <td className="px-4 py-3 text-sm font-semibold">{displayJobs.length} job{displayJobs.length !== 1 ? 's' : ''}</td>
-                    <td className="px-4 py-3 text-right text-sm font-semibold">
+                    <td className="px-4 py-3 text-sm font-semibold" title={`${displayJobs.length} job${displayJobs.length !== 1 ? 's' : ''} total`}>{displayJobs.length} job{displayJobs.length !== 1 ? 's' : ''}</td>
+                    <td className="px-4 py-3 text-right text-sm font-semibold" title={`Total gross revenue: ${fmt(displayJobs.reduce((s, j) => s + j.totalAmount, 0))}`}>
                       {fmt(displayJobs.reduce((s, j) => s + j.totalAmount, 0))}
                     </td>
-                    <td className="px-4 py-3 text-right text-sm font-semibold text-destructive">
+                    <td className="px-4 py-3 text-right text-sm font-semibold text-destructive" title={`Total materials cost: −${fmt(displayJobs.reduce((s, j) => s + j.materialCost, 0))}`}>
                       −{fmt(displayJobs.reduce((s, j) => s + j.materialCost, 0))}
                     </td>
-                    <td className="px-4 py-3 text-right text-sm font-semibold">
+                    <td className="px-4 py-3 text-right text-sm font-semibold" title={`Total net labor revenue: ${fmt(displayJobs.reduce((s, j) => s + j.netLaborRevenue, 0))}`}>
                       {fmt(displayJobs.reduce((s, j) => s + j.netLaborRevenue, 0))}
                     </td>
                     <td />

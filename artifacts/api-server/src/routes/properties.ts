@@ -334,14 +334,23 @@ router.get("/properties/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const [row] = await db
-    .select({ property: propertiesTable, customerName: customersTable.name })
-    .from(propertiesTable)
-    .leftJoin(customersTable, eq(propertiesTable.customerId, customersTable.id))
-    .where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId)));
+  const [[row], lastJobRows] = await Promise.all([
+    db
+      .select({ property: propertiesTable, customerName: customersTable.name, customerPhone: customersTable.phone, customerEmail: customersTable.email })
+      .from(propertiesTable)
+      .leftJoin(customersTable, eq(propertiesTable.customerId, customersTable.id))
+      .where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId))),
+    db
+      .select({ completedAt: jobsTable.completedAt })
+      .from(jobsTable)
+      .where(and(eq(jobsTable.propertyId, id), eq(jobsTable.tenantId, tenantId), eq(jobsTable.status, 'completed')))
+      .orderBy(desc(jobsTable.completedAt))
+      .limit(1),
+  ]);
 
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
-  res.json(formatProperty(row.property, row.customerName));
+  const lastServicedAt = lastJobRows[0]?.completedAt?.toISOString() ?? null;
+  res.json({ ...formatProperty(row.property, row.customerName), lastServicedAt, customerPhone: row.customerPhone ?? null, customerEmail: row.customerEmail ?? null });
 });
 
 router.patch("/properties/:id", async (req, res): Promise<void> => {

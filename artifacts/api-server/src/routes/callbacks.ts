@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, callbacksTable, jobsTable, usersTable, activityLogTable } from "@workspace/db";
+import { db, callbacksTable, jobsTable, usersTable, activityLogTable, customersTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { getCallbackRatioStats } from "../lib/callbackRatio";
@@ -9,17 +9,20 @@ const router: IRouter = Router();
 // GET /callbacks — list all callbacks for tenant
 router.get("/callbacks", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { assigneeId, status } = req.query as Record<string, string>;
+  const { assigneeId, status, jobId } = req.query as Record<string, string>;
 
   const rows = await db
     .select({
       callback: callbacksTable,
       originalJobTitle: jobsTable.title,
       assigneeName: usersTable.name,
+      customerName: customersTable.name,
+      customerPhone: customersTable.phone,
     })
     .from(callbacksTable)
     .leftJoin(jobsTable, eq(callbacksTable.originalJobId, jobsTable.id))
     .leftJoin(usersTable, eq(callbacksTable.originalAssigneeId, usersTable.id))
+    .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
     .where(eq(callbacksTable.tenantId, tenantId))
     .orderBy(desc(callbacksTable.createdAt));
 
@@ -27,6 +30,8 @@ router.get("/callbacks", async (req, res): Promise<void> => {
     ...r.callback,
     originalJobTitle: r.originalJobTitle ?? null,
     assigneeName: r.assigneeName ?? null,
+    customerName: r.customerName ?? null,
+    customerPhone: r.customerPhone ?? null,
     createdAt: r.callback.createdAt.toISOString(),
     resolvedAt: r.callback.resolvedAt?.toISOString() ?? null,
     scheduledFixDate: r.callback.scheduledFixDate?.toISOString() ?? null,
@@ -37,6 +42,9 @@ router.get("/callbacks", async (req, res): Promise<void> => {
   }
   if (status) {
     result = result.filter(r => r.status === status);
+  }
+  if (jobId) {
+    result = result.filter(r => r.originalJobId === parseInt(jobId, 10));
   }
 
   res.json(result);

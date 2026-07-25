@@ -2,7 +2,7 @@ import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { usePortalListProperties, usePortalCreateServiceRequest } from "@workspace/api-client-react";
+import { usePortalListProperties, usePortalCreateServiceRequest, usePortalListJobs } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,7 +10,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Send, Calendar as CalendarIcon, MapPin, Sparkles } from "lucide-react";
+import { Send, Calendar as CalendarIcon, MapPin, Sparkles, Clock, CheckCircle2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { formatDate } from "@/lib/format";
 
 const requestSchema = z.object({
   propertyId: z.coerce.number({
@@ -19,12 +21,18 @@ const requestSchema = z.object({
   }).min(1, "Please select a property"),
   description: z.string().min(10, "Please provide more details about what you need done."),
   preferredDateStart: z.string().optional(),
+  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
 });
+
+import React, { useState } from "react";
 
 export default function ServiceRequests() {
   const [, setLocation] = useLocation();
   const { data: properties, isLoading: isLoadingProperties } = usePortalListProperties();
   const createRequest = usePortalCreateServiceRequest();
+  const { data: allJobs } = usePortalListJobs();
+  const openRequests = allJobs?.filter(j => j.status !== 'completed' && j.status !== 'cancelled') ?? [];
+  const [requestSearch, setRequestSearch] = useState('');
 
   const form = useForm<z.infer<typeof requestSchema>>({
     resolver: zodResolver(requestSchema),
@@ -59,6 +67,36 @@ export default function ServiceRequests() {
         <h1 className="text-3xl font-bold tracking-tight text-foreground">Request Service</h1>
         <p className="text-muted-foreground mt-1">Let us know what you need and we'll schedule a visit or provide a quote.</p>
       </div>
+
+      {openRequests.length > 0 && (
+        <div className="rounded-xl border bg-muted/30 p-5 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-semibold text-foreground flex items-center gap-2">
+              <Clock className="w-4 h-4 text-primary" /> Active Requests
+            </h2>
+            {openRequests.length > 3 && (
+              <div className="flex-1 max-w-xs">
+                <Input placeholder="Search…" value={requestSearch} onChange={e => setRequestSearch(e.target.value)} className="h-8 text-sm" />
+              </div>
+            )}
+          </div>
+          <div className="divide-y rounded-lg border bg-background overflow-hidden">
+            {openRequests.filter(j => !requestSearch || j.title.toLowerCase().includes(requestSearch.toLowerCase()) || j.status.includes(requestSearch.toLowerCase())).map(j => (
+              <div key={j.id} className="flex items-center gap-3 px-4 py-3">
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm truncate">{j.title}</p>
+                  {j.scheduledAt && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                      <CalendarIcon className="w-3 h-3" />{formatDate(j.scheduledAt)}
+                    </p>
+                  )}
+                </div>
+                <Badge variant="secondary" className="capitalize shrink-0">{j.status.replace('_', ' ')}</Badge>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <Card className="shadow-lg border-border/50">
         <div className="h-2 w-full bg-primary rounded-t-xl"></div>
@@ -120,6 +158,30 @@ export default function ServiceRequests() {
                         {...field} 
                       />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="priority"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Priority (Optional)</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="h-12">
+                          <SelectValue placeholder="How urgent is this?" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="low">Low — no rush</SelectItem>
+                        <SelectItem value="medium">Medium — within a few weeks</SelectItem>
+                        <SelectItem value="high">High — within the week</SelectItem>
+                        <SelectItem value="urgent">Urgent — as soon as possible</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}

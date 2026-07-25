@@ -135,6 +135,7 @@ export default function PropertySatelliteMap({
   const [currentLng, setCurrentLng] = useState(lng ?? -80.1918);
   const [localGeofenceRadius, setLocalGeofenceRadius] = useState(geofenceRadius);
   const [mapReady, setMapReady] = useState(false);
+  const [editingZoneId, setEditingZoneId] = useState<string | null>(null);
 
   // Sync zones from props when they change externally
   useEffect(() => {
@@ -381,6 +382,14 @@ export default function PropertySatelliteMap({
     onMeasurementsChange?.(next, total);
   };
 
+  const renameZone = (id: string, label: string) => {
+    if (!label.trim()) return;
+    const next = zones.map(z => z.id === id ? { ...z, label: label.trim() } : z);
+    setZones(next);
+    const total = next.filter(z => z.enabled).reduce((s, z) => s + z.areaSqft, 0);
+    onMeasurementsChange?.(next, total);
+  };
+
   const clearAll = () => {
     setZones([]);
     onMeasurementsChange?.([], 0);
@@ -455,6 +464,7 @@ export default function PropertySatelliteMap({
                     ) : null;
                   })()}
                   <select
+                    title="Zone type to assign when drawing a new zone"
                     className="text-sm border rounded px-2 py-1.5 bg-background flex-1"
                     value={selectedZoneTypeId}
                     onChange={e => setSelectedZoneTypeId(e.target.value)}
@@ -466,6 +476,7 @@ export default function PropertySatelliteMap({
                 </div>
                 <button
                   className="text-sm px-3 py-1.5 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition font-medium"
+                  title="Click points on the map to draw a new service zone polygon"
                   onClick={() => { setDrawingMode(true); setDrawingPoints([]); }}
                 >
                   ＋ Draw Zone
@@ -474,6 +485,7 @@ export default function PropertySatelliteMap({
               {zones.length > 0 && (
                 <button
                   className="text-sm px-3 py-1.5 border rounded hover:bg-destructive/10 hover:border-destructive hover:text-destructive transition"
+                  title="Clear all drawn zones and start fresh"
                   onClick={startOver}
                 >
                   Start Over
@@ -481,6 +493,7 @@ export default function PropertySatelliteMap({
               )}
               <button
                 className="text-sm px-3 py-1.5 border rounded hover:bg-muted transition"
+                title={editingGeofence ? 'Cancel geofence editing' : 'Edit the property geofence radius'}
                 onClick={() => setEditingGeofence(v => !v)}
               >
                 {editingGeofence ? 'Cancel Geofence' : 'Edit Geofence'}
@@ -500,6 +513,7 @@ export default function PropertySatelliteMap({
             type="number"
             min={10}
             max={5000}
+            title="Geofence radius in meters — technicians inside this circle are considered on-site"
             className="text-sm border rounded px-2 py-1 w-24 bg-background"
             value={localGeofenceRadius}
             onChange={e => setLocalGeofenceRadius(parseInt(e.target.value, 10) || 100)}
@@ -507,6 +521,7 @@ export default function PropertySatelliteMap({
           <span className="text-sm text-muted-foreground">meters</span>
           <button
             className="text-sm px-3 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition"
+            title="Save the geofence radius for this property"
             onClick={saveGeofence}
           >
             Save Geofence
@@ -529,17 +544,34 @@ export default function PropertySatelliteMap({
               className={`flex items-center gap-3 px-3 py-2 rounded-lg border text-sm transition-opacity ${!zone.enabled ? 'opacity-50' : ''}`}
             >
               <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: zone.color }} />
-              <span className="flex-1 font-medium">{zone.label}</span>
+              {!readonly && editingZoneId === zone.id ? (
+                <input
+                  autoFocus
+                  title="Zone label — press Enter to save, Escape to cancel"
+                  className="flex-1 font-medium text-sm border-b border-primary bg-transparent outline-none"
+                  defaultValue={zone.label}
+                  onBlur={e => { renameZone(zone.id, e.target.value); setEditingZoneId(null); }}
+                  onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditingZoneId(null); }}
+                />
+              ) : (
+                <span
+                  className={`flex-1 font-medium ${!readonly ? 'cursor-pointer hover:text-primary' : ''}`}
+                  title={!readonly ? 'Click to rename' : undefined}
+                  onClick={() => { if (!readonly) setEditingZoneId(zone.id); }}
+                >{zone.label}</span>
+              )}
               <span className="text-muted-foreground">{formatArea(zone.areaSqft, preferredAreaUnit)}</span>
               {!readonly && (
                 <>
                   <button
+                    title={zone.enabled ? 'Exclude this zone from estimates and billing calculations' : 'Include this zone in estimates and billing calculations'}
                     className="text-muted-foreground hover:text-foreground text-xs underline"
                     onClick={() => toggleZone(zone.id)}
                   >
                     {zone.enabled ? 'Exclude' : 'Include'}
                   </button>
                   <button
+                    title="Remove this zone permanently"
                     className="text-muted-foreground hover:text-destructive text-xs"
                     onClick={() => removeZone(zone.id)}
                   >

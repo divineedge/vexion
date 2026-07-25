@@ -11,6 +11,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -62,13 +63,20 @@ export default function CrewsPage() {
     });
   };
 
+  const [deleteCrewId, setDeleteCrewId] = React.useState<{ id: number; name: string } | null>(null);
+
   const handleDelete = (crewId: number, crewName: string) => {
-    if (!window.confirm(`Delete crew "${crewName}"?`)) return;
-    deleteCrew.mutate({ id: crewId }, {
+    setDeleteCrewId({ id: crewId, name: crewName });
+  };
+
+  const confirmDeleteCrew = () => {
+    if (!deleteCrewId) return;
+    deleteCrew.mutate({ id: deleteCrewId.id }, {
       onSuccess: () => {
         toast.success('Crew deleted');
         qc.invalidateQueries({ queryKey: getListCrewsQueryKey() });
-        if (selectedCrewId === crewId) setSelectedCrewId(null);
+        if (selectedCrewId === deleteCrewId.id) setSelectedCrewId(null);
+        setDeleteCrewId(null);
       },
       onError: () => toast.error('Failed to delete crew'),
     });
@@ -314,6 +322,24 @@ export default function CrewsPage() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Delete Crew Confirmation */}
+      <Dialog open={deleteCrewId != null} onOpenChange={open => { if (!open) setDeleteCrewId(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Crew</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to delete <strong>{deleteCrewId?.name}</strong>? This action cannot be undone.
+          </p>
+          <div className="flex gap-3 justify-end mt-4">
+            <Button variant="outline" onClick={() => setDeleteCrewId(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmDeleteCrew} disabled={deleteCrew.isPending}>
+              {deleteCrew.isPending ? 'Deleting…' : 'Delete'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

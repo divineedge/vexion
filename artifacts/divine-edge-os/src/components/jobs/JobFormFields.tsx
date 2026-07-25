@@ -105,12 +105,12 @@ export function JobFormFields({ form, setForm, customers, properties, users, dur
     <>
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Title <span className="text-destructive">*</span></label>
-        <Input placeholder="e.g. Irrigation system repair" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
+        <Input title="Enter a descriptive job title" placeholder="e.g. Irrigation system repair" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
       </div>
 
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Scheduled Date & Time <span className="text-destructive">*</span></label>
-        <Input type="datetime-local" value={form.scheduledAt} onChange={e => setForm(f => ({ ...f, scheduledAt: e.target.value }))} />
+        <Input type="datetime-local" title="When this job is scheduled to start" value={form.scheduledAt} onChange={e => setForm(f => ({ ...f, scheduledAt: e.target.value }))} />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -120,6 +120,7 @@ export function JobFormFields({ form, setForm, customers, properties, users, dur
             type="number"
             min={0}
             step={durationUnit === 'hours' ? 0.5 : 15}
+            title={`Estimated job duration in ${durationUnit}`}
             placeholder={durationUnit === 'hours' ? '1.5' : '90'}
             value={form.estimatedDuration}
             onChange={e => setForm(f => ({ ...f, estimatedDuration: e.target.value }))}
@@ -128,7 +129,7 @@ export function JobFormFields({ form, setForm, customers, properties, users, dur
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Priority</label>
           <Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v }))}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectTrigger title="Set job priority"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="low">Low</SelectItem>
               <SelectItem value="normal">Normal</SelectItem>
@@ -145,7 +146,7 @@ export function JobFormFields({ form, setForm, customers, properties, users, dur
           value={form.customerId}
           onValueChange={v => setForm(f => ({ ...f, customerId: v, propertyId: '' }))}
         >
-          <SelectTrigger><SelectValue placeholder="Select customer..." /></SelectTrigger>
+          <SelectTrigger title="Select the customer for this job"><SelectValue placeholder="Select customer..." /></SelectTrigger>
           <SelectContent>
             {customers.map(c => (
               <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
@@ -158,7 +159,7 @@ export function JobFormFields({ form, setForm, customers, properties, users, dur
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Property</label>
           <Select value={form.propertyId} onValueChange={v => setForm(f => ({ ...f, propertyId: v }))}>
-            <SelectTrigger><SelectValue placeholder="Select property..." /></SelectTrigger>
+            <SelectTrigger title="Select the property where work will be done"><SelectValue placeholder="Select property..." /></SelectTrigger>
             <SelectContent>
               {properties.map(p => (
                 <SelectItem key={p.id} value={String(p.id)}>{p.address}</SelectItem>
@@ -171,7 +172,7 @@ export function JobFormFields({ form, setForm, customers, properties, users, dur
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Assign To</label>
         <Select value={form.assigneeId} onValueChange={v => setForm(f => ({ ...f, assigneeId: v }))}>
-          <SelectTrigger><SelectValue placeholder="Select technician..." /></SelectTrigger>
+          <SelectTrigger title="Assign this job to a technician or crew manager"><SelectValue placeholder="Select technician..." /></SelectTrigger>
           <SelectContent>
             {users
               .filter(u => u.role === 'technician' || u.role === 'crew_manager')
@@ -185,6 +186,7 @@ export function JobFormFields({ form, setForm, customers, properties, users, dur
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Description</label>
         <Textarea
+          title="Additional details or special instructions for the technician"
           placeholder="Job details, special instructions..."
           rows={3}
           value={form.description}
@@ -203,6 +205,7 @@ export function JobFormFields({ form, setForm, customers, properties, users, dur
           </div>
           <button
             type="button"
+            title={form.smsReminderEnabled ? 'SMS reminder is on — click to disable' : 'SMS reminder is off — click to enable'}
             onClick={() => setForm(f => ({ ...f, smsReminderEnabled: !f.smsReminderEnabled }))}
             className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${form.smsReminderEnabled ? 'bg-primary' : 'bg-muted-foreground/30'}`}
           >
@@ -222,6 +225,7 @@ export function JobFormFields({ form, setForm, customers, properties, users, dur
               </div>
               <button
                 type="button"
+                title={form.recurring ? 'Recurring is on — click to make this a one-time job' : 'Recurring is off — click to auto-generate future instances'}
                 onClick={() => setForm(f => ({ ...f, recurring: !f.recurring }))}
                 className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${form.recurring ? 'bg-primary' : 'bg-muted-foreground/30'}`}
               >
@@ -235,7 +239,7 @@ export function JobFormFields({ form, setForm, customers, properties, users, dur
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Pattern</label>
                   <Select value={form.recurrencePattern} onValueChange={v => setForm(f => ({ ...f, recurrencePattern: v }))}>
-                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="h-8 text-sm" title="How often this job repeats"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="daily">Daily</SelectItem>
                       <SelectItem value="weekly">Weekly (pick days)</SelectItem>
@@ -256,6 +260,7 @@ export function JobFormFields({ form, setForm, customers, properties, users, dur
                         <button
                           key={i}
                           type="button"
+                          title={`${form.recurrenceDaysOfWeek.includes(i) ? 'Remove' : 'Add'} ${['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][i]} as a recurrence day`}
                           onClick={() => setForm(f => {
                             const cur = f.recurrenceDaysOfWeek;
                             return { ...f, recurrenceDaysOfWeek: cur.includes(i) ? cur.filter(x => x !== i) : [...cur, i] };
@@ -271,7 +276,7 @@ export function JobFormFields({ form, setForm, customers, properties, users, dur
                 {form.recurrencePattern === 'monthly_date' && (
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Day of Month</label>
-                    <Input type="number" min={1} max={31} className="h-8 text-sm" value={form.recurrenceDayOfMonth} onChange={e => setForm(f => ({ ...f, recurrenceDayOfMonth: e.target.value }))} />
+                    <Input type="number" min={1} max={31} title="Day of the month the job repeats on (1–31)" className="h-8 text-sm" value={form.recurrenceDayOfMonth} onChange={e => setForm(f => ({ ...f, recurrenceDayOfMonth: e.target.value }))} />
                   </div>
                 )}
 
@@ -281,7 +286,7 @@ export function JobFormFields({ form, setForm, customers, properties, users, dur
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Week</label>
                       <Select value={form.recurrenceWeekOfMonth} onValueChange={v => setForm(f => ({ ...f, recurrenceWeekOfMonth: v }))}>
-                        <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="h-8 text-sm" title="Which week of the month the job repeats on"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="1">First</SelectItem>
                           <SelectItem value="2">Second</SelectItem>
@@ -294,7 +299,7 @@ export function JobFormFields({ form, setForm, customers, properties, users, dur
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Day</label>
                       <Select value={form.recurrenceDayOfWeek} onValueChange={v => setForm(f => ({ ...f, recurrenceDayOfWeek: v }))}>
-                        <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="h-8 text-sm" title="Which day of the week the job repeats on"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {DAY_LABELS.map((d, i) => <SelectItem key={i} value={String(i)}>{d}</SelectItem>)}
                         </SelectContent>
@@ -307,7 +312,7 @@ export function JobFormFields({ form, setForm, customers, properties, users, dur
                 {form.recurrencePattern === 'custom' && (
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Every N Days</label>
-                    <Input type="number" min={1} className="h-8 text-sm" value={form.recurrenceInterval} onChange={e => setForm(f => ({ ...f, recurrenceInterval: e.target.value }))} />
+                    <Input type="number" min={1} title="Custom interval in days between each job occurrence" className="h-8 text-sm" value={form.recurrenceInterval} onChange={e => setForm(f => ({ ...f, recurrenceInterval: e.target.value }))} />
                   </div>
                 )}
 
@@ -315,7 +320,7 @@ export function JobFormFields({ form, setForm, customers, properties, users, dur
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Ends</label>
                   <Select value={form.recurrenceEndCondition} onValueChange={v => setForm(f => ({ ...f, recurrenceEndCondition: v }))}>
-                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="h-8 text-sm" title="When this recurring job series ends"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="never">Never</SelectItem>
                       <SelectItem value="after">After N occurrences</SelectItem>
@@ -326,13 +331,13 @@ export function JobFormFields({ form, setForm, customers, properties, users, dur
                 {form.recurrenceEndCondition === 'after' && (
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Number of Occurrences</label>
-                    <Input type="number" min={1} className="h-8 text-sm" value={form.recurrenceEndAfter} onChange={e => setForm(f => ({ ...f, recurrenceEndAfter: e.target.value }))} />
+                    <Input type="number" min={1} title="Stop generating jobs after this many occurrences" className="h-8 text-sm" value={form.recurrenceEndAfter} onChange={e => setForm(f => ({ ...f, recurrenceEndAfter: e.target.value }))} />
                   </div>
                 )}
                 {form.recurrenceEndCondition === 'on_date' && (
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">End Date</label>
-                    <Input type="date" className="h-8 text-sm" value={form.recurrenceEndDate} onChange={e => setForm(f => ({ ...f, recurrenceEndDate: e.target.value }))} />
+                    <Input type="date" title="Last date a job will be generated for this series" className="h-8 text-sm" value={form.recurrenceEndDate} onChange={e => setForm(f => ({ ...f, recurrenceEndDate: e.target.value }))} />
                   </div>
                 )}
               </div>

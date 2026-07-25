@@ -8,6 +8,7 @@ import {
   RefreshControl,
   ActivityIndicator,
   Platform,
+  TextInput,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -155,6 +156,11 @@ function JobCard({
           </View>
         </View>
         <View style={styles.cardRight}>
+          {job.priority && job.priority !== 'normal' && (
+            <View style={[styles.statusBadge, { backgroundColor: job.priority === 'urgent' ? '#fef2f2' : job.priority === 'high' ? '#fff7ed' : '#f8fafc', marginBottom: 4 }]}>
+              <Text style={[styles.statusText, { color: job.priority === 'urgent' ? '#dc2626' : job.priority === 'high' ? '#ea580c' : '#64748b', textTransform: 'capitalize' }]}>{job.priority}</Text>
+            </View>
+          )}
           <View style={[styles.statusBadge, { backgroundColor: sc + '22' }]}>
             <Text style={[styles.statusText, { color: sc }]}>{statusLabel(job.status)}</Text>
           </View>
@@ -172,6 +178,8 @@ export default function JobsScreen() {
   const { isOffline, reportNetworkStatus, cacheJobs, getCachedJobs } = useOffline();
 
   const [cachedJobs, setCachedJobs] = useState<Job[] | null>(null);
+  const [jobSearch, setJobSearch] = useState('');
+  const [jobStatusFilter, setJobStatusFilter] = useState<'all' | 'scheduled' | 'completed'>('all');
 
   const { data: jobs, isLoading, isError, refetch, isFetching } = useListJobs(
     user?.role === 'technician' ? { assigneeId: user.id } : undefined
@@ -266,12 +274,28 @@ export default function JobsScreen() {
     return map;
   }, [routeDayResults]);
 
+  const searchedJobs = useMemo(() => {
+    let result = displayJobs;
+    if (jobSearch.trim()) {
+      const q = jobSearch.toLowerCase();
+      result = result.filter(j =>
+        j.title.toLowerCase().includes(q) ||
+        (j.customerName ?? '').toLowerCase().includes(q) ||
+        (j.propertyAddress ?? '').toLowerCase().includes(q),
+      );
+    }
+    if (jobStatusFilter !== 'all') {
+      result = result.filter(j => j.status === jobStatusFilter);
+    }
+    return result;
+  }, [displayJobs, jobSearch, jobStatusFilter]);
+
   // Sort: route jobs for today sorted by sequenceOrder first, then everything else
   const sortedJobs = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
     const routeToday: Job[] = [];
     const rest: Job[] = [];
-    for (const job of displayJobs) {
+    for (const job of searchedJobs) {
       const isToday = job.scheduledAt.slice(0, 10) === today;
       if (isToday && routeStopMap.has(job.id)) {
         routeToday.push(job);
@@ -284,6 +308,8 @@ export default function JobsScreen() {
       const bOrder = routeStopMap.get(b.id)?.sequenceOrder ?? 999;
       return aOrder - bOrder;
     });
+    const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
+    rest.sort((a, b) => (PRIORITY_ORDER[a.priority ?? 'normal'] ?? 2) - (PRIORITY_ORDER[b.priority ?? 'normal'] ?? 2));
     return [...routeToday, ...rest];
   }, [displayJobs, routeStopMap]);
 
@@ -387,6 +413,38 @@ export default function JobsScreen() {
           </Text>
         </View>
       </TouchableOpacity>
+
+      {/* Search bar */}
+      {!isLoading && !showEmptyError && (
+        <View style={[styles.searchBar, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+          <Ionicons name="search-outline" size={16} color={colors.mutedForeground} />
+          <TextInput
+            value={jobSearch}
+            onChangeText={setJobSearch}
+            placeholder="Search jobs…"
+            placeholderTextColor={colors.mutedForeground}
+            style={[styles.searchInput, { color: colors.foreground }]}
+            clearButtonMode="while-editing"
+          />
+        </View>
+      )}
+
+      {/* Status filter pills */}
+      {!isLoading && !showEmptyError && (
+        <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          {(['all', 'scheduled', 'completed'] as const).map(s => (
+            <TouchableOpacity
+              key={s}
+              onPress={() => setJobStatusFilter(s)}
+              style={{ paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, backgroundColor: jobStatusFilter === s ? colors.primary : colors.muted }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '600', color: jobStatusFilter === s ? colors.primaryForeground : colors.mutedForeground, textTransform: 'capitalize' }}>
+                {s === 'all' ? 'All' : s === 'scheduled' ? 'Scheduled' : 'Completed'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
       {/* Offline banner */}
       {showOfflineBanner && (
@@ -504,6 +562,20 @@ const styles = StyleSheet.create({
   clockToggleText: {
     fontFamily: 'Inter_500Medium',
     fontSize: 12,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+  },
+  searchInput: {
+    flex: 1,
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    paddingVertical: 4,
   },
   offlineBanner: {
     flexDirection: 'row',

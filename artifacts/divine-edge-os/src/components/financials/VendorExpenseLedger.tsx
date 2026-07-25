@@ -51,6 +51,9 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
   const [expenseSheetOpen, setExpenseSheetOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<ExpenseEntry | null>(null);
+  const [expenseSearch, setExpenseSearch] = useState('');
+  const [expenseDateFrom, setExpenseDateFrom] = useState('');
+  const [expenseDateTo, setExpenseDateTo] = useState('');
 
   const createVendor = useCreateVendor();
   const updateVendor = useUpdateVendor();
@@ -130,7 +133,7 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2"><Building2 className="w-4 h-4" /> Vendors</CardTitle>
           {canEdit && (
-            <Button size="sm" className="gap-2" onClick={() => { setEditingVendor(null); setVendorSheetOpen(true); }}>
+            <Button size="sm" title="Add a new vendor or supplier" className="gap-2" onClick={() => { setEditingVendor(null); setVendorSheetOpen(true); }}>
               <Plus className="w-4 h-4" /> Add Vendor
             </Button>
           )}
@@ -149,16 +152,16 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
             <TableBody>
               {vendors.map(v => (
                 <TableRow key={v.id}>
-                  <TableCell className="font-medium">{v.name}</TableCell>
-                  <TableCell className="text-muted-foreground">{v.category ?? '—'}</TableCell>
-                  <TableCell className="text-muted-foreground">{v.contact ?? '—'}</TableCell>
-                  <TableCell className="text-muted-foreground truncate max-w-[240px]">{v.notes ?? '—'}</TableCell>
+                  <TableCell className="font-medium" title={v.name}>{v.name}</TableCell>
+                  <TableCell className="text-muted-foreground" title={v.category ? `Category: ${v.category}` : undefined}>{v.category ?? '—'}</TableCell>
+                  <TableCell className="text-muted-foreground" title={v.contact ? `Contact: ${v.contact}` : undefined}>{v.contact ?? '—'}</TableCell>
+                  <TableCell className="text-muted-foreground truncate max-w-[240px]" title={v.notes ?? undefined}>{v.notes ?? '—'}</TableCell>
                   {canEdit && (
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingVendor(v); setVendorSheetOpen(true); }}>
+                      <Button variant="ghost" size="icon" title="Edit this vendor" className="h-8 w-8" onClick={() => { setEditingVendor(v); setVendorSheetOpen(true); }}>
                         <Pencil className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDeleteVendor(v.id)}>
+                      <Button variant="ghost" size="icon" title="Delete this vendor" className="h-8 w-8 text-destructive" onClick={() => handleDeleteVendor(v.id)}>
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </TableCell>
@@ -175,12 +178,34 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
 
       {/* Expenses */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
           <CardTitle className="text-base flex items-center gap-2"><Receipt className="w-4 h-4" /> Expense Ledger</CardTitle>
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" className="gap-2" onClick={exportExpensesCsv}><Download className="w-4 h-4" /> Export CSV</Button>
+          <div className="flex gap-2 flex-wrap items-center">
+            <input
+              type="text"
+              title="Search by vendor name or expense description"
+              value={expenseSearch}
+              onChange={e => setExpenseSearch(e.target.value)}
+              placeholder="Search vendor/desc…"
+              className="h-8 text-xs px-2 rounded-md border border-input bg-background w-40"
+            />
+            <input
+              type="date"
+              value={expenseDateFrom}
+              onChange={e => setExpenseDateFrom(e.target.value)}
+              className="h-8 text-xs px-2 rounded-md border border-input bg-background w-36"
+              title="From date"
+            />
+            <input
+              type="date"
+              value={expenseDateTo}
+              onChange={e => setExpenseDateTo(e.target.value)}
+              className="h-8 text-xs px-2 rounded-md border border-input bg-background w-36"
+              title="To date"
+            />
+            <Button size="sm" variant="outline" className="gap-2" title="Download expenses as CSV" onClick={exportExpensesCsv}><Download className="w-4 h-4" /> Export CSV</Button>
             {canEdit && (
-              <Button size="sm" className="gap-2" onClick={() => { setEditingExpense(null); setExpenseSheetOpen(true); }}>
+              <Button size="sm" className="gap-2" title="Log a new vendor expense" onClick={() => { setEditingExpense(null); setExpenseSheetOpen(true); }}>
                 <Plus className="w-4 h-4" /> Log Expense
               </Button>
             )}
@@ -200,13 +225,19 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {expenses.map(e => (
+              {expenses.filter(e => {
+                const q = expenseSearch.trim().toLowerCase();
+                if (q && !(e.vendorName ?? '').toLowerCase().includes(q) && !(e.description ?? '').toLowerCase().includes(q)) return false;
+                if (expenseDateFrom && e.date < expenseDateFrom) return false;
+                if (expenseDateTo && e.date > expenseDateTo) return false;
+                return true;
+              }).map(e => (
                 <TableRow key={e.id}>
-                  <TableCell>{format(new Date(e.date), 'MMM d, yyyy')}</TableCell>
-                  <TableCell>{e.vendorName ?? '—'}</TableCell>
-                  <TableCell><Badge variant="secondary" className="font-normal">{e.category}</Badge></TableCell>
-                  <TableCell className="text-muted-foreground truncate max-w-[240px]">{e.description ?? '—'}</TableCell>
-                  <TableCell className="text-right font-medium">${e.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
+                  <TableCell title={format(new Date(e.date), 'EEEE, MMMM d, yyyy')}>{format(new Date(e.date), 'MMM d, yyyy')}</TableCell>
+                  <TableCell title={e.vendorName ?? undefined}>{e.vendorName ?? '—'}</TableCell>
+                  <TableCell><Badge variant="secondary" className="font-normal" title={`Category: ${e.category}`}>{e.category}</Badge></TableCell>
+                  <TableCell className="text-muted-foreground truncate max-w-[240px]" title={e.description ?? undefined}>{e.description ?? '—'}</TableCell>
+                  <TableCell className="text-right font-medium" title={`Expense amount: $${e.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}>${e.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
                   <TableCell>
                     {e.receiptUrl && (
                       <Button
@@ -222,10 +253,10 @@ export default function VendorExpenseLedger({ canEdit }: { canEdit: boolean }) {
                   </TableCell>
                   {canEdit && (
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingExpense(e); setExpenseSheetOpen(true); }}>
+                      <Button variant="ghost" size="icon" title="Edit this expense" className="h-8 w-8" onClick={() => { setEditingExpense(e); setExpenseSheetOpen(true); }}>
                         <Pencil className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDeleteExpense(e.id)}>
+                      <Button variant="ghost" size="icon" title="Delete this expense" className="h-8 w-8 text-destructive" onClick={() => handleDeleteExpense(e.id)}>
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </TableCell>
@@ -359,21 +390,21 @@ function VendorForm({ editing, onSubmit }: { editing: Vendor | null; onSubmit: (
     <div className="space-y-4 mt-6">
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Name</label>
-        <Input value={name} onChange={e => setName(e.target.value)} placeholder="Acme Supply Co." />
+        <Input title="Vendor or supplier name" value={name} onChange={e => setName(e.target.value)} placeholder="Acme Supply Co." />
       </div>
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Category</label>
-        <Input value={category} onChange={e => setCategory(e.target.value)} placeholder="Supplies, fuel, insurance…" />
+        <Input title="Vendor business category (e.g. Supplies, Fuel, Insurance)" value={category} onChange={e => setCategory(e.target.value)} placeholder="Supplies, fuel, insurance…" />
       </div>
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Contact</label>
-        <Input value={contact} onChange={e => setContact(e.target.value)} placeholder="Phone or email" />
+        <Input title="Vendor contact information (phone or email)" value={contact} onChange={e => setContact(e.target.value)} placeholder="Phone or email" />
       </div>
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Notes</label>
-        <Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} />
+        <Textarea title="Additional notes about this vendor (billing terms, special instructions, etc.)" value={notes} onChange={e => setNotes(e.target.value)} rows={3} />
       </div>
-      <Button className="w-full" onClick={handleSave} disabled={saving}>{editing ? 'Save Changes' : 'Add Vendor'}</Button>
+      <Button title={editing ? 'Save changes to this vendor' : 'Add this vendor to the list'} className="w-full" onClick={handleSave} disabled={saving}>{editing ? 'Save Changes' : 'Add Vendor'}</Button>
     </div>
   );
 }
@@ -433,16 +464,16 @@ function ExpenseForm({ editing, vendors, onSubmit }: {
     <div className="space-y-4 mt-6">
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Date</label>
-        <Input type="date" value={date} onChange={e => setDate(e.target.value)} />
+        <Input type="date" title="Date of this expense" value={date} onChange={e => setDate(e.target.value)} />
       </div>
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Amount</label>
-        <Input type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" />
+        <Input type="number" step="0.01" title="Total expense amount in dollars" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" />
       </div>
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Category</label>
         <Select value={category} onValueChange={setCategory}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectTrigger title="Select the expense category"><SelectValue /></SelectTrigger>
           <SelectContent>
             {EXPENSE_CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
           </SelectContent>
@@ -451,7 +482,7 @@ function ExpenseForm({ editing, vendors, onSubmit }: {
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Vendor (optional)</label>
         <Select value={vendorId || '__none__'} onValueChange={v => setVendorId(v === '__none__' ? '' : v)}>
-          <SelectTrigger><SelectValue placeholder="No vendor" /></SelectTrigger>
+          <SelectTrigger title="Select the vendor for this expense (optional)"><SelectValue placeholder="No vendor" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__none__">No vendor</SelectItem>
             {vendors.map(v => <SelectItem key={v.id} value={String(v.id)}>{v.name}</SelectItem>)}
@@ -460,7 +491,7 @@ function ExpenseForm({ editing, vendors, onSubmit }: {
       </div>
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Description</label>
-        <Textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} />
+        <Textarea title="Brief description of what the expense was for" value={description} onChange={e => setDescription(e.target.value)} rows={2} />
       </div>
 
       {/* Receipt upload */}
@@ -515,6 +546,7 @@ function ExpenseForm({ editing, vendors, onSubmit }: {
           variant="outline"
           size="sm"
           className="gap-2 w-full"
+          title="Attach a receipt image or PDF for this expense"
           onClick={() => fileInputRef.current?.click()}
         >
           <Paperclip className="w-4 h-4" />
@@ -522,7 +554,7 @@ function ExpenseForm({ editing, vendors, onSubmit }: {
         </Button>
       </div>
 
-      <Button className="w-full" onClick={handleSave} disabled={saving}>
+      <Button title={editing ? 'Save changes to this expense' : 'Log this expense to the ledger'} className="w-full" onClick={handleSave} disabled={saving}>
         {saving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{receiptFile ? 'Uploading…' : 'Saving…'}</> : (editing ? 'Save Changes' : 'Log Expense')}
       </Button>
     </div>

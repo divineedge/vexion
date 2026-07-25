@@ -273,6 +273,7 @@ router.get("/routes/dashboard", async (req, res): Promise<void> => {
         dayOfWeek: t.dayOfWeek,
         runDate: new Date(weekStartDate.getTime() + t.dayOfWeek * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
         stopCount: rows.length,
+        completedStops: rows.filter(r => r.job.status === 'completed').length,
         capacity,
       };
     });

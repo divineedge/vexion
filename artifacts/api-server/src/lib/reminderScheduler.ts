@@ -182,8 +182,10 @@ async function sendReminder(params: {
     const defaultEmail = buildReminderEmailBody({ customerName: firstName, jobTitle: job.title, scheduledAt: job.scheduledAt, propertyAddress, companyName });
     const subject = notifTemplates.serviceReminderEmailSubject ? applyTemplate(notifTemplates.serviceReminderEmailSubject, templateVars) : defaultEmail.subject;
     const body = notifTemplates.serviceReminderEmailBody ? applyTemplate(notifTemplates.serviceReminderEmailBody, templateVars) : defaultEmail.body;
+    // Use branded HTML unless a custom plain-text template is set
+    const html = notifTemplates.serviceReminderEmailBody ? undefined : defaultEmail.html;
 
-    const emailResult = await sendEmail(emailProviderConfig, customer.email, subject, body);
+    const emailResult = await sendEmail(emailProviderConfig, customer.email, subject, body, html);
 
     await db.insert(communicationsLogTable).values({
       tenantId: tenant.id,
@@ -387,22 +389,22 @@ export async function resendReminderForJob(
   }
 
   if (customer.email && !customer.emailOptOut) {
-    const { subject, body } = buildReminderEmailBody({
+    const defaultEmail = buildReminderEmailBody({
       customerName: customer.name.split(" ")[0] ?? customer.name,
       jobTitle: job.title,
       scheduledAt: job.scheduledAt,
       propertyAddress: propertyAddress ?? null,
       companyName,
     });
-    const emailResult = await sendEmail(emailProviderConfig, customer.email, subject, body);
+    const emailResult = await sendEmail(emailProviderConfig, customer.email, defaultEmail.subject, defaultEmail.body, defaultEmail.html);
     await db.insert(communicationsLogTable).values({
       tenantId: tenant.id,
       customerId: customer.id,
       direction: "outbound",
       channel: "email",
       toAddress: customer.email,
-      subject,
-      body,
+      subject: defaultEmail.subject,
+      body: defaultEmail.body,
       status: emailResult.success ? "sent" : "failed",
       externalId: emailResult.externalId ?? null,
       errorNote: emailResult.success ? null : (emailResult.error ?? "Unknown email error"),

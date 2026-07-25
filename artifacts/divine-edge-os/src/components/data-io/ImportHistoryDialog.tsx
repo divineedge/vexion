@@ -115,7 +115,7 @@ function RollbackResultDialog({ result, onClose }: RollbackResultDialogProps) {
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogAction onClick={onClose}>OK</AlertDialogAction>
+          <AlertDialogAction title="Close this dialog" onClick={onClose}>OK</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
@@ -220,7 +220,7 @@ export function ImportHistoryDialog({ entity, entityLabel, open, onOpenChange, o
                       </TableCell>
                       <TableCell className="text-right">
                         {b.status !== 'rolled_back' && (b.created > 0 || b.updated > 0) && (
-                          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setConfirmBatch(b)}>
+                          <Button size="sm" variant="outline" title={b.status === 'rollback_partial' ? 'Retry undoing this partially-rolled-back import' : 'Undo this import — removes rows it created and restores rows it updated'} className="gap-1.5" onClick={() => setConfirmBatch(b)}>
                             <Undo2 className="w-3.5 h-3.5" />
                             {b.status === 'rollback_partial' ? 'Retry undo' : 'Undo'}
                           </Button>
@@ -256,8 +256,8 @@ export function ImportHistoryDialog({ entity, entityLabel, open, onOpenChange, o
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={rollback.isPending}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRollback} disabled={rollback.isPending} className="gap-2">
+            <AlertDialogCancel title="Keep this import as-is" disabled={rollback.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction title="Confirm and undo this import" onClick={handleRollback} disabled={rollback.isPending} className="gap-2">
               {rollback.isPending && <Loader2 className="w-4 h-4 animate-spin" />} Undo import
             </AlertDialogAction>
           </AlertDialogFooter>

@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { CalendarClock, Plus, Repeat, MapPin, ChevronRight, Info, Loader2 } from 'lucide-react';
+import { CalendarClock, Plus, Repeat, MapPin, ChevronRight, Info, Loader2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Property { id: number; address: string; }
@@ -144,7 +144,7 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">Recurring service plans sold to this customer, with automated visit scheduling and billing.</p>
-        <Button size="sm" className="gap-2" onClick={openSell} disabled={properties.length === 0}>
+        <Button size="sm" className="gap-2" title="Sell a service plan to this customer" onClick={openSell} disabled={properties.length === 0}>
           <Plus className="w-4 h-4" /> Sell a Plan
         </Button>
       </div>
@@ -164,14 +164,14 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
               <CardContent className="p-4 flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-2">
-                    <p className="font-medium">{p.templateName}</p>
-                    <Badge variant="outline" className={STATUS_STYLE[p.status] ?? ''}>{p.status.replace('_', ' ')}</Badge>
+                    <p className="font-medium" title={p.templateName}>{p.templateName}</p>
+                    <Badge variant="outline" className={STATUS_STYLE[p.status] ?? ''} title={`Plan status: ${p.status.replace('_', ' ')}`}>{p.status.replace('_', ' ')}</Badge>
                     {p.autoRenew && <Badge variant="outline" className="text-xs">Auto-renew</Badge>}
                   </div>
                   <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1">
-                    <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{p.propertyAddress}</span>
-                    <span className="flex items-center gap-1"><CalendarClock className="w-3 h-3" />Next billing {p.nextBillingDate}</span>
-                    <span>${p.billingPrice.toFixed(2)} / {CYCLE_LABEL[p.billingCycle]}</span>
+                    <span className="flex items-center gap-1" title={p.propertyAddress ?? undefined}><MapPin className="w-3 h-3" />{p.propertyAddress}</span>
+                    <span className="flex items-center gap-1" title={p.nextBillingDate ? `Next billing: ${p.nextBillingDate}` : 'No next billing date'}><CalendarClock className="w-3 h-3" />Next billing {p.nextBillingDate ?? '—'}</span>
+                    <span title={`Billing: $${p.billingPrice.toFixed(2)} per ${CYCLE_LABEL[p.billingCycle]}`}>${p.billingPrice.toFixed(2)} / {CYCLE_LABEL[p.billingCycle]}</span>
                   </div>
                 </div>
                 <ChevronRight className="w-4 h-4 text-muted-foreground" />
@@ -192,7 +192,7 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Plan Template</label>
               <Select value={templateId} onValueChange={v => { setTemplateId(v); previewMutation.reset(); }}>
-                <SelectTrigger><SelectValue placeholder="Choose a plan" /></SelectTrigger>
+                <SelectTrigger title="Select the service plan to sell to this customer"><SelectValue placeholder="Choose a plan" /></SelectTrigger>
                 <SelectContent>
                   {activeTemplates.map(t => {
                     const pm = (t as any).pricingMode ?? 'flat';
@@ -209,7 +209,7 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Property</label>
               <Select value={propertyId} onValueChange={v => { setPropertyId(v); previewMutation.reset(); }}>
-                <SelectTrigger><SelectValue placeholder="Choose a property" /></SelectTrigger>
+                <SelectTrigger title="Property where this plan's services will be performed"><SelectValue placeholder="Choose a property" /></SelectTrigger>
                 <SelectContent>
                   {properties.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.address}</SelectItem>)}
                 </SelectContent>
@@ -219,15 +219,26 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Start Date</label>
-                <Input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); previewMutation.reset(); }} />
+                <Input type="date" title="Date the plan becomes active and the first billing period begins" value={startDate} onChange={e => { setStartDate(e.target.value); previewMutation.reset(); }} />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Auto-Renew</label>
                 <div className="flex items-center h-9">
-                  <Switch checked={autoRenew} onCheckedChange={setAutoRenew} />
+                  <Switch title={autoRenew ? 'Auto-renew enabled — plan will renew automatically at the end of the period' : 'Auto-renew disabled — plan will expire at the end of the period'} checked={autoRenew} onCheckedChange={setAutoRenew} />
                 </div>
               </div>
             </div>
+
+            {/* Warning: area-based template selected but property has no satellite measurements */}
+            {!resolvingPrice && priceResolution && priceResolution.pricingMode !== 'flat' && priceResolution.resolvedPrice === 0 && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>
+                  <strong>No measurements found.</strong> This is an area-based plan but the selected property has no satellite measurements.
+                  The auto-resolved price is <strong>$0</strong> — override the price below before activating, or add measurements on the property first.
+                </span>
+              </div>
+            )}
 
             {/* Price field */}
             {templateId && (
@@ -257,7 +268,9 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
                   )}
                 </div>
                 <Input
-                  type="number" step="0.01" min={0} placeholder="0.00"
+                  type="number" step="0.01" min={0}
+                  title="Override the calculated plan price for this customer — leave blank to use the auto-resolved price"
+                  placeholder="0.00"
                   value={priceOverride}
                   onChange={e => setPriceOverride(e.target.value)}
                 />
@@ -269,7 +282,7 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
               </div>
             )}
 
-            <Button variant="outline" onClick={runPreview} disabled={previewMutation.isPending || !templateId || !propertyId} className="w-full">
+            <Button variant="outline" title="Preview the visit schedule this plan will generate before confirming" onClick={runPreview} disabled={previewMutation.isPending || !templateId || !propertyId} className="w-full">
               {previewMutation.isPending ? 'Building preview...' : 'Preview Schedule'}
             </Button>
 
@@ -293,8 +306,8 @@ export default function CustomerPlansTab({ customerId, properties }: { customerI
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSellOpen(false)}>Cancel</Button>
-            <Button onClick={confirmSale} disabled={!previewMutation.data || createMutation.isPending}>
+            <Button variant="outline" title="Cancel and close the plan sale dialog" onClick={() => setSellOpen(false)}>Cancel</Button>
+            <Button title="Confirm the plan sale and activate it for this customer" onClick={confirmSale} disabled={!previewMutation.data || createMutation.isPending}>
               {createMutation.isPending ? 'Activating...' : 'Confirm & Activate Plan'}
             </Button>
           </DialogFooter>

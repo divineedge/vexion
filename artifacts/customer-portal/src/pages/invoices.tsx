@@ -4,7 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { FileText, Download, CheckCircle2, AlertCircle, ChevronRight, Loader2 } from "lucide-react";
+import { FileText, Download, CheckCircle2, AlertCircle, ChevronRight, Loader2, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link, useSearch } from "wouter";
 import { useEffect, useState } from "react";
@@ -15,6 +16,9 @@ export default function Invoices() {
   const search = useSearch();
   const [payingId, setPayingId] = useState<number | null>(null);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [invoiceSearch, setInvoiceSearch] = useState('');
+  const [invoiceDateFrom, setInvoiceDateFrom] = useState('');
+  const [invoiceDateTo, setInvoiceDateTo] = useState('');
 
   const { mutate: createPaySession } = usePortalCreatePaySession({
     mutation: {
@@ -98,8 +102,13 @@ export default function Invoices() {
     }
   };
 
-  const pendingInvoices = invoices?.filter(i => i.status === 'sent' || i.status === 'overdue') || [];
-  const paidInvoices = invoices?.filter(i => i.status === 'paid') || [];
+  const allFiltered = (invoices ?? []).filter(i =>
+    (!invoiceSearch.trim() || i.invoiceNumber.toLowerCase().includes(invoiceSearch.toLowerCase())) &&
+    (!invoiceDateFrom || (i.createdAt ?? '') >= invoiceDateFrom) &&
+    (!invoiceDateTo || (i.createdAt ?? '') <= invoiceDateTo + 'T23:59:59')
+  );
+  const pendingInvoices = allFiltered.filter(i => i.status === 'sent' || i.status === 'overdue');
+  const paidInvoices = allFiltered.filter(i => i.status === 'paid');
 
   const InvoiceCard = ({ invoice }: { invoice: any }) => {
     const isPaying = payingId === invoice.id;
@@ -205,12 +214,21 @@ export default function Invoices() {
       </div>
 
       <Tabs defaultValue="pending" className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="pending">
-            Pending ({pendingInvoices.length})
-          </TabsTrigger>
-          <TabsTrigger value="paid">Paid History</TabsTrigger>
-        </TabsList>
+        <div className="flex items-center gap-3 flex-wrap mb-3">
+          <TabsList className="grid max-w-xs grid-cols-2">
+            <TabsTrigger value="pending">Pending ({pendingInvoices.length})</TabsTrigger>
+            <TabsTrigger value="paid">Paid History</TabsTrigger>
+          </TabsList>
+          <div className="relative ml-auto">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+            <Input value={invoiceSearch} onChange={e => setInvoiceSearch(e.target.value)} placeholder="Search by invoice #…" className="h-8 text-sm pl-7 w-48" />
+          </div>
+          <input type="date" value={invoiceDateFrom} onChange={e => setInvoiceDateFrom(e.target.value)} className="h-8 text-xs px-2 rounded-md border border-input bg-background" title="From date" />
+          <input type="date" value={invoiceDateTo} onChange={e => setInvoiceDateTo(e.target.value)} className="h-8 text-xs px-2 rounded-md border border-input bg-background" title="To date" />
+          {(invoiceDateFrom || invoiceDateTo) && (
+            <button className="text-xs text-muted-foreground hover:text-foreground" onClick={() => { setInvoiceDateFrom(''); setInvoiceDateTo(''); }}>Clear</button>
+          )}
+        </div>
         
         <TabsContent value="pending" className="mt-6 space-y-4">
           {isLoading ? (

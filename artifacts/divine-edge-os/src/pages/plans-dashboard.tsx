@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useGetPlansDashboard, getGetPlansDashboardQueryKey } from '@workspace/api-client-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { DollarSign, Repeat, AlertTriangle, CalendarClock, ChevronRight } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { DollarSign, Repeat, AlertTriangle, CalendarClock, ChevronRight, Search } from 'lucide-react';
 
 const STATUS_STYLE: Record<string, string> = {
   active: 'bg-emerald-100 text-emerald-700 border-emerald-200',
@@ -15,12 +17,14 @@ const STATUS_STYLE: Record<string, string> = {
 
 export default function PlansDashboardPage() {
   const [, navigate] = useLocation();
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [planSearch, setPlanSearch] = useState('');
   const { data, isLoading } = useGetPlansDashboard({ query: { queryKey: getGetPlansDashboardQueryKey() } });
 
   const cards = [
     { label: 'Active Plans', value: data?.activeCount ?? 0, icon: Repeat, color: 'text-primary bg-primary/10' },
     { label: 'Monthly Recurring Revenue', value: `$${(data?.mrr ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`, icon: DollarSign, color: 'text-emerald-600 bg-emerald-500/10' },
-    { label: 'Expiring in 30 Days', value: data?.expiringSoonCount ?? 0, icon: CalendarClock, color: 'text-blue-600 bg-blue-500/10' },
+    { label: `Expiring in ${(data as any)?.renewalWarningDays ?? 30} Days`, value: data?.expiringSoonCount ?? 0, icon: CalendarClock, color: 'text-blue-600 bg-blue-500/10' },
     { label: 'Overdue Billing', value: data?.overdueCount ?? 0, icon: AlertTriangle, color: 'text-red-600 bg-red-500/10' },
   ];
 
@@ -39,7 +43,7 @@ export default function PlansDashboardPage() {
                 <c.icon className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{c.value}</p>
+                <p className="text-2xl font-bold" title={`${c.label}: ${c.value}`}>{c.value}</p>
                 <p className="text-sm text-muted-foreground">{c.label}</p>
               </div>
             </CardContent>
@@ -49,6 +53,30 @@ export default function PlansDashboardPage() {
 
       <Card>
         <CardContent className="p-0">
+          <div className="p-4 border-b flex items-center gap-3 flex-wrap">
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
+              <Input
+                title="Search by customer name or plan name"
+                placeholder="Search customer or plan…"
+                value={planSearch}
+                onChange={e => setPlanSearch(e.target.value)}
+                className="h-9 text-sm pl-7 w-56"
+              />
+            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-44 h-9" title="Filter by plan status">
+                <SelectValue placeholder="All statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="paused">Paused</SelectItem>
+                <SelectItem value="pending_renewal">Pending Renewal</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <Table>
             <TableHeader>
               <TableRow>
@@ -68,18 +96,23 @@ export default function PlansDashboardPage() {
                 <TableRow><TableCell colSpan={7} className="py-12 text-center text-muted-foreground">
                   <Repeat className="w-8 h-8 mx-auto mb-2 opacity-30" />No plans sold yet.
                 </TableCell></TableRow>
-              ) : (data?.plans ?? []).map(p => (
-                <TableRow key={p.id} className="cursor-pointer hover:bg-muted/50" onClick={() => navigate(`/plans/${p.id}`)}>
-                  <TableCell className="font-medium">{p.customerName}</TableCell>
-                  <TableCell>{p.templateName}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{p.propertyAddress}</TableCell>
-                  <TableCell className="text-right">${p.billingPrice.toFixed(2)}</TableCell>
-                  <TableCell className="text-sm">
+              ) : (data?.plans ?? []).filter(p => statusFilter === 'all' || p.status === statusFilter).filter(p => !planSearch || p.customerName?.toLowerCase().includes(planSearch.toLowerCase()) || p.templateName?.toLowerCase().includes(planSearch.toLowerCase())).length === 0 ? (
+                <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">No plans match the selected filter.</TableCell></TableRow>
+              ) : (data?.plans ?? []).filter(p => statusFilter === 'all' || p.status === statusFilter).filter(p => !planSearch || p.customerName?.toLowerCase().includes(planSearch.toLowerCase()) || p.templateName?.toLowerCase().includes(planSearch.toLowerCase())).map(p => (
+                <TableRow key={p.id} className={`cursor-pointer hover:bg-muted/50 ${p.isOverdue ? 'bg-red-50/40' : (!p.isOverdue && (p as any).daysUntilRenewal != null && (p as any).daysUntilRenewal >= 0 && (p as any).daysUntilRenewal <= ((data as any)?.renewalWarningDays ?? 30) ? 'bg-blue-50/30' : '')}`} onClick={() => navigate(`/plans/${p.id}`)}>
+                  <TableCell className="font-medium" title={p.customerName ?? undefined}>{p.customerName}</TableCell>
+                  <TableCell title={p.templateName ?? undefined}>{p.templateName}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground" title={p.propertyAddress ?? undefined}>{p.propertyAddress}</TableCell>
+                  <TableCell className="text-right" title={`Billing price: $${p.billingPrice.toFixed(2)}`}>${p.billingPrice.toFixed(2)}</TableCell>
+                  <TableCell className="text-sm" title={p.nextBillingDate ? `Next billing: ${p.nextBillingDate}` : undefined}>
                     {p.nextBillingDate}
-                    {p.isOverdue && <Badge variant="outline" className="ml-2 text-xs bg-red-100 text-red-700 border-red-200">Overdue</Badge>}
+                    {p.isOverdue && <Badge variant="outline" className="ml-2 text-xs bg-red-100 text-red-700 border-red-200" title="Renewal is overdue">Overdue</Badge>}
+                    {!p.isOverdue && (p as any).daysUntilRenewal != null && (p as any).daysUntilRenewal <= ((data as any)?.renewalWarningDays ?? 30) && (p as any).daysUntilRenewal >= 0 && (
+                      <Badge variant="outline" className="ml-2 text-xs bg-blue-50 text-blue-700 border-blue-200" title={`Renews in ${(p as any).daysUntilRenewal} days`}>Renews in {(p as any).daysUntilRenewal}d</Badge>
+                    )}
                   </TableCell>
                   <TableCell className="text-center">
-                    <Badge variant="outline" className={STATUS_STYLE[p.status] ?? ''}>{p.status.replace('_', ' ')}</Badge>
+                    <Badge variant="outline" className={STATUS_STYLE[p.status] ?? ''} title={`Plan status: ${p.status.replace('_', ' ')}`}>{p.status.replace('_', ' ')}</Badge>
                   </TableCell>
                   <TableCell><ChevronRight className="w-4 h-4 text-muted-foreground" /></TableCell>
                 </TableRow>

@@ -9,6 +9,7 @@ import { isAdminRole } from "../lib/roles";
 import { sendSms, type SmsProviderConfig } from "../lib/smsProvider";
 import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
 import { logger } from "../lib/logger";
+import { notifyBroadcastFailed } from "../lib/broadcastScheduler";
 
 const router: IRouter = Router();
 
@@ -192,6 +193,13 @@ async function dispatchBroadcast(
   await db.update(broadcastsTable)
     .set({ status: failed > 0 && sent === 0 ? "failed" : "completed", sentAt: new Date(), stats: { sent, failed, optedOut: 0 } })
     .where(eq(broadcastsTable.id, broadcastId));
+
+  // Notify staff on full OR partial failure (mirrors scheduled broadcast behaviour)
+  if (failed > 0) {
+    await notifyBroadcastFailed(tenantId, broadcastId, sent, failed).catch(err =>
+      logger.warn({ err, broadcastId }, "Failed to send broadcast failure notification"),
+    );
+  }
 }
 
 router.get("/broadcasts", async (req, res): Promise<void> => {

@@ -408,7 +408,7 @@ export function buildReminderEmailBody(params: {
   serviceDescription?: string | null;
   propertyAddress?: string | null;
   companyName: string;
-}): { subject: string; body: string } {
+}): { subject: string; body: string; html: string } {
   const dateStr = params.scheduledAt.toLocaleDateString("en-US", {
     weekday: "long",
     year: "numeric",
@@ -422,6 +422,7 @@ export function buildReminderEmailBody(params: {
   });
 
   const subject = `Upcoming Service Reminder — ${params.jobTitle} on ${dateStr}`;
+
   const body = [
     `Hi ${params.customerName},`,
     "",
@@ -438,7 +439,73 @@ export function buildReminderEmailBody(params: {
     params.companyName,
   ].filter(l => l !== null).join("\n");
 
-  return { subject, body };
+  const detailRows: string[] = [];
+  if (params.serviceDescription) detailRows.push(`<tr><td style="padding:6px 0;color:#6b7280;font-size:13px;">Service</td><td style="padding:6px 0 6px 16px;font-size:13px;font-weight:500;">${escapeHtml(params.serviceDescription)}</td></tr>`);
+  if (params.propertyAddress) detailRows.push(`<tr><td style="padding:6px 0;color:#6b7280;font-size:13px;">Property</td><td style="padding:6px 0 6px 16px;font-size:13px;font-weight:500;">${escapeHtml(params.propertyAddress)}</td></tr>`);
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${escapeHtml(subject)}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f4f5;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f4f5;padding:40px 0;">
+    <tr>
+      <td align="center">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;background-color:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+
+          <!-- Header -->
+          <tr>
+            <td style="background-color:#1a1a2e;padding:28px 40px;">
+              <p style="margin:0;font-size:20px;font-weight:700;color:#ffffff;letter-spacing:0.5px;">${escapeHtml(params.companyName)}</p>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:36px 40px 16px;">
+              <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6;">Hi ${escapeHtml(params.customerName)},</p>
+              <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.6;">
+                This is a friendly reminder that <strong>${escapeHtml(params.companyName)}</strong> will be servicing your property:
+              </p>
+
+              <!-- Appointment block -->
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f0f4ff;border:1px solid #c7d4f8;border-radius:8px;padding:0;">
+                <tr>
+                  <td style="padding:20px 24px;">
+                    <p style="margin:0 0 4px;font-size:18px;font-weight:700;color:#1e3a8a;">${escapeHtml(dateStr)}</p>
+                    <p style="margin:0;font-size:15px;color:#374151;">${escapeHtml(timeStr)}</p>
+                    ${detailRows.length ? `<table style="margin-top:14px;border-top:1px solid #c7d4f8;padding-top:14px;width:100%;">${detailRows.join("")}</table>` : ""}
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:24px 0 16px;font-size:14px;color:#6b7280;line-height:1.6;">
+                If you have any questions or need to reschedule, please contact us directly.
+              </p>
+              <p style="margin:0;font-size:12px;color:#9ca3af;">Reply STOP to opt out of future reminders.</p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color:#f9fafb;padding:20px 40px;border-top:1px solid #e5e7eb;">
+              <p style="margin:0;font-size:12px;color:#9ca3af;">
+                &copy; ${new Date().getFullYear()} ${escapeHtml(params.companyName)}. This is an automated message — please do not reply.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  return { subject, body, html };
 }
 
 /**

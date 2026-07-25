@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable, mediaAttachmentsTable, tenantsTable, communicationsLogTable, customerPlansTable, usersTable, planCancelRequestsTable } from "@workspace/db";
+import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable, mediaAttachmentsTable, tenantsTable, communicationsLogTable, customerPlansTable, usersTable, planCancelRequestsTable, estimatesTable } from "@workspace/db";
 import { eq, and, gt, desc, lte, isNotNull, ne, sql } from "drizzle-orm";
 import { objectStorageService } from "./storage";
 import crypto from "crypto";
@@ -319,6 +319,43 @@ router.get("/portal/me", requirePortalAuth, async (req: any, res): Promise<void>
 });
 
 // ---------------------------------------------------------------------------
+// PATCH /portal/me  — let customers update their own contact info
+// ---------------------------------------------------------------------------
+router.patch("/portal/me", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+  const { name, phone } = req.body as { name?: string; phone?: string };
+
+  const updates: Record<string, string> = {};
+  if (name !== undefined) updates.name = name.trim();
+  if (phone !== undefined) updates.phone = phone.trim();
+
+  if (Object.keys(updates).length === 0) {
+    res.status(400).json({ error: "No fields to update" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(customersTable)
+    .set(updates)
+    .where(and(eq(customersTable.id, portalCustomerId), eq(customersTable.tenantId, portalTenantId)))
+    .returning();
+
+  if (!updated) {
+    res.status(404).json({ error: "Customer not found" });
+    return;
+  }
+
+  res.json({
+    id: updated.id,
+    name: updated.name,
+    email: updated.email,
+    phone: updated.phone,
+    company: updated.company ?? null,
+    profilePhotoUrl: null,
+  });
+});
+
+// ---------------------------------------------------------------------------
 // GET /portal/summary
 // ---------------------------------------------------------------------------
 router.get("/portal/summary", requirePortalAuth, async (req: any, res): Promise<void> => {
@@ -326,11 +363,12 @@ router.get("/portal/summary", requirePortalAuth, async (req: any, res): Promise<
 
   const now = new Date();
 
-  const [upcomingJobs, recentInvoices, pendingAlerts, openRequests] = await Promise.all([
+  const [upcomingJobs, recentInvoices, pendingAlerts, openRequests, pendingEstimates, tenant] = await Promise.all([
     db
-      .select({ job: jobsTable, propertyAddress: propertiesTable.address })
+      .select({ job: jobsTable, propertyAddress: propertiesTable.address, assignedToName: usersTable.name })
       .from(jobsTable)
       .leftJoin(propertiesTable, eq(jobsTable.propertyId, propertiesTable.id))
+      .leftJoin(usersTable, eq(jobsTable.assigneeId, usersTable.id))
       .where(
         and(
           eq(jobsTable.customerId, portalCustomerId),
@@ -372,13 +410,28 @@ router.get("/portal/summary", requirePortalAuth, async (req: any, res): Promise<
           ne(jobsTable.status, "cancelled"),
         ),
       ),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(estimatesTable)
+      .where(
+        and(
+          eq(estimatesTable.customerId, portalCustomerId),
+          eq(estimatesTable.tenantId, portalTenantId),
+          eq(estimatesTable.status, "sent"),
+        ),
+      ),
+    db.select().from(tenantsTable).where(eq(tenantsTable.id, portalTenantId)).limit(1),
   ]);
 
+  const tenantRecord = tenant[0];
   res.json({
-    upcomingJobs: upcomingJobs.map(r => formatPortalJob(r.job, r.propertyAddress)),
+    upcomingJobs: upcomingJobs.map(r => formatPortalJob(r.job, r.propertyAddress, r.assignedToName)),
     recentInvoices: recentInvoices.map(formatPortalInvoice),
     unreadAlertCount: pendingAlerts.length,
     openRequestCount: openRequests[0]?.count ?? 0,
+    pendingEstimateCount: pendingEstimates[0]?.count ?? 0,
+    tenantPhone: tenantRecord?.businessPhone ?? null,
+    tenantEmail: tenantRecord?.businessEmail ?? null,
   });
 });
 
@@ -389,9 +442,10 @@ router.get("/portal/jobs", requirePortalAuth, async (req: any, res): Promise<voi
   const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
 
   const rows = await db
-    .select({ job: jobsTable, propertyAddress: propertiesTable.address })
+    .select({ job: jobsTable, propertyAddress: propertiesTable.address, assignedToName: usersTable.name })
     .from(jobsTable)
     .leftJoin(propertiesTable, eq(jobsTable.propertyId, propertiesTable.id))
+    .leftJoin(usersTable, eq(jobsTable.assigneeId, usersTable.id))
     .where(
       and(
         eq(jobsTable.customerId, portalCustomerId),
@@ -400,7 +454,7 @@ router.get("/portal/jobs", requirePortalAuth, async (req: any, res): Promise<voi
     )
     .orderBy(desc(jobsTable.scheduledAt));
 
-  res.json(rows.map(r => formatPortalJob(r.job, r.propertyAddress)));
+  res.json(rows.map(r => formatPortalJob(r.job, r.propertyAddress, r.assignedToName)));
 });
 
 // ---------------------------------------------------------------------------
@@ -1411,6 +1465,39 @@ router.post("/portal/stripe-webhook", async (req: any, res): Promise<void> => {
 // ---------------------------------------------------------------------------
 // POST /portal/plans/:id/cancel-request
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// GET /portal/estimates
+// ---------------------------------------------------------------------------
+router.get("/portal/estimates", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+
+  const rows = await db
+    .select()
+    .from(estimatesTable)
+    .where(
+      and(
+        eq(estimatesTable.customerId, portalCustomerId),
+        eq(estimatesTable.tenantId, portalTenantId),
+        ne(estimatesTable.status, "draft" as string),
+      ),
+    )
+    .orderBy(desc(estimatesTable.createdAt));
+
+  res.json(
+    rows.map(e => ({
+      id: e.id,
+      title: `Estimate #${e.id}`,
+      status: e.status,
+      total: e.total,
+      subtotal: e.subtotal,
+      tax: e.tax,
+      createdAt: e.createdAt.toISOString(),
+      expiresAt: e.expiresAt ? e.expiresAt.toISOString() : null,
+      publicToken: e.approvalToken,
+    })),
+  );
+});
+
 router.post("/portal/plans/:id/cancel-request", requirePortalAuth, async (req: any, res): Promise<void> => {
   const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
   const planId = Number(req.params.id);
@@ -1500,7 +1587,7 @@ function formatPortalPlan(p: typeof customerPlansTable.$inferSelect, propertyAdd
   };
 }
 
-function formatPortalJob(j: typeof jobsTable.$inferSelect, propertyAddress: string | null | undefined) {
+function formatPortalJob(j: typeof jobsTable.$inferSelect, propertyAddress: string | null | undefined, assignedToName?: string | null) {
   return {
     id: j.id,
     title: j.title,
@@ -1510,6 +1597,7 @@ function formatPortalJob(j: typeof jobsTable.$inferSelect, propertyAddress: stri
     completedAt: j.completedAt?.toISOString() ?? null,
     propertyAddress: propertyAddress ?? null,
     totalAmount: j.totalAmount,
+    assignedToName: assignedToName ?? null,
   };
 }
 

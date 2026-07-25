@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { downloadCsv } from '@/lib/csvExport';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 import { useQuery } from '@tanstack/react-query';
-import { customFetch } from '@workspace/api-client-react';
+import { customFetch, useGetTenantSettings, getGetTenantSettingsQueryKey } from '@workspace/api-client-react';
 import {
   RadialBarChart, RadialBar, ResponsiveContainer, Tooltip,
   LineChart, Line, XAxis, YAxis, CartesianGrid,
 } from 'recharts';
-import { TrendingUp, TrendingDown, AlertTriangle, Clock, CheckCircle, Activity, Users } from 'lucide-react';
+import { TrendingUp, TrendingDown, AlertTriangle, Clock, CheckCircle, Activity, Users, DollarSign, Download } from 'lucide-react';
 
 interface TechMetric {
   userId: number;
@@ -85,11 +87,22 @@ function EfficiencyGauge({ value, size = 120 }: { value: number | null; size?: n
 export default function EfficiencyPage() {
   const { isTechnician, user } = useAuth();
   const [period, setPeriod] = useState('today');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [techSearch, setTechSearch] = useState('');
+
+  const periodQuery = period === 'custom' && customFrom && customTo
+    ? `startDate=${customFrom}&endDate=${customTo}`
+    : `period=${period}`;
+
+  const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
+  const cbThreshold = (settings as any)?.callbackWarningThresholdPct ?? 10;
 
   const { data: metrics, isLoading } = useQuery<EfficiencyResponse>({
-    queryKey: ['efficiency', period],
-    queryFn: () => customFetch<EfficiencyResponse>(`/api/efficiency?period=${period}`),
+    queryKey: ['efficiency', period, customFrom, customTo],
+    queryFn: () => customFetch<EfficiencyResponse>(`/api/efficiency?${periodQuery}`),
+    enabled: period !== 'custom' || (!!customFrom && !!customTo),
   });
 
   const { data: trend } = useQuery<{ trend: TrendPoint[] }>({
@@ -100,10 +113,21 @@ export default function EfficiencyPage() {
       ),
   });
 
+  const [techSort, setTechSort] = useState<'name' | 'efficiency' | 'completed' | 'warning' | 'callback'>('warning');
+
   // Technicians shown: technician only sees themselves
-  const techList = isTechnician
+  const rawTechList = isTechnician
     ? (metrics?.technicians ?? []).filter(t => t.userId === user?.id)
     : (metrics?.technicians ?? []);
+  const techList = [...rawTechList].filter(t => !techSearch.trim() || (t.name ?? '').toLowerCase().includes(techSearch.toLowerCase())).sort((a, b) => {
+    if (techSort === 'name') return (a.name ?? '').localeCompare(b.name ?? '');
+    if (techSort === 'efficiency') return (b.efficiencyRate ?? 0) - (a.efficiencyRate ?? 0);
+    if (techSort === 'completed') return (b.completedJobs ?? 0) - (a.completedJobs ?? 0);
+    if (techSort === 'callback') return (b.callbackRatio ?? 0) - (a.callbackRatio ?? 0);
+    // 'warning': warnings first, then by efficiency desc
+    if (a.hasWarning !== b.hasWarning) return a.hasWarning ? -1 : 1;
+    return (b.efficiencyRate ?? 0) - (a.efficiencyRate ?? 0);
+  });
 
   const warningTechs = techList.filter(t => t.hasWarning);
 
@@ -117,20 +141,55 @@ export default function EfficiencyPage() {
             P4P engine · Efficiency = Active job minutes ÷ Total clock minutes
           </p>
         </div>
-        <Select value={period} onValueChange={setPeriod}>
-          <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="today">Today</SelectItem>
-            <SelectItem value="week">This Week</SelectItem>
-            <SelectItem value="month">This Month</SelectItem>
-            <SelectItem value="30d">Last 30 Days</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          {period === 'custom' && (
+            <>
+              <Input type="date" title="Custom range start date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className="h-9 w-36 text-sm" />
+              <span className="text-muted-foreground text-sm">–</span>
+              <Input type="date" title="Custom range end date" value={customTo} onChange={e => setCustomTo(e.target.value)} className="h-9 w-36 text-sm" />
+            </>
+          )}
+          <Select value={period} onValueChange={v => { setPeriod(v); }}>
+            <SelectTrigger className="w-40" title="Select the reporting period"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="today">Today</SelectItem>
+              <SelectItem value="week">This Week</SelectItem>
+              <SelectItem value="month">This Month</SelectItem>
+              <SelectItem value="30d">Last 30 Days</SelectItem>
+              <SelectItem value="custom">Custom Range…</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input
+            title="Filter technicians by name"
+            value={techSearch}
+            onChange={e => setTechSearch(e.target.value)}
+            placeholder="Search technician…"
+            className="h-9 text-sm w-44"
+          />
+          {metrics && !isTechnician && (
+            <Button size="sm" variant="outline" className="h-9 gap-2" onClick={() => {
+              const rows = (metrics.technicians ?? []).map(t => ({
+                Name: t.name,
+                Role: t.role,
+                'Completed Jobs': t.completedJobs,
+                'Clock Minutes': t.clockMinutes,
+                'Job Minutes': Math.round(t.jobSeconds / 60),
+                'Efficiency %': t.efficiencyRate != null ? (t.efficiencyRate * 100).toFixed(1) : '',
+                'Callback Ratio %': (t.callbackRatio * 100).toFixed(1),
+                Callbacks: t.callbacks,
+                Warning: t.hasWarning ? 'Yes' : 'No',
+              }));
+              downloadCsv(`efficiency-${period}.csv`, rows);
+            }} title="Download efficiency data as a CSV file">
+              <Download className="w-4 h-4" /> CSV
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Company KPIs */}
       {!isTechnician && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="p-5 flex items-center gap-4">
               <EfficiencyGauge value={metrics?.companyEfficiencyRate ?? null} size={80} />
@@ -142,8 +201,20 @@ export default function EfficiencyPage() {
           </Card>
           <Card>
             <CardContent className="p-5 flex items-center gap-4">
+              <div className="w-16 h-16 rounded-full flex items-center justify-center bg-primary/10">
+                <CheckCircle className="w-7 h-7 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Completed Jobs</p>
+                <p className="text-2xl font-bold text-foreground" title={`${metrics?.technicians?.reduce((s, t) => s + (t.completedJobs ?? 0), 0) ?? 0} jobs completed this period`}>{metrics?.technicians?.reduce((s, t) => s + (t.completedJobs ?? 0), 0) ?? 0}</p>
+                <p className="text-xs text-muted-foreground">{period}</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-5 flex items-center gap-4">
               <div className={`w-16 h-16 rounded-full flex items-center justify-center ${(metrics?.companyCallbackRatio ?? 0) > 10 ? 'bg-destructive/10' : 'bg-emerald-50'}`}>
-                <span className={`text-lg font-bold ${(metrics?.companyCallbackRatio ?? 0) > 10 ? 'text-destructive' : 'text-emerald-600'}`}>
+                <span className={`text-lg font-bold ${(metrics?.companyCallbackRatio ?? 0) > 10 ? 'text-destructive' : 'text-emerald-600'}`} title={`Company-wide callback ratio: ${metrics?.companyCallbackRatio ?? 0}%`}>
                   {metrics?.companyCallbackRatio ?? 0}%
                 </span>
               </div>
@@ -162,11 +233,27 @@ export default function EfficiencyPage() {
               </div>
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Quality Warnings</p>
-                <p className={`text-2xl font-bold ${warningTechs.length > 0 ? 'text-destructive' : 'text-emerald-600'}`}>{warningTechs.length}</p>
-                <p className="text-xs text-muted-foreground">{warningTechs.length > 0 ? 'Techs above 10% callback rate' : 'All techs within threshold'}</p>
+                <p className={`text-2xl font-bold ${warningTechs.length > 0 ? 'text-destructive' : 'text-emerald-600'}`} title={warningTechs.length > 0 ? `${warningTechs.length} technician${warningTechs.length !== 1 ? 's' : ''} above ${cbThreshold}% callback threshold` : 'All technicians within callback threshold'}>{warningTechs.length}</p>
+                <p className="text-xs text-muted-foreground">{warningTechs.length > 0 ? `Techs above ${cbThreshold}% callback rate` : 'All techs within threshold'}</p>
               </div>
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      {/* Technician sort bar */}
+      {!isTechnician && techList.length > 1 && (
+        <div className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground shrink-0">Sort:</span>
+          {(['warning', 'efficiency', 'completed', 'callback', 'name'] as const).map(s => (
+            <button
+              key={s}
+              onClick={() => setTechSort(s)}
+              className={`px-2.5 py-1 rounded-full border text-xs transition-colors ${techSort === s ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted'}`}
+            >
+              {s === 'warning' ? 'Warnings First' : s === 'efficiency' ? 'Efficiency' : s === 'completed' ? 'Jobs Done' : s === 'callback' ? 'Callback Ratio' : 'Name'}
+            </button>
+          ))}
         </div>
       )}
 
@@ -193,8 +280,8 @@ export default function EfficiencyPage() {
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <CardTitle className="text-base">{tech.name}</CardTitle>
-                      <CardDescription className="capitalize">{tech.role.replace(/_/g, ' ')}</CardDescription>
+                      <CardTitle className="text-base" title={tech.name}>{tech.name}</CardTitle>
+                      <CardDescription className="capitalize" title={`Role: ${tech.role.replace(/_/g, ' ')}`}>{tech.role.replace(/_/g, ' ')}</CardDescription>
                     </div>
                     <div className="flex gap-1.5">
                       {tech.hasWarning && (
@@ -211,25 +298,55 @@ export default function EfficiencyPage() {
                     <div className="space-y-2 text-sm flex-1">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> Clock-in</span>
-                        <span className="font-medium">{tech.clockMinutes} min</span>
+                        <span className="font-medium" title={`${tech.clockMinutes} minutes clocked in`}>{tech.clockMinutes} min</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground flex items-center gap-1"><Activity className="w-3.5 h-3.5" /> Job time</span>
-                        <span className="font-medium">{Math.round(tech.jobSeconds / 60)} min</span>
+                        <span className="font-medium" title={`${Math.round(tech.jobSeconds / 60)} minutes of active job time`}>{Math.round(tech.jobSeconds / 60)} min</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground flex items-center gap-1"><CheckCircle className="w-3.5 h-3.5" /> Jobs done</span>
-                        <span className="font-medium">{tech.completedJobs}</span>
+                        {tech.completedJobs > 0 ? (
+                          <button className="font-medium text-primary hover:underline text-sm" title={`${tech.completedJobs} job${tech.completedJobs !== 1 ? 's' : ''} completed — click to view in schedule`} onClick={e => { e.stopPropagation(); window.location.href = `${import.meta.env.BASE_URL}schedule?assignee=${tech.userId}`; }}>{tech.completedJobs}</button>
+                        ) : <span className="font-medium" title="No jobs completed">{tech.completedJobs}</span>}
                       </div>
+                      {tech.completedJobs > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> Avg/job</span>
+                          <span className="font-medium" title={`Average ${Math.round(tech.jobSeconds / 60 / tech.completedJobs)} minutes per job`}>{Math.round(tech.jobSeconds / 60 / tech.completedJobs)} min</span>
+                        </div>
+                      )}
+                      {(tech as any).totalRevenue != null && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground flex items-center gap-1"><DollarSign className="w-3.5 h-3.5" /> Revenue</span>
+                          <span className="font-medium" title={`Total revenue: $${(tech as any).totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}>${(tech as any).totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between">
                         <span className={`flex items-center gap-1 ${tech.hasWarning ? 'text-destructive font-semibold' : 'text-muted-foreground'}`}>
                           <AlertTriangle className="w-3.5 h-3.5" /> CB ratio
                         </span>
-                        <span className={`font-medium ${tech.hasWarning ? 'text-destructive' : ''}`}>{tech.callbackRatio}%</span>
+                        <span className={`font-medium ${tech.hasWarning ? 'text-destructive' : ''}`} title={`Callback ratio: ${tech.callbackRatio}%${tech.hasWarning ? ' — above threshold' : ''}`}>{tech.callbackRatio}%</span>
                       </div>
                     </div>
                   </div>
                 </CardContent>
+                <div className="px-4 pb-3 pt-0">
+                  <div className="flex items-center gap-3">
+                    <button
+                      className="text-xs text-primary hover:underline"
+                      onClick={e => { e.stopPropagation(); window.location.href = `${import.meta.env.BASE_URL}settings?tab=users&userId=${tech.userId}`; }}
+                    >
+                      View employee →
+                    </button>
+                    <button
+                      className="text-xs text-muted-foreground hover:underline"
+                      onClick={e => { e.stopPropagation(); window.location.href = `${import.meta.env.BASE_URL}callbacks?assignee=${tech.userId}`; }}
+                    >
+                      View callbacks →
+                    </button>
+                  </div>
+                </div>
               </Card>
             ))}
       </div>

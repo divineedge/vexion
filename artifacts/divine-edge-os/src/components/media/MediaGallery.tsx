@@ -183,6 +183,7 @@ export default function MediaGallery({
           <Button
             variant="outline"
             size="sm"
+            title={documentsOnly ? 'Upload a receipt or photo attachment' : 'Upload a photo or video'}
             className="gap-2"
             disabled={uploading}
             onClick={() => fileInputRef.current?.click()}
@@ -207,6 +208,7 @@ export default function MediaGallery({
             <Button
               variant="outline"
               size="sm"
+              title={documentsOnly ? 'Upload the first attachment for this record' : 'Upload the first photo for this record'}
               className="mt-3 gap-2"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
@@ -276,6 +278,7 @@ export default function MediaGallery({
                     <Button
                       size="icon"
                       variant="destructive"
+                      title="Delete this media item"
                       className="w-8 h-8"
                       disabled={deletingId === item.id}
                       onClick={e => { e.stopPropagation(); handleDelete(item); }}
@@ -285,7 +288,7 @@ export default function MediaGallery({
                   </div>
                 )}
                 {item.caption && (
-                  <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs px-2 py-1 truncate">
+                  <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs px-2 py-1 truncate" title={item.caption}>
                     {item.caption}
                   </div>
                 )}
@@ -335,6 +338,7 @@ export default function MediaGallery({
                     target="_blank"
                     rel="noopener noreferrer"
                     download
+                    title="Download this file"
                     className="inline-flex items-center gap-1 text-primary hover:underline"
                   >
                     <Download className="w-3.5 h-3.5" /> Download

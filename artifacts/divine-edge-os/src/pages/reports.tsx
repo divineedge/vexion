@@ -18,8 +18,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import {
-  Briefcase, Users, ScrollText, Clock3, Percent, Download, Printer,
-  RefreshCw, ShieldAlert, Package,
+  Briefcase, Users, ScrollText, Clock3, Percent, Download, Printer, Settings,
+  RefreshCw, ShieldAlert, Package, Search, X,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { downloadCsv } from '@/lib/csvExport';
@@ -71,6 +71,7 @@ export default function ReportsPage() {
           <Card
             key={r.id}
             className={`cursor-pointer transition-colors hover:border-primary/50 ${active === r.id ? 'border-primary ring-1 ring-primary' : ''}`}
+            title={r.description}
             onClick={() => setActive(r.id)}
           >
             <CardContent className="p-4 space-y-2">
@@ -122,6 +123,9 @@ function JobProfitabilityReport() {
   const params = { startDate, endDate, ...(crewId ? { crewId: Number(crewId) } : {}), ...(assigneeId ? { assigneeId: Number(assigneeId) } : {}) };
   const { data, isFetching, refetch } = useGetJobProfitabilityReport(params);
 
+  const [profSort, setProfSort] = React.useState<{ col: 'revenue' | 'netProfit' | 'marginPct' | 'partsCost' | 'laborCost' | 'jobTitle' | 'customerName'; dir: 'asc' | 'desc' }>({ col: 'netProfit', dir: 'desc' });
+  const [profSearch, setProfSearch] = React.useState('');
+
   const exportCsv = () => {
     if (!data) return;
     downloadCsv('job-profitability.csv', data.rows.map(r => ({
@@ -130,6 +134,24 @@ function JobProfitabilityReport() {
       laborCost: r.laborCost, fuelCost: r.fuelCost, netProfit: r.netProfit, marginPct: r.marginPct,
     })));
   };
+
+  const sortedProfRows = React.useMemo(() => {
+    if (!data) return [];
+    const filtered = profSearch ? data.rows.filter(r => r.jobTitle.toLowerCase().includes(profSearch.toLowerCase()) || (r.customerName ?? '').toLowerCase().includes(profSearch.toLowerCase())) : data.rows;
+    return [...filtered].sort((a, b) => {
+      let cmp: number;
+      if (profSort.col === 'jobTitle') cmp = a.jobTitle.localeCompare(b.jobTitle);
+      else if (profSort.col === 'customerName') cmp = (a.customerName ?? '').localeCompare(b.customerName ?? '');
+      else cmp = (a[profSort.col] as number) - (b[profSort.col] as number);
+      return profSort.dir === 'asc' ? cmp : -cmp;
+    });
+  }, [data, profSort, profSearch]);
+
+  const PSortHead = ({ col, children, left }: { col: typeof profSort.col; children: React.ReactNode; left?: boolean }) => (
+    <TableHead className={`${left ? '' : 'text-right '}cursor-pointer select-none hover:text-foreground`} onClick={() => setProfSort(s => ({ col, dir: s.col === col && s.dir === 'desc' ? 'asc' : 'desc' }))}>
+      {children} {profSort.col === col ? (profSort.dir === 'asc' ? '↑' : '↓') : ''}
+    </TableHead>
+  );
 
   return (
     <Card>
@@ -140,17 +162,34 @@ function JobProfitabilityReport() {
         </div>
         <div className="flex items-center gap-2 print:hidden">
           <GeneratedBadge generatedAt={data?.generatedAt} cached={data?.cached} />
-          <Button size="sm" variant="outline" className="gap-2" onClick={exportCsv} disabled={!data}><Download className="w-4 h-4" /> CSV</Button>
-          <Button size="sm" variant="outline" className="gap-2" onClick={() => window.print()} disabled={!data}><Printer className="w-4 h-4" /> PDF</Button>
+          <Button size="sm" variant="outline" className="gap-2" title="Download as CSV" onClick={exportCsv} disabled={!data}><Download className="w-4 h-4" /> CSV</Button>
+          <Button size="sm" variant="outline" className="gap-2" title="Export as PDF" onClick={() => window.print()} disabled={!data}><Printer className="w-4 h-4" /> PDF</Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-end gap-3 print:hidden">
-          <Field label="Start"><Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-40" /></Field>
-          <Field label="End"><Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-40" /></Field>
+          <Field label="Preset">
+            <Select value="" onValueChange={v => {
+              const now = new Date(); const y = now.getFullYear(); const m = now.getMonth();
+              if (v === 'thisMonth') { setStartDate(new Date(y, m, 1).toISOString().slice(0, 10)); setEndDate(new Date(y, m + 1, 0).toISOString().slice(0, 10)); }
+              else if (v === 'lastMonth') { setStartDate(new Date(y, m - 1, 1).toISOString().slice(0, 10)); setEndDate(new Date(y, m, 0).toISOString().slice(0, 10)); }
+              else if (v === 'thisYear') { setStartDate(`${y}-01-01`); setEndDate(`${y}-12-31`); }
+              else if (v === 'lastYear') { setStartDate(`${y - 1}-01-01`); setEndDate(`${y - 1}-12-31`); }
+            }}>
+              <SelectTrigger className="w-36" title="Select a preset date range"><SelectValue placeholder="Quick select…" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="thisMonth">This Month</SelectItem>
+                <SelectItem value="lastMonth">Last Month</SelectItem>
+                <SelectItem value="thisYear">This Year</SelectItem>
+                <SelectItem value="lastYear">Last Year</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Start"><Input type="date" title="Filter by start date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-40" /></Field>
+          <Field label="End"><Input type="date" title="Filter by end date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-40" /></Field>
           <Field label="Crew">
             <Select value={crewId || '__all__'} onValueChange={v => setCrewId(v === '__all__' ? '' : v)}>
-              <SelectTrigger className="w-40"><SelectValue placeholder="All crews" /></SelectTrigger>
+              <SelectTrigger className="w-40" title="Filter by crew"><SelectValue placeholder="All crews" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all__">All crews</SelectItem>
                 {crews.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
@@ -159,53 +198,65 @@ function JobProfitabilityReport() {
           </Field>
           <Field label="Technician">
             <Select value={assigneeId || '__all__'} onValueChange={v => setAssigneeId(v === '__all__' ? '' : v)}>
-              <SelectTrigger className="w-44"><SelectValue placeholder="All technicians" /></SelectTrigger>
+              <SelectTrigger className="w-44" title="Filter by technician"><SelectValue placeholder="All technicians" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all__">All technicians</SelectItem>
                 {users.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </Field>
-          <Button size="sm" onClick={() => refetch()} disabled={isFetching}>{isFetching ? 'Running…' : 'Run Report'}</Button>
+          <Field label="Customer / Job">
+            <div className="relative">
+              <Input title="Search by customer name or job title" placeholder="Search…" value={profSearch} onChange={e => setProfSearch(e.target.value)} className="w-44" />
+              {profSearch && <button onClick={() => setProfSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="w-3 h-3" /></button>}
+            </div>
+          </Field>
+          <Button size="sm" title="Run this report" onClick={() => refetch()} disabled={isFetching}>{isFetching ? 'Running…' : 'Run Report'}</Button>
         </div>
 
         {data && (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
               <Stat label="Revenue" value={money(data.totals.revenue)} />
               <Stat label="Parts Cost" value={money(data.totals.partsCost)} />
               <Stat label="Labor Cost" value={money(data.totals.laborCost)} />
               <Stat label="Fuel Cost" value={money(data.totals.fuelCost)} />
               <Stat label="Net Profit" value={money(data.totals.netProfit)} highlight />
+              {data.totals.revenue > 0 && (
+                <Stat label="Net Margin" value={`${((data.totals.netProfit / data.totals.revenue) * 100).toFixed(1)}%`} highlight={data.totals.netProfit > 0} />
+              )}
             </div>
+            {sortedProfRows.length < (data?.rows?.length ?? 0) && (
+              <p className="text-xs text-muted-foreground px-1 pb-2">Showing {sortedProfRows.length} of {data?.rows?.length} jobs</p>
+            )}
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Job</TableHead><TableHead>Customer</TableHead><TableHead>Crew</TableHead><TableHead>Technician</TableHead>
-                  <TableHead className="text-right">Revenue</TableHead><TableHead className="text-right">Parts</TableHead>
-                  <TableHead className="text-right">Labor</TableHead><TableHead className="text-right">Fuel</TableHead><TableHead className="text-right sr-only">Fuel source</TableHead>
-                  <TableHead className="text-right">Net Profit</TableHead><TableHead className="text-right">Margin</TableHead>
+                  <PSortHead col="jobTitle" left>Job</PSortHead><PSortHead col="customerName" left>Customer</PSortHead><TableHead>Crew</TableHead><TableHead>Technician</TableHead>
+                  <PSortHead col="revenue">Revenue</PSortHead><PSortHead col="partsCost">Parts</PSortHead>
+                  <PSortHead col="laborCost">Labor</PSortHead><TableHead className="text-right" title="Shows actual GPS-tracked cost when available, otherwise an estimate based on distance">Fuel ⓘ</TableHead><TableHead className="text-right sr-only">Fuel source</TableHead>
+                  <PSortHead col="netProfit">Net Profit</PSortHead><PSortHead col="marginPct">Margin</PSortHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.rows.map(r => (
-                  <TableRow key={r.jobId}>
-                    <TableCell className="font-medium">{r.jobTitle}</TableCell>
-                    <TableCell className="text-muted-foreground">{r.customerName ?? '—'}</TableCell>
-                    <TableCell className="text-muted-foreground">{r.crewName ?? '—'}</TableCell>
-                    <TableCell className="text-muted-foreground">{r.assigneeName ?? '—'}</TableCell>
-                    <TableCell className="text-right">{money(r.revenue)}</TableCell>
-                    <TableCell className="text-right">{money(r.partsCost)}</TableCell>
-                    <TableCell className="text-right">{money(r.laborCost)}</TableCell>
-                    <TableCell className="text-right">{money(r.fuelCost)}</TableCell>
+                {sortedProfRows.map(r => (
+                  <TableRow key={r.jobId} className="cursor-pointer hover:bg-muted/40" onClick={() => { window.location.href = `${import.meta.env.BASE_URL}schedule?jobId=${r.jobId}`; }}>
+                    <TableCell className="font-medium" title={r.jobTitle}>{r.jobTitle}</TableCell>
+                    <TableCell className="text-muted-foreground" title={r.customerName ?? undefined}>{r.customerName ?? '—'}</TableCell>
+                    <TableCell className="text-muted-foreground" title={r.crewName ?? undefined}>{r.crewName ?? '—'}</TableCell>
+                    <TableCell className="text-muted-foreground">{r.assigneeName ? <button className="hover:underline text-primary" title={r.assigneeName} onClick={e => { e.stopPropagation(); window.location.href = `${import.meta.env.BASE_URL}settings?tab=users`; }}>{r.assigneeName}</button> : '—'}</TableCell>
+                    <TableCell className="text-right" title={`Revenue: ${money(r.revenue)}`}>{money(r.revenue)}</TableCell>
+                    <TableCell className="text-right" title={`Parts cost: ${money(r.partsCost)}`}>{money(r.partsCost)}</TableCell>
+                    <TableCell className="text-right" title={`Labor cost: ${money(r.laborCost)}`}>{money(r.laborCost)}</TableCell>
+                    <TableCell className="text-right" title={`Fuel cost: ${money(r.fuelCost)}`}>{money(r.fuelCost)}</TableCell>
                     <TableCell className="text-right">
                       {(r as { fuelCostSource?: string }).fuelCostSource === 'actual'
-                        ? <Badge variant="outline" className="text-xs text-emerald-600 border-emerald-300">actual</Badge>
-                        : <Badge variant="outline" className="text-xs text-muted-foreground">est.</Badge>
+                        ? <Badge variant="outline" className="text-xs text-emerald-600 border-emerald-300" title="Fuel cost from actual recorded fill-ups">actual</Badge>
+                        : <Badge variant="outline" className="text-xs text-muted-foreground" title="Estimated fuel cost based on mileage">est.</Badge>
                       }
                     </TableCell>
-                    <TableCell className={`text-right font-medium ${r.netProfit < 0 ? 'text-destructive' : ''}`}>{money(r.netProfit)}</TableCell>
-                    <TableCell className={`text-right ${r.marginPct < 0 ? 'text-destructive' : 'text-emerald-600'}`}>{r.marginPct}%</TableCell>
+                    <TableCell className={`text-right font-medium ${r.netProfit < 0 ? 'text-destructive' : ''}`} title={`Net profit: ${money(r.netProfit)}`}>{money(r.netProfit)}</TableCell>
+                    <TableCell className={`text-right ${r.marginPct < 0 ? 'text-destructive' : 'text-emerald-600'}`} title={`Profit margin: ${r.marginPct}%`}>{r.marginPct}%</TableCell>
                   </TableRow>
                 ))}
                 {data.rows.length === 0 && (
@@ -227,6 +278,8 @@ function EmployeeRevenueReport() {
   const [endDate, setEndDate] = useState(end);
   const { data, isFetching, refetch } = useGetEmployeeRevenueReport({ startDate, endDate });
 
+  const [empSort, setEmpSort] = React.useState<{ col: 'name' | 'jobCount' | 'totalRevenue' | 'averageJobValue' | 'totalP4pEarnings'; dir: 'asc' | 'desc' }>({ col: 'totalRevenue', dir: 'desc' });
+
   const exportCsv = () => {
     if (!data) return;
     downloadCsv('employee-revenue.csv', data.rows.map(r => ({
@@ -235,48 +288,104 @@ function EmployeeRevenueReport() {
     })));
   };
 
+  const sortedRows = React.useMemo(() => {
+    if (!data) return [];
+    return [...data.rows].sort((a, b) => {
+      const av = a[empSort.col] as string | number;
+      const bv = b[empSort.col] as string | number;
+      const cmp = typeof av === 'string' ? av.localeCompare(bv as string) : (av as number) - (bv as number);
+      return empSort.dir === 'asc' ? cmp : -cmp;
+    });
+  }, [data, empSort]);
+
+  const SortHead = ({ col, children }: { col: typeof empSort.col; children: React.ReactNode }) => (
+    <TableHead className="cursor-pointer select-none hover:text-foreground text-right" onClick={() => setEmpSort(s => ({ col, dir: s.col === col && s.dir === 'desc' ? 'asc' : 'desc' }))}>
+      {children} {empSort.col === col ? (empSort.dir === 'asc' ? '↑' : '↓') : ''}
+    </TableHead>
+  );
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
         <div>
-          <CardTitle>Employee Revenue</CardTitle>
+          <CardTitle className="flex items-center gap-2">Employee Revenue {data && data.rows.length > 0 && <Badge variant="secondary" className="text-xs font-normal">{data.rows.length}</Badge>}</CardTitle>
           <CardDescription>Revenue and P4P earnings generated by each technician in the selected period.</CardDescription>
         </div>
         <div className="flex items-center gap-2 print:hidden">
           <GeneratedBadge generatedAt={data?.generatedAt} cached={data?.cached} />
-          <Button size="sm" variant="outline" className="gap-2" onClick={exportCsv} disabled={!data}><Download className="w-4 h-4" /> CSV</Button>
-          <Button size="sm" variant="outline" className="gap-2" onClick={() => window.print()} disabled={!data}><Printer className="w-4 h-4" /> PDF</Button>
+          <Button size="sm" variant="outline" className="gap-2" title="Download as CSV" onClick={exportCsv} disabled={!data}><Download className="w-4 h-4" /> CSV</Button>
+          <Button size="sm" variant="outline" className="gap-2" title="Export as PDF" onClick={() => window.print()} disabled={!data}><Printer className="w-4 h-4" /> PDF</Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-end gap-3 print:hidden">
-          <Field label="Start"><Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-40" /></Field>
-          <Field label="End"><Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-40" /></Field>
-          <Button size="sm" onClick={() => refetch()} disabled={isFetching}>{isFetching ? 'Running…' : 'Run Report'}</Button>
+          <Field label="Preset">
+            <Select value="" onValueChange={v => {
+              const now = new Date(); const y = now.getFullYear(); const m = now.getMonth();
+              if (v === 'thisMonth') { setStartDate(new Date(y, m, 1).toISOString().slice(0, 10)); setEndDate(new Date(y, m + 1, 0).toISOString().slice(0, 10)); }
+              else if (v === 'lastMonth') { setStartDate(new Date(y, m - 1, 1).toISOString().slice(0, 10)); setEndDate(new Date(y, m, 0).toISOString().slice(0, 10)); }
+              else if (v === 'thisYear') { setStartDate(`${y}-01-01`); setEndDate(`${y}-12-31`); }
+              else if (v === 'lastYear') { setStartDate(`${y - 1}-01-01`); setEndDate(`${y - 1}-12-31`); }
+            }}>
+              <SelectTrigger className="w-36" title="Select a preset date range"><SelectValue placeholder="Quick select…" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="thisMonth">This Month</SelectItem>
+                <SelectItem value="lastMonth">Last Month</SelectItem>
+                <SelectItem value="thisYear">This Year</SelectItem>
+                <SelectItem value="lastYear">Last Year</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Start"><Input type="date" title="Filter by start date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-40" /></Field>
+          <Field label="End"><Input type="date" title="Filter by end date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-40" /></Field>
+          <Button size="sm" title="Run this report" onClick={() => refetch()} disabled={isFetching}>{isFetching ? 'Running…' : 'Run Report'}</Button>
         </div>
 
+        {data && (() => {
+          const totRevenue = data.rows.reduce((s, r) => s + r.totalRevenue, 0);
+          const totJobs = data.rows.reduce((s, r) => s + r.jobCount, 0);
+          const totP4p = data.rows.reduce((s, r) => s + r.totalP4pEarnings, 0);
+          return (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              <Stat label="Total Revenue" value={money(totRevenue)} />
+              <Stat label="Total Jobs" value={String(totJobs)} />
+              <Stat label="Total P4P Earned" value={money(totP4p)} />
+              <Stat label="Avg Job Value" value={totJobs > 0 ? money(totRevenue / totJobs) : '—'} highlight />
+            </div>
+          );
+        })()}
         {data && (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Technician</TableHead><TableHead className="text-right">Jobs</TableHead>
-                <TableHead className="text-right">Total Revenue</TableHead><TableHead className="text-right">Avg Job Value</TableHead>
-                <TableHead className="text-right">P4P Earnings</TableHead><TableHead className="text-right">P4P / Revenue</TableHead>
+                <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => setEmpSort(s => ({ col: 'name', dir: s.col === 'name' && s.dir === 'asc' ? 'desc' : 'asc' }))}>Technician {empSort.col === 'name' ? (empSort.dir === 'asc' ? '↑' : '↓') : ''}</TableHead>
+                <SortHead col="jobCount">Jobs</SortHead>
+                <SortHead col="totalRevenue">Total Revenue</SortHead>
+                <SortHead col="averageJobValue">Avg Job Value</SortHead>
+                <SortHead col="totalP4pEarnings">P4P Earnings</SortHead>
+                <TableHead className="text-right">P4P / Revenue</TableHead>
+                <TableHead className="text-right">Rev / hr</TableHead>
               </TableRow>
             </TableHeader>
+            {sortedRows.length > 0 && <caption className="caption-bottom text-xs text-muted-foreground pt-2">{sortedRows.length} technician{sortedRows.length !== 1 ? 's' : ''}</caption>}
             <TableBody>
-              {data.rows.map(r => (
+              {sortedRows.map(r => {
+                const laborHours = (r as any).totalLaborHours ?? 0;
+                const revPerHr = laborHours > 0 ? r.totalRevenue / laborHours : null;
+                return (
                 <TableRow key={r.userId}>
-                  <TableCell className="font-medium">{r.name}</TableCell>
-                  <TableCell className="text-right">{r.jobCount}</TableCell>
-                  <TableCell className="text-right">{money(r.totalRevenue)}</TableCell>
-                  <TableCell className="text-right">{money(r.averageJobValue)}</TableCell>
-                  <TableCell className="text-right">{money(r.totalP4pEarnings)}</TableCell>
-                  <TableCell className="text-right">{r.p4pToRevenueRatioPct}%</TableCell>
+                  <TableCell className="font-medium"><button className="hover:underline text-primary" title={r.name} onClick={() => { window.location.href = `${import.meta.env.BASE_URL}settings?tab=users&userId=${r.userId}`; }}>{r.name}</button></TableCell>
+                  <TableCell className="text-right" title={`${r.jobCount} job${r.jobCount !== 1 ? 's' : ''} completed`}>{r.jobCount}</TableCell>
+                  <TableCell className="text-right" title={`Total revenue: ${money(r.totalRevenue)}`}>{money(r.totalRevenue)}</TableCell>
+                  <TableCell className="text-right" title={`Average job value: ${money(r.averageJobValue)}`}>{money(r.averageJobValue)}</TableCell>
+                  <TableCell className="text-right" title={`Total P4P earnings: ${money(r.totalP4pEarnings)}`}>{money(r.totalP4pEarnings)}</TableCell>
+                  <TableCell className="text-right" title={`P4P to revenue ratio: ${r.p4pToRevenueRatioPct}%`}>{r.p4pToRevenueRatioPct}%</TableCell>
+                  <TableCell className="text-right text-muted-foreground">{revPerHr != null ? <span title={`${money(revPerHr)} revenue per labor hour`}>{money(revPerHr)}</span> : <span title="No labor hours logged">—</span>}</TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
               {data.rows.length === 0 && (
-                <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No completed jobs in this range.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No completed jobs in this range.</TableCell></TableRow>
               )}
             </TableBody>
           </Table>
@@ -302,14 +411,56 @@ function PlStatementReport() {
         </div>
         <div className="flex items-center gap-2 print:hidden">
           <GeneratedBadge generatedAt={data?.generatedAt} cached={data?.cached} />
-          <Button size="sm" variant="outline" className="gap-2" onClick={() => window.print()} disabled={!data}><Printer className="w-4 h-4" /> PDF</Button>
+          <Button size="sm" variant="outline" className="gap-2" disabled={!data} onClick={() => {
+            if (!data) return;
+            const rows: Record<string, string | number>[] = [
+              { category: 'Revenue', amount: data.revenue },
+              { category: 'Cost of Goods Sold', amount: -data.costOfGoodsSold.total },
+              { category: '  Parts', amount: -data.costOfGoodsSold.partsCost },
+              { category: '  Labor (P4P)', amount: -data.costOfGoodsSold.laborCost },
+              { category: '  Fuel', amount: -data.costOfGoodsSold.fuelCost },
+              { category: 'Gross Profit', amount: data.grossProfit },
+              { category: 'Operating Expenses', amount: -data.operatingExpenses.total },
+              ...data.operatingExpenses.byCategory.map(c => ({ category: `  ${c.category}`, amount: -c.amount })),
+              { category: 'Net Income', amount: data.netIncome },
+            ];
+            downloadCsv(`pl-statement-${startDate}-${endDate}.csv`, rows);
+          }}><Download className="w-4 h-4" /> CSV</Button>
+          <Button size="sm" variant="outline" className="gap-2" title="Export as PDF" onClick={() => window.print()} disabled={!data}><Printer className="w-4 h-4" /> PDF</Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-end gap-3 print:hidden">
-          <Field label="Start"><Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-40" /></Field>
-          <Field label="End"><Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-40" /></Field>
-          <Button size="sm" onClick={() => refetch()} disabled={isFetching}>{isFetching ? 'Running…' : 'Run Report'}</Button>
+          <Field label="Preset">
+            <Select value="" onValueChange={v => {
+              const now = new Date();
+              const y = now.getFullYear();
+              const m = now.getMonth();
+              if (v === 'thisMonth') { setStartDate(new Date(y, m, 1).toISOString().slice(0, 10)); setEndDate(new Date(y, m + 1, 0).toISOString().slice(0, 10)); }
+              else if (v === 'lastMonth') { setStartDate(new Date(y, m - 1, 1).toISOString().slice(0, 10)); setEndDate(new Date(y, m, 0).toISOString().slice(0, 10)); }
+              else if (v === 'thisYear') { setStartDate(`${y}-01-01`); setEndDate(`${y}-12-31`); }
+              else if (v === 'lastYear') { setStartDate(`${y - 1}-01-01`); setEndDate(`${y - 1}-12-31`); }
+              else if (v === 'q1') { setStartDate(`${y}-01-01`); setEndDate(`${y}-03-31`); }
+              else if (v === 'q2') { setStartDate(`${y}-04-01`); setEndDate(`${y}-06-30`); }
+              else if (v === 'q3') { setStartDate(`${y}-07-01`); setEndDate(`${y}-09-30`); }
+              else if (v === 'q4') { setStartDate(`${y}-10-01`); setEndDate(`${y}-12-31`); }
+            }}>
+              <SelectTrigger className="w-36" title="Select a preset date range"><SelectValue placeholder="Quick select…" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="thisMonth">This Month</SelectItem>
+                <SelectItem value="lastMonth">Last Month</SelectItem>
+                <SelectItem value="thisYear">This Year</SelectItem>
+                <SelectItem value="lastYear">Last Year</SelectItem>
+                <SelectItem value="q1">Q1</SelectItem>
+                <SelectItem value="q2">Q2</SelectItem>
+                <SelectItem value="q3">Q3</SelectItem>
+                <SelectItem value="q4">Q4</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Start"><Input type="date" title="Filter by start date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-40" /></Field>
+          <Field label="End"><Input type="date" title="Filter by end date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-40" /></Field>
+          <Button size="sm" title="Run this report" onClick={() => refetch()} disabled={isFetching}>{isFetching ? 'Running…' : 'Run Report'}</Button>
         </div>
 
         {data && (
@@ -335,8 +486,8 @@ function PlStatementReport() {
 function PlRow({ label, value, bold, indent, indent2, highlight }: { label: string; value: number; bold?: boolean; indent?: boolean; indent2?: boolean; highlight?: boolean }) {
   return (
     <div className={`flex justify-between px-4 py-2 ${bold ? 'font-semibold' : ''} ${highlight ? 'bg-primary/5' : ''} ${indent2 ? 'pl-8 text-sm text-muted-foreground' : indent ? 'pl-6' : ''}`}>
-      <span>{label}</span>
-      <span className={value < 0 ? 'text-destructive' : ''}>{value < 0 ? `(${money(Math.abs(value))})` : money(value)}</span>
+      <span title={label}>{label}</span>
+      <span className={value < 0 ? 'text-destructive' : ''} title={`${label}: ${value < 0 ? `(${money(Math.abs(value))})` : money(value)}`}>{value < 0 ? `(${money(Math.abs(value))})` : money(value)}</span>
     </div>
   );
 }
@@ -346,6 +497,11 @@ const BUCKET_ORDER = ['current', '1-30', '31-60', '61-90', '90+'] as const;
 
 function AgingInvoicesReport() {
   const { data, isFetching, refetch } = useGetAgingInvoicesReport();
+  const [bucketFilter, setBucketFilter] = React.useState<string | null>(null);
+  const [agingSearch, setAgingSearch] = React.useState('');
+  const [agingSort, setAgingSort] = React.useState<{ col: 'customer' | 'total' | 'due' | 'days'; dir: 'asc' | 'desc' }>({ col: 'days', dir: 'desc' });
+  const toggleAgingSort = (col: typeof agingSort['col']) => setAgingSort(s => s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'desc' });
+  const agingSortIcon = (col: typeof agingSort['col']) => agingSort.col === col ? (agingSort.dir === 'asc' ? ' ↑' : ' ↓') : '';
 
   const exportCsv = () => {
     if (!data) return;
@@ -364,50 +520,90 @@ function AgingInvoicesReport() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
         <div>
-          <CardTitle>Aging Invoices</CardTitle>
+          <CardTitle className="flex items-center gap-2">Aging Invoices {data && (data as any).totalOutstanding > 0 && <Badge variant="secondary" className="text-xs font-normal" title={`Total outstanding: $${((data as any).totalOutstanding as number).toLocaleString(undefined, { minimumFractionDigits: 2 })}`}>${((data as any).totalOutstanding as number).toLocaleString(undefined, { minimumFractionDigits: 2 })} outstanding</Badge>}</CardTitle>
           <CardDescription>Open invoices grouped by how far past their due date they are.</CardDescription>
         </div>
         <div className="flex items-center gap-2 print:hidden">
           <GeneratedBadge generatedAt={data?.generatedAt} cached={data?.cached} />
-          <Button size="sm" variant="outline" className="gap-2" onClick={() => refetch()} disabled={isFetching}><RefreshCw className="w-4 h-4" /> Refresh</Button>
-          <Button size="sm" variant="outline" className="gap-2" onClick={exportCsv} disabled={!data}><Download className="w-4 h-4" /> CSV</Button>
-          <Button size="sm" variant="outline" className="gap-2" onClick={() => window.print()} disabled={!data}><Printer className="w-4 h-4" /> PDF</Button>
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
+            <Input placeholder="Customer…" title="Filter aging invoices by customer name" value={agingSearch} onChange={e => setAgingSearch(e.target.value)} className="h-9 text-sm pl-7 w-36" />
+            {agingSearch && <button onClick={() => setAgingSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="w-3 h-3" /></button>}
+          </div>
+          <Button size="sm" variant="outline" className="gap-2" title="Refresh aging invoices data" onClick={() => refetch()} disabled={isFetching}><RefreshCw className="w-4 h-4" /> Refresh</Button>
+          <Button size="sm" variant="outline" className="gap-2" title="Download as CSV" onClick={exportCsv} disabled={!data}><Download className="w-4 h-4" /> CSV</Button>
+          <Button size="sm" variant="outline" className="gap-2" title="Export as PDF" onClick={() => window.print()} disabled={!data}><Printer className="w-4 h-4" /> PDF</Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {data && (
           <>
+            {bucketFilter && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                Showing: <Badge variant="secondary">{(data.buckets as any)[bucketFilter]?.label}</Badge>
+                <button className="text-xs underline" onClick={() => setBucketFilter(null)}>Clear</button>
+              </div>
+            )}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               {BUCKET_ORDER.map(key => {
                 const bucket = (data.buckets as Record<string, typeof data.buckets.current>)[key];
                 if (!bucket) return null;
-                return <Stat key={key} label={bucket.label} value={money(bucket.total)} highlight={key === '90+'} />;
+                const isActive = bucketFilter === key;
+                return (
+                  <button
+                    key={key}
+                    className={`text-left w-full rounded-lg border p-3 transition-all ${key === '90+' ? 'bg-primary/5 border-primary/30' : ''} ${isActive ? 'ring-2 ring-primary' : 'hover:ring-1 hover:ring-muted-foreground/30'}`}
+                    onClick={() => setBucketFilter(isActive ? null : key)}
+                  >
+                    <p className="text-xs text-muted-foreground">{bucket.label}</p>
+                    <p className={`text-lg font-semibold mt-0.5 ${key === '90+' ? 'text-primary' : ''}`}>{money(bucket.total)}</p>
+                  </button>
+                );
               })}
             </div>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Bucket</TableHead><TableHead>Invoice</TableHead><TableHead>Customer</TableHead>
-                  <TableHead className="text-right">Total</TableHead><TableHead>Due Date</TableHead><TableHead className="text-right">Days Overdue</TableHead>
+                  <TableHead>Bucket</TableHead><TableHead>Invoice</TableHead>
+                  <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => toggleAgingSort('customer')}>Customer{agingSortIcon('customer')}</TableHead>
+                  <TableHead className="text-right cursor-pointer select-none hover:text-foreground" onClick={() => toggleAgingSort('total')}>Total{agingSortIcon('total')}</TableHead>
+                  <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => toggleAgingSort('due')}>Due Date{agingSortIcon('due')}</TableHead>
+                  <TableHead className="text-right cursor-pointer select-none hover:text-foreground" onClick={() => toggleAgingSort('days')}>Days Overdue{agingSortIcon('days')}</TableHead>
+                  <TableHead />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {BUCKET_ORDER.flatMap(key => {
+                {BUCKET_ORDER.filter(key => !bucketFilter || key === bucketFilter).flatMap(key => {
                   const bucket = (data.buckets as Record<string, typeof data.buckets.current>)[key];
                   if (!bucket) return [];
-                  return bucket.invoices.map((inv) => (
-                    <TableRow key={inv.invoiceId}>
-                      <TableCell><Badge variant="secondary" className="font-normal">{bucket.label}</Badge></TableCell>
-                      <TableCell className="font-medium">{inv.invoiceNumber}</TableCell>
-                      <TableCell className="text-muted-foreground">{inv.customerName ?? '—'}</TableCell>
-                      <TableCell className="text-right">{money(inv.total)}</TableCell>
-                      <TableCell>{inv.dueDate ? format(new Date(inv.dueDate), 'MMM d, yyyy') : '—'}</TableCell>
-                      <TableCell className="text-right">{inv.daysOverdue}</TableCell>
+                  const bucketColor: Record<string, string> = { 'current': '', '1-30': 'bg-yellow-50/50', '31-60': 'bg-orange-50/50', '61-90': 'bg-orange-100/60', '90+': 'bg-red-50/60' };
+                  return bucket.invoices.filter(inv => !agingSearch || (inv.customerName ?? '').toLowerCase().includes(agingSearch.toLowerCase())).slice().sort((a, b) => {
+                    const dir = agingSort.dir === 'asc' ? 1 : -1;
+                    if (agingSort.col === 'customer') return dir * (a.customerName ?? '').localeCompare(b.customerName ?? '');
+                    if (agingSort.col === 'total') return dir * ((a.total ?? 0) - (b.total ?? 0));
+                    if (agingSort.col === 'due') return dir * ((a.dueDate ?? '').localeCompare(b.dueDate ?? ''));
+                    return dir * ((a.daysOverdue ?? 0) - (b.daysOverdue ?? 0));
+                  }).map((inv) => (
+                    <TableRow key={inv.invoiceId} className={`${bucketColor[key] ?? ''} cursor-pointer hover:brightness-95`} onClick={() => { window.location.href = `${import.meta.env.BASE_URL}financials?invoiceId=${inv.invoiceId}`; }}>
+                      <TableCell><Badge variant="secondary" className="font-normal" title={`Aging bucket: ${bucket.label}`}>{bucket.label}</Badge></TableCell>
+                      <TableCell className="font-medium" title={`Invoice ${inv.invoiceNumber}`}>{inv.invoiceNumber}</TableCell>
+                      <TableCell className="text-muted-foreground" title={inv.customerName ?? undefined}>{inv.customerName ?? '—'}</TableCell>
+                      <TableCell className="text-right" title={`Invoice total: ${money(inv.total)}`}>{money(inv.total)}</TableCell>
+                      <TableCell title={inv.dueDate ? format(new Date(inv.dueDate), 'EEEE, MMMM d, yyyy') : undefined}>{inv.dueDate ? format(new Date(inv.dueDate), 'MMM d, yyyy') : '—'}</TableCell>
+                      <TableCell className="text-right" title={`${inv.daysOverdue} day${inv.daysOverdue !== 1 ? 's' : ''} overdue`}>{inv.daysOverdue}</TableCell>
+                      <TableCell className="text-xs text-primary whitespace-nowrap" title="Open this invoice">View →</TableCell>
                     </TableRow>
                   ));
                 })}
                 {data.totalOutstanding === 0 && (
-                  <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No open invoices.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No open invoices.</TableCell></TableRow>
+                )}
+                {data.totalOutstanding > 0 && (
+                  <TableRow className="border-t-2 font-semibold bg-muted/30">
+                    <TableCell colSpan={3} className="text-sm">Total Outstanding</TableCell>
+                    <TableCell className="text-right text-sm" title={`Total outstanding: ${money(data.totalOutstanding)}`}>{money(data.totalOutstanding)}</TableCell>
+                    <TableCell colSpan={3} />
+                  </TableRow>
                 )}
               </TableBody>
             </Table>
@@ -439,15 +635,39 @@ function SalesTaxReport() {
         </div>
         <div className="flex items-center gap-2 print:hidden">
           <GeneratedBadge generatedAt={data?.generatedAt} cached={data?.cached} />
-          <Button size="sm" variant="outline" className="gap-2" onClick={exportCsv} disabled={!data}><Download className="w-4 h-4" /> CSV</Button>
-          <Button size="sm" variant="outline" className="gap-2" onClick={() => window.print()} disabled={!data}><Printer className="w-4 h-4" /> PDF</Button>
+          <Button size="sm" variant="outline" className="gap-2" title="Download as CSV" onClick={exportCsv} disabled={!data}><Download className="w-4 h-4" /> CSV</Button>
+          <Button size="sm" variant="outline" className="gap-2" title="Export as PDF" onClick={() => window.print()} disabled={!data}><Printer className="w-4 h-4" /> PDF</Button>
+          <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground" onClick={() => { window.location.href = '/settings?tab=operational'; }}><Settings className="w-4 h-4" /> Tax Rate</Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-end gap-3 print:hidden">
-          <Field label="Start"><Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-40" /></Field>
-          <Field label="End"><Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-40" /></Field>
-          <Button size="sm" onClick={() => refetch()} disabled={isFetching}>{isFetching ? 'Running…' : 'Run Report'}</Button>
+          <Field label="Preset">
+            <Select value="" onValueChange={v => {
+              const now = new Date(); const y = now.getFullYear(); const m = now.getMonth();
+              if (v === 'thisYear') { setStartDate(`${y}-01-01`); setEndDate(`${y}-12-31`); }
+              else if (v === 'lastYear') { setStartDate(`${y - 1}-01-01`); setEndDate(`${y - 1}-12-31`); }
+              else if (v === 'q1') { setStartDate(`${y}-01-01`); setEndDate(`${y}-03-31`); }
+              else if (v === 'q2') { setStartDate(`${y}-04-01`); setEndDate(`${y}-06-30`); }
+              else if (v === 'q3') { setStartDate(`${y}-07-01`); setEndDate(`${y}-09-30`); }
+              else if (v === 'q4') { setStartDate(`${y}-10-01`); setEndDate(`${y}-12-31`); }
+              else if (v === 'thisMonth') { setStartDate(new Date(y, m, 1).toISOString().slice(0, 10)); setEndDate(new Date(y, m + 1, 0).toISOString().slice(0, 10)); }
+            }}>
+              <SelectTrigger className="w-36" title="Select a preset date range"><SelectValue placeholder="Quick select…" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="thisMonth">This Month</SelectItem>
+                <SelectItem value="thisYear">This Year</SelectItem>
+                <SelectItem value="lastYear">Last Year</SelectItem>
+                <SelectItem value="q1">Q1</SelectItem>
+                <SelectItem value="q2">Q2</SelectItem>
+                <SelectItem value="q3">Q3</SelectItem>
+                <SelectItem value="q4">Q4</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Start"><Input type="date" title="Filter by start date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-40" /></Field>
+          <Field label="End"><Input type="date" title="Filter by end date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-40" /></Field>
+          <Button size="sm" title="Run this report" onClick={() => refetch()} disabled={isFetching}>{isFetching ? 'Running…' : 'Run Report'}</Button>
         </div>
 
         {data && (
@@ -466,14 +686,22 @@ function SalesTaxReport() {
               <TableBody>
                 {data.rows.map(r => (
                   <TableRow key={r.month}>
-                    <TableCell className="font-medium">{r.month}</TableCell>
-                    <TableCell className="text-right">{money(r.taxableRevenue)}</TableCell>
-                    <TableCell className="text-right">{money(r.taxCollected)}</TableCell>
-                    <TableCell className="text-right">{r.effectiveTaxRatePct}%</TableCell>
+                    <TableCell className="font-medium" title={r.month}>{r.month}</TableCell>
+                    <TableCell className="text-right" title={`Taxable revenue: ${money(r.taxableRevenue)}`}>{money(r.taxableRevenue)}</TableCell>
+                    <TableCell className="text-right" title={`Tax collected: ${money(r.taxCollected)}`}>{money(r.taxCollected)}</TableCell>
+                    <TableCell className="text-right" title={`Effective tax rate: ${r.effectiveTaxRatePct}%`}>{r.effectiveTaxRatePct}%</TableCell>
                   </TableRow>
                 ))}
                 {data.rows.length === 0 && (
                   <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-8">No paid invoices in this range.</TableCell></TableRow>
+                )}
+                {data.rows.length > 1 && (
+                  <TableRow className="font-semibold border-t-2 bg-muted/30">
+                    <TableCell>Total</TableCell>
+                    <TableCell className="text-right" title={`Total taxable revenue: ${money(data.totals.taxableRevenue)}`}>{money(data.totals.taxableRevenue)}</TableCell>
+                    <TableCell className="text-right" title={`Total tax collected: ${money(data.totals.taxCollected)}`}>{money(data.totals.taxCollected)}</TableCell>
+                    <TableCell className="text-right text-muted-foreground">—</TableCell>
+                  </TableRow>
                 )}
               </TableBody>
             </Table>
@@ -490,6 +718,10 @@ function InventorySalesReport() {
   const [startDate, setStartDate] = useState(start);
   const [endDate, setEndDate] = useState(end);
   const { data, isFetching, refetch } = useGetInventorySalesReport({ startDate, endDate });
+  const [invSort, setInvSort] = React.useState<{ col: 'item' | 'units' | 'revenue' | 'margin' | 'commission'; dir: 'asc' | 'desc' }>({ col: 'revenue', dir: 'desc' });
+  const [invSalesperson, setInvSalesperson] = useState('');
+  const toggleInvSort = (col: typeof invSort['col']) => setInvSort(s => s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'desc' });
+  const invSortIcon = (col: typeof invSort['col']) => invSort.col === col ? (invSort.dir === 'asc' ? ' ↑' : ' ↓') : '';
 
   const exportCsv = () => {
     if (!data) return;
@@ -512,15 +744,38 @@ function InventorySalesReport() {
         </div>
         <div className="flex items-center gap-2 print:hidden">
           <GeneratedBadge generatedAt={data?.generatedAt} cached={data?.cached} />
-          <Button size="sm" variant="outline" className="gap-2" onClick={exportCsv} disabled={!data}><Download className="w-4 h-4" /> CSV</Button>
-          <Button size="sm" variant="outline" className="gap-2" onClick={() => window.print()} disabled={!data}><Printer className="w-4 h-4" /> PDF</Button>
+          <Button size="sm" variant="outline" className="gap-2" title="Download as CSV" onClick={exportCsv} disabled={!data}><Download className="w-4 h-4" /> CSV</Button>
+          <Button size="sm" variant="outline" className="gap-2" title="Export as PDF" onClick={() => window.print()} disabled={!data}><Printer className="w-4 h-4" /> PDF</Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-end gap-3 print:hidden">
-          <Field label="Start"><Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-40" /></Field>
-          <Field label="End"><Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-40" /></Field>
-          <Button size="sm" onClick={() => refetch()} disabled={isFetching}>{isFetching ? 'Running…' : 'Run Report'}</Button>
+          <Field label="Preset">
+            <Select value="" onValueChange={v => {
+              const now = new Date(); const y = now.getFullYear(); const m = now.getMonth();
+              if (v === 'thisMonth') { setStartDate(new Date(y, m, 1).toISOString().slice(0, 10)); setEndDate(new Date(y, m + 1, 0).toISOString().slice(0, 10)); }
+              else if (v === 'lastMonth') { setStartDate(new Date(y, m - 1, 1).toISOString().slice(0, 10)); setEndDate(new Date(y, m, 0).toISOString().slice(0, 10)); }
+              else if (v === 'thisYear') { setStartDate(`${y}-01-01`); setEndDate(`${y}-12-31`); }
+              else if (v === 'lastYear') { setStartDate(`${y - 1}-01-01`); setEndDate(`${y - 1}-12-31`); }
+            }}>
+              <SelectTrigger className="w-36" title="Select a preset date range"><SelectValue placeholder="Quick select…" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="thisMonth">This Month</SelectItem>
+                <SelectItem value="lastMonth">Last Month</SelectItem>
+                <SelectItem value="thisYear">This Year</SelectItem>
+                <SelectItem value="lastYear">Last Year</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Start"><Input type="date" title="Filter by start date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-40" /></Field>
+          <Field label="End"><Input type="date" title="Filter by end date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-40" /></Field>
+          <Field label="Salesperson">
+            <div className="relative">
+              <Input placeholder="Filter…" title="Filter by salesperson name" value={invSalesperson} onChange={e => setInvSalesperson(e.target.value)} className="w-36" />
+              {invSalesperson && <button onClick={() => setInvSalesperson('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="w-3 h-3" /></button>}
+            </div>
+          </Field>
+          <Button size="sm" title="Run this report" onClick={() => refetch()} disabled={isFetching}>{isFetching ? 'Running…' : 'Run Report'}</Button>
         </div>
 
         {data && (
@@ -535,52 +790,68 @@ function InventorySalesReport() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Item</TableHead>
+                  <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => toggleInvSort('item')}>Item{invSortIcon('item')}</TableHead>
                   <TableHead>SKU</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Salesperson</TableHead>
-                  <TableHead className="text-right">Units Sold</TableHead>
+                  <TableHead className="text-right cursor-pointer select-none hover:text-foreground" onClick={() => toggleInvSort('units')}>Units Sold{invSortIcon('units')}</TableHead>
                   <TableHead className="text-right">Sell Price</TableHead>
-                  <TableHead className="text-right">Revenue</TableHead>
+                  <TableHead className="text-right cursor-pointer select-none hover:text-foreground" onClick={() => toggleInvSort('revenue')}>Revenue{invSortIcon('revenue')}</TableHead>
                   <TableHead className="text-right">Cost</TableHead>
-                  <TableHead className="text-right">Margin</TableHead>
+                  <TableHead className="text-right cursor-pointer select-none hover:text-foreground" onClick={() => toggleInvSort('margin')}>Margin{invSortIcon('margin')}</TableHead>
                   <TableHead className="text-right">Commission %</TableHead>
-                  <TableHead className="text-right">Commission $</TableHead>
+                  <TableHead className="text-right cursor-pointer select-none hover:text-foreground" onClick={() => toggleInvSort('commission')}>Commission ${invSortIcon('commission')}</TableHead>
                   <TableHead className="text-right">Stock Left</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.rows.map(r => (
-                  <TableRow key={r.inventoryItemId}>
-                    <TableCell className="font-medium">{r.itemName}</TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">{r.sku}</TableCell>
-                    <TableCell>{r.category ? <Badge variant="outline">{r.category}</Badge> : <span className="text-muted-foreground">—</span>}</TableCell>
-                    <TableCell className="text-muted-foreground">{r.salespersonName ?? '—'}</TableCell>
-                    <TableCell className="text-right">{r.unitsSold}</TableCell>
-                    <TableCell className="text-right">{money(r.sellPricePerUnit)}</TableCell>
-                    <TableCell className="text-right">{money(r.totalRevenue)}</TableCell>
-                    <TableCell className="text-right text-muted-foreground">{money(r.totalCost)}</TableCell>
-                    <TableCell className={`text-right font-medium ${r.grossMargin < 0 ? 'text-destructive' : 'text-emerald-600'}`}>{money(r.grossMargin)}</TableCell>
-                    <TableCell className="text-right">{r.commissionPct > 0 ? `${r.commissionPct}%` : <span className="text-muted-foreground">—</span>}</TableCell>
-                    <TableCell className="text-right">{r.commissionEarned > 0 ? money(r.commissionEarned) : <span className="text-muted-foreground">—</span>}</TableCell>
+                {[...data.rows].filter(r => !invSalesperson.trim() || (r.salespersonName ?? '').toLowerCase().includes(invSalesperson.trim().toLowerCase())).sort((a, b) => {
+                    const dir = invSort.dir === 'asc' ? 1 : -1;
+                    if (invSort.col === 'item') return dir * a.itemName.localeCompare(b.itemName);
+                    if (invSort.col === 'units') return dir * (a.unitsSold - b.unitsSold);
+                    if (invSort.col === 'revenue') return dir * (a.totalRevenue - b.totalRevenue);
+                    if (invSort.col === 'margin') return dir * (a.grossMargin - b.grossMargin);
+                    return dir * (a.commissionEarned - b.commissionEarned);
+                  }).map(r => (
+                  <TableRow key={r.inventoryItemId} className="cursor-pointer hover:bg-muted/40" onClick={() => { window.location.href = `${import.meta.env.BASE_URL}inventory?highlight=${r.inventoryItemId}`; }}>
+                    <TableCell className="font-medium" title={r.itemName}>{r.itemName}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground" title={r.sku || undefined}>{r.sku}</TableCell>
+                    <TableCell>{r.category ? <Badge variant="outline" title={`Category: ${r.category}`}>{r.category}</Badge> : <span className="text-muted-foreground">—</span>}</TableCell>
+                    <TableCell className="text-muted-foreground" title={r.salespersonName ?? undefined}>{r.salespersonName ?? '—'}</TableCell>
+                    <TableCell className="text-right" title={`${r.unitsSold} unit${r.unitsSold !== 1 ? 's' : ''} sold`}>{r.unitsSold}</TableCell>
+                    <TableCell className="text-right" title={`Sell price per unit: ${money(r.sellPricePerUnit)}`}>{money(r.sellPricePerUnit)}</TableCell>
+                    <TableCell className="text-right" title={`Total revenue: ${money(r.totalRevenue)}`}>{money(r.totalRevenue)}</TableCell>
+                    <TableCell className="text-right text-muted-foreground" title={`Total cost: ${money(r.totalCost)}`}>{money(r.totalCost)}</TableCell>
+                    <TableCell className={`text-right font-medium ${r.grossMargin < 0 ? 'text-destructive' : 'text-emerald-600'}`} title={`Gross margin: ${money(r.grossMargin)}`}>{money(r.grossMargin)}</TableCell>
+                    <TableCell className="text-right" title={r.commissionPct > 0 ? `Commission rate: ${r.commissionPct}%` : undefined}>{r.commissionPct > 0 ? `${r.commissionPct}%` : <span className="text-muted-foreground">—</span>}</TableCell>
+                    <TableCell className="text-right" title={r.commissionEarned > 0 ? `Commission earned: ${money(r.commissionEarned)}` : undefined}>{r.commissionEarned > 0 ? money(r.commissionEarned) : <span className="text-muted-foreground">—</span>}</TableCell>
                     <TableCell className="text-right">
-                      <span className={r.currentStock <= 0 ? 'text-destructive font-semibold' : ''}>{r.currentStock}</span>
+                      <span
+                        className={r.currentStock <= 0 ? 'text-destructive font-semibold' : r.currentStock <= 5 ? 'text-amber-600 font-medium' : ''}
+                        title={`${r.currentStock} unit${r.currentStock !== 1 ? 's' : ''} in stock`}
+                      >
+                        {r.currentStock}
+                        {r.currentStock <= 5 && <span className="text-[10px] ml-1 opacity-70">units</span>}
+                      </span>
                     </TableCell>
                   </TableRow>
                 ))}
                 {data.rows.length === 0 && (
                   <TableRow><TableCell colSpan={12} className="text-center text-muted-foreground py-8">No inventory items sold in completed jobs during this range.</TableCell></TableRow>
                 )}
+                {data.rows.length > 0 && invSalesperson.trim() && [...data.rows].filter(r => (r.salespersonName ?? '').toLowerCase().includes(invSalesperson.trim().toLowerCase())).length === 0 && (
+                  <TableRow><TableCell colSpan={12} className="text-center text-muted-foreground py-8">No results match the salesperson filter.</TableCell></TableRow>
+                )}
                 {data.rows.length > 0 && (
                   <TableRow className="font-semibold bg-muted/30">
                     <TableCell colSpan={4}>Totals</TableCell>
-                    <TableCell className="text-right">{data.totals.unitsSold}</TableCell>
+                    <TableCell className="text-right" title={`Total units sold: ${data.totals.unitsSold}`}>{data.totals.unitsSold}</TableCell>
                     <TableCell />
-                    <TableCell className="text-right">{money(data.totals.totalRevenue)}</TableCell>
-                    <TableCell className="text-right">{money(data.totals.totalCost)}</TableCell>
-                    <TableCell className={`text-right ${data.totals.grossMargin < 0 ? 'text-destructive' : 'text-emerald-600'}`}>{money(data.totals.grossMargin)}</TableCell>
+                    <TableCell className="text-right" title={`Total revenue: ${money(data.totals.totalRevenue)}`}>{money(data.totals.totalRevenue)}</TableCell>
+                    <TableCell className="text-right" title={`Total cost: ${money(data.totals.totalCost)}`}>{money(data.totals.totalCost)}</TableCell>
+                    <TableCell className={`text-right ${data.totals.grossMargin < 0 ? 'text-destructive' : 'text-emerald-600'}`} title={`Total gross margin: ${money(data.totals.grossMargin)}`}>{money(data.totals.grossMargin)}</TableCell>
                     <TableCell />
-                    <TableCell className="text-right">{money(data.totals.commissionEarned)}</TableCell>
+                    <TableCell className="text-right" title={`Total commission earned: ${money(data.totals.commissionEarned)}`}>{money(data.totals.commissionEarned)}</TableCell>
                     <TableCell />
                   </TableRow>
                 )}
@@ -606,7 +877,7 @@ function Stat({ label, value, highlight }: { label: string; value: string; highl
   return (
     <div className={`rounded-lg border p-3 ${highlight ? 'bg-primary/5 border-primary/30' : ''}`}>
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={`text-lg font-semibold mt-0.5 ${highlight ? 'text-primary' : ''}`}>{value}</p>
+      <p className={`text-lg font-semibold mt-0.5 ${highlight ? 'text-primary' : ''}`} title={`${label}: ${value}`}>{value}</p>
     </div>
   );
 }

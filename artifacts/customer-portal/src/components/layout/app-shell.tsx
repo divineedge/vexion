@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, useLocation } from "wouter";
 import { usePortalGetMe, usePortalGetSummary } from "@workspace/api-client-react";
-import { MapPin, Briefcase, FileText, Bell, LayoutDashboard, Menu, X, LogOut, Loader2, CalendarDays, ClipboardList } from "lucide-react";
+import { MapPin, Briefcase, FileText, Bell, LayoutDashboard, Menu, X, LogOut, Loader2, CalendarDays, ClipboardList, ClipboardCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -9,6 +9,7 @@ const navItems = [
   { name: "Overview", path: "/home", icon: LayoutDashboard },
   { name: "My Requests", path: "/my-requests", icon: ClipboardList },
   { name: "Jobs", path: "/jobs", icon: Briefcase },
+  { name: "Estimates", path: "/estimates", icon: ClipboardCheck },
   { name: "Invoices", path: "/invoices", icon: FileText },
   { name: "Properties", path: "/properties", icon: MapPin },
   { name: "Plans", path: "/plans", icon: CalendarDays },
@@ -124,6 +125,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <div className="h-8 w-8 rounded-full bg-secondary text-secondary-foreground flex items-center justify-center font-bold">
                   {me?.name?.charAt(0).toUpperCase()}
                 </div>
+                <Link href="/profile" className="text-xs text-muted-foreground hover:text-foreground underline">Profile</Link>
                 <Button variant="ghost" size="icon" onClick={handleLogout} className="text-muted-foreground hover:text-destructive">
                   <LogOut className="h-4 w-4" />
                 </Button>

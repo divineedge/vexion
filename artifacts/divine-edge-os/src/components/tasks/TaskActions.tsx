@@ -79,6 +79,7 @@ export function TaskActions({ task }: { task: InternalTask }) {
       <Button
         size="sm"
         variant="outline"
+        title="Restore this task to the active queue"
         className="h-7 text-xs gap-1"
         onClick={() => unarchiveTask.mutate({ id: task.id })}
         disabled={unarchiveTask.isPending}
@@ -93,7 +94,7 @@ export function TaskActions({ task }: { task: InternalTask }) {
       <div className="flex items-center gap-1.5">
         <span className="text-xs text-emerald-600 font-medium">Completed</span>
         {isAdmin && (
-          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={() => setDeleteOpen(true)}>
+          <Button size="sm" variant="ghost" title="Delete this completed task" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={() => setDeleteOpen(true)}>
             <Trash2 className="w-3.5 h-3.5" />
           </Button>
         )}
@@ -106,32 +107,32 @@ export function TaskActions({ task }: { task: InternalTask }) {
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
       {canClaim && (
-        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={claim} disabled={updateTask.isPending}>
+        <Button size="sm" variant="outline" title="Claim this task and assign it to yourself" className="h-7 text-xs gap-1" onClick={claim} disabled={updateTask.isPending}>
           <Hand className="w-3.5 h-3.5" /> Claim
         </Button>
       )}
       {canAct && !canClaim && task.status === 'open' && (
-        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setStatus('in_progress')} disabled={updateTask.isPending}>
+        <Button size="sm" variant="outline" title="Mark this task as in progress" className="h-7 text-xs gap-1" onClick={() => setStatus('in_progress')} disabled={updateTask.isPending}>
           <PlayCircle className="w-3.5 h-3.5" /> Start
         </Button>
       )}
       {canAct && !canClaim && (task.status === 'open' || task.status === 'in_progress') && (
         <>
-          <Button size="sm" className="h-7 text-xs gap-1" onClick={() => setStatus('done')} disabled={updateTask.isPending}>
+          <Button size="sm" title="Mark this task as done" className="h-7 text-xs gap-1" onClick={() => setStatus('done')} disabled={updateTask.isPending}>
             <CheckCircle2 className="w-3.5 h-3.5" /> Complete
           </Button>
-          <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-destructive hover:text-destructive" onClick={() => setRejectOpen(true)} disabled={updateTask.isPending}>
+          <Button size="sm" variant="ghost" title="Reject this task and send it back to the creator" className="h-7 text-xs gap-1 text-destructive hover:text-destructive" onClick={() => setRejectOpen(true)} disabled={updateTask.isPending}>
             <XCircle className="w-3.5 h-3.5" /> Reject
           </Button>
         </>
       )}
       {isCreator && task.status === 'rejected' && (
-        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setStatus('open')} disabled={updateTask.isPending}>
+        <Button size="sm" variant="outline" title="Resubmit this task after addressing the rejection reason" className="h-7 text-xs gap-1" onClick={() => setStatus('open')} disabled={updateTask.isPending}>
           <RotateCcw className="w-3.5 h-3.5" /> Resubmit
         </Button>
       )}
       {isAdmin && (
-        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={() => setDeleteOpen(true)} disabled={deleteTask.isPending}>
+        <Button size="sm" variant="ghost" title="Delete this task permanently" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={() => setDeleteOpen(true)} disabled={deleteTask.isPending}>
           <Trash2 className="w-3.5 h-3.5" />
         </Button>
       )}
@@ -142,10 +143,10 @@ export function TaskActions({ task }: { task: InternalTask }) {
             <DialogTitle>Reject Task</DialogTitle>
             <DialogDescription>Explain why this task can't be completed as assigned. The creator will be notified and can revise & resubmit.</DialogDescription>
           </DialogHeader>
-          <Textarea rows={3} value={rejectionReason} onChange={e => setRejectionReason(e.target.value)} placeholder="e.g. Wrong customer info, need more detail..." />
+          <Textarea rows={3} title="Explain why you can't complete this task as assigned" value={rejectionReason} onChange={e => setRejectionReason(e.target.value)} placeholder="e.g. Wrong customer info, need more detail..." />
           <DialogFooter>
             <Button variant="outline" onClick={() => setRejectOpen(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={submitReject} disabled={updateTask.isPending}>Reject Task</Button>
+            <Button variant="destructive" title="Confirm rejection and notify the task creator" onClick={submitReject} disabled={updateTask.isPending}>Reject Task</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -174,7 +175,7 @@ function DeleteDialog({ open, onOpenChange, taskTitle, onConfirm, isPending }: {
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="destructive" onClick={onConfirm} disabled={isPending}>Delete</Button>
+          <Button variant="destructive" title="Permanently delete this task — cannot be undone" onClick={onConfirm} disabled={isPending}>Delete</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -3,11 +3,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
-import { CalendarClock, MapPin, Briefcase, Clock, CheckCircle2, FileText } from "lucide-react";
+import { CalendarClock, MapPin, Briefcase, Clock, CheckCircle2, FileText, User, Search } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { useState } from "react";
 
 export default function Jobs() {
   const { data: jobs, isLoading } = usePortalListJobs();
+  const [jobSearch, setJobSearch] = useState('');
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -19,8 +22,8 @@ export default function Jobs() {
     }
   };
 
-  const upcomingJobs = jobs?.filter(j => j.status === 'scheduled' || j.status === 'in_progress') || [];
-  const pastJobs = jobs?.filter(j => j.status === 'completed' || j.status === 'cancelled') || [];
+  const upcomingJobs = (jobs?.filter(j => j.status === 'scheduled' || j.status === 'in_progress') || []).filter(j => !jobSearch || j.title.toLowerCase().includes(jobSearch.toLowerCase()) || (j.propertyAddress ?? '').toLowerCase().includes(jobSearch.toLowerCase()));
+  const pastJobs = (jobs?.filter(j => j.status === 'completed' || j.status === 'cancelled') || []).filter(j => !jobSearch || j.title.toLowerCase().includes(jobSearch.toLowerCase()) || (j.propertyAddress ?? '').toLowerCase().includes(jobSearch.toLowerCase()));
 
   const JobCard = ({ job }: { job: any }) => (
     <Card className="shadow-sm overflow-hidden group">
@@ -51,6 +54,15 @@ export default function Jobs() {
                   <p className="text-sm text-foreground">{job.propertyAddress}</p>
                 </div>
               </div>
+              {job.assignedToName && (
+                <div className="flex items-start gap-2">
+                  <User className="w-4 h-4 text-muted-foreground mt-0.5" />
+                  <div>
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">TECHNICIAN</p>
+                    <p className="text-sm text-foreground">{job.assignedToName}</p>
+                  </div>
+                </div>
+              )}
               {job.completedAt && (
                 <div className="flex items-start gap-2">
                   <CheckCircle2 className="w-4 h-4 text-muted-foreground mt-0.5" />
@@ -81,10 +93,15 @@ export default function Jobs() {
         <p className="text-muted-foreground mt-1">View your scheduled and past appointments.</p>
       </div>
 
+      <div className="relative max-w-xs">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+        <Input placeholder="Search by job or address…" value={jobSearch} onChange={e => setJobSearch(e.target.value)} className="pl-8 h-9 text-sm" />
+      </div>
+
       <Tabs defaultValue="upcoming" className="w-full">
         <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="upcoming">Upcoming & Active</TabsTrigger>
-          <TabsTrigger value="past">Past Services</TabsTrigger>
+          <TabsTrigger value="upcoming">Upcoming & Active {upcomingJobs.length > 0 && <span className="ml-1.5 inline-flex items-center justify-center bg-primary text-primary-foreground rounded-full text-[10px] font-bold w-4 h-4">{upcomingJobs.length}</span>}</TabsTrigger>
+          <TabsTrigger value="past">Past Services {pastJobs.length > 0 && <span className="ml-1.5 inline-flex items-center justify-center bg-muted text-muted-foreground rounded-full text-[10px] font-medium w-4 h-4">{pastJobs.length}</span>}</TabsTrigger>
         </TabsList>
         
         <TabsContent value="upcoming" className="mt-6 space-y-4">

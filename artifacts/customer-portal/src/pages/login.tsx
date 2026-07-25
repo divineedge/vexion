@@ -26,6 +26,8 @@ export default function Login() {
   const [tenantId, setTenantId] = useState<number>(1);
   const [previewOtp, setPreviewOtp] = useState<string | null>(null);
   const [emailDelivered, setEmailDelivered] = useState<boolean>(true);
+  const [tenantLogoUrl, setTenantLogoUrl] = useState<string | null>(null);
+  const [tenantName, setTenantName] = useState<string>('');
 
   const requestOtp = usePortalRequestOtp();
   const verifyOtp = usePortalVerifyOtp();
@@ -55,7 +57,16 @@ export default function Login() {
     }
     
     if (tenantParam) {
-      setTenantId(Number(tenantParam));
+      const id = Number(tenantParam);
+      setTenantId(id);
+      // Fetch tenant branding for the login screen
+      fetch(`/api/settings`, { headers: { 'x-tenant-id': id.toString() } })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (d?.logoUrl) setTenantLogoUrl(d.logoUrl);
+          if (d?.companyName) setTenantName(d.companyName);
+        })
+        .catch(() => {});
     }
   }, [emailForm]);
 
@@ -118,10 +129,14 @@ export default function Login() {
       
       <div className="w-full max-w-md z-10">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-primary text-primary-foreground rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-primary/20">
-            <span className="text-3xl font-bold">D</span>
-          </div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Client Portal</h1>
+          {tenantLogoUrl ? (
+            <img src={tenantLogoUrl} alt={tenantName || 'Company logo'} className="h-16 w-auto object-contain mx-auto mb-6" />
+          ) : (
+            <div className="w-16 h-16 bg-primary text-primary-foreground rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-primary/20">
+              <span className="text-3xl font-bold">{tenantName ? tenantName[0].toUpperCase() : 'D'}</span>
+            </div>
+          )}
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">{tenantName ? `${tenantName} Portal` : 'Client Portal'}</h1>
           <p className="text-muted-foreground mt-2">Manage your services, view invoices, and more.</p>
         </div>
 

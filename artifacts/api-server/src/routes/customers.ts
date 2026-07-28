@@ -393,8 +393,8 @@ router.post("/customers", async (req, res): Promise<void> => {
     billingAddress, billingCity, billingState, billingZip, notes, tags, customFieldValues,
     acquiredFromCampaignId,
   } = req.body;
-  if (!name || !email || !phone) {
-    res.status(400).json({ error: "name, email, phone are required" });
+  if (!name) {
+    res.status(400).json({ error: "name is required" });
     return;
   }
 

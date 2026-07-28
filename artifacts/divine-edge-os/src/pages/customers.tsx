@@ -21,41 +21,80 @@ import { toast } from 'sonner';
 import { getActiveCustomerFields } from '@/lib/fieldConfig';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
 
-interface NominatimResult {
-  place_id: number;
-  display_name: string;
-  address: {
-    house_number?: string;
-    road?: string;
+/** A single address suggestion returned by the Photon geocoder. */
+interface PhotonFeature {
+  properties: {
+    name?: string;
+    housenumber?: string;
+    street?: string;
     city?: string;
-    town?: string;
-    village?: string;
+    county?: string;
     state?: string;
     postcode?: string;
+    country?: string;
+    countrycode?: string;
   };
 }
 
+/**
+ * Address autocomplete using Photon (komoot) — purpose-built for address
+ * lookup with OpenStreetMap data and much better local coverage than plain
+ * Nominatim. Filters to US results on the client side.
+ */
 function useAddressAutocomplete(query: string) {
-  const [suggestions, setSuggestions] = useState<NominatimResult[]>([]);
+  const [suggestions, setSuggestions] = useState<PhotonFeature[]>([]);
   const [loading, setLoading] = useState(false);
-  const debounced = useDebounce(query, 400);
+  const debounced = useDebounce(query, 350);
 
   useEffect(() => {
-    if (!debounced || debounced.length < 4) { setSuggestions([]); return; }
+    if (!debounced || debounced.length < 3) { setSuggestions([]); return; }
     let cancelled = false;
     setLoading(true);
     fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&countrycodes=us&limit=5&q=${encodeURIComponent(debounced)}`,
+      `https://photon.komoot.io/api/?q=${encodeURIComponent(debounced)}&limit=10&lang=en&layer=house&layer=street`,
       { headers: { 'Accept-Language': 'en' } },
     )
       .then(r => r.json())
-      .then((data: NominatimResult[]) => { if (!cancelled) setSuggestions(data); })
+      .then((data: { features?: PhotonFeature[] }) => {
+        if (cancelled) return;
+        // Filter to US results only
+        const us = (data.features ?? []).filter(
+          f => !f.properties.countrycode || f.properties.countrycode.toUpperCase() === 'US',
+        );
+        setSuggestions(us.slice(0, 6));
+      })
       .catch(() => { if (!cancelled) setSuggestions([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [debounced]);
 
   return { suggestions, loading, clear: () => setSuggestions([]) };
+}
+
+/** Format a Photon feature's street address portion. */
+function photonStreet(p: PhotonFeature['properties']): string {
+  const parts = [p.housenumber, p.street ?? p.name].filter(Boolean);
+  return parts.join(' ');
+}
+
+/** Map full US state names (as returned by Photon) to 2-letter USPS codes. */
+const US_STATE_ABBR: Record<string, string> = {
+  'Alabama':'AL','Alaska':'AK','Arizona':'AZ','Arkansas':'AR','California':'CA',
+  'Colorado':'CO','Connecticut':'CT','Delaware':'DE','Florida':'FL','Georgia':'GA',
+  'Hawaii':'HI','Idaho':'ID','Illinois':'IL','Indiana':'IN','Iowa':'IA','Kansas':'KS',
+  'Kentucky':'KY','Louisiana':'LA','Maine':'ME','Maryland':'MD','Massachusetts':'MA',
+  'Michigan':'MI','Minnesota':'MN','Mississippi':'MS','Missouri':'MO','Montana':'MT',
+  'Nebraska':'NE','Nevada':'NV','New Hampshire':'NH','New Jersey':'NJ','New Mexico':'NM',
+  'New York':'NY','North Carolina':'NC','North Dakota':'ND','Ohio':'OH','Oklahoma':'OK',
+  'Oregon':'OR','Pennsylvania':'PA','Rhode Island':'RI','South Carolina':'SC',
+  'South Dakota':'SD','Tennessee':'TN','Texas':'TX','Utah':'UT','Vermont':'VT',
+  'Virginia':'VA','Washington':'WA','West Virginia':'WV','Wisconsin':'WI','Wyoming':'WY',
+  'District of Columbia':'DC','Puerto Rico':'PR','Guam':'GU',
+};
+
+function toStateAbbr(state: string): string {
+  if (state.length <= 2) return state.toUpperCase();
+  return US_STATE_ABBR[state] ?? state.slice(0, 2).toUpperCase();
 }
 
 type FormData = Record<string, string | string[]>;
@@ -146,8 +185,17 @@ export default function CustomersPage() {
   const removeTag = (tag: string) => setForm(f => ({ ...f, tags: ((f.tags as string[]) ?? []).filter(t => t !== tag) }));
 
   const handleCreate = () => {
-    if (!form.name || !form.email || !form.phone) {
-      toast.error('Name, email, and phone are required');
+    // Validate required fields according to the tenant's field configuration
+    const missing = activeFields
+      .filter(f => f.required && !(form[f.key] as string | undefined)?.trim())
+      .map(f => f.label);
+    // Name is always required as a hard minimum
+    if (!(form.name as string | undefined)?.trim()) {
+      toast.error('Customer name is required');
+      return;
+    }
+    if (missing.length > 0) {
+      toast.error(`Required: ${missing.join(', ')}`);
       return;
     }
     const customFieldValues: Record<string, string> = {};
@@ -401,14 +449,14 @@ export default function CustomersPage() {
 
           <div className="space-y-6 pb-6">
             <Section title="Contact Information" icon={<User className="w-4 h-4" />}>
-              <Field label="Full Name" required>
+              <Field label="Full Name" required={activeFields.find(f => f.key === 'name')?.required ?? true}>
                 <Input title="Customer's full name" value={form.name as string} onChange={e => setField('name', e.target.value)} placeholder="Jane Smith" />
               </Field>
               <div className="grid grid-cols-2 gap-4">
-                <Field label="Email" required>
+                <Field label="Email" required={activeFields.find(f => f.key === 'email')?.required ?? true}>
                   <Input type="email" title="Customer's email address for invoices and notifications" value={form.email as string} onChange={e => setField('email', e.target.value)} placeholder="jane@example.com" />
                 </Field>
-                <Field label="Phone" required>
+                <Field label="Phone" required={activeFields.find(f => f.key === 'phone')?.required ?? true}>
                   <Input title="Customer's primary phone number" value={form.phone as string} onChange={e => setField('phone', e.target.value)} placeholder="(555) 000-0000" />
                 </Field>
               </div>
@@ -468,20 +516,22 @@ export default function CustomersPage() {
                             <MapPin className="w-3.5 h-3.5 animate-pulse" /> Searching…
                           </div>
                         )}
-                        {addrSuggestions.map(s => {
-                          const street = [s.address.house_number, s.address.road].filter(Boolean).join(' ');
-                          const city = s.address.city ?? s.address.town ?? s.address.village ?? '';
-                          const state = s.address.state ?? '';
-                          const zip = s.address.postcode ?? '';
+                        {addrSuggestions.map((s, idx) => {
+                          const p = s.properties;
+                          const street = photonStreet(p);
+                          const city = p.city ?? p.county ?? '';
+                          const state = p.state ?? '';
+                          const zip = p.postcode ?? '';
                           return (
                             <button
-                              key={s.place_id}
+                              key={idx}
                               type="button"
                               className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors border-b last:border-b-0"
                               onMouseDown={() => {
                                 setField('billingAddress', street || (form.billingAddress as string));
                                 setField('billingCity', city);
-                                setField('billingState', state.length <= 20 ? state : '');
+                                // Photon returns full state names; abbreviate to 2 chars if >2
+                                setField('billingState', toStateAbbr(state));
                                 setField('billingZip', zip.slice(0, 5));
                                 clearAddrSuggestions();
                                 setAddrFocused(false);

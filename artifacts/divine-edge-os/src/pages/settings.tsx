@@ -47,7 +47,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { BUILT_IN_CUSTOMER_FIELDS, getActiveCustomerFields, type CustomerFieldConfig } from '@/lib/fieldConfig';
+import { BUILT_IN_CUSTOMER_FIELDS, CORE_FIELD_KEYS, getActiveCustomerFields, type CustomerFieldConfig } from '@/lib/fieldConfig';
 import IntegrationsGrid from '@/components/settings/IntegrationsGrid';
 import DevToolsPanel from '@/components/settings/DevToolsPanel';
 import RoutingSettings from '@/components/settings/RoutingSettings';
@@ -795,48 +795,45 @@ export default function SettingsPage() {
                 <div className="flex items-center gap-1.5"><Badge variant="outline" className="text-[10px] px-1">Built-in</Badge> Cannot be deleted</div>
               </div>
               <div className="space-y-1">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-2 py-1">Core Fields (always active)</p>
-                {['name', 'email', 'phone'].map(key => (
-                  <div key={key} className="flex items-center gap-4 px-3 py-2.5 rounded-lg bg-muted/30 border">
-                    <div className="flex-1">
-                      <span className="font-medium text-sm capitalize">{key === 'name' ? 'Full Name' : key}</span>
-                      <Badge variant="outline" className="ml-2 text-[10px] px-1">Built-in</Badge>
-                    </div>
-                    <Switch checked disabled />
-                    <Switch checked disabled />
-                    <div className="w-8" />
-                  </div>
-                ))}
-              </div>
-              <div className="space-y-1 pt-2">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-2 py-1">Configurable Fields</p>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-2 py-1">All Fields</p>
                 {customerFields.map(field => (
-                  <div
-                    key={field.key}
-                    className={`flex items-center gap-4 px-3 py-2.5 rounded-lg border transition-colors ${field.visible ? 'bg-background' : 'bg-muted/20 opacity-60'}`}
-                  >
-                    <GripVertical className="w-4 h-4 text-muted-foreground/40 cursor-grab shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium text-sm" title={field.label}>{field.label}</span>
-                        {field.isBuiltIn && <Badge variant="outline" className="text-[10px] px-1" title="Built-in field — cannot be deleted">Built-in</Badge>}
-                        <span className="text-xs text-muted-foreground capitalize" title={`Field type: ${field.type}`}>{field.type}</span>
+                  (() => {
+                    const isCore = (CORE_FIELD_KEYS as readonly string[]).includes(field.key);
+                    return (
+                      <div
+                        key={field.key}
+                        className={`flex items-center gap-4 px-3 py-2.5 rounded-lg border transition-colors ${field.visible ? 'bg-background' : 'bg-muted/20 opacity-60'}`}
+                      >
+                        {isCore
+                          ? <div className="w-4 h-4 shrink-0" />
+                          : <GripVertical className="w-4 h-4 text-muted-foreground/40 cursor-grab shrink-0" />}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-sm" title={field.label}>{field.label}</span>
+                            {field.isBuiltIn && <Badge variant="outline" className="text-[10px] px-1" title="Built-in field — cannot be deleted">Built-in</Badge>}
+                            {isCore && <Badge className="text-[10px] px-1 bg-blue-50 text-blue-700 border-blue-200" variant="outline" title="Always shown — only required status is configurable">Always visible</Badge>}
+                            {!isCore && <span className="text-xs text-muted-foreground capitalize" title={`Field type: ${field.type}`}>{field.type}</span>}
+                          </div>
+                        </div>
+                        <div
+                          className="flex items-center gap-1.5 shrink-0"
+                          title={isCore ? 'Core fields are always visible and cannot be hidden' : (field.visible ? 'Field is visible on customer records' : 'Field is hidden from customer records')}
+                        >
+                          {field.visible ? <Eye className="w-3.5 h-3.5 text-muted-foreground" /> : <EyeOff className="w-3.5 h-3.5 text-muted-foreground/40" />}
+                          <Switch checked={field.visible} disabled={isCore} onCheckedChange={() => !isCore && toggleFieldProp(field.key, 'visible')} />
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0" title={field.required ? 'Field is required when creating customers' : 'Field is optional — staff can leave it blank'}>
+                          <Star className={`w-3.5 h-3.5 ${field.required ? 'text-amber-500' : 'text-muted-foreground/40'}`} />
+                          <Switch checked={field.required} disabled={!field.visible} onCheckedChange={() => toggleFieldProp(field.key, 'required')} />
+                        </div>
+                        {!field.isBuiltIn ? (
+                          <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-destructive" title="Delete this custom field" onClick={() => removeCustomField(field.key)}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        ) : <div className="w-8" />}
                       </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0" title={field.visible ? 'Field is visible on customer records' : 'Field is hidden from customer records'}>
-                      {field.visible ? <Eye className="w-3.5 h-3.5 text-muted-foreground" /> : <EyeOff className="w-3.5 h-3.5 text-muted-foreground/40" />}
-                      <Switch checked={field.visible} onCheckedChange={() => toggleFieldProp(field.key, 'visible')} />
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0" title={field.required ? 'Field is required when creating customers' : 'Field is optional'}>
-                      <Star className={`w-3.5 h-3.5 ${field.required ? 'text-amber-500' : 'text-muted-foreground/40'}`} />
-                      <Switch checked={field.required} disabled={!field.visible} onCheckedChange={() => toggleFieldProp(field.key, 'required')} />
-                    </div>
-                    {!field.isBuiltIn ? (
-                      <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-destructive" title="Delete this custom field" onClick={() => removeCustomField(field.key)}>
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    ) : <div className="w-8" />}
-                  </div>
+                    );
+                  })()
                 ))}
               </div>
             </CardContent>

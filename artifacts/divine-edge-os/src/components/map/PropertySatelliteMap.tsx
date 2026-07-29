@@ -157,7 +157,7 @@ export default function PropertySatelliteMap({
     if (!mapContainerRef.current || mapRef.current) return;
 
     let isMounted = true;
-    import('leaflet').then((L) => {
+    import('leaflet').then(async (L) => {
       if (!isMounted || !mapContainerRef.current || mapRef.current) return;
 
       // Fix default marker icons
@@ -175,14 +175,41 @@ export default function PropertySatelliteMap({
       const map = L.map(mapContainerRef.current!, { zoomControl: true }).setView([initLat, initLng], 18);
       mapRef.current = map;
 
-      // ESRI World Imagery (satellite)
-      L.tileLayer(
-        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        {
-          attribution: 'Tiles &copy; Esri &mdash; Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP',
-          maxZoom: 22,
-        }
-      ).addTo(map);
+      // Satellite tile layer — Google Maps (~1–2 yr imagery) when key set, ESRI fallback
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const GMAPS_KEY = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+      if (GMAPS_KEY) {
+        // Ensure Google Maps JS API is ready (may already be loaded by address autocomplete)
+        await new Promise<void>((resolve) => {
+          if ((window as any).google?.maps) { resolve(); return; }
+          if (document.querySelector('#gmaps-script')) {
+            const iv = setInterval(() => {
+              if ((window as any).google?.maps) { clearInterval(iv); resolve(); }
+            }, 100);
+            return;
+          }
+          const s = document.createElement('script');
+          s.id = 'gmaps-script';
+          s.src = `https://maps.googleapis.com/maps/api/js?key=${GMAPS_KEY}&libraries=places&loading=async`;
+          s.async = true;
+          s.defer = true;
+          s.onload = () => resolve();
+          document.head.appendChild(s);
+        });
+        if (!isMounted) return; // guard: component may have unmounted while waiting
+        await import('leaflet.gridlayer.googlemutant');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (L as any).gridLayer.googleMutant({ type: 'satellite', maxZoom: 22 }).addTo(map);
+      } else {
+        // ESRI World Imagery fallback (no API key required)
+        L.tileLayer(
+          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+          {
+            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics',
+            maxZoom: 22,
+          }
+        ).addTo(map);
+      }
 
       // Property pin
       const pin = L.marker([initLat, initLng], { draggable: !readonly })

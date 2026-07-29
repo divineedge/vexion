@@ -159,6 +159,11 @@ export default function PropertyDetailPage() {
     : ((tenantSettings?.measurementZoneLabels as string[] | undefined) ?? ['Front Lawn', 'Back Yard', 'Bed Areas', 'Side Yard', 'Common Area'])
         .map((name, i) => ({ id: String(i + 1), name, color: ZONE_COLORS[i % ZONE_COLORS.length] }));
   const defaultGeofenceRadius = tenantSettings?.defaultGeofenceRadius ?? 100;
+  const defaultGeofenceUnit = ((tenantSettings as any)?.defaultGeofenceUnit as 'm' | 'ft') ?? 'm';
+  // Convert tenant default to meters (Leaflet always uses meters for L.circle radius)
+  const defaultGeofenceRadiusM = defaultGeofenceUnit === 'ft'
+    ? Math.round(defaultGeofenceRadius * 0.3048)
+    : defaultGeofenceRadius;
 
   const updateProperty = useUpdateProperty();
   const updateGeofence = useUpdateGeofencePin();
@@ -505,9 +510,10 @@ export default function PropertyDetailPage() {
                   lng={property.lng}
                   address={property.address}
                   measurementPolygons={currentZones as import('@/components/map/PropertySatelliteMap').MeasurementZone[]}
-                  geofenceRadius={property.geofenceRadius ?? defaultGeofenceRadius}
+                  geofenceRadius={property.geofenceRadius ?? defaultGeofenceRadiusM}
                   geofenceLat={property.geofenceLat}
                   geofenceLng={property.geofenceLng}
+                  geofenceUnit={defaultGeofenceUnit}
                   preferredAreaUnit={preferredAreaUnit}
                   zoneTypes={zoneTypes}
                   onPinChange={handlePinChange}

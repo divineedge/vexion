@@ -30,6 +30,8 @@ interface PropertySatelliteMapProps {
   geofenceRadius?: number;
   geofenceLat?: number | null;
   geofenceLng?: number | null;
+  /** Unit used to display and edit the geofence radius. The radius prop and all callbacks always use meters. */
+  geofenceUnit?: 'm' | 'ft';
   preferredAreaUnit?: 'sqft' | 'acres';
   /** Structured zone types from tenant settings — preferred over defaultZoneLabels */
   zoneTypes?: ZoneType[];
@@ -95,6 +97,7 @@ export default function PropertySatelliteMap({
   geofenceRadius = 100,
   geofenceLat,
   geofenceLng,
+  geofenceUnit = 'm',
   preferredAreaUnit = 'sqft',
   zoneTypes,
   defaultZoneLabels,
@@ -133,7 +136,10 @@ export default function PropertySatelliteMap({
   const [editingGeofence, setEditingGeofence] = useState(false);
   const [currentLat, setCurrentLat] = useState(lat ?? 25.7617);
   const [currentLng, setCurrentLng] = useState(lng ?? -80.1918);
-  const [localGeofenceRadius, setLocalGeofenceRadius] = useState(geofenceRadius);
+  // localGeofenceRadius is in the display unit (ft or m); geofenceRadius prop is always meters
+  const [localGeofenceRadius, setLocalGeofenceRadius] = useState(() =>
+    geofenceUnit === 'ft' ? Math.round(geofenceRadius / 0.3048) : geofenceRadius
+  );
   const [mapReady, setMapReady] = useState(false);
   const [editingZoneId, setEditingZoneId] = useState<string | null>(null);
 
@@ -425,10 +431,14 @@ export default function PropertySatelliteMap({
     const pos = pin?.getLatLng();
     const cLat = pos?.lat ?? currentLat;
     const cLng = pos?.lng ?? currentLng;
+    // Always store/callback in meters regardless of display unit
+    const radiusM = geofenceUnit === 'ft'
+      ? Math.round(localGeofenceRadius * 0.3048)
+      : localGeofenceRadius;
     import('leaflet').then((_L) => {
-      markersRef.current.geofenceCircle?.setLatLng([cLat, cLng]).setRadius(localGeofenceRadius);
+      markersRef.current.geofenceCircle?.setLatLng([cLat, cLng]).setRadius(radiusM);
     });
-    onGeofenceChange?.(cLat, cLng, localGeofenceRadius);
+    onGeofenceChange?.(cLat, cLng, radiusM);
     setEditingGeofence(false);
   };
 
@@ -529,14 +539,14 @@ export default function PropertySatelliteMap({
           <label className="text-sm font-medium whitespace-nowrap">Geofence radius:</label>
           <input
             type="number"
-            min={10}
-            max={5000}
-            title="Geofence radius in meters — technicians inside this circle are considered on-site"
+            min={geofenceUnit === 'ft' ? 33 : 10}
+            max={geofenceUnit === 'ft' ? 16404 : 5000}
+            title={`Geofence radius in ${geofenceUnit === 'ft' ? 'feet' : 'meters'} — technicians inside this circle are considered on-site`}
             className="text-sm border rounded px-2 py-1 w-24 bg-background"
             value={localGeofenceRadius}
-            onChange={e => setLocalGeofenceRadius(parseInt(e.target.value, 10) || 100)}
+            onChange={e => setLocalGeofenceRadius(parseInt(e.target.value, 10) || (geofenceUnit === 'ft' ? 328 : 100))}
           />
-          <span className="text-sm text-muted-foreground">meters</span>
+          <span className="text-sm text-muted-foreground">{geofenceUnit === 'ft' ? 'feet' : 'meters'}</span>
           <button
             className="text-sm px-3 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition"
             title="Save the geofence radius for this property"

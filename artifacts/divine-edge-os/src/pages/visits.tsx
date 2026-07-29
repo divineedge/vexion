@@ -299,7 +299,7 @@ export default function VisitsPage() {
 
       {/* Create Sheet */}
       <Sheet open={createOpen} onOpenChange={open => { if (!open) setCreateOpen(false); }}>
-        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-[75vw] overflow-y-auto">
           <SheetHeader className="pb-4">
             <SheetTitle>Log a Visit</SheetTitle>
             <SheetDescription>Record a customer visit, check-in, or follow-up.</SheetDescription>
@@ -390,7 +390,7 @@ export default function VisitsPage() {
 
       {/* Visit Detail Sheet */}
       <Sheet open={selectedId != null} onOpenChange={open => { if (!open) setSelectedId(null); }}>
-        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-[75vw] overflow-y-auto">
           {selectedVisit && (
             <>
               <SheetHeader className="pb-4">
@@ -506,7 +506,7 @@ export default function VisitsPage() {
 
       {/* Edit Visit Dialog */}
       <Sheet open={editingVisit != null} onOpenChange={open => { if (!open) setEditingVisit(null); }}>
-        <SheetContent className="w-full sm:max-w-md">
+        <SheetContent className="w-full sm:max-w-[75vw]">
           <SheetHeader>
             <SheetTitle>Edit Visit</SheetTitle>
             <SheetDescription>Update visit details or reschedule.</SheetDescription>
@@ -569,7 +569,7 @@ export default function VisitsPage() {
 
       {/* Complete Dialog */}
       <Sheet open={completeOpen != null} onOpenChange={open => { if (!open) setCompleteOpen(null); }}>
-        <SheetContent className="w-full sm:max-w-md">
+        <SheetContent className="w-full sm:max-w-[75vw]">
           <SheetHeader>
             <SheetTitle>Complete Visit</SheetTitle>
             <SheetDescription>Optionally record what happened during this visit.</SheetDescription>

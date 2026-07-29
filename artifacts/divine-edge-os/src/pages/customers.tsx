@@ -512,7 +512,7 @@ export default function CustomersPage() {
 
       {/* Create Customer Sheet */}
       <Sheet open={creating} onOpenChange={setCreating}>
-        <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-[75vw] overflow-y-auto">
           <SheetHeader className="pb-4">
             <SheetTitle>Add New Customer</SheetTitle>
             <SheetDescription>Fill in the customer's details below.</SheetDescription>

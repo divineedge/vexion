@@ -1042,7 +1042,7 @@ export default function SchedulePage() {
 
       {/* Create Job Sheet */}
       <Sheet open={createOpen} onOpenChange={open => { if (!open) { setCreateOpen(false); setNewJob(EMPTY_JOB); } }}>
-        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-[75vw] overflow-y-auto">
           <SheetHeader className="pb-4">
             <SheetTitle>New Job</SheetTitle>
             <SheetDescription>Schedule a new job or work order.</SheetDescription>
@@ -1070,7 +1070,7 @@ export default function SchedulePage() {
 
       {/* Job Detail Sheet */}
       <Sheet open={selectedJobId != null} onOpenChange={open => { if (!open) setSelectedJobId(null); }}>
-        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-[75vw] overflow-y-auto">
           {selectedJob ? (
             <>
               <SheetHeader className="pb-4">

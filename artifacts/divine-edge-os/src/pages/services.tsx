@@ -18,6 +18,9 @@ import { Search, Plus, Briefcase, DollarSign, Clock, Edit, Trash2, TrendingUp, G
 import { useDebounce } from '@/hooks/use-debounce';
 import type { PricingTier } from '@/lib/pricingMatrix';
 
+const mkKey = () => Math.random().toString(36).slice(2, 10);
+type TierWithKey = PricingTier & { _key: string };
+
 interface ZoneType {
   id: string;
   name: string;
@@ -52,7 +55,7 @@ type ServiceForm = {
   p4pPercentage: string;
   isActive: boolean;
   pricingMode: 'flat' | 'matrix';
-  pricingMatrix: PricingTier[];
+  pricingMatrix: TierWithKey[];
   linkedZoneTypeId: string;
   offSeasonEnabled: boolean;
   offSeasonStartMonth: string;
@@ -79,7 +82,7 @@ const EMPTY_FORM: ServiceForm = {
   offSeasonEndDay: '14',
 };
 
-const EMPTY_TIER: PricingTier = { minSqft: 0, maxSqft: null, price: 0 };
+const EMPTY_TIER: TierWithKey = { minSqft: 0, maxSqft: null, price: 0, _key: mkKey() };
 
 function TierRow({
   tier,
@@ -88,10 +91,10 @@ function TierRow({
   onChange,
   onRemove,
 }: {
-  tier: PricingTier;
+  tier: TierWithKey;
   index: number;
   isLast: boolean;
-  onChange: (t: PricingTier) => void;
+  onChange: (t: TierWithKey) => void;
   onRemove: () => void;
 }) {
   const isOpenEnded = tier.maxSqft === null;
@@ -105,7 +108,7 @@ function TierRow({
   const [minsStr, setMinsStr] = React.useState(tier.estimatedMinutes != null ? String(tier.estimatedMinutes) : '');
 
   // Flush a numeric field to parent state — called onBlur or when value is clearly complete
-  const commit = (patch: Partial<PricingTier>) => onChange({ ...tier, ...patch });
+  const commit = (patch: Partial<PricingTier>) => onChange({ ...tier, ...patch } as TierWithKey);
 
   return (
     <div className="flex items-center gap-2 text-sm">
@@ -384,7 +387,7 @@ export default function ServicesPage() {
       p4pPercentage: s.p4pPercentage != null ? String(s.p4pPercentage) : '',
       isActive: s.isActive,
       pricingMode: s.pricingMode === 'matrix' ? 'matrix' : 'flat',
-      pricingMatrix: Array.isArray(s.pricingMatrix) ? s.pricingMatrix : [],
+      pricingMatrix: Array.isArray(s.pricingMatrix) ? (s.pricingMatrix as PricingTier[]).map(t => ({ ...t, _key: mkKey() })) : [],
       linkedZoneTypeId: s.linkedZoneTypeId ?? '',
       offSeasonEnabled: hasOffSeason,
       offSeasonStartMonth: startMonth,
@@ -419,7 +422,7 @@ export default function ServicesPage() {
       p4pPercentage: form.p4pPercentage,
       isActive: form.isActive,
       pricingMode: form.pricingMode,
-      pricingMatrix: form.pricingMode === 'matrix' ? form.pricingMatrix : null,
+      pricingMatrix: form.pricingMode === 'matrix' ? form.pricingMatrix.map(({ _key, ...t }) => t) : null,
       linkedZoneTypeId: form.linkedZoneTypeId || null,
       offSeasonStart,
       offSeasonEnd,
@@ -458,7 +461,7 @@ export default function ServicesPage() {
         newMax = newMin + 4999;
       }
 
-      const newTier: PricingTier = { minSqft: newMin, maxSqft: newMax, price: 0 };
+      const newTier: TierWithKey = { minSqft: newMin, maxSqft: newMax, price: 0, _key: mkKey() };
 
       if (hasOpen) {
         const openIdx = tiers.findIndex(t => t.maxSqft === null);
@@ -469,11 +472,11 @@ export default function ServicesPage() {
     });
   };
 
-  const updateTier = (i: number, t: PricingTier) =>
-    setForm(f => ({ ...f, pricingMatrix: f.pricingMatrix.map((r, idx) => idx === i ? t : r) }));
+  const updateTier = (i: number, t: TierWithKey) =>
+    setForm(f => ({ ...f, pricingMatrix: f.pricingMatrix.map((r, idx) => idx === i ? t : r) as TierWithKey[] }));
 
   const removeTier = (i: number) =>
-    setForm(f => ({ ...f, pricingMatrix: f.pricingMatrix.filter((_, idx) => idx !== i) }));
+    setForm(f => ({ ...f, pricingMatrix: f.pricingMatrix.filter((_, idx) => idx !== i) as TierWithKey[] }));
 
   const activeCount = services?.filter(s => s.isActive).length ?? 0;
   const categories = [...new Set(services?.map(s => s.category).filter(Boolean) ?? [])];
@@ -646,7 +649,7 @@ export default function ServicesPage() {
 
       {/* Create / Edit Sheet */}
       <Sheet open={sheetMode !== null} onOpenChange={open => { if (!open) setSheetMode(null); }}>
-        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-[75vw] overflow-y-auto">
           <SheetHeader className="pb-4">
             <SheetTitle>{sheetMode === 'create' ? 'Add Service' : 'Edit Service'}</SheetTitle>
             <SheetDescription>
@@ -749,7 +752,7 @@ export default function ServicesPage() {
                     )}
                     {form.pricingMatrix.map((tier, i) => (
                       <TierRow
-                        key={i}
+                        key={tier._key}
                         tier={tier}
                         index={i}
                         isLast={i === form.pricingMatrix.length - 1}

@@ -31,12 +31,14 @@ interface PlanPricingTier {
   maxSqft: number | null;
   price: number;
 }
+type PlanTierWithKey = PlanPricingTier & { _key: string };
+const mkKey = () => Math.random().toString(36).slice(2, 10);
 
 const EMPTY = {
   name: '', description: '', visitCount: '4', billingCycle: 'monthly', customCycleDays: '',
   price: '', autoRenewDefault: true, isActive: true,
   pricingMode: 'flat' as PricingMode,
-  pricingMatrix: [] as PlanPricingTier[],
+  pricingMatrix: [] as PlanTierWithKey[],
   offSeasonEnabled: false,
   offSeasonStartMonth: '11', offSeasonStartDay: '15',
   offSeasonEndMonth: '03', offSeasonEndDay: '14',
@@ -45,8 +47,8 @@ const EMPTY = {
 function TierRow({
   tier, index, isLast, onChange, onRemove,
 }: {
-  tier: PlanPricingTier; index: number; isLast: boolean;
-  onChange: (t: PlanPricingTier) => void; onRemove: () => void;
+  tier: PlanTierWithKey; index: number; isLast: boolean;
+  onChange: (t: PlanTierWithKey) => void; onRemove: () => void;
 }) {
   const isOpenEnded = tier.maxSqft === null;
 
@@ -56,7 +58,7 @@ function TierRow({
   const [maxStr, setMaxStr] = React.useState(tier.maxSqft != null ? String(tier.maxSqft) : '');
   const [priceStr, setPriceStr] = React.useState(tier.price ? String(tier.price) : '');
 
-  const commit = (patch: Partial<PlanPricingTier>) => onChange({ ...tier, ...patch });
+  const commit = (patch: Partial<PlanPricingTier>) => onChange({ ...tier, ...patch } as PlanTierWithKey);
 
   return (
     <div className="flex items-center gap-2 text-sm">
@@ -179,7 +181,7 @@ export default function PlanTemplatesSettings() {
       name: t.name, description: t.description ?? '', visitCount: String(t.visitCount),
       billingCycle: t.billingCycle, customCycleDays: t.customCycleDays ? String(t.customCycleDays) : '',
       price: String(t.price), autoRenewDefault: t.autoRenewDefault, isActive: t.isActive,
-      pricingMode: pm, pricingMatrix: matrix,
+      pricingMode: pm, pricingMatrix: matrix.map((t: PlanPricingTier) => ({ ...t, _key: mkKey() })),
       offSeasonEnabled: hasOffSeason,
       offSeasonStartMonth: osStartMonth, offSeasonStartDay: osStartDay,
       offSeasonEndMonth: osEndMonth, offSeasonEndDay: osEndDay,
@@ -212,13 +214,13 @@ export default function PlanTemplatesSettings() {
       if (prevTier && prevTier.maxSqft === null) {
         updatedTiers = tiers.map((t, i) => i === tiers.length - 1 ? { ...t, maxSqft: t.minSqft + 4999 } : t);
       }
-      const newTier: PlanPricingTier = { minSqft: newMin, maxSqft: newMax, price: 0 };
+      const newTier: PlanTierWithKey = { minSqft: newMin, maxSqft: newMax, price: 0, _key: mkKey() };
       return { ...f, pricingMatrix: [...updatedTiers, newTier] };
     });
   };
-  const updateTier = (i: number, t: PlanPricingTier) =>
+  const updateTier = (i: number, t: PlanTierWithKey) =>
     setForm(f => {
-      const updated = f.pricingMatrix.map((r, idx) => idx === i ? t : r);
+      const updated = f.pricingMatrix.map((r, idx) => idx === i ? t : r) as PlanTierWithKey[];
       // When a bounded tier's maxSqft changes, auto-update the next tier's minSqft
       if (t.maxSqft !== null && i + 1 < updated.length) {
         updated[i + 1] = { ...updated[i + 1], minSqft: t.maxSqft + 1 };
@@ -235,7 +237,7 @@ export default function PlanTemplatesSettings() {
           if (idx === 0) return { ...t, minSqft: 0 };
           const prev = remaining[idx - 1];
           return prev.maxSqft != null ? { ...t, minSqft: prev.maxSqft + 1 } : t;
-        }),
+        }) as PlanTierWithKey[],
       };
     });
 
@@ -258,7 +260,7 @@ export default function PlanTemplatesSettings() {
       autoRenewDefault: form.autoRenewDefault,
       isActive: form.isActive,
       pricingMode: form.pricingMode,
-      pricingMatrix: form.pricingMode === 'matrix' ? form.pricingMatrix : undefined,
+      pricingMatrix: form.pricingMode === 'matrix' ? form.pricingMatrix.map(({ _key, ...t }) => t) : undefined,
       offSeasonStart: form.offSeasonEnabled ? `${form.offSeasonStartMonth}-${form.offSeasonStartDay}` : null,
       offSeasonEnd: form.offSeasonEnabled ? `${form.offSeasonEndMonth}-${form.offSeasonEndDay}` : null,
     };
@@ -358,7 +360,7 @@ export default function PlanTemplatesSettings() {
       </Card>
 
       <Sheet open={sheetMode !== null} onOpenChange={open => { if (!open) setSheetMode(null); }}>
-        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-[75vw] overflow-y-auto">
           <SheetHeader className="pb-4">
             <SheetTitle>{sheetMode === 'create' ? 'Add Plan Template' : 'Edit Plan Template'}</SheetTitle>
             <SheetDescription>Configure the services, cadence, and price for this plan.</SheetDescription>
@@ -465,7 +467,7 @@ export default function PlanTemplatesSettings() {
                   </p>
                   {form.pricingMatrix.map((tier, i) => (
                     <TierRow
-                      key={i} tier={tier} index={i}
+                      key={tier._key} tier={tier} index={i}
                       isLast={i === form.pricingMatrix.length - 1}
                       onChange={t => updateTier(i, t)}
                       onRemove={() => removeTier(i)}

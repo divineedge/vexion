@@ -175,31 +175,22 @@ export default function PropertySatelliteMap({
       const map = L.map(mapContainerRef.current!, { zoomControl: true }).setView([initLat, initLng], 18);
       mapRef.current = map;
 
-      // Satellite tile layer — Google Maps (~1–2 yr imagery) when key set, ESRI fallback
+      // Satellite tile layer.
+      // Google tile server provides ~1–2 yr imagery (same source as Google Maps).
+      // Works directly as a Leaflet tile layer — no plugin or API call needed.
+      // Falls back to ESRI World Imagery when no Google key is configured.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const GMAPS_KEY = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
       if (GMAPS_KEY) {
-        // Ensure Google Maps JS API is ready (may already be loaded by address autocomplete)
-        await new Promise<void>((resolve) => {
-          if ((window as any).google?.maps) { resolve(); return; }
-          if (document.querySelector('#gmaps-script')) {
-            const iv = setInterval(() => {
-              if ((window as any).google?.maps) { clearInterval(iv); resolve(); }
-            }, 100);
-            return;
+        L.tileLayer(
+          'https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+          {
+            subdomains: ['0', '1', '2', '3'],
+            attribution: '&copy; <a href="https://maps.google.com">Google Maps</a>',
+            maxZoom: 22,
+            tileSize: 256,
           }
-          const s = document.createElement('script');
-          s.id = 'gmaps-script';
-          s.src = `https://maps.googleapis.com/maps/api/js?key=${GMAPS_KEY}&libraries=places&loading=async`;
-          s.async = true;
-          s.defer = true;
-          s.onload = () => resolve();
-          document.head.appendChild(s);
-        });
-        if (!isMounted) return; // guard: component may have unmounted while waiting
-        await import('leaflet.gridlayer.googlemutant');
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (L as any).gridLayer.googleMutant({ type: 'satellite', maxZoom: 22 }).addTo(map);
+        ).addTo(map);
       } else {
         // ESRI World Imagery fallback (no API key required)
         L.tileLayer(

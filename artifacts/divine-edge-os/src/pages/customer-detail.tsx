@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   useGetCustomer, getGetCustomerQueryKey,
   useUpdateCustomer,
@@ -200,6 +200,53 @@ export default function CustomerDetailPage() {
   const [custJobStatusFilter, setCustJobStatusFilter] = useState<'all' | 'scheduled' | 'in_progress' | 'completed' | 'cancelled'>('all');
   const [invSearch, setInvSearch] = useState('');
   const [invStatusFilter, setInvStatusFilter] = useState('all');
+  const [timelineFilter, setTimelineFilter] = useState<'all' | 'job' | 'estimate' | 'visit' | 'invoice'>('all');
+
+  // Billing address autocomplete (Google Places when key is configured)
+  const billingAddrRef = useRef<HTMLInputElement>(null);
+  const billingAcRef = useRef<unknown>(null);
+  const attachBillingPlaces = useCallback(() => {
+    if (!billingAddrRef.current || !(window as any).google?.maps?.places || billingAcRef.current) return;
+    const ac = new (window as any).google.maps.places.Autocomplete(billingAddrRef.current, {
+      types: ['address'],
+      componentRestrictions: { country: 'us' },
+      fields: ['address_components'],
+    });
+    ac.addListener('place_changed', () => {
+      const place = ac.getPlace();
+      const comps: Array<{ long_name: string; short_name: string; types: string[] }> =
+        place.address_components ?? [];
+      const get = (t: string) => comps.find(c => c.types.includes(t))?.long_name ?? '';
+      const getS = (t: string) => comps.find(c => c.types.includes(t))?.short_name ?? '';
+      setForm((f: Record<string, unknown>) => ({
+        ...f,
+        billingAddress: [get('street_number'), get('route')].filter(Boolean).join(' '),
+        billingCity: get('locality') || get('sublocality_level_1'),
+        billingState: getS('administrative_area_level_1'),
+        billingZip: get('postal_code'),
+      }));
+    });
+    billingAcRef.current = ac;
+  }, []);
+  useEffect(() => {
+    const GMAPS_KEY = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+    if (!GMAPS_KEY) return undefined;
+    if ((window as any).google?.maps?.places) { attachBillingPlaces(); return undefined; }
+    if (document.querySelector('#gmaps-script')) {
+      const iv = setInterval(() => {
+        if ((window as any).google?.maps?.places) { attachBillingPlaces(); clearInterval(iv); }
+      }, 150);
+      return () => clearInterval(iv);
+    }
+    const script = document.createElement('script');
+    script.id = 'gmaps-script';
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GMAPS_KEY}&libraries=places&loading=async`;
+    script.async = true;
+    script.defer = true;
+    script.onload = attachBillingPlaces;
+    document.head.appendChild(script);
+    return undefined;
+  }, [attachBillingPlaces]);
 
   const debouncedAddress = useDebounce(propForm.address, 500);
 
@@ -774,7 +821,6 @@ export default function CustomerDetailPage() {
               })),
             ].sort((a, b) => b.date.getTime() - a.date.getTime());
 
-            const [timelineFilter, setTimelineFilter] = React.useState<'all' | 'job' | 'estimate' | 'visit' | 'invoice'>('all');
             const items = timelineFilter === 'all' ? allItems : allItems.filter(i => i.kind === timelineFilter);
 
             const ESTIMATE_STATUS_COLORS: Record<string, string> = {
@@ -1732,7 +1778,7 @@ export default function CustomerDetailPage() {
             {activeFields.some(f => f.key === 'billingAddress' && f.visible) && (
               <Section title="Billing Address" icon={<Home className="w-4 h-4" />}>
                 <Field label="Street Address" required={activeFields.find(f => f.key === 'billingAddress')?.required}>
-                  <Input title="Customer's billing street address" value={form.billingAddress as string} onChange={e => setField('billingAddress', e.target.value)} placeholder="123 Main St" />
+                  <Input ref={billingAddrRef} title="Customer's billing street address" value={form.billingAddress as string} onChange={e => setField('billingAddress', e.target.value)} placeholder="123 Main St" />
                 </Field>
                 <div className="grid grid-cols-3 gap-4">
                   <div className="col-span-1">

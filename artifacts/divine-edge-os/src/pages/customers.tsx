@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   useListCustomers, getListCustomersQueryKey,
   useCreateCustomer,
@@ -21,7 +21,7 @@ import { toast } from 'sonner';
 import { getActiveCustomerFields } from '@/lib/fieldConfig';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
 
-/** A single address suggestion returned by the Photon geocoder. */
+/** A single address suggestion returned by the Photon geocoder (fallback). */
 interface PhotonFeature {
   properties: {
     name?: string;
@@ -36,17 +36,77 @@ interface PhotonFeature {
   };
 }
 
+interface GoogleAddressParts { street: string; city: string; state: string; zip: string; }
+
+/** Key is only present when the tenant has configured it. */
+const GMAPS_KEY = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+
 /**
- * Address autocomplete using Photon (komoot) — purpose-built for address
- * lookup with OpenStreetMap data and much better local coverage than plain
- * Nominatim. Filters to US results on the client side.
+ * Attaches Google Places Autocomplete to `inputRef` when VITE_GOOGLE_MAPS_API_KEY
+ * is set (calls `onSelect` on selection). Falls back to Photon OSM otherwise.
+ * When Google is active, `suggestions` is always empty — Places renders its own dropdown.
  */
-function useAddressAutocomplete(query: string) {
+function useAddressAutocomplete(
+  query: string,
+  inputRef: React.RefObject<HTMLInputElement | null>,
+  onGoogleSelect: (parts: GoogleAddressParts) => void,
+) {
   const [suggestions, setSuggestions] = useState<PhotonFeature[]>([]);
   const [loading, setLoading] = useState(false);
   const debounced = useDebounce(query, 350);
 
+  // Keep callback in a ref so the Places listener never goes stale
+  const onSelectRef = useRef(onGoogleSelect);
+  useEffect(() => { onSelectRef.current = onGoogleSelect; }, [onGoogleSelect]);
+
+  const acRef = useRef<unknown>(null);
+
+  const attachPlaces = useCallback(() => {
+    if (!inputRef.current || !(window as any).google?.maps?.places || acRef.current) return;
+    const ac = new (window as any).google.maps.places.Autocomplete(inputRef.current, {
+      types: ['address'],
+      componentRestrictions: { country: 'us' },
+      fields: ['address_components'],
+    });
+    ac.addListener('place_changed', () => {
+      const place = ac.getPlace();
+      const comps: Array<{ long_name: string; short_name: string; types: string[] }> =
+        place.address_components ?? [];
+      const get = (t: string) => comps.find(c => c.types.includes(t))?.long_name ?? '';
+      const getS = (t: string) => comps.find(c => c.types.includes(t))?.short_name ?? '';
+      onSelectRef.current({
+        street: [get('street_number'), get('route')].filter(Boolean).join(' '),
+        city: get('locality') || get('sublocality_level_1'),
+        state: getS('administrative_area_level_1'),
+        zip: get('postal_code'),
+      });
+    });
+    acRef.current = ac;
+  }, [inputRef]);
+
+  // Load Google Maps script once, then attach
   useEffect(() => {
+    if (!GMAPS_KEY) return undefined;
+    if ((window as any).google?.maps?.places) { attachPlaces(); return undefined; }
+    if (document.querySelector('#gmaps-script')) {
+      const iv = setInterval(() => {
+        if ((window as any).google?.maps?.places) { attachPlaces(); clearInterval(iv); }
+      }, 150);
+      return () => clearInterval(iv);
+    }
+    const script = document.createElement('script');
+    script.id = 'gmaps-script';
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GMAPS_KEY}&libraries=places&loading=async`;
+    script.async = true;
+    script.defer = true;
+    script.onload = attachPlaces;
+    document.head.appendChild(script);
+    return undefined;
+  }, [attachPlaces]);
+
+  // Photon fallback — only used when Google key is absent
+  useEffect(() => {
+    if (GMAPS_KEY) return;
     if (!debounced || debounced.length < 3) { setSuggestions([]); return; }
     let cancelled = false;
     setLoading(true);
@@ -57,7 +117,6 @@ function useAddressAutocomplete(query: string) {
       .then(r => r.json())
       .then((data: { features?: PhotonFeature[] }) => {
         if (cancelled) return;
-        // Filter to US results only
         const us = (data.features ?? []).filter(
           f => !f.properties.countrycode || f.properties.countrycode.toUpperCase() === 'US',
         );
@@ -143,8 +202,20 @@ export default function CustomersPage() {
   const [tagInput, setTagInput] = useState('');
   const addrInputRef = useRef<HTMLInputElement>(null);
   const [addrFocused, setAddrFocused] = useState(false);
+  const handleGoogleAddressSelect = useCallback((parts: GoogleAddressParts) => {
+    setForm(f => ({
+      ...f,
+      billingAddress: parts.street,
+      billingCity: parts.city,
+      billingState: parts.state,
+      billingZip: parts.zip,
+    }));
+  }, []);
+
   const { suggestions: addrSuggestions, loading: addrLoading, clear: clearAddrSuggestions } = useAddressAutocomplete(
     addrFocused ? (form.billingAddress as string) : '',
+    addrInputRef,
+    handleGoogleAddressSelect,
   );
 
   // Open create sheet when arriving via quick-add shortcut (?action=create)

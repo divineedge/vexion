@@ -95,16 +95,38 @@ function TierRow({
   onRemove: () => void;
 }) {
   const isOpenEnded = tier.maxSqft === null;
+
+  // Local string states allow intermediate input (e.g. "5.", "0.0") without
+  // getting immediately coerced back through parseFloat and losing the cursor.
+  const [minStr, setMinStr] = React.useState(index === 0 && tier.minSqft === 0 ? '0' : String(tier.minSqft || ''));
+  const [maxStr, setMaxStr] = React.useState(tier.maxSqft != null ? String(tier.maxSqft) : '');
+  const [priceStr, setPriceStr] = React.useState(tier.price ? String(tier.price) : '');
+  const [perSqftStr, setPerSqftStr] = React.useState(tier.perSqftRate != null ? String(tier.perSqftRate) : '');
+  const [minsStr, setMinsStr] = React.useState(tier.estimatedMinutes != null ? String(tier.estimatedMinutes) : '');
+
+  // Flush a numeric field to parent state — called onBlur or when value is clearly complete
+  const commit = (patch: Partial<PricingTier>) => onChange({ ...tier, ...patch });
+
   return (
     <div className="flex items-center gap-2 text-sm">
       <span className="text-muted-foreground w-5 text-right shrink-0">{index + 1}.</span>
       <Input
-        type="number"
-        min={0}
+        type="text"
+        inputMode="decimal"
         title="Minimum property area (sq ft) for this pricing tier"
         placeholder="From sqft"
-        value={tier.minSqft === 0 && index === 0 ? '0' : String(tier.minSqft || '')}
-        onChange={e => onChange({ ...tier, minSqft: parseFloat(e.target.value) || 0 })}
+        value={minStr}
+        onChange={e => {
+          setMinStr(e.target.value);
+          const n = parseFloat(e.target.value);
+          if (!isNaN(n)) commit({ minSqft: n });
+        }}
+        onBlur={() => {
+          const n = parseFloat(minStr);
+          const val = isNaN(n) ? 0 : n;
+          setMinStr(String(val));
+          commit({ minSqft: val });
+        }}
         className="w-28 text-sm"
       />
       <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0" />
@@ -112,14 +134,22 @@ function TierRow({
         <span className="w-28 text-xs text-muted-foreground px-2">any area above</span>
       ) : (
         <Input
-          type="number"
-          min={0}
+          type="text"
+          inputMode="decimal"
           title="Maximum property area (sq ft) for this tier — leave blank to make it open-ended"
           placeholder="Up to sqft"
-          value={tier.maxSqft != null ? String(tier.maxSqft) : ''}
+          value={maxStr}
           onChange={e => {
-            const v = e.target.value;
-            onChange({ ...tier, maxSqft: v === '' ? null : parseFloat(v) || 0 });
+            setMaxStr(e.target.value);
+            if (e.target.value === '') { commit({ maxSqft: null }); return; }
+            const n = parseFloat(e.target.value);
+            if (!isNaN(n)) commit({ maxSqft: n });
+          }}
+          onBlur={() => {
+            if (maxStr === '') { commit({ maxSqft: null }); return; }
+            const n = parseFloat(maxStr);
+            if (isNaN(n)) { setMaxStr(''); commit({ maxSqft: null }); }
+            else { setMaxStr(String(n)); commit({ maxSqft: n }); }
           }}
           className="w-28 text-sm"
         />
@@ -128,15 +158,22 @@ function TierRow({
         <div className="flex items-center gap-1 flex-1">
           <span className="text-xs text-muted-foreground shrink-0">$</span>
           <Input
-            type="number"
-            min={0}
-            step="0.001"
+            type="text"
+            inputMode="decimal"
             title="Per square foot rate for properties larger than the min sqft of this open-ended tier"
             placeholder="0.000"
-            value={tier.perSqftRate != null ? String(tier.perSqftRate) : ''}
+            value={perSqftStr}
             onChange={e => {
-              const v = e.target.value;
-              onChange({ ...tier, perSqftRate: v === '' ? undefined : parseFloat(v) });
+              setPerSqftStr(e.target.value);
+              if (e.target.value === '') { commit({ perSqftRate: undefined }); return; }
+              const n = parseFloat(e.target.value);
+              if (!isNaN(n)) commit({ perSqftRate: n });
+            }}
+            onBlur={() => {
+              if (perSqftStr === '') { commit({ perSqftRate: undefined }); return; }
+              const n = parseFloat(perSqftStr);
+              if (isNaN(n)) { setPerSqftStr(''); commit({ perSqftRate: undefined }); }
+              else { setPerSqftStr(String(n)); commit({ perSqftRate: n }); }
             }}
             className="flex-1 text-sm"
           />
@@ -146,13 +183,21 @@ function TierRow({
         <div className="flex items-center gap-1 flex-1">
           <span className="text-xs text-muted-foreground shrink-0">$</span>
           <Input
-            type="number"
-            min={0}
-            step="0.01"
+            type="text"
+            inputMode="decimal"
             title="Flat price charged for properties within this sqft tier"
             placeholder="0.00"
-            value={String(tier.price || '')}
-            onChange={e => onChange({ ...tier, price: parseFloat(e.target.value) || 0 })}
+            value={priceStr}
+            onChange={e => {
+              setPriceStr(e.target.value);
+              const n = parseFloat(e.target.value);
+              if (!isNaN(n)) commit({ price: n });
+            }}
+            onBlur={() => {
+              const n = parseFloat(priceStr);
+              if (isNaN(n) || priceStr === '') { setPriceStr(''); commit({ price: 0 }); }
+              else { setPriceStr(String(n)); commit({ price: n }); }
+            }}
             className="flex-1 text-sm"
           />
         </div>
@@ -160,13 +205,23 @@ function TierRow({
       <div className="flex items-center gap-1">
         <Clock className="w-3 h-3 text-muted-foreground shrink-0" />
         <Input
-          type="number"
-          min={0}
-          step={5}
+          type="text"
+          inputMode="numeric"
           placeholder="min"
           title="Estimated duration in minutes for this sqft range"
-          value={tier.estimatedMinutes != null ? String(tier.estimatedMinutes) : ''}
-          onChange={e => onChange({ ...tier, estimatedMinutes: e.target.value ? parseInt(e.target.value, 10) : undefined })}
+          value={minsStr}
+          onChange={e => {
+            setMinsStr(e.target.value);
+            if (e.target.value === '') { commit({ estimatedMinutes: undefined }); return; }
+            const n = parseInt(e.target.value, 10);
+            if (!isNaN(n)) commit({ estimatedMinutes: n });
+          }}
+          onBlur={() => {
+            if (minsStr === '') { commit({ estimatedMinutes: undefined }); return; }
+            const n = parseInt(minsStr, 10);
+            if (isNaN(n)) { setMinsStr(''); commit({ estimatedMinutes: undefined }); }
+            else { setMinsStr(String(n)); commit({ estimatedMinutes: n }); }
+          }}
           className="w-16 text-sm"
         />
       </div>

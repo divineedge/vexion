@@ -1,4 +1,6 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { loadStripe, type Stripe as StripeInstance } from '@stripe/stripe-js';
+import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import {
   useGetCustomer, getGetCustomerQueryKey,
   useUpdateCustomer,
@@ -46,6 +48,42 @@ import { useAuth } from '@/contexts/AuthContext';
 import type { CustomerFieldConfig, TenantSettings } from '@/lib/fieldConfig';
 import { getActiveCustomerFields } from '@/lib/fieldConfig';
 import { useDebounce } from '@/hooks/use-debounce';
+
+interface CardSetupInlineHandle {
+  setupCard: (customerId: number) => Promise<void>;
+  cardComplete: boolean;
+}
+
+const CardSetupInline = forwardRef<CardSetupInlineHandle, object>((_props, ref) => {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [cardComplete, setCardComplete] = useState(false);
+  useImperativeHandle(ref, () => ({
+    cardComplete,
+    async setupCard(customerId: number) {
+      if (!stripe || !elements) throw new Error('Stripe not ready');
+      const cardEl = elements.getElement(CardElement);
+      if (!cardEl) throw new Error('Card element not found');
+      const si = await customFetch<{ clientSecret: string }>(
+        `/api/customers/${customerId}/setup-intent`, { method: 'POST' },
+      );
+      const result = await stripe.confirmCardSetup(si.clientSecret, { payment_method: { card: cardEl } });
+      if (result.error) throw new Error(result.error.message ?? 'Card setup failed');
+      const pmId = result.setupIntent?.payment_method as string | undefined;
+      if (!pmId) throw new Error('No payment method returned');
+      await customFetch(`/api/customers/${customerId}/attach-payment-method`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentMethodId: pmId }),
+      });
+    },
+  }), [stripe, elements, cardComplete]);
+  return (
+    <div className="border rounded-md bg-white p-3 shadow-sm">
+      <CardElement onChange={e => setCardComplete(e.complete)}
+        options={{ style: { base: { fontSize: '14px', color: '#1a1a1a', '::placeholder': { color: '#a0aec0' } } } }} />
+    </div>
+  );
+});
 
 const STATUS_COLORS: Record<string, string> = {
   completed: 'bg-emerald-500/10 text-emerald-700 border-transparent',
@@ -308,6 +346,50 @@ export default function CustomerDetailPage() {
 
   const updateCustomer = useUpdateCustomer();
   const resumeService = useResumeCustomerService();
+
+  // Card-on-file inline setup
+  const [showAddCard, setShowAddCard] = useState(false);
+  const [stripePromise, setStripePromise] = useState<Promise<StripeInstance | null> | null>(null);
+  const [addCardBusy, setAddCardBusy] = useState(false);
+  const [cardLinkSending, setCardLinkSending] = useState(false);
+  const cardSetupRef = useRef<CardSetupInlineHandle>(null);
+
+  const openCardSetup = useCallback(async () => {
+    if (!stripePromise) {
+      const cfg = await customFetch<{ publishableKey: string | null }>('/api/stripe/config');
+      if (cfg.publishableKey) setStripePromise(loadStripe(cfg.publishableKey));
+    }
+    setShowAddCard(true);
+  }, [stripePromise]);
+
+  const handleSaveCard = async () => {
+    if (!cardSetupRef.current?.cardComplete) { toast.error('Please complete the card details'); return; }
+    setAddCardBusy(true);
+    try {
+      await cardSetupRef.current.setupCard(id);
+      toast.success('Card saved successfully');
+      qc.invalidateQueries({ queryKey: getGetCustomerQueryKey(id) });
+      qc.invalidateQueries({ queryKey: getGetCustomerPaymentMethodQueryKey(id) });
+      setShowAddCard(false);
+    } catch (e) {
+      toast.error((e as Error).message ?? 'Failed to save card');
+    } finally {
+      setAddCardBusy(false);
+    }
+  };
+
+  const handleSendCardLink = async () => {
+    if (!(customer as any).phone) { toast.error('Customer has no phone number on file'); return; }
+    setCardLinkSending(true);
+    try {
+      await customFetch(`/api/customers/${id}/send-card-link`, { method: 'POST' });
+      toast.success('Card setup link sent via text');
+    } catch {
+      toast.error('Failed to send SMS — check SMS provider settings');
+    } finally {
+      setCardLinkSending(false);
+    }
+  };
   const createEstimate = useCreateEstimate();
 
   const handleNewEstimate = () => {
@@ -554,6 +636,38 @@ export default function CustomerDetailPage() {
               );
             })()}
           </div>
+
+          {/* Card-on-file action row */}
+          <div className="flex flex-wrap items-center gap-2 mt-2">
+            <Button size="sm" variant="outline" className="gap-1.5 text-xs h-7 px-2.5"
+              onClick={openCardSetup}>
+              <CreditCard className="w-3 h-3" />
+              {(customer as any).hasPaymentMethod ? 'Replace Card' : 'Add Card'}
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1.5 text-xs h-7 px-2.5"
+              onClick={handleSendCardLink} disabled={cardLinkSending} title="Text the customer a link to add their card in the portal">
+              <Send className="w-3 h-3" />
+              {cardLinkSending ? 'Sending…' : 'Text card link'}
+            </Button>
+          </div>
+
+          {/* Inline Stripe card setup form */}
+          {showAddCard && stripePromise && (
+            <div className="mt-3 p-3 border rounded-lg bg-muted/30 space-y-3 max-w-sm">
+              <p className="text-xs font-medium text-foreground">Enter card details</p>
+              <Elements stripe={stripePromise}>
+                <CardSetupInline ref={cardSetupRef} />
+              </Elements>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={handleSaveCard} disabled={addCardBusy} className="gap-1.5">
+                  <CreditCard className="w-3 h-3" />
+                  {addCardBusy ? 'Saving…' : 'Save Card'}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setShowAddCard(false)}>Cancel</Button>
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-4 mt-2 text-sm text-muted-foreground">
             {customer.company && <span className="flex items-center gap-1" title={customer.company}><Building className="w-4 h-4" />{customer.company}</span>}
             <span className="flex items-center gap-1" title={customer.phone}><Phone className="w-4 h-4" />{customer.phone}</span>

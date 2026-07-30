@@ -1,10 +1,11 @@
 import { Router, type IRouter } from "express";
-import { db, customersTable, propertiesTable, jobsTable, invoicesTable, activityLogTable, propertyOwnershipHistoryTable, customerOtpSessionsTable, stopServiceFlagsTable, communicationsLogTable } from "@workspace/db";
+import { db, customersTable, propertiesTable, jobsTable, invoicesTable, activityLogTable, propertyOwnershipHistoryTable, customerOtpSessionsTable, stopServiceFlagsTable, communicationsLogTable, tenantsTable } from "@workspace/db";
 import { eq, and, ilike, sql, desc, isNull, ne, inArray } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { syncCustomerToMailchimp } from "../lib/mailchimpSync";
 import { isAdminRole } from "../lib/roles";
 import { getStripeClient } from "../lib/stripe";
+import { sendSms, type SmsProviderConfig } from "../lib/smsProvider";
 import { logger } from "../lib/logger";
 import {
   importUpload,
@@ -514,6 +515,45 @@ router.delete("/customers/:id", async (req, res): Promise<void> => {
   const id = parseInt(rawId, 10);
   await db.delete(customersTable).where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)));
   res.sendStatus(204);
+});
+
+// ── SEND CARD-SETUP LINK VIA SMS ─────────────────────────────────────────────
+
+/** Text the customer a link to their portal profile so they can add a card. */
+router.post("/customers/:id/send-card-link", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+
+  const [[customer], [tenant]] = await Promise.all([
+    db.select().from(customersTable)
+      .where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId))),
+    db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId)),
+  ]);
+  if (!customer) { res.status(404).json({ error: "Not found" }); return; }
+  if (!customer.phone) { res.status(400).json({ error: "Customer has no phone number on file" }); return; }
+
+  // Build the portal URL from request host so it works in both dev and production
+  const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? "https";
+  const host = (req.headers["x-forwarded-host"] as string | undefined) ?? (req.headers.host as string | undefined) ?? "";
+  const portalUrl = `${proto}://${host}/portal/profile`;
+
+  const firstName = customer.name?.split(" ")[0] ?? "there";
+  const businessName = tenant?.name ?? "your service provider";
+  const message = `Hi ${firstName}! ${businessName} is requesting a payment method on file. You can securely add your card at: ${portalUrl}`;
+
+  const smsConfig: SmsProviderConfig = {
+    platform: (tenant?.phonePlatform as SmsProviderConfig["platform"]) ?? null,
+    config: (tenant?.phonePlatformConfig as Record<string, string>) ?? {},
+    fromNumber: tenant?.mainPhoneNumber ?? null,
+  };
+
+  const result = await sendSms(smsConfig, customer.phone, message);
+  if (!result.success) {
+    res.status(500).json({ error: result.error ?? "Failed to send SMS" });
+    return;
+  }
+  res.json({ success: true });
 });
 
 // Return the Stripe publishable key so the frontend can mount Elements

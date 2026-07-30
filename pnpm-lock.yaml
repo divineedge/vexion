@@ -190,6 +190,13 @@ importers:
         version: 4.1.10(@types/node@25.9.4)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(tsx@4.23.0)(yaml@2.9.0)
 
   artifacts/customer-portal:
+    dependencies:
+      '@stripe/react-stripe-js':
+        specifier: ^6.8.0
+        version: 6.8.0(@stripe/stripe-js@9.10.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@stripe/stripe-js':
+        specifier: ^9.10.0
+        version: 9.10.0
     devDependencies:
       '@hookform/resolvers':
         specifier: ^3.10.0

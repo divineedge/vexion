@@ -6,10 +6,91 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import { User, Phone, Mail, Building2, Pencil, X, Check, Loader2 } from "lucide-react";
+import { User, Phone, Mail, Building2, Pencil, X, Check, Loader2, CreditCard, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
+import { loadStripe, type Stripe as StripeInstance } from "@stripe/stripe-js";
+import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
+
+// ── Stripe card setup sub-component ─────────────────────────────────────────
+
+interface CardFormProps {
+  onSuccess: () => void;
+  onCancel: () => void;
+}
+
+function CardFormInner({ onSuccess, onCancel }: CardFormProps) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [busy, setBusy] = React.useState(false);
+  const [complete, setComplete] = React.useState(false);
+  const [clientSecret, setClientSecret] = React.useState<string | null>(null);
+
+  // Get the setup intent as soon as this form mounts
+  React.useEffect(() => {
+    customFetch<{ clientSecret: string; publishableKey: string }>("/api/portal/me/setup-intent", { method: "POST" })
+      .then(r => setClientSecret(r.clientSecret))
+      .catch(() => toast.error("Failed to prepare card form"));
+  }, []);
+
+  const handleSubmit = async () => {
+    if (!stripe || !elements || !clientSecret) return;
+    const cardEl = elements.getElement(CardElement);
+    if (!cardEl) return;
+    setBusy(true);
+    try {
+      const result = await stripe.confirmCardSetup(clientSecret, { payment_method: { card: cardEl } });
+      if (result.error) { toast.error(result.error.message ?? "Card setup failed"); return; }
+      const pmId = result.setupIntent?.payment_method as string | undefined;
+      if (!pmId) { toast.error("No payment method returned"); return; }
+      await customFetch("/api/portal/me/attach-payment-method", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentMethodId: pmId }),
+      });
+      toast.success("Card saved successfully");
+      onSuccess();
+    } catch {
+      toast.error("Failed to save card");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!clientSecret) {
+    return (
+      <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
+        <Loader2 className="w-4 h-4 animate-spin" /> Preparing card form…
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="border rounded-md bg-white p-3 shadow-sm">
+        <CardElement
+          onChange={e => setComplete(e.complete)}
+          options={{ style: { base: { fontSize: "15px", color: "#1a1a1a", "::placeholder": { color: "#a0aec0" } } } }}
+        />
+      </div>
+      <p className="text-xs text-muted-foreground flex items-center gap-1">
+        <ShieldCheck className="w-3 h-3 text-emerald-600" /> Secured by Stripe — your card details are never stored on our servers
+      </p>
+      <div className="flex gap-2">
+        <Button size="sm" onClick={handleSubmit} disabled={busy || !complete} className="gap-1.5">
+          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+          {busy ? "Saving…" : "Save Card"}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onCancel} disabled={busy}>
+          <X className="w-3.5 h-3.5 mr-1" /> Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Profile page ────────────────────────────────────────────────────────
 
 export default function Profile() {
   const { data: me, isLoading } = usePortalGetMe();
@@ -63,6 +144,50 @@ export default function Profile() {
     setEditing(false);
   }
 
+  // ── Payment method state ──────────────────────────────────────────────────
+
+  const { data: pmData, refetch: refetchPm } = useQuery({
+    queryKey: ["portal-payment-method"],
+    queryFn: () => customFetch<{ paymentMethod: { label: string; brand: string; last4: string; expMonth: number; expYear: number } | null }>("/api/portal/me/payment-method"),
+    staleTime: 30_000,
+  });
+
+  const [showCardForm, setShowCardForm] = React.useState(false);
+  const [stripePromise, setStripePromise] = React.useState<Promise<StripeInstance | null> | null>(null);
+  const [removingCard, setRemovingCard] = React.useState(false);
+
+  const openCardForm = React.useCallback(async () => {
+    if (!stripePromise) {
+      // Fetch publishable key from setup-intent (it's returned alongside clientSecret)
+      const r = await customFetch<{ publishableKey: string; clientSecret: string }>("/api/portal/me/setup-intent", { method: "POST" }).catch(() => null);
+      if (r?.publishableKey) setStripePromise(loadStripe(r.publishableKey));
+      else { toast.error("Stripe is not configured — contact your service provider"); return; }
+    }
+    setShowCardForm(true);
+  }, [stripePromise]);
+
+  const handleCardSuccess = () => {
+    setShowCardForm(false);
+    refetchPm();
+  };
+
+  const handleRemoveCard = async () => {
+    if (!confirm("Remove your saved card? You will need to add one again to pay invoices online.")) return;
+    setRemovingCard(true);
+    try {
+      await customFetch("/api/portal/me/payment-method", { method: "DELETE" });
+      refetchPm();
+      toast.success("Card removed");
+    } catch {
+      toast.error("Failed to remove card");
+    } finally {
+      setRemovingCard(false);
+    }
+  };
+
+  const pm = pmData?.paymentMethod ?? null;
+  const brandLabel = pm ? `${pm.brand.charAt(0).toUpperCase()}${pm.brand.slice(1)} ···· ${pm.last4}` : null;
+
   return (
     <div className="max-w-xl space-y-6 animate-in fade-in duration-300">
       <div>
@@ -70,6 +195,7 @@ export default function Profile() {
         <p className="text-muted-foreground mt-1 text-sm">View and update your contact information.</p>
       </div>
 
+      {/* ── Contact Information ─────────────────────────────────────────── */}
       <Card className="shadow-sm">
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div>
@@ -156,6 +282,69 @@ export default function Profile() {
                   </div>
                 </>
               )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Payment Method ──────────────────────────────────────────────── */}
+      <Card className="shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <CreditCard className="w-4 h-4" /> Payment Method
+          </CardTitle>
+          <CardDescription className="text-sm">
+            A saved card lets your service provider collect payment for invoices automatically.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {pm ? (
+            <div className="space-y-3">
+              {/* Current card display */}
+              <div className="flex items-center justify-between gap-3 p-3 border rounded-md bg-emerald-50 border-emerald-200">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+                    <CreditCard className="w-4 h-4 text-emerald-700" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-emerald-800">{brandLabel}</p>
+                    <p className="text-xs text-emerald-600">Expires {pm.expMonth}/{pm.expYear}</p>
+                  </div>
+                </div>
+                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={openCardForm} className="gap-1.5">
+                  <CreditCard className="w-3.5 h-3.5" /> Replace Card
+                </Button>
+                <Button size="sm" variant="ghost" onClick={handleRemoveCard} disabled={removingCard}
+                  className="gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10">
+                  {removingCard ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                  Remove
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 p-3 border rounded-md bg-muted/40 border-dashed">
+                <CreditCard className="w-5 h-5 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">No card on file</p>
+              </div>
+              <Button size="sm" onClick={openCardForm} className="gap-1.5">
+                <CreditCard className="w-3.5 h-3.5" /> Add Payment Method
+              </Button>
+            </div>
+          )}
+
+          {/* Stripe card form */}
+          {showCardForm && stripePromise && (
+            <div className="pt-2 border-t mt-2">
+              <p className="text-xs font-medium mb-3 text-foreground">
+                {pm ? "Enter your new card details" : "Enter your card details"}
+              </p>
+              <Elements stripe={stripePromise}>
+                <CardFormInner onSuccess={handleCardSuccess} onCancel={() => setShowCardForm(false)} />
+              </Elements>
             </div>
           )}
         </CardContent>

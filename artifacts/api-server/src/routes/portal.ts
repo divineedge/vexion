@@ -357,6 +357,94 @@ router.patch("/portal/me", requirePortalAuth, async (req: any, res): Promise<voi
 });
 
 // ---------------------------------------------------------------------------
+// GET  /portal/me/payment-method  — customer's saved card
+// POST /portal/me/setup-intent    — start Stripe card setup
+// POST /portal/me/attach-payment-method — save confirmed card
+// DELETE /portal/me/payment-method — remove saved card
+// ---------------------------------------------------------------------------
+
+router.get("/portal/me/payment-method", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+  const [customer] = await db.select().from(customersTable)
+    .where(and(eq(customersTable.id, portalCustomerId), eq(customersTable.tenantId, portalTenantId)));
+  if (!customer?.stripeDefaultPaymentMethodId) { res.json({ paymentMethod: null }); return; }
+
+  const stripe = getStripeClient();
+  if (!stripe) { res.json({ paymentMethod: null }); return; }
+
+  try {
+    const pm = await stripe.paymentMethods.retrieve(customer.stripeDefaultPaymentMethodId);
+    res.json({ paymentMethod: pm.card ? {
+      label: `${pm.card.brand} ···· ${pm.card.last4}`,
+      last4: pm.card.last4,
+      brand: pm.card.brand,
+      expMonth: pm.card.exp_month,
+      expYear: pm.card.exp_year,
+    } : null });
+  } catch {
+    res.json({ paymentMethod: null });
+  }
+});
+
+router.post("/portal/me/setup-intent", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+  const [customer] = await db.select().from(customersTable)
+    .where(and(eq(customersTable.id, portalCustomerId), eq(customersTable.tenantId, portalTenantId)));
+  if (!customer) { res.status(404).json({ error: "Not found" }); return; }
+
+  const stripe = getStripeClient();
+  if (!stripe) { res.status(503).json({ error: "Stripe not configured" }); return; }
+
+  const { ensureStripeCustomer, getStripePublishableKey } = await import("../lib/stripe");
+  const stripeCustomerId = await ensureStripeCustomer(portalCustomerId, customer.name, customer.email, customer.stripeCustomerId);
+
+  const setupIntent = await stripe.setupIntents.create({
+    customer: stripeCustomerId,
+    payment_method_types: ["card"],
+    usage: "off_session",
+  });
+
+  const publishableKey = getStripePublishableKey();
+  if (!publishableKey) { res.status(503).json({ error: "Stripe publishable key not configured" }); return; }
+
+  res.json({ clientSecret: setupIntent.client_secret, publishableKey });
+});
+
+router.post("/portal/me/attach-payment-method", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+  const { paymentMethodId } = req.body as { paymentMethodId?: string };
+  if (!paymentMethodId) { res.status(400).json({ error: "paymentMethodId required" }); return; }
+
+  const [customer] = await db.select().from(customersTable)
+    .where(and(eq(customersTable.id, portalCustomerId), eq(customersTable.tenantId, portalTenantId)));
+  if (!customer) { res.status(404).json({ error: "Not found" }); return; }
+
+  const stripe = getStripeClient();
+  if (!stripe) { res.status(503).json({ error: "Stripe not configured" }); return; }
+
+  const { ensureStripeCustomer } = await import("../lib/stripe");
+  const stripeCustomerId = await ensureStripeCustomer(portalCustomerId, customer.name, customer.email, customer.stripeCustomerId);
+
+  await stripe.paymentMethods.attach(paymentMethodId, { customer: stripeCustomerId });
+  await stripe.customers.update(stripeCustomerId, {
+    invoice_settings: { default_payment_method: paymentMethodId },
+  });
+  await db.update(customersTable)
+    .set({ stripeDefaultPaymentMethodId: paymentMethodId })
+    .where(and(eq(customersTable.id, portalCustomerId), eq(customersTable.tenantId, portalTenantId)));
+
+  res.json({ success: true });
+});
+
+router.delete("/portal/me/payment-method", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+  await db.update(customersTable)
+    .set({ stripeDefaultPaymentMethodId: null })
+    .where(and(eq(customersTable.id, portalCustomerId), eq(customersTable.tenantId, portalTenantId)));
+  res.sendStatus(204);
+});
+
+// ---------------------------------------------------------------------------
 // GET /portal/summary
 // ---------------------------------------------------------------------------
 router.get("/portal/summary", requirePortalAuth, async (req: any, res): Promise<void> => {

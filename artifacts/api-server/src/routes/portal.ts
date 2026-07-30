@@ -6,6 +6,7 @@ import crypto from "crypto";
 import { getTenantId } from "../lib/tenantHelper";
 import { sendEmail, buildOtpEmailHtml, type EmailProviderConfig } from "../lib/emailProvider";
 import { logger } from "../lib/logger";
+import { syncInvoicePaymentToQBO } from "../lib/quickbooksSync";
 import PDFDocument from "pdfkit";
 import { getStripeClient } from "../lib/stripeClient";
 
@@ -1452,6 +1453,11 @@ router.post("/portal/stripe-webhook", async (req: any, res): Promise<void> => {
             ),
           );
         logger.info({ invoiceId, tenantId }, "Invoice marked paid via Stripe webhook");
+
+        // Fire-and-forget: push payment record to QuickBooks if connected
+        syncInvoicePaymentToQBO(tenantId, invoiceId).catch(err =>
+          logger.error({ err, invoiceId }, "QB sync fire-and-forget error (Stripe webhook)"),
+        );
       } catch (err) {
         logger.error({ err, invoiceId }, "Failed to mark invoice as paid");
         // Still return 200 to Stripe so it doesn't retry

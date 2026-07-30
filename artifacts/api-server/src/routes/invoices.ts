@@ -11,6 +11,7 @@ import { enqueueInvoiceEmail } from "../lib/billingScheduler";
 import { sendEmail } from "../lib/emailProvider";
 import { logger } from "../lib/logger";
 import { sendPaymentReminder, type ReminderRule } from "../lib/paymentReminderScheduler";
+import { syncInvoicePaymentToQBO } from "../lib/quickbooksSync";
 import {
   importUpload,
   handleExportRequest,
@@ -321,6 +322,9 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
 
   if (status === "paid") {
     await db.insert(activityLogTable).values({ tenantId, userId, type: "payment_received", message: `Invoice ${updated.invoiceNumber} marked as paid`, entityId: id });
+
+    // Fire-and-forget: push payment record to QuickBooks if the integration is connected
+    syncInvoicePaymentToQBO(tenantId, id).catch(err => logger.error({ err, invoiceId: id }, "QB sync fire-and-forget error"));
 
     // Auto-send a review request, if the tenant has this trigger enabled.
     const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));

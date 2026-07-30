@@ -25,4 +25,5 @@ export interface CustomerUpdate {
   smsOptOut?: boolean;
   emailOptOut?: boolean;
   autoInvoiceOnCompletion?: boolean;
+  noCardAlertSilenced?: boolean;
 }

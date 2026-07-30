@@ -488,7 +488,7 @@ export default function CustomerDetailPage() {
                 <Megaphone className="w-3 h-3" /> {linkedCampaign.name}
               </Badge>
             )}
-            {paymentMethodData?.paymentMethod && (
+            {paymentMethodData?.paymentMethod ? (
               <Badge variant="outline" className="gap-1 text-emerald-700 border-emerald-200 bg-emerald-50 pr-1">
                 <CreditCard className="w-3 h-3" /> {paymentMethodData.paymentMethod.label}
                 <button
@@ -510,7 +510,31 @@ export default function CustomerDetailPage() {
                   <X className="w-2.5 h-2.5" />
                 </button>
               </Badge>
-            )}
+            ) : !(customer as any).noCardAlertSilenced ? (
+              <Badge variant="outline" className="gap-1 text-amber-700 border-amber-200 bg-amber-50 pr-1" title="No payment method saved for this customer">
+                <CreditCard className="w-3 h-3" /> No card on file
+                <button
+                  onClick={async e => {
+                    e.stopPropagation();
+                    try {
+                      await customFetch(`/api/customers/${id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ noCardAlertSilenced: true }),
+                      });
+                      qc.invalidateQueries({ queryKey: getGetCustomerQueryKey(id) });
+                      toast.success('Alert silenced for this customer');
+                    } catch {
+                      toast.error('Failed to silence alert');
+                    }
+                  }}
+                  className="ml-1 rounded-full hover:bg-amber-200 p-0.5 transition-colors"
+                  title="Silence this alert for this customer"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </Badge>
+            ) : null}
             {customer.paymentStanding && (() => {
               const ps = customer.paymentStanding;
               const label =

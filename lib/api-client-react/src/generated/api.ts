@@ -26,6 +26,7 @@ import type {
   AgingInvoicesReport,
   ApplyBlueprintTemplateBody,
   AssignFollowupQueueItemInput,
+  AttachCustomerPaymentMethodBody,
   AuthResponse,
   BackfillGeocodesResult,
   BankTransaction,
@@ -58,6 +59,7 @@ import type {
   ConvertVisitToEstimate201,
   ConvertVisitToJob201,
   CreateCustomerPlanInput,
+  CreateCustomerSetupIntent200,
   CreateEstimateInput,
   CreateEstimateTemplateInput,
   CreateExpenseInput,
@@ -1744,6 +1746,149 @@ export const useDeleteCustomer = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteCustomerMutationOptions(options));
+    }
+
+export const getCreateCustomerSetupIntentUrl = (id: number,) => {
+
+
+
+
+  return `/api/customers/${id}/setup-intent`
+}
+
+/**
+ * @summary Create a Stripe SetupIntent for collecting a payment method
+ */
+export const createCustomerSetupIntent = async (id: number, options?: RequestInit): Promise<CreateCustomerSetupIntent200> => {
+
+  return customFetch<CreateCustomerSetupIntent200>(getCreateCustomerSetupIntentUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCreateCustomerSetupIntentMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCustomerSetupIntent>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createCustomerSetupIntent>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['createCustomerSetupIntent'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCustomerSetupIntent>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  createCustomerSetupIntent(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateCustomerSetupIntentMutationResult = NonNullable<Awaited<ReturnType<typeof createCustomerSetupIntent>>>
+
+    export type CreateCustomerSetupIntentMutationError = ErrorType<void>
+
+    /**
+ * @summary Create a Stripe SetupIntent for collecting a payment method
+ */
+export const useCreateCustomerSetupIntent = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCustomerSetupIntent>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createCustomerSetupIntent>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getCreateCustomerSetupIntentMutationOptions(options));
+    }
+
+export const getAttachCustomerPaymentMethodUrl = (id: number,) => {
+
+
+
+
+  return `/api/customers/${id}/attach-payment-method`
+}
+
+/**
+ * @summary Attach a confirmed Stripe PaymentMethod to a customer
+ */
+export const attachCustomerPaymentMethod = async (id: number,
+    attachCustomerPaymentMethodBody: AttachCustomerPaymentMethodBody, options?: RequestInit): Promise<Customer> => {
+
+  return customFetch<Customer>(getAttachCustomerPaymentMethodUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(attachCustomerPaymentMethodBody)
+  }
+);}
+
+
+
+
+
+export const getAttachCustomerPaymentMethodMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof attachCustomerPaymentMethod>>, TError,{id: number;data: BodyType<AttachCustomerPaymentMethodBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof attachCustomerPaymentMethod>>, TError,{id: number;data: BodyType<AttachCustomerPaymentMethodBody>}, TContext> => {
+
+const mutationKey = ['attachCustomerPaymentMethod'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof attachCustomerPaymentMethod>>, {id: number;data: BodyType<AttachCustomerPaymentMethodBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  attachCustomerPaymentMethod(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AttachCustomerPaymentMethodMutationResult = NonNullable<Awaited<ReturnType<typeof attachCustomerPaymentMethod>>>
+    export type AttachCustomerPaymentMethodMutationBody = BodyType<AttachCustomerPaymentMethodBody>
+    export type AttachCustomerPaymentMethodMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Attach a confirmed Stripe PaymentMethod to a customer
+ */
+export const useAttachCustomerPaymentMethod = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof attachCustomerPaymentMethod>>, TError,{id: number;data: BodyType<AttachCustomerPaymentMethodBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof attachCustomerPaymentMethod>>,
+        TError,
+        {id: number;data: BodyType<AttachCustomerPaymentMethodBody>},
+        TContext
+      > => {
+      return useMutation(getAttachCustomerPaymentMethodMutationOptions(options));
     }
 
 export const getGetCustomerPaymentMethodUrl = (id: number,) => {

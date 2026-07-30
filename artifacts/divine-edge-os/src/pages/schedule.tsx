@@ -477,11 +477,9 @@ export default function SchedulePage() {
     );
   };
 
-  const handleCreateJob = () => {
-    if (!newJob.title || !newJob.scheduledAt) {
-      toast.error('Title and scheduled date are required');
-      return;
-    }
+  const [noCardJobWarning, setNoCardJobWarning] = useState(false);
+
+  const doCreateJob = () => {
     const durationMins = newJob.estimatedDuration
       ? durationUnit === 'hours'
         ? Math.round(parseFloat(newJob.estimatedDuration) * 60)
@@ -515,14 +513,68 @@ export default function SchedulePage() {
     });
   };
 
+  const handleCreateJob = () => {
+    if (!newJob.title || !newJob.scheduledAt) {
+      toast.error('Title and scheduled date are required');
+      return;
+    }
+    // Soft gate: warn if customer has no card on file (unless alert is silenced)
+    if (newJob.customerId) {
+      const cust = (customers?.items ?? []).find(c => String(c.id) === String(newJob.customerId));
+      if (cust && !(cust as any).hasPaymentMethod && !(cust as any).noCardAlertSilenced) {
+        setNoCardJobWarning(true);
+        return;
+      }
+    }
+    doCreateJob();
+  };
+
   const formatDuration = (mins: number | null | undefined) => {
     if (!mins) return null;
     if (durationUnit === 'hours') return `${(mins / 60).toFixed(1)} hr`;
     return `${mins} min`;
   };
 
+  // No-card warning Dialog (soft gate on job creation)
+  const noCardWarningCustomer = noCardJobWarning && newJob.customerId
+    ? (customers?.items ?? []).find(c => String(c.id) === String(newJob.customerId))
+    : null;
+
   return (
     <div className="space-y-6 h-full flex flex-col animate-in fade-in duration-500">
+      {/* No-card warning */}
+      <Dialog open={noCardJobWarning} onOpenChange={open => { if (!open) setNoCardJobWarning(false); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
+              No Payment Method on File
+            </DialogTitle>
+            <DialogDescription>
+              <span className="font-medium">{noCardWarningCustomer?.name ?? 'This customer'}</span> does not have a saved payment method.
+              Add a card on their customer page before scheduling to ensure smooth billing.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-3 pt-2">
+            <Button variant="outline" onClick={() => setNoCardJobWarning(false)}>
+              Cancel
+            </Button>
+            <Button variant="outline" onClick={() => { setNoCardJobWarning(false); doCreateJob(); }}>
+              Schedule Anyway
+            </Button>
+            {noCardWarningCustomer && (
+              <Button onClick={() => {
+                setNoCardJobWarning(false);
+                setCreateOpen(false);
+                setLocation(`/customers/${noCardWarningCustomer.id}`);
+              }}>
+                Go to Customer
+              </Button>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Header */}
       <div className="flex items-center justify-between shrink-0">
         <div>

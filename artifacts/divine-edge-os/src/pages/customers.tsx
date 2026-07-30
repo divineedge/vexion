@@ -1,10 +1,13 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import {
   useListCustomers, getListCustomersQueryKey,
   useCreateCustomer,
   useGetTenantSettings, getGetTenantSettingsQueryKey,
+  customFetch,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { loadStripe, type Stripe as StripeInstance } from '@stripe/stripe-js';
+import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -127,7 +130,8 @@ function useAddressAutocomplete(
     return () => { cancelled = true; };
   }, [debounced]);
 
-  return { suggestions, loading, clear: () => setSuggestions([]) };
+  const resetAc = useCallback(() => { acRef.current = null; }, []);
+  return { suggestions, loading, clear: () => setSuggestions([]), attachPlaces, resetAc };
 }
 
 /** Format a Photon feature's street address portion. */
@@ -178,6 +182,57 @@ function Section({ title, icon, children }: { title: string; icon?: React.ReactN
   );
 }
 
+interface CardSetupSectionHandle {
+  setupCard: (customerId: number) => Promise<void>;
+  cardComplete: boolean;
+}
+
+const CardSetupSectionInner = forwardRef<CardSetupSectionHandle, object>(
+  (_props, ref) => {
+    const stripe = useStripe();
+    const elements = useElements();
+    const [cardComplete, setCardComplete] = useState(false);
+
+    useImperativeHandle(ref, () => ({
+      cardComplete,
+      async setupCard(customerId: number) {
+        if (!stripe || !elements) throw new Error('Stripe not ready');
+        const cardEl = elements.getElement(CardElement);
+        if (!cardEl) throw new Error('Card element not found');
+        const si = await customFetch<{ clientSecret: string }>(
+          `/api/customers/${customerId}/setup-intent`,
+          { method: 'POST' },
+        );
+        const result = await stripe.confirmCardSetup(si.clientSecret, {
+          payment_method: { card: cardEl },
+        });
+        if (result.error) throw new Error(result.error.message ?? 'Card setup failed');
+        const pmId = result.setupIntent?.payment_method as string | undefined;
+        if (!pmId) throw new Error('No payment method returned');
+        await customFetch(`/api/customers/${customerId}/attach-payment-method`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paymentMethodId: pmId }),
+        });
+      },
+    }), [stripe, elements, cardComplete]);
+
+    return (
+      <div className="space-y-2">
+        <div className="border rounded-md bg-white p-3">
+          <CardElement
+            onChange={e => setCardComplete(e.complete)}
+            options={{ style: { base: { fontSize: '15px', color: '#1a1a1a', '::placeholder': { color: '#a0aec0' } } } }}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground flex items-center gap-1">
+          <CreditCard className="w-3 h-3" /> Secured by Stripe — card details are never stored on our servers
+        </p>
+      </div>
+    );
+  },
+);
+
 const BLANK: FormData = {
   name: '', email: '', phone: '', secondaryPhone: '',
   company: '', customerType: '', referralSource: '',
@@ -202,6 +257,10 @@ export default function CustomersPage() {
   const [tagInput, setTagInput] = useState('');
   const addrInputRef = useRef<HTMLInputElement>(null);
   const [addrFocused, setAddrFocused] = useState(false);
+  const [noCardFilter, setNoCardFilter] = useState(false);
+  const [addPaymentMethod, setAddPaymentMethod] = useState(false);
+  const [stripePromise, setStripePromise] = useState<Promise<StripeInstance | null> | null>(null);
+  const cardSetupRef = useRef<CardSetupSectionHandle>(null);
   const handleGoogleAddressSelect = useCallback((parts: GoogleAddressParts) => {
     setForm(f => ({
       ...f,
@@ -212,11 +271,25 @@ export default function CustomersPage() {
     }));
   }, []);
 
-  const { suggestions: addrSuggestions, loading: addrLoading, clear: clearAddrSuggestions } = useAddressAutocomplete(
+  const { suggestions: addrSuggestions, loading: addrLoading, clear: clearAddrSuggestions, attachPlaces, resetAc } = useAddressAutocomplete(
     addrFocused ? (form.billingAddress as string) : '',
     addrInputRef,
     handleGoogleAddressSelect,
   );
+
+  // Re-attach Google Places autocomplete whenever the sheet opens (the input remounts each time)
+  useEffect(() => {
+    if (!creating) { resetAc(); setAddPaymentMethod(false); return; }
+    if ((window as any).google?.maps?.places) attachPlaces();
+  }, [creating, attachPlaces, resetAc]);
+
+  // Load Stripe publishable key when the user opts to add a payment method
+  useEffect(() => {
+    if (!addPaymentMethod || stripePromise) return;
+    customFetch<{ publishableKey: string | null }>('/api/stripe/config')
+      .then(({ publishableKey }) => { if (publishableKey) setStripePromise(loadStripe(publishableKey)); })
+      .catch(() => {});
+  }, [addPaymentMethod, stripePromise]);
 
   // Open create sheet when arriving via quick-add shortcut (?action=create)
   useEffect(() => {
@@ -255,7 +328,9 @@ export default function CustomersPage() {
   };
   const removeTag = (tag: string) => setForm(f => ({ ...f, tags: ((f.tags as string[]) ?? []).filter(t => t !== tag) }));
 
-  const handleCreate = () => {
+  const [creating_busy, setCreatingBusy] = useState(false);
+
+  const handleCreate = async () => {
     // Validate required fields according to the tenant's field configuration
     const missing = activeFields
       .filter(f => f.required && !(form[f.key] as string | undefined)?.trim())
@@ -277,19 +352,31 @@ export default function CustomersPage() {
     }
     body.customFieldValues = customFieldValues;
 
-    createCustomer.mutate(
-      { data: body as unknown as Parameters<typeof createCustomer.mutate>[0]['data'] },
-      {
-        onSuccess: (customer) => {
-          toast.success(`Customer "${customer.name}" created`);
-          qc.invalidateQueries({ queryKey: getListCustomersQueryKey() });
-          setCreating(false);
-          setForm(BLANK);
-          setLocation(`/customers/${customer.id}`);
-        },
-        onError: () => toast.error('Failed to create customer'),
-      },
-    );
+    setCreatingBusy(true);
+    try {
+      const customer = await createCustomer.mutateAsync(
+        { data: body as unknown as Parameters<typeof createCustomer.mutate>[0]['data'] },
+      );
+      // Optionally attach a payment method right after creation
+      if (addPaymentMethod && cardSetupRef.current?.cardComplete) {
+        try {
+          await cardSetupRef.current.setupCard(customer.id);
+          toast.success(`Customer "${customer.name}" created with card saved`);
+        } catch (e) {
+          toast.warning(`Customer created — card setup failed: ${(e as Error).message}`);
+        }
+      } else {
+        toast.success(`Customer "${customer.name}" created`);
+      }
+      qc.invalidateQueries({ queryKey: getListCustomersQueryKey() });
+      setCreating(false);
+      setForm(BLANK);
+      setLocation(`/customers/${customer.id}`);
+    } catch {
+      toast.error('Failed to create customer');
+    } finally {
+      setCreatingBusy(false);
+    }
   };
 
   return (
@@ -362,6 +449,16 @@ export default function CustomersPage() {
               <DollarSign className="w-4 h-4" />
               Open Balance
             </Button>
+            <Button
+              variant={noCardFilter ? 'default' : 'outline'}
+              size="sm"
+              className="gap-2 shrink-0"
+              onClick={() => setNoCardFilter(v => !v)}
+              title="Show customers with no payment method on file"
+            >
+              <CreditCard className="w-4 h-4" />
+              No Card
+            </Button>
             {(() => {
               const allTags = Array.from(new Set((data?.items ?? []).flatMap(c => (c as any).tags ?? []))).sort() as string[];
               return allTags.length > 0 ? (
@@ -382,7 +479,7 @@ export default function CustomersPage() {
                 size="sm"
                 title="Reset all filters"
                 className="gap-1.5 text-muted-foreground"
-                onClick={() => { setSearch(''); setTypeFilter('all'); setReminderFailureFilter(false); setOpenBalanceFilter(false); setTagFilter('__all__'); }}
+                onClick={() => { setSearch(''); setTypeFilter('all'); setReminderFailureFilter(false); setOpenBalanceFilter(false); setNoCardFilter(false); setTagFilter('__all__'); }}
               >
                 <X className="w-3.5 h-3.5" /> Clear filters
               </Button>
@@ -417,7 +514,7 @@ export default function CustomersPage() {
                   {reminderFailureFilter ? 'No customers with reminder failures found.' : openBalanceFilter ? 'No customers with open balances found.' : (<span>No customers found.{!search && !tagFilter && typeFilter === 'all' && <> <button className="text-primary hover:underline" onClick={() => setCreating(true)}>Add one →</button></>}</span>)}
                 </TableCell></TableRow>
               ) : (
-                (data?.items ?? []).filter(c => typeFilter === 'all' || (c as any).customerType === typeFilter).filter(c => !openBalanceFilter || ((c as any).paymentStanding?.overdueAmount ?? 0) > 0).filter(c => tagFilter === '__all__' || ((c as any).tags ?? []).includes(tagFilter)).sort((a, b) => {
+                (data?.items ?? []).filter(c => typeFilter === 'all' || (c as any).customerType === typeFilter).filter(c => !openBalanceFilter || ((c as any).paymentStanding?.overdueAmount ?? 0) > 0).filter(c => tagFilter === '__all__' || ((c as any).tags ?? []).includes(tagFilter)).filter(c => !noCardFilter || (!(c as any).hasPaymentMethod && !(c as any).noCardAlertSilenced)).sort((a, b) => {
                   let cmp = 0;
                   if (sortField === 'name') cmp = a.name.localeCompare(b.name);
                   else if (sortField === 'totalSpend') cmp = ((a as any).totalSpend ?? 0) - ((b as any).totalSpend ?? 0);
@@ -440,11 +537,15 @@ export default function CustomersPage() {
                               <Zap className="w-3 h-3" /> Auto-Invoice
                             </Badge>
                           )}
-                          {(customer as any).hasPaymentMethod && (
+                          {(customer as any).hasPaymentMethod ? (
                             <Badge variant="outline" className="gap-1 text-blue-600 border-blue-200 bg-blue-50 text-[10px] px-1.5 py-0 shrink-0 cursor-default" title="Saved payment method on file">
                               <CreditCard className="w-3 h-3" /> Card on file
                             </Badge>
-                          )}
+                          ) : !(customer as any).noCardAlertSilenced ? (
+                            <Badge variant="outline" className="gap-1 text-amber-600 border-amber-200 bg-amber-50 text-[10px] px-1.5 py-0 shrink-0" title="No payment method on file">
+                              <CreditCard className="w-3 h-3" /> No card
+                            </Badge>
+                          ) : null}
                           {failure && (
                             <Badge variant="outline" className="gap-1 text-red-600 border-red-200 text-[10px] px-1.5 py-0 shrink-0" title={failure.errorNote ?? `Failed via ${failure.channel}`}>
                               <AlertTriangle className="w-3 h-3" /> Reminder failed · {failure.channel}
@@ -683,12 +784,40 @@ export default function CustomersPage() {
               );
             })()}
 
+            {/* Payment Method — optional card capture at creation time */}
+            <Section title="Payment Method" icon={<CreditCard className="w-4 h-4" />}>
+              <div className="flex items-center gap-3 py-1">
+                <input
+                  id="add-pm-toggle"
+                  type="checkbox"
+                  checked={addPaymentMethod}
+                  onChange={e => setAddPaymentMethod(e.target.checked)}
+                  className="h-4 w-4 rounded border-input"
+                />
+                <label htmlFor="add-pm-toggle" className="text-sm cursor-pointer select-none">
+                  Save a card on file for this customer
+                </label>
+              </div>
+              {addPaymentMethod && (
+                stripePromise ? (
+                  <Elements stripe={stripePromise}>
+                    <CardSetupSectionInner ref={cardSetupRef} />
+                  </Elements>
+                ) : (
+                  <div className="text-xs text-muted-foreground py-2 flex items-center gap-2">
+                    <span className="animate-spin inline-block w-3 h-3 border border-current border-t-transparent rounded-full" />
+                    Loading payment form…
+                  </div>
+                )
+              )}
+            </Section>
+
             <Separator />
             <div className="flex gap-3 justify-end pt-2">
               <Button variant="outline" onClick={() => setCreating(false)}>Cancel</Button>
-              <Button onClick={handleCreate} disabled={createCustomer.isPending} className="gap-2">
+              <Button onClick={handleCreate} disabled={creating_busy} className="gap-2">
                 <Save className="w-4 h-4" />
-                {createCustomer.isPending ? 'Creating...' : 'Create Customer'}
+                {creating_busy ? 'Creating...' : 'Create Customer'}
               </Button>
             </div>
           </div>

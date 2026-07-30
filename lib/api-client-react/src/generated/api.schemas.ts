@@ -900,6 +900,10 @@ export interface Customer {
   createdAt: string;
   paymentStanding?: PaymentStanding;
   lastReminderFailure?: null | ReminderFailure;
+  /** True when a Stripe payment method is saved for this customer */
+  hasPaymentMethod?: boolean;
+  /** When true, the no-card-on-file alert is suppressed for this customer */
+  noCardAlertSilenced?: boolean;
 }
 
 export type CustomerInputCustomFieldValues = {[key: string]: string};
@@ -941,6 +945,7 @@ export interface CustomerUpdate {
   smsOptOut?: boolean;
   emailOptOut?: boolean;
   autoInvoiceOnCompletion?: boolean;
+  noCardAlertSilenced?: boolean;
 }
 
 export interface CustomerListResponse {
@@ -3733,6 +3738,8 @@ export interface PortalJob {
   /** @nullable */
   propertyAddress?: string | null;
   totalAmount?: number;
+  /** @nullable */
+  assignedToName?: string | null;
 }
 
 export interface PortalInvoice {
@@ -4780,6 +4787,15 @@ limit?: number;
  * Filter to customers whose last outbound reminder failed to send
  */
 hasReminderFailure?: boolean;
+};
+
+export type CreateCustomerSetupIntent200 = {
+  clientSecret: string;
+  publishableKey: string;
+};
+
+export type AttachCustomerPaymentMethodBody = {
+  paymentMethodId: string;
 };
 
 export type ListPropertiesParams = {

@@ -415,6 +415,62 @@ paths:
         "204":
           description: Deleted
 
+  /customers/{id}/setup-intent:
+    post:
+      operationId: createCustomerSetupIntent
+      tags: [customers]
+      summary: Create a Stripe SetupIntent for collecting a payment method
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: SetupIntent client secret and publishable key
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [clientSecret, publishableKey]
+                properties:
+                  clientSecret:
+                    type: string
+                  publishableKey:
+                    type: string
+        "503":
+          description: Stripe not configured
+
+  /customers/{id}/attach-payment-method:
+    post:
+      operationId: attachCustomerPaymentMethod
+      tags: [customers]
+      summary: Attach a confirmed Stripe PaymentMethod to a customer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [paymentMethodId]
+              properties:
+                paymentMethodId:
+                  type: string
+      responses:
+        "200":
+          description: Updated customer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+
   /customers/{id}/payment-method:
     get:
       operationId: getCustomerPaymentMethod
@@ -7671,6 +7727,12 @@ components:
           oneOf:
             - type: "null"
             - $ref: "#/components/schemas/ReminderFailure"
+        hasPaymentMethod:
+          type: boolean
+          description: "True when a Stripe payment method is saved for this customer"
+        noCardAlertSilenced:
+          type: boolean
+          description: "When true, the no-card-on-file alert is suppressed for this customer"
 
     ReminderFailure:
       type: object
@@ -7782,6 +7844,8 @@ components:
         emailOptOut:
           type: boolean
         autoInvoiceOnCompletion:
+          type: boolean
+        noCardAlertSilenced:
           type: boolean
 
     CustomerListResponse:

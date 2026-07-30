@@ -272,6 +272,7 @@ function formatCustomer(
     paymentStanding: extras?.paymentStanding ?? null,
     lastReminderFailure: extras?.lastReminderFailure ?? null,
     hasPaymentMethod: !!c.stripeDefaultPaymentMethodId,
+    noCardAlertSilenced: c.noCardAlertSilenced ?? false,
     createdAt: c.createdAt.toISOString(),
   };
 }
@@ -490,8 +491,9 @@ router.patch("/customers/:id", async (req, res): Promise<void> => {
   }
   if (smsOptOut !== undefined) updates.smsOptOut = smsOptOut;
   if (emailOptOut !== undefined) updates.emailOptOut = emailOptOut;
-  const { autoInvoiceOnCompletion } = req.body;
+  const { autoInvoiceOnCompletion, noCardAlertSilenced } = req.body;
   if (autoInvoiceOnCompletion !== undefined) updates.autoInvoiceOnCompletion = autoInvoiceOnCompletion;
+  if (noCardAlertSilenced !== undefined) updates.noCardAlertSilenced = noCardAlertSilenced;
 
   const [updated] = await db.update(customersTable)
     .set(updates)
@@ -512,6 +514,77 @@ router.delete("/customers/:id", async (req, res): Promise<void> => {
   const id = parseInt(rawId, 10);
   await db.delete(customersTable).where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)));
   res.sendStatus(204);
+});
+
+// Return the Stripe publishable key so the frontend can mount Elements
+router.get("/stripe/config", async (_req, res): Promise<void> => {
+  const { getStripePublishableKey } = await import("../lib/stripe");
+  const key = getStripePublishableKey();
+  res.json({ publishableKey: key ?? null });
+});
+
+// ── PAYMENT SETUP / ATTACH ────────────────────────────────────────────────────
+
+/** Create a Stripe SetupIntent so the frontend can collect and save a card. */
+router.post("/customers/:id/setup-intent", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+
+  const [customer] = await db.select().from(customersTable)
+    .where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)));
+  if (!customer) { res.status(404).json({ error: "Not found" }); return; }
+
+  const stripe = getStripeClient();
+  if (!stripe) { res.status(503).json({ error: "Stripe is not configured" }); return; }
+
+  const { ensureStripeCustomer, getStripePublishableKey } = await import("../lib/stripe");
+  const stripeCustomerId = await ensureStripeCustomer(id, customer.name, customer.email, customer.stripeCustomerId);
+
+  const setupIntent = await stripe.setupIntents.create({
+    customer: stripeCustomerId,
+    payment_method_types: ["card"],
+    usage: "off_session",
+  });
+
+  const publishableKey = getStripePublishableKey();
+  if (!publishableKey) { res.status(503).json({ error: "Stripe publishable key is not configured" }); return; }
+
+  res.json({ clientSecret: setupIntent.client_secret, publishableKey });
+});
+
+/** Attach a confirmed Stripe PaymentMethod ID to a customer. */
+router.post("/customers/:id/attach-payment-method", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+  const { paymentMethodId } = req.body;
+  if (!paymentMethodId) { res.status(400).json({ error: "paymentMethodId is required" }); return; }
+
+  const [customer] = await db.select().from(customersTable)
+    .where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)));
+  if (!customer) { res.status(404).json({ error: "Not found" }); return; }
+
+  const stripe = getStripeClient();
+  if (!stripe) { res.status(503).json({ error: "Stripe is not configured" }); return; }
+
+  const { ensureStripeCustomer } = await import("../lib/stripe");
+  const stripeCustomerId = await ensureStripeCustomer(id, customer.name, customer.email, customer.stripeCustomerId);
+
+  // Attach the payment method to the Stripe customer and set as default
+  await stripe.paymentMethods.attach(paymentMethodId, { customer: stripeCustomerId });
+  await stripe.customers.update(stripeCustomerId, {
+    invoice_settings: { default_payment_method: paymentMethodId },
+  });
+
+  const [updated] = await db.update(customersTable)
+    .set({ stripeDefaultPaymentMethodId: paymentMethodId })
+    .where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)))
+    .returning();
+
+  const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(propertiesTable)
+    .where(and(eq(propertiesTable.customerId, id), eq(propertiesTable.tenantId, tenantId)));
+  res.json(formatCustomer(updated, { propertyCount: count }));
 });
 
 // ── PAYMENT METHOD ────────────────────────────────────────────────────────────

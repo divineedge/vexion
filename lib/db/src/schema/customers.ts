@@ -34,6 +34,8 @@ export const customersTable = pgTable("customers", {
   stripeCustomerId: text("stripe_customer_id"),
   /** Stripe PaymentMethod ID (pm_xxx) saved as default for off-session use */
   stripeDefaultPaymentMethodId: text("stripe_default_payment_method_id"),
+  /** When true, the "no card on file" alert is suppressed for this customer */
+  noCardAlertSilenced: boolean("no_card_alert_silenced").notNull().default(false),
   totalSpend: real("total_spend").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

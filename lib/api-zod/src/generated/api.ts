@@ -295,7 +295,9 @@ export const ListCustomersResponse = zod.object({
   "channel": zod.string().describe('\'sms\' or \'email\''),
   "errorNote": zod.string().describe('Error message from the provider'),
   "failedAt": zod.string().describe('ISO timestamp of the failure')
-})]).optional()
+})]).optional(),
+  "hasPaymentMethod": zod.boolean().optional().describe('True when a Stripe payment method is saved for this customer'),
+  "noCardAlertSilenced": zod.boolean().optional().describe('When true, the no-card-on-file alert is suppressed for this customer')
 })),
   "total": zod.number(),
   "page": zod.number(),
@@ -362,7 +364,9 @@ export const CreateCustomerResponse = zod.object({
   "channel": zod.string().describe('\'sms\' or \'email\''),
   "errorNote": zod.string().describe('Error message from the provider'),
   "failedAt": zod.string().describe('ISO timestamp of the failure')
-})]).optional()
+})]).optional(),
+  "hasPaymentMethod": zod.boolean().optional().describe('True when a Stripe payment method is saved for this customer'),
+  "noCardAlertSilenced": zod.boolean().optional().describe('When true, the no-card-on-file alert is suppressed for this customer')
 })
 
 
@@ -412,7 +416,9 @@ export const GetCustomerResponse = zod.object({
   "channel": zod.string().describe('\'sms\' or \'email\''),
   "errorNote": zod.string().describe('Error message from the provider'),
   "failedAt": zod.string().describe('ISO timestamp of the failure')
-})]).optional()
+})]).optional(),
+  "hasPaymentMethod": zod.boolean().optional().describe('True when a Stripe payment method is saved for this customer'),
+  "noCardAlertSilenced": zod.boolean().optional().describe('When true, the no-card-on-file alert is suppressed for this customer')
 })
 
 
@@ -440,7 +446,8 @@ export const UpdateCustomerBody = zod.object({
   "customFieldValues": zod.record(zod.string(), zod.string()).optional(),
   "smsOptOut": zod.boolean().optional(),
   "emailOptOut": zod.boolean().optional(),
-  "autoInvoiceOnCompletion": zod.boolean().optional()
+  "autoInvoiceOnCompletion": zod.boolean().optional(),
+  "noCardAlertSilenced": zod.boolean().optional()
 })
 
 export const UpdateCustomerResponse = zod.object({
@@ -482,7 +489,9 @@ export const UpdateCustomerResponse = zod.object({
   "channel": zod.string().describe('\'sms\' or \'email\''),
   "errorNote": zod.string().describe('Error message from the provider'),
   "failedAt": zod.string().describe('ISO timestamp of the failure')
-})]).optional()
+})]).optional(),
+  "hasPaymentMethod": zod.boolean().optional().describe('True when a Stripe payment method is saved for this customer'),
+  "noCardAlertSilenced": zod.boolean().optional().describe('When true, the no-card-on-file alert is suppressed for this customer')
 })
 
 
@@ -494,6 +503,75 @@ export const DeleteCustomerParams = zod.object({
 })
 
 export const DeleteCustomerResponse = zod.void()
+
+
+/**
+ * @summary Create a Stripe SetupIntent for collecting a payment method
+ */
+export const CreateCustomerSetupIntentParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CreateCustomerSetupIntentResponse = zod.object({
+  "clientSecret": zod.string(),
+  "publishableKey": zod.string()
+})
+
+
+/**
+ * @summary Attach a confirmed Stripe PaymentMethod to a customer
+ */
+export const AttachCustomerPaymentMethodParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AttachCustomerPaymentMethodBody = zod.object({
+  "paymentMethodId": zod.string()
+})
+
+export const AttachCustomerPaymentMethodResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "phone": zod.string(),
+  "secondaryPhone": zod.string().nullish(),
+  "company": zod.string().nullish(),
+  "customerType": zod.string().nullish(),
+  "referralSource": zod.string().nullish(),
+  "billingAddress": zod.string().nullish(),
+  "billingCity": zod.string().nullish(),
+  "billingState": zod.string().nullish(),
+  "billingZip": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "tags": zod.array(zod.string()).optional(),
+  "customFieldValues": zod.record(zod.string(), zod.string()).optional(),
+  "propertyCount": zod.number().optional(),
+  "totalSpend": zod.number().optional(),
+  "smsOptOut": zod.boolean().optional(),
+  "emailOptOut": zod.boolean().optional(),
+  "autoInvoiceOnCompletion": zod.boolean().optional().describe('Automatically create and email an invoice when a job for this customer is marked complete'),
+  "profilePhotoUrl": zod.string().nullish(),
+  "acquiredFromCampaignId": zod.number().nullish(),
+  "thisYearSpend": zod.number().nullish().describe('Total paid invoices for the current calendar year'),
+  "lastYearSpend": zod.number().nullish().describe('Total paid invoices for the previous calendar year'),
+  "createdAt": zod.string(),
+  "paymentStanding": zod.object({
+  "status": zod.enum(['current', 'reminded', 'overdue', 'flagged', 'paused']).describe('current = no overdue invoices; reminded = a reminder was sent; overdue = past due but under stop-service threshold; flagged = a stop-service flag is pending office approval; paused = recurring service has been paused'),
+  "oldestOverdueInvoiceId": zod.number().nullish(),
+  "daysOverdue": zod.number().nullish(),
+  "overdueAmount": zod.number().optional(),
+  "pendingFlagId": zod.number().nullish(),
+  "isServicePaused": zod.boolean().optional()
+}).optional(),
+  "lastReminderFailure": zod.union([zod.null(),zod.object({
+  "channel": zod.string().describe('\'sms\' or \'email\''),
+  "errorNote": zod.string().describe('Error message from the provider'),
+  "failedAt": zod.string().describe('ISO timestamp of the failure')
+})]).optional(),
+  "hasPaymentMethod": zod.boolean().optional().describe('True when a Stripe payment method is saved for this customer'),
+  "noCardAlertSilenced": zod.boolean().optional().describe('When true, the no-card-on-file alert is suppressed for this customer')
+})
 
 
 /**
@@ -5668,7 +5746,8 @@ export const PortalGetSummaryResponse = zod.object({
   "scheduledAt": zod.string(),
   "completedAt": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
-  "totalAmount": zod.number().optional()
+  "totalAmount": zod.number().optional(),
+  "assignedToName": zod.string().nullish()
 })),
   "recentInvoices": zod.array(zod.object({
   "id": zod.number(),
@@ -5712,7 +5791,8 @@ export const PortalListJobsResponseItem = zod.object({
   "scheduledAt": zod.string(),
   "completedAt": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
-  "totalAmount": zod.number().optional()
+  "totalAmount": zod.number().optional(),
+  "assignedToName": zod.string().nullish()
 })
 export const PortalListJobsResponse = zod.array(PortalListJobsResponseItem)
 
@@ -5884,7 +5964,8 @@ export const PortalListServiceRequestsResponseItem = zod.object({
   "scheduledAt": zod.string(),
   "completedAt": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
-  "totalAmount": zod.number().optional()
+  "totalAmount": zod.number().optional(),
+  "assignedToName": zod.string().nullish()
 })
 export const PortalListServiceRequestsResponse = zod.array(PortalListServiceRequestsResponseItem)
 
@@ -5907,7 +5988,8 @@ export const PortalCreateServiceRequestResponse = zod.object({
   "scheduledAt": zod.string(),
   "completedAt": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
-  "totalAmount": zod.number().optional()
+  "totalAmount": zod.number().optional(),
+  "assignedToName": zod.string().nullish()
 })
 
 
@@ -6021,7 +6103,9 @@ export const ResumeCustomerServiceResponse = zod.object({
   "channel": zod.string().describe('\'sms\' or \'email\''),
   "errorNote": zod.string().describe('Error message from the provider'),
   "failedAt": zod.string().describe('ISO timestamp of the failure')
-})]).optional()
+})]).optional(),
+  "hasPaymentMethod": zod.boolean().optional().describe('True when a Stripe payment method is saved for this customer'),
+  "noCardAlertSilenced": zod.boolean().optional().describe('When true, the no-card-on-file alert is suppressed for this customer')
 })
 
 

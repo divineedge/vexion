@@ -18,4 +18,6 @@ export interface PortalJob {
   /** @nullable */
   propertyAddress?: string | null;
   totalAmount?: number;
+  /** @nullable */
+  assignedToName?: string | null;
 }

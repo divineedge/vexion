@@ -58,4 +58,8 @@ export interface Customer {
   createdAt: string;
   paymentStanding?: PaymentStanding;
   lastReminderFailure?: null | ReminderFailure;
+  /** True when a Stripe payment method is saved for this customer */
+  hasPaymentMethod?: boolean;
+  /** When true, the no-card-on-file alert is suppressed for this customer */
+  noCardAlertSilenced?: boolean;
 }

@@ -352,6 +352,7 @@ export default function CustomerDetailPage() {
   const [stripePromise, setStripePromise] = useState<Promise<StripeInstance | null> | null>(null);
   const [addCardBusy, setAddCardBusy] = useState(false);
   const [cardLinkSending, setCardLinkSending] = useState(false);
+  const [expiryReminderSending, setExpiryReminderSending] = useState(false);
   const cardSetupRef = useRef<CardSetupInlineHandle>(null);
 
   const openCardSetup = useCallback(async () => {
@@ -375,6 +376,18 @@ export default function CustomerDetailPage() {
       toast.error((e as Error).message ?? 'Failed to save card');
     } finally {
       setAddCardBusy(false);
+    }
+  };
+
+  const handleSendExpiryReminder = async () => {
+    setExpiryReminderSending(true);
+    try {
+      await customFetch(`/api/customers/${id}/send-expiry-reminder`, { method: 'POST' });
+      toast.success('Card expiry reminder sent to customer');
+    } catch {
+      toast.error('Failed to send reminder');
+    } finally {
+      setExpiryReminderSending(false);
     }
   };
 
@@ -570,29 +583,50 @@ export default function CustomerDetailPage() {
                 <Megaphone className="w-3 h-3" /> {linkedCampaign.name}
               </Badge>
             )}
-            {paymentMethodData?.paymentMethod ? (
-              <Badge variant="outline" className="gap-1 text-emerald-700 border-emerald-200 bg-emerald-50 pr-1">
-                <CreditCard className="w-3 h-3" /> {paymentMethodData.paymentMethod.label}
-                <button
-                  onClick={async e => {
-                    e.stopPropagation();
-                    if (!confirm('Remove this saved card?')) return;
-                    try {
-                      await customFetch(`/api/customers/${id}/payment-method`, { method: 'DELETE' });
-                      qc.invalidateQueries({ queryKey: getGetCustomerPaymentMethodQueryKey(id) });
-                      qc.invalidateQueries({ queryKey: getGetCustomerQueryKey(id) });
-                      toast.success('Saved card removed');
-                    } catch {
-                      toast.error('Failed to remove card');
-                    }
-                  }}
-                  className="ml-1 rounded-full hover:bg-emerald-200 p-0.5 transition-colors"
-                  title="Remove saved card"
-                >
-                  <X className="w-2.5 h-2.5" />
-                </button>
-              </Badge>
-            ) : !(customer as any).noCardAlertSilenced ? (
+            {paymentMethodData?.paymentMethod ? (() => {
+              const pm = paymentMethodData.paymentMethod;
+              const cardExpiry = new Date(pm.expYear, pm.expMonth, 0); // last day of exp month
+              const daysLeft = Math.ceil((cardExpiry.getTime() - Date.now()) / 86_400_000);
+              const expired = daysLeft < 0;
+              const critical = !expired && daysLeft <= 30;
+              const warning = !expired && !critical && daysLeft <= 60;
+              const badgeCls = expired
+                ? 'text-red-700 border-red-300 bg-red-50'
+                : critical
+                  ? 'text-red-600 border-red-200 bg-red-50'
+                  : warning
+                    ? 'text-amber-700 border-amber-200 bg-amber-50'
+                    : 'text-emerald-700 border-emerald-200 bg-emerald-50';
+              const hoverCls = expired || critical ? 'hover:bg-red-200' : warning ? 'hover:bg-amber-200' : 'hover:bg-emerald-200';
+              const label = expired
+                ? `Expired ${pm.expMonth}/${pm.expYear}`
+                : (warning || critical)
+                  ? `${pm.label} — exp. ${pm.expMonth}/${pm.expYear}`
+                  : pm.label;
+              return (
+                <Badge variant="outline" className={`gap-1 pr-1 ${badgeCls}`}>
+                  <CreditCard className="w-3 h-3" /> {label}
+                  <button
+                    onClick={async e => {
+                      e.stopPropagation();
+                      if (!confirm('Remove this saved card?')) return;
+                      try {
+                        await customFetch(`/api/customers/${id}/payment-method`, { method: 'DELETE' });
+                        qc.invalidateQueries({ queryKey: getGetCustomerPaymentMethodQueryKey(id) });
+                        qc.invalidateQueries({ queryKey: getGetCustomerQueryKey(id) });
+                        toast.success('Saved card removed');
+                      } catch {
+                        toast.error('Failed to remove card');
+                      }
+                    }}
+                    className={`ml-1 rounded-full p-0.5 transition-colors ${hoverCls}`}
+                    title="Remove saved card"
+                  >
+                    <X className="w-2.5 h-2.5" />
+                  </button>
+                </Badge>
+              );
+            })() : !(customer as any).noCardAlertSilenced ? (
               <Badge variant="outline" className="gap-1 text-amber-700 border-amber-200 bg-amber-50 pr-1" title="No payment method saved for this customer">
                 <CreditCard className="w-3 h-3" /> No card on file
                 <button
@@ -638,18 +672,33 @@ export default function CustomerDetailPage() {
           </div>
 
           {/* Card-on-file action row */}
-          <div className="flex flex-wrap items-center gap-2 mt-2">
-            <Button size="sm" variant="outline" className="gap-1.5 text-xs h-7 px-2.5"
-              onClick={openCardSetup}>
-              <CreditCard className="w-3 h-3" />
-              {(customer as any).hasPaymentMethod ? 'Replace Card' : 'Add Card'}
-            </Button>
-            <Button size="sm" variant="outline" className="gap-1.5 text-xs h-7 px-2.5"
-              onClick={handleSendCardLink} disabled={cardLinkSending} title="Text the customer a link to add their card in the portal">
-              <Send className="w-3 h-3" />
-              {cardLinkSending ? 'Sending…' : 'Text card link'}
-            </Button>
-          </div>
+          {(() => {
+            const pm = paymentMethodData?.paymentMethod;
+            const daysLeft = pm ? Math.ceil((new Date(pm.expYear, pm.expMonth, 0).getTime() - Date.now()) / 86_400_000) : null;
+            const isExpiringSoon = daysLeft !== null && daysLeft <= 60;
+            return (
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                <Button size="sm" variant="outline" className="gap-1.5 text-xs h-7 px-2.5" onClick={openCardSetup}>
+                  <CreditCard className="w-3 h-3" />
+                  {(customer as any).hasPaymentMethod ? 'Update Card' : 'Add Card'}
+                </Button>
+                {isExpiringSoon && (
+                  <Button size="sm" variant="outline"
+                    className="gap-1.5 text-xs h-7 px-2.5 text-amber-700 border-amber-300 hover:bg-amber-50"
+                    onClick={handleSendExpiryReminder} disabled={expiryReminderSending}
+                    title="Email & text the customer to update their expiring card">
+                    <Send className="w-3 h-3" />
+                    {expiryReminderSending ? 'Sending…' : 'Send renewal reminder'}
+                  </Button>
+                )}
+                <Button size="sm" variant="outline" className="gap-1.5 text-xs h-7 px-2.5"
+                  onClick={handleSendCardLink} disabled={cardLinkSending} title="Text the customer a link to add their card in the portal">
+                  <Send className="w-3 h-3" />
+                  {cardLinkSending ? 'Sending…' : 'Text card link'}
+                </Button>
+              </div>
+            );
+          })()}
 
           {/* Inline Stripe card setup form */}
           {showAddCard && stripePromise && (

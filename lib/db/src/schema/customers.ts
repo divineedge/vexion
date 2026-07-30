@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, real, jsonb, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, jsonb, boolean, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -36,6 +36,10 @@ export const customersTable = pgTable("customers", {
   stripeDefaultPaymentMethodId: text("stripe_default_payment_method_id"),
   /** When true, the "no card on file" alert is suppressed for this customer */
   noCardAlertSilenced: boolean("no_card_alert_silenced").notNull().default(false),
+  /** Last day of the month the saved card expires — stored so the scheduler can query without hitting Stripe */
+  cardExpiresAt: date("card_expires_at"),
+  /** When the card-expiry reminder was last sent; null = never sent */
+  cardExpiryReminderSentAt: timestamp("card_expiry_reminder_sent_at", { withTimezone: true }),
   totalSpend: real("total_spend").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

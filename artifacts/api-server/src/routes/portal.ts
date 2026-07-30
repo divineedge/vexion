@@ -425,12 +425,29 @@ router.post("/portal/me/attach-payment-method", requirePortalAuth, async (req: a
   const { ensureStripeCustomer } = await import("../lib/stripe");
   const stripeCustomerId = await ensureStripeCustomer(portalCustomerId, customer.name, customer.email, customer.stripeCustomerId);
 
+  // Retrieve the PM to validate expiry BEFORE attaching
+  const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+  if (!pm.card) { res.status(400).json({ error: "Only card payment methods are supported" }); return; }
+
+  const now = new Date();
+  const threeMonthsLater = new Date(now.getFullYear(), now.getMonth() + 3, now.getDate());
+  const cardExpiry = new Date(pm.card.exp_year, pm.card.exp_month, 0); // last day of expiry month
+  if (cardExpiry < threeMonthsLater) {
+    const exp = `${String(pm.card.exp_month).padStart(2, "0")}/${pm.card.exp_year}`;
+    res.status(400).json({ error: `This card expires ${exp}. Please use a card with at least 3 months remaining.` });
+    return;
+  }
+
   await stripe.paymentMethods.attach(paymentMethodId, { customer: stripeCustomerId });
   await stripe.customers.update(stripeCustomerId, {
     invoice_settings: { default_payment_method: paymentMethodId },
   });
   await db.update(customersTable)
-    .set({ stripeDefaultPaymentMethodId: paymentMethodId })
+    .set({
+      stripeDefaultPaymentMethodId: paymentMethodId,
+      cardExpiresAt: cardExpiry.toISOString().split("T")[0],
+      cardExpiryReminderSentAt: null,
+    })
     .where(and(eq(customersTable.id, portalCustomerId), eq(customersTable.tenantId, portalTenantId)));
 
   res.json({ success: true });
@@ -439,7 +456,7 @@ router.post("/portal/me/attach-payment-method", requirePortalAuth, async (req: a
 router.delete("/portal/me/payment-method", requirePortalAuth, async (req: any, res): Promise<void> => {
   const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
   await db.update(customersTable)
-    .set({ stripeDefaultPaymentMethodId: null })
+    .set({ stripeDefaultPaymentMethodId: null, cardExpiresAt: null, cardExpiryReminderSentAt: null })
     .where(and(eq(customersTable.id, portalCustomerId), eq(customersTable.tenantId, portalTenantId)));
   res.sendStatus(204);
 });

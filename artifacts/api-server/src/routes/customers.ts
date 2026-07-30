@@ -6,6 +6,7 @@ import { syncCustomerToMailchimp } from "../lib/mailchimpSync";
 import { isAdminRole } from "../lib/roles";
 import { getStripeClient } from "../lib/stripe";
 import { sendSms, type SmsProviderConfig } from "../lib/smsProvider";
+import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
 import { logger } from "../lib/logger";
 import {
   importUpload,
@@ -274,6 +275,7 @@ function formatCustomer(
     lastReminderFailure: extras?.lastReminderFailure ?? null,
     hasPaymentMethod: !!c.stripeDefaultPaymentMethodId,
     noCardAlertSilenced: c.noCardAlertSilenced ?? false,
+    cardExpiresAt: c.cardExpiresAt ?? null,
     createdAt: c.createdAt.toISOString(),
   };
 }
@@ -611,6 +613,20 @@ router.post("/customers/:id/attach-payment-method", async (req, res): Promise<vo
   const { ensureStripeCustomer } = await import("../lib/stripe");
   const stripeCustomerId = await ensureStripeCustomer(id, customer.name, customer.email, customer.stripeCustomerId);
 
+  // Retrieve the PM to validate expiry BEFORE attaching
+  const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+  if (!pm.card) { res.status(400).json({ error: "Only card payment methods are supported" }); return; }
+
+  // Card must not expire within 3 months from today
+  const now = new Date();
+  const threeMonthsLater = new Date(now.getFullYear(), now.getMonth() + 3, now.getDate());
+  const cardExpiry = new Date(pm.card.exp_year, pm.card.exp_month, 0); // last day of expiry month
+  if (cardExpiry < threeMonthsLater) {
+    const exp = `${String(pm.card.exp_month).padStart(2, "0")}/${pm.card.exp_year}`;
+    res.status(400).json({ error: `This card expires ${exp}. Please use a card with at least 3 months remaining.` });
+    return;
+  }
+
   // Attach the payment method to the Stripe customer and set as default
   await stripe.paymentMethods.attach(paymentMethodId, { customer: stripeCustomerId });
   await stripe.customers.update(stripeCustomerId, {
@@ -618,7 +634,11 @@ router.post("/customers/:id/attach-payment-method", async (req, res): Promise<vo
   });
 
   const [updated] = await db.update(customersTable)
-    .set({ stripeDefaultPaymentMethodId: paymentMethodId })
+    .set({
+      stripeDefaultPaymentMethodId: paymentMethodId,
+      cardExpiresAt: cardExpiry.toISOString().split("T")[0],
+      cardExpiryReminderSentAt: null,
+    })
     .where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)))
     .returning();
 
@@ -706,10 +726,73 @@ router.delete("/customers/:id/payment-method", async (req, res): Promise<void> =
   }
 
   await db.update(customersTable)
-    .set({ stripeDefaultPaymentMethodId: null })
+    .set({ stripeDefaultPaymentMethodId: null, cardExpiresAt: null, cardExpiryReminderSentAt: null })
     .where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)));
 
   res.json({ success: true });
+});
+
+// ── SEND CARD EXPIRY REMINDER ─────────────────────────────────────────────────
+
+/** Send a one-off card expiry reminder to a specific customer and record the send time. */
+router.post("/customers/:id/send-expiry-reminder", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+
+  const [[customer], [tenant]] = await Promise.all([
+    db.select().from(customersTable)
+      .where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId))),
+    db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId)),
+  ]);
+  if (!customer) { res.status(404).json({ error: "Not found" }); return; }
+  if (!customer.stripeDefaultPaymentMethodId) {
+    res.status(400).json({ error: "Customer has no saved card" }); return;
+  }
+
+  const proto = (req.headers["x-forwarded-proto"] as string | undefined) ?? "https";
+  const host = (req.headers["x-forwarded-host"] as string | undefined) ?? (req.headers.host as string | undefined) ?? "";
+  const portalUrl = `${proto}://${host}/portal/profile`;
+  const businessName = tenant?.name ?? "your service provider";
+  const expLabel = customer.cardExpiresAt
+    ? ` (expiring ${new Date(customer.cardExpiresAt).toLocaleString("en-US", { month: "long", year: "numeric" })})`
+    : "";
+  const firstName = customer.name?.split(" ")[0] ?? "there";
+
+  const sent: string[] = [];
+
+  // Email
+  if (!customer.emailOptOut && customer.email) {
+    const emailConfig: EmailProviderConfig = {
+      provider: (tenant?.emailProvider as EmailProviderConfig["provider"]) ?? null,
+      config: (tenant?.emailProviderConfig as Record<string, string>) ?? {},
+      fromAddress: tenant?.businessEmail ?? (tenant?.emailProviderConfig as Record<string, string>)?.["fromAddress"] ?? null,
+    };
+    const html = `<p>Hi ${firstName},</p><p>The payment card${expLabel} we have on file for your account is expiring soon. Please log in to update your card to avoid any service interruptions.</p><p><a href="${portalUrl}" style="display:inline-block;padding:10px 20px;background:#1d4ed8;color:#fff;border-radius:6px;text-decoration:none">Update my payment card →</a></p><p>Thanks,<br>${businessName}</p>`;
+    const result = await sendEmail(emailConfig, customer.email, `Action needed: update your card on file`, `Hi ${firstName}, your card${expLabel} is expiring soon. Update it here: ${portalUrl}`, html);
+    if (result.success) sent.push("email");
+    else logger.warn({ error: result.error, customerId: id }, "Card expiry email failed");
+  }
+
+  // SMS
+  if (!customer.smsOptOut && customer.phone) {
+    const smsConfig: SmsProviderConfig = {
+      platform: (tenant?.phonePlatform as SmsProviderConfig["platform"]) ?? null,
+      config: (tenant?.phonePlatformConfig as Record<string, string>) ?? {},
+      fromNumber: tenant?.mainPhoneNumber ?? null,
+    };
+    const msg = `Hi ${firstName}! Your payment card${expLabel} on file with ${businessName} is expiring soon. Please update it here: ${portalUrl}`;
+    const result = await sendSms(smsConfig, customer.phone, msg);
+    if (result.success) sent.push("sms");
+    else logger.warn({ error: result.error, customerId: id }, "Card expiry SMS failed");
+  }
+
+  // Record that a reminder was sent
+  await db.update(customersTable)
+    .set({ cardExpiryReminderSentAt: new Date() })
+    .where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)));
+
+  res.json({ success: true, channels: sent });
 });
 
 // Property history — properties this customer previously owned

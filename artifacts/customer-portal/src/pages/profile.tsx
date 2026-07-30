@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import { User, Phone, Mail, Building2, Pencil, X, Check, Loader2, CreditCard, ShieldCheck } from "lucide-react";
+import { User, Phone, Mail, Building2, Pencil, X, Check, Loader2, CreditCard, ShieldCheck, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
@@ -298,6 +298,37 @@ export default function Profile() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {pm && (() => {
+            const cardExpiry = new Date(pm.expYear, pm.expMonth, 0);
+            const daysLeft = Math.ceil((cardExpiry.getTime() - Date.now()) / 86_400_000);
+            const expired = daysLeft < 0;
+            const critical = !expired && daysLeft <= 30;
+            const warning = !expired && !critical && daysLeft <= 60;
+            if (expired || critical || warning) {
+              return (
+                <div className={`flex items-start gap-3 p-3 border rounded-md mb-3 ${expired || critical ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
+                  <AlertTriangle className={`w-4 h-4 shrink-0 mt-0.5 ${expired || critical ? 'text-red-600' : 'text-amber-600'}`} />
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium ${expired || critical ? 'text-red-800' : 'text-amber-800'}`}>
+                      {expired
+                        ? `Your card expired in ${pm.expMonth}/${pm.expYear}`
+                        : `Your card expires soon — ${pm.expMonth}/${pm.expYear} (${daysLeft} days)`}
+                    </p>
+                    <p className={`text-xs mt-0.5 ${expired || critical ? 'text-red-700' : 'text-amber-700'}`}>
+                      Please update your payment method to avoid service interruptions.
+                    </p>
+                  </div>
+                  <Button size="sm" variant="outline"
+                    className={`shrink-0 text-xs gap-1.5 ${expired || critical ? 'border-red-300 text-red-700 hover:bg-red-100' : 'border-amber-300 text-amber-700 hover:bg-amber-100'}`}
+                    onClick={openCardForm}>
+                    <CreditCard className="w-3 h-3" /> Update Card
+                  </Button>
+                </div>
+              );
+            }
+            return null;
+          })()}
+
           {pm ? (
             <div className="space-y-3">
               {/* Current card display */}

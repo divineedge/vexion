@@ -11,6 +11,7 @@ import { startPlanScheduler } from "./lib/planScheduler";
 import { startFollowupScheduler } from "./lib/followupScheduler";
 import { startClockOutScheduler } from "./lib/clockOutScheduler";
 import { startBroadcastScheduler } from "./lib/broadcastScheduler";
+import { startCardExpiryReminderScheduler } from "./lib/cardExpiryReminderScheduler";
 
 const app: Express = express();
 
@@ -71,5 +72,8 @@ startClockOutScheduler();
 
 // Start scheduled broadcast dispatcher
 startBroadcastScheduler();
+
+// Start card expiry reminder scheduler
+startCardExpiryReminderScheduler();
 
 export default app;

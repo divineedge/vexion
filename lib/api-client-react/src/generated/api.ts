@@ -42,6 +42,7 @@ import type {
   BroadcastPreviewResult,
   BulkArchiveTasks200,
   BulkArchiveTasksInput,
+  BusinessTag,
   CancelPlanVisit200,
   CancelPlanVisitInput,
   CancelRecurringSeriesParams,
@@ -65,6 +66,8 @@ import type {
   CreateExpenseInput,
   CreatePlanTemplateInput,
   CreateRecurringTemplateInput,
+  CreateSkipReasonBody,
+  CreateTagBody,
   CreateTaskFromQuoCallBody,
   CreateTaskInput,
   CreateVendorInput,
@@ -263,6 +266,8 @@ import type {
   ShrinkageReportLedger,
   SimulationResult,
   SimulationRunInput,
+  SkipNextOccurrenceBody,
+  SkipReason,
   StatusCount,
   StockAdjustmentInput,
   StockTransferInput,
@@ -291,6 +296,8 @@ import type {
   UpdateEstimateInput,
   UpdateIntegrationInput,
   UpdateRecurringTemplateInput,
+  UpdateSkipReasonBody,
+  UpdateTagBody,
   UpdateTaskInput,
   UpdateVisitInput,
   UploadUrlRequest,
@@ -1372,6 +1379,588 @@ export function useGetRevenueTrend<TData = Awaited<ReturnType<typeof getRevenueT
 
 
 
+
+export const getListTagsUrl = () => {
+
+
+
+
+  return `/api/tags`
+}
+
+/**
+ * @summary List all business tags for the tenant
+ */
+export const listTags = async ( options?: RequestInit): Promise<BusinessTag[]> => {
+
+  return customFetch<BusinessTag[]>(getListTagsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListTagsQueryKey = () => {
+    return [
+    `/api/tags`
+    ] as const;
+    }
+
+
+export const getListTagsQueryOptions = <TData = Awaited<ReturnType<typeof listTags>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTags>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListTagsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listTags>>> = ({ signal }) => listTags({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listTags>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListTagsQueryResult = NonNullable<Awaited<ReturnType<typeof listTags>>>
+export type ListTagsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all business tags for the tenant
+ */
+
+export function useListTags<TData = Awaited<ReturnType<typeof listTags>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTags>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListTagsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateTagUrl = () => {
+
+
+
+
+  return `/api/tags`
+}
+
+/**
+ * @summary Create a new business tag
+ */
+export const createTag = async (createTagBody: CreateTagBody, options?: RequestInit): Promise<BusinessTag> => {
+
+  return customFetch<BusinessTag>(getCreateTagUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createTagBody)
+  }
+);}
+
+
+
+
+
+export const getCreateTagMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTag>>, TError,{data: BodyType<CreateTagBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createTag>>, TError,{data: BodyType<CreateTagBody>}, TContext> => {
+
+const mutationKey = ['createTag'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createTag>>, {data: BodyType<CreateTagBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createTag(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateTagMutationResult = NonNullable<Awaited<ReturnType<typeof createTag>>>
+    export type CreateTagMutationBody = BodyType<CreateTagBody>
+    export type CreateTagMutationError = ErrorType<void>
+
+    /**
+ * @summary Create a new business tag
+ */
+export const useCreateTag = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTag>>, TError,{data: BodyType<CreateTagBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createTag>>,
+        TError,
+        {data: BodyType<CreateTagBody>},
+        TContext
+      > => {
+      return useMutation(getCreateTagMutationOptions(options));
+    }
+
+export const getUpdateTagUrl = (id: number,) => {
+
+
+
+
+  return `/api/tags/${id}`
+}
+
+/**
+ * @summary Rename or recolor a tag
+ */
+export const updateTag = async (id: number,
+    updateTagBody: UpdateTagBody, options?: RequestInit): Promise<BusinessTag> => {
+
+  return customFetch<BusinessTag>(getUpdateTagUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateTagBody)
+  }
+);}
+
+
+
+
+
+export const getUpdateTagMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTag>>, TError,{id: number;data: BodyType<UpdateTagBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateTag>>, TError,{id: number;data: BodyType<UpdateTagBody>}, TContext> => {
+
+const mutationKey = ['updateTag'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateTag>>, {id: number;data: BodyType<UpdateTagBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateTag(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateTagMutationResult = NonNullable<Awaited<ReturnType<typeof updateTag>>>
+    export type UpdateTagMutationBody = BodyType<UpdateTagBody>
+    export type UpdateTagMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Rename or recolor a tag
+ */
+export const useUpdateTag = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTag>>, TError,{id: number;data: BodyType<UpdateTagBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateTag>>,
+        TError,
+        {id: number;data: BodyType<UpdateTagBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateTagMutationOptions(options));
+    }
+
+export const getDeleteTagUrl = (id: number,) => {
+
+
+
+
+  return `/api/tags/${id}`
+}
+
+/**
+ * @summary Delete a tag
+ */
+export const deleteTag = async (id: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteTagUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteTagMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteTag>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteTag>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteTag'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteTag>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteTag(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteTagMutationResult = NonNullable<Awaited<ReturnType<typeof deleteTag>>>
+
+    export type DeleteTagMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a tag
+ */
+export const useDeleteTag = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteTag>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteTag>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteTagMutationOptions(options));
+    }
+
+export const getListSkipReasonsUrl = () => {
+
+
+
+
+  return `/api/skip-reasons`
+}
+
+/**
+ * @summary List all skip reasons for the tenant
+ */
+export const listSkipReasons = async ( options?: RequestInit): Promise<SkipReason[]> => {
+
+  return customFetch<SkipReason[]>(getListSkipReasonsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSkipReasonsQueryKey = () => {
+    return [
+    `/api/skip-reasons`
+    ] as const;
+    }
+
+
+export const getListSkipReasonsQueryOptions = <TData = Awaited<ReturnType<typeof listSkipReasons>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSkipReasons>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSkipReasonsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSkipReasons>>> = ({ signal }) => listSkipReasons({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSkipReasons>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSkipReasonsQueryResult = NonNullable<Awaited<ReturnType<typeof listSkipReasons>>>
+export type ListSkipReasonsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all skip reasons for the tenant
+ */
+
+export function useListSkipReasons<TData = Awaited<ReturnType<typeof listSkipReasons>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSkipReasons>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSkipReasonsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateSkipReasonUrl = () => {
+
+
+
+
+  return `/api/skip-reasons`
+}
+
+/**
+ * @summary Create a skip reason
+ */
+export const createSkipReason = async (createSkipReasonBody: CreateSkipReasonBody, options?: RequestInit): Promise<SkipReason> => {
+
+  return customFetch<SkipReason>(getCreateSkipReasonUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createSkipReasonBody)
+  }
+);}
+
+
+
+
+
+export const getCreateSkipReasonMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSkipReason>>, TError,{data: BodyType<CreateSkipReasonBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSkipReason>>, TError,{data: BodyType<CreateSkipReasonBody>}, TContext> => {
+
+const mutationKey = ['createSkipReason'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSkipReason>>, {data: BodyType<CreateSkipReasonBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSkipReason(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSkipReasonMutationResult = NonNullable<Awaited<ReturnType<typeof createSkipReason>>>
+    export type CreateSkipReasonMutationBody = BodyType<CreateSkipReasonBody>
+    export type CreateSkipReasonMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a skip reason
+ */
+export const useCreateSkipReason = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSkipReason>>, TError,{data: BodyType<CreateSkipReasonBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSkipReason>>,
+        TError,
+        {data: BodyType<CreateSkipReasonBody>},
+        TContext
+      > => {
+      return useMutation(getCreateSkipReasonMutationOptions(options));
+    }
+
+export const getUpdateSkipReasonUrl = (id: number,) => {
+
+
+
+
+  return `/api/skip-reasons/${id}`
+}
+
+/**
+ * @summary Update a skip reason
+ */
+export const updateSkipReason = async (id: number,
+    updateSkipReasonBody: UpdateSkipReasonBody, options?: RequestInit): Promise<SkipReason> => {
+
+  return customFetch<SkipReason>(getUpdateSkipReasonUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateSkipReasonBody)
+  }
+);}
+
+
+
+
+
+export const getUpdateSkipReasonMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSkipReason>>, TError,{id: number;data: BodyType<UpdateSkipReasonBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSkipReason>>, TError,{id: number;data: BodyType<UpdateSkipReasonBody>}, TContext> => {
+
+const mutationKey = ['updateSkipReason'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSkipReason>>, {id: number;data: BodyType<UpdateSkipReasonBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateSkipReason(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSkipReasonMutationResult = NonNullable<Awaited<ReturnType<typeof updateSkipReason>>>
+    export type UpdateSkipReasonMutationBody = BodyType<UpdateSkipReasonBody>
+    export type UpdateSkipReasonMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update a skip reason
+ */
+export const useUpdateSkipReason = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSkipReason>>, TError,{id: number;data: BodyType<UpdateSkipReasonBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateSkipReason>>,
+        TError,
+        {id: number;data: BodyType<UpdateSkipReasonBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateSkipReasonMutationOptions(options));
+    }
+
+export const getDeleteSkipReasonUrl = (id: number,) => {
+
+
+
+
+  return `/api/skip-reasons/${id}`
+}
+
+/**
+ * @summary Delete a skip reason
+ */
+export const deleteSkipReason = async (id: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteSkipReasonUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteSkipReasonMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSkipReason>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteSkipReason>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteSkipReason'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSkipReason>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteSkipReason(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteSkipReasonMutationResult = NonNullable<Awaited<ReturnType<typeof deleteSkipReason>>>
+
+    export type DeleteSkipReasonMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a skip reason
+ */
+export const useDeleteSkipReason = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSkipReason>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteSkipReason>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteSkipReasonMutationOptions(options));
+    }
 
 export const getListCustomersUrl = (params?: ListCustomersParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -3396,14 +3985,15 @@ export const getSkipNextOccurrenceUrl = (id: number,) => {
 /**
  * @summary Skip the next scheduled occurrence of a recurring series
  */
-export const skipNextOccurrence = async (id: number, options?: RequestInit): Promise<Job> => {
+export const skipNextOccurrence = async (id: number,
+    skipNextOccurrenceBody?: SkipNextOccurrenceBody, options?: RequestInit): Promise<Job> => {
 
   return customFetch<Job>(getSkipNextOccurrenceUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(skipNextOccurrenceBody)
   }
 );}
 
@@ -3412,8 +4002,8 @@ export const skipNextOccurrence = async (id: number, options?: RequestInit): Pro
 
 
 export const getSkipNextOccurrenceMutationOptions = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof skipNextOccurrence>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof skipNextOccurrence>>, TError,{id: number}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof skipNextOccurrence>>, TError,{id: number;data?: BodyType<SkipNextOccurrenceBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof skipNextOccurrence>>, TError,{id: number;data?: BodyType<SkipNextOccurrenceBody>}, TContext> => {
 
 const mutationKey = ['skipNextOccurrence'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -3425,10 +4015,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof skipNextOccurrence>>, {id: number}> = (props) => {
-          const {id} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof skipNextOccurrence>>, {id: number;data?: BodyType<SkipNextOccurrenceBody>}> = (props) => {
+          const {id,data} = props ?? {};
 
-          return  skipNextOccurrence(id,requestOptions)
+          return  skipNextOccurrence(id,data,requestOptions)
         }
 
 
@@ -3439,18 +4029,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type SkipNextOccurrenceMutationResult = NonNullable<Awaited<ReturnType<typeof skipNextOccurrence>>>
-
+    export type SkipNextOccurrenceMutationBody = BodyType<SkipNextOccurrenceBody> | undefined
     export type SkipNextOccurrenceMutationError = ErrorType<void>
 
     /**
  * @summary Skip the next scheduled occurrence of a recurring series
  */
 export const useSkipNextOccurrence = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof skipNextOccurrence>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof skipNextOccurrence>>, TError,{id: number;data?: BodyType<SkipNextOccurrenceBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof skipNextOccurrence>>,
         TError,
-        {id: number},
+        {id: number;data?: BodyType<SkipNextOccurrenceBody>},
         TContext
       > => {
       return useMutation(getSkipNextOccurrenceMutationOptions(options));

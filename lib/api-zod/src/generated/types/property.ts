@@ -46,5 +46,7 @@ export interface Property {
      * @nullable
      */
   sizeUnit?: string | null;
+  /** Tag names applied to this property */
+  tags?: string[];
   createdAt: string;
 }

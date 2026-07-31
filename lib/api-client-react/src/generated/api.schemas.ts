@@ -1004,6 +1004,8 @@ export interface Property {
      * @nullable
      */
   sizeUnit?: string | null;
+  /** Tag names applied to this property */
+  tags?: string[];
   createdAt: string;
 }
 
@@ -1354,6 +1356,18 @@ export interface Job {
   smsReminderEnabled?: boolean;
   /** When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed. */
   holdFromBilling?: boolean;
+  /** Tag names applied to this job */
+  tags?: string[];
+  /**
+     * FK to skip_reasons — set when this occurrence was skipped with a reason
+     * @nullable
+     */
+  skipReasonId?: number | null;
+  /**
+     * Optional note added alongside the skip reason
+     * @nullable
+     */
+  skipNote?: string | null;
   createdAt: string;
 }
 
@@ -4754,6 +4768,29 @@ export interface RepairLogSummary {
   byYear: RepairLogSummaryByYearItem[];
 }
 
+export interface BusinessTag {
+  id: number;
+  tenantId: number;
+  name: string;
+  slug: string;
+  color: string;
+  createdAt: string;
+}
+
+export type SkipReasonActionConfig = { [key: string]: unknown };
+
+export interface SkipReason {
+  id: number;
+  tenantId: number;
+  label: string;
+  /** none | notify_customer | flag_property | create_task */
+  action: string;
+  actionConfig?: SkipReasonActionConfig;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+}
+
 export interface TaskNotification {
   id: number;
   tenantId: number;
@@ -4774,6 +4811,36 @@ export type CreateTaskFromQuoCallBody = {
 export type SendJobReminder200 = {
   sent?: string[];
   jobId?: number;
+};
+
+export type CreateTagBody = {
+  name: string;
+  color?: string;
+};
+
+export type UpdateTagBody = {
+  name?: string;
+  color?: string;
+};
+
+export type CreateSkipReasonBodyActionConfig = { [key: string]: unknown };
+
+export type CreateSkipReasonBody = {
+  label: string;
+  action?: string;
+  actionConfig?: CreateSkipReasonBodyActionConfig;
+  isActive?: boolean;
+  sortOrder?: number;
+};
+
+export type UpdateSkipReasonBodyActionConfig = { [key: string]: unknown };
+
+export type UpdateSkipReasonBody = {
+  label?: string;
+  action?: string;
+  actionConfig?: UpdateSkipReasonBodyActionConfig;
+  isActive?: boolean;
+  sortOrder?: number;
 };
 
 export type ListCustomersParams = {
@@ -4810,6 +4877,13 @@ startDate?: string;
 endDate?: string;
 customerId?: number;
 routeTemplateId?: number;
+};
+
+export type SkipNextOccurrenceBody = {
+  /** ID of a configured skip reason */
+  reasonId?: number;
+  /** Optional free-text note alongside the reason */
+  note?: string;
 };
 
 export type CancelRecurringSeriesParams = {

@@ -98,6 +98,13 @@ export const jobsTable = pgTable("jobs", {
    */
   source: text("source"),
 
+  /** Tags applied to this job — names drawn from the tenant's businessTagsTable library */
+  tags: text("tags").array().default([]),
+  /** FK to skip_reasons — set when the job occurrence was skipped with a reason */
+  skipReasonId: integer("skip_reason_id"),
+  /** Free-text note added alongside the skip reason */
+  skipNote: text("skip_note"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

@@ -93,5 +93,17 @@ export interface Job {
   smsReminderEnabled?: boolean;
   /** When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed. */
   holdFromBilling?: boolean;
+  /** Tag names applied to this job */
+  tags?: string[];
+  /**
+     * FK to skip_reasons — set when this occurrence was skipped with a reason
+     * @nullable
+     */
+  skipReasonId?: number | null;
+  /**
+     * Optional note added alongside the skip reason
+     * @nullable
+     */
+  skipNote?: string | null;
   createdAt: string;
 }

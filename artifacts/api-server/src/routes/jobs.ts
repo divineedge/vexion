@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import crypto from "crypto";
-import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable, invoicesTable, tenantsTable, blueprintsTable, chemicalApplicationsTable, customerPlansTable, equipmentFuelLogsTable, routeTemplatesTable } from "@workspace/db";
+import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable, invoicesTable, tenantsTable, blueprintsTable, chemicalApplicationsTable, customerPlansTable, equipmentFuelLogsTable, routeTemplatesTable, skipReasonsTable, taskNotificationsTable, internalTasksTable } from "@workspace/db";
 import { eq, and, or, sql, desc, asc, isNotNull, isNull, ne, inArray, min, gt } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { getCallerRole, isAdminRole } from "../lib/roles";
@@ -8,6 +8,7 @@ import { resendReminderForJob } from "../lib/reminderScheduler";
 import { nthOccurrenceAfterRoot, describeRule, type RecurrenceRule } from "../lib/recurrenceEngine";
 import { enqueueInvoiceEmail } from "../lib/billingScheduler";
 import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
+import { sendSms, type SmsProviderConfig } from "../lib/smsProvider";
 import {
   importUpload,
   handleExportRequest,
@@ -256,6 +257,9 @@ function formatJob(
     isOneTimeReschedule: !!j.isOneTimeReschedule,
     originalScheduledDate: j.originalScheduledDate?.toISOString() ?? null,
     smsReminderEnabled: j.smsReminderEnabled ?? false,
+    tags: (j.tags as string[]) ?? [],
+    skipReasonId: j.skipReasonId ?? null,
+    skipNote: j.skipNote ?? null,
   };
 }
 
@@ -455,7 +459,7 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const { title, description, status, priority, assigneeId, crewId, scheduledAt, estimatedDuration, recurrenceRule, editScope, smsReminderEnabled, holdFromBilling, planId } = req.body;
+  const { title, description, status, priority, assigneeId, crewId, scheduledAt, estimatedDuration, recurrenceRule, editScope, smsReminderEnabled, holdFromBilling, planId, tags } = req.body;
 
   // Fetch current job to check if it's a recurring instance
   const [currentJob] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
@@ -502,6 +506,7 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
     ...(smsReminderEnabled !== undefined && { smsReminderEnabled: smsReminderEnabled === true || smsReminderEnabled === "true" }),
     ...(holdFromBilling !== undefined && { holdFromBilling: holdFromBilling === true || holdFromBilling === "true" }),
     ...(resolvedPlanId !== undefined && { planId: resolvedPlanId }),
+    ...(tags !== undefined && { tags }),
   };
 
   // Handle "forward" or "all" scope: update the root series template
@@ -784,6 +789,7 @@ router.post("/jobs/:id/skip-next", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
   const id = parseInt(req.params.id, 10);
+  const { reasonId, note } = req.body as { reasonId?: number; note?: string };
 
   // Resolve root
   const [job] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
@@ -803,6 +809,15 @@ router.post("/jobs/:id/skip-next", async (req, res): Promise<void> => {
     }
   }
 
+  // Validate skip reason if provided
+  let skipReason: typeof skipReasonsTable.$inferSelect | null = null;
+  if (reasonId) {
+    const [r] = await db.select().from(skipReasonsTable)
+      .where(and(eq(skipReasonsTable.id, reasonId), eq(skipReasonsTable.tenantId, tenantId)));
+    if (!r) { res.status(400).json({ error: "Skip reason not found" }); return; }
+    skipReason = r;
+  }
+
   // Skip semantics (exactly one occurrence, regardless of pre-generation state):
   //
   //   Case A — scheduler has already materialized the next child:
@@ -811,8 +826,8 @@ router.post("/jobs/:id/skip-next", async (req, res): Promise<void> => {
   //
   //   Case B — no child materialized yet:
   //     Increment recurrenceCount so the scheduler skips the next computed slot.
+  let skippedJobId: number | null = null;
   await db.transaction(async tx => {
-    // Find the earliest upcoming scheduled child (already materialized by the scheduler)
     const [nextChild] = await tx
       .select({ id: jobsTable.id })
       .from(jobsTable)
@@ -828,14 +843,21 @@ router.post("/jobs/:id/skip-next", async (req, res): Promise<void> => {
       .limit(1);
 
     if (nextChild) {
-      // Case A: cancel the materialized next occurrence; count already reflects this slot
+      skippedJobId = nextChild.id;
       await tx.update(jobsTable)
-        .set({ status: "cancelled" })
+        .set({
+          status: "cancelled",
+          ...(reasonId && { skipReasonId: reasonId }),
+          ...(note && { skipNote: note }),
+        })
         .where(and(eq(jobsTable.id, nextChild.id), eq(jobsTable.tenantId, tenantId)));
     } else {
-      // Case B: no child yet — advance count so the scheduler bypasses the next computed date
       await tx.update(jobsTable)
-        .set({ recurrenceCount: sql`${jobsTable.recurrenceCount} + 1` })
+        .set({
+          recurrenceCount: sql`${jobsTable.recurrenceCount} + 1`,
+          ...(reasonId && { skipReasonId: reasonId }),
+          ...(note && { skipNote: note }),
+        })
         .where(and(eq(jobsTable.id, rootId), eq(jobsTable.tenantId, tenantId)));
     }
   });
@@ -843,6 +865,107 @@ router.post("/jobs/:id/skip-next", async (req, res): Promise<void> => {
   const [updated] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, rootId), eq(jobsTable.tenantId, tenantId)));
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
   res.json(formatJob(updated));
+
+  // ── Post-skip side-effects (fire-and-forget) ──────────────────────────────
+  if (skipReason) {
+    (async () => {
+      try {
+        const reasonLabel = skipReason!.label;
+        const jobTitle = updated.title;
+        const customerId = updated.customerId;
+        const propertyId = updated.propertyId;
+
+        // 1. Notify all office/admin staff in-app
+        const officeUsers = await db
+          .select({ id: usersTable.id })
+          .from(usersTable)
+          .where(and(
+            eq(usersTable.tenantId, tenantId),
+            sql`${usersTable.role} IN ('company_owner', 'office_manager', 'department_manager')`,
+            eq(usersTable.isActive, true),
+          ));
+
+        if (officeUsers.length > 0) {
+          const actorRow = await db.select({ name: usersTable.name }).from(usersTable)
+            .where(eq(usersTable.id, userId)).limit(1);
+          const actorName = actorRow[0]?.name ?? "Staff";
+          const message = `"${jobTitle}" was skipped — Reason: ${reasonLabel}${note ? ` — "${note}"` : ""}. Skipped by ${actorName}.`;
+          await db.insert(taskNotificationsTable).values(
+            officeUsers.map(u => ({
+              tenantId,
+              recipientUserId: u.id,
+              taskId: null,
+              type: "job_skipped",
+              message,
+              linkPath: `/schedule`,
+              isRead: false,
+            }))
+          );
+        }
+
+        // 2. Execute configured action
+        const actionConfig = (skipReason!.actionConfig ?? {}) as Record<string, string>;
+
+        if (skipReason!.action === "notify_customer" && customerId) {
+          const [customer, tenant] = await Promise.all([
+            db.select({ phone: customersTable.phone, name: customersTable.name, smsOptOut: customersTable.smsOptOut })
+              .from(customersTable).where(eq(customersTable.id, customerId)).limit(1),
+            db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
+          ]);
+          const c = customer[0];
+          const t = tenant[0];
+          if (c && !c.smsOptOut && c.phone && t) {
+            const firstName = c.name?.split(" ")[0] ?? "there";
+            const defaultMsg = `Hi ${firstName}, your upcoming service "${jobTitle}" has been skipped — Reason: ${reasonLabel}. We'll be in touch to reschedule if needed.`;
+            const msg = actionConfig["messageTemplate"]
+              ? actionConfig["messageTemplate"].replace("{firstName}", firstName).replace("{jobTitle}", jobTitle).replace("{reason}", reasonLabel)
+              : defaultMsg;
+            const smsConfig: SmsProviderConfig = {
+              platform: (t.phonePlatform as SmsProviderConfig["platform"]) ?? null,
+              config: (t.phonePlatformConfig as Record<string, string>) ?? {},
+              fromNumber: t.mainPhoneNumber ?? null,
+            };
+            await sendSms(smsConfig, c.phone, msg).catch(() => {});
+          }
+        }
+
+        if (skipReason!.action === "flag_property" && propertyId) {
+          const defaultNote = `Job "${jobTitle}" was skipped — Reason: ${reasonLabel}`;
+          const flagNote = actionConfig["note"] || defaultNote;
+          if (customerId) {
+            await db.insert(customerAlertsTable).values({
+              tenantId,
+              customerId,
+              jobId: skippedJobId ?? updated.id,
+              type: "skip_flag",
+              message: flagNote,
+              status: "pending",
+            }).catch(() => {});
+          }
+        }
+
+        if (skipReason!.action === "create_task") {
+          const defaultTitle = `Follow up: "${jobTitle}" was skipped (${reasonLabel})`;
+          const taskTitle = actionConfig["title"] || defaultTitle;
+          const priority = (actionConfig["priority"] as "low" | "normal" | "high") ?? "normal";
+          await db.insert(internalTasksTable).values({
+            tenantId,
+            title: taskTitle,
+            description: note || `Job was skipped with reason: ${reasonLabel}`,
+            taskType: "custom",
+            createdById: userId,
+            assignedToRole: "admin_office",
+            priority,
+            status: "open",
+            contextType: "job",
+            contextId: skippedJobId ?? updated.id,
+          }).catch(() => {});
+        }
+      } catch (err) {
+        // fire-and-forget — never breaks the response
+      }
+    })();
+  }
 });
 
 // ── Pause / resume series ────────────────────────────────────────────────────

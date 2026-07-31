@@ -15,6 +15,8 @@ import {
   useDisconnectGmail,
   useListEquipmentTypes, getListEquipmentTypesQueryKey,
   useCreateEquipmentType, useUpdateEquipmentType, useDeleteEquipmentType,
+  useListTags, getListTagsQueryKey, useCreateTag, useUpdateTag, useDeleteTag,
+  useListSkipReasons, getListSkipReasonsQueryKey, useCreateSkipReason, useUpdateSkipReason, useDeleteSkipReason,
   customFetch,
 } from '@workspace/api-client-react';
 import type { FollowupTriggerConfig } from '@workspace/api-client-react';
@@ -41,7 +43,7 @@ import {
   ArrowRight, FlaskConical, Pencil, X, MapPin, Ruler, Navigation, MessageSquare,
   Phone, Mail, Send, Wifi, WifiOff, CheckCircle, AlertCircle,
   ImageIcon, Bell, Star as StarIcon, Link, Camera, Loader2,
-  PhoneMissed as PhoneMissedIcon, FileText,
+  PhoneMissed as PhoneMissedIcon, FileText, Tag, SkipForward, Zap,
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -141,6 +143,33 @@ export default function SettingsPage() {
   const [newTypeLabel, setNewTypeLabel] = useState('');
   const [editingTypeId, setEditingTypeId] = useState<number | null>(null);
   const [editingTypeLabel, setEditingTypeLabel] = useState('');
+
+  // Business Tags
+  const { data: bizTags = [] } = useListTags({ query: { queryKey: getListTagsQueryKey() } });
+  const createTag = useCreateTag();
+  const updateTagMutation = useUpdateTag();
+  const deleteTagMutation = useDeleteTag();
+  const [newTagName, setNewTagName] = useState('');
+  const [newTagColor, setNewTagColor] = useState('#6b7280');
+  const [editingTagId, setEditingTagId] = useState<number | null>(null);
+  const [editingTagName, setEditingTagName] = useState('');
+  const [editingTagColor, setEditingTagColor] = useState('#6b7280');
+
+  // Skip Reasons
+  const { data: skipReasons = [] } = useListSkipReasons({ query: { queryKey: getListSkipReasonsQueryKey() } });
+  const createSkipReason = useCreateSkipReason();
+  const updateSkipReasonMutation = useUpdateSkipReason();
+  const deleteSkipReasonMutation = useDeleteSkipReason();
+  const [newSkipLabel, setNewSkipLabel] = useState('');
+  const [newSkipAction, setNewSkipAction] = useState('none');
+  const [newSkipMsgTemplate, setNewSkipMsgTemplate] = useState('');
+  const [newSkipFlagNote, setNewSkipFlagNote] = useState('');
+  const [newSkipTaskTitle, setNewSkipTaskTitle] = useState('');
+  const [editingSkipId, setEditingSkipId] = useState<number | null>(null);
+  const [editingSkipAction, setEditingSkipAction] = useState('none');
+  const [editingSkipMsgTemplate, setEditingSkipMsgTemplate] = useState('');
+  const [editingSkipFlagNote, setEditingSkipFlagNote] = useState('');
+  const [editingSkipTaskTitle, setEditingSkipTaskTitle] = useState('');
 
   // Communications
   const [mainPhoneNumber, setMainPhoneNumber] = useState('');
@@ -602,6 +631,8 @@ export default function SettingsPage() {
           <TabsTrigger value="followups"><PhoneMissedIcon className="w-4 h-4 mr-2" />Follow-Ups</TabsTrigger>
           <TabsTrigger value="notification-templates"><MessageSquare className="w-4 h-4 mr-2" />Msg Templates</TabsTrigger>
           <TabsTrigger value="reviews"><StarIcon className="w-4 h-4 mr-2" />Reviews</TabsTrigger>
+          <TabsTrigger value="tags"><Tag className="w-4 h-4 mr-2" />Tags</TabsTrigger>
+          <TabsTrigger value="skip-reasons"><SkipForward className="w-4 h-4 mr-2" />Skip Reasons</TabsTrigger>
           {isOwner && <TabsTrigger value="advanced"><Shield className="w-4 h-4 mr-2" />Advanced</TabsTrigger>}
         </TabsList>
 
@@ -3341,6 +3372,283 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+        {/* ── Tags ── */}
+        <TabsContent value="tags" className="space-y-6 focus-visible:outline-none">
+          <Card>
+            <CardHeader>
+              <CardTitle>Business Tags</CardTitle>
+              <CardDescription>
+                Define your tag library here. Tags created in settings can be applied to customers, jobs, and properties.
+                Near-duplicate names (like "Commercial" and "commercial") are blocked automatically.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Create new tag */}
+              <div className="flex items-center gap-3">
+                <input
+                  type="color"
+                  value={newTagColor}
+                  onChange={e => setNewTagColor(e.target.value)}
+                  className="w-9 h-9 rounded-md border cursor-pointer"
+                  title="Choose tag color"
+                />
+                <Input
+                  placeholder="Tag name, e.g. Commercial, Priority, Irrigation"
+                  value={newTagName}
+                  onChange={e => setNewTagName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && newTagName.trim()) {
+                      createTag.mutate({ data: { name: newTagName.trim(), color: newTagColor } }, {
+                        onSuccess: () => { toast.success('Tag created'); setNewTagName(''); setNewTagColor('#6b7280'); qc.invalidateQueries({ queryKey: getListTagsQueryKey() }); },
+                        onError: (err: unknown) => {
+                          const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to create tag';
+                          toast.error(msg);
+                        },
+                      });
+                    }
+                  }}
+                />
+                <Button
+                  disabled={!newTagName.trim() || createTag.isPending}
+                  onClick={() => {
+                    if (!newTagName.trim()) return;
+                    createTag.mutate({ data: { name: newTagName.trim(), color: newTagColor } }, {
+                      onSuccess: () => { toast.success('Tag created'); setNewTagName(''); setNewTagColor('#6b7280'); qc.invalidateQueries({ queryKey: getListTagsQueryKey() }); },
+                      onError: (err: unknown) => {
+                        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to create tag';
+                        toast.error(msg);
+                      },
+                    });
+                  }}
+                >
+                  <Plus className="w-4 h-4 mr-1" /> Add Tag
+                </Button>
+              </div>
+
+              {/* Tag list */}
+              {bizTags.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No tags yet. Create your first tag above.</p>
+              ) : (
+                <div className="divide-y rounded-md border">
+                  {bizTags.map(tag => (
+                    <div key={tag.id} className="flex items-center gap-3 px-3 py-2.5">
+                      {editingTagId === tag.id ? (
+                        <>
+                          <input
+                            type="color"
+                            value={editingTagColor}
+                            onChange={e => setEditingTagColor(e.target.value)}
+                            className="w-8 h-8 rounded-md border cursor-pointer flex-shrink-0"
+                          />
+                          <Input
+                            value={editingTagName}
+                            onChange={e => setEditingTagName(e.target.value)}
+                            className="h-8 text-sm flex-1"
+                            autoFocus
+                            onKeyDown={e => {
+                              if (e.key === 'Escape') setEditingTagId(null);
+                              if (e.key === 'Enter') {
+                                updateTagMutation.mutate({ id: tag.id, data: { name: editingTagName, color: editingTagColor } }, {
+                                  onSuccess: () => { toast.success('Tag updated'); setEditingTagId(null); qc.invalidateQueries({ queryKey: getListTagsQueryKey() }); },
+                                  onError: () => toast.error('Failed to update tag'),
+                                });
+                              }
+                            }}
+                          />
+                          <Button size="sm" className="h-8"
+                            onClick={() => updateTagMutation.mutate({ id: tag.id, data: { name: editingTagName, color: editingTagColor } }, {
+                              onSuccess: () => { toast.success('Tag updated'); setEditingTagId(null); qc.invalidateQueries({ queryKey: getListTagsQueryKey() }); },
+                              onError: () => toast.error('Failed to update tag'),
+                            })}>Save</Button>
+                          <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditingTagId(null)}><X className="w-3 h-3" /></Button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: tag.color }} />
+                          <span className="text-sm flex-1 font-medium">{tag.name}</span>
+                          <span className="text-xs text-muted-foreground font-mono">#{tag.slug}</span>
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Edit tag" onClick={() => { setEditingTagId(tag.id); setEditingTagName(tag.name); setEditingTagColor(tag.color); }}><Pencil className="w-3 h-3" /></Button>
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive" title="Delete tag"
+                            onClick={() => {
+                              if (!confirm(`Delete tag "${tag.name}"? It will be removed from the library but existing labels on records won't be changed.`)) return;
+                              deleteTagMutation.mutate({ id: tag.id }, {
+                                onSuccess: () => { toast.success('Tag deleted'); qc.invalidateQueries({ queryKey: getListTagsQueryKey() }); },
+                                onError: () => toast.error('Failed to delete tag'),
+                              });
+                            }}
+                          ><Trash2 className="w-3 h-3" /></Button>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Skip Reasons ── */}
+        <TabsContent value="skip-reasons" className="space-y-6 focus-visible:outline-none">
+          <Card>
+            <CardHeader>
+              <CardTitle>Job Skip Reasons</CardTitle>
+              <CardDescription>
+                When a recurring job occurrence is skipped, staff must choose a reason from this list.
+                Each reason can optionally trigger an automatic action — notify the customer, flag the property, or create a follow-up task for the office.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {/* Add new reason */}
+              <div className="space-y-3 border rounded-md p-4 bg-muted/30">
+                <p className="text-sm font-medium">Add a new reason</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Reason label</label>
+                    <Input placeholder="e.g. Weather, Customer request, Not growing" value={newSkipLabel} onChange={e => setNewSkipLabel(e.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Automatic action</label>
+                    <Select value={newSkipAction} onValueChange={v => { setNewSkipAction(v); setNewSkipMsgTemplate(''); setNewSkipFlagNote(''); setNewSkipTaskTitle(''); }}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None — just log it</SelectItem>
+                        <SelectItem value="notify_customer">Text the customer</SelectItem>
+                        <SelectItem value="flag_property">Flag the property</SelectItem>
+                        <SelectItem value="create_task">Create an office task</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                {newSkipAction === 'notify_customer' && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Custom SMS message <span className="font-normal">(optional — uses {'{firstName}'}, {'{jobTitle}'}, {'{reason}'})</span></label>
+                    <Input placeholder="Hi {firstName}, your service {jobTitle} was skipped — {reason}." value={newSkipMsgTemplate} onChange={e => setNewSkipMsgTemplate(e.target.value)} />
+                  </div>
+                )}
+                {newSkipAction === 'flag_property' && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Flag note <span className="font-normal">(optional — defaults to the job title + reason)</span></label>
+                    <Input placeholder="e.g. Property was inaccessible" value={newSkipFlagNote} onChange={e => setNewSkipFlagNote(e.target.value)} />
+                  </div>
+                )}
+                {newSkipAction === 'create_task' && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Task title <span className="font-normal">(optional)</span></label>
+                    <Input placeholder="e.g. Follow up: service skipped due to {reason}" value={newSkipTaskTitle} onChange={e => setNewSkipTaskTitle(e.target.value)} />
+                  </div>
+                )}
+                <Button
+                  disabled={!newSkipLabel.trim() || createSkipReason.isPending}
+                  onClick={() => {
+                    const cfg: Record<string, string> = {};
+                    if (newSkipAction === 'notify_customer' && newSkipMsgTemplate) cfg['messageTemplate'] = newSkipMsgTemplate;
+                    if (newSkipAction === 'flag_property' && newSkipFlagNote) cfg['note'] = newSkipFlagNote;
+                    if (newSkipAction === 'create_task' && newSkipTaskTitle) cfg['title'] = newSkipTaskTitle;
+                    createSkipReason.mutate({ data: { label: newSkipLabel.trim(), action: newSkipAction, actionConfig: cfg } }, {
+                      onSuccess: () => { toast.success('Skip reason added'); setNewSkipLabel(''); setNewSkipAction('none'); setNewSkipMsgTemplate(''); setNewSkipFlagNote(''); setNewSkipTaskTitle(''); qc.invalidateQueries({ queryKey: getListSkipReasonsQueryKey() }); },
+                      onError: () => toast.error('Failed to add skip reason'),
+                    });
+                  }}
+                >
+                  <Plus className="w-4 h-4 mr-1" /> Add Reason
+                </Button>
+              </div>
+
+              {/* Reason list */}
+              {skipReasons.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No skip reasons configured yet.</p>
+              ) : (
+                <div className="divide-y rounded-md border">
+                  {skipReasons.map(reason => {
+                    const ac = (reason.actionConfig ?? {}) as Record<string, string>;
+                    const actionLabel: Record<string, string> = {
+                      none: 'No action',
+                      notify_customer: 'Text customer',
+                      flag_property: 'Flag property',
+                      create_task: 'Create task',
+                    };
+                    return (
+                      <div key={reason.id} className="px-3 py-3 space-y-2">
+                        {editingSkipId === reason.id ? (
+                          <div className="space-y-3">
+                            <Select value={editingSkipAction} onValueChange={v => { setEditingSkipAction(v); setEditingSkipMsgTemplate(''); setEditingSkipFlagNote(''); setEditingSkipTaskTitle(''); }}>
+                              <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">None — just log it</SelectItem>
+                                <SelectItem value="notify_customer">Text the customer</SelectItem>
+                                <SelectItem value="flag_property">Flag the property</SelectItem>
+                                <SelectItem value="create_task">Create an office task</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            {editingSkipAction === 'notify_customer' && (
+                              <Input placeholder="Custom SMS message (optional)" value={editingSkipMsgTemplate} onChange={e => setEditingSkipMsgTemplate(e.target.value)} />
+                            )}
+                            {editingSkipAction === 'flag_property' && (
+                              <Input placeholder="Flag note (optional)" value={editingSkipFlagNote} onChange={e => setEditingSkipFlagNote(e.target.value)} />
+                            )}
+                            {editingSkipAction === 'create_task' && (
+                              <Input placeholder="Task title (optional)" value={editingSkipTaskTitle} onChange={e => setEditingSkipTaskTitle(e.target.value)} />
+                            )}
+                            <div className="flex gap-2">
+                              <Button size="sm" onClick={() => {
+                                const cfg: Record<string, string> = {};
+                                if (editingSkipAction === 'notify_customer' && editingSkipMsgTemplate) cfg['messageTemplate'] = editingSkipMsgTemplate;
+                                if (editingSkipAction === 'flag_property' && editingSkipFlagNote) cfg['note'] = editingSkipFlagNote;
+                                if (editingSkipAction === 'create_task' && editingSkipTaskTitle) cfg['title'] = editingSkipTaskTitle;
+                                updateSkipReasonMutation.mutate({ id: reason.id, data: { action: editingSkipAction, actionConfig: cfg } }, {
+                                  onSuccess: () => { toast.success('Updated'); setEditingSkipId(null); qc.invalidateQueries({ queryKey: getListSkipReasonsQueryKey() }); },
+                                  onError: () => toast.error('Failed to update'),
+                                });
+                              }}>Save</Button>
+                              <Button size="sm" variant="ghost" onClick={() => setEditingSkipId(null)}>Cancel</Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium">{reason.label}</p>
+                              <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                                <Zap className="w-3 h-3" />
+                                {actionLabel[reason.action] ?? reason.action}
+                                {reason.action !== 'none' && ac['messageTemplate'] && <span className="italic">— custom message set</span>}
+                                {reason.action !== 'none' && ac['note'] && <span className="italic">— custom note set</span>}
+                                {reason.action !== 'none' && ac['title'] && <span className="italic">— custom title set</span>}
+                              </p>
+                            </div>
+                            <Switch
+                              checked={reason.isActive}
+                              title={reason.isActive ? 'Disable this reason' : 'Enable this reason'}
+                              onCheckedChange={v => updateSkipReasonMutation.mutate({ id: reason.id, data: { isActive: v } }, {
+                                onSuccess: () => qc.invalidateQueries({ queryKey: getListSkipReasonsQueryKey() }),
+                              })}
+                            />
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Edit action" onClick={() => {
+                              setEditingSkipId(reason.id);
+                              setEditingSkipAction(reason.action);
+                              setEditingSkipMsgTemplate(ac['messageTemplate'] ?? '');
+                              setEditingSkipFlagNote(ac['note'] ?? '');
+                              setEditingSkipTaskTitle(ac['title'] ?? '');
+                            }}><Pencil className="w-3 h-3" /></Button>
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive" title="Delete reason"
+                              onClick={() => {
+                                if (!confirm(`Delete skip reason "${reason.label}"?`)) return;
+                                deleteSkipReasonMutation.mutate({ id: reason.id }, {
+                                  onSuccess: () => { toast.success('Deleted'); qc.invalidateQueries({ queryKey: getListSkipReasonsQueryKey() }); },
+                                  onError: () => toast.error('Failed to delete'),
+                                });
+                              }}
+                            ><Trash2 className="w-3 h-3" /></Button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
       {/* Remove User Confirmation */}
       {deleteUserPending != null && (

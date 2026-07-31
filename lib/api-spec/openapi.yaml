@@ -7,6 +7,10 @@ servers:
   - url: /api
     description: Base API path
 tags:
+  - name: tags
+    description: Business tag library
+  - name: skipReasons
+    description: Job skip reason configuration
   - name: health
     description: Health operations
   - name: auth
@@ -307,6 +311,170 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/RevenueTrendItem"
+
+  # TAGS
+  /tags:
+    get:
+      operationId: listTags
+      tags: [tags]
+      summary: List all business tags for the tenant
+      responses:
+        "200":
+          description: List of tags
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BusinessTag"
+    post:
+      operationId: createTag
+      tags: [tags]
+      summary: Create a new business tag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                color: { type: string }
+      responses:
+        "201":
+          description: Tag created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BusinessTag"
+        "409":
+          description: Duplicate tag name
+
+  /tags/{id}:
+    patch:
+      operationId: updateTag
+      tags: [tags]
+      summary: Rename or recolor a tag
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                color: { type: string }
+      responses:
+        "200":
+          description: Updated tag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BusinessTag"
+    delete:
+      operationId: deleteTag
+      tags: [tags]
+      summary: Delete a tag
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # SKIP REASONS
+  /skip-reasons:
+    get:
+      operationId: listSkipReasons
+      tags: [skipReasons]
+      summary: List all skip reasons for the tenant
+      responses:
+        "200":
+          description: List of skip reasons
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SkipReason"
+    post:
+      operationId: createSkipReason
+      tags: [skipReasons]
+      summary: Create a skip reason
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [label]
+              properties:
+                label: { type: string }
+                action: { type: string }
+                actionConfig: { type: object, additionalProperties: true }
+                isActive: { type: boolean }
+                sortOrder: { type: integer }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkipReason"
+
+  /skip-reasons/{id}:
+    patch:
+      operationId: updateSkipReason
+      tags: [skipReasons]
+      summary: Update a skip reason
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label: { type: string }
+                action: { type: string }
+                actionConfig: { type: object, additionalProperties: true }
+                isActive: { type: boolean }
+                sortOrder: { type: integer }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkipReason"
+    delete:
+      operationId: deleteSkipReason
+      tags: [skipReasons]
+      summary: Delete a skip reason
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
 
   # CUSTOMERS
   /customers:
@@ -904,6 +1072,19 @@ paths:
           required: true
           schema:
             type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reasonId:
+                  type: integer
+                  description: ID of a configured skip reason
+                note:
+                  type: string
+                  description: Optional free-text note alongside the reason
       responses:
         "200":
           description: Updated series root job
@@ -7931,6 +8112,11 @@ components:
         sizeUnit:
           type: ["string", "null"]
           description: Unit of property size (sqft or acres)
+        tags:
+          type: array
+          items:
+            type: string
+          description: "Tag names applied to this property"
         createdAt:
           type: string
 
@@ -8320,6 +8506,17 @@ components:
         holdFromBilling:
           type: boolean
           description: "When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed."
+        tags:
+          type: array
+          items:
+            type: string
+          description: "Tag names applied to this job"
+        skipReasonId:
+          type: ["integer", "null"]
+          description: "FK to skip_reasons — set when this occurrence was skipped with a reason"
+        skipNote:
+          type: ["string", "null"]
+          description: "Optional note added alongside the skip reason"
         createdAt:
           type: string
 
@@ -12556,6 +12753,32 @@ components:
               year: { type: integer }
               totalCost: { type: number }
               count: { type: integer }
+
+    BusinessTag:
+      type: object
+      required: [id, tenantId, name, slug, color, createdAt]
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        name: { type: string }
+        slug: { type: string }
+        color: { type: string }
+        createdAt: { type: string }
+
+    SkipReason:
+      type: object
+      required: [id, tenantId, label, action, isActive, sortOrder, createdAt]
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        label: { type: string }
+        action: { type: string, description: "none | notify_customer | flag_property | create_task" }
+        actionConfig:
+          type: object
+          additionalProperties: true
+        isActive: { type: boolean }
+        sortOrder: { type: integer }
+        createdAt: { type: string }
 
     TaskNotification:
       type: object

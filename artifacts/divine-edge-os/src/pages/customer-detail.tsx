@@ -17,6 +17,7 @@ import {
   useGetCustomerPaymentMethod, getGetCustomerPaymentMethodQueryKey,
   useListInvoices, getListInvoicesQueryKey,
   useListCustomerPlans, getListCustomerPlansQueryKey,
+  useListTags, getListTagsQueryKey,
 } from '@workspace/api-client-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
@@ -215,6 +216,9 @@ export default function CustomerDetailPage() {
   const [, setLocation] = useLocation();
   const { user, canManageOffice } = useAuth();
   const qc = useQueryClient();
+
+  // Business tags library
+  const { data: bizTags = [] } = useListTags({ query: { queryKey: getListTagsQueryKey() } });
 
   // Edit customer state
   const [editing, setEditing] = useState(false);
@@ -585,7 +589,7 @@ export default function CustomerDetailPage() {
             )}
             {paymentMethodData?.paymentMethod ? (() => {
               const pm = paymentMethodData.paymentMethod;
-              const cardExpiry = new Date(pm.expYear, pm.expMonth, 0); // last day of exp month
+              const cardExpiry = new Date(pm.expYear ?? 2099, pm.expMonth ?? 12, 0); // last day of exp month
               const daysLeft = Math.ceil((cardExpiry.getTime() - Date.now()) / 86_400_000);
               const expired = daysLeft < 0;
               const critical = !expired && daysLeft <= 30;
@@ -674,7 +678,7 @@ export default function CustomerDetailPage() {
           {/* Card-on-file action row */}
           {(() => {
             const pm = paymentMethodData?.paymentMethod;
-            const daysLeft = pm ? Math.ceil((new Date(pm.expYear, pm.expMonth, 0).getTime() - Date.now()) / 86_400_000) : null;
+            const daysLeft = pm ? Math.ceil((new Date(pm.expYear ?? 2099, pm.expMonth ?? 12, 0).getTime() - Date.now()) / 86_400_000) : null;
             const isExpiringSoon = daysLeft !== null && daysLeft <= 60;
             return (
               <div className="flex flex-wrap items-center gap-2 mt-2">
@@ -938,7 +942,20 @@ export default function CustomerDetailPage() {
                 <p className="text-sm text-muted-foreground">No tags.</p>
               ) : (
                 <div className="flex flex-wrap gap-2">
-                  {(customer.tags ?? []).map(tag => <Badge key={tag} variant="secondary" title={`Tag: ${tag}`}>{tag}</Badge>)}
+                  {(customer.tags ?? []).map(tag => {
+                    const canonical = bizTags.find(t => t.name === tag);
+                    return (
+                      <span
+                        key={tag}
+                        title={`Tag: ${tag}`}
+                        className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border"
+                        style={canonical ? { backgroundColor: canonical.color + '22', borderColor: canonical.color + '66', color: canonical.color } : undefined}
+                      >
+                        {canonical && <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: canonical.color }} />}
+                        {tag}
+                      </span>
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
@@ -1996,27 +2013,54 @@ export default function CustomerDetailPage() {
 
             {activeFields.some(f => f.key === 'tags' && f.visible) && (
               <Section title="Tags" icon={<Tag className="w-4 h-4" />}>
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {((form.tags as string[]) ?? []).map(tag => (
-                    <Badge key={tag} variant="secondary" className="gap-1 pr-1" title={`Tag: ${tag}`}>
-                      {tag}
-                      <button onClick={() => removeTag(tag)} className="ml-1 hover:text-destructive" title={`Remove tag "${tag}"`}>
-                        <X className="w-3 h-3" />
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {((form.tags as string[]) ?? []).map(tag => {
+                    const canonical = bizTags.find(t => t.name === tag);
+                    return (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border"
+                        style={canonical ? { backgroundColor: canonical.color + '22', borderColor: canonical.color + '66', color: canonical.color } : undefined}
+                      >
+                        {canonical && <span className="w-2 h-2 rounded-full" style={{ backgroundColor: canonical.color }} />}
+                        {tag}
+                        <button onClick={() => removeTag(tag)} className="ml-0.5 hover:opacity-70" title={`Remove tag "${tag}"`}>
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+                {bizTags.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {bizTags.filter(t => !((form.tags as string[]) ?? []).includes(t.name)).map(t => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        title={`Add tag "${t.name}"`}
+                        onClick={() => { const cur = (form.tags as string[]) ?? []; if (!cur.includes(t.name)) setForm(f => ({ ...f, tags: [...cur, t.name] })); }}
+                        className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-dashed hover:border-solid transition-all"
+                        style={{ borderColor: t.color + '88', color: t.color + 'cc' }}
+                      >
+                        <Plus className="w-2.5 h-2.5" /> {t.name}
                       </button>
-                    </Badge>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <Input
-                    title="Type a tag and press Enter or click Add"
-                    placeholder="Add tag..."
-                    value={tagInput}
-                    onChange={e => setTagInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
-                    className="flex-1"
-                  />
-                  <Button variant="outline" size="sm" title="Add this tag to the customer" onClick={addTag} type="button">Add</Button>
-                </div>
+                    ))}
+                    {bizTags.every(t => ((form.tags as string[]) ?? []).includes(t.name)) && (
+                      <p className="text-xs text-muted-foreground">All tags applied</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <Input placeholder="Add tag…" value={tagInput} onChange={e => setTagInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }} className="flex-1" />
+                    <Button variant="outline" size="sm" onClick={addTag} type="button">Add</Button>
+                  </div>
+                )}
+                {bizTags.length > 0 && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Manage your tag library in <button type="button" className="underline" onClick={() => window.location.href = '/settings?tab=tags'}>Settings → Tags</button>.
+                  </p>
+                )}
               </Section>
             )}
 

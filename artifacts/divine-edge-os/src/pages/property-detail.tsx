@@ -19,6 +19,7 @@ import {
   useUpdateBlueprint,
   useListCustomerPlans, getListCustomerPlansQueryKey,
   customFetch,
+  useListTags, getListTagsQueryKey,
 } from '@workspace/api-client-react';
 import type { MeasurementZone, Quote } from '@workspace/api-client-react';
 import { useParams, useLocation, Link } from 'wouter';
@@ -41,7 +42,7 @@ import {
   ArrowLeft, Edit, MapPin, Navigation, Calendar, Save, GitMerge,
   AlertTriangle, Clock, ChevronDown, Check, ArrowRight, Satellite,
   Calculator, ExternalLink, Copy, Ruler, Images, DraftingCompass, Archive, ArchiveRestore,
-  Wrench, Plus, Trash2, DollarSign, TrendingUp, BarChart3,
+  Wrench, Plus, Trash2, DollarSign, TrendingUp, BarChart3, Tag, X,
 } from 'lucide-react';
 import MediaGallery from '@/components/media/MediaGallery';
 import { toast } from 'sonner';
@@ -165,6 +166,9 @@ export default function PropertyDetailPage() {
     ? Math.round(defaultGeofenceRadius * 0.3048)
     : defaultGeofenceRadius;
 
+  const { data: bizTags = [] } = useListTags({ query: { queryKey: getListTagsQueryKey() } });
+  const [propTagInput, setPropTagInput] = useState('');
+
   const updateProperty = useUpdateProperty();
   const updateGeofence = useUpdateGeofencePin();
   const transferProperty = useTransferProperty();
@@ -185,6 +189,8 @@ export default function PropertyDetailPage() {
     );
   };
 
+  const [formTags, setFormTags] = React.useState<string[]>([]);
+
   React.useEffect(() => {
     if (property) {
       setForm({
@@ -197,6 +203,7 @@ export default function PropertyDetailPage() {
         size: property.size != null ? String(property.size) : '',
         sizeUnit: property.sizeUnit ?? 'sqft',
       });
+      setFormTags((property as any).tags ?? []);
       if (property.geofenceLat) {
         setGeoInput({
           lat: property.geofenceLat.toString(),
@@ -225,6 +232,7 @@ export default function PropertyDetailPage() {
     const payload = {
       ...form,
       size: sizeVal != null && !isNaN(sizeVal) ? sizeVal : undefined,
+      tags: formTags,
     } as Parameters<typeof updateProperty.mutate>[0]['data'];
     updateProperty.mutate(
       { id, data: payload },
@@ -1336,6 +1344,42 @@ export default function PropertyDetailPage() {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Notes</label>
               <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Gate code, access instructions, special notes..." className="min-h-[100px]" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium flex items-center gap-1.5"><Tag className="w-3.5 h-3.5" /> Tags</label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {formTags.map(tag => {
+                  const canonical = bizTags.find(t => t.name === tag);
+                  return (
+                    <span key={tag} className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border"
+                      style={canonical ? { backgroundColor: canonical.color + '22', borderColor: canonical.color + '66', color: canonical.color } : undefined}>
+                      {canonical && <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: canonical.color }} />}
+                      {tag}
+                      <button type="button" onClick={() => setFormTags(ts => ts.filter(t => t !== tag))} className="ml-0.5 hover:opacity-70"><X className="w-3 h-3" /></button>
+                    </span>
+                  );
+                })}
+              </div>
+              {bizTags.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {bizTags.filter(t => !formTags.includes(t.name)).map(t => (
+                    <button key={t.id} type="button" title={`Add tag "${t.name}"`}
+                      onClick={() => setFormTags(ts => [...ts, t.name])}
+                      className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-dashed hover:border-solid transition-all"
+                      style={{ borderColor: t.color + '88', color: t.color + 'cc' }}>
+                      <Plus className="w-2.5 h-2.5" /> {t.name}
+                    </button>
+                  ))}
+                  {bizTags.every(t => formTags.includes(t.name)) && <p className="text-xs text-muted-foreground">All tags applied</p>}
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Input placeholder="Type a tag…" value={propTagInput} onChange={e => setPropTagInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); const t = propTagInput.trim(); if (t && !formTags.includes(t)) setFormTags(ts => [...ts, t]); setPropTagInput(''); } }}
+                    className="flex-1 h-8 text-sm" />
+                  <Button variant="outline" size="sm" type="button" onClick={() => { const t = propTagInput.trim(); if (t && !formTags.includes(t)) setFormTags(ts => [...ts, t]); setPropTagInput(''); }}>Add</Button>
+                </div>
+              )}
             </div>
             <Separator />
             <div className="flex gap-3 justify-end">

@@ -358,7 +358,7 @@ router.patch("/properties/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const { address, city, state, zip, lat, lng, notes, type, measurementPolygons, serviceableAreaSqft, size, sizeUnit } = req.body;
+  const { address, city, state, zip, lat, lng, notes, type, measurementPolygons, serviceableAreaSqft, size, sizeUnit, tags } = req.body;
 
   // Auto-geocode when address fields change and lat/lng not explicitly provided
   const addressChanged = address !== undefined || city !== undefined || state !== undefined || zip !== undefined;
@@ -420,6 +420,7 @@ router.patch("/properties/:id", async (req, res): Promise<void> => {
       ...(serviceableAreaSqft !== undefined && { serviceableAreaSqft }),
       ...(size !== undefined && { size }),
       ...(sizeUnit !== undefined && { sizeUnit }),
+      ...(tags !== undefined && { tags }),
     })
     .where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId)))
     .returning();

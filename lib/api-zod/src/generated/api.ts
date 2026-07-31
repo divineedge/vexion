@@ -246,6 +246,146 @@ export const GetRevenueTrendResponse = zod.array(GetRevenueTrendResponseItem)
 
 
 /**
+ * @summary List all business tags for the tenant
+ */
+export const ListTagsResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "slug": zod.string(),
+  "color": zod.string(),
+  "createdAt": zod.string()
+})
+export const ListTagsResponse = zod.array(ListTagsResponseItem)
+
+
+/**
+ * @summary Create a new business tag
+ */
+export const CreateTagBody = zod.object({
+  "name": zod.string(),
+  "color": zod.string().optional()
+})
+
+export const CreateTagResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "slug": zod.string(),
+  "color": zod.string(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Rename or recolor a tag
+ */
+export const UpdateTagParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateTagBody = zod.object({
+  "name": zod.string().optional(),
+  "color": zod.string().optional()
+})
+
+export const UpdateTagResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "slug": zod.string(),
+  "color": zod.string(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a tag
+ */
+export const DeleteTagParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteTagResponse = zod.void()
+
+
+/**
+ * @summary List all skip reasons for the tenant
+ */
+export const ListSkipReasonsResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "label": zod.string(),
+  "action": zod.string().describe('none | notify_customer | flag_property | create_task'),
+  "actionConfig": zod.record(zod.string(), zod.unknown()).optional(),
+  "isActive": zod.boolean(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.string()
+})
+export const ListSkipReasonsResponse = zod.array(ListSkipReasonsResponseItem)
+
+
+/**
+ * @summary Create a skip reason
+ */
+export const CreateSkipReasonBody = zod.object({
+  "label": zod.string(),
+  "action": zod.string().optional(),
+  "actionConfig": zod.record(zod.string(), zod.unknown()).optional(),
+  "isActive": zod.boolean().optional(),
+  "sortOrder": zod.number().optional()
+})
+
+export const CreateSkipReasonResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "label": zod.string(),
+  "action": zod.string().describe('none | notify_customer | flag_property | create_task'),
+  "actionConfig": zod.record(zod.string(), zod.unknown()).optional(),
+  "isActive": zod.boolean(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Update a skip reason
+ */
+export const UpdateSkipReasonParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateSkipReasonBody = zod.object({
+  "label": zod.string().optional(),
+  "action": zod.string().optional(),
+  "actionConfig": zod.record(zod.string(), zod.unknown()).optional(),
+  "isActive": zod.boolean().optional(),
+  "sortOrder": zod.number().optional()
+})
+
+export const UpdateSkipReasonResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "label": zod.string(),
+  "action": zod.string().describe('none | notify_customer | flag_property | create_task'),
+  "actionConfig": zod.record(zod.string(), zod.unknown()).optional(),
+  "isActive": zod.boolean(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a skip reason
+ */
+export const DeleteSkipReasonParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteSkipReasonResponse = zod.void()
+
+
+/**
  * @summary List all customers
  */
 export const ListCustomersQueryParams = zod.object({
@@ -629,6 +769,7 @@ export const ListPropertiesResponseItem = zod.object({
   "serviceableAreaSqft": zod.number().nullish(),
   "size": zod.number().nullish().describe('Property size for chemical rate calculations'),
   "sizeUnit": zod.string().nullish().describe('Unit of property size (sqft or acres)'),
+  "tags": zod.array(zod.string()).optional().describe('Tag names applied to this property'),
   "createdAt": zod.string()
 })
 export const ListPropertiesResponse = zod.array(ListPropertiesResponseItem)
@@ -678,6 +819,7 @@ export const CreatePropertyResponse = zod.object({
   "serviceableAreaSqft": zod.number().nullish(),
   "size": zod.number().nullish().describe('Property size for chemical rate calculations'),
   "sizeUnit": zod.string().nullish().describe('Unit of property size (sqft or acres)'),
+  "tags": zod.array(zod.string()).optional().describe('Tag names applied to this property'),
   "createdAt": zod.string()
 })
 
@@ -716,6 +858,7 @@ export const GetPropertyResponse = zod.object({
   "serviceableAreaSqft": zod.number().nullish(),
   "size": zod.number().nullish().describe('Property size for chemical rate calculations'),
   "sizeUnit": zod.string().nullish().describe('Unit of property size (sqft or acres)'),
+  "tags": zod.array(zod.string()).optional().describe('Tag names applied to this property'),
   "createdAt": zod.string()
 })
 
@@ -776,6 +919,7 @@ export const UpdatePropertyResponse = zod.object({
   "serviceableAreaSqft": zod.number().nullish(),
   "size": zod.number().nullish().describe('Property size for chemical rate calculations'),
   "sizeUnit": zod.string().nullish().describe('Unit of property size (sqft or acres)'),
+  "tags": zod.array(zod.string()).optional().describe('Tag names applied to this property'),
   "createdAt": zod.string()
 })
 
@@ -830,6 +974,7 @@ export const UpdateGeofencePinResponse = zod.object({
   "serviceableAreaSqft": zod.number().nullish(),
   "size": zod.number().nullish().describe('Property size for chemical rate calculations'),
   "sizeUnit": zod.string().nullish().describe('Unit of property size (sqft or acres)'),
+  "tags": zod.array(zod.string()).optional().describe('Tag names applied to this property'),
   "createdAt": zod.string()
 })
 
@@ -880,6 +1025,7 @@ export const UpdatePropertyMeasurementsResponse = zod.object({
   "serviceableAreaSqft": zod.number().nullish(),
   "size": zod.number().nullish().describe('Property size for chemical rate calculations'),
   "sizeUnit": zod.string().nullish().describe('Unit of property size (sqft or acres)'),
+  "tags": zod.array(zod.string()).optional().describe('Tag names applied to this property'),
   "createdAt": zod.string()
 })
 
@@ -1129,6 +1275,9 @@ export const ListJobsResponseItem = zod.object({
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
+  "tags": zod.array(zod.string()).optional().describe('Tag names applied to this job'),
+  "skipReasonId": zod.number().nullish().describe('FK to skip_reasons — set when this occurrence was skipped with a reason'),
+  "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
   "createdAt": zod.string()
 })
 export const ListJobsResponse = zod.array(ListJobsResponseItem)
@@ -1224,6 +1373,9 @@ export const CreateJobResponse = zod.object({
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
+  "tags": zod.array(zod.string()).optional().describe('Tag names applied to this job'),
+  "skipReasonId": zod.number().nullish().describe('FK to skip_reasons — set when this occurrence was skipped with a reason'),
+  "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
   "createdAt": zod.string()
 })
 
@@ -1296,6 +1448,9 @@ export const GetJobResponse = zod.object({
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
+  "tags": zod.array(zod.string()).optional().describe('Tag names applied to this job'),
+  "skipReasonId": zod.number().nullish().describe('FK to skip_reasons — set when this occurrence was skipped with a reason'),
+  "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
   "createdAt": zod.string()
 })
 
@@ -1393,6 +1548,9 @@ export const UpdateJobResponse = zod.object({
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
+  "tags": zod.array(zod.string()).optional().describe('Tag names applied to this job'),
+  "skipReasonId": zod.number().nullish().describe('FK to skip_reasons — set when this occurrence was skipped with a reason'),
+  "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
   "createdAt": zod.string()
 })
 
@@ -1444,6 +1602,11 @@ export const ListRecurringSeriesResponse = zod.array(ListRecurringSeriesResponse
  */
 export const SkipNextOccurrenceParams = zod.object({
   "id": zod.coerce.number()
+})
+
+export const SkipNextOccurrenceBody = zod.object({
+  "reasonId": zod.number().optional().describe('ID of a configured skip reason'),
+  "note": zod.string().optional().describe('Optional free-text note alongside the reason')
 })
 
 export const SkipNextOccurrenceResponse = zod.object({
@@ -1507,6 +1670,9 @@ export const SkipNextOccurrenceResponse = zod.object({
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
+  "tags": zod.array(zod.string()).optional().describe('Tag names applied to this job'),
+  "skipReasonId": zod.number().nullish().describe('FK to skip_reasons — set when this occurrence was skipped with a reason'),
+  "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
   "createdAt": zod.string()
 })
 
@@ -1584,6 +1750,9 @@ export const PauseRecurringSeriesResponse = zod.object({
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
+  "tags": zod.array(zod.string()).optional().describe('Tag names applied to this job'),
+  "skipReasonId": zod.number().nullish().describe('FK to skip_reasons — set when this occurrence was skipped with a reason'),
+  "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
   "createdAt": zod.string()
 })
 
@@ -1670,6 +1839,9 @@ export const CompleteJobResponse = zod.object({
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
+  "tags": zod.array(zod.string()).optional().describe('Tag names applied to this job'),
+  "skipReasonId": zod.number().nullish().describe('FK to skip_reasons — set when this occurrence was skipped with a reason'),
+  "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
   "createdAt": zod.string()
 })
 
@@ -1764,6 +1936,9 @@ export const AddJobPartResponse = zod.object({
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
+  "tags": zod.array(zod.string()).optional().describe('Tag names applied to this job'),
+  "skipReasonId": zod.number().nullish().describe('FK to skip_reasons — set when this occurrence was skipped with a reason'),
+  "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
   "createdAt": zod.string()
 })
 
@@ -1837,6 +2012,9 @@ export const RemoveJobPartResponse = zod.object({
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
+  "tags": zod.array(zod.string()).optional().describe('Tag names applied to this job'),
+  "skipReasonId": zod.number().nullish().describe('FK to skip_reasons — set when this occurrence was skipped with a reason'),
+  "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
   "createdAt": zod.string()
 })
 

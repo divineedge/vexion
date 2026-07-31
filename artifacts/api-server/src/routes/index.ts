@@ -47,6 +47,8 @@ import importBatchesRouter from "./importBatches";
 import employeeHistoryRouter from "./employeeHistory";
 import repairLogsRouter from "./repairLogs";
 import planCancelRequestsRouter from "./planCancelRequests";
+import tagsRouter from "./tags";
+import skipReasonsRouter from "./skipReasons";
 
 const router: IRouter = Router();
 
@@ -98,5 +100,7 @@ router.use(importBatchesRouter);
 router.use(employeeHistoryRouter);
 router.use(repairLogsRouter);
 router.use(planCancelRequestsRouter);
+router.use(tagsRouter);
+router.use(skipReasonsRouter);
 
 export default router;

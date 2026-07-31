@@ -28,6 +28,8 @@ export const propertiesTable = pgTable("properties", {
   serviceableAreaSqft: real("serviceable_area_sqft"),
   /** Cover photo URL (stored objectPath) */
   profilePhotoUrl: text("profile_photo_url"),
+  /** Tags applied to this property — names drawn from the tenant's businessTagsTable library */
+  tags: text("tags").array().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

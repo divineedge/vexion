@@ -35,6 +35,8 @@ import {
   useListProperties, getListPropertiesQueryKey,
   useListCustomerPlans, getListCustomerPlansQueryKey,
   useListCrews, getListCrewsQueryKey,
+  useListTags, getListTagsQueryKey,
+  useListSkipReasons, getListSkipReasonsQueryKey,
 } from '@workspace/api-client-react';
 import MediaGallery from '@/components/media/MediaGallery';
 import { JobFormFields, EMPTY_JOB, buildRecurrenceRule, type NewJobForm } from '@/components/jobs/JobFormFields';
@@ -387,8 +389,13 @@ export default function SchedulePage() {
   const [pauseDialogRootId, setPauseDialogRootId] = useState<number | null>(null);
   const [cancelSeriesDialogId, setCancelSeriesDialogId] = useState<number | null>(null);
   const [skipNextDialogId, setSkipNextDialogId] = useState<number | null>(null);
+  const [skipReasonId, setSkipReasonId] = useState<number | null>(null);
+  const [skipNote, setSkipNote] = useState('');
   const [deleteJobPending, setDeleteJobPending] = useState(false);
   const [pauseResumeAt, setPauseResumeAt] = useState('');
+
+  const { data: bizTags = [] } = useListTags({ query: { queryKey: getListTagsQueryKey() } });
+  const { data: skipReasons = [] } = useListSkipReasons({ query: { queryKey: getListSkipReasonsQueryKey() } });
 
   // Plan-link state
   const [linkPlanSeriesId, setLinkPlanSeriesId] = useState<number | null>(null);
@@ -866,12 +873,7 @@ export default function SchedulePage() {
                     <Button
                       size="sm" variant="outline" title="Skip the next scheduled occurrence of this series" className="h-7 text-xs gap-1"
                       disabled={skipNextOccurrence.isPending}
-                      onClick={() => {
-                        skipNextOccurrence.mutate({ id: s.id }, {
-                          onSuccess: () => { toast.success('Next occurrence skipped'); qc.invalidateQueries({ queryKey: getListRecurringSeriesQueryKey() }); },
-                          onError: () => toast.error('Failed to skip'),
-                        });
-                      }}
+                      onClick={() => { setSkipNextDialogId(s.id); setSkipReasonId(null); setSkipNote(''); }}
                     >
                       <SkipForward className="w-3 h-3" /> Skip
                     </Button>
@@ -1443,6 +1445,23 @@ export default function SchedulePage() {
                       </p>
                     </div>
                   )}
+                  {((selectedJob as any).tags as string[] | undefined)?.length ? (
+                    <div className="col-span-2 space-y-1">
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Tags</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {((selectedJob as any).tags as string[]).map((tag: string) => {
+                          const canonical = (bizTags as Array<{ id: number; name: string; color: string; slug: string }>).find(t => t.name === tag);
+                          return (
+                            <span key={tag} className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border"
+                              style={canonical ? { backgroundColor: canonical.color + '22', borderColor: canonical.color + '66', color: canonical.color } : undefined}>
+                              {canonical && <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: canonical.color }} />}
+                              {tag}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
                   {selectedJob.priority && (
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Priority</p>
@@ -2560,24 +2579,65 @@ export default function SchedulePage() {
         </DialogContent>
       </Dialog>
 
-      {/* Skip Next Occurrence Confirmation */}
-      <Dialog open={skipNextDialogId !== null} onOpenChange={open => { if (!open) setSkipNextDialogId(null); }}>
+      {/* Skip Next Occurrence */}
+      <Dialog open={skipNextDialogId !== null} onOpenChange={open => { if (!open) { setSkipNextDialogId(null); setSkipReasonId(null); setSkipNote(''); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Skip Next Occurrence</DialogTitle>
-            <DialogDescription>Skip the next scheduled occurrence of this series? The series will continue from the occurrence after it.</DialogDescription>
+            <DialogDescription>Skip the next scheduled occurrence of this series? The series continues from the one after it.</DialogDescription>
           </DialogHeader>
+          <div className="space-y-3 pt-1">
+            {skipReasons.filter(r => r.isActive).length > 0 && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Reason</label>
+                <Select
+                  value={skipReasonId ? String(skipReasonId) : 'none'}
+                  onValueChange={v => setSkipReasonId(v === 'none' ? null : parseInt(v, 10))}
+                >
+                  <SelectTrigger className="text-sm"><SelectValue placeholder="Select a reason (optional)" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No reason selected</SelectItem>
+                    {skipReasons.filter(r => r.isActive).map(r => (
+                      <SelectItem key={r.id} value={String(r.id)}>{r.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {skipReasonId && (() => {
+                  const r = skipReasons.find(x => x.id === skipReasonId);
+                  if (!r || r.action === 'none') return null;
+                  const labels: Record<string, string> = { notify_customer: '📱 Customer will be texted', flag_property: '🚩 Property will be flagged', create_task: '📋 Office task will be created' };
+                  return <p className="text-xs text-muted-foreground">{labels[r.action] ?? r.action}</p>;
+                })()}
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-muted-foreground">Note <span className="font-normal">(optional)</span></label>
+              <input
+                className="w-full rounded-md border px-3 py-1.5 text-sm bg-background"
+                placeholder="Add context if needed…"
+                value={skipNote}
+                onChange={e => setSkipNote(e.target.value)}
+              />
+            </div>
+          </div>
           <div className="flex gap-3 justify-end pt-2">
-            <Button variant="outline" title="Keep the next occurrence as scheduled" onClick={() => setSkipNextDialogId(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setSkipNextDialogId(null); setSkipReasonId(null); setSkipNote(''); }}>Cancel</Button>
             <Button
-              title="Skip the next scheduled occurrence — the series continues from the one after it"
               disabled={skipNextOccurrence.isPending}
               onClick={() => {
                 if (!skipNextDialogId) return;
-                skipNextOccurrence.mutate({ id: skipNextDialogId }, {
-                  onSuccess: () => { toast.success('Next occurrence skipped'); qc.invalidateQueries({ queryKey: getListRecurringSeriesQueryKey() }); setSkipNextDialogId(null); },
-                  onError: () => toast.error('Failed to skip'),
-                });
+                skipNextOccurrence.mutate(
+                  { id: skipNextDialogId, data: { ...(skipReasonId && { reasonId: skipReasonId }), ...(skipNote && { note: skipNote }) } },
+                  {
+                    onSuccess: () => {
+                      toast.success('Next occurrence skipped');
+                      qc.invalidateQueries({ queryKey: getListRecurringSeriesQueryKey() });
+                      qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                      setSkipNextDialogId(null); setSkipReasonId(null); setSkipNote('');
+                    },
+                    onError: () => toast.error('Failed to skip'),
+                  }
+                );
               }}
             >
               {skipNextOccurrence.isPending ? 'Skipping…' : 'Skip Occurrence'}

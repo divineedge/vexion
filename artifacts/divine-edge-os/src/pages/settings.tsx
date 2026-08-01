@@ -3371,7 +3371,6 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
-      </Tabs>
 
         {/* ── Tags ── */}
         <TabsContent value="tags" className="space-y-6 focus-visible:outline-none">
@@ -3649,6 +3648,7 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+      </Tabs>
 
       {/* Remove User Confirmation */}
       {deleteUserPending != null && (

@@ -46,6 +46,7 @@ import TaskBundlesPage from '@/pages/task-bundles';
 import EmployeeDetailPage from '@/pages/employee-detail';
 
 import NotFound from '@/pages/not-found';
+import OnboardingWalkthrough, { useOnboarding } from '@/components/onboarding/OnboardingWalkthrough';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -57,8 +58,10 @@ const queryClient = new QueryClient({
 });
 
 function ProtectedRoutes() {
+  const { show, dismiss } = useOnboarding();
   return (
     <AppLayout>
+      {show && <OnboardingWalkthrough onDismiss={dismiss} />}
       <Switch>
         <Route path="/dashboard" component={DashboardPage} />
         <Route path="/customers/:id" component={CustomerDetailPage} />

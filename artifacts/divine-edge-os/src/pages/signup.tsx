@@ -52,6 +52,7 @@ export default function SignupPage() {
         }),
       });
       login(data.user);
+      localStorage.setItem('de_onboarding_pending', '1');
       setLocation('/dashboard');
     } catch (err: unknown) {
       const msg = (err as { payload?: { error?: string } })?.payload?.error;

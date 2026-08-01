@@ -188,7 +188,11 @@ export default function SignupPage() {
                     placeholder="••••••••"
                     autoComplete="new-password"
                     required
+                    className={form.confirmPassword && form.confirmPassword !== form.password ? 'border-destructive focus-visible:ring-destructive' : ''}
                   />
+                  {form.confirmPassword && form.confirmPassword !== form.password && (
+                    <p className="text-xs text-destructive">Passwords do not match.</p>
+                  )}
                 </div>
 
                 <Button type="submit" title="Create your Divine Edge OS account" className="w-full" disabled={loading}>

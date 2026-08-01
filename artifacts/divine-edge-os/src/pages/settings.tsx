@@ -3042,13 +3042,15 @@ export default function SettingsPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Wait before flagging (days)</Label>
-                    <Input type="number" min={1} title="Days after sending before the estimate is flagged for follow-up" value={followupConfig.sentEstimate?.delayDays ?? 3}
-                      onChange={e => setFollowupConfig(c => ({ ...c, sentEstimate: { ...c.sentEstimate, delayDays: parseInt(e.target.value, 10) || 1 } }))} />
+                    <Input type="number" min={1} title="Days after sending before the estimate is flagged for follow-up" value={followupConfig.sentEstimate?.delayDays ?? ''}
+                      onChange={e => setFollowupConfig(c => ({ ...c, sentEstimate: { ...c.sentEstimate, delayDays: parseInt(e.target.value, 10) } }))}
+                      onBlur={e => { const v = parseInt(e.target.value, 10); if (!v || v < 1) setFollowupConfig(c => ({ ...c, sentEstimate: { ...c.sentEstimate, delayDays: 1 } })); }} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Re-surface every (days)</Label>
-                    <Input type="number" min={1} title="How often to re-surface the follow-up if not resolved" value={followupConfig.sentEstimate?.repeatDays ?? 4}
-                      onChange={e => setFollowupConfig(c => ({ ...c, sentEstimate: { ...c.sentEstimate, repeatDays: parseInt(e.target.value, 10) || 1 } }))} />
+                    <Input type="number" min={1} title="How often to re-surface the follow-up if not resolved" value={followupConfig.sentEstimate?.repeatDays ?? ''}
+                      onChange={e => setFollowupConfig(c => ({ ...c, sentEstimate: { ...c.sentEstimate, repeatDays: parseInt(e.target.value, 10) } }))}
+                      onBlur={e => { const v = parseInt(e.target.value, 10); if (!v || v < 1) setFollowupConfig(c => ({ ...c, sentEstimate: { ...c.sentEstimate, repeatDays: 1 } })); }} />
                   </div>
                 </div>
               </div>
@@ -3068,13 +3070,15 @@ export default function SettingsPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Wait before flagging (days)</Label>
-                    <Input type="number" min={1} title="Days after sending before the invoice is flagged for follow-up" value={followupConfig.sentInvoice?.delayDays ?? 5}
-                      onChange={e => setFollowupConfig(c => ({ ...c, sentInvoice: { ...c.sentInvoice, delayDays: parseInt(e.target.value, 10) || 1 } }))} />
+                    <Input type="number" min={1} title="Days after sending before the invoice is flagged for follow-up" value={followupConfig.sentInvoice?.delayDays ?? ''}
+                      onChange={e => setFollowupConfig(c => ({ ...c, sentInvoice: { ...c.sentInvoice, delayDays: parseInt(e.target.value, 10) } }))}
+                      onBlur={e => { const v = parseInt(e.target.value, 10); if (!v || v < 1) setFollowupConfig(c => ({ ...c, sentInvoice: { ...c.sentInvoice, delayDays: 1 } })); }} />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs">Re-surface every (days)</Label>
-                    <Input type="number" min={1} title="How often to re-surface the follow-up if unpaid" value={followupConfig.sentInvoice?.repeatDays ?? 5}
-                      onChange={e => setFollowupConfig(c => ({ ...c, sentInvoice: { ...c.sentInvoice, repeatDays: parseInt(e.target.value, 10) || 1 } }))} />
+                    <Input type="number" min={1} title="How often to re-surface the follow-up if unpaid" value={followupConfig.sentInvoice?.repeatDays ?? ''}
+                      onChange={e => setFollowupConfig(c => ({ ...c, sentInvoice: { ...c.sentInvoice, repeatDays: parseInt(e.target.value, 10) } }))}
+                      onBlur={e => { const v = parseInt(e.target.value, 10); if (!v || v < 1) setFollowupConfig(c => ({ ...c, sentInvoice: { ...c.sentInvoice, repeatDays: 1 } })); }} />
                   </div>
                 </div>
               </div>
@@ -3093,8 +3097,9 @@ export default function SettingsPage() {
                 </div>
                 <div className="space-y-1 w-1/2">
                   <Label className="text-xs">Wait before flagging (hours)</Label>
-                  <Input type="number" min={1} title="Hours after receiving the email before it's flagged for follow-up" value={followupConfig.unansweredEmail?.hours ?? 48}
-                    onChange={e => setFollowupConfig(c => ({ ...c, unansweredEmail: { ...c.unansweredEmail, hours: parseInt(e.target.value, 10) || 1 } }))} />
+                  <Input type="number" min={1} title="Hours after receiving the email before it's flagged for follow-up" value={followupConfig.unansweredEmail?.hours ?? ''}
+                    onChange={e => setFollowupConfig(c => ({ ...c, unansweredEmail: { ...c.unansweredEmail, hours: parseInt(e.target.value, 10) } }))}
+                    onBlur={e => { const v = parseInt(e.target.value, 10); if (!v || v < 1) setFollowupConfig(c => ({ ...c, unansweredEmail: { ...c.unansweredEmail, hours: 1 } })); }} />
                 </div>
               </div>
 

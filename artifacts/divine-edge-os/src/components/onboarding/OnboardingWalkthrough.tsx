@@ -9,6 +9,7 @@ import { useUpdateTenantSettings } from '@workspace/api-client-react';
 
 const STORAGE_KEY = 'de_onboarding_done';
 const PENDING_KEY = 'de_onboarding_pending';
+const NEW_BIZ_KEY = 'de_onboarding_new_biz';
 
 // ── Timezone helpers ────────────────────────────────────────────────────────
 
@@ -167,6 +168,7 @@ export function useOnboarding() {
   const dismiss = () => {
     localStorage.setItem(STORAGE_KEY, '1');
     localStorage.removeItem(PENDING_KEY);
+    // Keep NEW_BIZ_KEY intact — the component reads it on Done to decide destination
     setShow(false);
   };
 
@@ -215,6 +217,13 @@ export default function OnboardingWalkthrough({ onDismiss }: Props) {
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = ''; };
   }, []);
+
+  const handleDone = () => {
+    const isNewBiz = !!localStorage.getItem(NEW_BIZ_KEY);
+    localStorage.removeItem(NEW_BIZ_KEY);
+    onDismiss(); // clears STORAGE_KEY / PENDING_KEY, hides modal
+    setLocation(isNewBiz ? '/settings' : '/dashboard');
+  };
 
   const saveTimezoneAndAdvance = async () => {
     setTzSaving(true);
@@ -329,7 +338,7 @@ export default function OnboardingWalkthrough({ onDismiss }: Props) {
               </Button>
             )}
             {isLast ? (
-              <Button size="sm" className="gap-1" onClick={onDismiss}>
+              <Button size="sm" className="gap-1" onClick={handleDone}>
                 Done <CheckCircle2 className="w-4 h-4" />
               </Button>
             ) : (

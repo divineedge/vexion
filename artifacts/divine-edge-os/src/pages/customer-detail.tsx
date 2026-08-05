@@ -103,9 +103,10 @@ type PropertyForm = {
   zip: string;
   type: string;
   notes: string;
+  tags: string[];
 };
 
-const BLANK_PROPERTY: PropertyForm = { address: '', city: '', state: '', zip: '', type: '', notes: '' };
+const BLANK_PROPERTY: PropertyForm = { address: '', city: '', state: '', zip: '', type: '', notes: '', tags: [] };
 
 interface DuplicateProperty {
   id: number;
@@ -247,6 +248,9 @@ export default function CustomerDetailPage() {
   // Billing address autocomplete (Google Places when key is configured)
   const billingAddrRef = useRef<HTMLInputElement>(null);
   const billingAcRef = useRef<unknown>(null);
+  // Property address autocomplete (reuses same loaded Maps script)
+  const propAddrRef = useRef<HTMLInputElement>(null);
+  const propAcRef = useRef<unknown>(null);
   const attachBillingPlaces = useCallback(() => {
     if (!billingAddrRef.current || !(window as any).google?.maps?.places || billingAcRef.current) return;
     const ac = new (window as any).google.maps.places.Autocomplete(billingAddrRef.current, {
@@ -270,6 +274,32 @@ export default function CustomerDetailPage() {
     });
     billingAcRef.current = ac;
   }, []);
+
+  const attachPropertyPlaces = useCallback(() => {
+    if (!propAddrRef.current || !(window as any).google?.maps?.places || propAcRef.current) return;
+    const ac = new (window as any).google.maps.places.Autocomplete(propAddrRef.current, {
+      types: ['address'],
+      componentRestrictions: { country: 'us' },
+      fields: ['address_components'],
+    });
+    ac.addListener('place_changed', () => {
+      const place = ac.getPlace();
+      const comps: Array<{ long_name: string; short_name: string; types: string[] }> =
+        place.address_components ?? [];
+      const get = (t: string) => comps.find(c => c.types.includes(t))?.long_name ?? '';
+      const getS = (t: string) => comps.find(c => c.types.includes(t))?.short_name ?? '';
+      setPropForm(f => ({
+        ...f,
+        address: [get('street_number'), get('route')].filter(Boolean).join(' ') || f.address,
+        city: get('locality') || get('sublocality_level_1'),
+        state: getS('administrative_area_level_1'),
+        zip: get('postal_code'),
+      }));
+    });
+    propAcRef.current = ac;
+  }, []);
+
+  // Attach Google Places autocomplete to the billing address field (loads script if needed)
   useEffect(() => {
     const GMAPS_KEY = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
     if (!GMAPS_KEY) return undefined;
@@ -289,6 +319,20 @@ export default function CustomerDetailPage() {
     document.head.appendChild(script);
     return undefined;
   }, [attachBillingPlaces]);
+
+  // Attach Google Places autocomplete to the property address field when the Add Property sheet opens
+  useEffect(() => {
+    if (!addPropertyOpen) { propAcRef.current = null; return undefined; }
+    if ((window as any).google?.maps?.places) {
+      const t = setTimeout(attachPropertyPlaces, 50); // slight delay so the input is mounted
+      return () => clearTimeout(t);
+    } else {
+      const iv = setInterval(() => {
+        if ((window as any).google?.maps?.places) { attachPropertyPlaces(); clearInterval(iv); }
+      }, 150);
+      return () => clearInterval(iv);
+    }
+  }, [addPropertyOpen, attachPropertyPlaces]);
 
   const debouncedAddress = useDebounce(propForm.address, 500);
 
@@ -523,6 +567,7 @@ export default function CustomerDetailPage() {
           zip: propForm.zip || undefined,
           type: propForm.type || undefined,
           notes: propForm.notes || undefined,
+          tags: propForm.tags.length ? propForm.tags : undefined,
         }),
       });
       toast.success('Property added');
@@ -1799,6 +1844,7 @@ export default function CustomerDetailPage() {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Street Address <span className="text-destructive">*</span></label>
               <Input
+                ref={propAddrRef}
                 placeholder="123 Main St"
                 value={propForm.address}
                 onChange={e => setPropForm(f => ({ ...f, address: e.target.value }))}
@@ -1870,6 +1916,29 @@ export default function CustomerDetailPage() {
                 onChange={e => setPropForm(f => ({ ...f, notes: e.target.value }))}
               />
             </div>
+
+            {(bizTags as Array<{ id: number; name: string; color: string }>).length > 0 && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium flex items-center gap-1.5"><Tag className="w-3.5 h-3.5" /> Tags</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {(bizTags as Array<{ id: number; name: string; color: string }>).map(bt => {
+                    const selected = propForm.tags.includes(bt.name);
+                    return (
+                      <button
+                        key={bt.id}
+                        type="button"
+                        title={selected ? `Remove tag "${bt.name}"` : `Add tag "${bt.name}"`}
+                        onClick={() => setPropForm(f => ({ ...f, tags: selected ? f.tags.filter(t => t !== bt.name) : [...f.tags, bt.name] }))}
+                        className={`px-2.5 py-0.5 rounded-full text-xs font-medium border transition-all ${selected ? 'text-white border-transparent shadow-sm' : 'bg-transparent text-muted-foreground border-border hover:border-primary/50'}`}
+                        style={selected ? { backgroundColor: bt.color, borderColor: bt.color } : {}}
+                      >
+                        {bt.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <Separator />
             <div className="flex gap-3 justify-end">

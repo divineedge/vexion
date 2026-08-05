@@ -507,7 +507,8 @@ export default function SchedulePage() {
         assigneeId: newJob.assigneeId ? parseInt(newJob.assigneeId, 10) : undefined,
         recurrenceRule,
         smsReminderEnabled: newJob.smsReminderEnabled,
-      },
+        tags: newJob.tags.length ? newJob.tags : undefined,
+      } as any,
     }, {
       onSuccess: () => {
         toast.success(recurrenceRule ? 'Recurring job series created' : 'Job created');

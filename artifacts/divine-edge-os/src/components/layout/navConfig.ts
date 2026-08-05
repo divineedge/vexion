@@ -64,7 +64,7 @@ export const adminNavSections: NavSection[] = [
       { name: 'Crews',          href: '/crews',          icon: UserCheck },
       { name: 'Routes',         href: '/routes',         icon: Map },
       { name: 'Time Tracking',  href: '/time-tracking',  icon: Clock },
-          { name: 'Efficiency',     href: '/efficiency',     icon: Gauge },
+      { name: 'Efficiency',     href: '/efficiency',     icon: Gauge },
       { name: 'P4P Payroll',    href: '/payroll',        icon: Banknote },
     ],
   },

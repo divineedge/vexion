@@ -1010,10 +1010,26 @@ export default function BlueprintCanvasPage() {
       attributionControl: false,
       fadeAnimation: false,
     });
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      maxZoom: 21,
-      maxNativeZoom: 19,
-    }).addTo(map);
+    {
+      // Use Google Maps satellite tiles when a key is configured (same source + freshness as property map).
+      // Falls back to ESRI World Imagery when no key is present.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const GMAPS_KEY = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+      if (GMAPS_KEY) {
+        L.tileLayer('https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+          subdomains: ['0', '1', '2', '3'] as unknown as string,
+          attribution: '&copy; <a href="https://maps.google.com">Google Maps</a>',
+          maxZoom: 22,
+          tileSize: 256,
+        }).addTo(map);
+      } else {
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+          attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics',
+          maxZoom: 22,
+          maxNativeZoom: 19,
+        }).addTo(map);
+      }
+    }
     leafletMapRef.current = map;
     mapAnchorRef.current = { lat: property.lat, lng: property.lng, localX: widthPx / 2, localY: heightPx / 2 };
 

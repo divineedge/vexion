@@ -1,10 +1,12 @@
 import React from 'react';
 import type { RecurrenceRule } from '@workspace/api-client-react';
+import { useListTags, getListTagsQueryKey } from '@workspace/api-client-react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { RefreshCw, MessageSquare } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { RefreshCw, MessageSquare, Tag, X } from 'lucide-react';
 
 export type NewJobForm = {
   title: string;
@@ -15,6 +17,7 @@ export type NewJobForm = {
   customerId: string;
   propertyId: string;
   assigneeId: string;
+  tags: string[];
   recurring: boolean;
   recurrencePattern: string;
   recurrenceInterval: string;
@@ -37,6 +40,7 @@ export const EMPTY_JOB: NewJobForm = {
   customerId: '',
   propertyId: '',
   assigneeId: '',
+  tags: [],
   recurring: false,
   recurrencePattern: 'weekly',
   recurrenceInterval: '1',
@@ -51,6 +55,48 @@ export const EMPTY_JOB: NewJobForm = {
 };
 
 export const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** Inline tag chip picker used inside the job form. Fetches canonical tags itself. */
+function JobTagsPicker({ form, setForm }: { form: NewJobForm; setForm: React.Dispatch<React.SetStateAction<NewJobForm>> }) {
+  const { data: bizTags = [] } = useListTags({ query: { queryKey: getListTagsQueryKey() } });
+  const tags = bizTags as Array<{ id: number; name: string; color: string }>;
+  if (!tags.length) return null;
+  return (
+    <div className="space-y-1.5">
+      <label className="text-sm font-medium flex items-center gap-1.5"><Tag className="w-3.5 h-3.5" /> Tags</label>
+      <div className="flex flex-wrap gap-1.5">
+        {tags.map(bt => {
+          const selected = (form.tags ?? []).includes(bt.name);
+          return (
+            <button
+              key={bt.id}
+              type="button"
+              title={selected ? `Remove tag "${bt.name}"` : `Add tag "${bt.name}"`}
+              onClick={() => setForm(f => ({ ...f, tags: selected ? (f.tags ?? []).filter(t => t !== bt.name) : [...(f.tags ?? []), bt.name] }))}
+              className={`px-2.5 py-0.5 rounded-full text-xs font-medium border transition-all ${selected ? 'text-white border-transparent shadow-sm' : 'bg-transparent text-muted-foreground border-border hover:border-primary/50'}`}
+              style={selected ? { backgroundColor: bt.color, borderColor: bt.color } : {}}
+            >
+              {bt.name}
+            </button>
+          );
+        })}
+      </div>
+      {(form.tags ?? []).length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-1">
+          {(form.tags ?? []).map(tag => {
+            const bt = tags.find(b => b.name === tag);
+            return (
+              <Badge key={tag} variant="secondary" className="gap-1 pr-1 text-xs text-white" style={bt ? { backgroundColor: bt.color } : {}}>
+                {tag}
+                <button type="button" onClick={() => setForm(f => ({ ...f, tags: (f.tags ?? []).filter(t => t !== tag) }))} className="ml-0.5 hover:opacity-70"><X className="w-2.5 h-2.5" /></button>
+              </Badge>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function buildRecurrenceRule(form: NewJobForm): RecurrenceRule | undefined {
   if (!form.recurring) return undefined;
@@ -193,6 +239,8 @@ export function JobFormFields({ form, setForm, customers, properties, users, dur
           onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
         />
       </div>
+
+      <JobTagsPicker form={form} setForm={setForm} />
 
       <Separator />
       <div className="space-y-3">

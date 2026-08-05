@@ -3,6 +3,7 @@ import {
   useListCustomers, getListCustomersQueryKey,
   useCreateCustomer,
   useGetTenantSettings, getGetTenantSettingsQueryKey,
+  useListTags, getListTagsQueryKey,
   customFetch,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -315,6 +316,7 @@ export default function CustomersPage() {
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
 
   const createCustomer = useCreateCustomer();
+  const { data: bizTags = [] } = useListTags({ query: { queryKey: getListTagsQueryKey() } });
   const activeFields = getActiveCustomerFields(settings);
 
   const setField = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }));
@@ -647,8 +649,14 @@ export default function CustomersPage() {
                   <Select value={form.customerType as string} onValueChange={v => setField('customerType', v)}>
                     <SelectTrigger title="Customer category (Residential, Commercial, HOA, etc.)"><SelectValue placeholder="Select type..." /></SelectTrigger>
                     <SelectContent>
-                      {['residential', 'commercial', 'hoa', 'government', 'other'].map(t => (
-                        <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>
+                      {[
+                        { value: 'residential', label: 'Residential' },
+                        { value: 'commercial', label: 'Commercial' },
+                        { value: 'hoa', label: 'HOA' },
+                        { value: 'government', label: 'Government' },
+                        { value: 'other', label: 'Other' },
+                      ].map(t => (
+                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -745,17 +753,44 @@ export default function CustomersPage() {
 
             {activeFields.some(f => f.key === 'tags' && f.visible) && (
               <Section title="Tags" icon={<Tag className="w-4 h-4" />}>
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {((form.tags as string[]) ?? []).map(tag => (
-                    <Badge key={tag} variant="secondary" className="gap-1 pr-1">
-                      {tag}
-                      <button onClick={() => removeTag(tag)} title={`Remove tag "${tag}"`} className="ml-1 hover:text-destructive"><X className="w-3 h-3" /></button>
-                    </Badge>
-                  ))}
-                </div>
+                {/* Canonical tags from Settings — click to toggle */}
+                {(bizTags as Array<{ id: number; name: string; color: string }>).length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {(bizTags as Array<{ id: number; name: string; color: string }>).map(bt => {
+                      const selected = ((form.tags as string[]) ?? []).includes(bt.name);
+                      return (
+                        <button
+                          key={bt.id}
+                          type="button"
+                          title={selected ? `Remove tag "${bt.name}"` : `Add tag "${bt.name}"`}
+                          onClick={() => selected ? removeTag(bt.name) : setForm(f => ({ ...f, tags: [...((f.tags as string[]) ?? []), bt.name] }))}
+                          className={`px-2.5 py-0.5 rounded-full text-xs font-medium border transition-all ${selected ? 'text-white border-transparent shadow-sm' : 'bg-transparent text-muted-foreground border-border hover:border-primary/50'}`}
+                          style={selected ? { backgroundColor: bt.color, borderColor: bt.color } : {}}
+                        >
+                          {bt.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {/* Selected tags display */}
+                {((form.tags as string[]) ?? []).length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {((form.tags as string[]) ?? []).map(tag => {
+                      const canonical = (bizTags as Array<{ id: number; name: string; color: string }>).find(bt => bt.name === tag);
+                      return (
+                        <Badge key={tag} variant="secondary" className="gap-1 pr-1 text-white" style={canonical ? { backgroundColor: canonical.color } : {}}>
+                          {tag}
+                          <button onClick={() => removeTag(tag)} title={`Remove tag "${tag}"`} className="ml-1 hover:opacity-70"><X className="w-3 h-3" /></button>
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                )}
+                {/* Free-text fallback for custom tags */}
                 <div className="flex gap-2">
-                  <Input title="Type a tag and press Enter or click Add" placeholder="Add tag..." value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }} className="flex-1" />
-                  <Button variant="outline" size="sm" title="Add this tag to the customer" onClick={addTag} type="button">Add</Button>
+                  <Input title="Type a custom tag and press Enter" placeholder="Custom tag..." value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }} className="flex-1 h-8 text-sm" />
+                  <Button variant="outline" size="sm" title="Add custom tag" onClick={addTag} type="button">Add</Button>
                 </div>
               </Section>
             )}

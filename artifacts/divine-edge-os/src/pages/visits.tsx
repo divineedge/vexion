@@ -26,7 +26,7 @@ import {
 } from '@workspace/api-client-react';
 import { format } from 'date-fns';
 import {
-  Plus, MapPin, User, Clock, CheckCircle2, ChevronRight, FileText, Briefcase, Footprints, Search, Edit2,
+  Plus, MapPin, User, Clock, CheckCircle2, ChevronRight, FileText, Briefcase, Footprints, Search, Edit2, AlertTriangle,
 } from 'lucide-react';
 
 const VISIT_MODE_COLORS: Record<string, string> = {
@@ -112,15 +112,18 @@ export default function VisitsPage() {
 
   function handleCreate() {
     if (!form.purpose.trim()) { toast.error('Purpose is required'); return; }
+    if (!form.scheduledAt) { toast.error('Scheduled date and time is required'); return; }
+    if (!form.propertyId) { toast.error('Property is required'); return; }
+    if (!form.assigneeId) { toast.error('Assigned technician is required'); return; }
     createVisit.mutate({
       data: {
         customerId: form.customerId ? parseInt(form.customerId, 10) : undefined,
-        propertyId: form.propertyId ? parseInt(form.propertyId, 10) : undefined,
-        assigneeId: form.assigneeId ? parseInt(form.assigneeId, 10) : undefined,
-        visitMode: form.visitMode as 'scheduled' | 'drop_by' | 'drive_by',
+        propertyId: parseInt(form.propertyId, 10),
+        assigneeId: parseInt(form.assigneeId, 10),
+        visitMode: 'scheduled' as const,
         purpose: form.purpose,
         notes: form.notes || undefined,
-        scheduledAt: form.scheduledAt || undefined,
+        scheduledAt: new Date(form.scheduledAt).toISOString(),
         smsReminderEnabled: form.smsReminderEnabled,
       },
     }, {
@@ -188,8 +191,8 @@ export default function VisitsPage() {
           <p className="text-muted-foreground mt-1">Track customer visits, follow-ups, and site check-ins.{visits && visits.length > 0 ? ` ${visits.length} total.` : ''}</p>
         </div>
         {canManageJobs && (
-          <Button title="Log a new customer visit or site check-in" onClick={() => setCreateOpen(true)} className="gap-2">
-            <Plus className="w-4 h-4" /> Log Visit
+          <Button title="Schedule a new customer visit" onClick={() => setCreateOpen(true)} className="gap-2">
+            <Plus className="w-4 h-4" /> Schedule Visit
           </Button>
         )}
       </div>
@@ -238,31 +241,40 @@ export default function VisitsPage() {
               <Card>
                 <CardContent className="p-0">
                   <div className="divide-y">
-                    {upcoming.map(visit => (
-                      <div key={visit.id} className="flex items-center gap-4 px-5 py-4 hover:bg-muted/40 cursor-pointer transition-colors" onClick={() => setSelectedId(visit.id)}>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-medium truncate">{visit.purpose}</span>
-                            <Badge variant="outline" className={`text-xs ${VISIT_MODE_COLORS[visit.visitMode] ?? ''}`}>
-                              {VISIT_MODE_LABELS[visit.visitMode] ?? visit.visitMode}
-                            </Badge>
+                    {upcoming.map(visit => {
+                      const isUnscheduled = !visit.scheduledAt;
+                      return (
+                        <div key={visit.id} className="flex items-center gap-4 px-5 py-4 hover:bg-muted/40 cursor-pointer transition-colors" onClick={() => setSelectedId(visit.id)}>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium truncate">{visit.purpose}</span>
+                              {isUnscheduled ? (
+                                <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300 flex items-center gap-1">
+                                  <AlertTriangle className="w-3 h-3" /> Unscheduled
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className={`text-xs ${VISIT_MODE_COLORS[visit.visitMode] ?? ''}`}>
+                                  {VISIT_MODE_LABELS[visit.visitMode] ?? visit.visitMode}
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="text-sm text-muted-foreground mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
+                              {visit.customerName && (
+                                <button
+                                  className="flex items-center gap-1 hover:text-primary hover:underline"
+                                  onClick={e => { e.stopPropagation(); setLocation(`/customers/${(visit as any).customerId}`); }}
+                                >
+                                  <User className="w-3 h-3" />{visit.customerName}
+                                </button>
+                              )}
+                              {visit.assigneeName && <span className="flex items-center gap-1"><User className="w-3 h-3" />{visit.assigneeName}</span>}
+                              {visit.scheduledAt && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{format(new Date(visit.scheduledAt), 'MMM d, h:mm a')}</span>}
+                            </div>
                           </div>
-                          <div className="text-sm text-muted-foreground mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
-                            {visit.customerName && (
-                              <button
-                                className="flex items-center gap-1 hover:text-primary hover:underline"
-                                onClick={e => { e.stopPropagation(); setLocation(`/customers/${(visit as any).customerId}`); }}
-                              >
-                                <User className="w-3 h-3" />{visit.customerName}
-                              </button>
-                            )}
-                            {visit.assigneeName && <span className="flex items-center gap-1"><User className="w-3 h-3" />{visit.assigneeName}</span>}
-                            {visit.scheduledAt && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{format(new Date(visit.scheduledAt), 'MMM d, h:mm a')}</span>}
-                          </div>
+                          <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
                         </div>
-                        <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
@@ -301,8 +313,8 @@ export default function VisitsPage() {
       <Sheet open={createOpen} onOpenChange={open => { if (!open) setCreateOpen(false); }}>
         <SheetContent className="w-full sm:max-w-[75vw] overflow-y-auto">
           <SheetHeader className="pb-4">
-            <SheetTitle>Log a Visit</SheetTitle>
-            <SheetDescription>Record a customer visit, check-in, or follow-up.</SheetDescription>
+            <SheetTitle>Schedule a Visit</SheetTitle>
+            <SheetDescription>Book a visit with a date, property, and assigned technician. Mark it complete when done.</SheetDescription>
           </SheetHeader>
           <div className="space-y-4 pb-6">
             <div className="space-y-1.5">
@@ -311,23 +323,9 @@ export default function VisitsPage() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Visit Mode</label>
-              <Select value={form.visitMode} onValueChange={v => setForm(f => ({ ...f, visitMode: v }))}>
-                <SelectTrigger title="How this visit is structured — scheduled, drop-by, or drive-by"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="scheduled">Scheduled Appointment</SelectItem>
-                  <SelectItem value="drop_by">Drop By / Flexible</SelectItem>
-                  <SelectItem value="drive_by">Drive-By</SelectItem>
-                </SelectContent>
-              </Select>
+              <label className="text-sm font-medium">Date & Time <span className="text-destructive">*</span></label>
+              <Input type="datetime-local" title="Scheduled date and time for this visit" value={form.scheduledAt} onChange={e => setForm(f => ({ ...f, scheduledAt: e.target.value }))} />
             </div>
-
-            {form.visitMode === 'scheduled' && (
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Date & Time</label>
-                <Input type="datetime-local" title="Scheduled date and time for this visit" value={form.scheduledAt} onChange={e => setForm(f => ({ ...f, scheduledAt: e.target.value }))} />
-              </div>
-            )}
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Customer</label>
@@ -337,23 +335,21 @@ export default function VisitsPage() {
               </Select>
             </div>
 
-            {form.customerId && (
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Property</label>
-                <Select value={form.propertyId} onValueChange={v => setForm(f => ({ ...f, propertyId: v }))}>
-                  <SelectTrigger title="Property to visit — leave blank for any property"><SelectValue placeholder="Any property..." /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">Any property</SelectItem>
-                    {(customerProperties ?? []).map((p: any) => <SelectItem key={p.id} value={String(p.id)}>{p.address}{p.city ? `, ${p.city}` : ''}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Property <span className="text-destructive">*</span></label>
+              <Select value={form.propertyId} onValueChange={v => setForm(f => ({ ...f, propertyId: v }))} disabled={!form.customerId}>
+                <SelectTrigger title="Property to visit"><SelectValue placeholder={form.customerId ? 'Select property…' : 'Select a customer first'} /></SelectTrigger>
+                <SelectContent>
+                  {(customerProperties ?? []).map((p: any) => <SelectItem key={p.id} value={String(p.id)}>{p.address}{p.city ? `, ${p.city}` : ''}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {!form.customerId && <p className="text-xs text-muted-foreground">Select a customer to choose their property.</p>}
+            </div>
 
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Assign To</label>
+              <label className="text-sm font-medium">Assign To <span className="text-destructive">*</span></label>
               <Select value={form.assigneeId} onValueChange={v => setForm(f => ({ ...f, assigneeId: v }))}>
-                <SelectTrigger title="Staff member assigned to conduct this visit"><SelectValue placeholder="Select assignee..." /></SelectTrigger>
+                <SelectTrigger title="Technician assigned to this visit"><SelectValue placeholder="Select technician..." /></SelectTrigger>
                 <SelectContent>{(users ?? []).map(u => <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
@@ -381,7 +377,7 @@ export default function VisitsPage() {
             <div className="flex gap-3 justify-end">
               <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
               <Button onClick={handleCreate} disabled={createVisit.isPending}>
-                {createVisit.isPending ? 'Saving...' : 'Log Visit'}
+                {createVisit.isPending ? 'Saving...' : 'Schedule Visit'}
               </Button>
             </div>
           </div>

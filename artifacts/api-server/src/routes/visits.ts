@@ -68,16 +68,28 @@ router.post("/visits", async (req, res): Promise<void> => {
     res.status(400).json({ error: "purpose is required" });
     return;
   }
+  if (!scheduledAt) {
+    res.status(400).json({ error: "scheduledAt is required — visits must be scheduled before they can be logged" });
+    return;
+  }
+  if (!assigneeId) {
+    res.status(400).json({ error: "assigneeId is required — a technician must be assigned to every visit" });
+    return;
+  }
+  if (!propertyId) {
+    res.status(400).json({ error: "propertyId is required — a property must be selected for every visit" });
+    return;
+  }
 
   const [visit] = await db.insert(visitsTable).values({
     tenantId,
     customerId: customerId ? parseInt(customerId, 10) : null,
-    propertyId: propertyId ? parseInt(propertyId, 10) : null,
-    assigneeId: assigneeId ? parseInt(assigneeId, 10) : null,
+    propertyId: parseInt(propertyId, 10),
+    assigneeId: parseInt(assigneeId, 10),
     visitMode: visitMode ?? "scheduled",
     purpose,
     notes: notes ?? null,
-    scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+    scheduledAt: new Date(scheduledAt),
     smsReminderEnabled: smsReminderEnabled === true || smsReminderEnabled === "true",
   }).returning();
 

@@ -1028,7 +1028,7 @@ export default function CustomerDetailPage() {
             type TimelineItem =
               | { kind: 'job'; date: Date; id: number; title: string; status: string; amount: number | null; propertyAddress: string | null }
               | { kind: 'estimate'; date: Date; id: number; status: string; total: number | null; sentAt: string | null; approvedAt: string | null; propertyAddress: string | null }
-              | { kind: 'visit'; date: Date; id: number; purpose: string; completedAt: string | null; outcomeNotes: string | null; propertyAddress: string | null }
+              | { kind: 'visit'; date: Date; id: number; purpose: string; completedAt: string | null; scheduledAt: string | null; outcomeNotes: string | null; propertyAddress: string | null }
               | { kind: 'invoice'; date: Date; id: number; invoiceNumber: string; status: string; total: number | null };
 
             const allItems: TimelineItem[] = [
@@ -1057,6 +1057,7 @@ export default function CustomerDetailPage() {
                 id: v.id,
                 purpose: v.purpose,
                 completedAt: (v as any).completedAt ?? null,
+                scheduledAt: (v as any).scheduledAt ?? null,
                 outcomeNotes: (v as any).outcomeNotes ?? null,
                 propertyAddress: (v as any).propertyAddress ?? null,
               })),
@@ -1187,9 +1188,19 @@ export default function CustomerDetailPage() {
                                 </Badge>
                               )}
                               {item.kind === 'visit' && (
-                                <Badge className={`text-xs ${item.completedAt ? VISIT_STATUS_COLORS.completed : VISIT_STATUS_COLORS.pending}`} title={item.completedAt ? `Completed ${new Date(item.completedAt).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}` : 'Visit not yet completed'}>
-                                  {item.completedAt ? 'Completed' : 'Pending'}
-                                </Badge>
+                                item.completedAt ? (
+                                  <Badge className={`text-xs ${VISIT_STATUS_COLORS.completed}`} title={`Completed ${new Date(item.completedAt).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`}>
+                                    Completed
+                                  </Badge>
+                                ) : !item.scheduledAt ? (
+                                  <Badge className="text-xs bg-amber-50 text-amber-700 border-amber-300 flex items-center gap-1" title="This visit was logged without a scheduled date — review needed">
+                                    Unscheduled
+                                  </Badge>
+                                ) : (
+                                  <Badge className={`text-xs ${VISIT_STATUS_COLORS.pending}`} title="Visit not yet completed">
+                                    Scheduled
+                                  </Badge>
+                                )
                               )}
                               {item.kind === 'invoice' && (
                                 <Badge className={`capitalize text-xs ${item.status === 'paid' ? 'bg-emerald-100 text-emerald-700 border-transparent' : item.status === 'overdue' ? 'bg-red-100 text-red-700 border-transparent' : 'bg-muted text-muted-foreground border-transparent'}`} title={`Invoice status: ${item.status}`}>
@@ -1546,8 +1557,8 @@ export default function CustomerDetailPage() {
                   <Button size="sm" variant="outline" className="gap-1.5" title="Create a new estimate for this customer" onClick={() => setLocation(`/estimates?action=create&customerId=${customer.id}`)}>
                     <Plus className="w-3.5 h-3.5" /> New Estimate
                   </Button>
-                  <Button size="sm" variant="outline" className="gap-1.5" title="Log a completed visit for this customer" onClick={() => setLocation(`/visits?customerId=${customer.id}`)}>
-                    <Plus className="w-3.5 h-3.5" /> Log Visit
+                  <Button size="sm" variant="outline" className="gap-1.5" title="Schedule a visit for this customer" onClick={() => setLocation(`/visits?customerId=${customer.id}`)}>
+                    <Plus className="w-3.5 h-3.5" /> Schedule Visit
                   </Button>
                 </div>
               )}

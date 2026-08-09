@@ -329,6 +329,11 @@ export default function JobsScreen() {
     router.push('/(app)/equipment');
   }, []);
 
+  const handleTimeTrackingPress = useCallback(async () => {
+    await Haptics.selectionAsync();
+    router.push('/(app)/time-tracking' as any);
+  }, []);
+
   const handleRecurringPress = useCallback(async () => {
     await Haptics.selectionAsync();
     router.push('/(app)/recurring');
@@ -359,6 +364,13 @@ export default function JobsScreen() {
           </Text>
         </View>
         <View style={styles.headerActions}>
+          <TouchableOpacity
+            onPress={handleTimeTrackingPress}
+            style={styles.headerBtn}
+            testID="time-tracking-nav-button"
+          >
+            <Ionicons name="timer-outline" size={22} color={colors.mutedForeground} />
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={handleRecurringPress}
             style={styles.headerBtn}

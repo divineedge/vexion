@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, timeEntriesTable, subTimersTable, usersTable, taskBundleCompletionsTable, taskBundlesTable } from "@workspace/db";
+import { db, timeEntriesTable, subTimersTable, usersTable, taskBundleCompletionsTable, taskBundlesTable, jobsTable, visitsTable, customersTable, propertiesTable } from "@workspace/db";
 import { eq, and, sql, gte, lte, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { ADMIN_ROLES, getCallerRole } from "../lib/roles";
@@ -97,31 +97,36 @@ router.post("/time-tracking/sub-timers", async (req, res): Promise<void> => {
 
   if (!label || !type) { res.status(400).json({ error: "label and type required" }); return; }
 
-  // Prevent clocking into a second job while one is already active
-  const activeTimers = await db
-    .select({ id: subTimersTable.id, label: subTimersTable.label })
-    .from(subTimersTable)
-    .where(and(
-      eq(subTimersTable.tenantId, tenantId),
-      eq(subTimersTable.userId, userId),
-      eq(subTimersTable.isActive, true),
-    ));
-  if (activeTimers.length > 0) {
-    res.status(409).json({
-      error: "Already clocked in",
-      message: `You are already clocked in to "${activeTimers[0].label}". Clock out first before starting another job.`,
-      activeTimerId: activeTimers[0].id,
-    });
-    return;
-  }
+  // Atomically stop any active timers and start the new one
+  const timer = await db.transaction(async (tx) => {
+    const activeTimers = await tx
+      .select()
+      .from(subTimersTable)
+      .where(and(
+        eq(subTimersTable.tenantId, tenantId),
+        eq(subTimersTable.userId, userId),
+        eq(subTimersTable.isActive, true),
+      ))
+      .for("update"); // row-level lock prevents concurrent start races
 
-  const [timer] = await db.insert(subTimersTable).values({
-    tenantId,
-    userId,
-    label,
-    type,
-    jobId: jobId ? parseInt(jobId, 10) : null,
-  }).returning();
+    const now = new Date();
+    for (const active of activeTimers) {
+      const elapsed = Math.floor((now.getTime() - active.startedAt.getTime()) / 1000);
+      await tx.update(subTimersTable)
+        .set({ stoppedAt: now, elapsedSeconds: elapsed, isActive: false })
+        .where(eq(subTimersTable.id, active.id));
+    }
+
+    const [newTimer] = await tx.insert(subTimersTable).values({
+      tenantId,
+      userId,
+      label,
+      type,
+      jobId: jobId ? parseInt(jobId, 10) : null,
+    }).returning();
+
+    return newTimer;
+  });
 
   res.status(201).json({ ...timer, startedAt: timer.startedAt.toISOString(), stoppedAt: null, createdAt: timer.createdAt.toISOString() });
 });
@@ -168,6 +173,131 @@ router.get("/time-tracking/entries", async (req, res): Promise<void> => {
     clockedOutAt: r.entry.clockedOutAt?.toISOString() ?? null,
     totalMinutes: r.entry.totalMinutes,
   })));
+});
+
+/**
+ * GET /time-tracking/today-schedule
+ * Returns today's jobs + visits for the calling user, sorted by scheduledAt,
+ * with an activeTimerId field indicating whether there's an active sub-timer.
+ */
+router.get("/time-tracking/today-schedule", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  const role = await getCallerRole(tenantId, userId);
+  const isAdmin = ADMIN_ROLES.has(role);
+
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+
+  // Fetch active sub-timers for the user
+  const activeTimers = await db
+    .select()
+    .from(subTimersTable)
+    .where(and(
+      eq(subTimersTable.tenantId, tenantId),
+      eq(subTimersTable.userId, userId),
+      eq(subTimersTable.isActive, true),
+    ));
+
+  // Fetch today's jobs
+  const jobWhere = and(
+    eq(jobsTable.tenantId, tenantId),
+    gte(jobsTable.scheduledAt, todayStart),
+    lte(jobsTable.scheduledAt, todayEnd),
+    ...(isAdmin ? [] : [eq(jobsTable.assigneeId, userId)]),
+  )!;
+
+  const jobRows = await db
+    .select({
+      id: jobsTable.id,
+      title: jobsTable.title,
+      status: jobsTable.status,
+      scheduledAt: jobsTable.scheduledAt,
+      customerName: customersTable.name,
+      propertyAddress: propertiesTable.address,
+    })
+    .from(jobsTable)
+    .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
+    .leftJoin(propertiesTable, eq(jobsTable.propertyId, propertiesTable.id))
+    .where(jobWhere)
+    .orderBy(jobsTable.scheduledAt);
+
+  // Fetch today's visits
+  const visitWhere = and(
+    eq(visitsTable.tenantId, tenantId),
+    gte(visitsTable.scheduledAt, todayStart),
+    lte(visitsTable.scheduledAt, todayEnd),
+    ...(isAdmin ? [] : [eq(visitsTable.assigneeId, userId)]),
+  )!;
+
+  const visitRows = await db
+    .select({
+      id: visitsTable.id,
+      purpose: visitsTable.purpose,
+      visitMode: visitsTable.visitMode,
+      completedAt: visitsTable.completedAt,
+      scheduledAt: visitsTable.scheduledAt,
+      customerName: customersTable.name,
+      propertyAddress: propertiesTable.address,
+    })
+    .from(visitsTable)
+    .leftJoin(customersTable, eq(visitsTable.customerId, customersTable.id))
+    .leftJoin(propertiesTable, eq(visitsTable.propertyId, propertiesTable.id))
+    .where(visitWhere)
+    .orderBy(visitsTable.scheduledAt);
+
+  // Build schedule items
+  const scheduleItems: object[] = [];
+
+  for (const j of jobRows) {
+    const timer = activeTimers.find(t => t.jobId === j.id);
+    const elapsed = timer
+      ? Math.floor((Date.now() - timer.startedAt.getTime()) / 1000)
+      : 0;
+    scheduleItems.push({
+      kind: "job",
+      id: j.id,
+      label: j.title,
+      scheduledAt: j.scheduledAt.toISOString(),
+      customerName: j.customerName ?? null,
+      propertyAddress: j.propertyAddress ?? null,
+      status: j.status,
+      activeTimerId: timer?.id ?? null,
+      activeTimerStartedAt: timer?.startedAt.toISOString() ?? null,
+      elapsedSeconds: elapsed,
+    });
+  }
+
+  for (const v of visitRows) {
+    const timerLabel = `visit:${v.id}:`;
+    const timer = activeTimers.find(t => t.label.startsWith(timerLabel));
+    const elapsed = timer
+      ? Math.floor((Date.now() - timer.startedAt.getTime()) / 1000)
+      : 0;
+    // Derive a display status: completed if completedAt is set, otherwise use visitMode
+    const visitStatus = v.completedAt ? "completed" : (v.visitMode ?? "scheduled");
+    scheduleItems.push({
+      kind: "visit",
+      id: v.id,
+      label: v.purpose,
+      scheduledAt: v.scheduledAt?.toISOString() ?? null,
+      customerName: v.customerName ?? null,
+      propertyAddress: v.propertyAddress ?? null,
+      status: visitStatus,
+      activeTimerId: timer?.id ?? null,
+      activeTimerStartedAt: timer?.startedAt.toISOString() ?? null,
+      elapsedSeconds: elapsed,
+    });
+  }
+
+  // Sort merged list by scheduledAt (nulls last)
+  scheduleItems.sort((a: any, b: any) => {
+    if (!a.scheduledAt) return 1;
+    if (!b.scheduledAt) return -1;
+    return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+  });
+
+  res.json(scheduleItems);
 });
 
 /**

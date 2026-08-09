@@ -3246,6 +3246,24 @@ export const StopSubTimerResponse = zod.object({
 
 
 /**
+ * @summary Get today's schedule (jobs + visits) for the current user with active timer state
+ */
+export const GetTodayScheduleResponseItem = zod.object({
+  "kind": zod.enum(['job', 'visit']),
+  "id": zod.number(),
+  "label": zod.string(),
+  "scheduledAt": zod.string().nullish(),
+  "customerName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "status": zod.string(),
+  "activeTimerId": zod.number().nullish(),
+  "activeTimerStartedAt": zod.string().nullish(),
+  "elapsedSeconds": zod.number().optional()
+})
+export const GetTodayScheduleResponse = zod.array(GetTodayScheduleResponseItem)
+
+
+/**
  * @summary List time entries for the current user
  */
 export const ListTimeEntriesQueryParams = zod.object({

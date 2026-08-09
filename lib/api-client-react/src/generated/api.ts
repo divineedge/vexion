@@ -250,6 +250,7 @@ import type {
   RunRecurringTemplateNow200,
   RunRecurringTemplateNowInput,
   SalesTaxReport,
+  ScheduleItem,
   SendBroadcastInput,
   SendInvoiceReminder200,
   SendInvoiceReminder400,
@@ -8047,6 +8048,83 @@ export const useStopSubTimer = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getStopSubTimerMutationOptions(options));
     }
+
+export const getGetTodayScheduleUrl = () => {
+
+
+
+
+  return `/api/time-tracking/today-schedule`
+}
+
+/**
+ * @summary Get today's schedule (jobs + visits) for the current user with active timer state
+ */
+export const getTodaySchedule = async ( options?: RequestInit): Promise<ScheduleItem[]> => {
+
+  return customFetch<ScheduleItem[]>(getGetTodayScheduleUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTodayScheduleQueryKey = () => {
+    return [
+    `/api/time-tracking/today-schedule`
+    ] as const;
+    }
+
+
+export const getGetTodayScheduleQueryOptions = <TData = Awaited<ReturnType<typeof getTodaySchedule>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTodaySchedule>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTodayScheduleQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTodaySchedule>>> = ({ signal }) => getTodaySchedule({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTodaySchedule>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTodayScheduleQueryResult = NonNullable<Awaited<ReturnType<typeof getTodaySchedule>>>
+export type GetTodayScheduleQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get today's schedule (jobs + visits) for the current user with active timer state
+ */
+
+export function useGetTodaySchedule<TData = Awaited<ReturnType<typeof getTodaySchedule>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTodaySchedule>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTodayScheduleQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getListTimeEntriesUrl = (params?: ListTimeEntriesParams,) => {
   const normalizedParams = new URLSearchParams();

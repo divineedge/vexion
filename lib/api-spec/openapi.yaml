@@ -2163,6 +2163,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/SubTimer"
 
+  /time-tracking/today-schedule:
+    get:
+      operationId: getTodaySchedule
+      tags: [timeTracking]
+      summary: Get today's schedule (jobs + visits) for the current user with active timer state
+      responses:
+        "200":
+          description: Today's schedule items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScheduleItem"
+
   /time-tracking/entries:
     get:
       operationId: listTimeEntries
@@ -9430,6 +9445,32 @@ components:
           type: integer
         isActive:
           type: boolean
+
+    ScheduleItem:
+      type: object
+      required: [kind, id, label, status]
+      properties:
+        kind:
+          type: string
+          enum: [job, visit]
+        id:
+          type: integer
+        label:
+          type: string
+        scheduledAt:
+          type: ["string", "null"]
+        customerName:
+          type: ["string", "null"]
+        propertyAddress:
+          type: ["string", "null"]
+        status:
+          type: string
+        activeTimerId:
+          type: ["integer", "null"]
+        activeTimerStartedAt:
+          type: ["string", "null"]
+        elapsedSeconds:
+          type: integer
 
     SubTimerInput:
       type: object

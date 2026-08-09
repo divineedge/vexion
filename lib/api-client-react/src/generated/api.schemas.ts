@@ -2010,6 +2010,32 @@ export interface SubTimer {
   isActive: boolean;
 }
 
+export type ScheduleItemKind = typeof ScheduleItemKind[keyof typeof ScheduleItemKind];
+
+
+export const ScheduleItemKind = {
+  job: 'job',
+  visit: 'visit',
+} as const;
+
+export interface ScheduleItem {
+  kind: ScheduleItemKind;
+  id: number;
+  label: string;
+  /** @nullable */
+  scheduledAt?: string | null;
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  propertyAddress?: string | null;
+  status: string;
+  /** @nullable */
+  activeTimerId?: number | null;
+  /** @nullable */
+  activeTimerStartedAt?: string | null;
+  elapsedSeconds?: number;
+}
+
 export type SubTimerInputType = typeof SubTimerInputType[keyof typeof SubTimerInputType];
 
 

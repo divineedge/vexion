@@ -406,6 +406,8 @@ export * from './runRecurringTemplateNowInput';
 export * from './salesTaxMonthRow';
 export * from './salesTaxReport';
 export * from './salesTaxReportTotals';
+export * from './scheduleItem';
+export * from './scheduleItemKind';
 export * from './sendBroadcastInput';
 export * from './sendBroadcastInputChannel';
 export * from './sendInvoiceReminder200';

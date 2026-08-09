@@ -86,7 +86,7 @@ export default function PropertyDetailPage() {
   const [ownershipHistory, setOwnershipHistory] = useState<OwnershipRecord[]>([]);
   const [ownershipLoading, setOwnershipLoading] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
-  const [geoInput, setGeoInput] = useState({ lat: '', lng: '', radius: '50' });
+  const [geoInput, setGeoInput] = useState({ lat: '', lng: '', radius: '' }); // radius filled from settings once loaded
   const [transferForm, setTransferForm] = useState({ newCustomerId: '', notes: '', customerSearch: '' });
   const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
   const [savingMeasurements, setSavingMeasurements] = useState(false);
@@ -208,11 +208,42 @@ export default function PropertyDetailPage() {
         setGeoInput({
           lat: property.geofenceLat.toString(),
           lng: (property.geofenceLng ?? '').toString(),
-          radius: (property.geofenceRadius ?? 50).toString(),
+          // Use stored radius; fall back to tenant default (filled by settings effect below)
+          radius: (property.geofenceRadius ?? defaultGeofenceRadiusM).toString(),
         });
       }
     }
-  }, [property]);
+  }, [property, defaultGeofenceRadiusM]);
+
+  // Fill in default geofence radius from settings once they load (only when no existing geofence)
+  React.useEffect(() => {
+    if (defaultGeofenceRadiusM && !geoInput.lat) {
+      setGeoInput(g => ({ ...g, radius: String(defaultGeofenceRadiusM) }));
+    }
+  }, [defaultGeofenceRadiusM]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-geocode: when the property loads without stored coordinates, silently fetch them
+  React.useEffect(() => {
+    if (!property || property.lat || property.lng || !property.address) return;
+    (async () => {
+      try {
+        const result = await customFetch<{ lat: number; lng: number }>(
+          `/api/properties/${property.id}/geocode`
+        );
+        if (result.lat && result.lng) {
+          // Silently update coordinates — no toast, user can adjust pin manually
+          await customFetch(`/api/properties/${property.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lat: result.lat, lng: result.lng }),
+          });
+          qc.invalidateQueries({ queryKey: getGetPropertyQueryKey(property.id) });
+        }
+      } catch {
+        // silently fail — the manual "Auto-Detect Location" button is still available
+      }
+    })();
+  }, [property?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadOwnershipHistory = async () => {
     if (ownershipHistory.length > 0) return;
@@ -676,8 +707,8 @@ export default function PropertyDetailPage() {
                     <Input title="Longitude of the geofence center pin" placeholder="-118.2437" value={geoInput.lng} onChange={e => setGeoInput(g => ({ ...g, lng: e.target.value }))} />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium">Radius (m)</label>
-                    <Input type="number" title="Geofence radius in meters — technicians inside this circle are considered on-site" placeholder="50" value={geoInput.radius} onChange={e => setGeoInput(g => ({ ...g, radius: e.target.value }))} />
+                    <label className="text-xs font-medium">Radius ({defaultGeofenceUnit})</label>
+                    <Input type="number" title={`Geofence radius in ${defaultGeofenceUnit === 'ft' ? 'feet' : 'meters'} — technicians inside this circle are considered on-site`} placeholder={String(defaultGeofenceRadius)} value={geoInput.radius} onChange={e => setGeoInput(g => ({ ...g, radius: e.target.value }))} />
                   </div>
                 </div>
                 <Button onClick={handleSaveGeofence} disabled={updateGeofence.isPending} className="w-full">

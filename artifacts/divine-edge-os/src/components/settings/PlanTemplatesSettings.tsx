@@ -516,23 +516,55 @@ export default function PlanTemplatesSettings() {
               {form.offSeasonEnabled && (
                 <div className="grid grid-cols-2 gap-4 pl-1">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-muted-foreground">Pause starts (MM-DD)</label>
-                    <div className="flex gap-1">
-                      <Input type="number" min={1} max={12} title="Month visits pause (1–12)" placeholder="MM" className="w-16 text-sm" value={form.offSeasonStartMonth}
-                        onChange={e => setForm(f => ({ ...f, offSeasonStartMonth: e.target.value.padStart(2, '0') }))} />
-                      <span className="self-center text-muted-foreground">-</span>
-                      <Input type="number" min={1} max={31} title="Day of month visits pause (1–31)" placeholder="DD" className="w-16 text-sm" value={form.offSeasonStartDay}
-                        onChange={e => setForm(f => ({ ...f, offSeasonStartDay: e.target.value.padStart(2, '0') }))} />
+                    <label className="text-xs font-medium text-muted-foreground">Pause starts</label>
+                    <div className="flex gap-1.5">
+                      <Select value={form.offSeasonStartMonth} onValueChange={v => setForm(f => ({ ...f, offSeasonStartMonth: v }))}>
+                        <SelectTrigger className="w-[110px] text-sm h-9" title="Month visits pause">
+                          <SelectValue placeholder="Month" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[['01','January'],['02','February'],['03','March'],['04','April'],['05','May'],['06','June'],
+                            ['07','July'],['08','August'],['09','September'],['10','October'],['11','November'],['12','December']].map(([v,l]) => (
+                            <SelectItem key={v} value={v}>{l}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={form.offSeasonStartDay} onValueChange={v => setForm(f => ({ ...f, offSeasonStartDay: v }))}>
+                        <SelectTrigger className="w-[70px] text-sm h-9" title="Day visits pause">
+                          <SelectValue placeholder="Day" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0')).map(d => (
+                            <SelectItem key={d} value={d}>{Number(d)}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-muted-foreground">Pause ends (MM-DD)</label>
-                    <div className="flex gap-1">
-                      <Input type="number" min={1} max={12} title="Month visits resume (1–12)" placeholder="MM" className="w-16 text-sm" value={form.offSeasonEndMonth}
-                        onChange={e => setForm(f => ({ ...f, offSeasonEndMonth: e.target.value.padStart(2, '0') }))} />
-                      <span className="self-center text-muted-foreground">-</span>
-                      <Input type="number" min={1} max={31} title="Day of month visits resume (1–31)" placeholder="DD" className="w-16 text-sm" value={form.offSeasonEndDay}
-                        onChange={e => setForm(f => ({ ...f, offSeasonEndDay: e.target.value.padStart(2, '0') }))} />
+                    <label className="text-xs font-medium text-muted-foreground">Pause ends</label>
+                    <div className="flex gap-1.5">
+                      <Select value={form.offSeasonEndMonth} onValueChange={v => setForm(f => ({ ...f, offSeasonEndMonth: v }))}>
+                        <SelectTrigger className="w-[110px] text-sm h-9" title="Month visits resume">
+                          <SelectValue placeholder="Month" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[['01','January'],['02','February'],['03','March'],['04','April'],['05','May'],['06','June'],
+                            ['07','July'],['08','August'],['09','September'],['10','October'],['11','November'],['12','December']].map(([v,l]) => (
+                            <SelectItem key={v} value={v}>{l}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={form.offSeasonEndDay} onValueChange={v => setForm(f => ({ ...f, offSeasonEndDay: v }))}>
+                        <SelectTrigger className="w-[70px] text-sm h-9" title="Day visits resume">
+                          <SelectValue placeholder="Day" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0')).map(d => (
+                            <SelectItem key={d} value={d}>{Number(d)}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                 </div>

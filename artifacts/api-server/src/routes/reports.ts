@@ -15,8 +15,8 @@
  */
 
 import { Router, type IRouter } from "express";
-import { db, tenantsTable, inventoryItemsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, tenantsTable, inventoryItemsTable, inventorySuppliersTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
@@ -594,6 +594,93 @@ router.get("/reports/inventory-sales", async (req, res): Promise<void> => {
   });
 
   res.json({ ...data, generatedAt, cached, startDate: startDate.toISOString(), endDate: endDate.toISOString() });
+});
+
+// ── Reorder List Report ────────────────────────────────────────────────────────
+
+router.get("/reports/inventory-reorder-list", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  if (!(await requireAdmin(tenantId, userId, res))) return;
+
+  // Fetch all low-stock items and join their suppliers
+  const lowItems = await db
+    .select({
+      id: inventoryItemsTable.id,
+      name: inventoryItemsTable.name,
+      sku: inventoryItemsTable.sku,
+      quantity: inventoryItemsTable.quantity,
+      reorderPoint: inventoryItemsTable.reorderPoint,
+      unit: inventoryItemsTable.unit,
+      unitPrice: inventoryItemsTable.unitPrice,
+      category: inventoryItemsTable.category,
+      supplierId: inventoryItemsTable.supplierId,
+      supplierName: inventorySuppliersTable.name,
+      supplierContact: inventorySuppliersTable.contact,
+      supplierAccountNumber: inventorySuppliersTable.accountNumber,
+    })
+    .from(inventoryItemsTable)
+    .leftJoin(inventorySuppliersTable, and(
+      eq(inventorySuppliersTable.id, inventoryItemsTable.supplierId!),
+      eq(inventorySuppliersTable.tenantId, tenantId),
+    ))
+    .where(and(
+      eq(inventoryItemsTable.tenantId, tenantId),
+      eq(inventoryItemsTable.isLowStock, true),
+    ))
+    .orderBy(inventoryItemsTable.name);
+
+  // Group by supplier (null supplier = "No Supplier Assigned")
+  type GroupKey = string; // supplierId or 'none'
+  const groupMap = new Map<GroupKey, {
+    supplierId: number | null;
+    supplierName: string;
+    contact: string | null;
+    accountNumber: string | null;
+    items: typeof lowItems;
+  }>();
+
+  for (const item of lowItems) {
+    const key: GroupKey = item.supplierId ? String(item.supplierId) : 'none';
+    if (!groupMap.has(key)) {
+      groupMap.set(key, {
+        supplierId: item.supplierId ?? null,
+        supplierName: item.supplierName ?? 'No Supplier Assigned',
+        contact: item.supplierContact ?? null,
+        accountNumber: item.supplierAccountNumber ?? null,
+        items: [],
+      });
+    }
+    groupMap.get(key)!.items.push(item);
+  }
+
+  // Sort groups: named suppliers first (alphabetically), "no supplier" last
+  const groups = Array.from(groupMap.values()).sort((a, b) => {
+    if (a.supplierId === null && b.supplierId !== null) return 1;
+    if (a.supplierId !== null && b.supplierId === null) return -1;
+    return a.supplierName.localeCompare(b.supplierName);
+  }).map(g => ({
+    supplierId: g.supplierId,
+    supplierName: g.supplierName,
+    contact: g.contact,
+    accountNumber: g.accountNumber,
+    items: g.items.map(i => ({
+      id: i.id,
+      name: i.name,
+      sku: i.sku,
+      quantity: i.quantity,
+      reorderPoint: i.reorderPoint,
+      unit: i.unit,
+      costPrice: i.unitPrice,
+      category: i.category ?? null,
+    })),
+  }));
+
+  res.json({
+    groups,
+    totalItems: lowItems.length,
+    generatedAt: new Date().toISOString(),
+  });
 });
 
 export default router;

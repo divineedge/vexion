@@ -2201,6 +2201,8 @@ export const ListInventoryItemsResponseItem = zod.object({
   "isLowStock": zod.boolean().optional(),
   "availableForBlueprint": zod.boolean().optional().describe('When true, this item is offered as a pickable option in the Blueprint canvas palette.'),
   "commissionPct": zod.number().nullish().describe('Percentage of the markup (sell - buy) awarded to the salesperson as commission. Null means 0%.'),
+  "supplierId": zod.number().nullish().describe('FK to inventory_suppliers. Null if no supplier assigned.'),
+  "supplierName": zod.string().nullish().describe('Denormalized supplier name for display convenience.'),
   "createdAt": zod.string()
 })
 export const ListInventoryItemsResponse = zod.array(ListInventoryItemsResponseItem)
@@ -2220,7 +2222,8 @@ export const CreateInventoryItemBody = zod.object({
   "reorderPoint": zod.number().optional(),
   "unit": zod.string().optional(),
   "availableForBlueprint": zod.boolean().optional().describe('When true, this item is offered as a pickable option in the Blueprint canvas palette.'),
-  "commissionPct": zod.number().optional().describe('Percentage of the markup (sell - buy) awarded to the salesperson as commission.')
+  "commissionPct": zod.number().optional().describe('Percentage of the markup (sell - buy) awarded to the salesperson as commission.'),
+  "supplierId": zod.number().optional().describe('FK to inventory_suppliers.')
 })
 
 export const CreateInventoryItemResponse = zod.object({
@@ -2240,6 +2243,8 @@ export const CreateInventoryItemResponse = zod.object({
   "isLowStock": zod.boolean().optional(),
   "availableForBlueprint": zod.boolean().optional().describe('When true, this item is offered as a pickable option in the Blueprint canvas palette.'),
   "commissionPct": zod.number().nullish().describe('Percentage of the markup (sell - buy) awarded to the salesperson as commission. Null means 0%.'),
+  "supplierId": zod.number().nullish().describe('FK to inventory_suppliers. Null if no supplier assigned.'),
+  "supplierName": zod.string().nullish().describe('Denormalized supplier name for display convenience.'),
   "createdAt": zod.string()
 })
 
@@ -2268,6 +2273,8 @@ export const GetInventoryItemResponse = zod.object({
   "isLowStock": zod.boolean().optional(),
   "availableForBlueprint": zod.boolean().optional().describe('When true, this item is offered as a pickable option in the Blueprint canvas palette.'),
   "commissionPct": zod.number().nullish().describe('Percentage of the markup (sell - buy) awarded to the salesperson as commission. Null means 0%.'),
+  "supplierId": zod.number().nullish().describe('FK to inventory_suppliers. Null if no supplier assigned.'),
+  "supplierName": zod.string().nullish().describe('Denormalized supplier name for display convenience.'),
   "createdAt": zod.string()
 })
 
@@ -2289,7 +2296,8 @@ export const UpdateInventoryItemBody = zod.object({
   "reorderPoint": zod.number().optional(),
   "unit": zod.string().optional(),
   "availableForBlueprint": zod.boolean().optional().describe('When true, this item is offered as a pickable option in the Blueprint canvas palette.'),
-  "commissionPct": zod.number().optional().describe('Percentage of the markup (sell - buy) awarded to the salesperson as commission.')
+  "commissionPct": zod.number().optional().describe('Percentage of the markup (sell - buy) awarded to the salesperson as commission.'),
+  "supplierId": zod.number().nullish().describe('FK to inventory_suppliers. Pass null to unlink.')
 })
 
 export const UpdateInventoryItemResponse = zod.object({
@@ -2309,6 +2317,8 @@ export const UpdateInventoryItemResponse = zod.object({
   "isLowStock": zod.boolean().optional(),
   "availableForBlueprint": zod.boolean().optional().describe('When true, this item is offered as a pickable option in the Blueprint canvas palette.'),
   "commissionPct": zod.number().nullish().describe('Percentage of the markup (sell - buy) awarded to the salesperson as commission. Null means 0%.'),
+  "supplierId": zod.number().nullish().describe('FK to inventory_suppliers. Null if no supplier assigned.'),
+  "supplierName": zod.string().nullish().describe('Denormalized supplier name for display convenience.'),
   "createdAt": zod.string()
 })
 
@@ -2352,6 +2362,8 @@ export const AdjustInventoryStockResponse = zod.object({
   "isLowStock": zod.boolean().optional(),
   "availableForBlueprint": zod.boolean().optional().describe('When true, this item is offered as a pickable option in the Blueprint canvas palette.'),
   "commissionPct": zod.number().nullish().describe('Percentage of the markup (sell - buy) awarded to the salesperson as commission. Null means 0%.'),
+  "supplierId": zod.number().nullish().describe('FK to inventory_suppliers. Null if no supplier assigned.'),
+  "supplierName": zod.string().nullish().describe('Denormalized supplier name for display convenience.'),
   "createdAt": zod.string()
 })
 
@@ -2977,7 +2989,6 @@ export const SubmitReviewRatingParams = zod.object({
 })
 
 export const submitReviewRatingBodyRatingMax = 5;
-
 
 
 export const SubmitReviewRatingBody = zod.object({
@@ -3659,7 +3670,6 @@ export const GenerateBlueprintAiZonesParams = zod.object({
 })
 
 export const generateBlueprintAiZonesBodyZonesItemPolygonMin = 3;
-
 
 
 export const GenerateBlueprintAiZonesBody = zod.object({
@@ -6310,9 +6320,6 @@ export const ResumeCustomerServiceResponse = zod.object({
  */
 
 
-
-
-
 export const RequestUploadUrlBody = zod.object({
   "name": zod.string().min(1),
   "size": zod.number().min(1),
@@ -6825,9 +6832,6 @@ export const DismissPlanCancelRequestResponse = zod.object({
 /**
  * @summary Request a presigned upload URL (portal customers)
  */
-
-
-
 
 
 export const PortalRequestUploadUrlBody = zod.object({
@@ -9495,7 +9499,29 @@ export const GetInventorySalesReportResponse = zod.object({
   "endDate": zod.string()
 })
 
-
+/**
+ * @summary Items at or below reorder point, grouped by supplier
+ */
+export const GetInventoryReorderListResponse = zod.object({
+  "totalItems": zod.number(),
+  "generatedAt": zod.string(),
+  "groups": zod.array(zod.object({
+  "supplierId": zod.number().nullable(),
+  "supplierName": zod.string(),
+  "contact": zod.string().nullish(),
+  "accountNumber": zod.string().nullish(),
+  "items": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "sku": zod.string(),
+  "quantity": zod.number(),
+  "reorderPoint": zod.number(),
+  "unit": zod.string(),
+  "costPrice": zod.number().nullable(),
+  "category": zod.string().nullish()
+}))
+}))
+})
 /**
  * @summary List vendors
  */
@@ -10421,3 +10447,70 @@ export const DeleteRepairLogParams = zod.object({
 export const DeleteRepairLogResponse = zod.void()
 
 
+export const UpdateInventorySupplierBody = zod.object({
+  "name": zod.string().optional(),
+  "contact": zod.string().nullish(),
+  "accountNumber": zod.string().nullish(),
+  "notes": zod.string().nullish()
+})
+
+/**
+ * @summary Update an inventory supplier
+ */
+export const UpdateInventorySupplierParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateInventorySupplierResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "contact": zod.string().nullish().describe('Phone, email, or rep name.'),
+  "accountNumber": zod.string().nullish().describe('Our account number with this supplier.'),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+/**
+ * @summary List all inventory suppliers for the tenant
+ */
+export const ListInventorySuppliersResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "contact": zod.string().nullish().describe('Phone, email, or rep name.'),
+  "accountNumber": zod.string().nullish().describe('Our account number with this supplier.'),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+export const ListInventorySuppliersResponse = zod.array(ListInventorySuppliersResponseItem)
+
+export const DeleteInventorySupplierResponse = zod.void()
+
+export const CreateInventorySupplierResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "contact": zod.string().nullish().describe('Phone, email, or rep name.'),
+  "accountNumber": zod.string().nullish().describe('Our account number with this supplier.'),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+/**
+ * @summary Create a new inventory supplier
+ */
+export const CreateInventorySupplierBody = zod.object({
+  "name": zod.string(),
+  "contact": zod.string().optional(),
+  "accountNumber": zod.string().optional(),
+  "notes": zod.string().optional()
+})
+
+/**
+ * @summary Delete an inventory supplier (sets supplierId to null on linked items)
+ */
+export const DeleteInventorySupplierParams = zod.object({
+  "id": zod.coerce.number()
+})

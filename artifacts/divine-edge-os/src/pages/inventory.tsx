@@ -12,6 +12,8 @@ import {
   useGetLocationStock, getGetLocationStockQueryKey,
   useTransferInventoryStock,
   useGetInventoryItemByLocation, getGetInventoryItemByLocationQueryKey,
+  useListInventorySuppliers, getListInventorySuppliersQueryKey,
+  useCreateInventorySupplier,
 } from '@workspace/api-client-react';
 import type { InventoryLocation } from '@workspace/api-client-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -30,7 +32,7 @@ import { ImportExportControls } from '@/components/data-io/ImportExportControls'
 import {
   Search, Plus, AlertTriangle, Package, DollarSign, Edit, Trash2,
   TrendingUp, ArrowRight, Eye, EyeOff, PlusCircle, MinusCircle,
-  Warehouse, Truck, ArrowLeftRight, MapPin,
+  Warehouse, Truck, ArrowLeftRight, MapPin, Building2,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -76,12 +78,13 @@ type ItemForm = {
   unit: string;
   availableForBlueprint: boolean;
   commissionPct: string;
+  supplierId: string; // '' means none
 };
 
 const EMPTY_FORM: ItemForm = {
   name: '', sku: '', description: '', category: '',
   costPrice: '', markupPct: '', quantity: '0', reorderPoint: '5', unit: 'each',
-  availableForBlueprint: false, commissionPct: '',
+  availableForBlueprint: false, commissionPct: '', supplierId: '',
 };
 
 export default function InventoryPage() {
@@ -115,6 +118,14 @@ export default function InventoryPage() {
   const [adjustItemName, setAdjustItemName] = useState('');
   const [adjustDelta, setAdjustDelta] = useState('');
   const [adjustReason, setAdjustReason] = useState('');
+
+  // Supplier inline-create dialog
+  const [supplierDialogOpen, setSupplierDialogOpen] = useState(false);
+  const [supplierForm, setSupplierForm] = useState({ name: '', contact: '', accountNumber: '', notes: '' });
+
+  // Suppliers
+  const { data: suppliers } = useListInventorySuppliers({ query: { queryKey: getListInventorySuppliersQueryKey() } });
+  const createSupplier = useCreateInventorySupplier();
 
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
   const defaultMarkupPct = settings?.defaultMarkupPct ?? 20;
@@ -260,6 +271,7 @@ export default function InventoryPage() {
       unit: item.unit ?? 'each',
       availableForBlueprint: item.availableForBlueprint ?? false,
       commissionPct: item.commissionPct != null ? String(item.commissionPct) : '',
+      supplierId: item.supplierId != null ? String(item.supplierId) : '',
     });
     updateSellPreview(costVal, mPct);
     setSelectedId(id);
@@ -280,6 +292,7 @@ export default function InventoryPage() {
       unit: form.unit || 'each',
       availableForBlueprint: form.availableForBlueprint,
       commissionPct: form.commissionPct ? parseFloat(form.commissionPct) : undefined,
+      supplierId: form.supplierId ? parseInt(form.supplierId, 10) : undefined,
     };
 
     if (sheetMode === 'create') {
@@ -677,6 +690,18 @@ export default function InventoryPage() {
 
                 <ItemLocationSection inventoryItemId={selectedItem.id} />
 
+                {(selectedItem as any).supplierName && (
+                  <>
+                    <Separator />
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1.5">
+                        <Building2 className="w-3.5 h-3.5" /> Supplier
+                      </p>
+                      <p className="text-sm font-medium">{(selectedItem as any).supplierName}</p>
+                    </div>
+                  </>
+                )}
+
                 {selectedItem.description && (
                   <>
                     <Separator />
@@ -818,6 +843,36 @@ export default function InventoryPage() {
               <p className="text-xs text-muted-foreground">Percentage of gross margin paid as commission to the salesperson on this item.</p>
             </div>
 
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Supplier</label>
+              <div className="flex gap-2">
+                <Select
+                  value={form.supplierId || '__none__'}
+                  onValueChange={v => setForm(f => ({ ...f, supplierId: v === '__none__' ? '' : v }))}
+                >
+                  <SelectTrigger className="flex-1" title="Assign a supplier for this item">
+                    <SelectValue placeholder="No supplier" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">No supplier</SelectItem>
+                    {suppliers?.map(s => (
+                      <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  title="Add a new supplier"
+                  onClick={() => { setSupplierForm({ name: '', contact: '', accountNumber: '', notes: '' }); setSupplierDialogOpen(true); }}
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">Link to a shared supplier for the reorder list report.</p>
+            </div>
+
             <Separator />
 
             <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/20">
@@ -936,6 +991,61 @@ export default function InventoryPage() {
               <Button variant="outline" onClick={() => setTransferDialogOpen(false)}>Cancel</Button>
               <Button onClick={handleTransfer} disabled={transferStock.isPending}>
                 {transferStock.isPending ? 'Transferring...' : 'Transfer'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Supplier Inline-Create Dialog */}
+      <Dialog open={supplierDialogOpen} onOpenChange={open => { if (!open) setSupplierDialogOpen(false); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>New Supplier</DialogTitle>
+            <DialogDescription>Add a supplier that can be shared across inventory items.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 pt-1">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Name <span className="text-destructive">*</span></label>
+              <Input placeholder="e.g. Ewing Irrigation" value={supplierForm.name} onChange={e => setSupplierForm(f => ({ ...f, name: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Contact</label>
+              <Input placeholder="Phone, email, or rep name" value={supplierForm.contact} onChange={e => setSupplierForm(f => ({ ...f, contact: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Account #</label>
+              <Input placeholder="Our account number with this supplier" value={supplierForm.accountNumber} onChange={e => setSupplierForm(f => ({ ...f, accountNumber: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Notes</label>
+              <Input placeholder="Optional notes" value={supplierForm.notes} onChange={e => setSupplierForm(f => ({ ...f, notes: e.target.value }))} />
+            </div>
+            <div className="flex gap-2 justify-end pt-2">
+              <Button variant="outline" onClick={() => setSupplierDialogOpen(false)}>Cancel</Button>
+              <Button
+                disabled={createSupplier.isPending || !supplierForm.name}
+                onClick={() => {
+                  if (!supplierForm.name) return;
+                  createSupplier.mutate({
+                    data: {
+                      name: supplierForm.name,
+                      contact: supplierForm.contact || undefined,
+                      accountNumber: supplierForm.accountNumber || undefined,
+                      notes: supplierForm.notes || undefined,
+                    }
+                  }, {
+                    onSuccess: (newSupplier) => {
+                      toast.success('Supplier added');
+                      qc.invalidateQueries({ queryKey: getListInventorySuppliersQueryKey() });
+                      setForm(f => ({ ...f, supplierId: String(newSupplier.id) }));
+                      setSupplierDialogOpen(false);
+                    },
+                    onError: () => toast.error('Failed to add supplier'),
+                  });
+                }}
+              >
+                {createSupplier.isPending ? 'Saving...' : 'Add Supplier'}
               </Button>
             </div>
           </div>

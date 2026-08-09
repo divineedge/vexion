@@ -6,6 +6,7 @@ import {
   useGetAgingInvoicesReport,
   useGetSalesTaxReport,
   useGetInventorySalesReport,
+  useGetInventoryReorderList,
   useListCrews, getListCrewsQueryKey,
   useListUsers, getListUsersQueryKey,
 } from '@workspace/api-client-react';
@@ -19,7 +20,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import {
   Briefcase, Users, ScrollText, Clock3, Percent, Download, Printer, Settings,
-  RefreshCw, ShieldAlert, Package, Search, X,
+  RefreshCw, ShieldAlert, Package, Search, X, ShoppingCart, Building2, CheckSquare, Square, AlertTriangle,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { downloadCsv } from '@/lib/csvExport';
@@ -42,6 +43,7 @@ const REPORTS = [
   { id: 'aging-invoices', label: 'Aging Invoices', icon: Clock3, description: 'Open invoices grouped by how overdue they are.' },
   { id: 'sales-tax', label: 'Sales Tax', icon: Percent, description: 'Taxable revenue and tax collected, by month.' },
   { id: 'inventory-sales', label: 'Inventory Sales', icon: Package, description: 'Units sold, margin, and commission per inventory item.' },
+  { id: 'reorder-list', label: 'Reorder List', icon: ShoppingCart, description: 'Low-stock items grouped by supplier, ready to export as a purchase order.' },
 ] as const;
 
 export default function ReportsPage() {
@@ -95,6 +97,7 @@ export default function ReportsPage() {
         <TabsContent value="aging-invoices"><AgingInvoicesReport /></TabsContent>
         <TabsContent value="sales-tax"><SalesTaxReport /></TabsContent>
         <TabsContent value="inventory-sales"><InventorySalesReport /></TabsContent>
+        <TabsContent value="reorder-list"><ReorderListReportPanel /></TabsContent>
       </Tabs>
     </div>
   );
@@ -858,6 +861,167 @@ function InventorySalesReport() {
               </TableBody>
             </Table>
           </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Report G: Reorder List ─────────────────────────────────────────────────
+function ReorderListReportPanel() {
+  const { data, isFetching, refetch } = useGetInventoryReorderList();
+  const [checked, setChecked] = React.useState<Set<number>>(new Set());
+
+  const toggleCheck = (id: number) =>
+    setChecked(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
+
+  const allIds = React.useMemo(() => data?.groups.flatMap(g => g.items.map(i => i.id)) ?? [], [data]);
+  const allChecked = allIds.length > 0 && allIds.every(id => checked.has(id));
+  const toggleAll = () => setChecked(allChecked ? new Set() : new Set(allIds));
+
+  const exportCsv = () => {
+    if (!data) return;
+    const rows = data.groups.flatMap(g =>
+      g.items.map(i => ({
+        supplier: g.supplierName,
+        contact: g.contact ?? '',
+        accountNumber: g.accountNumber ?? '',
+        name: i.name,
+        sku: i.sku,
+        category: i.category ?? '',
+        quantity: i.quantity,
+        reorderPoint: i.reorderPoint,
+        unit: i.unit,
+        costPrice: i.costPrice ?? '',
+        ordered: checked.has(i.id) ? 'Yes' : 'No',
+      }))
+    );
+    downloadCsv('reorder-list.csv', rows);
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            Reorder List
+            {data && data.totalItems > 0 && (
+              <span className="text-sm font-normal text-destructive">({data.totalItems} item{data.totalItems !== 1 ? 's' : ''} low)</span>
+            )}
+          </CardTitle>
+          <CardDescription>Low-stock items grouped by supplier. Check off items as you order them, then export as a CSV purchase order.</CardDescription>
+        </div>
+        <div className="flex items-center gap-2 print:hidden">
+          {data && <span className="text-xs text-muted-foreground">Generated {format(new Date(data.generatedAt), 'MMM d, h:mm a')}</span>}
+          <Button size="sm" variant="outline" className="gap-2" onClick={() => refetch()} disabled={isFetching}><RefreshCw className="w-4 h-4" /> Refresh</Button>
+          <Button size="sm" variant="outline" className="gap-2" onClick={exportCsv} disabled={!data || data.totalItems === 0}><Download className="w-4 h-4" /> CSV</Button>
+          <Button size="sm" variant="outline" className="gap-2" onClick={() => window.print()} disabled={!data}><Printer className="w-4 h-4" /> Print</Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isFetching && !data && (
+          <p className="text-sm text-muted-foreground py-8 text-center">Loading reorder list…</p>
+        )}
+        {data && data.totalItems === 0 && (
+          <div className="py-12 text-center space-y-2">
+            <Package className="w-8 h-8 text-muted-foreground mx-auto" />
+            <p className="font-medium">All stocked up!</p>
+            <p className="text-sm text-muted-foreground">No items are currently at or below their reorder points.</p>
+          </div>
+        )}
+        {data && data.totalItems > 0 && (
+          <div className="space-y-6">
+            {/* Select-all row */}
+            <div className="flex items-center gap-2 print:hidden">
+              <button
+                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                onClick={toggleAll}
+                title={allChecked ? 'Uncheck all items' : 'Check all items as ordered'}
+              >
+                {allChecked
+                  ? <CheckSquare className="w-4 h-4 text-primary" />
+                  : <Square className="w-4 h-4" />}
+                {allChecked ? 'Uncheck all' : 'Check all'}
+              </button>
+              {checked.size > 0 && (
+                <span className="text-xs text-muted-foreground">({checked.size} of {allIds.length} marked as ordered)</span>
+              )}
+            </div>
+
+            {data.groups.map((group, gi) => (
+              <div key={gi} className="rounded-lg border overflow-hidden">
+                {/* Supplier header */}
+                <div className="bg-muted/50 px-4 py-3 flex items-start gap-3 border-b">
+                  <Building2 className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm">{group.supplierName}</p>
+                    {group.contact && (
+                      <p className="text-xs text-muted-foreground mt-0.5">{group.contact}</p>
+                    )}
+                    {group.accountNumber && (
+                      <p className="text-xs text-muted-foreground">Acct: <span className="font-mono">{group.accountNumber}</span></p>
+                    )}
+                  </div>
+                  <span className="text-xs text-muted-foreground shrink-0 mt-0.5">{group.items.length} item{group.items.length !== 1 ? 's' : ''}</span>
+                </div>
+
+                {/* Items table */}
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-8 print:hidden" />
+                      <TableHead>Item</TableHead>
+                      <TableHead>SKU</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead className="text-right">In Stock</TableHead>
+                      <TableHead className="text-right">Reorder At</TableHead>
+                      <TableHead className="text-right">Unit</TableHead>
+                      <TableHead className="text-right">Cost Price</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {group.items.map(item => {
+                      const isOrdered = checked.has(item.id);
+                      return (
+                        <TableRow
+                          key={item.id}
+                          className={`cursor-pointer transition-colors ${isOrdered ? 'opacity-50 bg-muted/30' : 'hover:bg-muted/20'}`}
+                          onClick={() => toggleCheck(item.id)}
+                        >
+                          <TableCell className="print:hidden">
+                            <button
+                              title={isOrdered ? 'Mark as not ordered' : 'Mark as ordered'}
+                              onClick={e => { e.stopPropagation(); toggleCheck(item.id); }}
+                            >
+                              {isOrdered
+                                ? <CheckSquare className="w-4 h-4 text-primary" />
+                                : <Square className="w-4 h-4 text-muted-foreground" />}
+                            </button>
+                          </TableCell>
+                          <TableCell className={`font-medium ${isOrdered ? 'line-through' : ''}`} title={item.name}>
+                            <span className="flex items-center gap-1.5">
+                              <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0" />
+                              {item.name}
+                            </span>
+                          </TableCell>
+                          <TableCell className="font-mono text-xs text-muted-foreground" title={item.sku}>{item.sku}</TableCell>
+                          <TableCell>{item.category ? <Badge variant="outline">{item.category}</Badge> : <span className="text-muted-foreground">—</span>}</TableCell>
+                          <TableCell className="text-right">
+                            <span className="font-bold text-destructive" title={`${item.quantity} in stock`}>{item.quantity}</span>
+                          </TableCell>
+                          <TableCell className="text-right text-muted-foreground" title={`Reorder at ${item.reorderPoint}`}>{item.reorderPoint}</TableCell>
+                          <TableCell className="text-right text-muted-foreground" title={`Unit: ${item.unit}`}>{item.unit}</TableCell>
+                          <TableCell className="text-right" title={item.costPrice != null ? `Cost price: ${money(item.costPrice)}` : 'No cost price set'}>
+                            {item.costPrice != null ? money(item.costPrice) : <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            ))}
+          </div>
         )}
       </CardContent>
     </Card>

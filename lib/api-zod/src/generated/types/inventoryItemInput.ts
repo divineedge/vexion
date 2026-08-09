@@ -22,4 +22,6 @@ export interface InventoryItemInput {
   availableForBlueprint?: boolean;
   /** Percentage of the markup (sell - buy) awarded to the salesperson as commission. */
   commissionPct?: number;
+  /** FK to inventory_suppliers. */
+  supplierId?: number;
 }

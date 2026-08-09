@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, inventoryItemsTable, tenantsTable } from "@workspace/db";
+import { db, inventoryItemsTable, inventorySuppliersTable, tenantsTable } from "@workspace/db";
 import { eq, and, ilike } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { usersTable } from "@workspace/db";
@@ -194,6 +194,7 @@ function formatItem(
   i: typeof inventoryItemsTable.$inferSelect,
   tenantMarkupPct: number,
   includeCostPrice: boolean,
+  supplierName?: string | null,
 ) {
   const costPrice = i.unitPrice;     // DB unitPrice = what we pay
   const sellPrice = i.markedUpPrice; // DB markedUpPrice = what we charge
@@ -215,6 +216,8 @@ function formatItem(
     isLowStock: i.quantity <= i.reorderPoint,
     availableForBlueprint: i.availableForBlueprint,
     commissionPct: i.commissionPct ?? null,
+    supplierId: i.supplierId ?? null,
+    supplierName: supplierName ?? null,
     createdAt: i.createdAt.toISOString(),
   };
 }
@@ -252,6 +255,71 @@ router.get("/inventory/summary", async (req, res): Promise<void> => {
   res.json({ totalItems, totalValue, lowStockCount, categories });
 });
 
+// ─── Supplier CRUD ────────────────────────────────────────────────────────────
+
+router.get("/inventory/suppliers", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const suppliers = await db
+    .select()
+    .from(inventorySuppliersTable)
+    .where(eq(inventorySuppliersTable.tenantId, tenantId))
+    .orderBy(inventorySuppliersTable.name);
+  res.json(suppliers.map(s => ({
+    id: s.id, tenantId: s.tenantId, name: s.name,
+    contact: s.contact ?? null, accountNumber: s.accountNumber ?? null, notes: s.notes ?? null,
+    createdAt: s.createdAt.toISOString(),
+  })));
+});
+
+router.post("/inventory/suppliers", requireInventoryMutate, async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const { name, contact, accountNumber, notes } = req.body;
+  if (!name) { res.status(400).json({ error: "name is required" }); return; }
+  const [s] = await db.insert(inventorySuppliersTable).values({
+    tenantId, name: String(name),
+    contact: contact ? String(contact) : null,
+    accountNumber: accountNumber ? String(accountNumber) : null,
+    notes: notes ? String(notes) : null,
+  }).returning();
+  res.status(201).json({
+    id: s.id, tenantId: s.tenantId, name: s.name,
+    contact: s.contact ?? null, accountNumber: s.accountNumber ?? null, notes: s.notes ?? null,
+    createdAt: s.createdAt.toISOString(),
+  });
+});
+
+router.patch("/inventory/suppliers/:id", requireInventoryMutate, async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const updates: Partial<typeof inventorySuppliersTable.$inferInsert> = {};
+  if (req.body.name !== undefined) updates.name = String(req.body.name);
+  if (req.body.contact !== undefined) updates.contact = req.body.contact ? String(req.body.contact) : null;
+  if (req.body.accountNumber !== undefined) updates.accountNumber = req.body.accountNumber ? String(req.body.accountNumber) : null;
+  if (req.body.notes !== undefined) updates.notes = req.body.notes ? String(req.body.notes) : null;
+  if (Object.keys(updates).length === 0) { res.status(400).json({ error: "No fields to update" }); return; }
+  const [s] = await db.update(inventorySuppliersTable).set(updates)
+    .where(and(eq(inventorySuppliersTable.id, id), eq(inventorySuppliersTable.tenantId, tenantId)))
+    .returning();
+  if (!s) { res.status(404).json({ error: "Not found" }); return; }
+  res.json({
+    id: s.id, tenantId: s.tenantId, name: s.name,
+    contact: s.contact ?? null, accountNumber: s.accountNumber ?? null, notes: s.notes ?? null,
+    createdAt: s.createdAt.toISOString(),
+  });
+});
+
+router.delete("/inventory/suppliers/:id", requireInventoryMutate, async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  await db.delete(inventorySuppliersTable)
+    .where(and(eq(inventorySuppliersTable.id, id), eq(inventorySuppliersTable.tenantId, tenantId)));
+  res.sendStatus(204);
+});
+
+// ─── Main inventory list ───────────────────────────────────────────────────────
+
 router.get("/inventory", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
@@ -262,13 +330,17 @@ router.get("/inventory", async (req, res): Promise<void> => {
   if (category) where = and(where, eq(inventoryItemsTable.category, category)) as typeof where;
   if (availableForBlueprint === "true") where = and(where, eq(inventoryItemsTable.availableForBlueprint, true)) as typeof where;
 
-  const [items, markupPct, showCost] = await Promise.all([
+  const [items, markupPct, showCost, suppliers] = await Promise.all([
     db.select().from(inventoryItemsTable).where(where).orderBy(inventoryItemsTable.name),
     getTenantMarkupPct(tenantId),
     canSeeCostPrice(tenantId, userId),
+    db.select({ id: inventorySuppliersTable.id, name: inventorySuppliersTable.name })
+      .from(inventorySuppliersTable)
+      .where(eq(inventorySuppliersTable.tenantId, tenantId)),
   ]);
 
-  const formatted = items.map(i => formatItem(i, markupPct, showCost));
+  const supplierMap = new Map(suppliers.map(s => [s.id, s.name]));
+  const formatted = items.map(i => formatItem(i, markupPct, showCost, i.supplierId ? supplierMap.get(i.supplierId) : null));
 
   if (lowStock === "true") {
     res.json(formatted.filter(i => i.isLowStock));
@@ -280,7 +352,7 @@ router.get("/inventory", async (req, res): Promise<void> => {
 router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
-  const { name, sku, description, category, costPrice, markupPct: reqMarkupPct, quantity, reorderPoint, unit, availableForBlueprint, commissionPct: reqCommissionPct } = req.body;
+  const { name, sku, description, category, costPrice, markupPct: reqMarkupPct, quantity, reorderPoint, unit, availableForBlueprint, commissionPct: reqCommissionPct, supplierId: reqSupplierId } = req.body;
 
   if (!name || !sku) {
     res.status(400).json({ error: "name and sku are required" });
@@ -297,6 +369,21 @@ router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void
   const reorder = parseSafeInt(reorderPoint, 5);
   const commissionPctVal = reqCommissionPct != null ? parseSafeFloat(reqCommissionPct, 0) : null;
 
+  // Validate supplierId belongs to this tenant
+  let resolvedSupplierId: number | null = null;
+  let supplierName: string | null = null;
+  if (reqSupplierId != null) {
+    const sid = parseSafeInt(reqSupplierId, NaN);
+    if (!isNaN(sid)) {
+      const [sup] = await db.select({ id: inventorySuppliersTable.id, name: inventorySuppliersTable.name })
+        .from(inventorySuppliersTable)
+        .where(and(eq(inventorySuppliersTable.id, sid), eq(inventorySuppliersTable.tenantId, tenantId)));
+      if (!sup) { res.status(400).json({ error: "Supplier not found" }); return; }
+      resolvedSupplierId = sup.id;
+      supplierName = sup.name;
+    }
+  }
+
   const [item] = await db.insert(inventoryItemsTable).values({
     tenantId,
     name: String(name),
@@ -311,10 +398,11 @@ router.post("/inventory", requireInventoryMutate, async (req, res): Promise<void
     isLowStock: qty <= reorder,
     availableForBlueprint: availableForBlueprint === true || availableForBlueprint === "true",
     commissionPct: commissionPctVal,
+    supplierId: resolvedSupplierId,
   }).returning();
 
   const showCost = await canSeeCostPrice(tenantId, userId);
-  res.status(201).json(formatItem(item, tenantMarkupPct, showCost));
+  res.status(201).json(formatItem(item, tenantMarkupPct, showCost, supplierName));
 });
 
 router.get("/inventory/:id", async (req, res): Promise<void> => {
@@ -332,7 +420,15 @@ router.get("/inventory/:id", async (req, res): Promise<void> => {
     canSeeCostPrice(tenantId, userId),
   ]);
   if (!item) { res.status(404).json({ error: "Not found" }); return; }
-  res.json(formatItem(item, markupPct, showCost));
+
+  let supplierName: string | null = null;
+  if (item.supplierId) {
+    const [sup] = await db.select({ name: inventorySuppliersTable.name })
+      .from(inventorySuppliersTable)
+      .where(and(eq(inventorySuppliersTable.id, item.supplierId), eq(inventorySuppliersTable.tenantId, tenantId)));
+    supplierName = sup?.name ?? null;
+  }
+  res.json(formatItem(item, markupPct, showCost, supplierName));
 });
 
 router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise<void> => {
@@ -351,7 +447,7 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
     if (isNaN(m) || m < 0) { res.status(400).json({ error: "markupPct must be a non-negative number" }); return; }
   }
 
-  const { name, description, category, costPrice, markupPct: reqMarkupPct, quantity, reorderPoint, unit, availableForBlueprint, commissionPct: reqCommissionPct } = req.body;
+  const { name, description, category, costPrice, markupPct: reqMarkupPct, quantity, reorderPoint, unit, availableForBlueprint, commissionPct: reqCommissionPct, supplierId: reqSupplierId } = req.body;
   const updates: Partial<typeof inventoryItemsTable.$inferInsert> = {};
   if (name !== undefined) updates.name = String(name);
   if (description !== undefined) updates.description = description ? String(description) : null;
@@ -361,6 +457,24 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
   if (unit !== undefined) updates.unit = String(unit) || "each";
   if (availableForBlueprint !== undefined) updates.availableForBlueprint = availableForBlueprint === true || availableForBlueprint === "true";
   if (reqCommissionPct !== undefined) updates.commissionPct = reqCommissionPct != null ? parseSafeFloat(reqCommissionPct, 0) : null;
+
+  // Validate supplierId belongs to this tenant before accepting it
+  let patchedSupplierName: string | null | undefined = undefined; // undefined = not changing
+  if (reqSupplierId !== undefined) {
+    if (reqSupplierId == null) {
+      updates.supplierId = null;
+      patchedSupplierName = null;
+    } else {
+      const sid = parseSafeInt(reqSupplierId, NaN);
+      if (isNaN(sid)) { res.status(400).json({ error: "Invalid supplierId" }); return; }
+      const [sup] = await db.select({ id: inventorySuppliersTable.id, name: inventorySuppliersTable.name })
+        .from(inventorySuppliersTable)
+        .where(and(eq(inventorySuppliersTable.id, sid), eq(inventorySuppliersTable.tenantId, tenantId)));
+      if (!sup) { res.status(400).json({ error: "Supplier not found" }); return; }
+      updates.supplierId = sup.id;
+      patchedSupplierName = sup.name;
+    }
+  }
 
   if (costPrice !== undefined || reqMarkupPct !== undefined) {
     const [existing] = await db
@@ -404,7 +518,19 @@ router.patch("/inventory/:id", requireInventoryMutate, async (req, res): Promise
     getTenantMarkupPct(tenantId),
     canSeeCostPrice(tenantId, userId),
   ]);
-  res.json(formatItem(updated, markupPct, showCost));
+
+  // Resolve supplier name: use already-validated name if supplierId was changed,
+  // otherwise look up existing supplierId (tenant-scoped).
+  let supplierName: string | null = null;
+  if (patchedSupplierName !== undefined) {
+    supplierName = patchedSupplierName;
+  } else if (updated.supplierId) {
+    const [sup] = await db.select({ name: inventorySuppliersTable.name })
+      .from(inventorySuppliersTable)
+      .where(and(eq(inventorySuppliersTable.id, updated.supplierId), eq(inventorySuppliersTable.tenantId, tenantId)));
+    supplierName = sup?.name ?? null;
+  }
+  res.json(formatItem(updated, markupPct, showCost, supplierName));
 });
 
 // ── Stock adjustment ──────────────────────────────────────────────────────────

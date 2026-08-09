@@ -36,5 +36,15 @@ export interface InventoryItem {
      * @nullable
      */
   commissionPct?: number | null;
+  /**
+     * FK to inventory_suppliers. Null if no supplier assigned.
+     * @nullable
+     */
+  supplierId?: number | null;
+  /**
+     * Denormalized supplier name for display convenience.
+     * @nullable
+     */
+  supplierName?: string | null;
   createdAt: string;
 }

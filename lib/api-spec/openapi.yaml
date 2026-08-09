@@ -6347,6 +6347,81 @@ paths:
               schema:
                 $ref: "#/components/schemas/InventorySalesReport"
 
+  /reports/inventory-reorder-list:
+    get:
+      operationId: getInventoryReorderList
+      tags: [reports]
+      summary: Items at or below reorder point, grouped by supplier
+      responses:
+        "200":
+          description: Reorder list grouped by supplier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReorderListReport"
+
+  /inventory/suppliers:
+    get:
+      operationId: listInventorySuppliers
+      tags: [inventory]
+      summary: List all inventory suppliers for the tenant
+      responses:
+        "200":
+          description: List of suppliers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InventorySupplier"
+    post:
+      operationId: createInventorySupplier
+      tags: [inventory]
+      summary: Create a new inventory supplier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventorySupplierInput"
+      responses:
+        "201":
+          description: Created supplier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventorySupplier"
+
+  /inventory/suppliers/{id}:
+    patch:
+      operationId: updateInventorySupplier
+      tags: [inventory]
+      summary: Update an inventory supplier
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventorySupplierUpdate"
+      responses:
+        "200":
+          description: Updated supplier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventorySupplier"
+    delete:
+      operationId: deleteInventorySupplier
+      tags: [inventory]
+      summary: Delete an inventory supplier (sets supplierId to null on linked items)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204":
+          description: Deleted
+
   # VENDORS & EXPENSE LEDGER
   /vendors:
     get:
@@ -8801,6 +8876,12 @@ components:
         commissionPct:
           type: ["number", "null"]
           description: "Percentage of the markup (sell - buy) awarded to the salesperson as commission. Null means 0%."
+        supplierId:
+          type: ["integer", "null"]
+          description: "FK to inventory_suppliers. Null if no supplier assigned."
+        supplierName:
+          type: ["string", "null"]
+          description: "Denormalized supplier name for display convenience."
         createdAt:
           type: string
 
@@ -8834,6 +8915,9 @@ components:
         commissionPct:
           type: number
           description: "Percentage of the markup (sell - buy) awarded to the salesperson as commission."
+        supplierId:
+          type: integer
+          description: "FK to inventory_suppliers."
 
     InventoryItemUpdate:
       type: object
@@ -8860,6 +8944,100 @@ components:
         commissionPct:
           type: number
           description: "Percentage of the markup (sell - buy) awarded to the salesperson as commission."
+        supplierId:
+          type: ["integer", "null"]
+          description: "FK to inventory_suppliers. Pass null to unlink."
+
+    InventorySupplier:
+      type: object
+      required: [id, tenantId, name, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        name:
+          type: string
+        contact:
+          type: ["string", "null"]
+          description: "Phone, email, or rep name."
+        accountNumber:
+          type: ["string", "null"]
+          description: "Our account number with this supplier."
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    InventorySupplierInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        contact:
+          type: string
+        accountNumber:
+          type: string
+        notes:
+          type: string
+
+    InventorySupplierUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        contact:
+          type: ["string", "null"]
+        accountNumber:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+
+    ReorderListReport:
+      type: object
+      required: [groups, totalItems, generatedAt]
+      properties:
+        totalItems:
+          type: integer
+        generatedAt:
+          type: string
+        groups:
+          type: array
+          items:
+            type: object
+            required: [supplierName, supplierId, items]
+            properties:
+              supplierId:
+                type: ["integer", "null"]
+              supplierName:
+                type: string
+              contact:
+                type: ["string", "null"]
+              accountNumber:
+                type: ["string", "null"]
+              items:
+                type: array
+                items:
+                  type: object
+                  required: [id, name, sku, quantity, reorderPoint, unit, costPrice]
+                  properties:
+                    id:
+                      type: integer
+                    name:
+                      type: string
+                    sku:
+                      type: string
+                    quantity:
+                      type: integer
+                    reorderPoint:
+                      type: integer
+                    unit:
+                      type: string
+                    costPrice:
+                      type: ["number", "null"]
+                    category:
+                      type: ["string", "null"]
 
     InventorySummary:
       type: object

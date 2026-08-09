@@ -3,6 +3,24 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 
+// ─── Inventory Suppliers ──────────────────────────────────────────────────────
+// Shared supplier/vendor lookup scoped to a tenant. One supplier ties across many items.
+
+export const inventorySuppliersTable = pgTable("inventory_suppliers", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
+  name: text("name").notNull(),
+  contact: text("contact"),       // e.g. phone, email, or rep name
+  accountNumber: text("account_number"), // our account # with this supplier
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+export const insertInventorySupplierSchema = createInsertSchema(inventorySuppliersTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertInventorySupplier = z.infer<typeof insertInventorySupplierSchema>;
+export type InventorySupplier = typeof inventorySuppliersTable.$inferSelect;
+
 // ─── Inventory Locations ──────────────────────────────────────────────────────
 
 export const inventoryLocationsTable = pgTable("inventory_locations", {
@@ -77,6 +95,8 @@ export const inventoryItemsTable = pgTable("inventory_items", {
   availableForBlueprint: boolean("available_for_blueprint").notNull().default(false),
   /** Percentage of the markup (sell - buy) awarded to the salesperson as commission. Null means 0%. */
   commissionPct: real("commission_pct"),
+  /** Optional FK to the shared inventory supplier lookup. */
+  supplierId: integer("supplier_id").references(() => inventorySuppliersTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

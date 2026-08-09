@@ -1561,6 +1561,16 @@ export interface InventoryItem {
      * @nullable
      */
   commissionPct?: number | null;
+  /**
+     * FK to inventory_suppliers. Null if no supplier assigned.
+     * @nullable
+     */
+  supplierId?: number | null;
+  /**
+     * Denormalized supplier name for display convenience.
+     * @nullable
+     */
+  supplierName?: string | null;
   createdAt: string;
 }
 
@@ -1580,6 +1590,8 @@ export interface InventoryItemInput {
   availableForBlueprint?: boolean;
   /** Percentage of the markup (sell - buy) awarded to the salesperson as commission. */
   commissionPct?: number;
+  /** FK to inventory_suppliers. */
+  supplierId?: number;
 }
 
 export interface InventoryItemUpdate {
@@ -1595,8 +1607,31 @@ export interface InventoryItemUpdate {
   availableForBlueprint?: boolean;
   /** Percentage of the markup (sell - buy) awarded to the salesperson as commission. */
   commissionPct?: number;
+  /**
+     * FK to inventory_suppliers. Pass null to unlink.
+     * @nullable
+     */
+  supplierId?: number | null;
 }
 
+export interface InventorySupplier {
+  id: number;
+  tenantId: number;
+  name: string;
+  /**
+     * Phone, email, or rep name.
+     * @nullable
+     */
+  contact?: string | null;
+  /**
+     * Our account number with this supplier.
+     * @nullable
+     */
+  accountNumber?: string | null;
+  /** @nullable */
+  notes?: string | null;
+  createdAt: string;
+}
 export interface CategoryCount {
   category: string;
   count: number;
@@ -5238,3 +5273,50 @@ export type GetRepairLogSummaryParams = {
 propertyId: number;
 };
 
+
+export type ReorderListReportGroupsItem = {
+  /** @nullable */
+  supplierId: number | null;
+  supplierName: string;
+  /** @nullable */
+  contact?: string | null;
+  /** @nullable */
+  accountNumber?: string | null;
+  items: ReorderListReportGroupsItemItemsItem[];
+};
+
+export type ReorderListReportGroupsItemItemsItem = {
+  id: number;
+  name: string;
+  sku: string;
+  quantity: number;
+  reorderPoint: number;
+  unit: string;
+  /** @nullable */
+  costPrice: number | null;
+  /** @nullable */
+  category?: string | null;
+};
+
+export interface InventorySupplierInput {
+  name: string;
+  contact?: string;
+  accountNumber?: string;
+  notes?: string;
+}
+
+export interface ReorderListReport {
+  totalItems: number;
+  generatedAt: string;
+  groups: ReorderListReportGroupsItem[];
+}
+
+export interface InventorySupplierUpdate {
+  name?: string;
+  /** @nullable */
+  contact?: string | null;
+  /** @nullable */
+  accountNumber?: string | null;
+  /** @nullable */
+  notes?: string | null;
+}

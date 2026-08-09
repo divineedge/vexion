@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import {
   useListInventoryItems, getListInventoryItemsQueryKey,
@@ -70,7 +70,7 @@ type ItemForm = {
   name: string;
   sku: string;
   description: string;
-  category: string;
+  categories: string[]; // stored as comma-joined in the category text column
   costPrice: string;
   markupPct: string;
   quantity: string;
@@ -82,7 +82,7 @@ type ItemForm = {
 };
 
 const EMPTY_FORM: ItemForm = {
-  name: '', sku: '', description: '', category: '',
+  name: '', sku: '', description: '', categories: [],
   costPrice: '', markupPct: '', quantity: '0', reorderPoint: '5', unit: 'each',
   availableForBlueprint: false, commissionPct: '', supplierId: '',
 };
@@ -232,6 +232,18 @@ export default function InventoryPage() {
   const updateItem = useUpdateInventoryItem();
   const deleteItem = useDeleteInventoryItem();
 
+  // Derive unique categories from all loaded items for the category picker
+  const allCategories = useMemo(() => {
+    const cats = new Set<string>();
+    (items ?? []).forEach((item: any) => {
+      if (item.category) {
+        item.category.split(',').map((s: string) => s.trim()).filter(Boolean).forEach((c: string) => cats.add(c));
+      }
+    });
+    return Array.from(cats).sort();
+  }, [items]);
+  const [newCategoryInput, setNewCategoryInput] = useState('');
+
   // Recompute sell preview whenever cost or markup changes in the form
   const updateSellPreview = (cost: string, markup: string) => {
     const c = parseFloat(cost);
@@ -263,7 +275,9 @@ export default function InventoryPage() {
       name: item.name,
       sku: item.sku,
       description: item.description ?? '',
-      category: item.category ?? '',
+      categories: item.category
+        ? item.category.split(',').map((s: string) => s.trim()).filter(Boolean)
+        : [],
       costPrice: costVal,
       markupPct: mPct,
       quantity: String(item.quantity),
@@ -284,7 +298,7 @@ export default function InventoryPage() {
       name: form.name,
       sku: form.sku,
       description: form.description || undefined,
-      category: form.category || undefined,
+      category: form.categories.length ? form.categories.join(', ') : undefined,
       costPrice: parseFloat(form.costPrice) || 0,
       markupPct: form.markupPct ? parseFloat(form.markupPct) : undefined,
       quantity: parseInt(form.quantity, 10) || 0,
@@ -752,9 +766,74 @@ export default function InventoryPage() {
                 <label className="text-sm font-medium">SKU <span className="text-destructive">*</span></label>
                 <Input title="Unique stock-keeping unit identifier for this item" placeholder="BGV-1IN" className="font-mono" value={form.sku} onChange={e => setForm(f => ({ ...f, sku: e.target.value }))} />
               </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Category</label>
-                <Input title="Item category for filtering and reporting" placeholder="Valves" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} />
+              <div className="space-y-1.5 col-span-2">
+                <label className="text-sm font-medium">Categories</label>
+                {/* Canonical categories as toggleable chips */}
+                {allCategories.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-1.5">
+                    {allCategories.map(cat => {
+                      const selected = form.categories.includes(cat);
+                      return (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => setForm(f => ({
+                            ...f,
+                            categories: selected
+                              ? f.categories.filter(c => c !== cat)
+                              : [...f.categories, cat],
+                          }))}
+                          className={`px-2.5 py-0.5 rounded-full text-xs font-medium border transition-all ${
+                            selected
+                              ? 'bg-primary text-white border-transparent'
+                              : 'bg-transparent text-muted-foreground border-border hover:border-primary/50'
+                          }`}
+                        >
+                          {cat}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {/* Selected categories display */}
+                {form.categories.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-1.5">
+                    {form.categories.map(cat => (
+                      <Badge key={cat} variant="secondary" className="gap-1 pr-1 text-xs">
+                        {cat}
+                        <button type="button" onClick={() => setForm(f => ({ ...f, categories: f.categories.filter(c => c !== cat) }))} className="ml-0.5 hover:opacity-70"><span className="text-xs">×</span></button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+                {/* Add new category */}
+                <div className="flex gap-2">
+                  <Input
+                    title="Type a new category and press Enter or click Add"
+                    placeholder="New category…"
+                    value={newCategoryInput}
+                    onChange={e => setNewCategoryInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const t = newCategoryInput.trim();
+                        if (t && !form.categories.includes(t)) setForm(f => ({ ...f, categories: [...f.categories, t] }));
+                        setNewCategoryInput('');
+                      }
+                    }}
+                    className="h-8 text-sm flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const t = newCategoryInput.trim();
+                      if (t && !form.categories.includes(t)) setForm(f => ({ ...f, categories: [...f.categories, t] }));
+                      setNewCategoryInput('');
+                    }}
+                  >Add</Button>
+                </div>
               </div>
             </div>
 

@@ -1632,6 +1632,54 @@ export interface InventorySupplier {
   notes?: string | null;
   createdAt: string;
 }
+
+export interface InventorySupplierInput {
+  name: string;
+  contact?: string;
+  accountNumber?: string;
+  notes?: string;
+}
+
+export interface InventorySupplierUpdate {
+  name?: string;
+  /** @nullable */
+  contact?: string | null;
+  /** @nullable */
+  accountNumber?: string | null;
+  /** @nullable */
+  notes?: string | null;
+}
+
+export type ReorderListReportGroupsItemItemsItem = {
+  id: number;
+  name: string;
+  sku: string;
+  quantity: number;
+  reorderPoint: number;
+  unit: string;
+  /** @nullable */
+  costPrice: number | null;
+  /** @nullable */
+  category?: string | null;
+};
+
+export type ReorderListReportGroupsItem = {
+  /** @nullable */
+  supplierId: number | null;
+  supplierName: string;
+  /** @nullable */
+  contact?: string | null;
+  /** @nullable */
+  accountNumber?: string | null;
+  items: ReorderListReportGroupsItemItemsItem[];
+};
+
+export interface ReorderListReport {
+  totalItems: number;
+  generatedAt: string;
+  groups: ReorderListReportGroupsItem[];
+}
+
 export interface CategoryCount {
   category: string;
   count: number;
@@ -5273,50 +5321,3 @@ export type GetRepairLogSummaryParams = {
 propertyId: number;
 };
 
-
-export type ReorderListReportGroupsItem = {
-  /** @nullable */
-  supplierId: number | null;
-  supplierName: string;
-  /** @nullable */
-  contact?: string | null;
-  /** @nullable */
-  accountNumber?: string | null;
-  items: ReorderListReportGroupsItemItemsItem[];
-};
-
-export type ReorderListReportGroupsItemItemsItem = {
-  id: number;
-  name: string;
-  sku: string;
-  quantity: number;
-  reorderPoint: number;
-  unit: string;
-  /** @nullable */
-  costPrice: number | null;
-  /** @nullable */
-  category?: string | null;
-};
-
-export interface InventorySupplierInput {
-  name: string;
-  contact?: string;
-  accountNumber?: string;
-  notes?: string;
-}
-
-export interface ReorderListReport {
-  totalItems: number;
-  generatedAt: string;
-  groups: ReorderListReportGroupsItem[];
-}
-
-export interface InventorySupplierUpdate {
-  name?: string;
-  /** @nullable */
-  contact?: string | null;
-  /** @nullable */
-  accountNumber?: string | null;
-  /** @nullable */
-  notes?: string | null;
-}

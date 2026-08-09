@@ -2991,6 +2991,7 @@ export const SubmitReviewRatingParams = zod.object({
 export const submitReviewRatingBodyRatingMax = 5;
 
 
+
 export const SubmitReviewRatingBody = zod.object({
   "rating": zod.number().min(1).max(submitReviewRatingBodyRatingMax)
 })
@@ -3670,6 +3671,7 @@ export const GenerateBlueprintAiZonesParams = zod.object({
 })
 
 export const generateBlueprintAiZonesBodyZonesItemPolygonMin = 3;
+
 
 
 export const GenerateBlueprintAiZonesBody = zod.object({
@@ -6320,6 +6322,9 @@ export const ResumeCustomerServiceResponse = zod.object({
  */
 
 
+
+
+
 export const RequestUploadUrlBody = zod.object({
   "name": zod.string().min(1),
   "size": zod.number().min(1),
@@ -6832,6 +6837,9 @@ export const DismissPlanCancelRequestResponse = zod.object({
 /**
  * @summary Request a presigned upload URL (portal customers)
  */
+
+
+
 
 
 export const PortalRequestUploadUrlBody = zod.object({
@@ -9499,6 +9507,7 @@ export const GetInventorySalesReportResponse = zod.object({
   "endDate": zod.string()
 })
 
+
 /**
  * @summary Items at or below reorder point, grouped by supplier
  */
@@ -9522,6 +9531,79 @@ export const GetInventoryReorderListResponse = zod.object({
 }))
 }))
 })
+
+
+/**
+ * @summary List all inventory suppliers for the tenant
+ */
+export const ListInventorySuppliersResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "contact": zod.string().nullish().describe('Phone, email, or rep name.'),
+  "accountNumber": zod.string().nullish().describe('Our account number with this supplier.'),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+export const ListInventorySuppliersResponse = zod.array(ListInventorySuppliersResponseItem)
+
+
+/**
+ * @summary Create a new inventory supplier
+ */
+export const CreateInventorySupplierBody = zod.object({
+  "name": zod.string(),
+  "contact": zod.string().optional(),
+  "accountNumber": zod.string().optional(),
+  "notes": zod.string().optional()
+})
+
+export const CreateInventorySupplierResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "contact": zod.string().nullish().describe('Phone, email, or rep name.'),
+  "accountNumber": zod.string().nullish().describe('Our account number with this supplier.'),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Update an inventory supplier
+ */
+export const UpdateInventorySupplierParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateInventorySupplierBody = zod.object({
+  "name": zod.string().optional(),
+  "contact": zod.string().nullish(),
+  "accountNumber": zod.string().nullish(),
+  "notes": zod.string().nullish()
+})
+
+export const UpdateInventorySupplierResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "contact": zod.string().nullish().describe('Phone, email, or rep name.'),
+  "accountNumber": zod.string().nullish().describe('Our account number with this supplier.'),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Delete an inventory supplier (sets supplierId to null on linked items)
+ */
+export const DeleteInventorySupplierParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteInventorySupplierResponse = zod.void()
+
+
 /**
  * @summary List vendors
  */
@@ -10447,70 +10529,3 @@ export const DeleteRepairLogParams = zod.object({
 export const DeleteRepairLogResponse = zod.void()
 
 
-export const UpdateInventorySupplierBody = zod.object({
-  "name": zod.string().optional(),
-  "contact": zod.string().nullish(),
-  "accountNumber": zod.string().nullish(),
-  "notes": zod.string().nullish()
-})
-
-/**
- * @summary Update an inventory supplier
- */
-export const UpdateInventorySupplierParams = zod.object({
-  "id": zod.coerce.number()
-})
-
-export const UpdateInventorySupplierResponse = zod.object({
-  "id": zod.number(),
-  "tenantId": zod.number(),
-  "name": zod.string(),
-  "contact": zod.string().nullish().describe('Phone, email, or rep name.'),
-  "accountNumber": zod.string().nullish().describe('Our account number with this supplier.'),
-  "notes": zod.string().nullish(),
-  "createdAt": zod.string()
-})
-
-/**
- * @summary List all inventory suppliers for the tenant
- */
-export const ListInventorySuppliersResponseItem = zod.object({
-  "id": zod.number(),
-  "tenantId": zod.number(),
-  "name": zod.string(),
-  "contact": zod.string().nullish().describe('Phone, email, or rep name.'),
-  "accountNumber": zod.string().nullish().describe('Our account number with this supplier.'),
-  "notes": zod.string().nullish(),
-  "createdAt": zod.string()
-})
-
-export const ListInventorySuppliersResponse = zod.array(ListInventorySuppliersResponseItem)
-
-export const DeleteInventorySupplierResponse = zod.void()
-
-export const CreateInventorySupplierResponse = zod.object({
-  "id": zod.number(),
-  "tenantId": zod.number(),
-  "name": zod.string(),
-  "contact": zod.string().nullish().describe('Phone, email, or rep name.'),
-  "accountNumber": zod.string().nullish().describe('Our account number with this supplier.'),
-  "notes": zod.string().nullish(),
-  "createdAt": zod.string()
-})
-
-/**
- * @summary Create a new inventory supplier
- */
-export const CreateInventorySupplierBody = zod.object({
-  "name": zod.string(),
-  "contact": zod.string().optional(),
-  "accountNumber": zod.string().optional(),
-  "notes": zod.string().optional()
-})
-
-/**
- * @summary Delete an inventory supplier (sets supplierId to null on linked items)
- */
-export const DeleteInventorySupplierParams = zod.object({
-  "id": zod.coerce.number()
-})

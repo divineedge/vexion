@@ -6,14 +6,17 @@ import {
   useStartSubTimer, useStopSubTimer,
   useListTimeEntries, getListTimeEntriesQueryKey,
   useGetTodaySchedule, getGetTodayScheduleQueryKey,
+  useUpdateJob,
+  useUpdateVisit,
   customFetch,
 } from '@workspace/api-client-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
   Clock, Play, Square, Timer, History, ClipboardList, AlertTriangle,
-  MapPin, User, CalendarClock,
+  MapPin, User, CalendarClock, CheckCircle2,
 } from 'lucide-react';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -90,6 +93,13 @@ export default function TimeTrackingPage() {
   const stopMaster = useStopMasterClock();
   const startSub = useStartSubTimer();
   const stopSub = useStopSubTimer();
+  const updateJob = useUpdateJob();
+  const updateVisit = useUpdateVisit();
+
+  // After clocking out, optionally mark the job/visit complete
+  const [completePrompt, setCompletePrompt] = useState<{
+    timerId: number; label: string; kind: string; id: number;
+  } | null>(null);
 
   const [liveMasterSeconds, setLiveMasterSeconds] = useState(0);
 
@@ -128,10 +138,36 @@ export default function TimeTrackingPage() {
     );
   };
 
-  const handleClockOut = (timerId: number, label: string) => {
+  // Clock out → prompt whether to also mark the job/visit complete
+  const handleClockOut = (timerId: number, label: string, item: any) => {
+    setCompletePrompt({ timerId, label, kind: item.kind, id: item.id });
+  };
+
+  const handleConfirmClockOut = (markComplete: boolean) => {
+    if (!completePrompt) return;
+    const { timerId, label, kind, id } = completePrompt;
+    setCompletePrompt(null);
     stopSub.mutate(
       { id: timerId },
-      { onSuccess: () => { invalidateAll(); toast.success(`Clocked out: ${label}`); } }
+      {
+        onSuccess: () => {
+          invalidateAll();
+          toast.success(`Clocked out: ${label}`);
+          if (markComplete) {
+            if (kind === 'job') {
+              updateJob.mutate(
+                { id, data: { status: 'completed' } as any },
+                { onSuccess: () => { invalidateAll(); toast.success('Job marked complete'); } }
+              );
+            } else {
+              updateVisit.mutate(
+                { id, data: { completedAt: new Date().toISOString() } as any },
+                { onSuccess: () => { invalidateAll(); toast.success('Visit marked complete'); } }
+              );
+            }
+          }
+        },
+      }
     );
   };
 
@@ -212,15 +248,30 @@ export default function TimeTrackingPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {schedule.map((item: any) => {
+              {[...(schedule as any[])].sort((a, b) => {
+                // Active items first
+                if (a.activeTimerId != null && b.activeTimerId == null) return -1;
+                if (a.activeTimerId == null && b.activeTimerId != null) return 1;
+                // Completed/cancelled/invoiced sink to the bottom
+                const DONE = ['completed', 'cancelled', 'invoiced', 'no_show'];
+                const aDone = DONE.includes(a.status);
+                const bDone = DONE.includes(b.status);
+                if (!aDone && bDone) return -1;
+                if (aDone && !bDone) return 1;
+                // Within same tier, sort by scheduled time
+                return new Date(a.scheduledAt ?? 0).getTime() - new Date(b.scheduledAt ?? 0).getTime();
+              }).map((item: any) => {
                 const isActive = item.activeTimerId != null;
+                const isDone = ['completed', 'cancelled', 'invoiced', 'no_show'].includes(item.status);
                 return (
                   <div
                     key={`${item.kind}-${item.id}`}
                     className={`flex items-center justify-between p-4 rounded-lg border transition-all ${
                       isActive
                         ? 'border-primary bg-primary/5 shadow-sm'
-                        : 'border-border bg-muted/20 hover:bg-muted/40'
+                        : isDone
+                          ? 'border-border bg-muted/10 opacity-50'
+                          : 'border-border bg-muted/20 hover:bg-muted/40'
                     }`}
                   >
                     <div className="flex items-start gap-3 min-w-0 flex-1">
@@ -272,7 +323,7 @@ export default function TimeTrackingPage() {
                           size="sm"
                           variant="destructive"
                           className="gap-1.5"
-                          onClick={() => handleClockOut(item.activeTimerId!, item.label)}
+                          onClick={() => handleClockOut(item.activeTimerId!, item.label, item)}
                           disabled={isBusy}
                         >
                           <Square className="w-3.5 h-3.5 fill-current" />
@@ -298,6 +349,29 @@ export default function TimeTrackingPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* ── Clock-out completion prompt ──────────────────────────────────────── */}
+      <Dialog open={!!completePrompt} onOpenChange={open => { if (!open) setCompletePrompt(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-primary" />
+              Mark as Complete?
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            You've clocked out of <strong>{completePrompt?.label}</strong>. Do you want to mark it as complete?
+          </p>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => handleConfirmClockOut(false)} disabled={stopSub.isPending}>
+              No, just clock out
+            </Button>
+            <Button onClick={() => handleConfirmClockOut(true)} disabled={stopSub.isPending} className="gap-2">
+              <CheckCircle2 className="w-4 h-4" /> Yes, mark complete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Today's Entries ───────────────────────────────────────────────────── */}
       <Card>

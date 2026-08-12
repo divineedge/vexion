@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable, mediaAttachmentsTable, tenantsTable, communicationsLogTable, customerPlansTable, usersTable, planCancelRequestsTable, estimatesTable, taskNotificationsTable, portalMessagesTable } from "@workspace/db";
+import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable, mediaAttachmentsTable, tenantsTable, communicationsLogTable, customerPlansTable, usersTable, planCancelRequestsTable, estimatesTable, taskNotificationsTable, portalMessagesTable, internalTasksTable } from "@workspace/db";
 import { eq, and, gt, desc, lte, isNotNull, ne, sql, isNull, inArray } from "drizzle-orm";
 import { objectStorageService } from "./storage";
 import crypto from "crypto";
@@ -963,6 +963,11 @@ router.get("/portal/properties", requirePortalAuth, async (req: any, res): Promi
       zip: p.zip ?? null,
       type: p.type ?? null,
       notes: p.notes ?? null,
+      lat: p.lat ?? null,
+      lng: p.lng ?? null,
+      measurementPolygons: (p.measurementPolygons as unknown[]) ?? [],
+      serviceableAreaSqft: p.serviceableAreaSqft ?? null,
+      sizeUnit: p.sizeUnit ?? "sqft",
     })),
   );
 });
@@ -1183,6 +1188,22 @@ router.post("/portal/service-requests", requirePortalAuth, async (req: any, res)
         isRead: false,
       }))
     ).catch(err => logger.error({ err }, "Failed to insert portal request notifications"));
+  }
+
+  // Create an internal task for admin_office so the request shows in the task list (fire-and-forget)
+  if (staffUsers.length > 0) {
+    db.insert(internalTasksTable).values({
+      tenantId: portalTenantId,
+      title: `Portal Request — ${customerName}`,
+      description: `${propertyAddress ? `Property: ${propertyAddress}\n` : ""}${description}`,
+      taskType: "custom",
+      createdById: staffUsers[0].id,
+      assignedToRole: "admin_office",
+      priority: resolvedPriority,
+      status: "open",
+      contextType: "job",
+      contextId: job.id,
+    }).catch(err => logger.error({ err }, "Failed to create internal task for portal request"));
   }
 
   // Send notification email to the tenant — fire-and-forget, never blocks the response
@@ -1742,6 +1763,100 @@ router.get("/portal/estimates", requirePortalAuth, async (req: any, res): Promis
       publicToken: e.approvalToken,
     })),
   );
+});
+
+// ---------------------------------------------------------------------------
+// GET /portal/estimates/:id  — full detail with optional line-item flags
+// ---------------------------------------------------------------------------
+router.get("/portal/estimates/:id", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+  const estimateId = parseInt(req.params.id, 10);
+  if (isNaN(estimateId)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const [estimate] = await db
+    .select()
+    .from(estimatesTable)
+    .where(and(
+      eq(estimatesTable.id, estimateId),
+      eq(estimatesTable.customerId, portalCustomerId),
+      eq(estimatesTable.tenantId, portalTenantId),
+      ne(estimatesTable.status, "draft" as string),
+    ))
+    .limit(1);
+
+  if (!estimate) { res.status(404).json({ error: "Estimate not found" }); return; }
+
+  type RawItem = { description?: string; qty?: number; quantity?: number; unitPrice?: number; markup?: number; discount?: number; isOptional?: boolean; optionalPitchLine?: string | null; acceptedByCustomer?: boolean };
+  const lineItems = ((estimate.lineItems as RawItem[]) ?? []).map((item, idx) => {
+    const qty = item.qty ?? item.quantity ?? 1;
+    const unit = item.unitPrice ?? 0;
+    const markupMul = 1 + (item.markup ?? 0) / 100;
+    const discountMul = 1 - (item.discount ?? 0) / 100;
+    return {
+      idx,
+      description: item.description ?? "",
+      quantity: qty,
+      unitPrice: unit,
+      total: Math.round(qty * unit * markupMul * discountMul * 100) / 100,
+      isOptional: item.isOptional ?? false,
+      optionalPitchLine: item.optionalPitchLine ?? null,
+      acceptedByCustomer: item.acceptedByCustomer ?? true,
+    };
+  });
+
+  res.json({
+    id: estimate.id,
+    title: `Estimate #${estimate.id}`,
+    status: estimate.status,
+    description: estimate.description ?? null,
+    subtotal: estimate.subtotal,
+    tax: estimate.tax,
+    total: estimate.total,
+    lineItems,
+    expiresAt: estimate.expiresAt ? estimate.expiresAt.toISOString() : null,
+    createdAt: estimate.createdAt.toISOString(),
+    publicToken: estimate.approvalToken ?? null,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /portal/estimates/:id/optional-items  — save customer's opt-in choices
+// ---------------------------------------------------------------------------
+router.patch("/portal/estimates/:id/optional-items", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+  const estimateId = parseInt(req.params.id, 10);
+  if (isNaN(estimateId)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const { selections } = req.body as { selections: boolean[] };
+  if (!Array.isArray(selections)) { res.status(400).json({ error: "selections must be an array" }); return; }
+
+  const [estimate] = await db
+    .select({ lineItems: estimatesTable.lineItems })
+    .from(estimatesTable)
+    .where(and(
+      eq(estimatesTable.id, estimateId),
+      eq(estimatesTable.customerId, portalCustomerId),
+      eq(estimatesTable.tenantId, portalTenantId),
+      eq(estimatesTable.status, "sent" as string),
+    ))
+    .limit(1);
+
+  if (!estimate) { res.status(404).json({ error: "Estimate not found or not editable" }); return; }
+
+  type RawItem = Record<string, unknown> & { isOptional?: boolean };
+  const updated = ((estimate.lineItems as RawItem[]) ?? []).map((item, idx) => {
+    if (item.isOptional && idx < selections.length) {
+      return { ...item, acceptedByCustomer: selections[idx] };
+    }
+    return item;
+  });
+
+  // Use raw SQL to bypass Drizzle jsonb mapper quirks
+  await db.execute(
+    sql`UPDATE estimates SET line_items = ${JSON.stringify(updated)}::jsonb WHERE id = ${estimateId} AND tenant_id = ${portalTenantId}`
+  );
+
+  res.json({ ok: true });
 });
 
 router.post("/portal/plans/:id/cancel-request", requirePortalAuth, async (req: any, res): Promise<void> => {

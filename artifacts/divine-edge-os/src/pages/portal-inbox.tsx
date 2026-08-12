@@ -1,6 +1,21 @@
 import { useState, useEffect } from 'react';
-import { useListPortalInboxThreads, useGetPortalInboxThread, useReplyToPortalThread, getListPortalInboxThreadsQueryKey, getGetPortalInboxThreadQueryKey } from '@workspace/api-client-react';
-import { useQueryClient } from '@tanstack/react-query';
+import { customFetch } from '@workspace/api-client-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+
+const THREADS_KEY = ['portal-inbox-threads'];
+const threadKey = (id: number) => ['portal-inbox-thread', id];
+const useListPortalInboxThreads = () => useQuery({ queryKey: THREADS_KEY, queryFn: () => customFetch<any[]>('/api/portal-inbox') });
+const useGetPortalInboxThread = (id: number, opts?: { query?: { enabled?: boolean; queryKey?: unknown[] } }) =>
+  useQuery({ queryKey: opts?.query?.queryKey ?? threadKey(id), queryFn: () => customFetch<any>(`/api/portal-inbox/${id}`), enabled: opts?.query?.enabled ?? true });
+const getListPortalInboxThreadsQueryKey = () => THREADS_KEY;
+const getGetPortalInboxThreadQueryKey = (id: number) => threadKey(id);
+const useReplyToPortalThread = (opts?: { mutation?: { onSuccess?: () => void; onError?: () => void } }) =>
+  useMutation({
+    mutationFn: ({ customerId, data }: { customerId: number; data: { body: string } }) =>
+      customFetch<any>(`/api/portal-inbox/${customerId}/reply`, { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: opts?.mutation?.onSuccess,
+    onError: opts?.mutation?.onError,
+  });
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';

@@ -9,7 +9,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Users, Briefcase, FileText, DollarSign, Clock, CheckCircle, Gauge, PhoneCall, Trophy, AlertTriangle } from 'lucide-react';
+import { Users, Briefcase, FileText, DollarSign, Clock, CheckCircle, Gauge, PhoneCall, Trophy, AlertTriangle, Inbox, MessageSquare } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { MyTasksWidget } from '@/components/tasks/MyTasksWidget';
 import { FollowupQueueWidget } from '@/components/followups/FollowupQueueWidget';
@@ -240,6 +240,7 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           )}
+          {!isTechnician && <PortalActivityWidget />}
           <MyTasksWidget />
           <FollowupQueueWidget />
         </div>
@@ -286,6 +287,65 @@ export default function DashboardPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+function PortalActivityWidget() {
+  const [, setLocation] = useLocation();
+  const { data: unreadData } = useQuery<{ count: number }>({
+    queryKey: ['portal-inbox-unread'],
+    queryFn: () => customFetch<{ count: number }>('/api/portal-inbox/unread-count'),
+    refetchInterval: 60_000,
+  });
+  const { data: portalJobs } = useQuery<{ id: number; title: string; customerName: string | null; createdAt: string }[]>({
+    queryKey: ['portal-requests-pending'],
+    queryFn: () => customFetch<any[]>('/api/jobs?source=portal&status=pending&limit=5'),
+    refetchInterval: 60_000,
+  });
+
+  const unread = unreadData?.count ?? 0;
+  const requests = portalJobs ?? [];
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center justify-between gap-2">
+          <span className="flex items-center gap-2"><Inbox className="w-4 h-4 text-primary" /> Portal Activity</span>
+          {unread > 0 && (
+            <Badge className="bg-primary text-primary-foreground text-xs h-5 px-1.5">{unread} unread</Badge>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-0 pb-1">
+        {unread > 0 && (
+          <button
+            className="w-full flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-muted/40 transition-colors text-left border-b"
+            onClick={() => setLocation('/portal-inbox')}
+          >
+            <MessageSquare className="w-3.5 h-3.5 text-primary shrink-0" />
+            <span className="flex-1 font-medium">{unread} unread message{unread !== 1 ? 's' : ''} from customers</span>
+            <span className="text-primary text-xs">View →</span>
+          </button>
+        )}
+        {requests.length > 0 ? (
+          <div className="divide-y">
+            {requests.slice(0, 3).map((j: any) => (
+              <button
+                key={j.id}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-muted/40 transition-colors text-left"
+                onClick={() => setLocation(`/schedule?jobId=${j.id}`)}
+              >
+                <Briefcase className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                <span className="flex-1 truncate">{j.customerName ?? 'Customer'} — service request</span>
+                <span className="text-xs text-muted-foreground shrink-0">new</span>
+              </button>
+            ))}
+          </div>
+        ) : unread === 0 ? (
+          <p className="px-4 py-3 text-sm text-muted-foreground">No new portal activity.</p>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }
 

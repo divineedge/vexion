@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { FileText, Clock, CheckCircle2, XCircle, ThumbsUp, ThumbsDown, Loader2, ChevronRight } from "lucide-react";
+import { FileText, Clock, CheckCircle2, XCircle, ThumbsUp, ThumbsDown, Loader2, ChevronRight, Sparkles } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react";
 import { toast } from "sonner";
 
@@ -23,6 +24,17 @@ interface PortalEstimate {
   publicToken: string | null;
 }
 
+interface DetailLineItem {
+  idx: number;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+  isOptional: boolean;
+  optionalPitchLine: string | null;
+  acceptedByCustomer: boolean;
+}
+
 interface EstimateDetail {
   id: number;
   title: string;
@@ -31,9 +43,10 @@ interface EstimateDetail {
   subtotal: number;
   tax: number;
   total: number;
-  lineItems: Array<{ description: string; quantity: number; unitPrice: number; total: number }>;
+  lineItems: DetailLineItem[];
   expiresAt: string | null;
   createdAt: string;
+  publicToken: string | null;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -53,10 +66,13 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function Estimates() {
   const queryClient = useQueryClient();
+  const [reviewEstimateId, setReviewEstimateId] = useState<number | null>(null);
   const [reviewToken, setReviewToken] = useState<string | null>(null);
   const [detail, setDetail] = useState<EstimateDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [acting, setActing] = useState<"approve" | "decline" | null>(null);
+  // Track optional item selections: key = item.idx, value = accepted boolean
+  const [optionalSelections, setOptionalSelections] = useState<Record<number, boolean>>({});
 
   const { data: estimates, isLoading } = useQuery<PortalEstimate[]>({
     queryKey: ["portal-estimates"],
@@ -66,20 +82,60 @@ export default function Estimates() {
   const pending = (estimates ?? []).filter(e => e.status === "sent");
   const past = (estimates ?? []).filter(e => e.status !== "sent");
 
-  const openReview = async (token: string) => {
-    setReviewToken(token);
+  const openReview = async (id: number) => {
+    setReviewEstimateId(id);
+    setReviewToken(null);
     setDetail(null);
     setDetailLoading(true);
+    setOptionalSelections({});
     try {
-      const data = await customFetch<EstimateDetail>(`/api/public/estimates/${token}`);
+      const data = await customFetch<EstimateDetail>(`/api/portal/estimates/${id}`);
       setDetail(data);
+      setReviewToken(data.publicToken);
+      // Initialise optional selections from server state
+      const init: Record<number, boolean> = {};
+      data.lineItems.forEach(item => {
+        if (item.isOptional) init[item.idx] = item.acceptedByCustomer;
+      });
+      setOptionalSelections(init);
     } catch {
       toast.error("Could not load estimate details. Please try again.");
-      setReviewToken(null);
+      setReviewEstimateId(null);
     } finally {
       setDetailLoading(false);
     }
   };
+
+  const toggleOptional = (item: DetailLineItem, checked: boolean) => {
+    if (!reviewEstimateId || !detail) return;
+    const next = { ...optionalSelections, [item.idx]: checked };
+    setOptionalSelections(next);
+
+    // Build full selections array and persist to server (fire-and-forget)
+    const selections = detail.lineItems.map(li =>
+      li.isOptional ? (next[li.idx] ?? li.acceptedByCustomer) : true
+    );
+    customFetch(`/api/portal/estimates/${reviewEstimateId}/optional-items`, {
+      method: "PATCH",
+      body: JSON.stringify({ selections }),
+    }).catch(() => {
+      // Revert on error
+      setOptionalSelections(prev => ({ ...prev, [item.idx]: !checked }));
+      toast.error("Failed to save selection. Please try again.");
+    });
+  };
+
+  // Recompute displayed totals based on current optional selections
+  const computedTotals = detail ? (() => {
+    let subtotal = 0;
+    for (const item of detail.lineItems) {
+      const accepted = item.isOptional ? (optionalSelections[item.idx] ?? item.acceptedByCustomer) : true;
+      if (accepted) subtotal += item.total;
+    }
+    const taxRate = detail.subtotal > 0 ? detail.tax / detail.subtotal : 0;
+    const tax = Math.round(subtotal * taxRate * 100) / 100;
+    return { subtotal, tax, total: subtotal + tax };
+  })() : null;
 
   const respond = async (action: "approve" | "decline") => {
     if (!reviewToken) return;
@@ -87,10 +143,12 @@ export default function Estimates() {
     try {
       await customFetch(`/api/public/estimates/${reviewToken}/respond`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),
       });
       toast.success(action === "approve" ? "Estimate approved!" : "Estimate declined.");
       queryClient.invalidateQueries({ queryKey: ["portal-estimates"] });
+      setReviewEstimateId(null);
       setReviewToken(null);
       setDetail(null);
     } catch (err: any) {
@@ -119,22 +177,23 @@ export default function Estimates() {
               <p className="text-lg font-bold text-foreground">{formatCurrency(e.total)}</p>
               {e.tax > 0 && <p className="text-xs text-muted-foreground">incl. tax</p>}
             </div>
-            {e.publicToken && (
-              <Button
-                size="sm"
-                variant={e.status === "sent" ? "default" : "outline"}
-                className="gap-1.5 shrink-0"
-                onClick={() => openReview(e.publicToken!)}
-              >
-                <ChevronRight className="w-3.5 h-3.5" />
-                {e.status === "sent" ? "Review & Approve" : "View"}
-              </Button>
-            )}
+            <Button
+              size="sm"
+              variant={e.status === "sent" ? "default" : "outline"}
+              className="gap-1.5 shrink-0"
+              onClick={() => openReview(e.id)}
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+              {e.status === "sent" ? "Review & Approve" : "View"}
+            </Button>
           </div>
         </div>
       </CardContent>
     </Card>
   );
+
+  const requiredItems = detail?.lineItems.filter(i => !i.isOptional) ?? [];
+  const optionalItems = detail?.lineItems.filter(i => i.isOptional) ?? [];
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -173,8 +232,8 @@ export default function Estimates() {
       )}
 
       {/* Review & Approve dialog */}
-      <Dialog open={!!reviewToken} onOpenChange={open => { if (!open && !acting) { setReviewToken(null); setDetail(null); } }}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+      <Dialog open={reviewEstimateId !== null} onOpenChange={open => { if (!open && !acting) { setReviewEstimateId(null); setReviewToken(null); setDetail(null); } }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{detail?.title ?? "Estimate"}</DialogTitle>
           </DialogHeader>
@@ -186,17 +245,18 @@ export default function Estimates() {
               <Skeleton className="h-24 w-full" />
             </div>
           ) : detail ? (
-            <div className="space-y-4">
+            <div className="space-y-5">
               {detail.description && (
                 <p className="text-sm text-muted-foreground">{detail.description}</p>
               )}
 
-              {detail.lineItems?.length > 0 && (
+              {/* Required line items */}
+              {requiredItems.length > 0 && (
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Line Items</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">What's Included</p>
                   <div className="rounded-lg border overflow-hidden">
-                    {detail.lineItems.map((item, i) => (
-                      <div key={i} className={`flex items-start justify-between gap-3 px-4 py-3 text-sm ${i > 0 ? "border-t" : ""}`}>
+                    {requiredItems.map((item, i) => (
+                      <div key={item.idx} className={`flex items-start justify-between gap-3 px-4 py-3 text-sm ${i > 0 ? "border-t" : ""}`}>
                         <div className="flex-1 min-w-0">
                           <p className="font-medium">{item.description}</p>
                           {item.quantity !== 1 && (
@@ -210,22 +270,72 @@ export default function Estimates() {
                 </div>
               )}
 
+              {/* Optional add-ons */}
+              {optionalItems.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Optional Add-ons
+                    </p>
+                    <Badge variant="outline" className="text-xs text-amber-700 border-amber-200 bg-amber-50">
+                      Select what you'd like
+                    </Badge>
+                  </div>
+                  <div className="rounded-lg border overflow-hidden divide-y">
+                    {optionalItems.map(item => {
+                      const accepted = optionalSelections[item.idx] ?? item.acceptedByCustomer;
+                      return (
+                        <div key={item.idx} className={`flex items-start gap-3 px-4 py-3 text-sm transition-colors ${accepted ? "bg-amber-50/40" : "bg-muted/20"}`}>
+                          <Checkbox
+                            id={`opt-${item.idx}`}
+                            checked={accepted}
+                            onCheckedChange={checked => {
+                              if (detail.status === "sent") toggleOptional(item, !!checked);
+                            }}
+                            disabled={detail.status !== "sent"}
+                            className="mt-0.5 shrink-0"
+                          />
+                          <label htmlFor={`opt-${item.idx}`} className={`flex-1 min-w-0 ${detail.status === "sent" ? "cursor-pointer" : ""}`}>
+                            <p className="font-medium">{item.description}</p>
+                            {item.optionalPitchLine && (
+                              <p className="text-xs text-amber-700 italic mt-0.5">{item.optionalPitchLine}</p>
+                            )}
+                            {item.quantity !== 1 && (
+                              <p className="text-xs text-muted-foreground">{item.quantity} × {formatCurrency(item.unitPrice)}</p>
+                            )}
+                          </label>
+                          <p className={`font-medium shrink-0 ${accepted ? "" : "text-muted-foreground line-through"}`}>
+                            {formatCurrency(item.total)}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {detail.status === "sent" && (
+                    <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                      Check or uncheck the add-ons you'd like to include before approving.
+                    </p>
+                  )}
+                </div>
+              )}
+
               <Separator />
 
               <div className="space-y-1.5 text-sm">
                 <div className="flex justify-between text-muted-foreground">
                   <span>Subtotal</span>
-                  <span>{formatCurrency(detail.subtotal)}</span>
+                  <span>{formatCurrency(computedTotals?.subtotal ?? detail.subtotal)}</span>
                 </div>
-                {detail.tax > 0 && (
+                {(computedTotals?.tax ?? detail.tax) > 0 && (
                   <div className="flex justify-between text-muted-foreground">
                     <span>Tax</span>
-                    <span>{formatCurrency(detail.tax)}</span>
+                    <span>{formatCurrency(computedTotals?.tax ?? detail.tax)}</span>
                   </div>
                 )}
                 <div className="flex justify-between font-bold text-base">
                   <span>Total</span>
-                  <span>{formatCurrency(detail.total)}</span>
+                  <span>{formatCurrency(computedTotals?.total ?? detail.total)}</span>
                 </div>
               </div>
 

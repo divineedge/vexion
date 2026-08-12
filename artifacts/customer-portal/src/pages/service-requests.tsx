@@ -21,7 +21,7 @@ const requestSchema = z.object({
   }).min(1, "Please select a property"),
   description: z.string().min(10, "Please provide more details about what you need done."),
   preferredDateStart: z.string().optional(),
-  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
+  priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
 });
 
 import React, { useState } from "react";
@@ -177,7 +177,7 @@ export default function ServiceRequests() {
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="low">Low — no rush</SelectItem>
-                        <SelectItem value="medium">Medium — within a few weeks</SelectItem>
+                        <SelectItem value="normal">Normal — within a few weeks</SelectItem>
                         <SelectItem value="high">High — within the week</SelectItem>
                         <SelectItem value="urgent">Urgent — as soon as possible</SelectItem>
                       </SelectContent>

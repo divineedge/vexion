@@ -24,6 +24,8 @@ import {
   X,
   User,
   Wrench,
+  Ruler,
+  ExternalLink,
 } from "lucide-react";
 import { getPortalListPropertyMediaQueryKey } from "@workspace/api-client-react";
 
@@ -307,6 +309,59 @@ export default function PropertyDetail() {
         </div>
       ) : (
         <div className="text-muted-foreground">Property not found.</div>
+      )}
+
+      {/* Satellite view & measurements */}
+      {property && ((property as any).lat || (property as any).serviceableAreaSqft) && (
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold tracking-tight">Property Information</h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {(property as any).serviceableAreaSqft && (
+              <Card className="shadow-none">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <div className="p-2.5 bg-primary/10 rounded-xl">
+                    <Ruler className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Serviceable Area</p>
+                    <p className="text-xl font-bold text-foreground">
+                      {Number((property as any).serviceableAreaSqft).toLocaleString()}
+                      <span className="text-sm font-normal text-muted-foreground ml-1">
+                        {(property as any).sizeUnit === "acres" ? "acres" : "sq ft"}
+                      </span>
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            {(property as any).lat && (property as any).lng && (
+              <Card className={`overflow-hidden shadow-none ${(property as any).serviceableAreaSqft ? '' : 'sm:col-span-2'}`}>
+                <iframe
+                  title="Satellite view"
+                  src={`https://maps.google.com/maps?q=${(property as any).lat},${(property as any).lng}&t=k&z=19&output=embed`}
+                  width="100%"
+                  height="260"
+                  style={{ border: 0, display: 'block' }}
+                  loading="lazy"
+                  allowFullScreen
+                />
+                <CardContent className="p-3 flex items-center justify-between border-t">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5" /> Satellite view
+                  </p>
+                  <a
+                    href={`https://maps.google.com/?q=${(property as any).lat},${(property as any).lng}&t=k`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-primary hover:underline flex items-center gap-1"
+                  >
+                    Open in Maps <ExternalLink className="w-3 h-3" />
+                  </a>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Upload section */}

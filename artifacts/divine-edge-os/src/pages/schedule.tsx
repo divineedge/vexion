@@ -37,9 +37,8 @@ import {
   useListCrews, getListCrewsQueryKey,
   useListTags, getListTagsQueryKey,
   useListSkipReasons, getListSkipReasonsQueryKey,
-  useApproveJobCancellation,
-  useDenyJobCancellation,
 } from '@workspace/api-client-react';
+import { useMutation } from '@tanstack/react-query';
 import MediaGallery from '@/components/media/MediaGallery';
 import { JobFormFields, EMPTY_JOB, buildRecurrenceRule, type NewJobForm } from '@/components/jobs/JobFormFields';
 import { useAuth } from '@/contexts/AuthContext';
@@ -376,8 +375,14 @@ export default function SchedulePage() {
   const deleteJob = useDeleteJob();
   const [deleteBlockedMsg, setDeleteBlockedMsg] = useState<string | null>(null);
   const updateJobRoute = useUpdateJobRoute();
-  const approveJobCancellation = useApproveJobCancellation();
-  const denyJobCancellation = useDenyJobCancellation();
+  const approveJobCancellation = useMutation({
+    mutationFn: ({ id }: { id: number }) =>
+      customFetch<void>(`/api/jobs/${id}/approve-cancellation`, { method: 'POST' }),
+  });
+  const denyJobCancellation = useMutation({
+    mutationFn: ({ id, denyReason }: { id: number; denyReason?: string }) =>
+      customFetch<void>(`/api/jobs/${id}/deny-cancellation`, { method: 'POST', body: JSON.stringify({ denyReason }) }),
+  });
   const [denyDialogOpen, setDenyDialogOpen] = useState(false);
 
   // Route templates (for route filter dropdown + job detail route assignment)

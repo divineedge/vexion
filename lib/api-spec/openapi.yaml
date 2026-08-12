@@ -1640,6 +1640,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/StockTransferResult"
 
+  /inventory/locations/{id}/stock/adjust:
+    post:
+      operationId: adjustLocationStock
+      tags: [inventory]
+      summary: Adjust stock quantity at a specific location by a delta
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LocationStockAdjustInput"
+      responses:
+        "200":
+          description: Updated stock entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationStockEntry"
+
   /inventory/{id}/by-location:
     get:
       operationId: getInventoryItemByLocation
@@ -9763,6 +9788,18 @@ components:
         unitPrice:
           type: number
         unit:
+          type: string
+
+    LocationStockAdjustInput:
+      type: object
+      required: [inventoryItemId, delta]
+      properties:
+        inventoryItemId:
+          type: integer
+        delta:
+          type: integer
+          description: Positive to add stock, negative to remove
+        reason:
           type: string
 
     SetLocationStockInput:

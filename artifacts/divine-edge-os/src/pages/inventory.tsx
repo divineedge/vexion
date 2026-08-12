@@ -11,6 +11,7 @@ import {
   useCreateInventoryLocation, useUpdateInventoryLocation, useDeleteInventoryLocation,
   useGetLocationStock, getGetLocationStockQueryKey,
   useTransferInventoryStock,
+  useAdjustLocationStock,
   useGetInventoryItemByLocation, getGetInventoryItemByLocationQueryKey,
   useListInventorySuppliers, getListInventorySuppliersQueryKey,
   useCreateInventorySupplier,
@@ -66,6 +67,120 @@ function ItemLocationSection({ inventoryItemId }: { inventoryItemId: number }) {
   );
 }
 
+function LocationStockCard({
+  location,
+  canManage,
+  onEditLocation,
+  onViewItem,
+  onAdjust,
+  onTransfer,
+}: {
+  location: InventoryLocation;
+  canManage: boolean;
+  onEditLocation: () => void;
+  onViewItem: (id: number) => void;
+  onAdjust: (itemId: number, itemName: string) => void;
+  onTransfer: () => void;
+}) {
+  const { data: stock, isLoading } = useGetLocationStock(location.id, {
+    query: { queryKey: getGetLocationStockQueryKey(location.id) },
+  });
+  const lowCount = (stock ?? []).filter(s => s.isLowStock).length;
+
+  return (
+    <Card className={lowCount > 0 ? 'border-destructive/30' : ''}>
+      <CardContent className="p-0">
+        <div className="p-4 border-b flex items-center justify-between">
+          <div className="flex items-center gap-2 font-semibold text-sm">
+            {location.type === 'trailer'
+              ? <Truck className="w-4 h-4 text-muted-foreground" />
+              : location.type === 'warehouse'
+                ? <Warehouse className="w-4 h-4 text-muted-foreground" />
+                : <MapPin className="w-4 h-4 text-muted-foreground" />
+            }
+            {location.name}
+            {lowCount > 0 && (
+              <Badge variant="destructive" className="text-[10px] gap-1">
+                <AlertTriangle className="w-3 h-3" /> {lowCount} low
+              </Badge>
+            )}
+            {stock && stock.length > 0 && (
+              <span className="text-xs font-normal text-muted-foreground">({stock.length} item{stock.length !== 1 ? 's' : ''})</span>
+            )}
+          </div>
+          {canManage && (
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" className="gap-1 text-xs h-7"
+                title={`Transfer stock to ${location.name}`} onClick={onTransfer}>
+                <ArrowLeftRight className="w-3 h-3" /> Transfer
+              </Button>
+              <Button size="sm" variant="ghost" className="gap-1 text-xs h-7"
+                title="Edit location" onClick={onEditLocation}>
+                <Edit className="w-3 h-3" />
+              </Button>
+            </div>
+          )}
+        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Item</TableHead>
+              <TableHead>SKU</TableHead>
+              <TableHead className="text-right">Qty Here</TableHead>
+              <TableHead className="text-right">Reorder At</TableHead>
+              <TableHead className="text-right">Sell Price</TableHead>
+              <TableHead className="w-[120px]" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow><TableCell colSpan={6} className="text-center py-6 text-muted-foreground">Loading…</TableCell></TableRow>
+            ) : !stock || stock.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
+                  No stock at this location. Use Transfer to move items here.
+                </TableCell>
+              </TableRow>
+            ) : stock.map(entry => (
+              <TableRow key={entry.id} className={entry.isLowStock ? 'bg-destructive/5' : ''}>
+                <TableCell className="font-medium">
+                  <div className="flex items-center gap-1.5">
+                    {entry.isLowStock && <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0" />}
+                    {entry.itemName}
+                  </div>
+                </TableCell>
+                <TableCell className="font-mono text-xs text-muted-foreground">{entry.itemSku}</TableCell>
+                <TableCell className="text-right">
+                  <span className={`font-bold ${entry.isLowStock ? 'text-destructive' : ''}`}>{entry.quantity}</span>
+                  {entry.unit && <span className="text-xs text-muted-foreground ml-1">{entry.unit}</span>}
+                  {entry.isLowStock && <Badge variant="destructive" className="ml-2 text-[10px]">Low</Badge>}
+                </TableCell>
+                <TableCell className="text-right text-muted-foreground">{entry.reorderPoint}</TableCell>
+                <TableCell className="text-right">${(entry.unitPrice ?? 0).toFixed(2)}</TableCell>
+                <TableCell className="text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    {canManage && (
+                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1"
+                        title="Adjust quantity at this location"
+                        onClick={() => onAdjust(entry.inventoryItemId, entry.itemName ?? '')}>
+                        <PlusCircle className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
+                    <Button size="sm" variant="ghost" className="h-7 px-2 text-xs"
+                      onClick={() => onViewItem(entry.inventoryItemId)}>
+                      View
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
 type ItemForm = {
   name: string;
   sku: string;
@@ -101,7 +216,7 @@ export default function InventoryPage() {
   const [sellPreview, setSellPreview] = useState<number | null>(null);
 
   // Locations
-  const [activeTab, setActiveTab] = useState<'all' | 'by-location'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'by-location' | 'by-location-overview'>('all');
   const [selectedLocationId, setSelectedLocationId] = useState<number | 'all'>('all');
   const [locDialogOpen, setLocDialogOpen] = useState(false);
   const [locForm, setLocForm] = useState({ name: '', description: '', type: 'warehouse' as 'warehouse' | 'trailer' | 'other' });
@@ -112,12 +227,21 @@ export default function InventoryPage() {
   // 'main_stock' is a UI sentinel for "from main warehouse" — mapped to undefined/null on submit
   const [transferForm, setTransferForm] = useState({ inventoryItemId: '', fromLocationId: 'main_stock', toLocationId: '', quantity: '1', reason: '' });
 
-  // Stock adjustment dialog
+  // Stock adjustment dialog (global)
   const [adjustDialogOpen, setAdjustDialogOpen] = useState(false);
   const [adjustItemId, setAdjustItemId] = useState<number | null>(null);
   const [adjustItemName, setAdjustItemName] = useState('');
   const [adjustDelta, setAdjustDelta] = useState('');
   const [adjustReason, setAdjustReason] = useState('');
+
+  // Per-location stock adjustment dialog
+  const [locAdjustDialogOpen, setLocAdjustDialogOpen] = useState(false);
+  const [locAdjustLocationId, setLocAdjustLocationId] = useState<number | null>(null);
+  const [locAdjustItemId, setLocAdjustItemId] = useState<number | null>(null);
+  const [locAdjustItemName, setLocAdjustItemName] = useState('');
+  const [locAdjustLocationName, setLocAdjustLocationName] = useState('');
+  const [locAdjustDelta, setLocAdjustDelta] = useState('');
+  const [locAdjustReason, setLocAdjustReason] = useState('');
 
   // Supplier inline-create dialog
   const [supplierDialogOpen, setSupplierDialogOpen] = useState(false);
@@ -133,6 +257,7 @@ export default function InventoryPage() {
   const canSeeCost = !isTechnician || showCostPriceToTech;
 
   const adjustStock = useAdjustInventoryStock();
+  const adjustLocationStockMutation = useAdjustLocationStock();
 
   // Location hooks
   const { data: locations } = useListInventoryLocations({ query: { queryKey: getListInventoryLocationsQueryKey() } });
@@ -201,6 +326,35 @@ export default function InventoryPage() {
     setAdjustDelta('');
     setAdjustReason('');
     setAdjustDialogOpen(true);
+  };
+
+  const openLocAdjustDialog = (locationId: number, locationName: string, itemId: number, itemName: string) => {
+    setLocAdjustLocationId(locationId);
+    setLocAdjustLocationName(locationName);
+    setLocAdjustItemId(itemId);
+    setLocAdjustItemName(itemName);
+    setLocAdjustDelta('');
+    setLocAdjustReason('');
+    setLocAdjustDialogOpen(true);
+  };
+
+  const handleLocAdjustStock = () => {
+    if (!locAdjustLocationId || !locAdjustItemId || !locAdjustDelta) { toast.error('Enter a quantity change'); return; }
+    const delta = parseInt(locAdjustDelta, 10);
+    if (isNaN(delta) || delta === 0) { toast.error('Enter a non-zero quantity'); return; }
+    adjustLocationStockMutation.mutate(
+      { id: locAdjustLocationId, data: { inventoryItemId: locAdjustItemId, delta, reason: locAdjustReason || undefined } },
+      {
+        onSuccess: () => {
+          toast.success(`Stock at ${locAdjustLocationName} adjusted by ${delta > 0 ? '+' : ''}${delta}`);
+          qc.invalidateQueries({ queryKey: getGetLocationStockQueryKey(locAdjustLocationId) });
+          qc.invalidateQueries({ queryKey: getListInventoryItemsQueryKey() });
+          qc.invalidateQueries({ queryKey: getGetInventorySummaryQueryKey() });
+          setLocAdjustDialogOpen(false);
+        },
+        onError: (e: any) => toast.error(e?.message ?? 'Failed to adjust stock'),
+      }
+    );
   };
 
   const handleAdjustStock = () => {
@@ -381,15 +535,24 @@ export default function InventoryPage() {
         <button
           title="Show inventory across all locations"
           onClick={() => { setActiveTab('all'); setSelectedLocationId('all'); }}
-          className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${activeTab === 'all' && selectedLocationId === 'all' ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-muted border-border'}`}
+          className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${activeTab === 'all' ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-muted border-border'}`}
         >
           All Items
         </button>
+        {(locations?.length ?? 0) > 0 && (
+          <button
+            title="See stock quantities across all locations at a glance"
+            onClick={() => { setActiveTab('by-location-overview'); setSelectedLocationId('all'); }}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors flex items-center gap-1.5 ${activeTab === 'by-location-overview' ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-muted border-border'}`}
+          >
+            <Warehouse className="w-3 h-3" /> By Location
+          </button>
+        )}
         {locations?.map(loc => (
           <button
             key={loc.id}
             onClick={() => { setActiveTab('by-location'); setSelectedLocationId(loc.id); }}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors flex items-center gap-1.5 ${typeof selectedLocationId === 'number' && selectedLocationId === loc.id ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-muted border-border'}`}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors flex items-center gap-1.5 ${activeTab === 'by-location' && typeof selectedLocationId === 'number' && selectedLocationId === loc.id ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-muted border-border'}`}
           >
             {loc.type === 'trailer' ? <Truck className="w-3 h-3" /> : loc.type === 'warehouse' ? <Warehouse className="w-3 h-3" /> : <MapPin className="w-3 h-3" />}
             {loc.name}
@@ -445,8 +608,31 @@ export default function InventoryPage() {
         </Card>
       </div>
 
-      {/* By-Location Stock View */}
-      {typeof selectedLocationId === 'number' && (
+      {/* By-Location Overview — all locations at once */}
+      {activeTab === 'by-location-overview' && (
+        <div className="space-y-4">
+          {!locations || locations.length === 0 ? (
+            <Card><CardContent className="py-10 text-center text-muted-foreground">No locations defined yet. Use the Add Location button to create one.</CardContent></Card>
+          ) : locations.map(loc => (
+            <LocationStockCard
+              key={loc.id}
+              location={loc}
+              canManage={canManage}
+              onEditLocation={() => {
+                setEditingLocId(loc.id);
+                setLocForm({ name: loc.name, description: loc.description ?? '', type: loc.type as typeof locForm.type });
+                setLocDialogOpen(true);
+              }}
+              onViewItem={openView}
+              onAdjust={(itemId, itemName) => openLocAdjustDialog(loc.id, loc.name, itemId, itemName)}
+              onTransfer={() => { setTransferForm(f => ({ ...f, toLocationId: String(loc.id) })); setTransferDialogOpen(true); }}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Single-Location Stock View */}
+      {activeTab === 'by-location' && typeof selectedLocationId === 'number' && (
         <Card>
           <CardContent className="p-0">
             <div className="p-4 border-b flex items-center justify-between">
@@ -457,23 +643,39 @@ export default function InventoryPage() {
                 }
                 Stock at: {locations?.find(l => l.id === selectedLocationId)?.name}
               </div>
-              {canManage && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-1 text-xs"
-                  title="Edit this location's name, type, or description"
-                  onClick={() => {
-                    const loc = locations?.find(l => l.id === selectedLocationId);
-                    if (!loc) return;
-                    setEditingLocId(loc.id);
-                    setLocForm({ name: loc.name, description: loc.description ?? '', type: loc.type as typeof locForm.type });
-                    setLocDialogOpen(true);
-                  }}
-                >
-                  <Edit className="w-3 h-3" /> Edit Location
-                </Button>
-              )}
+              <div className="flex items-center gap-2">
+                {canManage && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1 text-xs"
+                    title="Transfer stock to or from this location"
+                    onClick={() => {
+                      setTransferForm(f => ({ ...f, toLocationId: String(selectedLocationId) }));
+                      setTransferDialogOpen(true);
+                    }}
+                  >
+                    <ArrowLeftRight className="w-3 h-3" /> Transfer
+                  </Button>
+                )}
+                {canManage && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1 text-xs"
+                    title="Edit this location's name, type, or description"
+                    onClick={() => {
+                      const loc = locations?.find(l => l.id === selectedLocationId);
+                      if (!loc) return;
+                      setEditingLocId(loc.id);
+                      setLocForm({ name: loc.name, description: loc.description ?? '', type: loc.type as typeof locForm.type });
+                      setLocDialogOpen(true);
+                    }}
+                  >
+                    <Edit className="w-3 h-3" /> Edit Location
+                  </Button>
+                )}
+              </div>
             </div>
             <Table>
               <TableHeader>
@@ -483,7 +685,7 @@ export default function InventoryPage() {
                   <TableHead className="text-right">Qty at Location</TableHead>
                   <TableHead className="text-right">Reorder At</TableHead>
                   <TableHead className="text-right">Sell Price</TableHead>
-                  <TableHead className="w-[80px]" />
+                  <TableHead className="w-[120px]" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -498,9 +700,11 @@ export default function InventoryPage() {
                     key={entry.id}
                     className={entry.isLowStock ? 'bg-destructive/5' : ''}
                   >
-                    <TableCell className="font-medium flex items-center gap-1.5" title={entry.itemName}>
-                      {entry.isLowStock && <AlertTriangle className="w-3.5 h-3.5 text-destructive" />}
-                      {entry.itemName}
+                    <TableCell className="font-medium" title={entry.itemName}>
+                      <div className="flex items-center gap-1.5">
+                        {entry.isLowStock && <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0" />}
+                        {entry.itemName}
+                      </div>
                     </TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground" title={entry.itemSku ? `SKU: ${entry.itemSku}` : undefined}>{entry.itemSku}</TableCell>
                     <TableCell className="text-right" title={`${entry.quantity} in stock at this location${entry.isLowStock ? ' — low stock' : ''}`}>
@@ -510,9 +714,17 @@ export default function InventoryPage() {
                     <TableCell className="text-right text-muted-foreground" title={`Reorder at: ${entry.reorderPoint}`}>{entry.reorderPoint}</TableCell>
                     <TableCell className="text-right" title={`Sell price: $${(entry.unitPrice ?? 0).toFixed(2)}`}>${(entry.unitPrice ?? 0).toFixed(2)}</TableCell>
                     <TableCell className="text-right">
-                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => openView(entry.inventoryItemId)}>
-                        View
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        {canManage && (
+                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" title="Adjust quantity at this location"
+                            onClick={() => openLocAdjustDialog(selectedLocationId, locations?.find(l => l.id === selectedLocationId)?.name ?? '', entry.inventoryItemId, entry.itemName ?? '')}>
+                            <PlusCircle className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
+                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => openView(entry.inventoryItemId)}>
+                          View
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -523,7 +735,7 @@ export default function InventoryPage() {
       )}
 
       {/* All Items Table */}
-      {selectedLocationId === 'all' && <Card>
+      {activeTab === 'all' && <Card>
         <CardContent className="p-0">
           <div className="p-4 border-b flex items-center gap-4">
             <div className="relative flex-1 max-w-md">
@@ -1070,6 +1282,58 @@ export default function InventoryPage() {
               <Button variant="outline" onClick={() => setTransferDialogOpen(false)}>Cancel</Button>
               <Button onClick={handleTransfer} disabled={transferStock.isPending}>
                 {transferStock.isPending ? 'Transferring...' : 'Transfer'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Per-Location Stock Adjustment Dialog */}
+      <Dialog open={locAdjustDialogOpen} onOpenChange={open => { if (!open) setLocAdjustDialogOpen(false); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Adjust Stock at Location</DialogTitle>
+            <DialogDescription>
+              Adjust the quantity of <strong>{locAdjustItemName}</strong> at <strong>{locAdjustLocationName}</strong>.
+              Enter a positive number to add stock or a negative number to remove it.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Quantity Change <span className="text-destructive">*</span></label>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="icon" onClick={() => setLocAdjustDelta(d => String((parseInt(d || '0', 10) - 1)))}>
+                  <MinusCircle className="w-4 h-4" />
+                </Button>
+                <Input
+                  type="number"
+                  className="text-center font-bold text-lg"
+                  value={locAdjustDelta}
+                  onChange={e => setLocAdjustDelta(e.target.value)}
+                  placeholder="0"
+                />
+                <Button variant="outline" size="icon" onClick={() => setLocAdjustDelta(d => String((parseInt(d || '0', 10) + 1)))}>
+                  <PlusCircle className="w-4 h-4" />
+                </Button>
+              </div>
+              {locAdjustDelta && !isNaN(parseInt(locAdjustDelta, 10)) && (
+                <p className={`text-xs font-medium ${parseInt(locAdjustDelta, 10) > 0 ? 'text-emerald-600' : 'text-destructive'}`}>
+                  {parseInt(locAdjustDelta, 10) > 0 ? `+${locAdjustDelta} units will be added at this location` : `${locAdjustDelta} units will be removed from this location`}
+                </p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Reason (optional)</label>
+              <Input
+                placeholder="e.g. Restocked from main warehouse"
+                value={locAdjustReason}
+                onChange={e => setLocAdjustReason(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-3 justify-end pt-2">
+              <Button variant="outline" onClick={() => setLocAdjustDialogOpen(false)}>Cancel</Button>
+              <Button onClick={handleLocAdjustStock} disabled={adjustLocationStockMutation.isPending || !locAdjustDelta}>
+                {adjustLocationStockMutation.isPending ? 'Saving...' : 'Apply Adjustment'}
               </Button>
             </div>
           </div>

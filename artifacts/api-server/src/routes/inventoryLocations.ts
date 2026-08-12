@@ -212,6 +212,72 @@ router.post("/inventory/locations/:id/stock", requireAdmin, async (req, res): Pr
   }));
 });
 
+// ─── Per-location stock adjustment ────────────────────────────────────────────
+// POST /inventory/locations/:id/stock/adjust  body: { inventoryItemId, delta, reason? }
+
+router.post("/inventory/locations/:id/stock/adjust", requireAdmin, async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const rawLocId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const locationId = parseInt(rawLocId, 10);
+  if (isNaN(locationId)) { res.status(400).json({ error: "Invalid location id" }); return; }
+
+  const { inventoryItemId, delta } = req.body;
+  if (!inventoryItemId) { res.status(400).json({ error: "inventoryItemId is required" }); return; }
+  const itemId = parseInt(String(inventoryItemId), 10);
+  const d = parseInt(String(delta), 10);
+  if (isNaN(d) || d === 0) { res.status(400).json({ error: "delta must be a non-zero integer" }); return; }
+
+  // Pre-flight tenant ownership checks (read-only, outside transaction)
+  const [[ownedLoc], [ownedItem]] = await Promise.all([
+    db.select().from(inventoryLocationsTable)
+      .where(and(eq(inventoryLocationsTable.id, locationId), eq(inventoryLocationsTable.tenantId, tenantId))),
+    db.select().from(inventoryItemsTable)
+      .where(and(eq(inventoryItemsTable.id, itemId), eq(inventoryItemsTable.tenantId, tenantId))),
+  ]);
+  if (!ownedLoc) { res.status(404).json({ error: "Location not found" }); return; }
+  if (!ownedItem) { res.status(404).json({ error: "Inventory item not found" }); return; }
+
+  // Atomic: lock the stock row, validate, then update — prevents concurrent adjustments
+  // from bypassing the non-negative check or overwriting each other.
+  let updated: typeof inventoryLocationStockTable.$inferSelect;
+  try {
+    updated = await db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select()
+        .from(inventoryLocationStockTable)
+        .where(and(
+          eq(inventoryLocationStockTable.inventoryItemId, itemId),
+          eq(inventoryLocationStockTable.locationId, locationId),
+          eq(inventoryLocationStockTable.tenantId, tenantId),
+        ))
+        .for("update");
+
+      if (!locked) throw Object.assign(new Error("No stock record for this item at this location"), { statusCode: 404 });
+
+      const newQty = locked.quantity + d;
+      if (newQty < 0) throw Object.assign(new Error("Adjustment would result in negative quantity"), { statusCode: 400 });
+
+      const [row] = await tx
+        .update(inventoryLocationStockTable)
+        .set({ quantity: newQty })
+        .where(eq(inventoryLocationStockTable.id, locked.id))
+        .returning();
+      return row;
+    });
+  } catch (err: any) {
+    res.status(err?.statusCode ?? 500).json({ error: err?.message ?? "Adjustment failed" });
+    return;
+  }
+
+  res.json(formatStockEntry(updated, {
+    itemName: ownedItem.name,
+    itemSku: ownedItem.sku,
+    locationName: ownedLoc.name,
+    unitPrice: ownedItem.markedUpPrice,
+    unit: ownedItem.unit,
+  }));
+});
+
 // ─── Get stock breakdown by location for an inventory item ────────────────────
 
 router.get("/inventory/:id/by-location", async (req, res): Promise<void> => {

@@ -2197,6 +2197,13 @@ export interface LocationStockEntry {
   unit?: string;
 }
 
+export interface LocationStockAdjustInput {
+  inventoryItemId: number;
+  /** Positive to add stock, negative to remove */
+  delta: number;
+  reason?: string;
+}
+
 export interface SetLocationStockInput {
   inventoryItemId: number;
   quantity: number;
@@ -3816,6 +3823,12 @@ export interface ShrinkageReportLine {
 export interface ShrinkageReportLedger {
   totalLoss: number;
   lines: ShrinkageReportLine[];
+}
+
+export interface PortalLoginRequest {
+  email: string;
+  /** Last 4 digits of the phone number on file */
+  last4Phone: string;
 }
 
 export interface PortalOtpRequest {

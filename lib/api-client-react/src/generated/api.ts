@@ -183,6 +183,7 @@ import type {
   ListTasksParams,
   ListTimeEntriesParams,
   ListVisitsParams,
+  LocationStockAdjustInput,
   LocationStockEntry,
   LoginInput,
   MasterClockState,
@@ -202,6 +203,7 @@ import type {
   PortalInvoice,
   PortalJob,
   PortalLinkResult,
+  PortalLoginRequest,
   PortalOtpRequest,
   PortalOtpRequestResult,
   PortalOtpVerify,
@@ -6042,6 +6044,78 @@ export const useTransferInventoryStock = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getTransferInventoryStockMutationOptions(options));
+    }
+
+export const getAdjustLocationStockUrl = (id: number,) => {
+
+
+
+
+  return `/api/inventory/locations/${id}/stock/adjust`
+}
+
+/**
+ * @summary Adjust stock quantity at a specific location by a delta
+ */
+export const adjustLocationStock = async (id: number,
+    locationStockAdjustInput: LocationStockAdjustInput, options?: RequestInit): Promise<LocationStockEntry> => {
+
+  return customFetch<LocationStockEntry>(getAdjustLocationStockUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(locationStockAdjustInput)
+  }
+);}
+
+
+
+
+
+export const getAdjustLocationStockMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adjustLocationStock>>, TError,{id: number;data: BodyType<LocationStockAdjustInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adjustLocationStock>>, TError,{id: number;data: BodyType<LocationStockAdjustInput>}, TContext> => {
+
+const mutationKey = ['adjustLocationStock'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adjustLocationStock>>, {id: number;data: BodyType<LocationStockAdjustInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  adjustLocationStock(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdjustLocationStockMutationResult = NonNullable<Awaited<ReturnType<typeof adjustLocationStock>>>
+    export type AdjustLocationStockMutationBody = BodyType<LocationStockAdjustInput>
+    export type AdjustLocationStockMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Adjust stock quantity at a specific location by a delta
+ */
+export const useAdjustLocationStock = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adjustLocationStock>>, TError,{id: number;data: BodyType<LocationStockAdjustInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adjustLocationStock>>,
+        TError,
+        {id: number;data: BodyType<LocationStockAdjustInput>},
+        TContext
+      > => {
+      return useMutation(getAdjustLocationStockMutationOptions(options));
     }
 
 export const getGetInventoryItemByLocationUrl = (id: number,) => {
@@ -14008,6 +14082,77 @@ export const useMarkAllNotificationsRead = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getMarkAllNotificationsReadMutationOptions(options));
+    }
+
+export const getPortalLoginUrl = () => {
+
+
+
+
+  return `/api/portal/auth/login`
+}
+
+/**
+ * @summary Sign in with email + last 4 digits of phone on file
+ */
+export const portalLogin = async (portalLoginRequest: PortalLoginRequest, options?: RequestInit): Promise<PortalAuthResponse> => {
+
+  return customFetch<PortalAuthResponse>(getPortalLoginUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(portalLoginRequest)
+  }
+);}
+
+
+
+
+
+export const getPortalLoginMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalLogin>>, TError,{data: BodyType<PortalLoginRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof portalLogin>>, TError,{data: BodyType<PortalLoginRequest>}, TContext> => {
+
+const mutationKey = ['portalLogin'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof portalLogin>>, {data: BodyType<PortalLoginRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  portalLogin(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PortalLoginMutationResult = NonNullable<Awaited<ReturnType<typeof portalLogin>>>
+    export type PortalLoginMutationBody = BodyType<PortalLoginRequest>
+    export type PortalLoginMutationError = ErrorType<void>
+
+    /**
+ * @summary Sign in with email + last 4 digits of phone on file
+ */
+export const usePortalLogin = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalLogin>>, TError,{data: BodyType<PortalLoginRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof portalLogin>>,
+        TError,
+        {data: BodyType<PortalLoginRequest>},
+        TContext
+      > => {
+      return useMutation(getPortalLoginMutationOptions(options));
     }
 
 export const getPortalRequestOtpUrl = () => {

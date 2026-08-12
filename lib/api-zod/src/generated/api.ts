@@ -2557,6 +2557,35 @@ export const TransferInventoryStockResponse = zod.object({
 
 
 /**
+ * @summary Adjust stock quantity at a specific location by a delta
+ */
+export const AdjustLocationStockParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AdjustLocationStockBody = zod.object({
+  "inventoryItemId": zod.number(),
+  "delta": zod.number().describe('Positive to add stock, negative to remove'),
+  "reason": zod.string().optional()
+})
+
+export const AdjustLocationStockResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number().optional(),
+  "inventoryItemId": zod.number(),
+  "itemName": zod.string().optional(),
+  "itemSku": zod.string().optional(),
+  "locationId": zod.number(),
+  "locationName": zod.string().optional(),
+  "quantity": zod.number(),
+  "reorderPoint": zod.number(),
+  "isLowStock": zod.boolean().optional(),
+  "unitPrice": zod.number().optional(),
+  "unit": zod.string().optional()
+})
+
+
+/**
  * @summary Get stock breakdown by location for an inventory item
  */
 export const GetInventoryItemByLocationParams = zod.object({
@@ -5893,6 +5922,27 @@ export const MarkNotificationReadResponse = zod.object({
  * @summary Mark all of the caller's notifications as read
  */
 export const MarkAllNotificationsReadResponse = zod.unknown()
+
+
+/**
+ * @summary Sign in with email + last 4 digits of phone on file
+ */
+export const PortalLoginBody = zod.object({
+  "email": zod.string(),
+  "last4Phone": zod.string().describe('Last 4 digits of the phone number on file')
+})
+
+export const PortalLoginResponse = zod.object({
+  "token": zod.string(),
+  "customer": zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "phone": zod.string(),
+  "company": zod.string().nullish(),
+  "profilePhotoUrl": zod.string().nullish()
+})
+})
 
 
 /**

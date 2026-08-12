@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, usersTable, tenantsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 
 const router: IRouter = Router();
@@ -23,7 +23,15 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     return;
   }
 
-  const [tenant] = await db.insert(tenantsTable).values({ name: companyName }).returning();
+  // Generate a unique URL-safe slug from the company name
+  const baseSlug = companyName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const existingSlugs = await db.select({ slug: tenantsTable.slug }).from(tenantsTable).where(sql`slug LIKE ${baseSlug + "%"}`);
+  const takenSlugs = new Set(existingSlugs.map(r => r.slug));
+  let slug = baseSlug;
+  let counter = 1;
+  while (takenSlugs.has(slug)) { slug = `${baseSlug}-${counter++}`; }
+
+  const [tenant] = await db.insert(tenantsTable).values({ name: companyName, slug }).returning();
   const passwordHash = await bcrypt.hash(password, 10);
   const [user] = await db.insert(usersTable).values({
     tenantId: tenant.id,

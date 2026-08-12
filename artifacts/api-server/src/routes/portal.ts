@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable, mediaAttachmentsTable, tenantsTable, communicationsLogTable, customerPlansTable, usersTable, planCancelRequestsTable, estimatesTable } from "@workspace/db";
+import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable, mediaAttachmentsTable, tenantsTable, communicationsLogTable, customerPlansTable, usersTable, planCancelRequestsTable, estimatesTable, taskNotificationsTable } from "@workspace/db";
 import { eq, and, gt, desc, lte, isNotNull, ne, sql } from "drizzle-orm";
 import { objectStorageService } from "./storage";
 import crypto from "crypto";
@@ -99,10 +99,47 @@ async function requirePortalAuth(
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// GET /portal/tenant-info  (public — resolves slug or tenantId to branding)
+// ---------------------------------------------------------------------------
+router.get("/portal/tenant-info", async (req, res): Promise<void> => {
+  const slugParam = req.query.slug as string | undefined;
+  const idParam = req.query.tenantId as string | undefined;
+
+  let tenantRow: typeof tenantsTable.$inferSelect | undefined;
+
+  if (slugParam) {
+    [tenantRow] = await db.select().from(tenantsTable).where(eq(tenantsTable.slug, slugParam)).limit(1) as any;
+  } else if (idParam) {
+    const id = parseInt(idParam, 10);
+    if (!isNaN(id)) {
+      [tenantRow] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, id)).limit(1) as any;
+    }
+  }
+
+  if (!tenantRow) {
+    res.status(404).json({ error: "Tenant not found" });
+    return;
+  }
+
+  res.json({
+    tenantId: tenantRow.id,
+    slug: tenantRow.slug ?? null,
+    name: tenantRow.name,
+    logoUrl: tenantRow.logoUrl ?? null,
+  });
+});
+
 // POST /portal/auth/login  (email + last 4 digits of phone on file)
 // ---------------------------------------------------------------------------
 router.post("/portal/auth/login", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
+  // Support slug-based tenant lookup: ?tenant=divine-edge OR x-tenant-id: 11
+  let tenantId = getTenantId(req);
+  const slugParam = req.query.tenant as string | undefined;
+  if (slugParam && isNaN(Number(slugParam))) {
+    const [slugRow] = await db.select({ id: tenantsTable.id }).from(tenantsTable).where(eq(tenantsTable.slug, slugParam)).limit(1);
+    if (slugRow) tenantId = slugRow.id;
+  }
   const { email, last4Phone } = req.body as { email?: string; last4Phone?: string };
 
   if (!email || !last4Phone) {
@@ -1072,10 +1109,11 @@ router.get("/portal/service-requests", requirePortalAuth, async (req: any, res):
 // ---------------------------------------------------------------------------
 router.post("/portal/service-requests", requirePortalAuth, async (req: any, res): Promise<void> => {
   const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
-  const { propertyId, description, preferredDateStart } = req.body as {
+  const { propertyId, description, preferredDateStart, priority } = req.body as {
     propertyId?: number;
     description?: string;
     preferredDateStart?: string;
+    priority?: string;
   };
 
   if (!propertyId || !description) {
@@ -1101,7 +1139,9 @@ router.post("/portal/service-requests", requirePortalAuth, async (req: any, res)
     return;
   }
 
-  const scheduledAt = preferredDateStart ? new Date(preferredDateStart) : new Date();
+  const validPriorities = ["low", "normal", "high", "urgent"];
+  const resolvedPriority = priority && validPriorities.includes(priority) ? priority : "normal";
+  const scheduledAt = preferredDateStart ? new Date(preferredDateStart) : null;
 
   const [job] = await db
     .insert(jobsTable)
@@ -1110,7 +1150,7 @@ router.post("/portal/service-requests", requirePortalAuth, async (req: any, res)
       title: "Service Request",
       description,
       status: "pending",
-      priority: "normal",
+      priority: resolvedPriority,
       customerId: portalCustomerId,
       propertyId,
       scheduledAt,
@@ -1119,14 +1159,31 @@ router.post("/portal/service-requests", requirePortalAuth, async (req: any, res)
     })
     .returning();
 
-  // Fetch property address, tenant config, and customer name in parallel for the notification email
-  const [propRow, tenantRow, customerRow] = await Promise.all([
+  // Fetch property address, tenant config, customer name, and staff users in parallel
+  const [propRow, tenantRow, customerRow, staffUsers] = await Promise.all([
     db.select({ address: propertiesTable.address }).from(propertiesTable).where(eq(propertiesTable.id, propertyId)).limit(1),
     db.select().from(tenantsTable).where(eq(tenantsTable.id, portalTenantId)).limit(1),
     db.select({ name: customersTable.name, email: customersTable.email }).from(customersTable).where(eq(customersTable.id, portalCustomerId)).limit(1),
+    db.select({ id: usersTable.id }).from(usersTable).where(and(eq(usersTable.tenantId, portalTenantId), ne(usersTable.role, "technician"))),
   ]);
 
   const propertyAddress = propRow[0]?.address ?? null;
+  const customerName = customerRow[0]?.name ?? "A customer";
+
+  // Fire-and-forget in-app notifications to all non-technician staff
+  if (staffUsers.length > 0) {
+    db.insert(taskNotificationsTable).values(
+      staffUsers.map(u => ({
+        tenantId: portalTenantId,
+        recipientUserId: u.id,
+        taskId: null,
+        type: "portal_request",
+        message: `${customerName} submitted a service request${propertyAddress ? ` for ${propertyAddress}` : ""} (Job #${job.id})`,
+        linkPath: `/schedule?jobId=${job.id}`,
+        isRead: false,
+      }))
+    ).catch(err => logger.error({ err }, "Failed to insert portal request notifications"));
+  }
 
   // Send notification email to the tenant — fire-and-forget, never blocks the response
   (async () => {
@@ -1145,7 +1202,6 @@ router.post("/portal/service-requests", requirePortalAuth, async (req: any, res)
       };
 
       const companyName = tenant?.name ?? "Your Company";
-      const customerName = customerRow[0]?.name ?? "A customer";
       const customerEmail = customerRow[0]?.email ?? null;
       const preferredDate = preferredDateStart
         ? new Date(preferredDateStart).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })

@@ -672,7 +672,7 @@ export default function SettingsPage() {
                 <div className="flex-1 relative">
                   <Input
                     readOnly
-                    value={`${window.location.origin}/portal/?tenant=${user?.tenantId ?? 1}`}
+                    value={`${window.location.origin}/portal/?tenant=${settings?.slug ?? user?.tenantId ?? 1}`}
                     className="pr-10 font-mono text-sm bg-muted"
                   />
                 </div>
@@ -681,7 +681,7 @@ export default function SettingsPage() {
                   size="sm"
                   className="shrink-0"
                   onClick={() => {
-                    navigator.clipboard.writeText(`${window.location.origin}/portal/?tenant=${user?.tenantId ?? 1}`);
+                    navigator.clipboard.writeText(`${window.location.origin}/portal/?tenant=${settings?.slug ?? user?.tenantId ?? 1}`);
                     toast.success('Portal link copied to clipboard');
                   }}
                 >
@@ -692,7 +692,7 @@ export default function SettingsPage() {
                   variant="outline"
                   size="sm"
                   className="shrink-0"
-                  onClick={() => window.open(`/portal/?tenant=${user?.tenantId ?? 1}`, '_blank')}
+                  onClick={() => window.open(`/portal/?tenant=${settings?.slug ?? user?.tenantId ?? 1}`, '_blank')}
                 >
                   <ExternalLink className="w-4 h-4 mr-1.5" />
                   Open

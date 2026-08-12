@@ -42,7 +42,28 @@ export default function Login() {
 
     if (emailParam) form.setValue("email", emailParam);
 
-    const id = tenantParam ? Number(tenantParam) : 1;
+    // Support both numeric tenant IDs (?tenant=11) and slugs (?tenant=divine-edge)
+    const isSlug = tenantParam && isNaN(Number(tenantParam));
+    const id = tenantParam && !isSlug ? Number(tenantParam) : 1;
+
+    if (isSlug) {
+      // Resolve slug → tenant ID via the public tenant-info endpoint
+      fetch(`/api/portal/tenant-info?slug=${encodeURIComponent(tenantParam!)}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (d?.tenantId) {
+            setTenantId(d.tenantId);
+            setDefaultHeaders({ "x-tenant-id": String(d.tenantId) });
+            if (d.logoUrl) setTenantLogoUrl(d.logoUrl);
+            if (d.name) setTenantName(d.name);
+          }
+        })
+        .catch(() => {});
+      setTenantId(id);
+      setDefaultHeaders({ "x-tenant-id": id.toString() });
+      return; // branding loaded via slug endpoint above
+    }
+
     setTenantId(id);
     setDefaultHeaders({ "x-tenant-id": id.toString() });
 
@@ -63,7 +84,13 @@ export default function Login() {
   const onSubmit = async (values: LoginForm) => {
     setIsPending(true);
     try {
-      const res = await fetch("/api/portal/auth/login", {
+      // Pass slug as query param so server can resolve it even if tenantId is still defaulting
+      const params = new URLSearchParams(window.location.search);
+      const tenantParam = params.get("tenant");
+      const loginUrl = tenantParam
+        ? `/api/portal/auth/login?tenant=${encodeURIComponent(tenantParam)}`
+        : "/api/portal/auth/login";
+      const res = await fetch(loginUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

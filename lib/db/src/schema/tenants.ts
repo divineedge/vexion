@@ -5,6 +5,8 @@ import { z } from "zod/v4";
 export const tenantsTable = pgTable("tenants", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  /** URL-safe slug used in the customer portal link, e.g. "divine-edge" → /portal/?tenant=divine-edge */
+  slug: text("slug").unique(),
   planTier: text("plan_tier").notNull().default("starter"),
   stripeEnabled: boolean("stripe_enabled").notNull().default(false),
   quickbooksEnabled: boolean("quickbooks_enabled").notNull().default(false),

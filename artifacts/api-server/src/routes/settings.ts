@@ -132,6 +132,8 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     quickShortcuts: (tenant.quickShortcuts as string[] | null) ?? ["new-job", "new-customer", "new-invoice"],
     // Notification Templates
     notificationTemplates: (tenant.notificationTemplates as Record<string, string> | null) ?? {},
+    // Portal slug
+    slug: tenant.slug ?? null,
     // Estimate & Invoice defaults
     estimateExpiryDays: tenant.estimateExpiryDays ?? 30,
     invoiceDueDays: tenant.invoiceDueDays ?? 30,

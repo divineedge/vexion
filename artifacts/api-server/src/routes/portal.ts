@@ -1903,6 +1903,77 @@ router.get("/portal/messages", requirePortalAuth, async (req: any, res): Promise
 });
 
 // ---------------------------------------------------------------------------
+// POST /portal/jobs/:id/cancel-request
+// ---------------------------------------------------------------------------
+router.post("/portal/jobs/:id/cancel-request", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+  const jobId = parseInt(req.params.id, 10);
+  const { reason } = req.body as { reason?: string };
+
+  // Verify the job belongs to this customer and is in a cancellable state
+  const [job] = await db
+    .select()
+    .from(jobsTable)
+    .where(
+      and(
+        eq(jobsTable.id, jobId),
+        eq(jobsTable.customerId, portalCustomerId),
+        eq(jobsTable.tenantId, portalTenantId),
+      ),
+    )
+    .limit(1);
+
+  if (!job) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+
+  if (job.status !== "scheduled") {
+    res.status(409).json({ error: "Only scheduled jobs can have a cancellation requested" });
+    return;
+  }
+
+  if ((job as any).cancellationRequestedAt) {
+    res.status(409).json({ error: "A cancellation request is already pending for this job" });
+    return;
+  }
+
+  await db
+    .update(jobsTable)
+    .set({
+      cancellationRequestedAt: new Date(),
+      cancellationReason: reason?.trim() || null,
+    } as any)
+    .where(and(eq(jobsTable.id, jobId), eq(jobsTable.tenantId, portalTenantId)));
+
+  // Notify all non-technician staff
+  (async () => {
+    try {
+      const staffUsers = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(and(eq(usersTable.tenantId, portalTenantId), ne(usersTable.role, "technician")));
+
+      if (staffUsers.length > 0) {
+        await db.insert(taskNotificationsTable).values(
+          staffUsers.map(u => ({
+            tenantId: portalTenantId,
+            recipientUserId: u.id,
+            type: "job_cancel_requested" as string,
+            message: `Customer requested cancellation of job "${job.title}"${reason ? `: "${reason.trim()}"` : ""}`,
+            linkPath: `/schedule?jobId=${jobId}`,
+          })),
+        );
+      }
+    } catch (err) {
+      logger.error({ err }, "Failed to insert job cancellation request notifications");
+    }
+  })();
+
+  res.status(201).json({ message: "Cancellation request submitted" });
+});
+
+// ---------------------------------------------------------------------------
 // Format helpers
 // ---------------------------------------------------------------------------
 
@@ -1936,6 +2007,8 @@ function formatPortalJob(j: typeof jobsTable.$inferSelect, propertyAddress: stri
     propertyAddress: propertyAddress ?? null,
     totalAmount: j.totalAmount,
     assignedToName: assignedToName ?? null,
+    cancellationRequestedAt: (j as any).cancellationRequestedAt ? new Date((j as any).cancellationRequestedAt).toISOString() : null,
+    cancellationReason: (j as any).cancellationReason ?? null,
   };
 }
 

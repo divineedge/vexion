@@ -260,6 +260,8 @@ function formatJob(
     tags: (j.tags as string[]) ?? [],
     skipReasonId: j.skipReasonId ?? null,
     skipNote: j.skipNote ?? null,
+    cancellationRequestedAt: j.cancellationRequestedAt?.toISOString() ?? null,
+    cancellationReason: j.cancellationReason ?? null,
   };
 }
 
@@ -1195,6 +1197,76 @@ router.post("/jobs/:id/alerts", async (req, res): Promise<void> => {
     createdAt: alert.createdAt.toISOString(),
     updatedAt: alert.updatedAt.toISOString(),
   });
+});
+
+// ---------------------------------------------------------------------------
+// POST /jobs/:id/approve-cancellation — staff approves a portal cancel request
+// ---------------------------------------------------------------------------
+router.post("/jobs/:id/approve-cancellation", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const id = parseInt(req.params.id, 10);
+
+  const [job] = await db
+    .select()
+    .from(jobsTable)
+    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
+    .limit(1);
+
+  if (!job) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+
+  if (!(job as any).cancellationRequestedAt) {
+    res.status(409).json({ error: "No pending cancellation request on this job" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(jobsTable)
+    .set({
+      status: "cancelled",
+      cancellationRequestedAt: null,
+    } as any)
+    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
+    .returning();
+
+  res.json(formatJob(updated));
+});
+
+// ---------------------------------------------------------------------------
+// POST /jobs/:id/deny-cancellation — staff denies a portal cancel request
+// ---------------------------------------------------------------------------
+router.post("/jobs/:id/deny-cancellation", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const id = parseInt(req.params.id, 10);
+
+  const [job] = await db
+    .select()
+    .from(jobsTable)
+    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
+    .limit(1);
+
+  if (!job) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+
+  if (!(job as any).cancellationRequestedAt) {
+    res.status(409).json({ error: "No pending cancellation request on this job" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(jobsTable)
+    .set({
+      cancellationRequestedAt: null,
+      cancellationReason: null,
+    } as any)
+    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
+    .returning();
+
+  res.json(formatJob(updated));
 });
 
 // ---------------------------------------------------------------------------

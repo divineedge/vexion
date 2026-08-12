@@ -37,6 +37,8 @@ import {
   useListCrews, getListCrewsQueryKey,
   useListTags, getListTagsQueryKey,
   useListSkipReasons, getListSkipReasonsQueryKey,
+  useApproveJobCancellation,
+  useDenyJobCancellation,
 } from '@workspace/api-client-react';
 import MediaGallery from '@/components/media/MediaGallery';
 import { JobFormFields, EMPTY_JOB, buildRecurrenceRule, type NewJobForm } from '@/components/jobs/JobFormFields';
@@ -59,6 +61,7 @@ import {
   Bell, BellOff, Send, Package, Search, Images, RefreshCw, Pause, Play, X,
   SkipForward, ListEnd, Wrench, Square, Timer, Warehouse, Truck,
   Route as RouteIcon, ExternalLink, PhoneCall, CheckCircle, FileText, Phone, Mail, Copy,
+  Ban,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -373,6 +376,9 @@ export default function SchedulePage() {
   const deleteJob = useDeleteJob();
   const [deleteBlockedMsg, setDeleteBlockedMsg] = useState<string | null>(null);
   const updateJobRoute = useUpdateJobRoute();
+  const approveJobCancellation = useApproveJobCancellation();
+  const denyJobCancellation = useDenyJobCancellation();
+  const [denyDialogOpen, setDenyDialogOpen] = useState(false);
 
   // Route templates (for route filter dropdown + job detail route assignment)
   const { data: routeTemplates } = useListRouteTemplates(undefined, {
@@ -1021,6 +1027,12 @@ export default function SchedulePage() {
                               <span className="text-[10px] font-medium">Billing hold</span>
                             </div>
                           )}
+                          {(job as any).cancellationRequestedAt && (
+                            <div className="mt-0.5 flex items-center gap-1 text-red-700 bg-red-50 rounded px-1 py-0.5 w-fit" title="Customer requested cancellation">
+                              <Ban className="w-2.5 h-2.5 shrink-0" />
+                              <span className="text-[10px] font-medium">Cancel requested</span>
+                            </div>
+                          )}
                           {((job as any).customerNotes || (job as any).propertyNotes) && (
                             <div className="mt-0.5 flex items-center gap-1 text-blue-700 bg-blue-50 rounded px-1 py-0.5 w-fit" title={(job as any).customerNotes || (job as any).propertyNotes}>
                               <Bell className="w-2.5 h-2.5 shrink-0" />
@@ -1177,10 +1189,15 @@ export default function SchedulePage() {
                       </div>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
                     <Badge className={`capitalize ${STATUS_COLORS[selectedJob.status] ?? ''}`} variant="outline" title={`Job status: ${selectedJob.status.replace('_', ' ')}`}>
                       {selectedJob.status.replace('_', ' ')}
                     </Badge>
+                    {(selectedJob as any).cancellationRequestedAt && (
+                      <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300 text-xs gap-1" title="Customer requested cancellation via portal">
+                        <Ban className="w-3 h-3" /> Cancel Requested
+                      </Badge>
+                    )}
                     {(selectedJob as any).priority && (selectedJob as any).priority !== 'normal' && (
                       <Badge variant="outline" className={`capitalize text-xs ${(selectedJob as any).priority === 'urgent' ? 'bg-red-50 text-red-700 border-red-300' : (selectedJob as any).priority === 'high' ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-muted text-muted-foreground'}`} title={`Priority: ${(selectedJob as any).priority}`}>
                         {(selectedJob as any).priority}
@@ -1216,6 +1233,55 @@ export default function SchedulePage() {
               </SheetHeader>
 
               <div className="space-y-5">
+                {/* Cancellation request banner */}
+                {canManageJobs && (selectedJob as any).cancellationRequestedAt && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-3 space-y-2">
+                    <p className="text-sm font-medium text-red-800 flex items-center gap-1.5">
+                      <Ban className="w-4 h-4" /> Cancellation Requested by Customer
+                    </p>
+                    {(selectedJob as any).cancellationReason && (
+                      <p className="text-xs text-red-700 bg-red-100 rounded px-2 py-1">
+                        "{(selectedJob as any).cancellationReason}"
+                      </p>
+                    )}
+                    <p className="text-xs text-red-600">
+                      Requested {new Date((selectedJob as any).cancellationRequestedAt).toLocaleString()}
+                    </p>
+                    <div className="flex gap-2 pt-1">
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="h-7 text-xs gap-1"
+                        disabled={approveJobCancellation.isPending}
+                        title="Approve the request and cancel this job"
+                        onClick={() => {
+                          if (!window.confirm('Approve cancellation? This will cancel the job.')) return;
+                          approveJobCancellation.mutate({ id: selectedJobId! }, {
+                            onSuccess: () => {
+                              toast.success('Job cancelled');
+                              qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                              qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId!) });
+                            },
+                            onError: () => toast.error('Failed to approve cancellation'),
+                          });
+                        }}
+                      >
+                        <CheckCircle className="w-3 h-3" /> Approve & Cancel Job
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs gap-1"
+                        disabled={denyJobCancellation.isPending}
+                        title="Deny the request — clears it and keeps the job scheduled"
+                        onClick={() => setDenyDialogOpen(true)}
+                      >
+                        <X className="w-3 h-3" /> Deny Request
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Recurrence actions */}
                 {canManageJobs && ((selectedJob as any).recurrenceRule || (selectedJob as any).recurrenceParentId) && (
                   <div className="rounded-lg border p-3 bg-primary/5 border-primary/20 space-y-2">
@@ -2548,6 +2614,35 @@ export default function SchedulePage() {
       </Dialog>
 
       {/* Cancel Series Confirmation */}
+      {/* Deny cancellation request dialog */}
+      <Dialog open={denyDialogOpen} onOpenChange={open => { if (!open) setDenyDialogOpen(false); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Deny Cancellation Request</DialogTitle>
+            <DialogDescription>This will clear the customer's cancellation request and keep the job scheduled.</DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-3 justify-end pt-2">
+            <Button variant="outline" onClick={() => setDenyDialogOpen(false)}>Cancel</Button>
+            <Button
+              disabled={denyJobCancellation.isPending}
+              onClick={() => {
+                denyJobCancellation.mutate({ id: selectedJobId! }, {
+                  onSuccess: () => {
+                    toast.success('Cancellation request denied — job remains scheduled');
+                    qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                    qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId!) });
+                    setDenyDialogOpen(false);
+                  },
+                  onError: () => toast.error('Failed to deny cancellation request'),
+                });
+              }}
+            >
+              {denyJobCancellation.isPending ? 'Saving…' : 'Deny Request'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={cancelSeriesDialogId !== null} onOpenChange={open => { if (!open) setCancelSeriesDialogId(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>

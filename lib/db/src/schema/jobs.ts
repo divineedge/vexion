@@ -105,6 +105,12 @@ export const jobsTable = pgTable("jobs", {
   /** Free-text note added alongside the skip reason */
   skipNote: text("skip_note"),
 
+  // ── Customer cancellation request ─────────────────────────────────────────
+  /** Set when a customer submits a cancellation request via the portal (not yet cancelled — staff must confirm). */
+  cancellationRequestedAt: timestamp("cancellation_requested_at", { withTimezone: true }),
+  /** Optional reason the customer provided when requesting cancellation. */
+  cancellationReason: text("cancellation_reason"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

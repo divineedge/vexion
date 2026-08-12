@@ -1368,6 +1368,16 @@ export interface Job {
      * @nullable
      */
   skipNote?: string | null;
+  /**
+     * Set when the customer has requested cancellation via the portal; null means no pending request
+     * @nullable
+     */
+  cancellationRequestedAt?: string | null;
+  /**
+     * Optional reason provided by the customer when requesting cancellation
+     * @nullable
+     */
+  cancellationReason?: string | null;
   createdAt: string;
 }
 
@@ -3878,6 +3888,16 @@ export interface PortalJob {
   totalAmount?: number;
   /** @nullable */
   assignedToName?: string | null;
+  /**
+     * Set when the customer has a pending cancellation request
+     * @nullable
+     */
+  cancellationRequestedAt?: string | null;
+  /**
+     * Optional reason provided by the customer
+     * @nullable
+     */
+  cancellationReason?: string | null;
 }
 
 export interface PortalInvoice {
@@ -5144,6 +5164,9 @@ export type BulkArchiveTasks200 = {
   archived: number;
 };
 
+export type PortalRequestJobCancellationBody = {
+  reason?: string;
+};
 export type SetPropertyProfilePhoto200 = {
   profilePhotoUrl?: string;
 };
@@ -5336,3 +5359,11 @@ export type GetRepairLogSummaryParams = {
 propertyId: number;
 };
 
+
+export type DenyJobCancellationBody = {
+  note?: string;
+};
+
+export type PortalRequestJobCancellation201 = {
+  message?: string;
+};

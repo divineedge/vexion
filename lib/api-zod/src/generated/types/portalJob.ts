@@ -20,4 +20,14 @@ export interface PortalJob {
   totalAmount?: number;
   /** @nullable */
   assignedToName?: string | null;
+  /**
+     * Set when the customer has a pending cancellation request
+     * @nullable
+     */
+  cancellationRequestedAt?: string | null;
+  /**
+     * Optional reason provided by the customer
+     * @nullable
+     */
+  cancellationReason?: string | null;
 }

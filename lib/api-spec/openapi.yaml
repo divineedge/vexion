@@ -3947,6 +3947,94 @@ paths:
                 items:
                   $ref: "#/components/schemas/PortalJob"
 
+  /portal/jobs/{id}/cancel-request:
+    post:
+      operationId: portalRequestJobCancellation
+      tags: [portal]
+      summary: Request cancellation of a scheduled job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        "201":
+          description: Cancellation request recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        "404":
+          description: Job not found
+        "409":
+          description: Already has a pending request or not cancellable
+
+  /jobs/{id}/approve-cancellation:
+    post:
+      operationId: approveJobCancellation
+      tags: [jobs]
+      summary: Approve a customer cancellation request — cancels the job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Job cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          description: Job not found
+        "409":
+          description: No pending cancellation request
+
+  /jobs/{id}/deny-cancellation:
+    post:
+      operationId: denyJobCancellation
+      tags: [jobs]
+      summary: Deny a customer cancellation request — clears the request
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note:
+                  type: string
+      responses:
+        "200":
+          description: Cancellation request cleared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          description: Job not found
+        "409":
+          description: No pending cancellation request
+
   /portal/invoices:
     get:
       operationId: portalListInvoices
@@ -8653,6 +8741,12 @@ components:
         skipNote:
           type: ["string", "null"]
           description: "Optional note added alongside the skip reason"
+        cancellationRequestedAt:
+          type: ["string", "null"]
+          description: "Set when the customer has requested cancellation via the portal; null means no pending request"
+        cancellationReason:
+          type: ["string", "null"]
+          description: "Optional reason provided by the customer when requesting cancellation"
         createdAt:
           type: string
 
@@ -11916,6 +12010,12 @@ components:
           type: number
         assignedToName:
           type: ["string", "null"]
+        cancellationRequestedAt:
+          type: ["string", "null"]
+          description: "Set when the customer has a pending cancellation request"
+        cancellationReason:
+          type: ["string", "null"]
+          description: "Optional reason provided by the customer"
 
     PortalInvoice:
       type: object

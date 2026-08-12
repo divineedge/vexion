@@ -105,5 +105,15 @@ export interface Job {
      * @nullable
      */
   skipNote?: string | null;
+  /**
+     * Set when the customer has requested cancellation via the portal; null means no pending request
+     * @nullable
+     */
+  cancellationRequestedAt?: string | null;
+  /**
+     * Optional reason provided by the customer when requesting cancellation
+     * @nullable
+     */
+  cancellationReason?: string | null;
   createdAt: string;
 }

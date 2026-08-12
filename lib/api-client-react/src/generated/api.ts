@@ -86,6 +86,7 @@ import type {
   CustomerPlanPreview,
   CustomerUpdate,
   DashboardSummary,
+  DenyJobCancellationBody,
   Division,
   DivisionInput,
   EmployeeFormTemplate,
@@ -212,6 +213,8 @@ import type {
   PortalPlan,
   PortalPlanDetail,
   PortalProperty,
+  PortalRequestJobCancellation201,
+  PortalRequestJobCancellationBody,
   PortalRequestPlanCancellation201,
   PortalServiceRequestInput,
   PortalSummary,
@@ -14527,6 +14530,221 @@ export function usePortalListJobs<TData = Awaited<ReturnType<typeof portalListJo
 
 
 
+
+export const getPortalRequestJobCancellationUrl = (id: number,) => {
+
+
+
+
+  return `/api/portal/jobs/${id}/cancel-request`
+}
+
+/**
+ * @summary Request cancellation of a scheduled job
+ */
+export const portalRequestJobCancellation = async (id: number,
+    portalRequestJobCancellationBody?: PortalRequestJobCancellationBody, options?: RequestInit): Promise<PortalRequestJobCancellation201> => {
+
+  return customFetch<PortalRequestJobCancellation201>(getPortalRequestJobCancellationUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(portalRequestJobCancellationBody)
+  }
+);}
+
+
+
+
+
+export const getPortalRequestJobCancellationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalRequestJobCancellation>>, TError,{id: number;data?: BodyType<PortalRequestJobCancellationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof portalRequestJobCancellation>>, TError,{id: number;data?: BodyType<PortalRequestJobCancellationBody>}, TContext> => {
+
+const mutationKey = ['portalRequestJobCancellation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof portalRequestJobCancellation>>, {id: number;data?: BodyType<PortalRequestJobCancellationBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  portalRequestJobCancellation(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PortalRequestJobCancellationMutationResult = NonNullable<Awaited<ReturnType<typeof portalRequestJobCancellation>>>
+    export type PortalRequestJobCancellationMutationBody = BodyType<PortalRequestJobCancellationBody> | undefined
+    export type PortalRequestJobCancellationMutationError = ErrorType<void>
+
+    /**
+ * @summary Request cancellation of a scheduled job
+ */
+export const usePortalRequestJobCancellation = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalRequestJobCancellation>>, TError,{id: number;data?: BodyType<PortalRequestJobCancellationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof portalRequestJobCancellation>>,
+        TError,
+        {id: number;data?: BodyType<PortalRequestJobCancellationBody>},
+        TContext
+      > => {
+      return useMutation(getPortalRequestJobCancellationMutationOptions(options));
+    }
+
+export const getApproveJobCancellationUrl = (id: number,) => {
+
+
+
+
+  return `/api/jobs/${id}/approve-cancellation`
+}
+
+/**
+ * @summary Approve a customer cancellation request — cancels the job
+ */
+export const approveJobCancellation = async (id: number, options?: RequestInit): Promise<Job> => {
+
+  return customFetch<Job>(getApproveJobCancellationUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getApproveJobCancellationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveJobCancellation>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof approveJobCancellation>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['approveJobCancellation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof approveJobCancellation>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  approveJobCancellation(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApproveJobCancellationMutationResult = NonNullable<Awaited<ReturnType<typeof approveJobCancellation>>>
+
+    export type ApproveJobCancellationMutationError = ErrorType<void>
+
+    /**
+ * @summary Approve a customer cancellation request — cancels the job
+ */
+export const useApproveJobCancellation = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveJobCancellation>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof approveJobCancellation>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getApproveJobCancellationMutationOptions(options));
+    }
+
+export const getDenyJobCancellationUrl = (id: number,) => {
+
+
+
+
+  return `/api/jobs/${id}/deny-cancellation`
+}
+
+/**
+ * @summary Deny a customer cancellation request — clears the request
+ */
+export const denyJobCancellation = async (id: number,
+    denyJobCancellationBody?: DenyJobCancellationBody, options?: RequestInit): Promise<Job> => {
+
+  return customFetch<Job>(getDenyJobCancellationUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(denyJobCancellationBody)
+  }
+);}
+
+
+
+
+
+export const getDenyJobCancellationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof denyJobCancellation>>, TError,{id: number;data?: BodyType<DenyJobCancellationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof denyJobCancellation>>, TError,{id: number;data?: BodyType<DenyJobCancellationBody>}, TContext> => {
+
+const mutationKey = ['denyJobCancellation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof denyJobCancellation>>, {id: number;data?: BodyType<DenyJobCancellationBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  denyJobCancellation(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DenyJobCancellationMutationResult = NonNullable<Awaited<ReturnType<typeof denyJobCancellation>>>
+    export type DenyJobCancellationMutationBody = BodyType<DenyJobCancellationBody> | undefined
+    export type DenyJobCancellationMutationError = ErrorType<void>
+
+    /**
+ * @summary Deny a customer cancellation request — clears the request
+ */
+export const useDenyJobCancellation = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof denyJobCancellation>>, TError,{id: number;data?: BodyType<DenyJobCancellationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof denyJobCancellation>>,
+        TError,
+        {id: number;data?: BodyType<DenyJobCancellationBody>},
+        TContext
+      > => {
+      return useMutation(getDenyJobCancellationMutationOptions(options));
+    }
 
 export const getPortalListInvoicesUrl = () => {
 

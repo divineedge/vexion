@@ -114,6 +114,10 @@ export const jobsTable = pgTable("jobs", {
    */
   invoiceAfterJob: boolean("invoice_after_job").notNull().default(false),
 
+  // ── Service timeline ──────────────────────────────────────────────────────
+  /** Set when a technician marks the job as in_progress (clocks in). Null until then. */
+  clockInAt: timestamp("clock_in_at", { withTimezone: true }),
+
   // ── Customer cancellation request ─────────────────────────────────────────
   /** Set when a customer submits a cancellation request via the portal (not yet cancelled — staff must confirm). */
   cancellationRequestedAt: timestamp("cancellation_requested_at", { withTimezone: true }),

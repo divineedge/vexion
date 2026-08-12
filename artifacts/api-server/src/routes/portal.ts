@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable, mediaAttachmentsTable, tenantsTable, communicationsLogTable, customerPlansTable, usersTable, planCancelRequestsTable, estimatesTable, taskNotificationsTable, portalMessagesTable, internalTasksTable } from "@workspace/db";
+import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable, mediaAttachmentsTable, tenantsTable, communicationsLogTable, customerPlansTable, usersTable, planCancelRequestsTable, estimatesTable, taskNotificationsTable, portalMessagesTable, internalTasksTable, chemicalApplicationsTable } from "@workspace/db";
 import { eq, and, gt, desc, lte, isNotNull, ne, sql, isNull, inArray } from "drizzle-orm";
 import { objectStorageService } from "./storage";
 import crypto from "crypto";
@@ -658,6 +658,72 @@ router.get("/portal/summary", requirePortalAuth, async (req: any, res): Promise<
 });
 
 // ---------------------------------------------------------------------------
+// GET /portal/jobs/:id  — full job detail for a single job
+// ---------------------------------------------------------------------------
+router.get("/portal/jobs/:id", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+  const jobId = parseInt(req.params.id, 10);
+  if (isNaN(jobId)) { res.status(400).json({ error: "Invalid job id" }); return; }
+
+  const [row] = await db
+    .select({ job: jobsTable, propertyAddress: propertiesTable.address, assignedToName: usersTable.name })
+    .from(jobsTable)
+    .leftJoin(propertiesTable, eq(jobsTable.propertyId, propertiesTable.id))
+    .leftJoin(usersTable, eq(jobsTable.assigneeId, usersTable.id))
+    .where(and(
+      eq(jobsTable.id, jobId),
+      eq(jobsTable.customerId, portalCustomerId),
+      eq(jobsTable.tenantId, portalTenantId),
+    ))
+    .limit(1);
+
+  if (!row) { res.status(404).json({ error: "Job not found" }); return; }
+
+  const chemApps = await db
+    .select({
+      id: chemicalApplicationsTable.id,
+      productName: chemicalApplicationsTable.productName,
+      mixtureName: chemicalApplicationsTable.mixtureName,
+      volumeApplied: chemicalApplicationsTable.volumeApplied,
+      volumeUnit: chemicalApplicationsTable.volumeUnit,
+      treatedArea: chemicalApplicationsTable.treatedArea,
+      areaUnit: chemicalApplicationsTable.areaUnit,
+      treatedZoneName: chemicalApplicationsTable.treatedZoneName,
+      appliedAt: chemicalApplicationsTable.appliedAt,
+    })
+    .from(chemicalApplicationsTable)
+    .where(and(
+      eq(chemicalApplicationsTable.jobId, jobId),
+      eq(chemicalApplicationsTable.tenantId, portalTenantId),
+    ))
+    .orderBy(chemicalApplicationsTable.appliedAt);
+
+  // Strip pricing from job parts — customers see name/quantity/unit only
+  const rawParts = (row.job.jobParts as any[]) ?? [];
+  const parts = rawParts.map((p: any) => ({
+    name: p.name ?? null,
+    quantity: p.quantity ?? null,
+    unit: p.unit ?? null,
+  }));
+
+  res.json({
+    ...formatPortalJob(row.job, row.propertyAddress, row.assignedToName),
+    clockInAt: (row.job as any).clockInAt ? new Date((row.job as any).clockInAt).toISOString() : null,
+    parts,
+    chemicalApplications: chemApps.map(c => ({
+      id: c.id,
+      productName: c.productName ?? null,
+      mixtureName: c.mixtureName ?? null,
+      volumeApplied: c.volumeApplied,
+      volumeUnit: c.volumeUnit,
+      treatedArea: c.treatedArea ?? null,
+      areaUnit: c.areaUnit ?? null,
+      treatedZoneName: c.treatedZoneName ?? null,
+      appliedAt: c.appliedAt.toISOString(),
+    })),
+  });
+});
+
 // GET /portal/jobs
 // ---------------------------------------------------------------------------
 router.get("/portal/jobs", requirePortalAuth, async (req: any, res): Promise<void> => {

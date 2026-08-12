@@ -469,3 +469,67 @@ export const useGetPortalInboxUnreadCount = <TData = { count: number }, TError =
     ...queryOptions,
   });
 };
+
+// ---------------------------------------------------------------------------
+// Portal job detail — GET /portal/jobs/:id
+// ---------------------------------------------------------------------------
+
+export interface PortalJobPart {
+  name: string | null;
+  quantity: number | null;
+  unit: string | null;
+}
+
+export interface PortalChemicalApplication {
+  id: number;
+  productName: string | null;
+  mixtureName: string | null;
+  volumeApplied: number;
+  volumeUnit: string;
+  treatedArea: number | null;
+  areaUnit: string | null;
+  treatedZoneName: string | null;
+  appliedAt: string;
+}
+
+export interface PortalJobDetail {
+  id: number;
+  title: string;
+  description: string | null;
+  status: string;
+  scheduledAt: string;
+  completedAt: string | null;
+  clockInAt: string | null;
+  propertyAddress: string | null;
+  totalAmount: number;
+  assignedToName: string | null;
+  cancellationRequestedAt: string | null;
+  cancellationReason: string | null;
+  parts: PortalJobPart[];
+  chemicalApplications: PortalChemicalApplication[];
+}
+
+export const portalGetJobDetail = async (
+  id: number,
+  options?: RequestInit,
+): Promise<PortalJobDetail> => {
+  return customFetch<PortalJobDetail>(`/api/portal/jobs/${id}`, {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getPortalJobDetailQueryKey = (id: number) => ["/api/portal/jobs", id] as const;
+
+export const usePortalGetJobDetail = <TData = PortalJobDetail, TError = ErrorType<unknown>>(
+  id: number,
+  options?: { query?: UseQueryOptions<PortalJobDetail, TError, TData> },
+): UseQueryResult<TData, TError> => {
+  const { query: queryOptions } = options ?? {};
+  return useQuery<PortalJobDetail, TError, TData>({
+    queryKey: getPortalJobDetailQueryKey(id),
+    queryFn: ({ signal }) => portalGetJobDetail(id, { signal }),
+    enabled: id > 0,
+    ...queryOptions,
+  });
+};

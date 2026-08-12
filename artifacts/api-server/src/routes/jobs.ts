@@ -265,6 +265,7 @@ function formatJob(
     cancellationRequestedAt: j.cancellationRequestedAt?.toISOString() ?? null,
     cancellationReason: j.cancellationReason ?? null,
     cancellationChargeId: (j as any).cancellationChargeId ?? null,
+    clockInAt: (j as any).clockInAt ? new Date((j as any).clockInAt).toISOString() : null,
   };
 }
 
@@ -499,11 +500,18 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
     }
   }
 
+  // Auto-set clockInAt the first time a job is moved to in_progress
+  const shouldSetClockIn =
+    status === "in_progress" &&
+    currentJob.status !== "in_progress" &&
+    !(currentJob as any).clockInAt;
+
   const baseUpdate: Partial<typeof jobsTable.$inferInsert> = {
     ...(title !== undefined && { title }),
     ...(description !== undefined && { description }),
     ...(status !== undefined && { status }),
     ...(priority !== undefined && { priority }),
+    ...(shouldSetClockIn && { clockInAt: new Date() } as any),
     ...(assigneeId !== undefined && { assigneeId: assigneeId ? parseInt(assigneeId, 10) : null }),
     ...(crewId !== undefined && { crewId: crewId ? parseInt(crewId, 10) : null }),
     ...(scheduledAt !== undefined && { scheduledAt: new Date(scheduledAt) }),

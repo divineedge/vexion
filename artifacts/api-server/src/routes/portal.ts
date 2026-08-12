@@ -690,6 +690,8 @@ router.get("/portal/jobs/:id", requirePortalAuth, async (req: any, res): Promise
       areaUnit: chemicalApplicationsTable.areaUnit,
       treatedZoneName: chemicalApplicationsTable.treatedZoneName,
       appliedAt: chemicalApplicationsTable.appliedAt,
+      rainfastUntil: (chemicalApplicationsTable as any).rainfastUntil,
+      reentryUntil: (chemicalApplicationsTable as any).reentryUntil,
     })
     .from(chemicalApplicationsTable)
     .where(and(
@@ -720,8 +722,51 @@ router.get("/portal/jobs/:id", requirePortalAuth, async (req: any, res): Promise
       areaUnit: c.areaUnit ?? null,
       treatedZoneName: c.treatedZoneName ?? null,
       appliedAt: c.appliedAt.toISOString(),
+      rainfastUntil: c.rainfastUntil ? new Date(c.rainfastUntil).toISOString() : null,
+      reentryUntil: c.reentryUntil ? new Date(c.reentryUntil).toISOString() : null,
     })),
   });
+});
+
+// GET /portal/active-timers — returns chemical application records with active rainfast/re-entry windows
+// ---------------------------------------------------------------------------
+router.get("/portal/active-timers", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+
+  // Fetch all applications for this customer's jobs that have at least one timer set
+  const rows = await db
+    .select({
+      id: chemicalApplicationsTable.id,
+      jobId: chemicalApplicationsTable.jobId,
+      productName: chemicalApplicationsTable.productName,
+      mixtureName: chemicalApplicationsTable.mixtureName,
+      appliedAt: chemicalApplicationsTable.appliedAt,
+      rainfastUntil: (chemicalApplicationsTable as any).rainfastUntil,
+      reentryUntil: (chemicalApplicationsTable as any).reentryUntil,
+      propertyAddress: propertiesTable.address,
+      jobTitle: jobsTable.title,
+    })
+    .from(chemicalApplicationsTable)
+    .innerJoin(jobsTable, eq(chemicalApplicationsTable.jobId, jobsTable.id))
+    .leftJoin(propertiesTable, eq(jobsTable.propertyId, propertiesTable.id))
+    .where(and(
+      eq(jobsTable.customerId, portalCustomerId),
+      eq(jobsTable.tenantId, portalTenantId),
+      sql`(${(chemicalApplicationsTable as any).rainfastUntil} > now() OR ${(chemicalApplicationsTable as any).reentryUntil} > now())`,
+    ))
+    .orderBy(desc(chemicalApplicationsTable.appliedAt));
+
+  res.json(rows.map(r => ({
+    id: r.id,
+    jobId: r.jobId,
+    jobTitle: r.jobTitle ?? null,
+    productName: r.productName ?? null,
+    mixtureName: r.mixtureName ?? null,
+    appliedAt: r.appliedAt.toISOString(),
+    rainfastUntil: r.rainfastUntil ? new Date(r.rainfastUntil).toISOString() : null,
+    reentryUntil: r.reentryUntil ? new Date(r.reentryUntil).toISOString() : null,
+    propertyAddress: r.propertyAddress ?? null,
+  })));
 });
 
 // GET /portal/jobs

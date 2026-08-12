@@ -14,8 +14,9 @@ export const chemicalProductsTable = pgTable("chemical_products", {
   epaRegNumber: text("epa_reg_number"),
   activeIngredients: text("active_ingredients"), // comma-separated list
   signalWord: text("signal_word"), // CAUTION | WARNING | DANGER
-  rei: integer("rei"), // restricted entry interval in hours
+  rei: integer("rei"), // restricted entry interval in hours (re-entry hours)
   phi: integer("phi"), // pre-harvest interval in days
+  rainfastHours: real("rainfast_hours"), // hours product needs to dry before rain is okay
   labelSdsUrl: text("label_sds_url"),
   unit: text("unit").notNull().default("oz"), // oz, fl oz, lb, gal, etc.
   isActive: boolean("is_active").notNull().default(true),
@@ -95,6 +96,11 @@ export const chemicalApplicationsTable = pgTable("chemical_applications", {
   temperature: real("temperature"), // °F
 
   appliedAt: timestamp("applied_at", { withTimezone: true }).notNull(),
+
+  /** Set at job completion: completedAt + product rainfastHours */
+  rainfastUntil: timestamp("rainfast_until", { withTimezone: true }),
+  /** Set at job completion: completedAt + product rei (re-entry interval) hours */
+  reentryUntil: timestamp("reentry_until", { withTimezone: true }),
 
   /**
    * Auto-expanded breakdown: [{productId, productName, activeIngredients, amountApplied, unit, ratePerAcre, ratePer1000Sqft}]

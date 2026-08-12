@@ -471,6 +471,44 @@ export const useGetPortalInboxUnreadCount = <TData = { count: number }, TError =
 };
 
 // ---------------------------------------------------------------------------
+// Portal active chemical timers — GET /portal/active-timers
+// ---------------------------------------------------------------------------
+
+export interface PortalActiveTimer {
+  id: number;
+  jobId: number | null;
+  jobTitle: string | null;
+  productName: string | null;
+  mixtureName: string | null;
+  appliedAt: string;
+  rainfastUntil: string | null;
+  reentryUntil: string | null;
+  propertyAddress: string | null;
+}
+
+export const portalGetActiveTimers = async (
+  options?: RequestInit,
+): Promise<PortalActiveTimer[]> => {
+  return customFetch<PortalActiveTimer[]>("/api/portal/active-timers", {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getPortalActiveTimersQueryKey = () => ["/api/portal/active-timers"] as const;
+
+export const usePortalGetActiveTimers = <TData = PortalActiveTimer[], TError = ErrorType<unknown>>(
+  options?: { query?: UseQueryOptions<PortalActiveTimer[], TError, TData> },
+): UseQueryResult<TData, TError> => {
+  const { query: queryOptions } = options ?? {};
+  return useQuery<PortalActiveTimer[], TError, TData>({
+    queryKey: getPortalActiveTimersQueryKey(),
+    queryFn: ({ signal }) => portalGetActiveTimers({ signal }),
+    ...queryOptions,
+  });
+};
+
+// ---------------------------------------------------------------------------
 // Portal job detail — GET /portal/jobs/:id
 // ---------------------------------------------------------------------------
 
@@ -490,6 +528,8 @@ export interface PortalChemicalApplication {
   areaUnit: string | null;
   treatedZoneName: string | null;
   appliedAt: string;
+  rainfastUntil: string | null;
+  reentryUntil: string | null;
 }
 
 export interface PortalJobDetail {

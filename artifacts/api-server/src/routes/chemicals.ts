@@ -54,7 +54,7 @@ router.get("/chemical-products", async (req, res): Promise<void> => {
 
 router.post("/chemical-products", requireOfficeRole, async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { name, epaRegNumber, activeIngredients, signalWord, rei, phi, labelSdsUrl, unit } = req.body;
+  const { name, epaRegNumber, activeIngredients, signalWord, rei, phi, labelSdsUrl, unit, rainfastHours } = req.body;
   if (!name) { res.status(400).json({ error: "name is required" }); return; }
   const [row] = await db.insert(chemicalProductsTable).values({
     tenantId,
@@ -66,6 +66,7 @@ router.post("/chemical-products", requireOfficeRole, async (req, res): Promise<v
     phi: phi ? parseInt(phi, 10) : null,
     labelSdsUrl: labelSdsUrl ?? null,
     unit: unit ?? "oz",
+    rainfastHours: rainfastHours != null ? parseFloat(rainfastHours) : null,
   }).returning();
   res.status(201).json({ ...row, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() });
 });
@@ -73,7 +74,7 @@ router.post("/chemical-products", requireOfficeRole, async (req, res): Promise<v
 router.patch("/chemical-products/:id", requireOfficeRole, async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
-  const { name, epaRegNumber, activeIngredients, signalWord, rei, phi, labelSdsUrl, unit, isActive } = req.body;
+  const { name, epaRegNumber, activeIngredients, signalWord, rei, phi, labelSdsUrl, unit, isActive, rainfastHours } = req.body;
   const [row] = await db.update(chemicalProductsTable).set({
     ...(name && { name }),
     ...(epaRegNumber !== undefined && { epaRegNumber }),
@@ -84,6 +85,7 @@ router.patch("/chemical-products/:id", requireOfficeRole, async (req, res): Prom
     ...(labelSdsUrl !== undefined && { labelSdsUrl }),
     ...(unit && { unit }),
     ...(isActive !== undefined && { isActive }),
+    ...(rainfastHours !== undefined && { rainfastHours: rainfastHours != null ? parseFloat(rainfastHours) : null }),
   }).where(and(eq(chemicalProductsTable.id, id), eq(chemicalProductsTable.tenantId, tenantId))).returning();
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
   res.json({ ...row, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() });

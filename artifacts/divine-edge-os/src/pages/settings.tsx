@@ -217,7 +217,7 @@ export default function SettingsPage() {
   // Chemicals – Product form
   const [prodFormOpen, setProdFormOpen] = useState(false);
   const [editingProd, setEditingProd] = useState<ChemicalProduct | null>(null);
-  const [prodForm, setProdForm] = useState({ name: '', epaRegNumber: '', activeIngredients: '', signalWord: '', rei: '', phi: '', labelSdsUrl: '', unit: 'oz' });
+  const [prodForm, setProdForm] = useState({ name: '', epaRegNumber: '', activeIngredients: '', signalWord: '', rei: '', phi: '', labelSdsUrl: '', unit: 'oz', rainfastHours: '' });
 
   // Branding
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -2398,7 +2398,7 @@ export default function SettingsPage() {
                 <CardTitle className="flex items-center gap-2"><FlaskConical className="w-5 h-5" /> Chemical Products</CardTitle>
                 <CardDescription>Pesticides, herbicides, and fertilizers with EPA registration and safety data.</CardDescription>
               </div>
-              <Button size="sm" className="gap-2 ml-4 shrink-0" onClick={() => { setEditingProd(null); setProdForm({ name: '', epaRegNumber: '', activeIngredients: '', signalWord: '', rei: '', phi: '', labelSdsUrl: '', unit: 'oz' }); setProdFormOpen(true); }}>
+              <Button size="sm" className="gap-2 ml-4 shrink-0" onClick={() => { setEditingProd(null); setProdForm({ name: '', epaRegNumber: '', activeIngredients: '', signalWord: '', rei: '', phi: '', labelSdsUrl: '', unit: 'oz', rainfastHours: '' }); setProdFormOpen(true); }}>
                 <Plus className="w-4 h-4" /> Add Product
               </Button>
             </CardHeader>
@@ -2423,6 +2423,7 @@ export default function SettingsPage() {
                         {p.activeIngredients && <p className="text-xs text-muted-foreground">{p.activeIngredients}</p>}
                         <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
                           <span>Unit: {p.unit}</span>
+                          {(p as any).rainfastHours != null && <span>Rainfast: {(p as any).rainfastHours}h</span>}
                           {p.rei != null && <span>REI: {p.rei}h</span>}
                           {p.phi != null && <span>PHI: {p.phi}d</span>}
                         </div>
@@ -2430,7 +2431,7 @@ export default function SettingsPage() {
                       <div className="flex items-center gap-1 shrink-0">
                         <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => {
                           setEditingProd(p);
-                          setProdForm({ name: p.name, epaRegNumber: p.epaRegNumber ?? '', activeIngredients: p.activeIngredients ?? '', signalWord: p.signalWord ?? '', rei: p.rei != null ? String(p.rei) : '', phi: p.phi != null ? String(p.phi) : '', labelSdsUrl: p.labelSdsUrl ?? '', unit: p.unit });
+                          setProdForm({ name: p.name, epaRegNumber: p.epaRegNumber ?? '', activeIngredients: p.activeIngredients ?? '', signalWord: p.signalWord ?? '', rei: p.rei != null ? String(p.rei) : '', phi: p.phi != null ? String(p.phi) : '', labelSdsUrl: p.labelSdsUrl ?? '', unit: p.unit, rainfastHours: (p as any).rainfastHours != null ? String((p as any).rainfastHours) : '' });
                           setProdFormOpen(true);
                         }}>
                           <Pencil className="w-3.5 h-3.5" />
@@ -2546,7 +2547,7 @@ export default function SettingsPage() {
                   <label className="text-sm font-medium">Active Ingredients</label>
                   <Input placeholder="e.g. Glyphosate 41%" value={prodForm.activeIngredients} onChange={e => setProdForm(f => ({ ...f, activeIngredients: e.target.value }))} />
                 </div>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium">Unit</label>
                     <Select value={prodForm.unit} onValueChange={v => setProdForm(f => ({ ...f, unit: v }))}>
@@ -2561,12 +2562,20 @@ export default function SettingsPage() {
                     </Select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium">REI (hrs)</label>
-                    <Input type="number" min={0} placeholder="4" value={prodForm.rei} onChange={e => setProdForm(f => ({ ...f, rei: e.target.value }))} />
-                  </div>
-                  <div className="space-y-1.5">
                     <label className="text-sm font-medium">PHI (days)</label>
                     <Input type="number" min={0} placeholder="0" value={prodForm.phi} onChange={e => setProdForm(f => ({ ...f, phi: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Rainfast hours</label>
+                    <p className="text-xs text-muted-foreground">Hours until rain won't affect the application</p>
+                    <Input type="number" min={0} step="0.5" placeholder="e.g. 2" value={prodForm.rainfastHours} onChange={e => setProdForm(f => ({ ...f, rainfastHours: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Re-entry interval (hrs)</label>
+                    <p className="text-xs text-muted-foreground">Hours people must stay out after application</p>
+                    <Input type="number" min={0} placeholder="4" value={prodForm.rei} onChange={e => setProdForm(f => ({ ...f, rei: e.target.value }))} />
                   </div>
                 </div>
                 <div className="space-y-1.5">
@@ -2587,7 +2596,8 @@ export default function SettingsPage() {
                       phi: prodForm.phi ? parseInt(prodForm.phi, 10) : undefined,
                       labelSdsUrl: prodForm.labelSdsUrl || undefined,
                       unit: prodForm.unit,
-                    };
+                      rainfastHours: prodForm.rainfastHours ? parseFloat(prodForm.rainfastHours) : undefined,
+                    } as any;
                     if (editingProd) {
                       updateChemProduct.mutate({ id: editingProd.id, data }, {
                         onSuccess: () => { toast.success('Product updated'); qc.invalidateQueries({ queryKey: getListChemicalProductsQueryKey() }); setProdFormOpen(false); },

@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { getStripeClient } from "../lib/stripeClient";
 import { logger } from "../lib/logger";
 import crypto from "crypto";
-import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable, invoicesTable, tenantsTable, blueprintsTable, chemicalApplicationsTable, customerPlansTable, equipmentFuelLogsTable, routeTemplatesTable, skipReasonsTable, taskNotificationsTable, internalTasksTable } from "@workspace/db";
+import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable, invoicesTable, tenantsTable, blueprintsTable, chemicalApplicationsTable, chemicalProductsTable, chemicalMixtureItemsTable, customerPlansTable, equipmentFuelLogsTable, routeTemplatesTable, skipReasonsTable, taskNotificationsTable, internalTasksTable } from "@workspace/db";
 import { eq, and, or, sql, desc, asc, isNotNull, isNull, ne, inArray, min, gt } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { getCallerRole, isAdminRole } from "../lib/roles";
@@ -725,6 +725,65 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
 
   await db.insert(activityLogTable).values({ tenantId, userId, type: "job_completed", message: `Job "${updated.title}" completed`, entityId: id });
+
+  // Compute and store rainfast / re-entry timer expiry for any chemical applications on this job.
+  // Awaited synchronously — timers must be persisted before this endpoint returns so the portal
+  // shows safety notices immediately after completion. A failure is logged but does not block the
+  // completion response; the job is already marked done and the customer safety notice is the
+  // priority concern.
+  try {
+    const apps = await db
+      .select({ id: chemicalApplicationsTable.id, productId: chemicalApplicationsTable.productId, mixtureId: chemicalApplicationsTable.mixtureId })
+      .from(chemicalApplicationsTable)
+      .where(and(eq(chemicalApplicationsTable.jobId, id), eq(chemicalApplicationsTable.tenantId, tenantId)));
+
+    for (const app of apps) {
+      let maxRainfastHours: number | null = null;
+      let maxRei: number | null = null;
+
+      if (app.productId) {
+        const [product] = await db
+          .select({ rainfastHours: chemicalProductsTable.rainfastHours, rei: chemicalProductsTable.rei })
+          .from(chemicalProductsTable)
+          .where(and(eq(chemicalProductsTable.id, app.productId), eq(chemicalProductsTable.tenantId, tenantId)));
+        maxRainfastHours = (product as any)?.rainfastHours ?? null;
+        maxRei = product?.rei ?? null;
+      } else if (app.mixtureId) {
+        const items = await db
+          .select({ rainfastHours: chemicalProductsTable.rainfastHours, rei: chemicalProductsTable.rei })
+          .from(chemicalMixtureItemsTable)
+          .leftJoin(chemicalProductsTable, and(
+            eq(chemicalMixtureItemsTable.productId, chemicalProductsTable.id),
+            eq(chemicalProductsTable.tenantId, tenantId),
+          ))
+          .where(eq(chemicalMixtureItemsTable.mixtureId, app.mixtureId));
+        for (const item of items) {
+          const rf = (item as any).rainfastHours as number | null;
+          const ri = item.rei;
+          if (rf != null && (maxRainfastHours === null || rf > maxRainfastHours)) maxRainfastHours = rf;
+          if (ri != null && (maxRei === null || ri > maxRei)) maxRei = ri;
+        }
+      }
+
+      const rainfastUntil = maxRainfastHours != null
+        ? new Date(now.getTime() + maxRainfastHours * 3600 * 1000)
+        : null;
+      const reentryUntil = maxRei != null
+        ? new Date(now.getTime() + maxRei * 3600 * 1000)
+        : null;
+
+      if (rainfastUntil !== null || reentryUntil !== null) {
+        await db.update(chemicalApplicationsTable)
+          .set({
+            ...(rainfastUntil !== null && { rainfastUntil } as any),
+            ...(reentryUntil !== null && { reentryUntil } as any),
+          })
+          .where(eq(chemicalApplicationsTable.id, app.id));
+      }
+    }
+  } catch (err) {
+    logger.warn({ err, jobId: id }, "Failed to compute chemical timer expiry on job completion");
+  }
 
   // Archive any blueprint tied to this job (either direction of the link) so it drops out of the
   // main Blueprints list but stays visible/reusable from the property page.

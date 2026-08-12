@@ -1,16 +1,34 @@
-import { usePortalGetSummary, usePortalListJobs, usePortalListInvoices, PortalJob, PortalInvoice } from "@workspace/api-client-react";
+import { usePortalGetSummary, usePortalListJobs, usePortalListInvoices, usePortalGetActiveTimers, PortalJob, PortalInvoice } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatCurrency, formatDate } from "@/lib/format";
-import { ArrowRight, Bell, CalendarClock, Briefcase, FileText, MapPin, CheckCircle2, Clock, ClipboardList, ClipboardCheck, User } from "lucide-react";
+import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
+import { ArrowRight, Bell, CalendarClock, Briefcase, FileText, MapPin, CheckCircle2, Clock, ClipboardList, ClipboardCheck, User, CloudRain, ShieldAlert } from "lucide-react";
 
 export default function Home() {
   const { data: summary, isLoading: isSummaryLoading } = usePortalGetSummary();
   const { data: jobs, isLoading: isJobsLoading } = usePortalListJobs();
   const { data: invoices, isLoading: isInvoicesLoading } = usePortalListInvoices();
+  const { data: activeTimers } = usePortalGetActiveTimers();
+
+  const now = new Date();
+
+  // Only show timers whose expiry is in the future (checked at page load)
+  const activeRainfast = (activeTimers ?? []).filter(t => t.rainfastUntil && new Date(t.rainfastUntil) > now);
+  const activeReentry = (activeTimers ?? []).filter(t => t.reentryUntil && new Date(t.reentryUntil) > now);
+  // Dedupe: if both rainfast and re-entry are active on same application, show one card with both
+  const allTimerIds = new Set<number>();
+  const timerCards: typeof activeTimers = [];
+  for (const t of activeTimers ?? []) {
+    const hasRainfast = t.rainfastUntil && new Date(t.rainfastUntil) > now;
+    const hasReentry = t.reentryUntil && new Date(t.reentryUntil) > now;
+    if ((hasRainfast || hasReentry) && !allTimerIds.has(t.id)) {
+      allTimerIds.add(t.id);
+      timerCards.push(t);
+    }
+  }
 
   const getJobStatusBadge = (status: string) => {
     switch (status) {
@@ -71,6 +89,53 @@ export default function Home() {
           </CardContent>
         </Card>
       ) : null}
+
+      {/* Active Chemical Timers */}
+      {timerCards.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold tracking-tight text-foreground">Active Treatment Notices</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {timerCards.map(timer => {
+              const hasRainfast = timer.rainfastUntil && new Date(timer.rainfastUntil) > now;
+              const hasReentry = timer.reentryUntil && new Date(timer.reentryUntil) > now;
+              const chemical = timer.productName ?? timer.mixtureName ?? "Chemical application";
+              return (
+                <Card key={timer.id} className="border-amber-200 dark:border-amber-800/40 bg-amber-50/50 dark:bg-amber-950/20 shadow-sm">
+                  <CardContent className="p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-foreground truncate">{chemical}</p>
+                        {timer.propertyAddress && (
+                          <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                            <MapPin className="w-3 h-3 shrink-0" />{timer.propertyAddress}
+                          </p>
+                        )}
+                      </div>
+                      <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700 shrink-0 text-[10px]">
+                        Active
+                      </Badge>
+                    </div>
+                    <div className="space-y-1">
+                      {hasRainfast && (
+                        <div className="flex items-center gap-2 text-xs text-foreground/80">
+                          <CloudRain className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                          <span>Rainfast until <strong>{formatDateTime(timer.rainfastUntil!)}</strong></span>
+                        </div>
+                      )}
+                      {hasReentry && (
+                        <div className="flex items-center gap-2 text-xs text-foreground/80">
+                          <ShieldAlert className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                          <span>Re-entry restricted until <strong>{formatDateTime(timer.reentryUntil!)}</strong></span>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <Link href="/jobs">

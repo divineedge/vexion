@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
-import { CalendarClock, MapPin, Briefcase, Clock, CheckCircle2, User, Search, Ban, FlaskConical, Package, ChevronRight, X } from "lucide-react";
+import { CalendarClock, MapPin, Briefcase, Clock, CheckCircle2, User, Search, Ban, FlaskConical, Package, ChevronRight, CloudRain, ShieldAlert } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -318,24 +318,50 @@ function JobDetailModal({ jobId, onClose }: { jobId: number | null; onClose: () 
                     <FlaskConical className="w-3.5 h-3.5" /> What Was Applied
                   </h4>
                   <div className="space-y-3">
-                    {job.chemicalApplications.map((app, i) => (
-                      <div key={app.id ?? i} className="rounded-lg border bg-muted/20 p-4 space-y-1.5">
-                        <p className="text-sm font-medium text-foreground">{app.productName ?? 'Unknown product'}</p>
-                        {app.mixtureName && (
-                          <p className="text-xs text-muted-foreground">Mixture: {app.mixtureName}</p>
-                        )}
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                          <span>{app.volumeApplied} {app.volumeUnit} applied</span>
-                          {app.treatedArea != null && (
-                            <span>{app.treatedArea} {app.areaUnit ?? ''} treated</span>
+                    {job.chemicalApplications.map((app, i) => {
+                      const now = new Date();
+                      const rainfastActive = app.rainfastUntil && new Date(app.rainfastUntil) > now;
+                      const reentryActive = app.reentryUntil && new Date(app.reentryUntil) > now;
+                      return (
+                        <div key={app.id ?? i} className="rounded-lg border bg-muted/20 p-4 space-y-1.5">
+                          <p className="text-sm font-medium text-foreground">{app.productName ?? 'Unknown product'}</p>
+                          {app.mixtureName && (
+                            <p className="text-xs text-muted-foreground">Mixture: {app.mixtureName}</p>
                           )}
-                          {app.treatedZoneName && (
-                            <span>Zone: {app.treatedZoneName}</span>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                            <span>{app.volumeApplied} {app.volumeUnit} applied</span>
+                            {app.treatedArea != null && (
+                              <span>{app.treatedArea} {app.areaUnit ?? ''} treated</span>
+                            )}
+                            {app.treatedZoneName && (
+                              <span>Zone: {app.treatedZoneName}</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground">{formatDateTime(app.appliedAt)}</p>
+                          {/* Rainfast / Re-entry timers */}
+                          {(app.rainfastUntil || app.reentryUntil) && (
+                            <div className="pt-1 border-t border-border/50 space-y-1">
+                              {app.rainfastUntil && (
+                                <div className={`flex items-center gap-1.5 text-xs ${rainfastActive ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-muted-foreground'}`}>
+                                  <CloudRain className="w-3 h-3 shrink-0" />
+                                  {rainfastActive
+                                    ? <>Rainfast until <strong>{formatDateTime(app.rainfastUntil)}</strong></>
+                                    : <>Rainfast cleared: {formatDateTime(app.rainfastUntil)}</>}
+                                </div>
+                              )}
+                              {app.reentryUntil && (
+                                <div className={`flex items-center gap-1.5 text-xs ${reentryActive ? 'text-red-600 dark:text-red-400 font-medium' : 'text-muted-foreground'}`}>
+                                  <ShieldAlert className="w-3 h-3 shrink-0" />
+                                  {reentryActive
+                                    ? <>Re-entry restricted until <strong>{formatDateTime(app.reentryUntil)}</strong></>
+                                    : <>Re-entry allowed from: {formatDateTime(app.reentryUntil)}</>}
+                                </div>
+                              )}
+                            </div>
                           )}
                         </div>
-                        <p className="text-xs text-muted-foreground">{formatDateTime(app.appliedAt)}</p>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </section>
               )}

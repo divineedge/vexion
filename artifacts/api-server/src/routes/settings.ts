@@ -147,6 +147,8 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     // Cancellation policy
     cancellationFeeEnabled: tenant.cancellationFeeEnabled ?? false,
     cancellationFeeAmount: tenant.cancellationFeeAmount ?? 0,
+    // Chemical / Rainfast weather alerts
+    rainfastRainThresholdPct: tenant.rainfastRainThresholdPct ?? 40,
   };
 }
 
@@ -202,6 +204,8 @@ router.patch("/settings", async (req, res): Promise<void> => {
     // Cancellation policy
     cancellationFeeEnabled,
     cancellationFeeAmount,
+    // Chemical / Rainfast weather alerts
+    rainfastRainThresholdPct,
   } = req.body;
 
   const updates: Partial<typeof tenantsTable.$inferInsert> = {};
@@ -352,6 +356,10 @@ router.patch("/settings", async (req, res): Promise<void> => {
   if (renewalWarningDays !== undefined) updates.renewalWarningDays = parseInt(renewalWarningDays, 10);
   if (cancellationFeeEnabled !== undefined) updates.cancellationFeeEnabled = cancellationFeeEnabled;
   if (cancellationFeeAmount !== undefined) updates.cancellationFeeAmount = parseFloat(cancellationFeeAmount);
+  if (rainfastRainThresholdPct !== undefined) {
+    const pct = parseInt(rainfastRainThresholdPct, 10);
+    if (!isNaN(pct) && pct >= 0 && pct <= 100) updates.rainfastRainThresholdPct = pct;
+  }
 
   if (quickShortcuts !== undefined) {
     const VALID_IDS = new Set([

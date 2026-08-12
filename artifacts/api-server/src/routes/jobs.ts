@@ -11,6 +11,7 @@ import { nthOccurrenceAfterRoot, describeRule, type RecurrenceRule } from "../li
 import { enqueueInvoiceEmail } from "../lib/billingScheduler";
 import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
 import { sendSms, type SmsProviderConfig } from "../lib/smsProvider";
+import { checkRainBeforeWindow } from "../lib/weatherCheck";
 import {
   importUpload,
   handleExportRequest,
@@ -784,6 +785,119 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
   } catch (err) {
     logger.warn({ err, jobId: id }, "Failed to compute chemical timer expiry on job completion");
   }
+
+  // ── Rainfast weather alert ─────────────────────────────────────────────────
+  // After the rainfast timers are persisted, asynchronously check if rain is
+  // forecast before any rainfastUntil window and create an internal task if so.
+  // Runs fire-and-forget so it never blocks the completion response.
+  void (async () => {
+    try {
+      // Only check if the job has a property with coordinates
+      if (!updated.propertyId) return;
+      const [property] = await db
+        .select({ lat: propertiesTable.lat, lng: propertiesTable.lng })
+        .from(propertiesTable)
+        .where(and(eq(propertiesTable.id, updated.propertyId), eq(propertiesTable.tenantId, tenantId)));
+      if (!property?.lat || !property?.lng) return;
+
+      // Fetch all chemical applications that have a rainfastUntil set for this job
+      const appsWithRainfast = await db
+        .select({
+          id: chemicalApplicationsTable.id,
+          rainfastUntil: chemicalApplicationsTable.rainfastUntil,
+          productName: chemicalApplicationsTable.productName,
+          mixtureName: chemicalApplicationsTable.mixtureName,
+        })
+        .from(chemicalApplicationsTable)
+        .where(and(
+          eq(chemicalApplicationsTable.jobId, id),
+          eq(chemicalApplicationsTable.tenantId, tenantId),
+          isNotNull(chemicalApplicationsTable.rainfastUntil),
+        ));
+      if (appsWithRainfast.length === 0) return;
+
+      // Read the tenant's rain threshold (default 40%)
+      const [tenantSettings] = await db
+        .select({ rainfastRainThresholdPct: tenantsTable.rainfastRainThresholdPct })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, tenantId));
+      const thresholdPct = tenantSettings?.rainfastRainThresholdPct ?? 40;
+
+      // Find the widest rainfastUntil window (latest expiry) across all applications
+      let latestWindow: Date | null = null;
+      for (const app of appsWithRainfast) {
+        if (app.rainfastUntil && (latestWindow === null || app.rainfastUntil > latestWindow)) {
+          latestWindow = app.rainfastUntil;
+        }
+      }
+      if (!latestWindow) return;
+
+      // Query weather for the latest window
+      const rainForecast = await checkRainBeforeWindow(
+        property.lat,
+        property.lng,
+        latestWindow,
+        thresholdPct,
+      );
+      if (!rainForecast) return;
+
+      // Build a description listing the affected chemicals and their windows
+      const chemLines = appsWithRainfast.map(app => {
+        const name = app.productName ?? app.mixtureName ?? "Unknown chemical";
+        const until = app.rainfastUntil ? new Date(app.rainfastUntil).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true, timeZoneName: "short" }) : "—";
+        return `• ${name} — rainfast window closes ${until}`;
+      });
+      const forecastTimeStr = new Date(rainForecast.forecastTime).toLocaleString("en-US", {
+        month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true, timeZoneName: "short",
+      });
+      const description = [
+        `Rain (${rainForecast.probability}% probability) is forecast around ${forecastTimeStr} — before the rainfast window closes on job #${id} "${updated.title}".`,
+        ``,
+        `Affected applications:`,
+        ...chemLines,
+        ``,
+        `Consider re-applying affected chemicals after the window has passed if significant rainfall occurs.`,
+      ].join("\n");
+
+      // Create an internal task for admin/office staff
+      const [task] = await db.insert(internalTasksTable).values({
+        tenantId,
+        title: `⚠️ Rain forecast before rainfast window — Job #${id} "${updated.title}"`,
+        description,
+        taskType: "custom",
+        createdById: userId,
+        assignedToRole: "admin_office",
+        priority: "high",
+        status: "open",
+        contextType: "job",
+        contextId: id,
+      }).returning({ id: internalTasksTable.id });
+
+      // Notify all admin/office users so they see it in their notification bell
+      const adminUsers = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(and(
+          eq(usersTable.tenantId, tenantId),
+          sql`${usersTable.role} IN ('owner', 'admin', 'admin_office', 'manager')`,
+        ));
+      if (adminUsers.length > 0 && task) {
+        await db.insert(taskNotificationsTable).values(
+          adminUsers.map(u => ({
+            tenantId,
+            recipientUserId: u.id,
+            taskId: task.id,
+            type: "assigned",
+            message: `⚠️ Rain (${rainForecast.probability}%) forecast before rainfast window closes — Job #${id} "${updated.title}"`,
+          }))
+        );
+      }
+
+      logger.info({ jobId: id, forecastTime: rainForecast.forecastTime, probability: rainForecast.probability }, "Rainfast weather alert created");
+    } catch (err) {
+      logger.warn({ err, jobId: id }, "Rainfast weather check failed — no alert created");
+    }
+  })();
 
   // Archive any blueprint tied to this job (either direction of the link) so it drops out of the
   // main Blueprints list but stays visible/reusable from the property page.

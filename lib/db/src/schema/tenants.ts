@@ -168,6 +168,9 @@ export const tenantsTable = pgTable("tenants", {
   cancellationFeeEnabled: boolean("cancellation_fee_enabled").notNull().default(false),
   /** Dollar amount charged as a cancellation fee (only applied when cancellationFeeEnabled = true) */
   cancellationFeeAmount: real("cancellation_fee_amount").notNull().default(0),
+  // ── Chemical / Rainfast Weather Alerts ───────────────────────────────────
+  /** Minimum hourly rain probability (0–100) that triggers a rainfast warning task when forecast before rainfastUntil */
+  rainfastRainThresholdPct: integer("rainfast_rain_threshold_pct").notNull().default(40),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

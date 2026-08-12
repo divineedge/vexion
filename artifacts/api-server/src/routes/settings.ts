@@ -144,6 +144,9 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     callbackDueHoursLow: tenant.callbackDueHoursLow ?? 72,
     // Plan renewal warning threshold
     renewalWarningDays: tenant.renewalWarningDays ?? 30,
+    // Cancellation policy
+    cancellationFeeEnabled: tenant.cancellationFeeEnabled ?? false,
+    cancellationFeeAmount: tenant.cancellationFeeAmount ?? 0,
   };
 }
 
@@ -196,6 +199,9 @@ router.patch("/settings", async (req, res): Promise<void> => {
     callbackDueHoursHigh, callbackDueHoursNormal, callbackDueHoursLow,
     // Plan renewal warning threshold
     renewalWarningDays,
+    // Cancellation policy
+    cancellationFeeEnabled,
+    cancellationFeeAmount,
   } = req.body;
 
   const updates: Partial<typeof tenantsTable.$inferInsert> = {};
@@ -344,6 +350,8 @@ router.patch("/settings", async (req, res): Promise<void> => {
   if (callbackDueHoursNormal !== undefined) updates.callbackDueHoursNormal = parseInt(callbackDueHoursNormal, 10);
   if (callbackDueHoursLow !== undefined) updates.callbackDueHoursLow = parseInt(callbackDueHoursLow, 10);
   if (renewalWarningDays !== undefined) updates.renewalWarningDays = parseInt(renewalWarningDays, 10);
+  if (cancellationFeeEnabled !== undefined) updates.cancellationFeeEnabled = cancellationFeeEnabled;
+  if (cancellationFeeAmount !== undefined) updates.cancellationFeeAmount = parseFloat(cancellationFeeAmount);
 
   if (quickShortcuts !== undefined) {
     const VALID_IDS = new Set([

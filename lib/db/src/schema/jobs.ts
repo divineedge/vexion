@@ -119,6 +119,8 @@ export const jobsTable = pgTable("jobs", {
   cancellationRequestedAt: timestamp("cancellation_requested_at", { withTimezone: true }),
   /** Optional reason the customer provided when requesting cancellation. */
   cancellationReason: text("cancellation_reason"),
+  /** FK to an invoice created as a cancellation fee charge; set when a fee is auto-created on portal cancel. */
+  cancellationChargeId: integer("cancellation_charge_id"),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

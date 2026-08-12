@@ -60,7 +60,7 @@ import {
   Bell, BellOff, Send, Package, Search, Images, RefreshCw, Pause, Play, X,
   SkipForward, ListEnd, Wrench, Square, Timer, Warehouse, Truck,
   Route as RouteIcon, ExternalLink, PhoneCall, CheckCircle, FileText, Phone, Mail, Copy,
-  Ban,
+  Ban, CreditCard,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -1344,6 +1344,36 @@ export default function SchedulePage() {
                         <CheckCircle className="w-4 h-4" /> {updateJob.isPending ? 'Saving…' : 'Mark Complete'}
                       </Button>
                     )}
+                  </div>
+                )}
+
+                {/* Cancellation charge */}
+                {canManageJobs && (selectedJob as any).cancellationChargeId && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+                    <p className="text-sm font-medium text-amber-800 flex items-center gap-1.5">
+                      <CreditCard className="w-4 h-4" /> Cancellation Fee Charged
+                    </p>
+                    <p className="text-xs text-amber-700">
+                      A draft invoice (#{(selectedJob as any).cancellationChargeId}) was automatically created for this cancellation. It can be found in the Financials tab.
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs gap-1 border-amber-300 text-amber-800 hover:bg-amber-100"
+                      onClick={async () => {
+                        if (!window.confirm('Remove the cancellation fee charge? This will delete the associated invoice.')) return;
+                        try {
+                          await customFetch(`/api/jobs/${selectedJobId}/cancellation-charge`, { method: 'DELETE' });
+                          toast.success('Cancellation charge removed');
+                          qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId!) });
+                          qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                        } catch {
+                          toast.error('Failed to remove charge');
+                        }
+                      }}
+                    >
+                      <X className="w-3 h-3" /> Remove Charge
+                    </Button>
                   </div>
                 )}
 

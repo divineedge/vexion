@@ -2053,15 +2053,34 @@ router.post("/portal/jobs/:id/cancel-request", requirePortalAuth, async (req: an
     return;
   }
 
-  await db
+  // ── Atomically mark cancellation requested ─────────────────────────────────
+  // isNull guard ensures only one concurrent request wins the race.
+  const hoursUntilJob = (new Date(job.scheduledAt).getTime() - Date.now()) / (1000 * 60 * 60);
+
+  const [claimedJob] = await db
     .update(jobsTable)
     .set({
       cancellationRequestedAt: new Date(),
       cancellationReason: reason?.trim() || null,
     } as any)
-    .where(and(eq(jobsTable.id, jobId), eq(jobsTable.tenantId, portalTenantId)));
+    .where(
+      and(
+        eq(jobsTable.id, jobId),
+        eq(jobsTable.tenantId, portalTenantId),
+        isNull((jobsTable as any).cancellationRequestedAt),
+      ),
+    )
+    .returning();
 
-  // Notify all non-technician staff
+  if (!claimedJob) {
+    res.status(409).json({ error: "A cancellation request is already pending for this job" });
+    return;
+  }
+
+  // The cancellation fee (if enabled) is applied when staff *approves* the
+  // request so that a denied request never leaves the customer charged.
+
+  // Notify all non-technician staff (fire-and-forget is safe here — notifications are non-critical)
   (async () => {
     try {
       const staffUsers = await db

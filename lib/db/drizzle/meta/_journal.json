@@ -218,6 +218,13 @@
       "when": 1753230000000,
       "tag": "0031_add_off_season_to_services",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1755048000000,
+      "tag": "0035_add_cancellation_fee_columns",
+      "breakpoints": true
     }
   ]
 }

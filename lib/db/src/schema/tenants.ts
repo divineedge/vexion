@@ -164,6 +164,10 @@ export const tenantsTable = pgTable("tenants", {
   callbackDueHoursNormal: integer("callback_due_hours_normal").notNull().default(24),
   /** Hours until a LOW priority callback fix is due (default 72 h = 3 days) */
   callbackDueHoursLow: integer("callback_due_hours_low").notNull().default(72),
+  /** When true, a cancellation fee is charged when a customer cancels a job via the portal */
+  cancellationFeeEnabled: boolean("cancellation_fee_enabled").notNull().default(false),
+  /** Dollar amount charged as a cancellation fee (only applied when cancellationFeeEnabled = true) */
+  cancellationFeeAmount: real("cancellation_fee_amount").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

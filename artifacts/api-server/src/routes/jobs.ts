@@ -1,4 +1,6 @@
 import { Router, type IRouter } from "express";
+import { getStripeClient } from "../lib/stripeClient";
+import { logger } from "../lib/logger";
 import crypto from "crypto";
 import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable, invoicesTable, tenantsTable, blueprintsTable, chemicalApplicationsTable, customerPlansTable, equipmentFuelLogsTable, routeTemplatesTable, skipReasonsTable, taskNotificationsTable, internalTasksTable } from "@workspace/db";
 import { eq, and, or, sql, desc, asc, isNotNull, isNull, ne, inArray, min, gt } from "drizzle-orm";
@@ -262,6 +264,7 @@ function formatJob(
     skipNote: j.skipNote ?? null,
     cancellationRequestedAt: j.cancellationRequestedAt?.toISOString() ?? null,
     cancellationReason: j.cancellationReason ?? null,
+    cancellationChargeId: (j as any).cancellationChargeId ?? null,
   };
 }
 
@@ -1251,34 +1254,151 @@ router.post("/jobs/:id/alerts", async (req, res): Promise<void> => {
 // ---------------------------------------------------------------------------
 router.post("/jobs/:id/approve-cancellation", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
+  const userId = getUserId(req);
   const id = parseInt(req.params.id, 10);
 
-  const [job] = await db
-    .select()
-    .from(jobsTable)
-    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
-    .limit(1);
-
-  if (!job) {
-    res.status(404).json({ error: "Job not found" });
+  // Only office/admin staff may approve cancellations (and trigger off-session charges)
+  const admin = await isAdminRole(tenantId, userId);
+  if (!admin) {
+    res.status(403).json({ error: "Office/admin role required to approve cancellations" });
     return;
   }
 
-  if (!(job as any).cancellationRequestedAt) {
-    res.status(409).json({ error: "No pending cancellation request on this job" });
-    return;
-  }
-
-  const [updated] = await db
+  // ── Atomic claim: cancel the job in one conditional UPDATE ──────────────────
+  // WHERE includes `cancellationRequestedAt IS NOT NULL` so only one concurrent
+  // request can win; any racing approver gets 0 rows and 409s.
+  // This must happen BEFORE any invoice or Stripe work to prevent double-charging.
+  const [claimedJob] = await db
     .update(jobsTable)
-    .set({
-      status: "cancelled",
-      cancellationRequestedAt: null,
-    } as any)
-    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
+    .set({ status: "cancelled", cancellationRequestedAt: null } as any)
+    .where(
+      and(
+        eq(jobsTable.id, id),
+        eq(jobsTable.tenantId, tenantId),
+        isNotNull((jobsTable as any).cancellationRequestedAt),
+      ),
+    )
     .returning();
 
-  res.json(formatJob(updated));
+  if (!claimedJob) {
+    res.status(409).json({ error: "No pending cancellation request on this job, or it was already processed" });
+    return;
+  }
+
+  // ── Auto-charge cancellation fee when approving within-24h cancellations ──
+  // Charging at approval time (not at request time) ensures denied requests
+  // never leave the customer charged.
+  const hoursUntilJob = claimedJob.scheduledAt
+    ? (new Date(claimedJob.scheduledAt).getTime() - Date.now()) / (1000 * 60 * 60)
+    : Infinity;
+
+  if (hoursUntilJob < 24) {
+    try {
+      const [[tenant], [customerRow]] = await Promise.all([
+        db.select({
+          cancellationFeeEnabled: (tenantsTable as any).cancellationFeeEnabled,
+          cancellationFeeAmount: (tenantsTable as any).cancellationFeeAmount,
+        }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
+        db.select({
+          stripeCustomerId: customersTable.stripeCustomerId,
+          stripeDefaultPaymentMethodId: customersTable.stripeDefaultPaymentMethodId,
+        }).from(customersTable).where(eq(customersTable.id, claimedJob.customerId!)).limit(1),
+      ]);
+
+      if (tenant?.cancellationFeeEnabled && (tenant.cancellationFeeAmount ?? 0) > 0) {
+        const feeAmount = tenant.cancellationFeeAmount as number;
+        const invoiceNumber = `CANC-${id}-${Date.now().toString(36).toUpperCase()}`;
+        const lineItems = [{ description: `Cancellation fee — Job #${id}`, quantity: 1, unitPrice: feeAmount, total: feeAmount }];
+
+        // Pre-create the invoice as "draft" before calling Stripe so a durable
+        // local record always exists, even if the process dies after Stripe
+        // collects the payment but before the DB update completes.
+        const [chargeInvoice] = await db.insert(invoicesTable).values({
+          tenantId,
+          invoiceNumber,
+          customerId: claimedJob.customerId!,
+          status: "draft",
+          subtotal: feeAmount,
+          tax: 0,
+          total: feeAmount,
+          lineItems,
+          notes: `Auto-generated cancellation fee for Job #${id}`,
+        } as any).returning({ id: invoicesTable.id });
+
+        if (chargeInvoice?.id) {
+          // Idempotency key scoped to the invoice ID — each approval attempt
+          // after a remove/deny/re-cancel cycle gets its own Stripe PI.
+          const stripeIdempotencyKey = `cancelFee-${tenantId}-${id}-${chargeInvoice.id}`;
+
+          // Persist key in notes + link job (parallel writes)
+          await Promise.all([
+            db.update(invoicesTable)
+              .set({ notes: `Auto-generated cancellation fee for Job #${id}. Stripe idempotency key: ${stripeIdempotencyKey}` } as any)
+              .where(eq(invoicesTable.id, chargeInvoice.id)),
+            db.update(jobsTable)
+              .set({ cancellationChargeId: chargeInvoice.id } as any)
+              .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId))),
+          ]);
+
+          const stripe = getStripeClient();
+          if (stripe && customerRow?.stripeCustomerId && customerRow?.stripeDefaultPaymentMethodId) {
+            try {
+              const pi = await stripe.paymentIntents.create(
+                {
+                  amount: Math.round(feeAmount * 100),
+                  currency: "usd",
+                  customer: customerRow.stripeCustomerId,
+                  payment_method: customerRow.stripeDefaultPaymentMethodId,
+                  off_session: true,
+                  confirm: true,
+                  description: `Cancellation fee — Job #${id}`,
+                  metadata: { jobId: String(id), tenantId: String(tenantId), invoiceId: String(chargeInvoice.id) },
+                },
+                { idempotencyKey: stripeIdempotencyKey },
+              );
+
+              // Always store the PI URL immediately — success or card decline —
+              // so the delete endpoint can always resolve the payment state.
+              const piUrl = `https://dashboard.stripe.com/payments/${pi.id}`;
+              const invoiceUpdate: any = { stripePaymentUrl: piUrl };
+              if (pi.status === "succeeded") {
+                invoiceUpdate.status = "paid";
+                invoiceUpdate.paidAt = new Date();
+              } else {
+                logger.warn({ piStatus: pi.status, jobId: id }, "Stripe PI not immediately succeeded — invoice left as draft");
+              }
+              await db.update(invoicesTable).set(invoiceUpdate).where(eq(invoicesTable.id, chargeInvoice.id));
+            } catch (stripeErr: any) {
+              // Card errors surface a failed PI object inside the error; store
+              // its URL so the delete endpoint knows no refund is needed.
+              const failedPi: any = stripeErr?.payment_intent;
+              if (failedPi?.id) {
+                await db.update(invoicesTable)
+                  .set({ stripePaymentUrl: `https://dashboard.stripe.com/payments/${failedPi.id}` } as any)
+                  .where(eq(invoicesTable.id, chargeInvoice.id));
+                logger.warn({ code: stripeErr.code, piId: failedPi.id, jobId: id }, "Stripe card declined — draft invoice retained for manual collection");
+              } else {
+                // Network/server error — no PI ID yet; deletion must use the
+                // Stripe metadata search to reconcile before removing.
+                logger.error(
+                  { err: stripeErr, jobId: id, stripeIdempotencyKey, invoiceId: chargeInvoice.id },
+                  "Stripe network error during cancellation charge — PI state uncertain. " +
+                  "Draft invoice left as reconciliation record (search Stripe by invoiceId metadata).",
+                );
+              }
+            }
+          }
+          // Stripe not configured or no card on file → invoice stays draft for manual collection.
+        }
+      }
+    } catch (chargeErr) {
+      logger.error({ err: chargeErr, jobId: id }, "Failed to create cancellation fee charge during approval");
+      // Charge failure is non-fatal; job is already cancelled — staff can handle the fee manually.
+    }
+  }
+
+  // Job was atomically cancelled in the claim step above; return the claimed record.
+  res.json(formatJob(claimedJob));
 });
 
 // ---------------------------------------------------------------------------
@@ -1286,7 +1406,14 @@ router.post("/jobs/:id/approve-cancellation", async (req, res): Promise<void> =>
 // ---------------------------------------------------------------------------
 router.post("/jobs/:id/deny-cancellation", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
+  const userId = getUserId(req);
   const id = parseInt(req.params.id, 10);
+
+  const admin = await isAdminRole(tenantId, userId);
+  if (!admin) {
+    res.status(403).json({ error: "Office/admin role required to deny cancellations" });
+    return;
+  }
 
   const [job] = await db
     .select()
@@ -1313,6 +1440,222 @@ router.post("/jobs/:id/deny-cancellation", async (req, res): Promise<void> => {
     .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
     .returning();
 
+  res.json(formatJob(updated));
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /jobs/:id/cancellation-charge — remove an auto-created cancellation fee.
+// Requires office/admin role.
+// - Draft invoices: deleted atomically with the job link.
+// - Paid invoices: a Stripe refund is issued first; the invoice is then voided
+//   (not deleted) to preserve the accounting audit trail.
+// ---------------------------------------------------------------------------
+router.delete("/jobs/:id/cancellation-charge", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  const id = parseInt(req.params.id, 10);
+
+  const admin = await isAdminRole(tenantId, userId);
+  if (!admin) {
+    res.status(403).json({ error: "Office/admin role required" });
+    return;
+  }
+
+  const [job] = await db
+    .select()
+    .from(jobsTable)
+    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
+    .limit(1);
+
+  if (!job) { res.status(404).json({ error: "Job not found" }); return; }
+
+  const chargeId = (job as any).cancellationChargeId as number | null;
+  if (!chargeId) { res.status(409).json({ error: "No cancellation charge linked to this job" }); return; }
+
+  // Fetch the linked invoice to determine how to remove it
+  const [chargeInvoice] = await db
+    .select({ id: invoicesTable.id, status: invoicesTable.status, stripePaymentUrl: invoicesTable.stripePaymentUrl })
+    .from(invoicesTable)
+    .where(and(eq(invoicesTable.id, chargeId), eq(invoicesTable.tenantId, tenantId)))
+    .limit(1);
+
+  if (!chargeInvoice) {
+    // Stale link — invoice already gone; just clear the reference
+    const [updated] = await db.update(jobsTable).set({ cancellationChargeId: null } as any)
+      .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
+      .returning();
+    res.json(formatJob(updated));
+    return;
+  }
+
+  // Helper: extract a Stripe PaymentIntent ID from the stored dashboard URL
+  const extractPiId = (url: string | null | undefined): string | null => {
+    if (!url) return null;
+    const piId = url.split("/").pop();
+    return piId?.startsWith("pi_") ? piId : null;
+  };
+
+  const stripe = getStripeClient();
+  const piId = extractPiId(chargeInvoice.stripePaymentUrl);
+
+  if (chargeInvoice.status === "paid") {
+    // Paid invoice — Stripe already collected the fee.
+    // Require a verifiable PI ID to issue the refund; refuse if provenance is unclear.
+    if (!piId) {
+      res.status(409).json({
+        error: "Cannot automatically refund: no Stripe PaymentIntent ID is recorded for this charge. " +
+               "Please issue the refund manually in the Stripe dashboard, then contact support to void this invoice.",
+      });
+      return;
+    }
+    const refundIdempotencyKey = `refund-cancel-charge-${chargeId}`;
+    try {
+      await stripe!.refunds.create({ payment_intent: piId }, { idempotencyKey: refundIdempotencyKey });
+    } catch (refundErr: unknown) {
+      logger.error({ err: refundErr, invoiceId: chargeId, piId, refundIdempotencyKey }, "Stripe refund failed during cancellation charge removal");
+      res.status(502).json({ error: "Failed to issue Stripe refund. Please process the refund in the Stripe dashboard first, then try again." });
+      return;
+    }
+    // Void the invoice (preserve audit trail — never delete a paid record)
+    const [updated] = await db.transaction(async (tx) => {
+      const rows = await tx.update(jobsTable).set({ cancellationChargeId: null } as any)
+        .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
+        .returning();
+      await tx.update(invoicesTable).set({ status: "void" } as any)
+        .where(and(eq(invoicesTable.id, chargeId), eq(invoicesTable.tenantId, tenantId)));
+      return rows;
+    });
+    res.json(formatJob(updated));
+    return;
+  }
+
+  // Draft invoice — determine whether Stripe collected a payment before deleting.
+  // The charge flow stores the PI URL on every Stripe response (success or card decline).
+  // If a PI URL is present, query Stripe to check the authoritative current status.
+  // ── Draft invoice with a stored PI URL: verify PI status with Stripe ───────
+  // The charge flow records the PI URL on every Stripe response (success or
+  // card decline), so a stored URL means Stripe definitely created a PI.
+  // When no URL is stored, Stripe either wasn't called, the call failed before
+  // creating a PI, or a network error occurred — use a metadata search to
+  // reconcile in that last case.
+  // Safe-to-delete terminal states: only `canceled` and `requires_payment_method`
+  // (definitive card/auth failure after a confirm attempt).  All other
+  // non-succeeded states (processing, requires_capture, requires_action,
+  // requires_confirmation) are uncertain or still collectible — fail closed.
+  const TERMINAL_FAILED = new Set(["canceled", "requires_payment_method"]);
+
+  if (piId) {
+    if (!stripe) {
+      // PI URL stored but Stripe not configured — cannot verify; fail closed.
+      res.status(502).json({
+        error: "Stripe is not configured. Cannot verify payment state. Please check the Stripe dashboard and refund manually if needed, then contact support.",
+      });
+      return;
+    }
+    let piStatus: string;
+    try {
+      const pi = await stripe.paymentIntents.retrieve(piId);
+      piStatus = pi.status;
+    } catch (retrieveErr: unknown) {
+      logger.error({ err: retrieveErr, piId, invoiceId: chargeId }, "Failed to retrieve Stripe PI during cancellation charge removal");
+      res.status(502).json({ error: "Could not verify Stripe payment status. Please check the Stripe dashboard and try again." });
+      return;
+    }
+
+    if (piStatus === "succeeded") {
+      // PI collected but status wasn't persisted locally (process crashed between
+      // Stripe response and DB update).  Issue a refund then void.
+      const refundIdempotencyKey = `refund-cancel-charge-${chargeId}`;
+      try {
+        await stripe.refunds.create({ payment_intent: piId }, { idempotencyKey: refundIdempotencyKey });
+      } catch (refundErr: unknown) {
+        logger.error({ err: refundErr, piId, invoiceId: chargeId }, "Stripe refund failed for succeeded PI on draft invoice");
+        res.status(502).json({ error: "Failed to issue Stripe refund. Please refund in the Stripe dashboard first, then try again." });
+        return;
+      }
+      const [updated] = await db.transaction(async (tx) => {
+        const rows = await tx.update(jobsTable).set({ cancellationChargeId: null } as any)
+          .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
+          .returning();
+        await tx.update(invoicesTable).set({ status: "void" } as any)
+          .where(and(eq(invoicesTable.id, chargeId), eq(invoicesTable.tenantId, tenantId)));
+        return rows;
+      });
+      res.json(formatJob(updated));
+      return;
+    }
+
+    if (!TERMINAL_FAILED.has(piStatus)) {
+      // Uncertain or still-collectible state (processing, requires_capture, etc.)
+      // Fail closed — retain the invoice and link until the state resolves.
+      logger.warn({ piStatus, piId, invoiceId: chargeId }, "Cancellation charge removal blocked: PI not in terminal state");
+      res.status(409).json({
+        error: `Stripe payment is in a non-terminal state (${piStatus}). Wait for Stripe to finalize the payment, then try again.`,
+      });
+      return;
+    }
+    // TERMINAL_FAILED — charge definitively failed; safe to delete invoice below.
+
+  } else if (stripe) {
+    // No PI URL stored — network-error case where Stripe may or may not have
+    // created a PI.  Search by invoiceId metadata to reconcile.
+    try {
+      const search = await stripe.paymentIntents.search({
+        query: `metadata['invoiceId']:'${chargeId}'`,
+        limit: 1,
+      });
+      const unclearedPi = search.data.find(p => !TERMINAL_FAILED.has(p.status));
+      if (unclearedPi) {
+        if (unclearedPi.status === "succeeded") {
+          const refundIdempotencyKey = `refund-cancel-charge-${chargeId}`;
+          try {
+            await stripe.refunds.create({ payment_intent: unclearedPi.id }, { idempotencyKey: refundIdempotencyKey });
+          } catch (refundErr: unknown) {
+            logger.error({ err: refundErr, piId: unclearedPi.id, invoiceId: chargeId }, "Stripe refund failed during metadata-reconciled cancellation charge removal");
+            res.status(502).json({ error: "Found an unrefunded Stripe charge. Please refund it in the Stripe dashboard first, then try again." });
+            return;
+          }
+          const [updated] = await db.transaction(async (tx) => {
+            const rows = await tx.update(jobsTable).set({ cancellationChargeId: null } as any)
+              .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
+              .returning();
+            await tx.update(invoicesTable).set({ status: "void" } as any)
+              .where(and(eq(invoicesTable.id, chargeId), eq(invoicesTable.tenantId, tenantId)));
+            return rows;
+          });
+          res.json(formatJob(updated));
+          return;
+        }
+        // Non-succeeded, non-terminal state — fail closed.
+        res.status(409).json({
+          error: `Stripe payment is in a non-terminal state (${unclearedPi.status}). Wait for Stripe to finalize, then try again.`,
+        });
+        return;
+      }
+      // All found PIs are in terminal-failed states, or none found — safe to delete.
+    } catch (searchErr: unknown) {
+      // Stripe search failed — cannot confirm payment state; fail closed.
+      logger.error({ err: searchErr, invoiceId: chargeId }, "Stripe metadata search failed during cancellation charge removal — cannot confirm payment state");
+      res.status(502).json({
+        error:
+          "Could not verify Stripe payment state. Please check the Stripe dashboard for any charge against this job " +
+          "(search by invoiceId metadata). If a payment exists, refund it manually, then try removing the charge again.",
+      });
+      return;
+    }
+  }
+  // Stripe unavailable AND no PI URL stored → Stripe was never configured when
+  // the charge was created; invoice was draft for manual collection → safe to delete.
+
+  // No confirmed Stripe payment — delete the draft invoice atomically
+  const [updated] = await db.transaction(async (tx) => {
+    const rows = await tx.update(jobsTable).set({ cancellationChargeId: null } as any)
+      .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
+      .returning();
+    await tx.delete(invoicesTable)
+      .where(and(eq(invoicesTable.id, chargeId), eq(invoicesTable.tenantId, tenantId)));
+    return rows;
+  });
   res.json(formatJob(updated));
 });
 

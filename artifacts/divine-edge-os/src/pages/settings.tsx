@@ -128,6 +128,9 @@ export default function SettingsPage() {
   const [callbackWarningThresholdPct, setCallbackWarningThresholdPct] = useState('10');
   // Plan renewal warning
   const [renewalWarningDays, setRenewalWarningDays] = useState('30');
+  // Cancellation policy
+  const [cancellationFeeEnabled, setCancellationFeeEnabled] = useState(false);
+  const [cancellationFeeAmount, setCancellationFeeAmount] = useState('50');
   const [teamSearch, setTeamSearch] = useState('');
   const [teamRoleFilter, setTeamRoleFilter] = useState('all');
 
@@ -285,6 +288,8 @@ export default function SettingsPage() {
       setCallbackDueHoursLow(String((settings as any).callbackDueHoursLow ?? 72));
       setCallbackWarningThresholdPct(String((settings as any).callbackWarningThresholdPct ?? 10));
       setRenewalWarningDays(String((settings as any).renewalWarningDays ?? 30));
+      setCancellationFeeEnabled((settings as any).cancellationFeeEnabled ?? false);
+      setCancellationFeeAmount(String((settings as any).cancellationFeeAmount ?? 50));
       setEquipRepairPct(String((settings as any).equipmentRepairThresholdPct ?? 50));
       setEquipResalePct(String((settings as any).equipmentResaleThresholdPct ?? 20));
       setDefaultGeofenceRadius(String((settings as any).defaultGeofenceRadius ?? 100));
@@ -441,7 +446,7 @@ export default function SettingsPage() {
 
   const saveGeneral = () => {
     updateSettings.mutate(
-      { data: { companyName, timezone, taxRate: parseFloat(taxRate), overageMaterialBuffer: parseFloat(buffer), taxEnabled, estimateExpiryDays: parseInt(estimateExpiryDays, 10) || 30, invoiceDueDays: parseInt(invoiceDueDays, 10) || 30, callbackDueHoursHigh: parseInt(callbackDueHoursHigh, 10) || 4, callbackDueHoursNormal: parseInt(callbackDueHoursNormal, 10) || 24, callbackDueHoursLow: parseInt(callbackDueHoursLow, 10) || 72, renewalWarningDays: parseInt(renewalWarningDays, 10) || 30, callbackWarningThresholdPct: parseInt(callbackWarningThresholdPct, 10) || 10 } as Parameters<typeof updateSettings.mutate>[0]['data'] },
+      { data: { companyName, timezone, taxRate: parseFloat(taxRate), overageMaterialBuffer: parseFloat(buffer), taxEnabled, estimateExpiryDays: parseInt(estimateExpiryDays, 10) || 30, invoiceDueDays: parseInt(invoiceDueDays, 10) || 30, callbackDueHoursHigh: parseInt(callbackDueHoursHigh, 10) || 4, callbackDueHoursNormal: parseInt(callbackDueHoursNormal, 10) || 24, callbackDueHoursLow: parseInt(callbackDueHoursLow, 10) || 72, renewalWarningDays: parseInt(renewalWarningDays, 10) || 30, callbackWarningThresholdPct: parseInt(callbackWarningThresholdPct, 10) || 10, cancellationFeeEnabled, cancellationFeeAmount: parseFloat(cancellationFeeAmount) || 0 } as Parameters<typeof updateSettings.mutate>[0]['data'] },
       {
         onSuccess: () => { toast.success('Settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
         onError: () => toast.error('Failed to save settings'),
@@ -745,6 +750,35 @@ export default function SettingsPage() {
                     <span className="text-xs text-muted-foreground">days</span>
                   </div>
                 </div>
+              </div>
+              <div className="pt-2 border-t space-y-3">
+                <div>
+                  <p className="text-sm font-medium">Cancellation Fee</p>
+                  <p className="text-xs text-muted-foreground">Automatically create a draft charge invoice when a customer cancels a job via the portal within the allowed window.</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={cancellationFeeEnabled}
+                    title={cancellationFeeEnabled ? 'Disable cancellation fee' : 'Enable cancellation fee'}
+                    onClick={() => setCancellationFeeEnabled(v => !v)}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus-visible:outline-none ${cancellationFeeEnabled ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${cancellationFeeEnabled ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+                  </button>
+                  <span className="text-sm">{cancellationFeeEnabled ? 'Enabled' : 'Disabled'}</span>
+                </div>
+                {cancellationFeeEnabled && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Fee amount:</span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm text-muted-foreground">$</span>
+                      <Input type="number" min={0} step={0.01} value={cancellationFeeAmount} onChange={e => setCancellationFeeAmount(e.target.value)} className="w-24" placeholder="0.00" />
+                    </div>
+                    <p className="text-xs text-muted-foreground">A draft invoice for this amount is created when a customer cancels via the portal.</p>
+                  </div>
+                )}
               </div>
               <div className="space-y-3 pt-2 border-t">
                 <div>

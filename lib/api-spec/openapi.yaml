@@ -10295,6 +10295,9 @@ components:
           items:
             type: string
           description: "Ordered list of shortcut IDs shown in the header quick-add bar (tenant-wide, max 6)"
+        slug:
+          type: ["string", "null"]
+          description: "URL-safe slug used in the customer portal link (?tenant=slug)"
 
     PauseSeriesInput:
       type: object

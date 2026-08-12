@@ -13,6 +13,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
 import {
+  customFetch,
   useListEstimates, getListEstimatesQueryKey,
   useGetEstimate, getGetEstimateQueryKey,
   useCreateEstimate,
@@ -31,7 +32,7 @@ import {
 import { format } from 'date-fns';
 import {
   Plus, FileText, DollarSign, TrendingUp, Send, Briefcase, Trash2,
-  ChevronRight, Eye, Clock, User, MapPin, CheckCircle2, XCircle, Phone, Mail, Globe, Building2, Printer, Search, Edit2, RefreshCw, Copy, X, Target,
+  ChevronRight, Eye, Clock, User, MapPin, CheckCircle2, XCircle, Phone, Mail, Globe, Building2, Printer, Search, Edit2, RefreshCw, Copy, X, Target, Package, Layers,
 } from 'lucide-react';
 import { Link, useSearch, useLocation } from 'wouter';
 import { printEstimate } from '@/lib/printUtils';
@@ -59,6 +60,30 @@ interface LineItem {
   isOptional: boolean;
   optionalPitchLine: string;
   acceptedByCustomer: boolean;
+  // Catalog linking
+  serviceId?: number;
+  serviceName?: string;
+  secondaryServiceId?: number;
+  secondaryServiceName?: string;
+  // Plan template linking
+  planTemplateId?: number;
+  planTemplateName?: string;
+  planBillingCycle?: string;
+}
+
+interface CatalogService {
+  id: number;
+  name: string;
+  basePrice: number;
+  category: string | null;
+}
+
+interface CatalogPlan {
+  id: number;
+  name: string;
+  price: number;
+  billingCycle: string;
+  description: string | null;
 }
 
 function emptyItem(): LineItem {
@@ -274,6 +299,8 @@ export default function EstimatesPage() {
     templateId: '',
   });
   const [lineItems, setLineItems] = useState<LineItem[]>([emptyItem()]);
+  const [catalogServices, setCatalogServices] = useState<CatalogService[] | null>(null);
+  const [catalogPlans, setCatalogPlans] = useState<CatalogPlan[] | null>(null);
 
   const listParams = { ...(statusFilter ? { status: statusFilter } : {}), ...(assigneeFilter ? { assigneeId: assigneeFilter } : {}) };
   const { data: estimates, isLoading } = useListEstimates(listParams, {
@@ -293,6 +320,21 @@ export default function EstimatesPage() {
     setNotesVal(selectedEstimate?.notes ?? '');
     setEditingNotes(false);
   }, [selectedId]);
+
+  // Load service catalog and plan templates when create sheet opens
+  useEffect(() => {
+    if (!createOpen) return;
+    if (catalogServices === null) {
+      customFetch<CatalogService[]>('/api/services?activeOnly=true')
+        .then(d => setCatalogServices(d))
+        .catch(() => setCatalogServices([]));
+    }
+    if (catalogPlans === null) {
+      customFetch<CatalogPlan[]>('/api/plan-templates')
+        .then(d => setCatalogPlans(d.filter((p: any) => p.isActive !== false)))
+        .catch(() => setCatalogPlans([]));
+    }
+  }, [createOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const createEstimate = useCreateEstimate();
   const updateEstimate = useUpdateEstimate();
@@ -338,6 +380,13 @@ export default function EstimatesPage() {
           isOptional: i.isOptional,
           optionalPitchLine: i.optionalPitchLine || null,
           acceptedByCustomer: !i.isOptional,
+          serviceId: i.serviceId ?? null,
+          serviceName: i.serviceName ?? null,
+          secondaryServiceId: i.secondaryServiceId ?? null,
+          secondaryServiceName: i.secondaryServiceName ?? null,
+          planTemplateId: i.planTemplateId ?? null,
+          planTemplateName: i.planTemplateName ?? null,
+          planBillingCycle: i.planBillingCycle ?? null,
         })),
       },
     }, {
@@ -760,53 +809,174 @@ export default function EstimatesPage() {
 
             {/* Line items */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <h3 className="font-semibold text-sm">Line Items</h3>
-                <Button variant="outline" size="sm" onClick={() => setLineItems(i => [...i, emptyItem()])}>
-                  <Plus className="w-3.5 h-3.5 mr-1.5" /> Add Item
-                </Button>
+                <div className="flex items-center gap-2">
+                  {/* Add plan as line item */}
+                  {(catalogPlans ?? []).length > 0 && (
+                    <Select
+                      value=""
+                      onValueChange={planId => {
+                        const plan = catalogPlans?.find(p => String(p.id) === planId);
+                        if (!plan) return;
+                        setLineItems(items => [...items, {
+                          ...emptyItem(),
+                          description: plan.name + (plan.description ? ` — ${plan.description}` : ''),
+                          unitPrice: plan.price,
+                          planTemplateId: plan.id,
+                          planTemplateName: plan.name,
+                          planBillingCycle: plan.billingCycle,
+                        }]);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 text-xs gap-1 w-auto px-2.5" title="Add a service plan as a line item">
+                        <Package className="w-3.5 h-3.5 shrink-0" />
+                        <span>Add Plan</span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(catalogPlans ?? []).map(p => (
+                          <SelectItem key={p.id} value={String(p.id)}>
+                            <span>{p.name}</span>
+                            <span className="ml-2 text-muted-foreground">${p.price.toFixed(2)}/{p.billingCycle}</span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <Button variant="outline" size="sm" onClick={() => setLineItems(i => [...i, emptyItem()])}>
+                    <Plus className="w-3.5 h-3.5 mr-1.5" /> Add Item
+                  </Button>
+                </div>
               </div>
 
-              {lineItems.map((item, idx) => (
-                <div key={item.id} className={`rounded-lg border p-4 space-y-3 ${item.isOptional ? 'border-dashed border-amber-300 bg-amber-50/50' : ''}`}>
-                  <div className="flex items-start gap-2">
-                    <div className="flex-1">
-                      <Input title="Line item description" placeholder="Description" value={item.description} onChange={e => updateLineItem(idx, { description: e.target.value })} />
+              {lineItems.map((item, idx) => {
+                const isPlan = !!item.planTemplateId;
+                const hasPrimary = !!item.serviceId;
+                return (
+                  <div key={item.id} className={`rounded-lg border p-4 space-y-3 ${item.isOptional ? 'border-dashed border-amber-300 bg-amber-50/50' : ''} ${isPlan ? 'border-violet-200 bg-violet-50/30' : ''} ${item.secondaryServiceId && !isPlan ? 'border-indigo-200 bg-indigo-50/20' : ''}`}>
+
+                    {/* Catalog picker row */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Primary service picker */}
+                      <Select
+                        value={item.serviceId ? String(item.serviceId) : '__custom__'}
+                        onValueChange={v => {
+                          if (v === '__custom__') {
+                            updateLineItem(idx, { serviceId: undefined, serviceName: undefined, secondaryServiceId: undefined, secondaryServiceName: undefined });
+                          } else {
+                            const svc = catalogServices?.find(s => String(s.id) === v);
+                            if (!svc) return;
+                            const sec = item.secondaryServiceId ? catalogServices?.find(s => s.id === item.secondaryServiceId) : undefined;
+                            const desc = sec ? `${svc.name} + ${sec.name}` : svc.name;
+                            const price = svc.basePrice + (sec?.basePrice ?? 0);
+                            updateLineItem(idx, { serviceId: svc.id, serviceName: svc.name, description: desc, unitPrice: price });
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="h-8 text-xs flex-1 min-w-[140px]" title="Pick a service from the catalog — auto-fills description and price">
+                          <SelectValue placeholder="Custom / pick service..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__custom__">Custom line item</SelectItem>
+                          {(catalogServices ?? []).map(s => (
+                            <SelectItem key={s.id} value={String(s.id)}>
+                              {s.name}
+                              <span className="ml-2 text-muted-foreground">${s.basePrice.toFixed(2)}</span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      {/* Secondary (bundle) service picker — only shown when a primary is selected */}
+                      {hasPrimary && (
+                        <Select
+                          value={item.secondaryServiceId ? String(item.secondaryServiceId) : '__none__'}
+                          onValueChange={v => {
+                            const svc1 = catalogServices?.find(s => s.id === item.serviceId);
+                            if (v === '__none__') {
+                              updateLineItem(idx, {
+                                secondaryServiceId: undefined, secondaryServiceName: undefined,
+                                description: svc1?.name ?? item.description,
+                                unitPrice: svc1?.basePrice ?? item.unitPrice,
+                              });
+                            } else {
+                              const svc2 = catalogServices?.find(s => String(s.id) === v);
+                              if (!svc2) return;
+                              updateLineItem(idx, {
+                                secondaryServiceId: svc2.id,
+                                secondaryServiceName: svc2.name,
+                                description: `${svc1?.name ?? item.serviceName} + ${svc2.name}`,
+                                unitPrice: (svc1?.basePrice ?? 0) + svc2.basePrice,
+                              });
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-xs w-48" title="Bundle a second service into this line item — both services appear as one combined line">
+                            <Layers className="w-3 h-3 mr-1 text-indigo-500 shrink-0" />
+                            <SelectValue placeholder="+ Bundle service" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">No bundle</SelectItem>
+                            {(catalogServices ?? []).filter(s => s.id !== item.serviceId).map(s => (
+                              <SelectItem key={s.id} value={String(s.id)}>
+                                + {s.name}
+                                <span className="ml-1 text-muted-foreground">${s.basePrice.toFixed(2)}</span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+
+                      {/* Badges */}
+                      {item.secondaryServiceId && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 text-indigo-600 border-indigo-300 shrink-0">bundled</Badge>
+                      )}
+                      {isPlan && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 text-violet-600 border-violet-300 shrink-0 gap-0.5">
+                          <Package className="w-2.5 h-2.5" /> plan
+                        </Badge>
+                      )}
+
+                      <Button variant="ghost" size="sm" className="text-muted-foreground h-8 w-8 p-0 shrink-0 ml-auto" onClick={() => setLineItems(i => i.filter((_, j) => j !== idx))} disabled={lineItems.length === 1}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
                     </div>
-                    <Button variant="ghost" size="sm" className="text-muted-foreground h-9 w-9 p-0 shrink-0" onClick={() => setLineItems(i => i.filter((_, j) => j !== idx))} disabled={lineItems.length === 1}>
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
+
+                    {/* Description */}
+                    <Input title="Line item description shown to the customer" placeholder="Description" value={item.description} onChange={e => updateLineItem(idx, { description: e.target.value })} />
+
+                    {/* Qty / Price / Markup / Discount */}
+                    <div className="grid grid-cols-4 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Qty</label>
+                        <Input type="number" min={1} step={1} title="Number of units" value={item.qty} onChange={e => updateLineItem(idx, { qty: parseFloat(e.target.value) || 1 })} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Unit Price</label>
+                        <Input type="number" min={0} step={0.01} title="Price per unit" value={item.unitPrice} onChange={e => updateLineItem(idx, { unitPrice: parseFloat(e.target.value) || 0 })} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Markup %</label>
+                        <Input type="number" min={0} step={1} title="Markup percentage added on top of unit price" value={item.markup} onChange={e => updateLineItem(idx, { markup: parseFloat(e.target.value) || 0 })} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Discount %</label>
+                        <Input type="number" min={0} step={1} title="Discount percentage subtracted from the marked-up price" value={item.discount} onChange={e => updateLineItem(idx, { discount: parseFloat(e.target.value) || 0 })} />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <label className="flex items-center gap-2 cursor-pointer text-sm">
+                        <input type="checkbox" checked={item.isOptional} onChange={e => updateLineItem(idx, { isOptional: e.target.checked })} className="rounded" />
+                        Mark as Optional (Add-On)
+                      </label>
+                      <span className="ml-auto text-sm font-medium" title={`Line total: $${calcItem(item).toFixed(2)}`}>${calcItem(item).toFixed(2)}</span>
+                    </div>
+                    {item.isOptional && (
+                      <Input title="Upsell pitch line shown to the customer when they view this estimate" placeholder="Pitch line (e.g. While we're there — trim your hedges for $45)" value={item.optionalPitchLine} onChange={e => updateLineItem(idx, { optionalPitchLine: e.target.value })} className="text-sm" />
+                    )}
                   </div>
-                  <div className="grid grid-cols-4 gap-2">
-                    <div className="space-y-1">
-                      <label className="text-xs text-muted-foreground">Qty</label>
-                      <Input type="number" min={1} step={1} title="Number of units" value={item.qty} onChange={e => updateLineItem(idx, { qty: parseFloat(e.target.value) || 1 })} />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs text-muted-foreground">Unit Price</label>
-                      <Input type="number" min={0} step={0.01} title="Price per unit" value={item.unitPrice} onChange={e => updateLineItem(idx, { unitPrice: parseFloat(e.target.value) || 0 })} />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs text-muted-foreground">Markup %</label>
-                      <Input type="number" min={0} step={1} title="Markup percentage added on top of unit price" value={item.markup} onChange={e => updateLineItem(idx, { markup: parseFloat(e.target.value) || 0 })} />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs text-muted-foreground">Discount %</label>
-                      <Input type="number" min={0} step={1} title="Discount percentage subtracted from the marked-up price" value={item.discount} onChange={e => updateLineItem(idx, { discount: parseFloat(e.target.value) || 0 })} />
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <label className="flex items-center gap-2 cursor-pointer text-sm">
-                      <input type="checkbox" checked={item.isOptional} onChange={e => updateLineItem(idx, { isOptional: e.target.checked })} className="rounded" />
-                      Mark as Optional (Add-On)
-                    </label>
-                    <span className="ml-auto text-sm font-medium" title={`Line total: $${calcItem(item).toFixed(2)}`}>${calcItem(item).toFixed(2)}</span>
-                  </div>
-                  {item.isOptional && (
-                    <Input title="Upsell pitch line shown to the customer when they view this estimate" placeholder="Pitch line (e.g. While we're there — trim your hedges for $45)" value={item.optionalPitchLine} onChange={e => updateLineItem(idx, { optionalPitchLine: e.target.value })} className="text-sm" />
-                  )}
-                </div>
-              ))}
+                );
+              })}
 
               <div className="flex justify-end pt-2">
                 <div className="text-right">
@@ -1121,8 +1291,18 @@ export default function EstimatesPage() {
                       {required.map((item) => (
                         <div key={item.id} className="flex items-start justify-between gap-4 text-sm">
                           <div className="flex-1">
-                            <p className="font-medium" title={item.description || undefined}>{item.description || '—'}</p>
-                            <p className="text-muted-foreground text-xs">Qty {item.qty} × ${item.unitPrice.toFixed(2)}{item.markup > 0 && ` + ${item.markup}% markup`}{item.discount > 0 && ` − ${item.discount}% disc`}</p>
+                            <p className="font-medium" title={item.description || undefined}>
+                              {item.description || '—'}
+                              {(item as any).secondaryServiceId && (
+                                <Badge variant="outline" className="ml-1.5 text-[10px] px-1 text-indigo-600 border-indigo-300 align-middle">bundled</Badge>
+                              )}
+                              {(item as any).planTemplateId && (
+                                <Badge variant="outline" className="ml-1.5 text-[10px] px-1 text-violet-600 border-violet-300 align-middle gap-0.5">
+                                  <Package className="w-2.5 h-2.5" /> plan
+                                </Badge>
+                              )}
+                            </p>
+                            <p className="text-muted-foreground text-xs">Qty {item.qty} × ${item.unitPrice.toFixed(2)}{item.markup > 0 && ` + ${item.markup}% markup`}{item.discount > 0 && ` − ${item.discount}% disc`}{(item as any).planBillingCycle && ` · ${(item as any).planBillingCycle}`}</p>
                           </div>
                           <span className="font-medium shrink-0" title={`Line total: $${calcItem(item).toFixed(2)}`}>${calcItem(item).toFixed(2)}</span>
                         </div>

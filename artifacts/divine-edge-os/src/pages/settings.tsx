@@ -42,7 +42,7 @@ import {
   GripVertical, EyeOff, Eye, Star, Settings as SettingsIcon, TrendingUp,
   ArrowRight, FlaskConical, Pencil, X, MapPin, Ruler, Navigation, MessageSquare,
   Phone, Mail, Send, Wifi, WifiOff, CheckCircle, AlertCircle,
-  ImageIcon, Bell, Star as StarIcon, Link, Camera, Loader2,
+  ImageIcon, Bell, Star as StarIcon, Link, Camera, Loader2, Copy, ExternalLink,
   PhoneMissed as PhoneMissedIcon, FileText, Tag, SkipForward, Zap,
 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
@@ -657,6 +657,50 @@ export default function SettingsPage() {
               <Button onClick={saveGeneral} disabled={updateSettings.isPending}>
                 {updateSettings.isPending ? 'Saving...' : 'Save Changes'}
               </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Customer Portal</CardTitle>
+              <CardDescription>
+                Share this link with your customers so they can view invoices, jobs, and account details.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 relative">
+                  <Input
+                    readOnly
+                    value={`${window.location.origin}/portal/?tenant=${user?.tenantId ?? 1}`}
+                    className="pr-10 font-mono text-sm bg-muted"
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`${window.location.origin}/portal/?tenant=${user?.tenantId ?? 1}`);
+                    toast.success('Portal link copied to clipboard');
+                  }}
+                >
+                  <Copy className="w-4 h-4 mr-1.5" />
+                  Copy
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => window.open(`/portal/?tenant=${user?.tenantId ?? 1}`, '_blank')}
+                >
+                  <ExternalLink className="w-4 h-4 mr-1.5" />
+                  Open
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Customers log in with the email and phone number you have on file for them.
+              </p>
             </CardContent>
           </Card>
 

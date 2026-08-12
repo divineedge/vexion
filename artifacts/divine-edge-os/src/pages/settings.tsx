@@ -55,7 +55,7 @@ import DevToolsPanel from '@/components/settings/DevToolsPanel';
 import RoutingSettings from '@/components/settings/RoutingSettings';
 
 export default function SettingsPage() {
-  const { isSuperAdmin, isOwner } = useAuth();
+  const { isSuperAdmin, isOwner, user } = useAuth();
   const qc = useQueryClient();
   const [, setLocation] = useLocation();
 

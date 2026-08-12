@@ -99,6 +99,85 @@ async function requirePortalAuth(
 }
 
 // ---------------------------------------------------------------------------
+// POST /portal/auth/login  (email + last 4 digits of phone on file)
+// ---------------------------------------------------------------------------
+router.post("/portal/auth/login", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const { email, last4Phone } = req.body as { email?: string; last4Phone?: string };
+
+  if (!email || !last4Phone) {
+    res.status(400).json({ error: "email and last4Phone required" });
+    return;
+  }
+
+  const trimmedLast4 = last4Phone.replace(/\D/g, "").slice(-4);
+  if (trimmedLast4.length !== 4) {
+    res.status(400).json({ error: "last4Phone must be 4 digits" });
+    return;
+  }
+
+  const [customer] = await db
+    .select()
+    .from(customersTable)
+    .where(
+      and(
+        eq(customersTable.tenantId, tenantId),
+        eq(customersTable.email, email.toLowerCase().trim()),
+      ),
+    )
+    .limit(1);
+
+  if (!customer) {
+    // Return the same generic error for both not-found and wrong phone
+    // so we don't leak which emails are registered.
+    res.status(401).json({ error: "Email or phone number does not match our records." });
+    return;
+  }
+
+  // Strip non-digits from the stored phone and check the last 4
+  const storedDigits = (customer.phone ?? "").replace(/\D/g, "");
+  if (storedDigits.length < 4 || !storedDigits.endsWith(trimmedLast4)) {
+    res.status(401).json({ error: "Email or phone number does not match our records." });
+    return;
+  }
+
+  // Issue a session token valid for 30 days (reuse the OTP sessions table)
+  const sessionToken = generateToken();
+  const sessionHash = hashToken(sessionToken);
+  const sessionExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+  // Clear any pre-existing sessions for this customer
+  await db
+    .delete(customerOtpSessionsTable)
+    .where(
+      and(
+        eq(customerOtpSessionsTable.email, email.toLowerCase().trim()),
+        eq(customerOtpSessionsTable.tenantId, tenantId),
+      ),
+    );
+
+  await db.insert(customerOtpSessionsTable).values({
+    tenantId,
+    customerId: customer.id,
+    email: email.toLowerCase().trim(),
+    otpHash: "",           // no OTP used in this flow
+    sessionToken: sessionHash,
+    expiresAt: sessionExpiry,
+  });
+
+  res.json({
+    token: sessionToken,
+    customer: {
+      id: customer.id,
+      name: customer.name,
+      email: customer.email,
+      phone: customer.phone,
+      company: customer.company ?? null,
+    },
+  });
+});
+
+// ---------------------------------------------------------------------------
 // POST /portal/auth/request-otp
 // ---------------------------------------------------------------------------
 router.post("/portal/auth/request-otp", async (req, res): Promise<void> => {

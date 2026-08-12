@@ -3815,6 +3815,27 @@ paths:
           description: OK
 
   # PORTAL AUTH (public — no staff auth required)
+  /portal/auth/login:
+    post:
+      operationId: portalLogin
+      tags: [portal]
+      summary: Sign in with email + last 4 digits of phone on file
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortalLoginRequest"
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalAuthResponse"
+        "401":
+          description: Email or phone does not match
+
   /portal/auth/request-otp:
     post:
       operationId: portalRequestOtp
@@ -11755,6 +11776,16 @@ components:
             $ref: "#/components/schemas/ShrinkageReportLine"
 
     # PORTAL SCHEMAS
+    PortalLoginRequest:
+      type: object
+      required: [email, last4Phone]
+      properties:
+        email:
+          type: string
+        last4Phone:
+          type: string
+          description: Last 4 digits of the phone number on file
+
     PortalOtpRequest:
       type: object
       required: [email]

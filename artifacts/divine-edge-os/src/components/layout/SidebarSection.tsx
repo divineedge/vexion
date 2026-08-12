@@ -51,13 +51,13 @@ export function SidebarSection({ section, onNavClick, badgeCounts }: SidebarSect
       <button
         onClick={toggle}
         className={cn(
-          'w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-semibold uppercase tracking-widest transition-colors',
+          'w-full flex items-center justify-between px-3 py-1.5 rounded-md text-xs font-semibold uppercase tracking-wider transition-colors',
           isActiveSectionItem
             ? 'text-sidebar-foreground/90'
             : 'text-sidebar-foreground/40 hover:text-sidebar-foreground/70'
         )}
       >
-        <span>{section.label}</span>
+        <span className="truncate whitespace-nowrap">{section.label}</span>
         <ChevronDown
           className={cn(
             'w-3.5 h-3.5 transition-transform duration-200',

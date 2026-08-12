@@ -56,6 +56,8 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* Portal activity banner — shown at top when there's pending customer activity */}
+      {!isTechnician && <PortalActivityWidget />}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
@@ -240,7 +242,6 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           )}
-          {!isTechnician && <PortalActivityWidget />}
           <MyTasksWidget />
           <FollowupQueueWidget />
         </div>
@@ -306,44 +307,53 @@ function PortalActivityWidget() {
   const unread = unreadData?.count ?? 0;
   const requests = portalJobs ?? [];
 
+  // Hide while loading and when there's genuinely no activity
+  if (unreadData === undefined && portalJobs === undefined) return null;
+  if ((unreadData?.count ?? 0) === 0 && (portalJobs?.length ?? 0) === 0) return null;
+
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm flex items-center justify-between gap-2">
-          <span className="flex items-center gap-2"><Inbox className="w-4 h-4 text-primary" /> Portal Activity</span>
-          {unread > 0 && (
-            <Badge className="bg-primary text-primary-foreground text-xs h-5 px-1.5">{unread} unread</Badge>
-          )}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-0 pb-1">
-        {unread > 0 && (
+    <Card className="border-l-4 border-l-primary shadow-sm">
+      <CardHeader className="pb-2 pt-3">
+        <CardTitle className="text-sm flex items-center justify-between">
+          <span className="flex items-center gap-2 font-semibold text-primary">
+            <Inbox className="w-4 h-4" /> Portal Activity
+            {unread > 0 && (
+              <Badge className="bg-primary text-primary-foreground text-xs h-5 px-1.5">{unread} unread</Badge>
+            )}
+          </span>
           <button
-            className="w-full flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-muted/40 transition-colors text-left border-b"
+            className="text-xs text-primary hover:underline font-normal"
             onClick={() => setLocation('/portal-inbox')}
           >
-            <MessageSquare className="w-3.5 h-3.5 text-primary shrink-0" />
-            <span className="flex-1 font-medium">{unread} unread message{unread !== 1 ? 's' : ''} from customers</span>
-            <span className="text-primary text-xs">View →</span>
+            View all →
+          </button>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-0 pb-2">
+        {unread > 0 && (
+          <button
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-primary/5 transition-colors text-left"
+            onClick={() => setLocation('/portal-inbox')}
+          >
+            <MessageSquare className="w-4 h-4 text-primary shrink-0" />
+            <span className="font-semibold text-primary">{unread} unread message{unread !== 1 ? 's' : ''} from customers</span>
           </button>
         )}
-        {requests.length > 0 ? (
+        {requests.length > 0 && (
           <div className="divide-y">
             {requests.slice(0, 3).map((j: any) => (
               <button
                 key={j.id}
-                className="w-full flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-muted/40 transition-colors text-left"
+                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-muted/50 transition-colors text-left"
                 onClick={() => setLocation(`/schedule?jobId=${j.id}`)}
               >
                 <Briefcase className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                 <span className="flex-1 truncate">{j.customerName ?? 'Customer'} — service request</span>
-                <span className="text-xs text-muted-foreground shrink-0">new</span>
+                <Badge variant="outline" className="text-[10px] shrink-0">new</Badge>
               </button>
             ))}
           </div>
-        ) : unread === 0 ? (
-          <p className="px-4 py-3 text-sm text-muted-foreground">No new portal activity.</p>
-        ) : null}
+        )}
       </CardContent>
     </Card>
   );

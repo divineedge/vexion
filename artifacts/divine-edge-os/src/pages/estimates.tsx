@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
@@ -32,7 +32,7 @@ import {
 import { format } from 'date-fns';
 import {
   Plus, FileText, DollarSign, TrendingUp, Send, Briefcase, Trash2,
-  ChevronRight, Eye, Clock, User, MapPin, CheckCircle2, XCircle, Phone, Mail, Globe, Building2, Printer, Search, Edit2, RefreshCw, Copy, X, Target, Package, Layers,
+  ChevronRight, Eye, Clock, User, MapPin, CheckCircle2, XCircle, Phone, Mail, Globe, Building2, Printer, Search, Edit2, RefreshCw, Copy, X, Target, Package, Layers, Calendar, Loader2, Receipt,
 } from 'lucide-react';
 import { Link, useSearch, useLocation } from 'wouter';
 import { printEstimate } from '@/lib/printUtils';
@@ -319,6 +319,8 @@ export default function EstimatesPage() {
   useEffect(() => {
     setNotesVal(selectedEstimate?.notes ?? '');
     setEditingNotes(false);
+    setEditingLineItems(false);
+    setEditLineItemsList([]);
   }, [selectedId]);
 
   // Load service catalog and plan templates when create sheet opens
@@ -452,19 +454,75 @@ export default function EstimatesPage() {
     });
   }
 
-  const [convertConfirmId, setConvertConfirmId] = useState<number | null>(null);
+  // ── Line item editing (estimate detail panel) ────────────────────────────────
+  const [editingLineItems, setEditingLineItems] = useState(false);
+  const [editLineItemsList, setEditLineItemsList] = useState<LineItem[]>([]);
 
-  function handleConvert(id: number) {
-    convertToJob.mutate({ id }, {
-      onSuccess: (r) => {
-        toast.success(`Job #${r.jobId} created`, {
-          action: { label: 'View Job', onClick: () => setLocation(`/schedule?jobId=${r.jobId}`) },
-        });
-        invalidate();
-        setConvertConfirmId(null);
-      },
-      onError: () => toast.error('Failed to convert estimate'),
-    });
+  function startEditLineItems() {
+    if (!selectedEstimate) return;
+    setEditLineItemsList(
+      ((selectedEstimate.lineItems ?? []) as LineItem[]).map(i => ({ ...i, id: (i as any).id ?? crypto.randomUUID() }))
+    );
+    setEditingLineItems(true);
+  }
+  function cancelEditLineItems() { setEditingLineItems(false); setEditLineItemsList([]); }
+  function saveEditLineItems() {
+    if (!selectedEstimate) return;
+    const total = editLineItemsList.reduce((s, i) => s + calcItem(i), 0);
+    updateEstimate.mutate(
+      { id: selectedEstimate.id, data: { lineItems: editLineItemsList, totalAmount: total } as any },
+      {
+        onSuccess: () => {
+          toast.success('Line items saved');
+          setEditingLineItems(false);
+          qc.invalidateQueries({ queryKey: getListEstimatesQueryKey() });
+          qc.invalidateQueries({ queryKey: getGetEstimateQueryKey(selectedEstimate.id) });
+        },
+        onError: () => toast.error('Failed to save line items'),
+      }
+    );
+  }
+
+  // ── Schedule-job dialog state ────────────────────────────────────────────────
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
+  const [scheduleEstimateId, setScheduleEstimateId] = useState<number | null>(null);
+  const [scheduleForm, setScheduleForm] = useState({ title: '', scheduledAt: '', assigneeId: '', invoiceNow: true });
+  const [converting, setConverting] = useState(false);
+
+  function openScheduleDialog(estimate: any) {
+    const defaultTitle = estimate.customerName ? `Service for ${estimate.customerName}` : `Job from Estimate #${estimate.id}`;
+    setScheduleForm({ title: defaultTitle, scheduledAt: '', assigneeId: estimate.assigneeId ? String(estimate.assigneeId) : '', invoiceNow: true });
+    setScheduleEstimateId(estimate.id);
+    setScheduleDialogOpen(true);
+  }
+
+  async function handleConvertWithSchedule() {
+    if (!scheduleEstimateId) return;
+    setConverting(true);
+    try {
+      const r = await customFetch<{ jobId: number; invoiceId: number | null }>(`/api/estimates/${scheduleEstimateId}/convert`, {
+        method: 'POST',
+        body: JSON.stringify({
+          title: scheduleForm.title || undefined,
+          scheduledAt: scheduleForm.scheduledAt || undefined,
+          assigneeId: scheduleForm.assigneeId ? parseInt(scheduleForm.assigneeId) : undefined,
+          invoiceNow: scheduleForm.invoiceNow,
+        }),
+      });
+      toast.success(`Job #${r.jobId} scheduled`, {
+        action: { label: 'View Job', onClick: () => setLocation(`/schedule?jobId=${r.jobId}`) },
+      });
+      if (r.invoiceId) {
+        toast.info('Draft invoice created — review and send it from Billing');
+      }
+      invalidate();
+      setScheduleDialogOpen(false);
+      setScheduleEstimateId(null);
+    } catch (err: any) {
+      toast.error(err?.message ?? 'Failed to schedule job');
+    } finally {
+      setConverting(false);
+    }
   }
 
   function handleDelete(id: number) {
@@ -1057,24 +1115,18 @@ export default function EstimatesPage() {
                     </Button>
                   )}
                   {selectedEstimate.status === 'approved' && !selectedEstimate.convertedToJobId && canManageOffice && (
-                    convertConfirmId === selectedEstimate.id ? (
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">Create a new job from this estimate?</span>
-                        <Button size="sm" className="gap-1.5" title="Confirm and create a new job from this estimate" onClick={() => handleConvert(selectedEstimate.id)} disabled={convertToJob.isPending}>
-                          <Briefcase className="w-3.5 h-3.5" /> {convertToJob.isPending ? 'Converting…' : 'Confirm'}
-                        </Button>
-                        <Button size="sm" variant="outline" title="Cancel converting to a job" onClick={() => setConvertConfirmId(null)}>Cancel</Button>
-                      </div>
-                    ) : (
-                      <Button size="sm" className="gap-2" title="Create a new job from this approved estimate" onClick={() => setConvertConfirmId(selectedEstimate.id)} disabled={convertToJob.isPending}>
-                        <Briefcase className="w-3.5 h-3.5" /> Convert to Job
-                      </Button>
-                    )
+                    <Button size="sm" className="gap-2" title="Schedule a job from this approved estimate" onClick={() => openScheduleDialog(selectedEstimate)}>
+                      <Calendar className="w-3.5 h-3.5" /> Schedule Job
+                    </Button>
                   )}
                   {selectedEstimate.convertedToJobId && (
-                    <span className="text-sm text-emerald-700 flex items-center gap-1">
-                      <CheckCircle2 className="w-4 h-4" /> Converted → Job #{selectedEstimate.convertedToJobId}
-                    </span>
+                    <button
+                      className="text-sm text-emerald-700 flex items-center gap-1 hover:underline"
+                      title="View the job this estimate was converted to"
+                      onClick={() => setLocation(`/schedule?jobId=${selectedEstimate.convertedToJobId}`)}
+                    >
+                      <CheckCircle2 className="w-4 h-4" /> Scheduled → Job #{selectedEstimate.convertedToJobId} →
+                    </button>
                   )}
                   {(selectedEstimate.status === 'declined' || selectedEstimate.status === 'expired') && canManageOffice && (
                     <Button
@@ -1281,73 +1333,145 @@ export default function EstimatesPage() {
                 <Separator />
 
                 {/* Line Items */}
-                {(() => {
-                  const items = (selectedEstimate.lineItems ?? []) as LineItem[];
-                  const required = items.filter(i => !i.isOptional);
-                  const optional = items.filter(i => i.isOptional);
-                  return (
-                    <div className="space-y-4">
+                {editingLineItems ? (
+                  // ── Edit mode ─────────────────────────────────────────────
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
                       <h3 className="font-semibold text-sm">Services</h3>
-                      {required.map((item) => (
-                        <div key={item.id} className="flex items-start justify-between gap-4 text-sm">
-                          <div className="flex-1">
-                            <p className="font-medium" title={item.description || undefined}>
-                              {item.description || '—'}
-                              {(item as any).secondaryServiceId && (
-                                <Badge variant="outline" className="ml-1.5 text-[10px] px-1 text-indigo-600 border-indigo-300 align-middle">bundled</Badge>
-                              )}
-                              {(item as any).planTemplateId && (
-                                <Badge variant="outline" className="ml-1.5 text-[10px] px-1 text-violet-600 border-violet-300 align-middle gap-0.5">
-                                  <Package className="w-2.5 h-2.5" /> plan
-                                </Badge>
-                              )}
-                            </p>
-                            <p className="text-muted-foreground text-xs">Qty {item.qty} × ${item.unitPrice.toFixed(2)}{item.markup > 0 && ` + ${item.markup}% markup`}{item.discount > 0 && ` − ${item.discount}% disc`}{(item as any).planBillingCycle && ` · ${(item as any).planBillingCycle}`}</p>
-                          </div>
-                          <span className="font-medium shrink-0" title={`Line total: $${calcItem(item).toFixed(2)}`}>${calcItem(item).toFixed(2)}</span>
+                      <div className="flex gap-1.5">
+                        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={cancelEditLineItems} disabled={updateEstimate.isPending}>Cancel</Button>
+                        <Button size="sm" className="h-7 text-xs" onClick={saveEditLineItems} disabled={updateEstimate.isPending}>
+                          {updateEstimate.isPending ? 'Saving…' : 'Save'}
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {editLineItemsList.map((item, idx) => (
+                        <div key={item.id} className="flex items-center gap-2">
+                          <input
+                            className="flex-1 border rounded-md px-2 py-1.5 text-sm bg-background"
+                            value={item.description}
+                            onChange={e => setEditLineItemsList(list => list.map((i, k) => k === idx ? { ...i, description: e.target.value } : i))}
+                            placeholder="Description"
+                            title="Line item description"
+                          />
+                          <input
+                            type="number" min={0.01} step={0.01}
+                            className="w-16 border rounded-md px-2 py-1.5 text-sm bg-background text-right"
+                            value={item.qty}
+                            onChange={e => setEditLineItemsList(list => list.map((i, k) => k === idx ? { ...i, qty: parseFloat(e.target.value) || 0 } : i))}
+                            title="Quantity"
+                          />
+                          <span className="text-muted-foreground text-xs shrink-0">×</span>
+                          <input
+                            type="number" min={0} step={0.01}
+                            className="w-24 border rounded-md px-2 py-1.5 text-sm bg-background text-right"
+                            value={item.unitPrice}
+                            onChange={e => setEditLineItemsList(list => list.map((i, k) => k === idx ? { ...i, unitPrice: parseFloat(e.target.value) || 0 } : i))}
+                            title="Unit price ($)"
+                          />
+                          <span className="text-sm font-medium w-16 text-right shrink-0">${((item.qty || 0) * (item.unitPrice || 0)).toFixed(2)}</span>
+                          <button
+                            className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                            onClick={() => setEditLineItemsList(list => list.filter((_, k) => k !== idx))}
+                            title="Remove this line item"
+                          ><X className="w-3.5 h-3.5" /></button>
                         </div>
                       ))}
-                      {optional.length > 0 && (
-                        <>
-                          <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mt-3">Add-On Services</p>
-                          {optional.map((item) => (
-                            <div key={item.id} className={`flex items-start justify-between gap-4 text-sm rounded-md p-2 ${item.acceptedByCustomer ? 'bg-amber-50 border border-amber-200' : 'opacity-60'}`}>
-                              <div className="flex-1">
-                                <p className="font-medium">{item.description || '—'}{item.acceptedByCustomer ? ' ✓' : ''}</p>
-                                {item.optionalPitchLine && <p className="text-xs text-muted-foreground italic">{item.optionalPitchLine}</p>}
-                                <p className="text-muted-foreground text-xs">Qty {item.qty} × ${item.unitPrice.toFixed(2)}</p>
-                              </div>
-                              <span className="font-medium shrink-0" title={`Optional add-on total: $${calcItem(item).toFixed(2)}`}>${calcItem(item).toFixed(2)}</span>
-                            </div>
-                          ))}
-                        </>
-                      )}
-                      <Separator />
-                      {(() => {
-                        const subtotal = items.filter(i => !i.isOptional || i.acceptedByCustomer).reduce((s, i) => s + calcItem(i), 0);
-                        const tax = (selectedEstimate.total ?? 0) - subtotal;
-                        return (
-                          <div className="space-y-1.5 text-sm">
-                            <div className="flex justify-between text-muted-foreground">
-                              <span>Subtotal</span>
-                              <span title={`Subtotal: $${subtotal.toFixed(2)}`}>${subtotal.toFixed(2)}</span>
-                            </div>
-                            {Math.abs(tax) >= 0.01 && (
-                              <div className="flex justify-between text-muted-foreground">
-                                <span>Tax</span>
-                                <span title={`Tax: $${tax.toFixed(2)}`}>${tax.toFixed(2)}</span>
-                              </div>
-                            )}
-                            <div className="flex justify-between items-center pt-1 border-t">
-                              <span className="font-semibold">Total</span>
-                              <span className="text-xl font-bold" title={`Grand total: $${(selectedEstimate.total ?? 0).toFixed(2)}`}>${(selectedEstimate.total ?? 0).toFixed(2)}</span>
-                            </div>
-                          </div>
-                        );
-                      })()}
+                      <button
+                        className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+                        onClick={() => setEditLineItemsList(list => [...list, emptyItem()])}
+                      >
+                        <Plus className="w-3 h-3" /> Add line item
+                      </button>
                     </div>
-                  );
-                })()}
+                    <Separator />
+                    <div className="flex justify-between text-sm font-semibold">
+                      <span>Estimated Total</span>
+                      <span>${editLineItemsList.reduce((s, i) => s + (i.qty || 0) * (i.unitPrice || 0), 0).toFixed(2)}</span>
+                    </div>
+                  </div>
+                ) : (
+                  // ── Read-only view ─────────────────────────────────────────
+                  (() => {
+                    const items = (selectedEstimate.lineItems ?? []) as LineItem[];
+                    const required = items.filter(i => !i.isOptional);
+                    const optional = items.filter(i => i.isOptional);
+                    return (
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h3 className="font-semibold text-sm">Services</h3>
+                          {canManageOffice && (
+                            <button
+                              className="text-xs text-primary hover:underline flex items-center gap-1"
+                              onClick={startEditLineItems}
+                              title="Edit line items on this estimate"
+                            >
+                              <Edit2 className="w-3 h-3" /> Edit items
+                            </button>
+                          )}
+                        </div>
+                        {required.map((item) => (
+                          <div key={item.id} className="flex items-start justify-between gap-4 text-sm">
+                            <div className="flex-1">
+                              <p className="font-medium" title={item.description || undefined}>
+                                {item.description || '—'}
+                                {(item as any).secondaryServiceId && (
+                                  <Badge variant="outline" className="ml-1.5 text-[10px] px-1 text-indigo-600 border-indigo-300 align-middle">bundled</Badge>
+                                )}
+                                {(item as any).planTemplateId && (
+                                  <Badge variant="outline" className="ml-1.5 text-[10px] px-1 text-violet-600 border-violet-300 align-middle gap-0.5">
+                                    <Package className="w-2.5 h-2.5" /> plan
+                                  </Badge>
+                                )}
+                              </p>
+                              <p className="text-muted-foreground text-xs">Qty {item.qty} × ${item.unitPrice.toFixed(2)}{item.markup > 0 && ` + ${item.markup}% markup`}{item.discount > 0 && ` − ${item.discount}% disc`}{(item as any).planBillingCycle && ` · ${(item as any).planBillingCycle}`}</p>
+                            </div>
+                            <span className="font-medium shrink-0" title={`Line total: $${calcItem(item).toFixed(2)}`}>${calcItem(item).toFixed(2)}</span>
+                          </div>
+                        ))}
+                        {optional.length > 0 && (
+                          <>
+                            <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mt-3">Add-On Services</p>
+                            {optional.map((item) => (
+                              <div key={item.id} className={`flex items-start justify-between gap-4 text-sm rounded-md p-2 ${item.acceptedByCustomer ? 'bg-amber-50 border border-amber-200' : 'opacity-60'}`}>
+                                <div className="flex-1">
+                                  <p className="font-medium">{item.description || '—'}{item.acceptedByCustomer ? ' ✓' : ''}</p>
+                                  {item.optionalPitchLine && <p className="text-xs text-muted-foreground italic">{item.optionalPitchLine}</p>}
+                                  <p className="text-muted-foreground text-xs">Qty {item.qty} × ${item.unitPrice.toFixed(2)}</p>
+                                </div>
+                                <span className="font-medium shrink-0" title={`Optional add-on total: $${calcItem(item).toFixed(2)}`}>${calcItem(item).toFixed(2)}</span>
+                              </div>
+                            ))}
+                          </>
+                        )}
+                        <Separator />
+                        {(() => {
+                          const subtotal = items.filter(i => !i.isOptional || i.acceptedByCustomer).reduce((s, i) => s + calcItem(i), 0);
+                          const tax = (selectedEstimate.total ?? 0) - subtotal;
+                          return (
+                            <div className="space-y-1.5 text-sm">
+                              <div className="flex justify-between text-muted-foreground">
+                                <span>Subtotal</span>
+                                <span title={`Subtotal: $${subtotal.toFixed(2)}`}>${subtotal.toFixed(2)}</span>
+                              </div>
+                              {Math.abs(tax) >= 0.01 && (
+                                <div className="flex justify-between text-muted-foreground">
+                                  <span>Tax</span>
+                                  <span title={`Tax: $${tax.toFixed(2)}`}>${tax.toFixed(2)}</span>
+                                </div>
+                              )}
+                              <div className="flex justify-between items-center pt-1 border-t">
+                                <span className="font-semibold">Total</span>
+                                <span className="text-xl font-bold" title={`Grand total: $${(selectedEstimate.total ?? 0).toFixed(2)}`}>${(selectedEstimate.total ?? 0).toFixed(2)}</span>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    );
+                  })()
+                )}
               </div>
             </>
           )}
@@ -1423,6 +1547,81 @@ export default function EstimatesPage() {
               {sendEstimate.isPending ? 'Sending…' : 'Send to Customer'}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Schedule Job dialog (estimate → job conversion) ────────────────── */}
+      <Dialog open={scheduleDialogOpen} onOpenChange={open => { if (!open && !converting) { setScheduleDialogOpen(false); setScheduleEstimateId(null); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Schedule Job</DialogTitle>
+            <DialogDescription>Convert this estimate to a scheduled job and choose when to invoice.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            {/* Title */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Job Title</label>
+              <Input
+                value={scheduleForm.title}
+                onChange={e => setScheduleForm(f => ({ ...f, title: e.target.value }))}
+                placeholder="Job title…"
+              />
+            </div>
+            {/* Scheduled Date & Time */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Scheduled Date &amp; Time</label>
+              <Input
+                type="datetime-local"
+                value={scheduleForm.scheduledAt}
+                onChange={e => setScheduleForm(f => ({ ...f, scheduledAt: e.target.value }))}
+              />
+            </div>
+            {/* Assignee */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Assign To</label>
+              <Select value={scheduleForm.assigneeId} onValueChange={v => setScheduleForm(f => ({ ...f, assigneeId: v }))}>
+                <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                <SelectContent>
+                  {((users as any[]) ?? []).filter((u: any) => u.isActive !== false).map((u: any) => (
+                    <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {/* Billing choice */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Billing</label>
+              <div className="flex rounded-lg border overflow-hidden">
+                <button
+                  type="button"
+                  className={`flex-1 px-3 py-2 text-sm transition-colors ${scheduleForm.invoiceNow ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-muted/50 text-muted-foreground'}`}
+                  onClick={() => setScheduleForm(f => ({ ...f, invoiceNow: true }))}
+                >
+                  <Receipt className="w-3.5 h-3.5 inline mr-1.5" />Invoice Now
+                </button>
+                <button
+                  type="button"
+                  className={`flex-1 px-3 py-2 text-sm border-l transition-colors ${!scheduleForm.invoiceNow ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-muted/50 text-muted-foreground'}`}
+                  onClick={() => setScheduleForm(f => ({ ...f, invoiceNow: false }))}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 inline mr-1.5" />Invoice After Job
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {scheduleForm.invoiceNow
+                  ? 'A draft invoice will be created now for staff to review and send.'
+                  : 'A draft invoice will be auto-created when the job is marked complete.'}
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setScheduleDialogOpen(false); setScheduleEstimateId(null); }} disabled={converting}>Cancel</Button>
+            <Button onClick={handleConvertWithSchedule} disabled={converting} className="gap-2">
+              {converting
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Scheduling…</>
+                : <><Calendar className="w-4 h-4" /> Schedule Job</>}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

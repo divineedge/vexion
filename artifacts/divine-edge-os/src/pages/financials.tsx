@@ -818,6 +818,8 @@ export default function FinancialsPage() {
   const [newLineItemDesc, setNewLineItemDesc] = useState('');
   const [newLineItemQty, setNewLineItemQty] = useState('1');
   const [newLineItemPrice, setNewLineItemPrice] = useState('');
+  const [editingInvoiceLineItems, setEditingInvoiceLineItems] = useState(false);
+  const [editInvoiceLineItemsList, setEditInvoiceLineItemsList] = useState<{ description: string; quantity: number; unitPrice: number; total: number }[]>([]);
 
   const { data: summary } = useGetFinancialsSummary({ query: { queryKey: getGetFinancialsSummaryQueryKey() } });
   const { data: invoices, isLoading } = useListInvoices({}, { query: { queryKey: getListInvoicesQueryKey({}) } });
@@ -990,7 +992,7 @@ export default function FinancialsPage() {
   const [markPaidAmount, setMarkPaidAmount] = useState('');
   const [markPaidDate, setMarkPaidDate] = useState(() => new Date().toISOString().slice(0, 10));
   useEffect(() => {
-    if (selectedInvoice) { setInvoiceNotesVal(selectedInvoice.notes ?? ''); setInvoiceNotesEditing(false); }
+    if (selectedInvoice) { setInvoiceNotesVal(selectedInvoice.notes ?? ''); setInvoiceNotesEditing(false); setEditingInvoiceLineItems(false); setEditInvoiceLineItemsList([]); }
   }, [selectedInvoice?.id]);
 
   const handleDeleteTemplate = (id: number, name: string) => {
@@ -2278,23 +2280,95 @@ export default function FinancialsPage() {
 
                 {/* Line Items */}
                 <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Line Items</p>
-                  <div className="rounded-lg border divide-y text-sm">
-                    {selectedInvoice.lineItems && selectedInvoice.lineItems.length > 0 ? (
-                      selectedInvoice.lineItems.map(li => (
-                        <div key={li.id} className="flex items-center justify-between px-3 py-2.5">
-                          <div className="flex-1 min-w-0">
-                            <span className="font-medium block truncate" title={li.description}>{li.description}</span>
-                            <span className="text-xs text-muted-foreground" title={`${li.quantity} × $${li.unitPrice.toFixed(2)} each`}>{li.quantity} × ${li.unitPrice.toFixed(2)}</span>
-                          </div>
-                          <span className="font-medium ml-4" title={`Line total: $${li.total.toFixed(2)}`}>${li.total.toFixed(2)}</span>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="px-3 py-4 text-muted-foreground text-center text-xs">No line items</div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Line Items</p>
+                    {canManageOffice && selectedInvoice.status !== 'paid' && selectedInvoice.status !== 'cancelled' && !editingInvoiceLineItems && !addLineItemOpen && (
+                      <button
+                        className="text-xs text-primary hover:underline flex items-center gap-1"
+                        title="Edit all line items on this invoice"
+                        onClick={() => {
+                          setEditInvoiceLineItemsList((selectedInvoice.lineItems ?? []).map(li => ({ description: li.description, quantity: li.quantity, unitPrice: li.unitPrice, total: li.total })));
+                          setEditingInvoiceLineItems(true);
+                        }}
+                      >
+                        <Pencil className="w-3 h-3" /> Edit items
+                      </button>
                     )}
                   </div>
-                  {canManageOffice && selectedInvoice.status !== 'paid' && selectedInvoice.status !== 'cancelled' && (
+                  {editingInvoiceLineItems ? (
+                    // ── Edit mode ─────────────────────────────────────────────
+                    <div className="space-y-2">
+                      {editInvoiceLineItemsList.map((li, idx) => (
+                        <div key={idx} className="flex items-center gap-2">
+                          <input
+                            className="flex-1 border rounded-md px-2 py-1.5 text-sm bg-background"
+                            value={li.description}
+                            onChange={e => setEditInvoiceLineItemsList(list => list.map((i, k) => k === idx ? { ...i, description: e.target.value } : i))}
+                            placeholder="Description"
+                            title="Line item description"
+                          />
+                          <input
+                            type="number" min={0} step={1}
+                            className="w-14 border rounded-md px-2 py-1.5 text-sm bg-background text-right"
+                            value={li.quantity}
+                            onChange={e => setEditInvoiceLineItemsList(list => list.map((i, k) => k === idx ? { ...i, quantity: parseFloat(e.target.value) || 0, total: (parseFloat(e.target.value) || 0) * i.unitPrice } : i))}
+                            title="Quantity"
+                          />
+                          <span className="text-muted-foreground text-xs shrink-0">×</span>
+                          <input
+                            type="number" min={0} step={0.01}
+                            className="w-24 border rounded-md px-2 py-1.5 text-sm bg-background text-right"
+                            value={li.unitPrice}
+                            onChange={e => setEditInvoiceLineItemsList(list => list.map((i, k) => k === idx ? { ...i, unitPrice: parseFloat(e.target.value) || 0, total: li.quantity * (parseFloat(e.target.value) || 0) } : i))}
+                            title="Unit price ($)"
+                          />
+                          <span className="text-sm font-medium w-16 text-right shrink-0">${((li.quantity || 0) * (li.unitPrice || 0)).toFixed(2)}</span>
+                          <button
+                            className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                            onClick={() => setEditInvoiceLineItemsList(list => list.filter((_, k) => k !== idx))}
+                            title="Remove this line item"
+                          ><X className="w-3.5 h-3.5" /></button>
+                        </div>
+                      ))}
+                      <button
+                        className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+                        onClick={() => setEditInvoiceLineItemsList(list => [...list, { description: '', quantity: 1, unitPrice: 0, total: 0 }])}
+                      >
+                        <Plus className="w-3 h-3" /> Add line item
+                      </button>
+                      <div className="flex gap-2 justify-end pt-1">
+                        <button className="text-xs text-muted-foreground hover:text-foreground" onClick={() => setEditingInvoiceLineItems(false)}>Cancel</button>
+                        <button
+                          className="text-xs font-medium text-primary hover:underline disabled:opacity-50"
+                          disabled={updateInvoice.isPending}
+                          onClick={() => {
+                            updateInvoice.mutate({ id: selectedInvoice.id, data: { lineItems: editInvoiceLineItemsList } as any }, {
+                              onSuccess: () => { toast.success('Line items updated'); setEditingInvoiceLineItems(false); qc.invalidateQueries({ queryKey: getGetInvoiceQueryKey(selectedInvoice.id) }); },
+                              onError: () => toast.error('Failed to update line items'),
+                            });
+                          }}
+                        >{updateInvoice.isPending ? 'Saving…' : 'Save'}</button>
+                      </div>
+                    </div>
+                  ) : (
+                    // ── Read-only view ─────────────────────────────────────────
+                    <div className="rounded-lg border divide-y text-sm">
+                      {selectedInvoice.lineItems && selectedInvoice.lineItems.length > 0 ? (
+                        selectedInvoice.lineItems.map(li => (
+                          <div key={li.id} className="flex items-center justify-between px-3 py-2.5">
+                            <div className="flex-1 min-w-0">
+                              <span className="font-medium block truncate" title={li.description}>{li.description}</span>
+                              <span className="text-xs text-muted-foreground" title={`${li.quantity} × $${li.unitPrice.toFixed(2)} each`}>{li.quantity} × ${li.unitPrice.toFixed(2)}</span>
+                            </div>
+                            <span className="font-medium ml-4" title={`Line total: $${li.total.toFixed(2)}`}>${li.total.toFixed(2)}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="px-3 py-4 text-muted-foreground text-center text-xs">No line items</div>
+                      )}
+                    </div>
+                  )}
+                  {!editingInvoiceLineItems && canManageOffice && selectedInvoice.status !== 'paid' && selectedInvoice.status !== 'cancelled' && (
                     addLineItemOpen ? (
                       <div className="border rounded-lg p-3 space-y-2 bg-muted/30">
                         <input

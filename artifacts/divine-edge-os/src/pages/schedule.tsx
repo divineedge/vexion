@@ -1463,6 +1463,17 @@ export default function SchedulePage() {
                       </div>
                     </div>
                   )}
+                  {/* Source estimate back-link */}
+                  {(selectedJob as any).estimateId && (
+                    <button
+                      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
+                      onClick={() => setLocation(`/estimates?highlight=${(selectedJob as any).estimateId}`)}
+                      title="View the estimate this job was converted from"
+                    >
+                      <FileText className="w-3 h-3" />
+                      From Estimate #{(selectedJob as any).estimateId} →
+                    </button>
+                  )}
                   {selectedJob.assigneeName && (
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Assigned To</p>

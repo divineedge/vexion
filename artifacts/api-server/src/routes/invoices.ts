@@ -296,12 +296,29 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const { status, notes, dueDate } = req.body;
+  const { status, notes, dueDate, lineItems } = req.body;
   const updates: Partial<typeof invoicesTable.$inferInsert> = {};
   if (status) updates.status = status;
   if (notes !== undefined) updates.notes = notes;
   if (dueDate !== undefined) updates.dueDate = dueDate ? new Date(dueDate) : null;
   if (status === "paid") { updates.paidAt = new Date(); }
+  // Full line-item replacement — recalculate subtotal and total, preserve existing tax rate
+  if (lineItems !== undefined && Array.isArray(lineItems)) {
+    const items = lineItems as { description: string; quantity: number; unitPrice: number; total?: number }[];
+    const newSubtotal = items.reduce((s, li) => s + (li.quantity * li.unitPrice), 0);
+    // Fetch existing to derive tax and tenant tax rate
+    const [existing] = await db.select({ tax: invoicesTable.tax, total: invoicesTable.total, subtotal: invoicesTable.subtotal, tenantId: invoicesTable.tenantId })
+      .from(invoicesTable).where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId)));
+    const oldTax = existing?.tax ?? 0;
+    const oldSubtotal = existing?.subtotal ?? 0;
+    // Preserve tax proportionally if there was a non-zero rate; otherwise zero
+    const taxRate = oldSubtotal > 0 ? oldTax / oldSubtotal : 0;
+    const newTax = Math.round(newSubtotal * taxRate * 100) / 100;
+    updates.lineItems = items.map(li => ({ ...li, total: li.quantity * li.unitPrice }));
+    updates.subtotal = newSubtotal;
+    updates.tax = newTax;
+    updates.total = newSubtotal + newTax;
+  }
   // Generate a public token the first time an invoice is sent so customers can view it via a shareable link
   let newlyMadeSent = false;
   if (status === "sent") {

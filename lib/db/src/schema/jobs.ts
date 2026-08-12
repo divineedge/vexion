@@ -105,6 +105,15 @@ export const jobsTable = pgTable("jobs", {
   /** Free-text note added alongside the skip reason */
   skipNote: text("skip_note"),
 
+  // ── Estimate link ────────────────────────────────────────────────────────────
+  /** FK back to the estimate this job was converted from (set by POST /estimates/:id/convert). */
+  estimateId: integer("estimate_id"),
+  /**
+   * When true, a draft invoice will be auto-created the moment this job is marked complete.
+   * Set by the convert endpoint when staff choose "Invoice after job" during scheduling.
+   */
+  invoiceAfterJob: boolean("invoice_after_job").notNull().default(false),
+
   // ── Customer cancellation request ─────────────────────────────────────────
   /** Set when a customer submits a cancellation request via the portal (not yet cancelled — staff must confirm). */
   cancellationRequestedAt: timestamp("cancellation_requested_at", { withTimezone: true }),

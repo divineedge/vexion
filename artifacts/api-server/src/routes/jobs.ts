@@ -721,6 +721,53 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
     .set({ isArchived: true, archivedAt: new Date() })
     .where(and(eq(blueprintsTable.tenantId, tenantId), or(eq(blueprintsTable.jobId, id), eq(blueprintsTable.id, updated.blueprintId ?? -1))));
 
+  // If this job was converted from an estimate with "Invoice after job" chosen, auto-create a draft invoice now.
+  // On success → return early. On failure → flag the job for the weekly billing sweep so it is never permanently unbilled.
+  if ((updated as any).invoiceAfterJob && (updated as any).estimateId && updated.customerId && !updated.invoiceId) {
+    let deferredInvoiceCreated = false;
+    try {
+      const [tenant] = await db.select({ taxRate: tenantsTable.taxRate }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+      const taxRate = tenant?.taxRate ?? 0;
+      const lineItems = (updated.lineItems as unknown[]) ?? [];
+      const subtotal = updated.totalAmount ?? 0;
+      const tax = Math.round(subtotal * (taxRate / 100) * 100) / 100;
+      const total = subtotal + tax;
+      const invoiceNum = `INV-${Date.now().toString().slice(-8)}`;
+
+      await db.transaction(async tx => {
+        const [invoice] = await tx.insert(invoicesTable).values({
+          tenantId,
+          invoiceNumber: invoiceNum,
+          customerId: updated.customerId!,
+          jobId: updated.id,
+          status: "draft",  // Always draft — staff reviews before sending
+          subtotal,
+          tax,
+          total,
+          lineItems,
+        }).returning();
+        await tx.update(jobsTable).set({ invoiceId: invoice.id }).where(eq(jobsTable.id, id));
+        // Activity log inside the same transaction for full atomicity
+        await tx.insert(activityLogTable).values({ tenantId, userId, type: "invoice_created", message: `Draft invoice ${invoiceNum} auto-created on estimate-sourced job completion`, entityId: invoice.id });
+      });
+      deferredInvoiceCreated = true;
+    } catch (err) {
+      // Guarantee billing: flag this job for the weekly billing sweep regardless of whether
+      // the customer has autoInvoiceOnCompletion enabled. Without this, an invoice failure for
+      // a customer without autoInvoiceOnCompletion would leave them permanently unbilled.
+      console.error({ err, jobId: id }, "Deferred invoice creation failed — flagging job for weekly billing sweep");
+      try {
+        await db.update(jobsTable).set({ pendingWeeklyInvoice: true }).where(eq(jobsTable.id, id));
+      } catch (fallbackErr) {
+        console.error({ fallbackErr, jobId: id }, "Failed to set pendingWeeklyInvoice fallback — manual billing review required");
+      }
+    }
+    // Return the job whether or not invoice creation succeeded;
+    // pendingWeeklyInvoice=true in the fallback branch guarantees it will be billed
+    res.json(formatJob(deferredInvoiceCreated ? updated : { ...updated, pendingWeeklyInvoice: true }));
+    return;
+  }
+
   // Auto-invoice on completion if enabled for this customer
   if (updated.customerId) {
     const [customer] = await db

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, estimatesTable, visitsTable, jobsTable, customersTable, propertiesTable, usersTable, tenantsTable, blueprintsTable, communicationsLogTable, estimateTemplatesTable } from "@workspace/db";
+import { db, estimatesTable, visitsTable, jobsTable, customersTable, propertiesTable, usersTable, tenantsTable, blueprintsTable, communicationsLogTable, estimateTemplatesTable, invoicesTable } from "@workspace/db";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { getStripeClient, getStripePublishableKey, ensureStripeCustomer } from "../lib/stripe";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
@@ -821,8 +821,21 @@ router.post("/estimates/:id/resend", async (req, res): Promise<void> => {
 // ── CONVERT TO JOB ────────────────────────────────────────────────────────────
 router.post("/estimates/:id/convert", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const userId = getUserId(req);
   const id = parseInt(req.params.id, 10);
+
+  const {
+    scheduledAt,
+    assigneeId,
+    crewId,
+    invoiceNow = true,
+    title,
+  } = req.body as {
+    scheduledAt?: string;
+    assigneeId?: number | string;
+    crewId?: number | string;
+    invoiceNow?: boolean;
+    title?: string;
+  };
 
   const [estimate] = await db.select().from(estimatesTable).where(and(eq(estimatesTable.id, id), eq(estimatesTable.tenantId, tenantId)));
   if (!estimate) { res.status(404).json({ error: "Not found" }); return; }
@@ -839,28 +852,74 @@ router.post("/estimates/:id/convert", async (req, res): Promise<void> => {
   // Only include required + accepted optional items
   const allItems = (estimate.lineItems as EstimateLineItem[]) ?? [];
   const jobItems = allItems.filter(item => !item.isOptional || item.acceptedByCustomer);
-  const { subtotal, tax, total } = calcTotals(jobItems);
+  const { subtotal: _s, tax: _t, total } = calcTotals(jobItems);
+
+  const resolvedScheduledAt = scheduledAt
+    ? new Date(scheduledAt)
+    : (estimate.scheduledAt ?? new Date(Date.now() + 24 * 60 * 60 * 1000));
 
   const [job] = await db.insert(jobsTable).values({
     tenantId,
-    title: `Job from Estimate #${estimate.id}`,
+    title: title?.trim() || `Job from Estimate #${estimate.id}`,
     description: estimate.notes ?? null,
     status: "scheduled",
     priority: "normal",
     customerId: estimate.customerId,
     propertyId: estimate.propertyId,
-    assigneeId: estimate.assigneeId,
+    assigneeId: assigneeId != null ? parseInt(String(assigneeId), 10) : estimate.assigneeId,
+    crewId: crewId != null ? parseInt(String(crewId), 10) : undefined,
     blueprintId: estimate.blueprintId,
-    scheduledAt: estimate.scheduledAt ?? new Date(Date.now() + 24 * 60 * 60 * 1000),
+    scheduledAt: resolvedScheduledAt,
     lineItems: jobItems,
     totalAmount: total,
+    estimateId: estimate.id,
+    invoiceAfterJob: !invoiceNow,
   }).returning();
+
+  let invoiceId: number | null = null;
+
+  // If "Invoice now" was chosen, create a draft invoice immediately so staff can review and send it
+  if (invoiceNow && estimate.customerId) {
+    try {
+      const [tenant] = await db.select({ taxRate: tenantsTable.taxRate }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+      const taxRate = tenant?.taxRate ?? 0;
+      const invSubtotal = total;
+      const invTax = Math.round(invSubtotal * (taxRate / 100) * 100) / 100;
+      const invTotal = invSubtotal + invTax;
+      const invoiceNum = `INV-${Date.now().toString().slice(-8)}`;
+
+      const [invoice] = await db.insert(invoicesTable).values({
+        tenantId,
+        invoiceNumber: invoiceNum,
+        customerId: estimate.customerId,
+        jobId: job.id,
+        status: "draft",
+        subtotal: invSubtotal,
+        tax: invTax,
+        total: invTotal,
+        lineItems: jobItems,
+      }).returning();
+      invoiceId = invoice.id;
+
+      // Link the invoice back to the job
+      await db.update(jobsTable).set({ invoiceId: invoice.id }).where(eq(jobsTable.id, job.id));
+    } catch (err) {
+      console.error({ err, jobId: job.id }, "Failed to create immediate invoice on estimate conversion — flipping to deferred billing");
+      // Guarantee billing: flip invoiceAfterJob=true so the job auto-invoices on completion
+      // instead of leaving it permanently unbilled.
+      try {
+        await db.update(jobsTable).set({ invoiceAfterJob: true }).where(eq(jobsTable.id, job.id));
+      } catch (fallbackErr) {
+        console.error({ fallbackErr, jobId: job.id }, "Failed to set invoiceAfterJob fallback — manual billing review required");
+      }
+    }
+  }
 
   await db.update(estimatesTable)
     .set({ convertedToJobId: job.id })
     .where(eq(estimatesTable.id, id));
 
-  res.status(201).json({ jobId: job.id, total });
+  res.status(201).json({ jobId: job.id, invoiceId, total });
 });
 
 // ── PUBLIC: GET ESTIMATE BY TOKEN ─────────────────────────────────────────────

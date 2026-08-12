@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable, mediaAttachmentsTable, tenantsTable, communicationsLogTable, customerPlansTable, usersTable, planCancelRequestsTable, estimatesTable, taskNotificationsTable } from "@workspace/db";
-import { eq, and, gt, desc, lte, isNotNull, ne, sql } from "drizzle-orm";
+import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable, mediaAttachmentsTable, tenantsTable, communicationsLogTable, customerPlansTable, usersTable, planCancelRequestsTable, estimatesTable, taskNotificationsTable, portalMessagesTable } from "@workspace/db";
+import { eq, and, gt, desc, lte, isNotNull, ne, sql, isNull, inArray } from "drizzle-orm";
 import { objectStorageService } from "./storage";
 import crypto from "crypto";
 import { getTenantId } from "../lib/tenantHelper";
@@ -1808,6 +1808,98 @@ router.post("/portal/plans/:id/cancel-request", requirePortalAuth, async (req: a
   }
 
   res.status(201).json({ message: "Cancellation request submitted" });
+});
+
+// ---------------------------------------------------------------------------
+// POST /portal/messages  — customer sends a message to staff
+// ---------------------------------------------------------------------------
+router.post("/portal/messages", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+  const { body } = req.body as { body?: string };
+  if (!body?.trim()) {
+    res.status(400).json({ error: "body is required" });
+    return;
+  }
+
+  const [msg] = await db
+    .insert(portalMessagesTable)
+    .values({ tenantId: portalTenantId, customerId: portalCustomerId, direction: "inbound", body: body.trim() })
+    .returning();
+
+  // Notify all admin/office users for this tenant
+  const adminUsers = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(and(
+      eq(usersTable.tenantId, portalTenantId),
+      eq(usersTable.isActive, true),
+      inArray(usersTable.role, ["company_owner", "office_manager", "department_manager"]),
+    ));
+
+  const [customer] = await db
+    .select({ name: customersTable.name })
+    .from(customersTable)
+    .where(eq(customersTable.id, portalCustomerId));
+
+  const notifMessage = `New portal message from ${customer?.name ?? "a customer"}`;
+  const linkPath = `/portal-inbox/${portalCustomerId}`;
+
+  await Promise.all(
+    adminUsers.map(u =>
+      db.insert(taskNotificationsTable).values({
+        tenantId: portalTenantId,
+        recipientUserId: u.id,
+        taskId: null,
+        type: "portal_message",
+        message: notifMessage,
+        linkPath,
+        isRead: false,
+      }).catch(() => { /* best-effort */ }),
+    ),
+  );
+
+  res.status(201).json({
+    id: msg.id,
+    direction: msg.direction,
+    body: msg.body,
+    readAt: null,
+    createdAt: msg.createdAt.toISOString(),
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /portal/messages  — customer reads their full thread
+// ---------------------------------------------------------------------------
+router.get("/portal/messages", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+
+  const messages = await db
+    .select()
+    .from(portalMessagesTable)
+    .where(and(eq(portalMessagesTable.customerId, portalCustomerId), eq(portalMessagesTable.tenantId, portalTenantId)))
+    .orderBy(portalMessagesTable.createdAt);
+
+  // Mark all unread outbound (staff replies) messages as read since the customer is viewing
+  const now = new Date();
+  await db
+    .update(portalMessagesTable)
+    .set({ readAt: now })
+    .where(
+      and(
+        eq(portalMessagesTable.customerId, portalCustomerId),
+        eq(portalMessagesTable.tenantId, portalTenantId),
+        eq(portalMessagesTable.direction, "outbound"),
+        isNull(portalMessagesTable.readAt),
+      ),
+    );
+
+  res.json(messages.map(m => ({
+    id: m.id,
+    direction: m.direction,
+    body: m.body,
+    readAt: m.readAt?.toISOString() ?? null,
+    createdAt: m.createdAt.toISOString(),
+  })));
 });
 
 // ---------------------------------------------------------------------------

@@ -49,6 +49,7 @@ import repairLogsRouter from "./repairLogs";
 import planCancelRequestsRouter from "./planCancelRequests";
 import tagsRouter from "./tags";
 import skipReasonsRouter from "./skipReasons";
+import portalMessagesRouter from "./portalMessages";
 
 const router: IRouter = Router();
 
@@ -102,5 +103,6 @@ router.use(repairLogsRouter);
 router.use(planCancelRequestsRouter);
 router.use(tagsRouter);
 router.use(skipReasonsRouter);
+router.use(portalMessagesRouter);
 
 export default router;

@@ -5,7 +5,7 @@ import {
   DollarSign, Banknote as InvoiceIcon,
   Megaphone, FlaskConical,
   Settings, FileText, Footprints, BarChart3, Star, Repeat, ListTodo,
-  Map, ClipboardList, PhoneMissed, PhoneIncoming,
+  Map, ClipboardList, PhoneMissed, PhoneIncoming, Inbox,
   LucideIcon,
 } from 'lucide-react';
 
@@ -53,6 +53,7 @@ export const adminNavSections: NavSection[] = [
       { name: 'Tasks',          href: '/tasks',          icon: ListTodo },
       { name: 'Daily Tasks',    href: '/daily-tasks',    icon: ClipboardList },
       { name: 'Follow-Up Queue', href: '/followup-queue', icon: PhoneMissed },
+      { name: 'Portal Inbox',    href: '/portal-inbox',   icon: Inbox },
     ],
   },
   {

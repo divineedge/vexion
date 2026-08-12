@@ -45,3 +45,4 @@ export * from "./repairLogs";
 export * from "./planCancelRequests";
 export * from "./businessTags";
 export * from "./skipReasons";
+export * from "./portalMessages";

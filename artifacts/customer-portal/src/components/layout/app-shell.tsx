@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, useLocation } from "wouter";
 import { usePortalGetMe, usePortalGetSummary } from "@workspace/api-client-react";
-import { MapPin, Briefcase, FileText, Bell, LayoutDashboard, Menu, X, LogOut, Loader2, CalendarDays, ClipboardList, ClipboardCheck } from "lucide-react";
+import { MapPin, Briefcase, FileText, Bell, LayoutDashboard, Menu, X, LogOut, Loader2, CalendarDays, ClipboardList, ClipboardCheck, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -13,6 +13,7 @@ const navItems = [
   { name: "Invoices", path: "/invoices", icon: FileText },
   { name: "Properties", path: "/properties", icon: MapPin },
   { name: "Plans", path: "/plans", icon: CalendarDays },
+  { name: "Messages", path: "/messages", icon: MessageSquare },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {

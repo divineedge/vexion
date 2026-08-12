@@ -44,6 +44,7 @@ import CallsPage from '@/pages/calls';
 import RoutesDashboardPage from '@/pages/routes';
 import TaskBundlesPage from '@/pages/task-bundles';
 import EmployeeDetailPage from '@/pages/employee-detail';
+import PortalInboxPage from '@/pages/portal-inbox';
 
 import NotFound from '@/pages/not-found';
 import OnboardingWalkthrough, { useOnboarding } from '@/components/onboarding/OnboardingWalkthrough';
@@ -95,6 +96,8 @@ function ProtectedRoutes() {
         <Route path="/plans/:id" component={PlanDetailPage} />
         <Route path="/plans" component={PlansDashboardPage} />
         <Route path="/team/:id" component={EmployeeDetailPage} />
+        <Route path="/portal-inbox/:customerId" component={PortalInboxPage} />
+        <Route path="/portal-inbox" component={PortalInboxPage} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

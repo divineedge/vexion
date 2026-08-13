@@ -256,7 +256,7 @@ export default function SchedulePage() {
   const [partsSearch, setPartsSearch] = useState('');
   const debouncedPartsSearch = useDebounce(partsSearch, 300);
   const [addingPart, setAddingPart] = useState(false);
-  const [partQty, setPartQty] = useState('1');
+  const [partQtys, setPartQtys] = useState<Record<number, string>>({});
   const [chemFormOpen, setChemFormOpen] = useState(false);
   const [chemForm, setChemForm] = useState({
     mixtureId: '', productId: '', volumeApplied: '', volumeUnit: 'gal',
@@ -1822,7 +1822,7 @@ export default function SchedulePage() {
                       variant="outline"
                       className="h-7 text-xs gap-1"
                       title="Search inventory and add a part to this job"
-                      onClick={() => { setAddingPart(true); setPartsSearch(''); setPartQty('1'); }}
+                      onClick={() => { setAddingPart(true); setPartsSearch(''); setPartQtys({}); }}
                     >
                       <Plus className="w-3 h-3" /> Add Part
                     </Button>
@@ -1857,8 +1857,8 @@ export default function SchedulePage() {
                                   min={1}
                                   title="Quantity to add"
                                   className="w-14 text-xs border rounded px-1.5 py-1 text-right"
-                                  value={partQty}
-                                  onChange={e => setPartQty(e.target.value)}
+                                  value={partQtys[item.id] ?? '1'}
+                                  onChange={e => setPartQtys(prev => ({ ...prev, [item.id]: e.target.value }))}
                                   onClick={e => e.stopPropagation()}
                                 />
                                 <Button
@@ -1868,7 +1868,7 @@ export default function SchedulePage() {
                                   disabled={addJobPart.isPending}
                                   onClick={() => {
                                     if (!selectedJobId) return;
-                                    const qty = parseInt(partQty, 10);
+                                    const qty = parseInt(partQtys[item.id] ?? '1', 10);
                                     if (isNaN(qty) || qty <= 0) { toast.error('Enter a valid quantity'); return; }
                                     addJobPart.mutate(
                                       { id: selectedJobId, data: { inventoryItemId: item.id, quantity: qty } },

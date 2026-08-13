@@ -299,6 +299,7 @@ export default function EstimatesPage() {
     expiresAt: '',
     notes: '',
     templateId: '',
+    estimatedDurationMin: '',
   });
   const [lineItems, setLineItems] = useState<LineItem[]>([emptyItem()]);
   const [catalogServices, setCatalogServices] = useState<CatalogService[] | null>(null);
@@ -393,6 +394,9 @@ export default function EstimatesPage() {
           planTemplateName: i.planTemplateName ?? null,
           planBillingCycle: i.planBillingCycle ?? null,
         })),
+        estimatedDurationMin: form.estimatedDurationMin
+          ? Math.round(parseFloat(form.estimatedDurationMin) * ((settings as any)?.durationUnit === 'hours' ? 60 : 1))
+          : undefined,
       },
     }, {
       onSuccess: (e) => {
@@ -400,7 +404,7 @@ export default function EstimatesPage() {
         invalidate();
         setCreateOpen(false);
         setLineItems([emptyItem()]);
-        setForm({ customerId: '', propertyId: '', assigneeId: '', visitMode: 'scheduled', scheduledAt: '', expiresAt: '', notes: '', templateId: '' });
+        setForm({ customerId: '', propertyId: '', assigneeId: '', visitMode: 'scheduled', scheduledAt: '', expiresAt: '', notes: '', templateId: '', estimatedDurationMin: '' });
         setSelectedId(e.id);
       },
       onError: () => toast.error('Failed to create estimate'),
@@ -861,6 +865,23 @@ export default function EstimatesPage() {
               <Input type="date" title="Date after which this estimate is no longer valid" value={form.expiresAt} onChange={e => setForm(f => ({ ...f, expiresAt: e.target.value }))} />
             </div>
 
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">
+                  Estimated Duration ({(settings as any)?.durationUnit === 'minutes' ? 'min' : 'hrs'})
+                </label>
+                <Input
+                  type="number"
+                  min={0}
+                  step={(settings as any)?.durationUnit === 'minutes' ? 15 : 0.5}
+                  placeholder={(settings as any)?.durationUnit === 'minutes' ? '90' : '1.5'}
+                  title="Expected job duration — carries to the job when the estimate is accepted"
+                  value={form.estimatedDurationMin}
+                  onChange={e => setForm(f => ({ ...f, estimatedDurationMin: e.target.value }))}
+                />
+              </div>
+            </div>
+
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Notes</label>
               <Textarea rows={2} title="Internal notes or scope of work (not shown on the customer-facing estimate)" placeholder="Internal notes or scope..." value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
@@ -1311,6 +1332,23 @@ export default function EstimatesPage() {
                     <p className="text-sm flex items-center gap-1.5">
                       <FileText className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                       Built from: <span className="font-medium">{(selectedEstimate as typeof selectedEstimate & { templateName?: string | null }).templateName}</span>
+                    </p>
+                  </div>
+                )}
+
+                {(selectedEstimate as any).estimatedDurationMin != null && (
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Estimated Duration</p>
+                    <p className="text-sm flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      {(() => {
+                        const mins = (selectedEstimate as any).estimatedDurationMin as number;
+                        const h = Math.floor(mins / 60);
+                        const m = mins % 60;
+                        if (h === 0) return `${m} min`;
+                        if (m === 0) return `${h} hr`;
+                        return `${h} hr ${m} min`;
+                      })()}
                     </p>
                   </div>
                 )}

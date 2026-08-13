@@ -1931,6 +1931,7 @@ router.get("/portal/estimates/:id", requirePortalAuth, async (req: any, res): Pr
     tax: estimate.tax,
     total: estimate.total,
     lineItems,
+    estimatedDurationMin: estimate.estimatedDurationMin ?? null,
     expiresAt: estimate.expiresAt ? estimate.expiresAt.toISOString() : null,
     createdAt: estimate.createdAt.toISOString(),
     publicToken: estimate.approvalToken ?? null,

@@ -19,4 +19,6 @@ export interface UpdateEstimateInput {
   notes?: string;
   lineItems?: EstimateLineItem[];
   status?: UpdateEstimateInputStatus;
+  /** Expected job duration in minutes */
+  estimatedDurationMin?: number;
 }

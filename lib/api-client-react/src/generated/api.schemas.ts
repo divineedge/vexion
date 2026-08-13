@@ -73,6 +73,11 @@ export interface Estimate {
   declinedAt?: string | null;
   /** @nullable */
   declineReason?: string | null;
+  /**
+     * Expected job duration in minutes
+     * @nullable
+     */
+  estimatedDurationMin?: number | null;
   /** @nullable */
   convertedToJobId?: number | null;
   /** @nullable */
@@ -219,6 +224,8 @@ export interface CreateEstimateInput {
   notes?: string;
   lineItems?: EstimateLineItem[];
   templateId?: number;
+  /** Expected job duration in minutes */
+  estimatedDurationMin?: number;
 }
 
 export type UpdateEstimateInputVisitMode = typeof UpdateEstimateInputVisitMode[keyof typeof UpdateEstimateInputVisitMode];
@@ -251,6 +258,8 @@ export interface UpdateEstimateInput {
   notes?: string;
   lineItems?: EstimateLineItem[];
   status?: UpdateEstimateInputStatus;
+  /** Expected job duration in minutes */
+  estimatedDurationMin?: number;
 }
 
 export type EstimateRespondInputAction = typeof EstimateRespondInputAction[keyof typeof EstimateRespondInputAction];
@@ -2709,7 +2718,10 @@ export interface TenantSettings {
   dailyTaskHourlyRate?: number;
   /** Ordered list of shortcut IDs shown in the header quick-add bar (tenant-wide, max 6) */
   quickShortcuts?: string[];
-  /** URL-safe slug used in the customer portal link (?tenant=slug) */
+  /**
+     * URL-safe slug used in the customer portal link (?tenant=slug)
+     * @nullable
+     */
   slug?: string | null;
 }
 
@@ -5167,6 +5179,15 @@ export type BulkArchiveTasks200 = {
 export type PortalRequestJobCancellationBody = {
   reason?: string;
 };
+
+export type PortalRequestJobCancellation201 = {
+  message?: string;
+};
+
+export type DenyJobCancellationBody = {
+  note?: string;
+};
+
 export type SetPropertyProfilePhoto200 = {
   profilePhotoUrl?: string;
 };
@@ -5359,11 +5380,3 @@ export type GetRepairLogSummaryParams = {
 propertyId: number;
 };
 
-
-export type DenyJobCancellationBody = {
-  note?: string;
-};
-
-export type PortalRequestJobCancellation201 = {
-  message?: string;
-};

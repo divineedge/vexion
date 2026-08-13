@@ -19,4 +19,6 @@ export interface CreateEstimateInput {
   notes?: string;
   lineItems?: EstimateLineItem[];
   templateId?: number;
+  /** Expected job duration in minutes */
+  estimatedDurationMin?: number;
 }

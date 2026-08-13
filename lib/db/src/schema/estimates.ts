@@ -54,6 +54,8 @@ export const estimatesTable = pgTable("estimates", {
   approvedAt: timestamp("approved_at", { withTimezone: true }),
   declinedAt: timestamp("declined_at", { withTimezone: true }),
   declineReason: text("decline_reason"),
+  /** Expected job duration in minutes, set by the estimator */
+  estimatedDurationMin: integer("estimated_duration_min"),
   convertedToJobId: integer("converted_to_job_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

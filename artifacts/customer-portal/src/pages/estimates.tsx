@@ -48,6 +48,7 @@ interface EstimateDetail {
   tax: number;
   total: number;
   lineItems: DetailLineItem[];
+  estimatedDurationMin: number | null;
   expiresAt: string | null;
   createdAt: string;
   publicToken: string | null;
@@ -446,6 +447,25 @@ export default function Estimates() {
                   <span>{formatCurrency(computedTotals?.total ?? detail.total)}</span>
                 </div>
               </div>
+
+              {detail.estimatedDurationMin != null && (
+                <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 shrink-0" />
+                  <span>
+                    Estimated time:{" "}
+                    <span className="font-medium text-foreground">
+                      {(() => {
+                        const mins = detail.estimatedDurationMin!;
+                        const h = Math.floor(mins / 60);
+                        const m = mins % 60;
+                        if (h === 0) return `${m} min`;
+                        if (m === 0) return `${h} hr`;
+                        return `${h} hr ${m} min`;
+                      })()}
+                    </span>
+                  </span>
+                </p>
+              )}
 
               {detail.expiresAt && (
                 <p className="text-xs text-muted-foreground">This estimate expires {formatDate(detail.expiresAt)}.</p>

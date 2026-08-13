@@ -354,7 +354,7 @@ router.get("/estimates/pipeline", async (req, res): Promise<void> => {
 // ── CREATE ────────────────────────────────────────────────────────────────────
 router.post("/estimates", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { customerId, propertyId, blueprintId, assigneeId, visitMode, scheduledAt, expiresAt, notes, lineItems, templateId } = req.body;
+  const { customerId, propertyId, blueprintId, assigneeId, visitMode, scheduledAt, expiresAt, notes, lineItems, templateId, estimatedDurationMin } = req.body;
 
   let items: EstimateLineItem[] = lineItems ?? [];
   let resolvedTemplateId: number | null = null;
@@ -389,6 +389,7 @@ router.post("/estimates", async (req, res): Promise<void> => {
     subtotal,
     tax,
     total,
+    estimatedDurationMin: estimatedDurationMin != null ? parseInt(String(estimatedDurationMin), 10) : null,
     status: "draft",
   }).returning();
 
@@ -423,7 +424,7 @@ router.get("/estimates/:id", async (req, res): Promise<void> => {
 router.patch("/estimates/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(req.params.id, 10);
-  const { customerId, propertyId, assigneeId, visitMode, scheduledAt, expiresAt, notes, lineItems, status } = req.body;
+  const { customerId, propertyId, assigneeId, visitMode, scheduledAt, expiresAt, notes, lineItems, status, estimatedDurationMin } = req.body;
 
   const updateData: Partial<typeof estimatesTable.$inferInsert> = {};
   if (customerId !== undefined) updateData.customerId = customerId ? parseInt(customerId, 10) : null;
@@ -446,6 +447,7 @@ router.patch("/estimates/:id", async (req, res): Promise<void> => {
     }
     updateData.status = status;
   }
+  if (estimatedDurationMin !== undefined) updateData.estimatedDurationMin = estimatedDurationMin != null ? parseInt(String(estimatedDurationMin), 10) : null;
   if (lineItems !== undefined) {
     const items: EstimateLineItem[] = lineItems;
     const { subtotal, tax, total } = calcTotals(items);
@@ -898,6 +900,7 @@ router.post("/estimates/:id/convert", async (req, res): Promise<void> => {
     lineItems: jobItems,
     totalAmount: total,
     estimateId: estimate.id,
+    estimatedDuration: estimate.estimatedDurationMin ?? undefined,
     invoiceAfterJob: !invoiceNow,
   }).returning();
 

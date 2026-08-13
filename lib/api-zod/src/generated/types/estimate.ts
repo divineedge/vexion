@@ -42,6 +42,11 @@ export interface Estimate {
   declinedAt?: string | null;
   /** @nullable */
   declineReason?: string | null;
+  /**
+     * Expected job duration in minutes
+     * @nullable
+     */
+  estimatedDurationMin?: number | null;
   /** @nullable */
   convertedToJobId?: number | null;
   /** @nullable */

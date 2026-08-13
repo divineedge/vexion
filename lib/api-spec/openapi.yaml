@@ -7227,6 +7227,9 @@ components:
           type: ["string", "null"]
         declineReason:
           type: ["string", "null"]
+        estimatedDurationMin:
+          type: ["integer", "null"]
+          description: Expected job duration in minutes
         convertedToJobId:
           type: ["integer", "null"]
         templateId:
@@ -7345,6 +7348,9 @@ components:
             $ref: "#/components/schemas/EstimateLineItem"
         templateId:
           type: integer
+        estimatedDurationMin:
+          type: integer
+          description: Expected job duration in minutes
 
     UpdateEstimateInput:
       type: object
@@ -7371,6 +7377,9 @@ components:
         status:
           type: string
           enum: [draft, sent, approved, declined, expired]
+        estimatedDurationMin:
+          type: integer
+          description: Expected job duration in minutes
 
     EstimateRespondInput:
       type: object

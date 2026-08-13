@@ -105,4 +105,9 @@ export interface TenantSettings {
   dailyTaskHourlyRate?: number;
   /** Ordered list of shortcut IDs shown in the header quick-add bar (tenant-wide, max 6) */
   quickShortcuts?: string[];
+  /**
+     * URL-safe slug used in the customer portal link (?tenant=slug)
+     * @nullable
+     */
+  slug?: string | null;
 }

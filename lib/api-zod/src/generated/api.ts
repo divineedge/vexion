@@ -4092,7 +4092,8 @@ export const GetTenantSettingsResponse = zod.object({
   "reviewCustomLink2Url": zod.string().nullish(),
   "routeExceptionFee": zod.number().optional().describe('Trip charge auto-appended to a job\'s invoice when it uses a one-time reschedule'),
   "dailyTaskHourlyRate": zod.number().optional().describe('$\/hour flat rate applied to daily task \/ compliance time for payroll. 0 = display-only.'),
-  "quickShortcuts": zod.array(zod.string()).optional().describe('Ordered list of shortcut IDs shown in the header quick-add bar (tenant-wide, max 6)')
+  "quickShortcuts": zod.array(zod.string()).optional().describe('Ordered list of shortcut IDs shown in the header quick-add bar (tenant-wide, max 6)'),
+  "slug": zod.string().nullish().describe('URL-safe slug used in the customer portal link (?tenant=slug)')
 })
 
 
@@ -4250,7 +4251,8 @@ export const UpdateTenantSettingsResponse = zod.object({
   "reviewCustomLink2Url": zod.string().nullish(),
   "routeExceptionFee": zod.number().optional().describe('Trip charge auto-appended to a job\'s invoice when it uses a one-time reschedule'),
   "dailyTaskHourlyRate": zod.number().optional().describe('$\/hour flat rate applied to daily task \/ compliance time for payroll. 0 = display-only.'),
-  "quickShortcuts": zod.array(zod.string()).optional().describe('Ordered list of shortcut IDs shown in the header quick-add bar (tenant-wide, max 6)')
+  "quickShortcuts": zod.array(zod.string()).optional().describe('Ordered list of shortcut IDs shown in the header quick-add bar (tenant-wide, max 6)'),
+  "slug": zod.string().nullish().describe('URL-safe slug used in the customer portal link (?tenant=slug)')
 })
 
 
@@ -7147,6 +7149,7 @@ export const ListEstimatesResponseItem = zod.object({
   "approvedAt": zod.string().nullish(),
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
+  "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
   "convertedToJobId": zod.number().nullish(),
   "templateId": zod.number().nullish(),
   "templateName": zod.string().nullish(),
@@ -7183,7 +7186,8 @@ export const CreateEstimateBody = zod.object({
   "optionalPitchLine": zod.string().nullish(),
   "acceptedByCustomer": zod.boolean()
 })).optional(),
-  "templateId": zod.number().optional()
+  "templateId": zod.number().optional(),
+  "estimatedDurationMin": zod.number().optional().describe('Expected job duration in minutes')
 })
 
 export const CreateEstimateResponse = zod.object({
@@ -7218,6 +7222,7 @@ export const CreateEstimateResponse = zod.object({
   "approvedAt": zod.string().nullish(),
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
+  "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
   "convertedToJobId": zod.number().nullish(),
   "templateId": zod.number().nullish(),
   "templateName": zod.string().nullish(),
@@ -7277,6 +7282,7 @@ export const GetEstimateResponse = zod.object({
   "approvedAt": zod.string().nullish(),
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
+  "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
   "convertedToJobId": zod.number().nullish(),
   "templateId": zod.number().nullish(),
   "templateName": zod.string().nullish(),
@@ -7315,7 +7321,8 @@ export const UpdateEstimateBody = zod.object({
   "optionalPitchLine": zod.string().nullish(),
   "acceptedByCustomer": zod.boolean()
 })).optional(),
-  "status": zod.enum(['draft', 'sent', 'approved', 'declined', 'expired']).optional()
+  "status": zod.enum(['draft', 'sent', 'approved', 'declined', 'expired']).optional(),
+  "estimatedDurationMin": zod.number().optional().describe('Expected job duration in minutes')
 })
 
 export const UpdateEstimateResponse = zod.object({
@@ -7350,6 +7357,7 @@ export const UpdateEstimateResponse = zod.object({
   "approvedAt": zod.string().nullish(),
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
+  "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
   "convertedToJobId": zod.number().nullish(),
   "templateId": zod.number().nullish(),
   "templateName": zod.string().nullish(),
@@ -7410,6 +7418,7 @@ export const SendEstimateResponse = zod.object({
   "approvedAt": zod.string().nullish(),
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
+  "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
   "convertedToJobId": zod.number().nullish(),
   "templateId": zod.number().nullish(),
   "templateName": zod.string().nullish(),
@@ -7534,6 +7543,7 @@ export const GetPublicEstimateResponse = zod.object({
   "approvedAt": zod.string().nullish(),
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
+  "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
   "convertedToJobId": zod.number().nullish(),
   "templateId": zod.number().nullish(),
   "templateName": zod.string().nullish(),
@@ -7628,6 +7638,7 @@ export const RespondToEstimateResponse = zod.object({
   "approvedAt": zod.string().nullish(),
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
+  "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
   "convertedToJobId": zod.number().nullish(),
   "templateId": zod.number().nullish(),
   "templateName": zod.string().nullish(),

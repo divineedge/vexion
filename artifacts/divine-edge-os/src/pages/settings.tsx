@@ -25,6 +25,7 @@ import { Repeat as RepeatIcon, ClipboardList, Search } from 'lucide-react';
 import { format } from 'date-fns';
 import PlanTemplatesSettings from '@/components/settings/PlanTemplatesSettings';
 import EstimateTemplatesSettings from '@/components/settings/EstimateTemplatesSettings';
+import InvoiceTemplatesSettings from '@/components/settings/InvoiceTemplatesSettings';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -627,6 +628,7 @@ export default function SettingsPage() {
           {isSuperAdmin && <TabsTrigger value="plans"><Shield className="w-4 h-4 mr-2" />Plans</TabsTrigger>}
           <TabsTrigger value="service-plans"><RepeatIcon className="w-4 h-4 mr-2" />Service Plans</TabsTrigger>
           <TabsTrigger value="estimate-templates"><FileText className="w-4 h-4 mr-2" />Estimate Templates</TabsTrigger>
+          <TabsTrigger value="invoice-templates"><FileText className="w-4 h-4 mr-2" />Invoice Templates</TabsTrigger>
           <TabsTrigger value="routing"><MapPin className="w-4 h-4 mr-2" />Routing</TabsTrigger>
           <TabsTrigger value="operational"><SettingsIcon className="w-4 h-4 mr-2" />Operational</TabsTrigger>
           <TabsTrigger value="measurements"><MapPin className="w-4 h-4 mr-2" />Maps & Quotes</TabsTrigger>
@@ -2040,6 +2042,11 @@ export default function SettingsPage() {
         {/* ── Estimate Templates ── */}
         <TabsContent value="estimate-templates" className="focus-visible:outline-none">
           <EstimateTemplatesSettings />
+        </TabsContent>
+
+        {/* ── Invoice Templates ── */}
+        <TabsContent value="invoice-templates" className="focus-visible:outline-none">
+          <InvoiceTemplatesSettings />
         </TabsContent>
 
         {/* ── Routing ── */}

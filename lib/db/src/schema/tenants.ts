@@ -171,6 +171,11 @@ export const tenantsTable = pgTable("tenants", {
   // ── Chemical / Rainfast Weather Alerts ───────────────────────────────────
   /** Minimum hourly rain probability (0–100) that triggers a rainfast warning task when forecast before rainfastUntil */
   rainfastRainThresholdPct: integer("rainfast_rain_threshold_pct").notNull().default(40),
+  /**
+   * FK to invoice_templates — applied when creating new invoices.
+   * No .references() here to avoid a circular import with invoiceTemplates.ts.
+   */
+  defaultInvoiceTemplateId: integer("default_invoice_template_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

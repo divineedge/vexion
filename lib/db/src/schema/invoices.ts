@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, real, jsonb, uniqueIndex, date } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, jsonb, uniqueIndex, date, boolean } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -41,6 +41,20 @@ export const invoicesTable = pgTable("invoices", {
   publicToken: text("public_token").unique(),
   /** Array of offsetDays values (from tenant.paymentReminderSchedule) already sent for this invoice */
   paymentRemindersSent: jsonb("payment_reminders_sent").default("[]"),
+  /** FK to invoice_templates when this invoice was created from a template */
+  invoiceTemplateId: integer("invoice_template_id"),
+  /** Visual layout variant for the public invoice page: 'clean' | 'detailed' | 'compact' */
+  layout: text("layout").default("clean"),
+  /** Terms and conditions text copied from the template at creation time */
+  termsText: text("terms_text"),
+  /** Whether a late-fee notice should be shown on the overdue public page */
+  lateFeeEnabled: boolean("late_fee_enabled"),
+  /** 'percent' or 'flat' — null when lateFeeEnabled is false */
+  lateFeeType: text("late_fee_type"),
+  /** Late fee value copied from the template */
+  lateFeeAmount: real("late_fee_amount"),
+  /** Grace-period days before the late fee applies */
+  lateFeeDaysGrace: integer("late_fee_days_grace"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 }, (table) => [

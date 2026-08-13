@@ -51,6 +51,7 @@ import tagsRouter from "./tags";
 import skipReasonsRouter from "./skipReasons";
 import portalMessagesRouter from "./portalMessages";
 import staffNotesRouter from "./staffNotes";
+import invoiceTemplatesRouter from "./invoiceTemplates";
 
 const router: IRouter = Router();
 
@@ -106,5 +107,6 @@ router.use(tagsRouter);
 router.use(skipReasonsRouter);
 router.use(portalMessagesRouter);
 router.use(staffNotesRouter);
+router.use(invoiceTemplatesRouter);
 
 export default router;

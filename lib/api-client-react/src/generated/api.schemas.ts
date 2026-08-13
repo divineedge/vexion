@@ -450,6 +450,92 @@ export interface UpdateVisitInput {
   smsReminderEnabled?: boolean;
 }
 
+/**
+ * Visual layout variant for the public invoice page
+ */
+export type InvoiceTemplateLayout = typeof InvoiceTemplateLayout[keyof typeof InvoiceTemplateLayout];
+
+
+export const InvoiceTemplateLayout = {
+  clean: 'clean',
+  detailed: 'detailed',
+  compact: 'compact',
+} as const;
+
+export type InvoiceTemplateLineItemsItem = {
+  description?: string;
+  quantity?: number;
+  unitPrice?: number;
+};
+
+/**
+ * @nullable
+ */
+export type InvoiceTemplateLateFeeType = typeof InvoiceTemplateLateFeeType[keyof typeof InvoiceTemplateLateFeeType] | null;
+
+
+export const InvoiceTemplateLateFeeType = {
+  percent: 'percent',
+  flat: 'flat',
+} as const;
+
+export interface InvoiceTemplate {
+  id: number;
+  tenantId: number;
+  name: string;
+  /** Visual layout variant for the public invoice page */
+  layout: InvoiceTemplateLayout;
+  lineItems?: InvoiceTemplateLineItemsItem[];
+  /**
+     * Terms and conditions text shown at the bottom of the invoice
+     * @nullable
+     */
+  termsText?: string | null;
+  lateFeeEnabled: boolean;
+  /** @nullable */
+  lateFeeType?: InvoiceTemplateLateFeeType;
+  /** @nullable */
+  lateFeeAmount?: number | null;
+  /** Grace period days after due date before late fee applies */
+  lateFeeDaysGrace: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CreateInvoiceTemplateInputLayout = typeof CreateInvoiceTemplateInputLayout[keyof typeof CreateInvoiceTemplateInputLayout];
+
+
+export const CreateInvoiceTemplateInputLayout = {
+  clean: 'clean',
+  detailed: 'detailed',
+  compact: 'compact',
+} as const;
+
+export type CreateInvoiceTemplateInputLineItemsItem = {
+  description?: string;
+  quantity?: number;
+  unitPrice?: number;
+};
+
+export type CreateInvoiceTemplateInputLateFeeType = typeof CreateInvoiceTemplateInputLateFeeType[keyof typeof CreateInvoiceTemplateInputLateFeeType];
+
+
+export const CreateInvoiceTemplateInputLateFeeType = {
+  percent: 'percent',
+  flat: 'flat',
+} as const;
+
+export interface CreateInvoiceTemplateInput {
+  name: string;
+  layout?: CreateInvoiceTemplateInputLayout;
+  lineItems?: CreateInvoiceTemplateInputLineItemsItem[];
+  termsText?: string;
+  lateFeeEnabled?: boolean;
+  lateFeeType?: CreateInvoiceTemplateInputLateFeeType;
+  lateFeeAmount?: number;
+  lateFeeDaysGrace?: number;
+}
+
 export interface EstimateTemplate {
   id: number;
   tenantId: number;
@@ -797,9 +883,7 @@ export interface User {
 
 export interface AuthResponse {
   user: User;
-  token: string;
-  /** Server-side session token for staff-authenticated endpoints */
-  sessionToken?: string;
+  sessionToken: string;
 }
 
 export type UserInputRole = typeof UserInputRole[keyof typeof UserInputRole];
@@ -2810,6 +2894,11 @@ export interface TenantSettings {
      * @nullable
      */
   slug?: string | null;
+  /**
+     * FK to invoice_templates — template applied when creating new invoices
+     * @nullable
+     */
+  defaultInvoiceTemplateId?: number | null;
 }
 
 export interface PauseSeriesInput {
@@ -3132,6 +3221,11 @@ export interface TenantSettingsUpdate {
   dailyTaskHourlyRate?: number;
   /** Ordered list of shortcut IDs shown in the header quick-add bar (max 6) */
   quickShortcuts?: string[];
+  /**
+     * FK to invoice_templates — template applied when creating new invoices
+     * @nullable
+     */
+  defaultInvoiceTemplateId?: number | null;
 }
 
 export type ReviewRequestChannel = typeof ReviewRequestChannel[keyof typeof ReviewRequestChannel];

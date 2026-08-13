@@ -110,4 +110,9 @@ export interface TenantSettings {
      * @nullable
      */
   slug?: string | null;
+  /**
+     * FK to invoice_templates — template applied when creating new invoices
+     * @nullable
+     */
+  defaultInvoiceTemplateId?: number | null;
 }

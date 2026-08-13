@@ -167,7 +167,7 @@ export const LoginResponse = zod.object({
   "hireDate": zod.string().nullish(),
   "createdAt": zod.string().optional()
 }),
-  "token": zod.string()
+  "sessionToken": zod.string()
 })
 
 
@@ -4214,7 +4214,8 @@ export const GetTenantSettingsResponse = zod.object({
   "routeExceptionFee": zod.number().optional().describe('Trip charge auto-appended to a job\'s invoice when it uses a one-time reschedule'),
   "dailyTaskHourlyRate": zod.number().optional().describe('$\/hour flat rate applied to daily task \/ compliance time for payroll. 0 = display-only.'),
   "quickShortcuts": zod.array(zod.string()).optional().describe('Ordered list of shortcut IDs shown in the header quick-add bar (tenant-wide, max 6)'),
-  "slug": zod.string().nullish().describe('URL-safe slug used in the customer portal link (?tenant=slug)')
+  "slug": zod.string().nullish().describe('URL-safe slug used in the customer portal link (?tenant=slug)'),
+  "defaultInvoiceTemplateId": zod.number().nullish().describe('FK to invoice_templates — template applied when creating new invoices')
 })
 
 
@@ -4284,7 +4285,8 @@ export const UpdateTenantSettingsBody = zod.object({
   "reviewCustomLink2Url": zod.string().optional(),
   "routeExceptionFee": zod.number().optional(),
   "dailyTaskHourlyRate": zod.number().optional().describe('$\/hour flat rate applied to daily task \/ compliance time for payroll. 0 = display-only.'),
-  "quickShortcuts": zod.array(zod.string()).optional().describe('Ordered list of shortcut IDs shown in the header quick-add bar (max 6)')
+  "quickShortcuts": zod.array(zod.string()).optional().describe('Ordered list of shortcut IDs shown in the header quick-add bar (max 6)'),
+  "defaultInvoiceTemplateId": zod.number().nullish().describe('FK to invoice_templates — template applied when creating new invoices')
 })
 
 export const UpdateTenantSettingsResponse = zod.object({
@@ -4373,7 +4375,8 @@ export const UpdateTenantSettingsResponse = zod.object({
   "routeExceptionFee": zod.number().optional().describe('Trip charge auto-appended to a job\'s invoice when it uses a one-time reschedule'),
   "dailyTaskHourlyRate": zod.number().optional().describe('$\/hour flat rate applied to daily task \/ compliance time for payroll. 0 = display-only.'),
   "quickShortcuts": zod.array(zod.string()).optional().describe('Ordered list of shortcut IDs shown in the header quick-add bar (tenant-wide, max 6)'),
-  "slug": zod.string().nullish().describe('URL-safe slug used in the customer portal link (?tenant=slug)')
+  "slug": zod.string().nullish().describe('URL-safe slug used in the customer portal link (?tenant=slug)'),
+  "defaultInvoiceTemplateId": zod.number().nullish().describe('FK to invoice_templates — template applied when creating new invoices')
 })
 
 
@@ -8381,6 +8384,174 @@ export const DuplicateEstimateTemplateResponse = zod.object({
   "optionalPitchLine": zod.string().nullish(),
   "acceptedByCustomer": zod.boolean()
 })).optional(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary List invoice templates
+ */
+export const ListInvoiceTemplatesResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "layout": zod.enum(['clean', 'detailed', 'compact']).describe('Visual layout variant for the public invoice page'),
+  "lineItems": zod.array(zod.object({
+  "description": zod.string().optional(),
+  "quantity": zod.number().optional(),
+  "unitPrice": zod.number().optional()
+})).optional(),
+  "termsText": zod.string().nullish().describe('Terms and conditions text shown at the bottom of the invoice'),
+  "lateFeeEnabled": zod.boolean(),
+  "lateFeeType": zod.union([zod.literal('percent'),zod.literal('flat'),zod.literal(null)]).nullish(),
+  "lateFeeAmount": zod.number().nullish(),
+  "lateFeeDaysGrace": zod.number().describe('Grace period days after due date before late fee applies'),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListInvoiceTemplatesResponse = zod.array(ListInvoiceTemplatesResponseItem)
+
+
+/**
+ * @summary Create an invoice template
+ */
+export const CreateInvoiceTemplateBody = zod.object({
+  "name": zod.string(),
+  "layout": zod.enum(['clean', 'detailed', 'compact']).optional(),
+  "lineItems": zod.array(zod.object({
+  "description": zod.string().optional(),
+  "quantity": zod.number().optional(),
+  "unitPrice": zod.number().optional()
+})).optional(),
+  "termsText": zod.string().optional(),
+  "lateFeeEnabled": zod.boolean().optional(),
+  "lateFeeType": zod.enum(['percent', 'flat']).optional(),
+  "lateFeeAmount": zod.number().optional(),
+  "lateFeeDaysGrace": zod.number().optional()
+})
+
+export const CreateInvoiceTemplateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "layout": zod.enum(['clean', 'detailed', 'compact']).describe('Visual layout variant for the public invoice page'),
+  "lineItems": zod.array(zod.object({
+  "description": zod.string().optional(),
+  "quantity": zod.number().optional(),
+  "unitPrice": zod.number().optional()
+})).optional(),
+  "termsText": zod.string().nullish().describe('Terms and conditions text shown at the bottom of the invoice'),
+  "lateFeeEnabled": zod.boolean(),
+  "lateFeeType": zod.union([zod.literal('percent'),zod.literal('flat'),zod.literal(null)]).nullish(),
+  "lateFeeAmount": zod.number().nullish(),
+  "lateFeeDaysGrace": zod.number().describe('Grace period days after due date before late fee applies'),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Get a single invoice template
+ */
+export const GetInvoiceTemplateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetInvoiceTemplateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "layout": zod.enum(['clean', 'detailed', 'compact']).describe('Visual layout variant for the public invoice page'),
+  "lineItems": zod.array(zod.object({
+  "description": zod.string().optional(),
+  "quantity": zod.number().optional(),
+  "unitPrice": zod.number().optional()
+})).optional(),
+  "termsText": zod.string().nullish().describe('Terms and conditions text shown at the bottom of the invoice'),
+  "lateFeeEnabled": zod.boolean(),
+  "lateFeeType": zod.union([zod.literal('percent'),zod.literal('flat'),zod.literal(null)]).nullish(),
+  "lateFeeAmount": zod.number().nullish(),
+  "lateFeeDaysGrace": zod.number().describe('Grace period days after due date before late fee applies'),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Update an invoice template
+ */
+export const UpdateInvoiceTemplateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateInvoiceTemplateBody = zod.object({
+  "name": zod.string(),
+  "layout": zod.enum(['clean', 'detailed', 'compact']).optional(),
+  "lineItems": zod.array(zod.object({
+  "description": zod.string().optional(),
+  "quantity": zod.number().optional(),
+  "unitPrice": zod.number().optional()
+})).optional(),
+  "termsText": zod.string().optional(),
+  "lateFeeEnabled": zod.boolean().optional(),
+  "lateFeeType": zod.enum(['percent', 'flat']).optional(),
+  "lateFeeAmount": zod.number().optional(),
+  "lateFeeDaysGrace": zod.number().optional()
+})
+
+export const UpdateInvoiceTemplateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "layout": zod.enum(['clean', 'detailed', 'compact']).describe('Visual layout variant for the public invoice page'),
+  "lineItems": zod.array(zod.object({
+  "description": zod.string().optional(),
+  "quantity": zod.number().optional(),
+  "unitPrice": zod.number().optional()
+})).optional(),
+  "termsText": zod.string().nullish().describe('Terms and conditions text shown at the bottom of the invoice'),
+  "lateFeeEnabled": zod.boolean(),
+  "lateFeeType": zod.union([zod.literal('percent'),zod.literal('flat'),zod.literal(null)]).nullish(),
+  "lateFeeAmount": zod.number().nullish(),
+  "lateFeeDaysGrace": zod.number().describe('Grace period days after due date before late fee applies'),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Delete an invoice template
+ */
+export const DeleteInvoiceTemplateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteInvoiceTemplateResponse = zod.void()
+
+
+/**
+ * @summary Duplicate an invoice template
+ */
+export const DuplicateInvoiceTemplateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DuplicateInvoiceTemplateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "layout": zod.enum(['clean', 'detailed', 'compact']).describe('Visual layout variant for the public invoice page'),
+  "lineItems": zod.array(zod.object({
+  "description": zod.string().optional(),
+  "quantity": zod.number().optional(),
+  "unitPrice": zod.number().optional()
+})).optional(),
+  "termsText": zod.string().nullish().describe('Terms and conditions text shown at the bottom of the invoice'),
+  "lateFeeEnabled": zod.boolean(),
+  "lateFeeType": zod.union([zod.literal('percent'),zod.literal('flat'),zod.literal(null)]).nullish(),
+  "lateFeeAmount": zod.number().nullish(),
+  "lateFeeDaysGrace": zod.number().describe('Grace period days after due date before late fee applies'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })

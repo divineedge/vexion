@@ -149,6 +149,8 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     cancellationFeeAmount: tenant.cancellationFeeAmount ?? 0,
     // Chemical / Rainfast weather alerts
     rainfastRainThresholdPct: tenant.rainfastRainThresholdPct ?? 40,
+    // Default invoice template
+    defaultInvoiceTemplateId: tenant.defaultInvoiceTemplateId ?? null,
   };
 }
 
@@ -206,6 +208,8 @@ router.patch("/settings", async (req, res): Promise<void> => {
     cancellationFeeAmount,
     // Chemical / Rainfast weather alerts
     rainfastRainThresholdPct,
+    // Default invoice template
+    defaultInvoiceTemplateId,
   } = req.body;
 
   const updates: Partial<typeof tenantsTable.$inferInsert> = {};
@@ -359,6 +363,9 @@ router.patch("/settings", async (req, res): Promise<void> => {
   if (rainfastRainThresholdPct !== undefined) {
     const pct = parseInt(rainfastRainThresholdPct, 10);
     if (!isNaN(pct) && pct >= 0 && pct <= 100) updates.rainfastRainThresholdPct = pct;
+  }
+  if (defaultInvoiceTemplateId !== undefined) {
+    updates.defaultInvoiceTemplateId = defaultInvoiceTemplateId ? parseInt(defaultInvoiceTemplateId, 10) : null;
   }
 
   if (quickShortcuts !== undefined) {

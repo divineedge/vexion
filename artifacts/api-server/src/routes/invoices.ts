@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, invoicesTable, customersTable, jobsTable, activityLogTable, tenantsTable, integrationSyncLogsTable, customerPlansTable, stopServiceFlagsTable } from "@workspace/db";
+import { db, invoicesTable, customersTable, jobsTable, activityLogTable, tenantsTable, integrationSyncLogsTable, customerPlansTable, stopServiceFlagsTable, invoiceTemplatesTable } from "@workspace/db";
 import { eq, and, sql, inArray, ne } from "drizzle-orm";
 import crypto from "crypto";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
@@ -168,6 +168,13 @@ function formatInvoice(i: typeof invoicesTable.$inferSelect, customerName?: stri
     stripePaymentUrl: i.stripePaymentUrl ?? null,
     publicToken: i.publicToken ?? null,
     createdAt: i.createdAt.toISOString(),
+    // Template-derived fields
+    layout: i.layout ?? "clean",
+    termsText: i.termsText ?? null,
+    lateFeeEnabled: i.lateFeeEnabled ?? false,
+    lateFeeType: i.lateFeeType ?? null,
+    lateFeeAmount: i.lateFeeAmount ?? null,
+    lateFeeDaysGrace: i.lateFeeDaysGrace ?? 0,
   };
 }
 
@@ -224,6 +231,33 @@ router.post("/invoices/from-job/:jobId", async (req, res): Promise<void> => {
   const [job] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, jobId), eq(jobsTable.tenantId, tenantId)));
   if (!job) { res.status(404).json({ error: "Job not found" }); return; }
 
+  // Resolve tenant default invoice template (from-job always uses tenant default)
+  const [tenant] = await db.select({ defaultInvoiceTemplateId: tenantsTable.defaultInvoiceTemplateId }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  const resolvedTemplateId = tenant?.defaultInvoiceTemplateId ?? null;
+
+  let templateFields = {
+    layout: "clean",
+    termsText: null as string | null,
+    lateFeeEnabled: false,
+    lateFeeType: null as string | null,
+    lateFeeAmount: null as number | null,
+    lateFeeDaysGrace: 0,
+  };
+
+  if (resolvedTemplateId) {
+    const [tmpl] = await db.select().from(invoiceTemplatesTable).where(and(eq(invoiceTemplatesTable.id, resolvedTemplateId), eq(invoiceTemplatesTable.tenantId, tenantId)));
+    if (tmpl) {
+      templateFields = {
+        layout: tmpl.layout,
+        termsText: tmpl.termsText ?? null,
+        lateFeeEnabled: tmpl.lateFeeEnabled,
+        lateFeeType: tmpl.lateFeeType ?? null,
+        lateFeeAmount: tmpl.lateFeeAmount ?? null,
+        lateFeeDaysGrace: tmpl.lateFeeDaysGrace,
+      };
+    }
+  }
+
   const invoiceNum = `INV-${Date.now().toString().slice(-6)}`;
   const lineItems = (job.lineItems as unknown[]) ?? [];
   const subtotal = job.totalAmount;
@@ -240,6 +274,13 @@ router.post("/invoices/from-job/:jobId", async (req, res): Promise<void> => {
     tax,
     total,
     lineItems,
+    invoiceTemplateId: resolvedTemplateId,
+    layout: templateFields.layout,
+    termsText: templateFields.termsText,
+    lateFeeEnabled: templateFields.lateFeeEnabled,
+    lateFeeType: templateFields.lateFeeType,
+    lateFeeAmount: templateFields.lateFeeAmount,
+    lateFeeDaysGrace: templateFields.lateFeeDaysGrace,
   }).returning();
 
   await db.update(jobsTable).set({ invoiceId: invoice.id }).where(eq(jobsTable.id, jobId));
@@ -250,11 +291,57 @@ router.post("/invoices/from-job/:jobId", async (req, res): Promise<void> => {
 
 router.post("/invoices", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { customerId, jobId, notes, dueDate, lineItems = [] } = req.body;
+  const { customerId, jobId, notes, dueDate, lineItems: bodyLineItems, invoiceTemplateId } = req.body;
   if (!customerId) { res.status(400).json({ error: "customerId required" }); return; }
 
+  // Resolve template — explicit invoiceTemplateId > tenant default
+  let resolvedTemplateId: number | null = invoiceTemplateId ? parseInt(invoiceTemplateId, 10) : null;
+  if (!resolvedTemplateId) {
+    const [tenant] = await db.select({ defaultInvoiceTemplateId: tenantsTable.defaultInvoiceTemplateId }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+    resolvedTemplateId = tenant?.defaultInvoiceTemplateId ?? null;
+  }
+
+  let templateFields: {
+    layout: string;
+    termsText: string | null;
+    lateFeeEnabled: boolean;
+    lateFeeType: string | null;
+    lateFeeAmount: number | null;
+    lateFeeDaysGrace: number;
+    templateLineItems: unknown[];
+  } = {
+    layout: "clean",
+    termsText: null,
+    lateFeeEnabled: false,
+    lateFeeType: null,
+    lateFeeAmount: null,
+    lateFeeDaysGrace: 0,
+    templateLineItems: [],
+  };
+
+  if (resolvedTemplateId) {
+    const [tmpl] = await db.select().from(invoiceTemplatesTable).where(and(eq(invoiceTemplatesTable.id, resolvedTemplateId), eq(invoiceTemplatesTable.tenantId, tenantId)));
+    if (tmpl) {
+      templateFields = {
+        layout: tmpl.layout,
+        termsText: tmpl.termsText ?? null,
+        lateFeeEnabled: tmpl.lateFeeEnabled,
+        lateFeeType: tmpl.lateFeeType ?? null,
+        lateFeeAmount: tmpl.lateFeeAmount ?? null,
+        lateFeeDaysGrace: tmpl.lateFeeDaysGrace,
+        templateLineItems: (tmpl.lineItems as unknown[]) ?? [],
+      };
+    }
+  }
+
+  // Caller-supplied line items override template line items; template line items are
+  // only used when the caller sends none.
+  const lineItems = (bodyLineItems !== undefined && bodyLineItems !== null)
+    ? bodyLineItems
+    : templateFields.templateLineItems;
+
   const invoiceNum = `INV-${Date.now().toString().slice(-6)}`;
-  const subtotal = lineItems.reduce((sum: number, li: { unitPrice: number; quantity: number }) => sum + (li.unitPrice * li.quantity), 0);
+  const subtotal = (lineItems as { unitPrice: number; quantity: number }[]).reduce((sum, li) => sum + (li.unitPrice * li.quantity), 0);
   const tax = subtotal * 0.085;
   const total = subtotal + tax;
 
@@ -270,6 +357,13 @@ router.post("/invoices", async (req, res): Promise<void> => {
     notes: notes ?? null,
     dueDate: dueDate ? new Date(dueDate) : null,
     lineItems,
+    invoiceTemplateId: resolvedTemplateId,
+    layout: templateFields.layout,
+    termsText: templateFields.termsText,
+    lateFeeEnabled: templateFields.lateFeeEnabled,
+    lateFeeType: templateFields.lateFeeType,
+    lateFeeAmount: templateFields.lateFeeAmount,
+    lateFeeDaysGrace: templateFields.lateFeeDaysGrace,
   }).returning();
 
   res.status(201).json(formatInvoice(invoice));

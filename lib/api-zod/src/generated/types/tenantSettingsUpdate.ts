@@ -68,4 +68,9 @@ export interface TenantSettingsUpdate {
   dailyTaskHourlyRate?: number;
   /** Ordered list of shortcut IDs shown in the header quick-add bar (max 6) */
   quickShortcuts?: string[];
+  /**
+     * FK to invoice_templates — template applied when creating new invoices
+     * @nullable
+     */
+  defaultInvoiceTemplateId?: number | null;
 }

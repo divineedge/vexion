@@ -515,6 +515,24 @@ export default function EstimatePublicPage() {
           </Card>
         )}
 
+        {/* Terms & Conditions — read from JSONB sentinel item */}
+        {(() => {
+          const termsItem = (estimate.lineItems as any[]).find(
+            (i: any) => i.type === 'text_block' && i.role === 'terms'
+          );
+          if (!termsItem?.content) return null;
+          return (
+            <Card>
+              <CardContent className="pt-5 pb-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Terms &amp; Conditions</p>
+                </div>
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{termsItem.content}</p>
+              </CardContent>
+            </Card>
+          );
+        })()}
+
         {/* Actions */}
         {estimate.status === 'sent' && (
           <div className="space-y-3">

@@ -74,8 +74,54 @@ const EMAIL_STATUS_COLORS: Record<string, string> = {
 // ── Recurring Template Sheet ──────────────────────────────────────────────────
 
 type LineItemRow = BillingLineItem;
-type BillingCycleType = 'daily' | 'weekly' | 'monthly';
+type BillingCycleType = 'daily' | 'weekly' | 'monthly' | 'bi_monthly';
+/** UI-only concept: 'monthly_specific' collapses to billingCycleType='monthly' with a chosen day; 'bi_monthly' passes through unchanged */
+type UiCycleMode = 'daily' | 'weekly' | 'monthly' | 'monthly_specific' | 'bi_monthly';
 type BillingMode = 'static' | 'completed_work';
+
+function ordinal(n: number): string {
+  if (n === 11 || n === 12 || n === 13) return `${n}th`;
+  switch (n % 10) {
+    case 1: return `${n}st`;
+    case 2: return `${n}nd`;
+    case 3: return `${n}rd`;
+    default: return `${n}th`;
+  }
+}
+
+/**
+ * Next yyyy-mm-dd on which the given day-of-month will occur.
+ * Builds the string from local calendar parts — never calls toISOString() —
+ * so it is correct for all timezones (including those east of UTC).
+ */
+function nextDateForDayOfMonth(day: number): string {
+  const today = new Date();
+  const yr = today.getFullYear();
+  const mo = today.getMonth(); // 0-based
+  const todayDay = today.getDate();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  if (todayDay <= day) {
+    // Still reachable this calendar month
+    return `${yr}-${pad(mo + 1)}-${pad(day)}`;
+  }
+  // Move to next month
+  if (mo === 11) return `${yr + 1}-01-${pad(day)}`;
+  return `${yr}-${pad(mo + 2)}-${pad(day)}`;
+}
+
+/** Human-readable billing cycle label for the table and tooltips */
+function cycleLabel(billingCycleType: string, billingCycleDay: number): string {
+  if (billingCycleType === 'daily') return 'Daily';
+  if (billingCycleType === 'weekly') {
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    return `Weekly · ${days[billingCycleDay] ?? `day ${billingCycleDay}`}`;
+  }
+  if (billingCycleType === 'monthly') {
+    return `Monthly on the ${ordinal(billingCycleDay)}`;
+  }
+  if (billingCycleType === 'bi_monthly') return 'Every 2 months';
+  return billingCycleType;
+}
 
 interface ServiceOption {
   id: number;
@@ -104,7 +150,7 @@ function TemplateSheet({ open, onClose, editing, customers }: TemplateSheetProps
   const [serviceId, setServiceId] = useState('');
   const [name, setName] = useState('');
   const [billingMode, setBillingMode] = useState<BillingMode>('static');
-  const [billingCycleType, setBillingCycleType] = useState<BillingCycleType>('monthly');
+  const [uiCycleMode, setUiCycleMode] = useState<UiCycleMode>('monthly');
   const [billingCycleDay, setBillingCycleDay] = useState('1');
   const [nextBillingDate, setNextBillingDate] = useState('');
   const [isActive, setIsActive] = useState(true);
@@ -117,9 +163,26 @@ function TemplateSheet({ open, onClose, editing, customers }: TemplateSheetProps
       setServiceId(editing.serviceId != null ? String(editing.serviceId) : '');
       setName(editing.name);
       setBillingMode((editing.billingMode as BillingMode) ?? 'static');
-      setBillingCycleType(editing.billingCycleType as BillingCycleType);
-      setBillingCycleDay(String(editing.billingCycleDay));
-      setNextBillingDate(editing.nextBillingDate);
+      // Derive the UI cycle mode from the stored type + day
+      const storedType = editing.billingCycleType as BillingCycleType;
+      const storedDay = editing.billingCycleDay ?? 1;
+      const derivedMode: UiCycleMode = storedType === 'monthly' && storedDay !== 1 ? 'monthly_specific'
+        : storedType === 'bi_monthly' ? 'bi_monthly'
+        : storedType as UiCycleMode;
+      setUiCycleMode(derivedMode);
+      setBillingCycleDay(String(storedDay));
+      // For monthly modes, reconcile any legacy mismatch by recomputing the next date
+      // from billingCycleDay so the form is consistent before staff save.
+      if (storedType === 'monthly') {
+        const existingDateDay = parseInt((editing.nextBillingDate ?? '').split('-')[2] ?? '0', 10);
+        if (existingDateDay !== storedDay) {
+          setNextBillingDate(nextDateForDayOfMonth(storedDay));
+        } else {
+          setNextBillingDate(editing.nextBillingDate);
+        }
+      } else {
+        setNextBillingDate(editing.nextBillingDate);
+      }
       setIsActive(editing.isActive);
       setNotes(editing.notes ?? '');
       const items = (editing.lineItems ?? []) as unknown as LineItemRow[];
@@ -129,9 +192,9 @@ function TemplateSheet({ open, onClose, editing, customers }: TemplateSheetProps
       setServiceId('');
       setName('');
       setBillingMode('static');
-      setBillingCycleType('monthly');
+      setUiCycleMode('monthly');
       setBillingCycleDay('1');
-      setNextBillingDate('');
+      setNextBillingDate(nextDateForDayOfMonth(1)); // pre-fill so locked monthly field is never empty
       setIsActive(true);
       setNotes('');
       setLineItems([{ description: '', quantity: 1, unitPrice: 0, total: 0 }]);
@@ -167,8 +230,13 @@ function TemplateSheet({ open, onClose, editing, customers }: TemplateSheetProps
       serviceId: serviceId ? parseInt(serviceId, 10) : undefined,
       name,
       billingMode,
-      billingCycleType,
-      billingCycleDay: parseInt(billingCycleDay, 10),
+      billingCycleType: (
+        uiCycleMode === 'daily' ? 'daily'
+        : uiCycleMode === 'weekly' ? 'weekly'
+        : uiCycleMode === 'bi_monthly' ? 'bi_monthly'
+        : 'monthly'
+      ) as BillingCycleType,
+      billingCycleDay: (uiCycleMode === 'daily' || uiCycleMode === 'monthly' || uiCycleMode === 'bi_monthly') ? 1 : parseInt(billingCycleDay, 10),
       nextBillingDate,
       isActive,
       notes: notes || undefined,
@@ -254,39 +322,100 @@ function TemplateSheet({ open, onClose, editing, customers }: TemplateSheetProps
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-3">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Billing Cycle</label>
-              <Select value={billingCycleType} onValueChange={v => setBillingCycleType(v as BillingCycleType)}>
+              <Select
+                value={uiCycleMode}
+                onValueChange={v => {
+                  const mode = v as UiCycleMode;
+                  setUiCycleMode(mode);
+                  if (mode === 'monthly') {
+                    setBillingCycleDay('1');
+                    setNextBillingDate(nextDateForDayOfMonth(1));
+                  } else if (mode === 'monthly_specific') {
+                    // Normalize: weekly days (0–6) are invalid for monthly; reset to 1
+                    const cur = parseInt(billingCycleDay, 10);
+                    const safeDay = (Number.isFinite(cur) && cur >= 1 && cur <= 28) ? cur : 1;
+                    setBillingCycleDay(String(safeDay));
+                    setNextBillingDate(nextDateForDayOfMonth(safeDay));
+                  } else if (mode === 'weekly') {
+                    setBillingCycleDay('1'); // Monday default
+                  }
+                }}
+              >
                 <SelectTrigger title="Select how often to bill the customer"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="daily">Daily</SelectItem>
                   <SelectItem value="weekly">Weekly</SelectItem>
-                  <SelectItem value="monthly">Monthly</SelectItem>
+                  <SelectItem value="monthly">Monthly (1st of month)</SelectItem>
+                  <SelectItem value="monthly_specific">Monthly — choose day</SelectItem>
+                  <SelectItem value="bi_monthly">Every 2 months</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            {billingCycleType !== 'daily' && (
+
+            {/* Day-of-week picker for Weekly */}
+            {uiCycleMode === 'weekly' && (
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Day of {billingCycleType === 'monthly' ? 'Month' : 'Week'}</label>
-                <Input
-                  type="number"
-                  min={billingCycleType === 'monthly' ? 1 : 0}
-                  max={billingCycleType === 'monthly' ? 28 : 6}
-                  title={billingCycleType === 'monthly' ? 'Day of month to bill (1–28)' : 'Day of week to bill (0=Sun, 1=Mon … 6=Sat)'}
+                <label className="text-sm font-medium">Day of Week</label>
+                <Select value={billingCycleDay} onValueChange={v => setBillingCycleDay(v)}>
+                  <SelectTrigger title="Day of the week to generate invoices"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((d, i) => (
+                      <SelectItem key={i} value={String(i)}>{d}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Day-of-month picker for Monthly — choose day */}
+            {uiCycleMode === 'monthly_specific' && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Day of Month</label>
+                <Select
                   value={billingCycleDay}
-                  onChange={e => setBillingCycleDay(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {billingCycleType === 'monthly' ? '1–28 (day of month)' : '0=Sun, 1=Mon … 6=Sat'}
-                </p>
+                  onValueChange={v => {
+                    setBillingCycleDay(v);
+                    const day = parseInt(v, 10);
+                    if (day >= 1 && day <= 28) setNextBillingDate(nextDateForDayOfMonth(day));
+                  }}
+                >
+                  <SelectTrigger title="Which day of the month invoices are generated (1–28)"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 28 }, (_, i) => i + 1).map(d => (
+                      <SelectItem key={d} value={String(d)}>{ordinal(d)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Capped at the 28th to avoid month-end edge cases.</p>
               </div>
             )}
           </div>
 
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Next Billing Date <span className="text-destructive">*</span></label>
-            <Input type="date" title="First billing date — future charges will follow the billing cycle from this date" value={nextBillingDate} onChange={e => setNextBillingDate(e.target.value)} />
+            {(uiCycleMode === 'monthly' || uiCycleMode === 'monthly_specific') /* bi_monthly keeps manual date */ ? (
+              <>
+                <div
+                  className="flex items-center h-9 px-3 rounded-md border bg-muted/50 text-sm text-muted-foreground cursor-default select-none"
+                  title="Computed from the selected day of month — not editable directly"
+                >
+                  {nextBillingDate || '—'}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Computed from the selected day — change the day above to update this date.
+                </p>
+              </>
+            ) : (
+              <Input
+                type="date"
+                title="First billing date — future charges will follow the billing cycle from this date"
+                value={nextBillingDate}
+                onChange={e => setNextBillingDate(e.target.value)}
+              />
+            )}
           </div>
 
           <Separator />
@@ -1399,8 +1528,8 @@ export default function FinancialsPage() {
                               {isCompletedWork ? 'Completed Work' : 'Static'}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-sm text-muted-foreground capitalize" title={t.billingCycleType !== 'daily' ? `Billing cycle: ${t.billingCycleType}, day ${t.billingCycleDay}` : `Billing cycle: ${t.billingCycleType}`}>
-                            {t.billingCycleType}{t.billingCycleType !== 'daily' ? ` · day ${t.billingCycleDay}` : ''}
+                          <TableCell className="text-sm text-muted-foreground" title={`Billing cycle: ${cycleLabel(t.billingCycleType, t.billingCycleDay)}`}>
+                            {cycleLabel(t.billingCycleType, t.billingCycleDay)}
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {(t as any).lastGeneratedAt

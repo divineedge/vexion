@@ -81,6 +81,20 @@ router.post("/billing/recurring-templates", async (req, res): Promise<void> => {
     return;
   }
 
+  // For monthly templates, enforce that nextBillingDate day-of-month matches billingCycleDay
+  if (billingCycleType === "monthly") {
+    const day = Number(billingCycleDay);
+    if (!Number.isInteger(day) || day < 1 || day > 28) {
+      res.status(400).json({ error: "billingCycleDay must be 1–28 for monthly templates" });
+      return;
+    }
+    const dateDayOfMonth = parseInt((nextBillingDate as string).split("-")[2] ?? "0", 10);
+    if (dateDayOfMonth !== day) {
+      res.status(400).json({ error: `nextBillingDate day-of-month (${dateDayOfMonth}) must match billingCycleDay (${day})` });
+      return;
+    }
+  }
+
   const parsedCustomerId = customerId != null ? parseInt(customerId, 10) : null;
   const parsedServiceId = serviceId != null ? parseInt(serviceId, 10) : null;
 
@@ -177,6 +191,26 @@ router.patch("/billing/recurring-templates/:id", async (req, res): Promise<void>
   if (effectiveBillingMode === "static" && !effectiveCustomerId) {
     res.status(400).json({ error: "Static line-item templates require a customer" });
     return;
+  }
+
+  // Only validate monthly day/date consistency when a scheduling field is explicitly changed
+  // in this request — unrelated edits (name, line items, active flag, etc.) on legacy records
+  // are left intact so backward compatibility is preserved.
+  if (billingCycleType !== undefined || billingCycleDay !== undefined || nextBillingDate !== undefined) {
+    const effectiveType = billingCycleType ?? existing.billingCycleType;
+    const effectiveDay = billingCycleDay !== undefined ? Number(billingCycleDay) : existing.billingCycleDay;
+    const effectiveDate = nextBillingDate ?? existing.nextBillingDate;
+    if (effectiveType === "monthly") {
+      if (!Number.isInteger(effectiveDay) || effectiveDay < 1 || effectiveDay > 28) {
+        res.status(400).json({ error: "billingCycleDay must be 1–28 for monthly templates" });
+        return;
+      }
+      const dateDayOfMonth = parseInt((effectiveDate as string).split("-")[2] ?? "0", 10);
+      if (dateDayOfMonth !== effectiveDay) {
+        res.status(400).json({ error: `nextBillingDate day-of-month (${dateDayOfMonth}) must match billingCycleDay (${effectiveDay})` });
+        return;
+      }
+    }
   }
 
   if (customerId !== undefined && effectiveCustomerId != null) {

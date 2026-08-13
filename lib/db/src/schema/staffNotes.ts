@@ -13,6 +13,8 @@ export const staffNotesTable = pgTable("staff_notes", {
   entityId: integer("entity_id").notNull(),
   body: text("body").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  /** Set when the note body is edited after initial creation */
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
   /** Soft-delete timestamp; null = note is visible */
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });

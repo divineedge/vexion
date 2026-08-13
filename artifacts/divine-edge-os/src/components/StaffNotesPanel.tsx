@@ -7,7 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Trash2, Plus, StickyNote, Lock } from 'lucide-react';
+import { Trash2, Plus, StickyNote, Lock, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
@@ -17,13 +17,14 @@ interface StaffNote {
   authorName: string;
   body: string;
   createdAt: string;
+  updatedAt: string | null;
 }
 
 interface StaffNotesPanelProps {
   entityType: 'customer' | 'job';
   entityId: number;
   currentUserId: number;
-  /** True if the current user can delete any note (owner / office_manager / super_admin) */
+  /** True if the current user can delete/edit any note (owner / office_manager / super_admin) */
   isAdmin: boolean;
 }
 
@@ -31,6 +32,9 @@ export function StaffNotesPanel({ entityType, entityId, currentUserId, isAdmin }
   const qc = useQueryClient();
   const [addingNote, setAddingNote] = useState(false);
   const [noteBody, setNoteBody] = useState('');
+  /** noteId being edited, or null when not editing */
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editBody, setEditBody] = useState('');
 
   const queryKey = ['staff-notes', entityType, entityId];
 
@@ -59,6 +63,22 @@ export function StaffNotesPanel({ entityType, entityId, currentUserId, isAdmin }
     onError: () => toast.error('Failed to add note'),
   });
 
+  const editNote = useMutation({
+    mutationFn: ({ id, body }: { id: number; body: string }) =>
+      customFetch<StaffNote>(`/api/staff-notes/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body }),
+      }),
+    onSuccess: () => {
+      toast.success('Note updated');
+      setEditingId(null);
+      setEditBody('');
+      qc.invalidateQueries({ queryKey });
+    },
+    onError: () => toast.error('Failed to update note'),
+  });
+
   const deleteNote = useMutation({
     mutationFn: (noteId: number) =>
       customFetch(`/api/staff-notes/${noteId}`, { method: 'DELETE' }),
@@ -72,6 +92,23 @@ export function StaffNotesPanel({ entityType, entityId, currentUserId, isAdmin }
   const handleSubmit = () => {
     if (!noteBody.trim()) { toast.error('Note cannot be empty'); return; }
     addNote.mutate();
+  };
+
+  const startEdit = (note: StaffNote) => {
+    setEditingId(note.id);
+    setEditBody(note.body);
+    // Close the add-note form if open
+    setAddingNote(false);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditBody('');
+  };
+
+  const handleSaveEdit = (id: number) => {
+    if (!editBody.trim()) { toast.error('Note cannot be empty'); return; }
+    editNote.mutate({ id, body: editBody.trim() });
   };
 
   return (
@@ -101,7 +138,7 @@ export function StaffNotesPanel({ entityType, entityId, currentUserId, isAdmin }
             variant="outline"
             className="h-7 text-xs gap-1"
             title="Add an internal staff note"
-            onClick={() => setAddingNote(true)}
+            onClick={() => { setAddingNote(true); setEditingId(null); }}
           >
             <Plus className="w-3 h-3" /> Add Note
           </Button>
@@ -163,7 +200,10 @@ export function StaffNotesPanel({ entityType, entityId, currentUserId, isAdmin }
       ) : (
         <div className="space-y-2">
           {notes.map(note => {
-            const canDelete = note.authorId === currentUserId || isAdmin;
+            const canEdit = note.authorId === currentUserId || isAdmin;
+            const canDelete = canEdit;
+            const isEditing = editingId === note.id;
+
             return (
               <div
                 key={note.id}
@@ -183,22 +223,87 @@ export function StaffNotesPanel({ entityType, entityId, currentUserId, isAdmin }
                     >
                       {format(new Date(note.createdAt), 'MMM d, yyyy · h:mm a')}
                     </span>
+                    {note.updatedAt && (
+                      <span
+                        className="text-[10px] text-muted-foreground/60 italic shrink-0"
+                        title={`Edited ${new Date(note.updatedAt).toLocaleString()}`}
+                      >
+                        (edited {format(new Date(note.updatedAt), 'MMM d · h:mm a')})
+                      </span>
+                    )}
                   </div>
-                  {canDelete && (
-                    <button
-                      className="text-muted-foreground/40 hover:text-destructive transition-colors disabled:opacity-30 shrink-0"
-                      title="Delete this note"
-                      disabled={deleteNote.isPending}
-                      onClick={() => {
-                        if (!window.confirm('Delete this note? This cannot be undone.')) return;
-                        deleteNote.mutate(note.id);
-                      }}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                  {!isEditing && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      {canEdit && (
+                        <button
+                          className="text-muted-foreground/40 hover:text-foreground transition-colors disabled:opacity-30"
+                          title="Edit this note"
+                          disabled={editNote.isPending}
+                          onClick={() => startEdit(note)}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          className="text-muted-foreground/40 hover:text-destructive transition-colors disabled:opacity-30"
+                          title="Delete this note"
+                          disabled={deleteNote.isPending}
+                          onClick={() => {
+                            if (!window.confirm('Delete this note? This cannot be undone.')) return;
+                            deleteNote.mutate(note.id);
+                          }}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
-                <p className="text-sm whitespace-pre-wrap break-words">{note.body}</p>
+
+                {isEditing ? (
+                  <div className="space-y-2 pt-1">
+                    <Textarea
+                      value={editBody}
+                      onChange={e => setEditBody(e.target.value)}
+                      rows={3}
+                      className="text-sm resize-none"
+                      autoFocus
+                      maxLength={4000}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSaveEdit(note.id);
+                        if (e.key === 'Escape') cancelEdit();
+                      }}
+                    />
+                    <div className="flex items-center justify-between">
+                      <span className={`text-[10px] text-muted-foreground ${editBody.length > 3600 ? 'text-amber-500' : ''}`}>
+                        {editBody.length}/4000
+                      </span>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          className="h-7 text-xs gap-1"
+                          disabled={editNote.isPending || !editBody.trim()}
+                          onClick={() => handleSaveEdit(note.id)}
+                          title="Save changes (Cmd/Ctrl+Enter)"
+                        >
+                          {editNote.isPending ? 'Saving…' : 'Save'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-xs"
+                          onClick={cancelEdit}
+                          title="Discard changes (Esc)"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm whitespace-pre-wrap break-words">{note.body}</p>
+                )}
               </div>
             );
           })}

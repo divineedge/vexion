@@ -95,6 +95,7 @@ router.get("/staff-notes", async (req, res): Promise<void> => {
       ...r.note,
       authorName: r.authorName ?? "Unknown",
       createdAt: r.note.createdAt.toISOString(),
+      updatedAt: r.note.updatedAt ? r.note.updatedAt.toISOString() : null,
       deletedAt: null,
     })),
   );
@@ -161,6 +162,62 @@ router.post("/staff-notes", async (req, res): Promise<void> => {
     ...note,
     authorName: author?.name ?? "Unknown",
     createdAt: note.createdAt.toISOString(),
+    deletedAt: null,
+  });
+});
+
+// PATCH /staff-notes/:id  — edit the body of an existing note
+router.patch("/staff-notes/:id", async (req, res): Promise<void> => {
+  const tenantId = res.locals["staffTenantId"] as number;
+  const userId = res.locals["staffUserId"] as number;
+  const noteId = parseInt(req.params.id, 10);
+  if (isNaN(noteId)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const { body } = req.body as { body?: string };
+  const trimmedBody = (body ?? "").trim();
+  if (!trimmedBody) { res.status(400).json({ error: "body is required" }); return; }
+  if (trimmedBody.length > 4000) { res.status(400).json({ error: "Note body must be 4000 characters or fewer" }); return; }
+
+  const [[noteRow], adminFlag] = await Promise.all([
+    db
+      .select({ id: staffNotesTable.id, authorId: staffNotesTable.authorId })
+      .from(staffNotesTable)
+      .where(
+        and(
+          eq(staffNotesTable.id, noteId),
+          eq(staffNotesTable.tenantId, tenantId),
+          isNull(staffNotesTable.deletedAt),
+        ),
+      )
+      .limit(1),
+    isAdminRole(tenantId, userId),
+  ]);
+
+  if (!noteRow) { res.status(404).json({ error: "Note not found" }); return; }
+
+  if (noteRow.authorId !== userId && !adminFlag) {
+    res.status(403).json({ error: "Only the note author or an admin can edit this note" });
+    return;
+  }
+
+  const now = new Date();
+  const [updated] = await db
+    .update(staffNotesTable)
+    .set({ body: trimmedBody, updatedAt: now })
+    .where(eq(staffNotesTable.id, noteId))
+    .returning();
+
+  const [author] = await db
+    .select({ name: usersTable.name })
+    .from(usersTable)
+    .where(eq(usersTable.id, updated.authorId))
+    .limit(1);
+
+  res.json({
+    ...updated,
+    authorName: author?.name ?? "Unknown",
+    createdAt: updated.createdAt.toISOString(),
+    updatedAt: updated.updatedAt ? updated.updatedAt.toISOString() : null,
     deletedAt: null,
   });
 });

@@ -1929,6 +1929,43 @@ export const CompleteJobResponse = zod.object({
 
 
 /**
+ * @summary Atomically mark a job complete and create an invoice (single transaction)
+ */
+export const CompleteAndInvoiceJobParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CompleteAndInvoiceJobResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "invoiceNumber": zod.string(),
+  "customerId": zod.number(),
+  "customerName": zod.string().nullish(),
+  "jobId": zod.number().nullish(),
+  "status": zod.enum(['draft', 'sent', 'paid', 'overdue', 'cancelled']),
+  "subtotal": zod.number(),
+  "tax": zod.number(),
+  "total": zod.number(),
+  "dueDate": zod.string().nullish(),
+  "paidAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.number(),
+  "description": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional(),
+  "stripePaymentUrl": zod.string().nullish(),
+  "lobLetterId": zod.string().nullish(),
+  "lobStatus": zod.string().nullish(),
+  "publicToken": zod.string().nullish(),
+  "paymentRemindersSent": zod.array(zod.number()).nullish().describe('Offset days for which a payment reminder has already been sent'),
+  "createdAt": zod.string()
+})
+
+
+/**
  * @summary Get parts used on a job
  */
 export const GetJobPartsParams = zod.object({

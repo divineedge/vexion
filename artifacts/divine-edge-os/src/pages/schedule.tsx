@@ -37,6 +37,7 @@ import {
   useListCrews, getListCrewsQueryKey,
   useListTags, getListTagsQueryKey,
   useListSkipReasons, getListSkipReasonsQueryKey,
+  useCompleteAndInvoiceJob, useUpdateInvoice,
 } from '@workspace/api-client-react';
 import { useMutation } from '@tanstack/react-query';
 import MediaGallery from '@/components/media/MediaGallery';
@@ -393,6 +394,8 @@ export default function SchedulePage() {
     mutationFn: ({ id }: { id: number }) =>
       customFetch<void>(`/api/jobs/${id}/dismiss-reschedule-request`, { method: 'POST' }),
   });
+  const completeAndInvoiceJob = useCompleteAndInvoiceJob();
+  const updateInvoice = useUpdateInvoice();
 
   // Route templates (for route filter dropdown + job detail route assignment)
   const { data: routeTemplates } = useListRouteTemplates(undefined, {
@@ -412,6 +415,11 @@ export default function SchedulePage() {
   const [skipReasonId, setSkipReasonId] = useState<number | null>(null);
   const [skipNote, setSkipNote] = useState('');
   const [deleteJobPending, setDeleteJobPending] = useState(false);
+  const [completeInvoiceOpen, setCompleteInvoiceOpen] = useState(false);
+  const [completeInvoiceStep, setCompleteInvoiceStep] = useState<'review' | 'pay'>('review');
+  const [onSitePaymentMethod, setOnSitePaymentMethod] = useState('cash');
+  const [createdInvoiceId, setCreatedInvoiceId] = useState<number | null>(null);
+  const [createdInvoiceTotal, setCreatedInvoiceTotal] = useState(0);
   const [pauseResumeAt, setPauseResumeAt] = useState('');
 
   const { data: bizTags = [] } = useListTags({ query: { queryKey: getListTagsQueryKey() } });
@@ -1262,6 +1270,101 @@ export default function SchedulePage() {
               </SheetHeader>
 
               <div className="space-y-5">
+                {/* ── Time on Job (pinned to top for field use) ── */}
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1.5">
+                    <Timer className="w-3.5 h-3.5" /> Time on Job
+                  </p>
+                  {activeJobTimer ? (
+                    <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+                      <div>
+                        <p className="text-sm font-semibold text-amber-800 tabular-nums" title="Time elapsed since clock-in">
+                          {Math.floor(liveJobSeconds / 3600)}h {String(Math.floor((liveJobSeconds % 3600) / 60)).padStart(2, '0')}m {String(liveJobSeconds % 60).padStart(2, '0')}s
+                        </p>
+                        <p className="text-xs text-amber-600" title="Currently clocked in to this job">Clocked in</p>
+                      </div>
+                      <Button
+                        size="sm" variant="outline"
+                        className="border-amber-300 text-amber-700 hover:bg-amber-100 gap-1.5 h-8"
+                        title="Clock out and stop the running timer for this job"
+                        disabled={stopSubTimer.isPending}
+                        onClick={() => stopSubTimer.mutate({ id: activeJobTimer.id }, {
+                          onSuccess: () => { qc.invalidateQueries({ queryKey: getListSubTimersQueryKey() }); setClockOutJobId(selectedJobId); },
+                          onError: () => toast.error('Failed to clock out'),
+                        })}
+                      >
+                        <Square className="w-3 h-3 fill-amber-700" /> Clock Out
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      size="sm" variant="outline" className="gap-1.5"
+                      title="Start a timer to clock in to this job"
+                      disabled={startSubTimer.isPending}
+                      onClick={() => startSubTimer.mutate({ data: { label: (selectedJob as any)?.title ?? `Job #${selectedJobId}`, type: 'job', jobId: selectedJobId! } }, {
+                        onSuccess: () => { toast.success('Clocked in'); qc.invalidateQueries({ queryKey: getListSubTimersQueryKey() }); },
+                        onError: () => toast.error('Failed to clock in'),
+                      })}
+                    >
+                      <Play className="w-3.5 h-3.5" /> Clock In to Job
+                    </Button>
+                  )}
+                </div>
+
+                {/* Total logged time + budget gauge */}
+                {(() => {
+                  const jobTimers = (subTimers ?? []).filter((t: any) => t.jobId === selectedJobId);
+                  const totalSec = jobTimers.reduce((s: number, t: any) => {
+                    if (!t.startedAt) return s;
+                    const end = t.stoppedAt ? new Date(t.stoppedAt).getTime() : Date.now();
+                    return s + Math.floor((end - new Date(t.startedAt).getTime()) / 1000);
+                  }, 0);
+                  const hrs = Math.floor(totalSec / 3600);
+                  const mins = Math.floor((totalSec % 3600) / 60);
+                  if (jobTimers.length === 0 && !selectedJob.estimatedDuration) return null;
+                  return (
+                    <div className="space-y-2">
+                      {jobTimers.length > 0 && (
+                        <div className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2 text-sm">
+                          <span className="text-muted-foreground">Total logged</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold tabular-nums" title={`Total time logged: ${hrs}h ${String(mins).padStart(2, '0')}m`}>{hrs}h {String(mins).padStart(2, '0')}m</span>
+                            {selectedJob.estimatedDuration && totalSec > selectedJob.estimatedDuration * 60 && (
+                              <Badge className="h-4 px-1 text-[10px] bg-amber-500 text-white border-transparent" title={`${Math.floor((totalSec - selectedJob.estimatedDuration * 60) / 60)} minutes over the estimated duration`}>
+                                +{Math.floor((totalSec - selectedJob.estimatedDuration * 60) / 60)}m over
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {selectedJob.estimatedDuration != null && (() => {
+                        const budgetSec = selectedJob.estimatedDuration * 60;
+                        const pct = Math.min(100, budgetSec > 0 ? Math.round((totalSec / budgetSec) * 100) : 0);
+                        const isOver = totalSec > budgetSec;
+                        const isNear = !isOver && pct >= 85;
+                        return (
+                          <div className="space-y-1" title={isOver ? 'Over budget' : isNear ? 'Approaching budget limit' : 'Within budget'}>
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-muted-foreground">Budget ({formatDuration(selectedJob.estimatedDuration)})</span>
+                              <span className={isOver ? 'text-red-600 font-medium' : isNear ? 'text-amber-600 font-medium' : 'text-muted-foreground'}>
+                                {isOver ? `Over by ${Math.floor((totalSec - budgetSec) / 60)}m` : `${pct}% used`}
+                              </span>
+                            </div>
+                            <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${isOver ? 'bg-red-500' : isNear ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  );
+                })()}
+
+                <Separator />
+
                 {/* Reschedule request banner */}
                 {canManageJobs && (selectedJob as any).rescheduleRequestedAt && (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
@@ -1754,16 +1857,24 @@ export default function SchedulePage() {
                       </div>
                     </div>
                   )}
-                  {!(selectedJob as any).invoiceId && canManageJobs && selectedJob.status === 'completed' && (
+                  {!(selectedJob as any).invoiceId && canManageJobs && selectedJob.status !== 'cancelled' && (
                     <div className="col-span-2 space-y-1">
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Invoice</p>
-                      <button
-                        title="Create a new invoice from this completed job"
-                        className="text-xs text-primary hover:underline flex items-center gap-1"
-                        onClick={() => setLocation(`/financials?action=create&jobId=${selectedJob.id}`)}
+                      <Button
+                        size="sm"
+                        className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white h-7 text-xs"
+                        title={selectedJob.status === 'completed' ? 'Create an invoice for this job' : 'Mark this job complete and create an invoice'}
+                        onClick={() => {
+                          setCompleteInvoiceStep('review');
+                          setCreatedInvoiceId(null);
+                          setCreatedInvoiceTotal(0);
+                          setOnSitePaymentMethod('cash');
+                          setCompleteInvoiceOpen(true);
+                        }}
                       >
-                        <FileText className="w-3 h-3" /> Create Invoice →
-                      </button>
+                        <FileText className="w-3 h-3" />
+                        {selectedJob.status === 'completed' ? 'Create Invoice' : 'Complete & Invoice'}
+                      </Button>
                     </div>
                   )}
                   {(selectedJob as any).invoiceId && (
@@ -1797,74 +1908,6 @@ export default function SchedulePage() {
                     />
                   </>
                 )}
-
-                {/* Clock in / out */}
-                <Separator />
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1.5">
-                    <Timer className="w-3.5 h-3.5" /> Time on Job
-                  </p>
-                  {activeJobTimer ? (
-                    <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
-                      <div>
-                        <p className="text-sm font-semibold text-amber-800 tabular-nums" title="Time elapsed since clock-in">
-                          {Math.floor(liveJobSeconds / 3600)}h {String(Math.floor((liveJobSeconds % 3600) / 60)).padStart(2, '0')}m {String(liveJobSeconds % 60).padStart(2, '0')}s
-                        </p>
-                        <p className="text-xs text-amber-600" title="Currently clocked in to this job">Clocked in</p>
-                      </div>
-                      <Button
-                        size="sm" variant="outline"
-                        className="border-amber-300 text-amber-700 hover:bg-amber-100 gap-1.5 h-8"
-                        title="Clock out and stop the running timer for this job"
-                        disabled={stopSubTimer.isPending}
-                        onClick={() => stopSubTimer.mutate({ id: activeJobTimer.id }, {
-                          onSuccess: () => { qc.invalidateQueries({ queryKey: getListSubTimersQueryKey() }); setClockOutJobId(selectedJobId); },
-                          onError: () => toast.error('Failed to clock out'),
-                        })}
-                      >
-                        <Square className="w-3 h-3 fill-amber-700" /> Clock Out
-                      </Button>
-                    </div>
-                  ) : (
-                    <Button
-                      size="sm" variant="outline" className="gap-1.5"
-                      title="Start a timer to clock in to this job"
-                      disabled={startSubTimer.isPending}
-                      onClick={() => startSubTimer.mutate({ data: { label: (selectedJob as any)?.title ?? `Job #${selectedJobId}`, type: 'job', jobId: selectedJobId! } }, {
-                        onSuccess: () => { toast.success('Clocked in'); qc.invalidateQueries({ queryKey: getListSubTimersQueryKey() }); },
-                        onError: () => toast.error('Failed to clock in'),
-                      })}
-                    >
-                      <Play className="w-3.5 h-3.5" /> Clock In to Job
-                    </Button>
-                  )}
-                </div>
-
-                {/* Total logged time summary */}
-                {(() => {
-                  const jobTimers = (subTimers ?? []).filter((t: any) => t.jobId === selectedJobId);
-                  if (jobTimers.length === 0) return null;
-                  const totalSec = jobTimers.reduce((s: number, t: any) => {
-                    if (!t.startedAt) return s;
-                    const end = t.stoppedAt ? new Date(t.stoppedAt).getTime() : Date.now();
-                    return s + Math.floor((end - new Date(t.startedAt).getTime()) / 1000);
-                  }, 0);
-                  const hrs = Math.floor(totalSec / 3600);
-                  const mins = Math.floor((totalSec % 3600) / 60);
-                  return (
-                    <div className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2 text-sm">
-                      <span className="text-muted-foreground">Total logged</span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold tabular-nums" title={`Total time logged: ${hrs}h ${String(mins).padStart(2, '0')}m`}>{hrs}h {String(mins).padStart(2, '0')}m</span>
-                        {selectedJob.estimatedDuration && totalSec > selectedJob.estimatedDuration * 60 && (
-                          <Badge className="h-4 px-1 text-[10px] bg-amber-500 text-white border-transparent" title={`${Math.floor((totalSec - selectedJob.estimatedDuration * 60) / 60)} minutes over the estimated duration`}>
-                            +{Math.floor((totalSec - selectedJob.estimatedDuration * 60) / 60)}m over
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })()}
 
                 {/* Parts used on job */}
                 <Separator />
@@ -2985,6 +3028,137 @@ export default function SchedulePage() {
               {skipNextOccurrence.isPending ? 'Skipping…' : 'Skip Occurrence'}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Complete & Invoice & Pay dialog */}
+      <Dialog open={completeInvoiceOpen} onOpenChange={open => { if (!open) setCompleteInvoiceOpen(false); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-4 h-4" />
+              {completeInvoiceStep === 'review' ? (selectedJob && selectedJob.status !== 'completed' ? 'Complete & Invoice' : 'Create Invoice') : 'Invoice Created'}
+            </DialogTitle>
+            <DialogDescription>
+              {completeInvoiceStep === 'review'
+                ? 'Review and generate an invoice for this job.'
+                : `Invoice #${createdInvoiceId} created · Total: $${createdInvoiceTotal.toFixed(2)}`}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedJob && completeInvoiceStep === 'review' && (
+            <div className="space-y-4">
+              {selectedJob.status !== 'completed' && (
+                <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800 flex items-center gap-2">
+                  <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+                  This will also mark the job as <strong>completed</strong>.
+                </div>
+              )}
+              {/* Line items preview */}
+              {Array.isArray((selectedJob as any).lineItems) && (selectedJob as any).lineItems.length > 0 ? (
+                <div className="space-y-1.5 text-sm">
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Line items</p>
+                  {(selectedJob as any).lineItems.map((li: any, i: number) => (
+                    <div key={i} className="flex items-center justify-between">
+                      <span className="text-muted-foreground truncate mr-2">{li.name || li.description} × {li.quantity}</span>
+                      <span className="tabular-nums shrink-0">${(((li.unitPrice ?? li.unit_price ?? 0) * (li.quantity ?? 1))).toFixed(2)}</span>
+                    </div>
+                  ))}
+                  <Separator />
+                  <div className="flex items-center justify-between font-semibold">
+                    <span>Total</span>
+                    <span>${((selectedJob as any).totalAmount ?? 0).toFixed(2)}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                  Total: <strong className="text-foreground">${((selectedJob as any).totalAmount ?? 0).toFixed(2)}</strong>
+                </div>
+              )}
+              <div className="flex gap-2 justify-end pt-1">
+                <Button variant="outline" size="sm" onClick={() => setCompleteInvoiceOpen(false)}>Cancel</Button>
+                <Button
+                  size="sm"
+                  disabled={completeAndInvoiceJob.isPending}
+                  onClick={async () => {
+                    if (!selectedJobId) return;
+                    try {
+                      const inv = await completeAndInvoiceJob.mutateAsync({ id: selectedJobId });
+                      setCreatedInvoiceId(inv.id);
+                      setCreatedInvoiceTotal(inv.total ?? 0);
+                      setCompleteInvoiceStep('pay');
+                      qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                      qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId) });
+                    } catch (err: any) {
+                      if (err?.status === 409) {
+                        toast.error('An invoice already exists for this job');
+                        setCompleteInvoiceOpen(false);
+                        qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId) });
+                      } else {
+                        toast.error('Failed to create invoice');
+                      }
+                    }
+                  }}
+                >
+                  {completeAndInvoiceJob.isPending ? 'Creating…' : 'Create Invoice'}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {completeInvoiceStep === 'pay' && (
+            <div className="space-y-4">
+              <div className="rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2.5 flex items-center gap-2.5 text-emerald-800">
+                <CheckCircle className="w-4 h-4 shrink-0" />
+                <div className="text-sm">
+                  Invoice created · Total: <strong>${createdInvoiceTotal.toFixed(2)}</strong>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Mark as paid now?</label>
+                <Select value={onSitePaymentMethod} onValueChange={setOnSitePaymentMethod}>
+                  <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="check">Check</SelectItem>
+                    <SelectItem value="card">Card (manual)</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2 justify-end pt-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    toast.success('Invoice created — collect payment later');
+                    setCompleteInvoiceOpen(false);
+                    if (createdInvoiceId) setLocation(`/financials?invoiceId=${createdInvoiceId}`);
+                  }}
+                >
+                  Pay Later
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  disabled={updateInvoice.isPending}
+                  onClick={async () => {
+                    if (!createdInvoiceId) return;
+                    try {
+                      await updateInvoice.mutateAsync({ id: createdInvoiceId, data: { status: 'paid', notes: `Paid on-site via ${onSitePaymentMethod}` } as any });
+                      toast.success(`Invoice marked paid (${onSitePaymentMethod})`);
+                      setCompleteInvoiceOpen(false);
+                      if (selectedJobId) qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId) });
+                    } catch {
+                      toast.error('Failed to mark invoice as paid');
+                    }
+                  }}
+                >
+                  {updateInvoice.isPending ? 'Saving…' : `Mark Paid (${onSitePaymentMethod})`}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

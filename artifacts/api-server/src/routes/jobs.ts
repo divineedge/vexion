@@ -721,36 +721,23 @@ router.delete("/jobs/:id", async (req, res): Promise<void> => {
   res.sendStatus(204);
 });
 
-router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
-  const userId = getUserId(req);
-  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const id = parseInt(rawId, 10);
-
-  // Fetch current description so we can append the completion date
-  const [current] = await db
-    .select({ description: jobsTable.description })
-    .from(jobsTable)
-    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
-
-  const now = new Date();
-  const dateStr = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-  const existing = current?.description ?? '';
-  const newDescription = existing
-    ? `${existing}\n\nService completed: ${dateStr}`
-    : `Service completed: ${dateStr}`;
-
-  const [updated] = await db.update(jobsTable)
-    .set({ status: "completed", completedAt: now, description: newDescription })
-    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
-    .returning();
-
-  if (!updated) { res.status(404).json({ error: "Not found" }); return; }
-
-  await db.insert(activityLogTable).values({ tenantId, userId, type: "job_completed", message: `Job "${updated.title}" completed`, entityId: id });
+// ── Shared helper: run all completion side effects ───────────────────────────
+// Called by both /jobs/:id/complete and /jobs/:id/complete-and-invoice so that
+// chemical rainfast timers, the rainfast weather alert, and blueprint archival
+// are never skipped regardless of which completion path was used.
+async function runJobCompletionSideEffects(params: {
+  id: number;
+  tenantId: number;
+  userId: number;
+  jobTitle: string;
+  propertyId?: number | null;
+  blueprintId?: number | null;
+  completedAt: Date;
+}): Promise<void> {
+  const { id, tenantId, userId, jobTitle, propertyId, blueprintId, completedAt } = params;
 
   // Compute and store rainfast / re-entry timer expiry for any chemical applications on this job.
-  // Awaited synchronously — timers must be persisted before this endpoint returns so the portal
+  // Awaited synchronously — timers must be persisted before this function returns so the portal
   // shows safety notices immediately after completion. A failure is logged but does not block the
   // completion response; the job is already marked done and the customer safety notice is the
   // priority concern.
@@ -789,10 +776,10 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
       }
 
       const rainfastUntil = maxRainfastHours != null
-        ? new Date(now.getTime() + maxRainfastHours * 3600 * 1000)
+        ? new Date(completedAt.getTime() + maxRainfastHours * 3600 * 1000)
         : null;
       const reentryUntil = maxRei != null
-        ? new Date(now.getTime() + maxRei * 3600 * 1000)
+        ? new Date(completedAt.getTime() + maxRei * 3600 * 1000)
         : null;
 
       if (rainfastUntil !== null || reentryUntil !== null) {
@@ -814,15 +801,13 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
   // Runs fire-and-forget so it never blocks the completion response.
   void (async () => {
     try {
-      // Only check if the job has a property with coordinates
-      if (!updated.propertyId) return;
+      if (!propertyId) return;
       const [property] = await db
         .select({ lat: propertiesTable.lat, lng: propertiesTable.lng })
         .from(propertiesTable)
-        .where(and(eq(propertiesTable.id, updated.propertyId), eq(propertiesTable.tenantId, tenantId)));
+        .where(and(eq(propertiesTable.id, propertyId), eq(propertiesTable.tenantId, tenantId)));
       if (!property?.lat || !property?.lng) return;
 
-      // Fetch all chemical applications that have a rainfastUntil set for this job
       const appsWithRainfast = await db
         .select({
           id: chemicalApplicationsTable.id,
@@ -838,14 +823,12 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
         ));
       if (appsWithRainfast.length === 0) return;
 
-      // Read the tenant's rain threshold (default 40%)
       const [tenantSettings] = await db
         .select({ rainfastRainThresholdPct: tenantsTable.rainfastRainThresholdPct })
         .from(tenantsTable)
         .where(eq(tenantsTable.id, tenantId));
       const thresholdPct = tenantSettings?.rainfastRainThresholdPct ?? 40;
 
-      // Find the widest rainfastUntil window (latest expiry) across all applications
       let latestWindow: Date | null = null;
       for (const app of appsWithRainfast) {
         if (app.rainfastUntil && (latestWindow === null || app.rainfastUntil > latestWindow)) {
@@ -854,7 +837,6 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
       }
       if (!latestWindow) return;
 
-      // Query weather for the latest window
       const rainForecast = await checkRainBeforeWindow(
         property.lat,
         property.lng,
@@ -863,7 +845,6 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
       );
       if (!rainForecast) return;
 
-      // Build a description listing the affected chemicals and their windows
       const chemLines = appsWithRainfast.map(app => {
         const name = app.productName ?? app.mixtureName ?? "Unknown chemical";
         const until = app.rainfastUntil ? new Date(app.rainfastUntil).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true, timeZoneName: "short" }) : "—";
@@ -873,7 +854,7 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
         month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true, timeZoneName: "short",
       });
       const description = [
-        `Rain (${rainForecast.probability}% probability) is forecast around ${forecastTimeStr} — before the rainfast window closes on job #${id} "${updated.title}".`,
+        `Rain (${rainForecast.probability}% probability) is forecast around ${forecastTimeStr} — before the rainfast window closes on job #${id} "${jobTitle}".`,
         ``,
         `Affected applications:`,
         ...chemLines,
@@ -881,10 +862,9 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
         `Consider re-applying affected chemicals after the window has passed if significant rainfall occurs.`,
       ].join("\n");
 
-      // Create an internal task for admin/office staff
       const [task] = await db.insert(internalTasksTable).values({
         tenantId,
-        title: `⚠️ Rain forecast before rainfast window — Job #${id} "${updated.title}"`,
+        title: `⚠️ Rain forecast before rainfast window — Job #${id} "${jobTitle}"`,
         description,
         taskType: "custom",
         createdById: userId,
@@ -895,7 +875,6 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
         contextId: id,
       }).returning({ id: internalTasksTable.id });
 
-      // Notify all admin/office users so they see it in their notification bell
       const adminUsers = await db
         .select({ id: usersTable.id })
         .from(usersTable)
@@ -910,7 +889,7 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
             recipientUserId: u.id,
             taskId: task.id,
             type: "assigned",
-            message: `⚠️ Rain (${rainForecast.probability}%) forecast before rainfast window closes — Job #${id} "${updated.title}"`,
+            message: `⚠️ Rain (${rainForecast.probability}%) forecast before rainfast window closes — Job #${id} "${jobTitle}"`,
           }))
         );
       }
@@ -925,7 +904,40 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
   // main Blueprints list but stays visible/reusable from the property page.
   await db.update(blueprintsTable)
     .set({ isArchived: true, archivedAt: new Date() })
-    .where(and(eq(blueprintsTable.tenantId, tenantId), or(eq(blueprintsTable.jobId, id), eq(blueprintsTable.id, updated.blueprintId ?? -1))));
+    .where(and(eq(blueprintsTable.tenantId, tenantId), or(eq(blueprintsTable.jobId, id), eq(blueprintsTable.id, blueprintId ?? -1))));
+}
+
+router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+
+  // Fetch current description so we can append the completion date
+  const [current] = await db
+    .select({ description: jobsTable.description })
+    .from(jobsTable)
+    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  const existing = current?.description ?? '';
+  const newDescription = existing
+    ? `${existing}\n\nService completed: ${dateStr}`
+    : `Service completed: ${dateStr}`;
+
+  const [updated] = await db.update(jobsTable)
+    .set({ status: "completed", completedAt: now, description: newDescription })
+    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
+    .returning();
+
+  if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+
+  await db.insert(activityLogTable).values({ tenantId, userId, type: "job_completed", message: `Job "${updated.title}" completed`, entityId: id });
+
+  // Run chemical timer expiry, rainfast weather alert (fire-and-forget), and blueprint archival
+  // via the shared helper so every completion path has identical side effects.
+  await runJobCompletionSideEffects({ id, tenantId, userId, jobTitle: updated.title, propertyId: updated.propertyId, blueprintId: (updated as any).blueprintId ?? null, completedAt: now });
 
   // If this job was converted from an estimate with "Invoice after job" chosen, auto-create a draft invoice now.
   // On success → return early. On failure → flag the job for the weekly billing sweep so it is never permanently unbilled.
@@ -1037,6 +1049,108 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
   }
 
   res.json(formatJob(updated));
+});
+
+// ── Complete & Invoice (atomic) ───────────────────────────────────────────────
+// Marks the job completed (if not already) and creates an invoice in a single
+// transaction so the two can never diverge. Returns the created invoice.
+// Returns 409 if the job already has an invoice (concurrency-safe via
+// conditional update returning), 422 if the job is cancelled.
+router.post("/jobs/:id/complete-and-invoice", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+
+  // Load job + tenant tax rate in one query
+  const [[job], [tenantRow]] = await Promise.all([
+    db.select().from(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId))),
+    db.select({ taxRate: tenantsTable.taxRate }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)),
+  ]);
+
+  if (!job) { res.status(404).json({ error: "Job not found" }); return; }
+  if (job.status === "cancelled") { res.status(422).json({ error: "Cannot invoice a cancelled job" }); return; }
+  // Pre-flight check (non-locking — transactional guard below provides the real safety)
+  if (job.invoiceId) { res.status(409).json({ error: "An invoice already exists for this job" }); return; }
+
+  const taxRate = tenantRow?.taxRate ?? 0;
+  const lineItems = (job.lineItems as unknown[]) ?? [];
+  const subtotal = job.totalAmount ?? 0;
+  const tax = Math.round(subtotal * (taxRate / 100) * 100) / 100;
+  const total = subtotal + tax;
+  const invoiceNum = `INV-${Date.now().toString().slice(-8)}`;
+  const now = new Date();
+
+  let invoice!: typeof invoicesTable.$inferSelect;
+  let wasAlreadyCompleted = job.status === "completed";
+
+  try {
+    await db.transaction(async tx => {
+      // Mark complete if not already (append completion date to description)
+      if (!wasAlreadyCompleted) {
+        const dateStr = now.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+        const existing = job.description ?? "";
+        const newDescription = existing ? `${existing}\n\nService completed: ${dateStr}` : `Service completed: ${dateStr}`;
+        await tx.update(jobsTable)
+          .set({ status: "completed", completedAt: now, description: newDescription })
+          .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
+      }
+
+      // Create the invoice
+      const [created] = await tx.insert(invoicesTable).values({
+        tenantId,
+        invoiceNumber: invoiceNum,
+        customerId: job.customerId!,
+        jobId: job.id,
+        status: "draft",
+        subtotal,
+        tax,
+        total,
+        lineItems,
+      }).returning();
+      invoice = created;
+
+      // Link the invoice to the job — WHERE invoiceId IS NULL is the concurrency guard:
+      // if another request already set invoiceId, this returns an empty array and we throw 409.
+      const [linked] = await tx.update(jobsTable)
+        .set({ invoiceId: invoice.id })
+        .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId), isNull(jobsTable.invoiceId)))
+        .returning({ id: jobsTable.id });
+      if (!linked) throw Object.assign(new Error("invoice_exists"), { httpStatus: 409 });
+    });
+  } catch (err: any) {
+    // Catch both our sentinel and any Postgres unique-violation (23505)
+    if (err?.httpStatus === 409 || err?.code === "23505") {
+      res.status(409).json({ error: "An invoice already exists for this job" }); return;
+    }
+    throw err;
+  }
+
+  // Activity logs (non-fatal)
+  await Promise.allSettled([
+    !wasAlreadyCompleted
+      ? db.insert(activityLogTable).values({ tenantId, userId, type: "job_completed", message: `Job "${job.title}" completed`, entityId: id })
+      : Promise.resolve(),
+    db.insert(activityLogTable).values({ tenantId, userId, type: "invoice_created", message: `Invoice ${invoiceNum} created from job (complete-and-invoice)`, entityId: invoice.id }),
+  ]);
+
+  // Run all the same completion side effects as the /complete endpoint so no
+  // safety or archival logic is skipped when invoicing in one step.
+  if (!wasAlreadyCompleted) {
+    await runJobCompletionSideEffects({ id, tenantId, userId, jobTitle: job.title, propertyId: job.propertyId, blueprintId: (job as any).blueprintId ?? null, completedAt: now });
+  }
+
+  res.status(201).json({
+    ...invoice,
+    lineItems: (invoice.lineItems as unknown[]) ?? [],
+    customerName: null,
+    planId: invoice.planId ?? null,
+    dueDate: invoice.dueDate?.toISOString() ?? null,
+    paidAt: invoice.paidAt?.toISOString() ?? null,
+    stripePaymentUrl: invoice.stripePaymentUrl ?? null,
+    publicToken: invoice.publicToken ?? null,
+    createdAt: invoice.createdAt.toISOString(),
+  });
 });
 
 // ── Skip next occurrence ─────────────────────────────────────────────────────

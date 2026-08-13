@@ -4281,6 +4281,77 @@ export const useCompleteJob = <TError = ErrorType<unknown>,
       return useMutation(getCompleteJobMutationOptions(options));
     }
 
+export const getCompleteAndInvoiceJobUrl = (id: number,) => {
+
+
+
+
+  return `/api/jobs/${id}/complete-and-invoice`
+}
+
+/**
+ * @summary Atomically mark a job complete and create an invoice (single transaction)
+ */
+export const completeAndInvoiceJob = async (id: number, options?: RequestInit): Promise<Invoice> => {
+
+  return customFetch<Invoice>(getCompleteAndInvoiceJobUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCompleteAndInvoiceJobMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeAndInvoiceJob>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof completeAndInvoiceJob>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['completeAndInvoiceJob'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof completeAndInvoiceJob>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  completeAndInvoiceJob(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CompleteAndInvoiceJobMutationResult = NonNullable<Awaited<ReturnType<typeof completeAndInvoiceJob>>>
+
+    export type CompleteAndInvoiceJobMutationError = ErrorType<void>
+
+    /**
+ * @summary Atomically mark a job complete and create an invoice (single transaction)
+ */
+export const useCompleteAndInvoiceJob = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeAndInvoiceJob>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof completeAndInvoiceJob>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getCompleteAndInvoiceJobMutationOptions(options));
+    }
+
 export const getGetJobPartsUrl = (id: number,) => {
 
 

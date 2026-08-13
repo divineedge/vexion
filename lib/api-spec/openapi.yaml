@@ -1161,6 +1161,27 @@ paths:
               schema:
                 $ref: "#/components/schemas/Job"
 
+  /jobs/{id}/complete-and-invoice:
+    post:
+      operationId: completeAndInvoiceJob
+      tags: [jobs]
+      summary: Atomically mark a job complete and create an invoice (single transaction)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "201":
+          description: Invoice created and job marked complete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+        "409":
+          description: Job already has an invoice
+
   /jobs/{id}/parts:
     get:
       operationId: getJobParts

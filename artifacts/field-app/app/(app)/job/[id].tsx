@@ -21,7 +21,9 @@ import {
   useListSubTimers, useStartSubTimer, useStopSubTimer,
   useGetMasterClock, useStartMasterClock, useStopMasterClock,
   useUpdateJob, useSkipNextOccurrence, useGetRouteDayDetail,
+  customFetch,
 } from '@workspace/api-client-react';
+import { useQuery } from '@tanstack/react-query';
 import { useColors } from '@/hooks/useColors';
 import { useOffline } from '@/contexts/OfflineContext';
 
@@ -469,6 +471,81 @@ function JobNotesSection({ jobId, job, colors }: { jobId: number; job: { descrip
   );
 }
 
+type StaffNote = {
+  id: number;
+  authorName: string;
+  body: string;
+  createdAt: string;
+};
+
+function InternalNotesSection({ jobId, colors }: { jobId: number; colors: ReturnType<typeof useColors> }) {
+  const { data: notes = [], isLoading } = useQuery<StaffNote[]>({
+    queryKey: ['staff-notes', 'job', jobId],
+    queryFn: () =>
+      customFetch<StaffNote[]>(`/api/staff-notes?entityType=job&entityId=${jobId}`),
+    enabled: !!jobId,
+  });
+
+  if (isLoading || notes.length === 0) return null;
+
+  return (
+    <View style={[styles.section, { marginBottom: 16 }]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <Text style={[styles.sectionTitle, { color: colors.foreground, marginBottom: 0 }]}>
+          Internal Notes
+        </Text>
+        <View style={{
+          backgroundColor: '#fef3c7',
+          borderRadius: 4,
+          paddingHorizontal: 6,
+          paddingVertical: 2,
+          borderWidth: 1,
+          borderColor: '#fde68a',
+        }}>
+          <Text style={{ fontSize: 10, fontFamily: 'Inter_600SemiBold', color: '#92400e' }}>
+            Staff only
+          </Text>
+        </View>
+      </View>
+      <View style={{ gap: 8 }}>
+        {notes.map(note => (
+          <View
+            key={note.id}
+            style={{
+              backgroundColor: colors.card,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: colors.border,
+              padding: 12,
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.foreground }}>
+                {note.authorName}
+              </Text>
+              <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 11, color: colors.mutedForeground }}>
+                {new Date(note.createdAt).toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                })}
+                {' · '}
+                {new Date(note.createdAt).toLocaleTimeString('en-US', {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}
+              </Text>
+            </View>
+            <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 14, color: colors.foreground, lineHeight: 20 }}>
+              {note.body}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 export default function JobDetailScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -850,6 +927,11 @@ export default function JobDetailScreen() {
               </View>
             ) : null}
           </View>
+        )}
+
+        {/* Internal staff notes — read-only, only shown when online */}
+        {!isOffline && (
+          <InternalNotesSection jobId={jobId} colors={colors} />
         )}
 
         {/* Job Notes section */}

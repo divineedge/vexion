@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { setDefaultHeaders } from '@workspace/api-client-react';
+import { setDefaultHeaders, setAuthTokenGetter } from '@workspace/api-client-react';
 
 interface AuthUser {
   id: number;
@@ -15,7 +15,7 @@ interface AuthContextType {
   user: AuthUser | null;
   token: string | null;
   isLoading: boolean;
-  signIn: (token: string, user: AuthUser) => Promise<void>;
+  signIn: (token: string, user: AuthUser, sessionToken?: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -23,6 +23,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 const USER_KEY = 'field_app_user';
 const TOKEN_KEY = 'field_app_token';
+const SESSION_TOKEN_KEY = 'field_app_session_token';
 
 function applyHeaders(user: AuthUser) {
   setDefaultHeaders({
@@ -41,11 +42,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const storedToken = await AsyncStorage.getItem(TOKEN_KEY);
         const storedUser = await AsyncStorage.getItem(USER_KEY);
+        const storedSessionToken = await AsyncStorage.getItem(SESSION_TOKEN_KEY);
         if (storedToken && storedUser) {
           const parsedUser: AuthUser = JSON.parse(storedUser);
           setToken(storedToken);
           setUser(parsedUser);
           applyHeaders(parsedUser);
+          // Restore session-token bearer auth for staff-authenticated endpoints
+          if (storedSessionToken) {
+            setAuthTokenGetter(() => storedSessionToken);
+          }
         }
       } catch {
         // ignore restore errors
@@ -56,20 +62,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     restore();
   }, []);
 
-  const signIn = useCallback(async (newToken: string, newUser: AuthUser) => {
+  const signIn = useCallback(async (newToken: string, newUser: AuthUser, sessionToken?: string) => {
     await AsyncStorage.setItem(TOKEN_KEY, newToken);
     await AsyncStorage.setItem(USER_KEY, JSON.stringify(newUser));
     setToken(newToken);
     setUser(newUser);
     applyHeaders(newUser);
+    // Store and activate the cryptographic session token so staff-authenticated
+    // endpoints (e.g. GET /api/staff-notes) receive Authorization: Bearer <token>
+    if (sessionToken) {
+      await AsyncStorage.setItem(SESSION_TOKEN_KEY, sessionToken);
+      setAuthTokenGetter(() => sessionToken);
+    }
   }, []);
 
   const signOut = useCallback(async () => {
     await AsyncStorage.removeItem(TOKEN_KEY);
     await AsyncStorage.removeItem(USER_KEY);
+    await AsyncStorage.removeItem(SESSION_TOKEN_KEY);
     setToken(null);
     setUser(null);
     setDefaultHeaders({});
+    setAuthTokenGetter(null);
   }, []);
 
   return (

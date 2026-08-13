@@ -45,7 +45,7 @@ export default function LoginScreen() {
         tenantId: result.user.tenantId,
         avatarUrl: result.user.avatarUrl ?? null,
       };
-      await signIn(result.token, userData);
+      await signIn(result.token, userData, result.sessionToken ?? undefined);
       router.replace('/(app)/jobs');
     } catch (err: unknown) {
       let message = 'Invalid email. Please try again.';

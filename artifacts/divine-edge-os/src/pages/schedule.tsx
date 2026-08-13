@@ -355,6 +355,29 @@ export default function SchedulePage() {
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
   const durationUnit = settings?.durationUnit ?? 'minutes';
 
+  // Sync the create-job form's duration unit to the tenant default.
+  // Use a ref so we only auto-apply the setting once per open session and never
+  // overwrite a deliberate unit selection the user has already made.
+  const syncedCreateDurationUnit = React.useRef(false);
+  useEffect(() => {
+    if (createOpen) {
+      syncedCreateDurationUnit.current = false; // arm for this session
+      if (settings?.durationUnit) {
+        setNewJob(j => ({ ...j, estimatedDurationUnit: settings.durationUnit as 'minutes' | 'hours' }));
+        syncedCreateDurationUnit.current = true;
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createOpen]);
+  // Handle settings loading after the form is already open.
+  useEffect(() => {
+    if (createOpen && settings?.durationUnit && !syncedCreateDurationUnit.current) {
+      setNewJob(j => ({ ...j, estimatedDurationUnit: settings.durationUnit as 'minutes' | 'hours' }));
+      syncedCreateDurationUnit.current = true;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings?.durationUnit]);
+
   const updateJob = useUpdateJob();
   const createJob = useCreateJob();
 
@@ -393,6 +416,17 @@ export default function SchedulePage() {
   const [denyDialogOpen, setDenyDialogOpen] = useState(false);
   const [denyReply, setDenyReply] = useState('');
   const [cancelApproveOpen, setCancelApproveOpen] = useState(false);
+  // Inline duration editing on job detail sheet
+  const [editingDuration, setEditingDuration] = useState(false);
+  const [durationEditVal, setDurationEditVal] = useState('');
+  const [durationEditUnit, setDurationEditUnit] = useState<'minutes' | 'hours'>('minutes');
+  // Reset the editor whenever a different job is selected or the sheet closes,
+  // so a draft from job A can never be saved onto job B.
+  useEffect(() => {
+    setEditingDuration(false);
+    setDurationEditVal('');
+    setDurationEditUnit('minutes');
+  }, [selectedJobId]);
   const [cancelApproveReply, setCancelApproveReply] = useState('');
   const approveReschedule = useMutation({
     mutationFn: ({ id, approvedDate, reply }: { id: number; approvedDate?: string; reply?: string }) =>
@@ -533,7 +567,7 @@ export default function SchedulePage() {
 
   const doCreateJob = () => {
     const durationMins = newJob.estimatedDuration
-      ? durationUnit === 'hours'
+      ? newJob.estimatedDurationUnit === 'hours'
         ? Math.round(parseFloat(newJob.estimatedDuration) * 60)
         : parseInt(newJob.estimatedDuration, 10)
       : undefined;
@@ -1659,15 +1693,62 @@ export default function SchedulePage() {
                       )}
                     </div>
                   </div>
-                  {selectedJob.estimatedDuration && (
-                    <div className="space-y-1">
-                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Duration</p>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Duration</p>
+                    {editingDuration ? (
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <Input
+                          type="number"
+                          min={0}
+                          step={durationEditUnit === 'hours' ? 0.5 : 15}
+                          placeholder={durationEditUnit === 'hours' ? '1.5' : '90'}
+                          value={durationEditVal}
+                          onChange={e => setDurationEditVal(e.target.value)}
+                          className="w-24 h-7 text-sm"
+                          autoFocus
+                        />
+                        <Select value={durationEditUnit} onValueChange={v => setDurationEditUnit(v as 'minutes' | 'hours')}>
+                          <SelectTrigger className="w-20 h-7 text-sm" title="Duration unit"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="minutes">min</SelectItem>
+                            <SelectItem value="hours">hrs</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button size="sm" className="h-7 px-2 text-xs" disabled={updateJob.isPending} onClick={() => {
+                          const raw = parseFloat(durationEditVal);
+                          if (!durationEditVal || isNaN(raw) || raw <= 0) { setEditingDuration(false); return; }
+                          const mins = durationEditUnit === 'hours' ? Math.round(raw * 60) : Math.round(raw);
+                          updateJob.mutate({ id: selectedJobId!, data: { estimatedDuration: mins } as any }, {
+                            onSuccess: () => { toast.success('Duration updated'); qc.invalidateQueries(); setEditingDuration(false); },
+                            onError: () => toast.error('Failed to update duration'),
+                          });
+                        }}>Save</Button>
+                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setEditingDuration(false)}>Cancel</Button>
+                      </div>
+                    ) : (
                       <div className="flex items-center gap-2">
                         <Clock className="w-4 h-4 text-muted-foreground" />
-                        <span>{formatDuration(selectedJob.estimatedDuration)}</span>
+                        <span>{selectedJob.estimatedDuration ? formatDuration(selectedJob.estimatedDuration) : <span className="text-muted-foreground text-xs italic">Not set</span>}</span>
+                        {canManageJobs && (
+                          <button
+                            className="text-xs text-primary hover:underline"
+                            title="Edit duration"
+                            onClick={() => {
+                              const mins = selectedJob.estimatedDuration ?? 0;
+                              if (durationUnit === 'hours') {
+                                setDurationEditUnit('hours');
+                                setDurationEditVal(mins > 0 ? (mins / 60).toFixed(1) : '');
+                              } else {
+                                setDurationEditUnit('minutes');
+                                setDurationEditVal(mins > 0 ? String(mins) : '');
+                              }
+                              setEditingDuration(true);
+                            }}
+                          >Edit</button>
+                        )}
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                   {selectedJob.customerName && (
                     <div className="space-y-1">
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Customer</p>

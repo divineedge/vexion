@@ -13,6 +13,8 @@ export type NewJobForm = {
   description: string;
   scheduledAt: string;
   estimatedDuration: string;
+  /** Which unit the number in estimatedDuration is expressed in. Always stored as minutes in the DB. */
+  estimatedDurationUnit: 'minutes' | 'hours';
   priority: string;
   customerId: string;
   propertyId: string;
@@ -36,6 +38,7 @@ export const EMPTY_JOB: NewJobForm = {
   description: '',
   scheduledAt: '',
   estimatedDuration: '',
+  estimatedDurationUnit: 'minutes',
   priority: 'normal',
   customerId: '',
   propertyId: '',
@@ -161,16 +164,31 @@ export function JobFormFields({ form, setForm, customers, properties, users, dur
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
-          <label className="text-sm font-medium">Duration ({durationUnit})</label>
-          <Input
-            type="number"
-            min={0}
-            step={durationUnit === 'hours' ? 0.5 : 15}
-            title={`Estimated job duration in ${durationUnit}`}
-            placeholder={durationUnit === 'hours' ? '1.5' : '90'}
-            value={form.estimatedDuration}
-            onChange={e => setForm(f => ({ ...f, estimatedDuration: e.target.value }))}
-          />
+          <label className="text-sm font-medium">Duration</label>
+          <div className="flex gap-1.5">
+            <Input
+              type="number"
+              min={0}
+              step={form.estimatedDurationUnit === 'hours' ? 0.5 : 15}
+              title={`Estimated job duration in ${form.estimatedDurationUnit}`}
+              placeholder={form.estimatedDurationUnit === 'hours' ? '1.5' : '90'}
+              value={form.estimatedDuration}
+              onChange={e => setForm(f => ({ ...f, estimatedDuration: e.target.value }))}
+              className="flex-1"
+            />
+            <Select
+              value={form.estimatedDurationUnit}
+              onValueChange={v => setForm(f => ({ ...f, estimatedDurationUnit: v as 'minutes' | 'hours' }))}
+            >
+              <SelectTrigger className="w-24" title="Duration unit">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="minutes">min</SelectItem>
+                <SelectItem value="hours">hrs</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Priority</label>

@@ -145,6 +145,29 @@ export default function RoutesDashboardPage() {
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
   const durationUnit = settings?.durationUnit ?? 'minutes';
 
+  // Sync the create-job form's duration unit to the tenant default.
+  // Use a ref so we only auto-apply the setting once per open session and never
+  // overwrite a deliberate unit selection the user has already made.
+  const syncedJobFormDurationUnit = React.useRef(false);
+  useEffect(() => {
+    if (newJobOpen) {
+      syncedJobFormDurationUnit.current = false; // arm for this session
+      if (settings?.durationUnit) {
+        setNewJob(j => ({ ...j, estimatedDurationUnit: settings.durationUnit as 'minutes' | 'hours' }));
+        syncedJobFormDurationUnit.current = true;
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newJobOpen]);
+  // Handle settings loading after the form is already open.
+  useEffect(() => {
+    if (newJobOpen && settings?.durationUnit && !syncedJobFormDurationUnit.current) {
+      setNewJob(j => ({ ...j, estimatedDurationUnit: settings.durationUnit as 'minutes' | 'hours' }));
+      syncedJobFormDurationUnit.current = true;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings?.durationUnit]);
+
   const invalidateDetail = () => {
     if (!dayDetail) return;
     qc.invalidateQueries({ queryKey: getGetRouteDayDetailQueryKey(dayDetail.routeTemplateId, { date: dayDetail.date }) });
@@ -285,7 +308,7 @@ export default function RoutesDashboardPage() {
       return;
     }
     const durationMins = newJob.estimatedDuration
-      ? durationUnit === 'hours'
+      ? newJob.estimatedDurationUnit === 'hours'
         ? Math.round(parseFloat(newJob.estimatedDuration) * 60)
         : parseInt(newJob.estimatedDuration, 10)
       : undefined;

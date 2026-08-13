@@ -280,6 +280,11 @@ export default function EstimatesPage() {
     }
   }, [search]);
 
+  // Per-form duration unit state — effects that reference `settings` are placed
+  // after the `settings` query below.
+  const [estimateDurationUnit, setEstimateDurationUnit] = useState<'minutes' | 'hours'>('minutes');
+  const syncedEstimateDurationUnit = React.useRef(false);
+
   // Auto-populate expiresAt when the create dialog opens
   useEffect(() => {
     if (!createOpen) return;
@@ -336,6 +341,27 @@ export default function EstimatesPage() {
   const { data: properties } = useListProperties({}, { query: { enabled: createOpen, queryKey: getListPropertiesQueryKey({}) } });
   const { data: templates } = useListEstimateTemplates({ query: { enabled: createOpen, queryKey: getListEstimateTemplatesQueryKey() } });
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
+
+  // Sync estimateDurationUnit to the tenant default on open; also catches settings
+  // loading after the dialog is already open; never overwrites a deliberate user choice.
+  useEffect(() => {
+    if (createOpen) {
+      syncedEstimateDurationUnit.current = false; // arm for this session
+      if ((settings as any)?.durationUnit) {
+        setEstimateDurationUnit((settings as any).durationUnit as 'minutes' | 'hours');
+        syncedEstimateDurationUnit.current = true;
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createOpen]);
+  useEffect(() => {
+    if (createOpen && (settings as any)?.durationUnit && !syncedEstimateDurationUnit.current) {
+      setEstimateDurationUnit((settings as any).durationUnit as 'minutes' | 'hours');
+      syncedEstimateDurationUnit.current = true;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [(settings as any)?.durationUnit]);
+
   const { data: supplySearchItems } = useListInventoryItems(
     { q: debouncedCreateSupplySearch || undefined },
     { query: { enabled: addingCreateSupply, queryKey: getListInventoryItemsQueryKey({ q: debouncedCreateSupplySearch || undefined }) } }
@@ -417,7 +443,7 @@ export default function EstimatesPage() {
           planBillingCycle: i.planBillingCycle ?? null,
         })),
         estimatedDurationMin: form.estimatedDurationMin
-          ? Math.round(parseFloat(form.estimatedDurationMin) * ((settings as any)?.durationUnit === 'hours' ? 60 : 1))
+          ? Math.round(parseFloat(form.estimatedDurationMin) * (estimateDurationUnit === 'hours' ? 60 : 1))
           : undefined,
         suppliesNeeded: createSupplies.length > 0 ? createSupplies : undefined,
         paymentRequirement: form.paymentRequirement as 'none' | 'full' | 'deposit_pct' | 'deposit_fixed',
@@ -895,18 +921,31 @@ export default function EstimatesPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">
-                  Estimated Duration ({(settings as any)?.durationUnit === 'minutes' ? 'min' : 'hrs'})
-                </label>
-                <Input
-                  type="number"
-                  min={0}
-                  step={(settings as any)?.durationUnit === 'minutes' ? 15 : 0.5}
-                  placeholder={(settings as any)?.durationUnit === 'minutes' ? '90' : '1.5'}
-                  title="Expected job duration — carries to the job when the estimate is accepted"
-                  value={form.estimatedDurationMin}
-                  onChange={e => setForm(f => ({ ...f, estimatedDurationMin: e.target.value }))}
-                />
+                <label className="text-sm font-medium">Estimated Duration</label>
+                <div className="flex gap-1.5">
+                  <Input
+                    type="number"
+                    min={0}
+                    step={estimateDurationUnit === 'minutes' ? 15 : 0.5}
+                    placeholder={estimateDurationUnit === 'minutes' ? '90' : '1.5'}
+                    title="Expected job duration — carries to the job when the estimate is accepted"
+                    value={form.estimatedDurationMin}
+                    onChange={e => setForm(f => ({ ...f, estimatedDurationMin: e.target.value }))}
+                    className="flex-1"
+                  />
+                  <Select
+                    value={estimateDurationUnit}
+                    onValueChange={v => setEstimateDurationUnit(v as 'minutes' | 'hours')}
+                  >
+                    <SelectTrigger className="w-24" title="Duration unit">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="minutes">min</SelectItem>
+                      <SelectItem value="hours">hrs</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
 

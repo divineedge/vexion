@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
-import { CalendarClock, MapPin, Briefcase, Clock, CheckCircle2, User, Search, Ban, FlaskConical, Package, ChevronRight, CloudRain, ShieldAlert } from "lucide-react";
+import { CalendarClock, MapPin, Briefcase, Clock, CheckCircle2, User, Search, Ban, FlaskConical, Package, ChevronRight, CloudRain, ShieldAlert, AlertCircle, DollarSign } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -32,8 +32,8 @@ export default function Jobs() {
     }
   };
 
-  const upcomingJobs = (jobs?.filter(j => j.status === 'scheduled' || j.status === 'in_progress') || []).filter(j => !jobSearch || j.title.toLowerCase().includes(jobSearch.toLowerCase()) || (j.propertyAddress ?? '').toLowerCase().includes(jobSearch.toLowerCase()));
-  const pastJobs = (jobs?.filter(j => j.status === 'completed' || j.status === 'cancelled') || []).filter(j => !jobSearch || j.title.toLowerCase().includes(jobSearch.toLowerCase()) || (j.propertyAddress ?? '').toLowerCase().includes(jobSearch.toLowerCase()));
+  const upcomingJobs = (jobs?.filter(j => j.status === 'scheduled' || j.status === 'in_progress') || []).filter(j => !jobSearch || j.title.toLowerCase().includes(jobSearch.toLowerCase()) || ((j as any).propertyAddress ?? '').toLowerCase().includes(jobSearch.toLowerCase()));
+  const pastJobs = (jobs?.filter(j => j.status === 'completed' || j.status === 'cancelled') || []).filter(j => !jobSearch || j.title.toLowerCase().includes(jobSearch.toLowerCase()) || ((j as any).propertyAddress ?? '').toLowerCase().includes(jobSearch.toLowerCase()));
 
   const handleRequestCancellation = () => {
     if (!cancelDialogJobId) return;
@@ -51,6 +51,20 @@ export default function Jobs() {
           toast.error(msg);
         },
       },
+    );
+  };
+
+  const PriceDisplay = ({ job }: { job: any }) => {
+    const isPlanVisit = job.planId != null && (job.totalAmount === 0 || job.totalAmount == null);
+    return (
+      <div className="md:text-right bg-muted/30 p-4 rounded-lg border border-border/50 min-w-[150px]">
+        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">TOTAL</p>
+        {isPlanVisit ? (
+          <p className="text-sm font-semibold text-muted-foreground">Included in plan</p>
+        ) : (
+          <p className="text-2xl font-bold text-foreground">{formatCurrency(job.totalAmount)}</p>
+        )}
+      </div>
     );
   };
 
@@ -109,12 +123,7 @@ export default function Jobs() {
             </div>
           </div>
           
-          <div className="md:text-right bg-muted/30 p-4 rounded-lg border border-border/50 min-w-[150px]">
-            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">TOTAL</p>
-            <p className="text-2xl font-bold text-foreground">
-              {formatCurrency(job.totalAmount)}
-            </p>
-          </div>
+          <PriceDisplay job={job} />
         </div>
 
         {/* Cancel request button / pending notice */}
@@ -240,19 +249,27 @@ export default function Jobs() {
 }
 
 function JobDetailModal({ jobId, onClose }: { jobId: number | null; onClose: () => void }) {
-  const { data: job, isLoading } = usePortalGetJobDetail(jobId ?? 0);
+  const { data: job, isLoading, isError } = usePortalGetJobDetail(jobId ?? 0);
 
   const open = jobId !== null;
+  const isPlanVisit = job?.planId != null && ((job as any).totalAmount === 0 || (job as any).totalAmount == null);
 
   return (
     <Dialog open={open} onOpenChange={open => { if (!open) onClose(); }}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-        {isLoading || !job ? (
+        {isLoading ? (
           <div className="space-y-4 py-6">
             <Skeleton className="h-6 w-2/3" />
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-4 w-1/2" />
+          </div>
+        ) : isError || !job ? (
+          <div className="py-10 text-center space-y-3">
+            <AlertCircle className="w-10 h-10 text-muted-foreground mx-auto opacity-50" />
+            <p className="font-medium text-foreground">Couldn't load job details</p>
+            <p className="text-sm text-muted-foreground">Please close and try again, or contact us if the issue persists.</p>
+            <Button variant="outline" size="sm" onClick={onClose}>Close</Button>
           </div>
         ) : (
           <>
@@ -264,6 +281,19 @@ function JobDetailModal({ jobId, onClose }: { jobId: number | null; onClose: () 
             </DialogHeader>
 
             <div className="space-y-6 pt-2">
+              {/* Price */}
+              <div className="flex items-center justify-between rounded-lg bg-muted/40 border border-border/60 px-4 py-3">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <DollarSign className="w-4 h-4" />
+                  <span>Total</span>
+                </div>
+                {isPlanVisit ? (
+                  <span className="text-sm font-medium text-muted-foreground">Included in plan</span>
+                ) : (
+                  <span className="text-xl font-bold text-foreground">{formatCurrency((job as any).totalAmount)}</span>
+                )}
+              </div>
+
               {/* Service Timeline */}
               <section>
                 <h4 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-2">
@@ -274,6 +304,12 @@ function JobDetailModal({ jobId, onClose }: { jobId: number | null; onClose: () 
                     <span className="text-muted-foreground">Scheduled</span>
                     <span className="font-medium text-foreground">{formatDateTime(job.scheduledAt)}</span>
                   </div>
+                  {job.assignedToName && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Technician</span>
+                      <span className="font-medium text-foreground">{job.assignedToName}</span>
+                    </div>
+                  )}
                   {job.clockInAt && (
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Technician arrived</span>
@@ -284,6 +320,12 @@ function JobDetailModal({ jobId, onClose }: { jobId: number | null; onClose: () 
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Completed</span>
                       <span className="font-medium text-green-600">{formatDateTime(job.completedAt)}</span>
+                    </div>
+                  )}
+                  {job.propertyAddress && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Location</span>
+                      <span className="font-medium text-foreground text-right max-w-[60%]">{job.propertyAddress}</span>
                     </div>
                   )}
                   {!job.clockInAt && !job.completedAt && (

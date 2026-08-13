@@ -2251,6 +2251,7 @@ function formatPortalJob(j: typeof jobsTable.$inferSelect, propertyAddress: stri
     completedAt: j.completedAt?.toISOString() ?? null,
     propertyAddress: propertyAddress ?? null,
     totalAmount: j.totalAmount,
+    planId: j.planId ?? null,
     assignedToName: assignedToName ?? null,
     cancellationRequestedAt: (j as any).cancellationRequestedAt ? new Date((j as any).cancellationRequestedAt).toISOString() : null,
     cancellationReason: (j as any).cancellationReason ?? null,

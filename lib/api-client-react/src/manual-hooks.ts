@@ -542,6 +542,7 @@ export interface PortalJobDetail {
   clockInAt: string | null;
   propertyAddress: string | null;
   totalAmount: number;
+  planId: number | null;
   assignedToName: string | null;
   cancellationRequestedAt: string | null;
   cancellationReason: string | null;

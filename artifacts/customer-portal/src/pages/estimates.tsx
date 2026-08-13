@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,8 @@ interface PortalEstimate {
 
 interface DetailLineItem {
   idx: number;
+  /** UUID of the line item — needed to send acceptedOptionalItemIds on approval */
+  itemId: string | null;
   description: string;
   quantity: number;
   unitPrice: number;
@@ -33,6 +35,8 @@ interface DetailLineItem {
   isOptional: boolean;
   optionalPitchLine: string | null;
   acceptedByCustomer: boolean;
+  /** Items sharing the same non-empty groupId are mutually exclusive (radio set) */
+  groupId?: string | null;
 }
 
 interface EstimateDetail {
@@ -74,6 +78,11 @@ export default function Estimates() {
   // Track optional item selections: key = item.idx, value = accepted boolean
   const [optionalSelections, setOptionalSelections] = useState<Record<number, boolean>>({});
 
+  // Track the last in-flight optional-items PATCH so respond() can await it
+  // before submitting approval, preventing a stale PATCH from overwriting the
+  // approved selection after the estimate status has changed to 'approved'.
+  const pendingPatchRef = useRef<Promise<void> | null>(null);
+
   const { data: estimates, isLoading } = useQuery<PortalEstimate[]>({
     queryKey: ["portal-estimates"],
     queryFn: () => customFetch<PortalEstimate[]>("/api/portal/estimates"),
@@ -108,29 +117,54 @@ export default function Estimates() {
 
   const toggleOptional = (item: DetailLineItem, checked: boolean) => {
     if (!reviewEstimateId || !detail) return;
-    const next = { ...optionalSelections, [item.idx]: checked };
+    // Snapshot full prior state so we can roll back everything on failure,
+    // not just the clicked item (a failed radio change could otherwise leave
+    // no option selected in the group).
+    const prevSelections = optionalSelections;
+
+    let next = { ...optionalSelections, [item.idx]: checked };
+    // If this item belongs to a group and is being selected, deselect all
+    // other items in the same group (radio-button behaviour)
+    if (checked && item.groupId) {
+      detail.lineItems.forEach(li => {
+        if (li.isOptional && li.groupId === item.groupId && li.idx !== item.idx) {
+          next[li.idx] = false;
+        }
+      });
+    }
     setOptionalSelections(next);
 
-    // Build full selections array and persist to server (fire-and-forget)
+    // Build full selections array and persist to server.
+    // Store the promise so respond() can await it before submitting approval.
     const selections = detail.lineItems.map(li =>
       li.isOptional ? (next[li.idx] ?? li.acceptedByCustomer) : true
     );
-    customFetch(`/api/portal/estimates/${reviewEstimateId}/optional-items`, {
+    const patchPromise = customFetch(`/api/portal/estimates/${reviewEstimateId}/optional-items`, {
       method: "PATCH",
       body: JSON.stringify({ selections }),
-    }).catch(() => {
-      // Revert on error
-      setOptionalSelections(prev => ({ ...prev, [item.idx]: !checked }));
+    }).then(() => { /* ok */ }).catch(() => {
+      // Revert to the full prior state, not just the clicked item, so a
+      // failed radio change doesn't leave the group with no option selected.
+      setOptionalSelections(prevSelections);
       toast.error("Failed to save selection. Please try again.");
     });
+    pendingPatchRef.current = patchPromise;
   };
 
-  // Recompute displayed totals based on current optional selections
+  // Recompute displayed totals based on current optional selections.
+  // For grouped optional items, only the first accepted item per group is counted
+  // (mirrors server-side calcTotals logic).
   const computedTotals = detail ? (() => {
+    const countedGroups = new Set<string>();
     let subtotal = 0;
     for (const item of detail.lineItems) {
       const accepted = item.isOptional ? (optionalSelections[item.idx] ?? item.acceptedByCustomer) : true;
-      if (accepted) subtotal += item.total;
+      if (!accepted) continue;
+      if (item.isOptional && item.groupId) {
+        if (countedGroups.has(item.groupId)) continue;
+        countedGroups.add(item.groupId);
+      }
+      subtotal += item.total;
     }
     const taxRate = detail.subtotal > 0 ? detail.tax / detail.subtotal : 0;
     const tax = Math.round(subtotal * taxRate * 100) / 100;
@@ -141,10 +175,23 @@ export default function Estimates() {
     if (!reviewToken) return;
     setActing(action);
     try {
+      // Await any in-flight selection PATCH so it cannot race against the
+      // approval and overwrite the approved line items after status changes.
+      if (pendingPatchRef.current) {
+        await pendingPatchRef.current;
+        pendingPatchRef.current = null;
+      }
+      // Collect accepted optional item UUIDs so the server knows which add-ons
+      // (including the selected radio-group option) are included in the approval.
+      const acceptedOptionalItemIds = detail
+        ? detail.lineItems
+            .filter(li => li.isOptional && li.itemId && (optionalSelections[li.idx] ?? li.acceptedByCustomer))
+            .map(li => li.itemId!)
+        : [];
       await customFetch(`/api/public/estimates/${reviewToken}/respond`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, acceptedOptionalItemIds }),
       });
       toast.success(action === "approve" ? "Estimate approved!" : "Estimate declined.");
       queryClient.invalidateQueries({ queryKey: ["portal-estimates"] });
@@ -271,54 +318,115 @@ export default function Estimates() {
               )}
 
               {/* Optional add-ons */}
-              {optionalItems.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Optional Add-ons
+              {optionalItems.length > 0 && (() => {
+                const ungrouped = optionalItems.filter(i => !i.groupId);
+                const grouped = optionalItems.filter(i => !!i.groupId);
+                const groups = grouped.reduce<Record<string, DetailLineItem[]>>((acc, item) => {
+                  const g = item.groupId!;
+                  if (!acc[g]) acc[g] = [];
+                  acc[g].push(item);
+                  return acc;
+                }, {});
+                const isSent = detail.status === "sent";
+
+                // Shared row renderer (label + price)
+                const ItemBody = ({ item, accepted }: { item: DetailLineItem; accepted: boolean }) => (
+                  <>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium">{item.description}</p>
+                      {item.optionalPitchLine && (
+                        <p className="text-xs text-amber-700 italic mt-0.5">{item.optionalPitchLine}</p>
+                      )}
+                      {item.quantity !== 1 && (
+                        <p className="text-xs text-muted-foreground">{item.quantity} × {formatCurrency(item.unitPrice)}</p>
+                      )}
+                    </div>
+                    <p className={`font-medium shrink-0 ${accepted ? "" : "text-muted-foreground line-through"}`}>
+                      {formatCurrency(item.total)}
                     </p>
-                    <Badge variant="outline" className="text-xs text-amber-700 border-amber-200 bg-amber-50">
-                      Select what you'd like
-                    </Badge>
-                  </div>
-                  <div className="rounded-lg border overflow-hidden divide-y">
-                    {optionalItems.map(item => {
-                      const accepted = optionalSelections[item.idx] ?? item.acceptedByCustomer;
-                      return (
-                        <div key={item.idx} className={`flex items-start gap-3 px-4 py-3 text-sm transition-colors ${accepted ? "bg-amber-50/40" : "bg-muted/20"}`}>
-                          <Checkbox
-                            id={`opt-${item.idx}`}
-                            checked={accepted}
-                            onCheckedChange={checked => {
-                              if (detail.status === "sent") toggleOptional(item, !!checked);
-                            }}
-                            disabled={detail.status !== "sent"}
-                            className="mt-0.5 shrink-0"
-                          />
-                          <label htmlFor={`opt-${item.idx}`} className={`flex-1 min-w-0 ${detail.status === "sent" ? "cursor-pointer" : ""}`}>
-                            <p className="font-medium">{item.description}</p>
-                            {item.optionalPitchLine && (
-                              <p className="text-xs text-amber-700 italic mt-0.5">{item.optionalPitchLine}</p>
-                            )}
-                            {item.quantity !== 1 && (
-                              <p className="text-xs text-muted-foreground">{item.quantity} × {formatCurrency(item.unitPrice)}</p>
-                            )}
-                          </label>
-                          <p className={`font-medium shrink-0 ${accepted ? "" : "text-muted-foreground line-through"}`}>
-                            {formatCurrency(item.total)}
-                          </p>
+                  </>
+                );
+
+                return (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Optional Add-ons</p>
+                      <Badge variant="outline" className="text-xs text-amber-700 border-amber-200 bg-amber-50">
+                        Select what you'd like
+                      </Badge>
+                    </div>
+
+                    {/* Ungrouped — independent checkboxes */}
+                    {ungrouped.length > 0 && (
+                      <div className="rounded-lg border overflow-hidden divide-y">
+                        {ungrouped.map(item => {
+                          const accepted = optionalSelections[item.idx] ?? item.acceptedByCustomer;
+                          return (
+                            <div key={item.idx} className={`flex items-start gap-3 px-4 py-3 text-sm transition-colors ${accepted ? "bg-amber-50/40" : "bg-muted/20"}`}>
+                              <Checkbox
+                                id={`opt-${item.idx}`}
+                                checked={accepted}
+                                onCheckedChange={checked => { if (isSent) toggleOptional(item, !!checked); }}
+                                disabled={!isSent}
+                                className="mt-0.5 shrink-0"
+                              />
+                              <label htmlFor={`opt-${item.idx}`} className={`flex-1 min-w-0 flex items-start gap-3 ${isSent ? "cursor-pointer" : ""}`}>
+                                <ItemBody item={item} accepted={accepted} />
+                              </label>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Grouped — radio sets (pick one per group) */}
+                    {Object.entries(groups).map(([groupName, items]) => (
+                      <div key={groupName} className="rounded-lg border overflow-hidden">
+                        <div className="px-4 py-2 bg-amber-50 border-b flex items-center gap-1.5">
+                          <span className="text-amber-600 text-sm">⊙</span>
+                          <p className="text-xs font-semibold text-amber-800">{groupName}</p>
+                          <span className="text-xs text-muted-foreground">— choose one</span>
                         </div>
-                      );
-                    })}
+                        <div className="divide-y">
+                          {items.map(item => {
+                            const accepted = optionalSelections[item.idx] ?? item.acceptedByCustomer;
+                            return (
+                              <div
+                                key={item.idx}
+                                className={`flex items-start gap-3 px-4 py-3 text-sm transition-colors ${accepted ? "bg-amber-50/40" : "bg-muted/20"} ${isSent ? "cursor-pointer" : ""}`}
+                                onClick={() => { if (isSent && !accepted) toggleOptional(item, true); }}
+                              >
+                                {/* Native radio input for accessibility */}
+                                <input
+                                  type="radio"
+                                  name={`group-${reviewEstimateId}-${groupName}`}
+                                  checked={accepted}
+                                  onChange={() => { if (isSent) toggleOptional(item, true); }}
+                                  disabled={!isSent}
+                                  className="mt-1 shrink-0 accent-amber-600"
+                                  aria-label={item.description}
+                                />
+                                <ItemBody item={item} accepted={accepted} />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+
+                    {isSent && (
+                      <p className="text-xs text-muted-foreground">
+                        {ungrouped.length > 0 && grouped.length > 0
+                          ? "Check individual add-ons and select one option from each group before approving."
+                          : ungrouped.length > 0
+                          ? "Check or uncheck the add-ons you'd like to include before approving."
+                          : "Choose one option from each group before approving."}
+                      </p>
+                    )}
                   </div>
-                  {detail.status === "sent" && (
-                    <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-                      Check or uncheck the add-ons you'd like to include before approving.
-                    </p>
-                  )}
-                </div>
-              )}
+                );
+              })()}
 
               <Separator />
 

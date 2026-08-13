@@ -1257,14 +1257,19 @@ router.post("/portal/service-requests", requirePortalAuth, async (req: any, res)
 
   const validPriorities = ["low", "normal", "high", "urgent"];
   const resolvedPriority = priority && validPriorities.includes(priority) ? priority : "normal";
-  const scheduledAt = preferredDateStart ? new Date(preferredDateStart) : null;
+  // When no preferred date is given, use a far-future placeholder so the NOT NULL
+  // constraint is satisfied. The job stays in pending status and won't appear on
+  // the scheduled calendar; staff will set the real date when they assign it.
+  const scheduledAt = preferredDateStart
+    ? new Date(preferredDateStart)
+    : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
   const [job] = await db
     .insert(jobsTable)
     .values({
       tenantId: portalTenantId,
       title: "Service Request",
-      description,
+      description: description ?? null,
       status: "pending",
       priority: resolvedPriority,
       customerId: portalCustomerId,
@@ -1897,7 +1902,7 @@ router.get("/portal/estimates/:id", requirePortalAuth, async (req: any, res): Pr
 
   if (!estimate) { res.status(404).json({ error: "Estimate not found" }); return; }
 
-  type RawItem = { description?: string; qty?: number; quantity?: number; unitPrice?: number; markup?: number; discount?: number; isOptional?: boolean; optionalPitchLine?: string | null; acceptedByCustomer?: boolean };
+  type RawItem = { id?: string; description?: string; qty?: number; quantity?: number; unitPrice?: number; markup?: number; discount?: number; isOptional?: boolean; optionalPitchLine?: string | null; acceptedByCustomer?: boolean; groupId?: string | null };
   const lineItems = ((estimate.lineItems as RawItem[]) ?? []).map((item, idx) => {
     const qty = item.qty ?? item.quantity ?? 1;
     const unit = item.unitPrice ?? 0;
@@ -1905,6 +1910,7 @@ router.get("/portal/estimates/:id", requirePortalAuth, async (req: any, res): Pr
     const discountMul = 1 - (item.discount ?? 0) / 100;
     return {
       idx,
+      itemId: item.id ?? null,
       description: item.description ?? "",
       quantity: qty,
       unitPrice: unit,
@@ -1912,6 +1918,7 @@ router.get("/portal/estimates/:id", requirePortalAuth, async (req: any, res): Pr
       isOptional: item.isOptional ?? false,
       optionalPitchLine: item.optionalPitchLine ?? null,
       acceptedByCustomer: item.acceptedByCustomer ?? true,
+      groupId: item.groupId ?? null,
     };
   });
 
@@ -1919,7 +1926,7 @@ router.get("/portal/estimates/:id", requirePortalAuth, async (req: any, res): Pr
     id: estimate.id,
     title: `Estimate #${estimate.id}`,
     status: estimate.status,
-    description: estimate.description ?? null,
+    description: null,
     subtotal: estimate.subtotal,
     tax: estimate.tax,
     total: estimate.total,
@@ -1954,18 +1961,35 @@ router.patch("/portal/estimates/:id/optional-items", requirePortalAuth, async (r
 
   if (!estimate) { res.status(404).json({ error: "Estimate not found or not editable" }); return; }
 
-  type RawItem = Record<string, unknown> & { isOptional?: boolean };
-  const updated = ((estimate.lineItems as RawItem[]) ?? []).map((item, idx) => {
+  type RawItem = Record<string, unknown> & { isOptional?: boolean; groupId?: string | null; acceptedByCustomer?: boolean };
+  // Apply the customer's boolean selections
+  const withSelections = ((estimate.lineItems as RawItem[]) ?? []).map((item, idx) => {
     if (item.isOptional && idx < selections.length) {
       return { ...item, acceptedByCustomer: selections[idx] };
     }
     return item;
   });
 
-  // Use raw SQL to bypass Drizzle jsonb mapper quirks
-  await db.execute(
-    sql`UPDATE estimates SET line_items = ${JSON.stringify(updated)}::jsonb WHERE id = ${estimateId} AND tenant_id = ${portalTenantId}`
+  // Enforce mutual exclusivity: for each group, keep only the first accepted item
+  const acceptedGroups = new Set<string>();
+  const updated = withSelections.map(item => {
+    if (!item.isOptional || !item.groupId || !item.acceptedByCustomer) return item;
+    if (acceptedGroups.has(item.groupId)) return { ...item, acceptedByCustomer: false };
+    acceptedGroups.add(item.groupId);
+    return item;
+  });
+
+  // Use raw SQL to bypass Drizzle jsonb mapper quirks.
+  // Gate on status = 'sent' so a stale in-flight PATCH cannot overwrite
+  // an already-approved estimate; check rowCount to detect the race.
+  const result = await db.execute(
+    sql`UPDATE estimates SET line_items = ${JSON.stringify(updated)}::jsonb WHERE id = ${estimateId} AND tenant_id = ${portalTenantId} AND status = 'sent'`
   );
+  const rowsAffected = (result as any).rowCount ?? 0;
+  if (rowsAffected === 0) {
+    res.status(409).json({ error: "Estimate is no longer open for editing" });
+    return;
+  }
 
   res.json({ ok: true });
 });

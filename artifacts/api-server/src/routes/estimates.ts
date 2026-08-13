@@ -201,16 +201,39 @@ function generateToken(): string {
 }
 
 /**
+ * For each mutual-exclusion group, keep only the first accepted item and
+ * deselect the rest. Safe to call on items with no groupId (no-op for them).
+ */
+function normalizeGroupedSelections(items: EstimateLineItem[]): EstimateLineItem[] {
+  const acceptedGroups = new Set<string>();
+  return items.map(item => {
+    if (!item.isOptional || !item.groupId || !item.acceptedByCustomer) return item;
+    if (acceptedGroups.has(item.groupId)) {
+      return { ...item, acceptedByCustomer: false };
+    }
+    acceptedGroups.add(item.groupId);
+    return item;
+  });
+}
+
+/**
  * Compute totals from line items.
  * Only required items (isOptional=false) and accepted optional items
  * (isOptional=true AND acceptedByCustomer=true) are counted.
  * Unaccepted optional add-ons are excluded so totals reflect billable value.
  */
 function calcTotals(lineItems: EstimateLineItem[]) {
+  // For grouped optional items, only the first accepted item per group is counted.
+  const countedGroups = new Set<string>();
   let subtotal = 0;
   for (const item of lineItems) {
     // Skip optional items that the customer has not accepted
     if (item.isOptional && !item.acceptedByCustomer) continue;
+    // For grouped optional items, only count one per group
+    if (item.isOptional && item.groupId) {
+      if (countedGroups.has(item.groupId)) continue;
+      countedGroups.add(item.groupId);
+    }
     const base = item.qty * item.unitPrice;
     const afterMarkup = base * (1 + item.markup / 100);
     const afterDiscount = afterMarkup * (1 - item.discount / 100);
@@ -240,6 +263,8 @@ interface EstimateLineItem {
   isOptional: boolean;
   optionalPitchLine?: string | null;
   acceptedByCustomer: boolean;
+  /** If set, items sharing this groupId are mutually exclusive (radio set) */
+  groupId?: string | null;
 }
 
 function formatEstimate(
@@ -850,7 +875,7 @@ router.post("/estimates/:id/convert", async (req, res): Promise<void> => {
   }
 
   // Only include required + accepted optional items
-  const allItems = (estimate.lineItems as EstimateLineItem[]) ?? [];
+  const allItems = normalizeGroupedSelections((estimate.lineItems as EstimateLineItem[]) ?? []);
   const jobItems = allItems.filter(item => !item.isOptional || item.acceptedByCustomer);
   const { subtotal: _s, tax: _t, total } = calcTotals(jobItems);
 
@@ -1105,11 +1130,12 @@ router.post("/public/estimates/:token/respond", async (req, res): Promise<void> 
   const items = (estimate.lineItems as EstimateLineItem[]) ?? [];
   const acceptedIds: string[] = acceptedOptionalItemIds ?? [];
 
-  // Mark accepted optional items
-  const updatedItems = items.map(item => ({
+  // Mark accepted optional items, then enforce one-per-group for grouped add-ons
+  const markedItems = items.map(item => ({
     ...item,
     acceptedByCustomer: item.isOptional ? acceptedIds.includes(item.id) : true,
   }));
+  const updatedItems = normalizeGroupedSelections(markedItems);
 
   // Recompute totals from the post-approval line items (required + accepted optional only)
   const { subtotal, tax, total } = calcTotals(updatedItems);

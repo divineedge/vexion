@@ -60,6 +60,8 @@ interface LineItem {
   isOptional: boolean;
   optionalPitchLine: string;
   acceptedByCustomer: boolean;
+  /** Items sharing the same non-empty groupId are mutually exclusive (radio set) */
+  groupId?: string;
   // Catalog linking
   serviceId?: number;
   serviceName?: string;
@@ -381,6 +383,7 @@ export default function EstimatesPage() {
           discount: i.discount,
           isOptional: i.isOptional,
           optionalPitchLine: i.optionalPitchLine || null,
+          groupId: i.groupId || null,
           acceptedByCustomer: !i.isOptional,
           serviceId: i.serviceId ?? null,
           serviceName: i.serviceName ?? null,
@@ -1030,7 +1033,21 @@ export default function EstimatesPage() {
                       <span className="ml-auto text-sm font-medium" title={`Line total: $${calcItem(item).toFixed(2)}`}>${calcItem(item).toFixed(2)}</span>
                     </div>
                     {item.isOptional && (
-                      <Input title="Upsell pitch line shown to the customer when they view this estimate" placeholder="Pitch line (e.g. While we're there — trim your hedges for $45)" value={item.optionalPitchLine} onChange={e => updateLineItem(idx, { optionalPitchLine: e.target.value })} className="text-sm" />
+                      <>
+                        <Input title="Upsell pitch line shown to the customer when they view this estimate" placeholder="Pitch line (e.g. While we're there — trim your hedges for $45)" value={item.optionalPitchLine} onChange={e => updateLineItem(idx, { optionalPitchLine: e.target.value })} className="text-sm" />
+                        <Input
+                          title="Group name — add-ons sharing the same group name become mutually exclusive (radio buttons). Leave blank for an independent checkbox."
+                          placeholder="Group name (e.g. Treatment frequency) — leave blank for independent toggle"
+                          value={item.groupId ?? ''}
+                          onChange={e => updateLineItem(idx, { groupId: e.target.value.trim() || undefined })}
+                          className="text-sm"
+                        />
+                        {item.groupId && (
+                          <p className="text-xs text-amber-700 flex items-center gap-1">
+                            <span>⊙</span> Grouped with other "<strong>{item.groupId}</strong>" items — customer can only pick one
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
                 );
@@ -1430,21 +1447,43 @@ export default function EstimatesPage() {
                             <span className="font-medium shrink-0" title={`Line total: $${calcItem(item).toFixed(2)}`}>${calcItem(item).toFixed(2)}</span>
                           </div>
                         ))}
-                        {optional.length > 0 && (
-                          <>
-                            <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mt-3">Add-On Services</p>
-                            {optional.map((item) => (
-                              <div key={item.id} className={`flex items-start justify-between gap-4 text-sm rounded-md p-2 ${item.acceptedByCustomer ? 'bg-amber-50 border border-amber-200' : 'opacity-60'}`}>
-                                <div className="flex-1">
+                        {optional.length > 0 && (() => {
+                          const ungrouped = optional.filter(i => !i.groupId);
+                          const grouped = optional.filter(i => !!i.groupId);
+                          const groups = grouped.reduce<Record<string, LineItem[]>>((acc, item) => {
+                            const g = item.groupId!;
+                            if (!acc[g]) acc[g] = [];
+                            acc[g].push(item);
+                            return acc;
+                          }, {});
+                          const OptionalRow = ({ item, indicator }: { item: LineItem; indicator: React.ReactNode }) => (
+                            <div className={`flex items-start justify-between gap-4 text-sm rounded-md p-2 ${item.acceptedByCustomer ? 'bg-amber-50 border border-amber-200' : 'opacity-60'}`}>
+                              <div className="flex-1 flex items-start gap-2">
+                                <span className="mt-0.5 text-amber-600 shrink-0">{indicator}</span>
+                                <div>
                                   <p className="font-medium">{item.description || '—'}{item.acceptedByCustomer ? ' ✓' : ''}</p>
                                   {item.optionalPitchLine && <p className="text-xs text-muted-foreground italic">{item.optionalPitchLine}</p>}
                                   <p className="text-muted-foreground text-xs">Qty {item.qty} × ${item.unitPrice.toFixed(2)}</p>
                                 </div>
-                                <span className="font-medium shrink-0" title={`Optional add-on total: $${calcItem(item).toFixed(2)}`}>${calcItem(item).toFixed(2)}</span>
                               </div>
-                            ))}
-                          </>
-                        )}
+                              <span className="font-medium shrink-0">${calcItem(item).toFixed(2)}</span>
+                            </div>
+                          );
+                          return (
+                            <>
+                              <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mt-3">Add-On Services</p>
+                              {ungrouped.map(item => <OptionalRow key={item.id} item={item} indicator="☐" />)}
+                              {Object.entries(groups).map(([groupName, items]) => (
+                                <div key={groupName} className="rounded-md border border-dashed border-amber-300 bg-amber-50/30 p-2 space-y-1">
+                                  <p className="text-xs font-medium text-amber-700 flex items-center gap-1">
+                                    <span>⊙</span> {groupName} <span className="text-muted-foreground font-normal">(pick one)</span>
+                                  </p>
+                                  {items.map(item => <OptionalRow key={item.id} item={item} indicator="○" />)}
+                                </div>
+                              ))}
+                            </>
+                          );
+                        })()}
                         <Separator />
                         {(() => {
                           const subtotal = items.filter(i => !i.isOptional || i.acceptedByCustomer).reduce((s, i) => s + calcItem(i), 0);

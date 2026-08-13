@@ -1,216 +1,25 @@
 /**
  * P4P Labor Efficiency Engine — Mike Andes methodology.
  *
- * Efficiency Rate = SUM(job sub-timer seconds) ÷ (total master-clock minutes × 60) × 100
+ * Two efficiency metrics:
+ *  1. Clock Efficiency  = SUM(job sub-timer seconds) ÷ (total master-clock minutes × 60) × 100
+ *     "What % of the day was actually on jobs?" Un-assigned gaps & travel lower this score.
+ *  2. Budget Efficiency = SUM(estimated_duration on completed jobs) ÷ SUM(actual job seconds / 60) × 100
+ *     "Did they beat the time budget?" >100% = finished faster than budgeted (good).
  *
- * "Active" sub-timer seconds = all sub_timers with type='job' (or jobId set), stopped or still running.
- * Running timers have their live seconds added via NOW() - startedAt.
- * Un-assigned gaps and travel are NOT counted as productive time, so they naturally lower the score.
+ * Callbacks = Mike Andes "yellow slips".  They appear on every view (employee, crew, service).
  */
 
 import { Router, type IRouter } from "express";
-import { db, timeEntriesTable, subTimersTable, usersTable } from "@workspace/db";
+import { db, timeEntriesTable, subTimersTable, usersTable, crewsTable } from "@workspace/db";
 import { eq, and, gte, lte, sql, sum } from "drizzle-orm";
 import { getTenantId } from "../lib/tenantHelper";
 import { getCallbackRatioStats } from "../lib/callbackRatio";
-import { startOfDay, endOfDay, startOfWeek, endOfWeek, subDays, format } from "date-fns";
+import { startOfDay, endOfDay, startOfWeek, endOfWeek, subDays } from "date-fns";
 
 const router: IRouter = Router();
 
-// GET /efficiency — company-wide + per-technician efficiency summary
-router.get("/efficiency", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
-  const { period = "today", startDate, endDate } = req.query as Record<string, string>;
-
-  let rangeStart: Date, rangeEnd: Date;
-  if (startDate && endDate) {
-    rangeStart = new Date(startDate + 'T00:00:00');
-    rangeEnd = new Date(endDate + 'T23:59:59');
-  } else {
-    ({ rangeStart, rangeEnd } = getPeriodRange(period));
-  }
-
-  // ── Master clock minutes per user in period ──────────────────────────────
-  const clockRows = await db
-    .select({
-      userId: timeEntriesTable.userId,
-      totalClockMinutes: sum(timeEntriesTable.totalMinutes).mapWith(Number),
-    })
-    .from(timeEntriesTable)
-    .where(
-      and(
-        eq(timeEntriesTable.tenantId, tenantId),
-        eq(timeEntriesTable.isMasterClock, true),
-        gte(timeEntriesTable.clockedInAt, rangeStart),
-        lte(timeEntriesTable.clockedInAt, rangeEnd),
-      ),
-    )
-    .groupBy(timeEntriesTable.userId);
-
-  // ── Job sub-timer seconds per user in period ─────────────────────────────
-  // Include currently-running timers via EXTRACT(EPOCH FROM (COALESCE(stopped_at, NOW()) - started_at))
-  const subTimerRows = await db.execute(sql`
-    SELECT
-      user_id,
-      SUM(
-        CASE
-          WHEN is_active = true
-            THEN EXTRACT(EPOCH FROM (NOW() - started_at))
-          ELSE elapsed_seconds
-        END
-      ) AS job_seconds
-    FROM sub_timers
-    WHERE tenant_id = ${tenantId}
-      AND job_id IS NOT NULL
-      AND started_at >= ${rangeStart.toISOString()}::timestamptz
-      AND started_at <= ${rangeEnd.toISOString()}::timestamptz
-    GROUP BY user_id
-  `);
-
-  // ── Callback ratio per user (all time — quality score) ───────────────────
-  // Shared with GET /callbacks/stats so the two pages never report different numbers.
-  const callbackStats = await getCallbackRatioStats(tenantId);
-  const callbackStatMap = new Map(callbackStats.technicians.map(t => [t.userId, t]));
-
-  // ── User names ────────────────────────────────────────────────────────────
-  const users = await db
-    .select({ id: usersTable.id, name: usersTable.name, role: usersTable.role })
-    .from(usersTable)
-    .where(eq(usersTable.tenantId, tenantId));
-
-  // ── Merge ─────────────────────────────────────────────────────────────────
-  const subTimerMap = new Map<number, number>();
-  for (const row of subTimerRows.rows as { user_id: number; job_seconds: number }[]) {
-    subTimerMap.set(Number(row.user_id), Number(row.job_seconds ?? 0));
-  }
-
-  const clockMap = new Map<number, number>();
-  for (const row of clockRows) {
-    clockMap.set(row.userId, row.totalClockMinutes ?? 0);
-  }
-
-  const technicianMetrics = users
-    .filter(u => u.role === "technician" || u.role === "crew_manager")
-    .map(u => {
-      const clockMins = clockMap.get(u.id) ?? 0;
-      const jobSeconds = subTimerMap.get(u.id) ?? 0;
-      const cb = callbackStatMap.get(u.id);
-      const callbacks = cb?.callbackCount ?? 0;
-      const completedJobs = cb?.completedJobs ?? 0;
-      const callbackRatio = cb?.callbackRatio ?? 0;
-
-      const efficiencyRate =
-        clockMins > 0 ? Math.min(Math.round((jobSeconds / (clockMins * 60)) * 100), 200) : null;
-
-      return {
-        userId: u.id,
-        name: u.name,
-        role: u.role,
-        clockMinutes: clockMins,
-        jobSeconds: Math.round(jobSeconds),
-        efficiencyRate,
-        callbacks,
-        completedJobs,
-        callbackRatio,
-        hasWarning: cb?.hasWarning ?? false, // shared threshold from callbackRatio.ts
-      };
-    });
-
-  // ── Company averages ──────────────────────────────────────────────────────
-  const withData = technicianMetrics.filter(t => t.efficiencyRate !== null);
-  const companyEfficiencyRate =
-    withData.length > 0
-      ? Math.round(withData.reduce((s, t) => s + (t.efficiencyRate ?? 0), 0) / withData.length)
-      : null;
-
-  // Company-wide callback ratio comes straight from the shared calculation (not re-derived from
-  // technicianMetrics) so it matches GET /callbacks/stats exactly, even though the list of
-  // technicians shown here is filtered to technician/crew_manager roles.
-  const companyCallbackRatio = callbackStats.companyCallbackRatio;
-
-  res.json({
-    period,
-    rangeStart: rangeStart.toISOString(),
-    rangeEnd: rangeEnd.toISOString(),
-    companyEfficiencyRate,
-    companyCallbackRatio,
-    technicians: technicianMetrics,
-  });
-});
-
-// GET /efficiency/trend?userId=&days=30 — historical daily efficiency for sparklines
-router.get("/efficiency/trend", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
-  const { userId, days = "30" } = req.query as Record<string, string>;
-  const daysNum = Math.min(parseInt(days, 10) || 30, 90);
-  const since = subDays(new Date(), daysNum);
-
-  const whereClause = userId
-    ? and(
-        eq(timeEntriesTable.tenantId, tenantId),
-        eq(timeEntriesTable.isMasterClock, true),
-        eq(timeEntriesTable.userId, parseInt(userId, 10)),
-        gte(timeEntriesTable.clockedInAt, since),
-      )
-    : and(
-        eq(timeEntriesTable.tenantId, tenantId),
-        eq(timeEntriesTable.isMasterClock, true),
-        gte(timeEntriesTable.clockedInAt, since),
-      );
-
-  // Daily master clock minutes
-  const dailyClock = await db.execute(sql`
-    SELECT
-      DATE(clocked_in_at AT TIME ZONE 'UTC') AS day,
-      SUM(total_minutes) AS clock_minutes
-    FROM time_entries
-    WHERE tenant_id = ${tenantId}
-      AND is_master_clock = true
-      ${userId ? sql`AND user_id = ${parseInt(userId, 10)}` : sql``}
-      AND clocked_in_at >= ${since.toISOString()}::timestamptz
-    GROUP BY day
-    ORDER BY day
-  `);
-
-  // Daily job sub-timer seconds
-  const dailySub = await db.execute(sql`
-    SELECT
-      DATE(started_at AT TIME ZONE 'UTC') AS day,
-      SUM(
-        CASE WHEN is_active THEN EXTRACT(EPOCH FROM (NOW() - started_at)) ELSE elapsed_seconds END
-      ) AS job_seconds
-    FROM sub_timers
-    WHERE tenant_id = ${tenantId}
-      AND job_id IS NOT NULL
-      ${userId ? sql`AND user_id = ${parseInt(userId, 10)}` : sql``}
-      AND started_at >= ${since.toISOString()}::timestamptz
-    GROUP BY day
-    ORDER BY day
-  `);
-
-  const clockByDay = new Map<string, number>();
-  for (const r of dailyClock.rows as { day: string; clock_minutes: number }[]) {
-    clockByDay.set(String(r.day).slice(0, 10), Number(r.clock_minutes ?? 0));
-  }
-  const subByDay = new Map<string, number>();
-  for (const r of dailySub.rows as { day: string; job_seconds: number }[]) {
-    subByDay.set(String(r.day).slice(0, 10), Number(r.job_seconds ?? 0));
-  }
-
-  const allDays = Array.from(new Set([...clockByDay.keys(), ...subByDay.keys()])).sort();
-  const trend = allDays.map(day => {
-    const clockMins = clockByDay.get(day) ?? 0;
-    const jobSecs = subByDay.get(day) ?? 0;
-    return {
-      date: day,
-      efficiencyRate: clockMins > 0 ? Math.min(Math.round((jobSecs / (clockMins * 60)) * 100), 200) : null,
-      clockMinutes: clockMins,
-      jobMinutes: Math.round(jobSecs / 60),
-    };
-  });
-
-  res.json({ userId: userId ? parseInt(userId, 10) : null, days: daysNum, trend });
-});
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function getPeriodRange(period: string): { rangeStart: Date; rangeEnd: Date } {
   const now = new Date();
@@ -229,5 +38,435 @@ function getPeriodRange(period: string): { rangeStart: Date; rangeEnd: Date } {
       return { rangeStart: subDays(now, 30), rangeEnd: now };
   }
 }
+
+/** Budget efficiency: budget_minutes / actual_job_minutes × 100, capped at 300% */
+function budgetEff(budgetMinutes: number, actualJobSeconds: number): number | null {
+  const actualMinutes = actualJobSeconds / 60;
+  if (budgetMinutes <= 0 || actualMinutes <= 0) return null;
+  return Math.min(Math.round((budgetMinutes / actualMinutes) * 100), 300);
+}
+
+// ── GET /efficiency — company-wide + per-technician summary ─────────────────
+router.get("/efficiency", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const { period = "today", startDate, endDate } = req.query as Record<string, string>;
+
+  let rangeStart: Date, rangeEnd: Date;
+  if (startDate && endDate) {
+    rangeStart = new Date(startDate + "T00:00:00");
+    rangeEnd = new Date(endDate + "T23:59:59");
+  } else {
+    ({ rangeStart, rangeEnd } = getPeriodRange(period));
+  }
+
+  // Master clock minutes per user
+  const clockRows = await db
+    .select({
+      userId: timeEntriesTable.userId,
+      totalClockMinutes: sum(timeEntriesTable.totalMinutes).mapWith(Number),
+    })
+    .from(timeEntriesTable)
+    .where(and(
+      eq(timeEntriesTable.tenantId, tenantId),
+      eq(timeEntriesTable.isMasterClock, true),
+      gte(timeEntriesTable.clockedInAt, rangeStart),
+      lte(timeEntriesTable.clockedInAt, rangeEnd),
+    ))
+    .groupBy(timeEntriesTable.userId);
+
+  // Job sub-timer seconds per user (includes live running timers)
+  const subTimerRows = await db.execute(sql`
+    SELECT
+      user_id,
+      SUM(
+        CASE WHEN is_active THEN EXTRACT(EPOCH FROM (NOW() - started_at)) ELSE elapsed_seconds END
+      ) AS job_seconds
+    FROM sub_timers
+    WHERE tenant_id = ${tenantId}
+      AND job_id IS NOT NULL
+      AND started_at >= ${rangeStart.toISOString()}::timestamptz
+      AND started_at <= ${rangeEnd.toISOString()}::timestamptz
+    GROUP BY user_id
+  `);
+
+  // Budget minutes per assignee (sum of estimatedDuration on completed jobs)
+  const budgetRows = await db.execute(sql`
+    SELECT
+      assignee_id AS user_id,
+      COALESCE(SUM(estimated_duration), 0) AS budget_minutes,
+      COUNT(*)::int AS budget_job_count
+    FROM jobs
+    WHERE tenant_id = ${tenantId}
+      AND status = 'completed'
+      AND completed_at >= ${rangeStart.toISOString()}::timestamptz
+      AND completed_at <= ${rangeEnd.toISOString()}::timestamptz
+      AND assignee_id IS NOT NULL
+      AND estimated_duration IS NOT NULL
+    GROUP BY assignee_id
+  `);
+
+  // Callback ratio stats (shared source so both pages match)
+  const callbackStats = await getCallbackRatioStats(tenantId);
+  const callbackStatMap = new Map(callbackStats.technicians.map(t => [t.userId, t]));
+
+  // User names + roles
+  const users = await db
+    .select({ id: usersTable.id, name: usersTable.name, role: usersTable.role })
+    .from(usersTable)
+    .where(eq(usersTable.tenantId, tenantId));
+
+  // Build maps
+  const subTimerMap = new Map<number, number>();
+  for (const row of subTimerRows.rows as { user_id: number; job_seconds: number }[]) {
+    subTimerMap.set(Number(row.user_id), Number(row.job_seconds ?? 0));
+  }
+  const clockMap = new Map<number, number>();
+  for (const row of clockRows) clockMap.set(row.userId, row.totalClockMinutes ?? 0);
+  const budgetMap = new Map<number, { budgetMinutes: number; budgetJobCount: number }>();
+  for (const row of budgetRows.rows as { user_id: number; budget_minutes: string; budget_job_count: number }[]) {
+    budgetMap.set(Number(row.user_id), {
+      budgetMinutes: Number(row.budget_minutes ?? 0),
+      budgetJobCount: Number(row.budget_job_count ?? 0),
+    });
+  }
+
+  const technicianMetrics = users
+    .filter(u => u.role === "technician" || u.role === "crew_manager")
+    .map(u => {
+      const clockMins = clockMap.get(u.id) ?? 0;
+      const jobSeconds = subTimerMap.get(u.id) ?? 0;
+      const budget = budgetMap.get(u.id);
+      const budgetMinutes = budget?.budgetMinutes ?? 0;
+      const cb = callbackStatMap.get(u.id);
+      const callbacks = cb?.callbackCount ?? 0;
+      const completedJobs = cb?.completedJobs ?? 0;
+      const callbackRatio = cb?.callbackRatio ?? 0;
+
+      // Clock efficiency: active job time / total clock time
+      const clockEfficiency =
+        clockMins > 0 ? Math.min(Math.round((jobSeconds / (clockMins * 60)) * 100), 200) : null;
+
+      // Budget efficiency: budget hrs / actual job hrs (Mike Andes P4P)
+      const budgetEfficiency = budgetEff(budgetMinutes, jobSeconds);
+
+      // Combined P4P score: budget efficiency penalised by callback ratio
+      // For now surface both separately and let managers interpret
+      return {
+        userId: u.id,
+        name: u.name,
+        role: u.role,
+        clockMinutes: clockMins,
+        jobSeconds: Math.round(jobSeconds),
+        budgetMinutes,
+        budgetJobCount: budget?.budgetJobCount ?? 0,
+        clockEfficiency,
+        budgetEfficiency,
+        // Legacy field kept so existing UI doesn't break
+        efficiencyRate: clockEfficiency,
+        callbacks,
+        completedJobs,
+        callbackRatio,
+        hasWarning: cb?.hasWarning ?? false,
+      };
+    });
+
+  // Company-wide rollups
+  const withClock = technicianMetrics.filter(t => t.clockEfficiency !== null);
+  const companyEfficiencyRate =
+    withClock.length > 0
+      ? Math.round(withClock.reduce((s, t) => s + (t.clockEfficiency ?? 0), 0) / withClock.length)
+      : null;
+
+  const totalBudgetMinutes = technicianMetrics.reduce((s, t) => s + t.budgetMinutes, 0);
+  const totalJobSeconds = technicianMetrics.reduce((s, t) => s + t.jobSeconds, 0);
+  const companyBudgetEfficiency = budgetEff(totalBudgetMinutes, totalJobSeconds);
+  const companyCallbackRatio = callbackStats.companyCallbackRatio;
+
+  res.json({
+    period,
+    rangeStart: rangeStart.toISOString(),
+    rangeEnd: rangeEnd.toISOString(),
+    companyEfficiencyRate,
+    companyBudgetEfficiency,
+    companyCallbackRatio,
+    totalBudgetMinutes,
+    totalJobSeconds: Math.round(totalJobSeconds),
+    technicians: technicianMetrics,
+  });
+});
+
+// ── GET /efficiency/by-crew ──────────────────────────────────────────────────
+router.get("/efficiency/by-crew", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const { period = "today", startDate, endDate } = req.query as Record<string, string>;
+
+  let rangeStart: Date, rangeEnd: Date;
+  if (startDate && endDate) {
+    rangeStart = new Date(startDate + "T00:00:00");
+    rangeEnd = new Date(endDate + "T23:59:59");
+  } else {
+    ({ rangeStart, rangeEnd } = getPeriodRange(period));
+  }
+
+  // Budget minutes + completed jobs per crew
+  const budgetRows = await db.execute(sql`
+    SELECT
+      crew_id,
+      COALESCE(SUM(estimated_duration), 0) AS budget_minutes,
+      COUNT(*)::int AS completed_jobs
+    FROM jobs
+    WHERE tenant_id = ${tenantId}
+      AND status = 'completed'
+      AND completed_at >= ${rangeStart.toISOString()}::timestamptz
+      AND completed_at <= ${rangeEnd.toISOString()}::timestamptz
+      AND crew_id IS NOT NULL
+    GROUP BY crew_id
+  `);
+
+  // Actual job seconds per crew (join sub_timers → jobs)
+  const subRows = await db.execute(sql`
+    SELECT
+      j.crew_id,
+      SUM(
+        CASE WHEN st.is_active THEN EXTRACT(EPOCH FROM (NOW() - st.started_at)) ELSE st.elapsed_seconds END
+      ) AS job_seconds
+    FROM sub_timers st
+    JOIN jobs j ON j.id = st.job_id
+    WHERE st.tenant_id = ${tenantId}
+      AND j.crew_id IS NOT NULL
+      AND st.started_at >= ${rangeStart.toISOString()}::timestamptz
+      AND st.started_at <= ${rangeEnd.toISOString()}::timestamptz
+    GROUP BY j.crew_id
+  `);
+
+  // Callbacks per crew: aggregate technician callbacks for crew members
+  const callbackRows = await db.execute(sql`
+    SELECT
+      cm.crew_id,
+      COUNT(c.id)::int AS callbacks
+    FROM callbacks c
+    JOIN crew_members cm ON cm.user_id = c.assignee_id AND cm.tenant_id = c.tenant_id
+    WHERE c.tenant_id = ${tenantId}
+    GROUP BY cm.crew_id
+  `);
+
+  // Completed jobs per crew member (for callback ratio denominator)
+  const crewJobsRows = await db.execute(sql`
+    SELECT
+      cm.crew_id,
+      COUNT(j.id)::int AS completed_jobs_total
+    FROM jobs j
+    JOIN crew_members cm ON cm.user_id = j.assignee_id AND cm.tenant_id = j.tenant_id
+    WHERE j.tenant_id = ${tenantId}
+      AND j.status = 'completed'
+    GROUP BY cm.crew_id
+  `);
+
+  // All crews for this tenant
+  const crews = await db
+    .select({ id: crewsTable.id, name: crewsTable.name })
+    .from(crewsTable)
+    .where(eq(crewsTable.tenantId, tenantId));
+
+  const budgetMap = new Map<number, { budgetMinutes: number; completedJobs: number }>();
+  for (const r of budgetRows.rows as { crew_id: number; budget_minutes: string; completed_jobs: number }[]) {
+    budgetMap.set(Number(r.crew_id), { budgetMinutes: Number(r.budget_minutes), completedJobs: Number(r.completed_jobs) });
+  }
+  const subMap = new Map<number, number>();
+  for (const r of subRows.rows as { crew_id: number; job_seconds: string }[]) {
+    subMap.set(Number(r.crew_id), Number(r.job_seconds ?? 0));
+  }
+  const cbMap = new Map<number, number>();
+  for (const r of callbackRows.rows as { crew_id: number; callbacks: number }[]) {
+    cbMap.set(Number(r.crew_id), Number(r.callbacks ?? 0));
+  }
+  const jobsMap = new Map<number, number>();
+  for (const r of crewJobsRows.rows as { crew_id: number; completed_jobs_total: number }[]) {
+    jobsMap.set(Number(r.crew_id), Number(r.completed_jobs_total ?? 0));
+  }
+
+  const crewMetrics = crews.map(crew => {
+    const b = budgetMap.get(crew.id);
+    const budgetMinutes = b?.budgetMinutes ?? 0;
+    const completedJobs = b?.completedJobs ?? 0;
+    const jobSeconds = subMap.get(crew.id) ?? 0;
+    const callbacks = cbMap.get(crew.id) ?? 0;
+    const totalJobs = jobsMap.get(crew.id) ?? 0;
+    const callbackRatio = totalJobs > 0 ? Math.round((callbacks / totalJobs) * 100) : 0;
+    return {
+      crewId: crew.id,
+      name: crew.name,
+      budgetMinutes,
+      jobSeconds: Math.round(jobSeconds),
+      completedJobs,
+      callbacks,
+      callbackRatio,
+      budgetEfficiency: budgetEff(budgetMinutes, jobSeconds),
+    };
+  }).filter(c => c.completedJobs > 0 || c.jobSeconds > 0);
+
+  res.json({ period, rangeStart: rangeStart.toISOString(), rangeEnd: rangeEnd.toISOString(), crews: crewMetrics });
+});
+
+// ── GET /efficiency/by-service ────────────────────────────────────────────────
+router.get("/efficiency/by-service", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const { period = "today", startDate, endDate } = req.query as Record<string, string>;
+
+  let rangeStart: Date, rangeEnd: Date;
+  if (startDate && endDate) {
+    rangeStart = new Date(startDate + "T00:00:00");
+    rangeEnd = new Date(endDate + "T23:59:59");
+  } else {
+    ({ rangeStart, rangeEnd } = getPeriodRange(period));
+  }
+
+  // Budget minutes + jobs per service
+  const budgetRows = await db.execute(sql`
+    SELECT
+      j.service_id,
+      COALESCE(s.name, 'Unspecified') AS service_name,
+      COALESCE(SUM(j.estimated_duration), 0) AS budget_minutes,
+      COUNT(j.id)::int AS completed_jobs,
+      COUNT(c.id)::int AS callbacks
+    FROM jobs j
+    LEFT JOIN services s ON s.id = j.service_id
+    LEFT JOIN callbacks c ON c.job_id = j.id
+    WHERE j.tenant_id = ${tenantId}
+      AND j.status = 'completed'
+      AND j.completed_at >= ${rangeStart.toISOString()}::timestamptz
+      AND j.completed_at <= ${rangeEnd.toISOString()}::timestamptz
+    GROUP BY j.service_id, s.name
+  `);
+
+  // Actual job seconds per service (join sub_timers → jobs)
+  const subRows = await db.execute(sql`
+    SELECT
+      j.service_id,
+      SUM(
+        CASE WHEN st.is_active THEN EXTRACT(EPOCH FROM (NOW() - st.started_at)) ELSE st.elapsed_seconds END
+      ) AS job_seconds
+    FROM sub_timers st
+    JOIN jobs j ON j.id = st.job_id
+    WHERE st.tenant_id = ${tenantId}
+      AND st.started_at >= ${rangeStart.toISOString()}::timestamptz
+      AND st.started_at <= ${rangeEnd.toISOString()}::timestamptz
+    GROUP BY j.service_id
+  `);
+
+  const subMap = new Map<string, number>();
+  for (const r of subRows.rows as { service_id: number | null; job_seconds: string }[]) {
+    const key = r.service_id != null ? String(r.service_id) : "null";
+    subMap.set(key, Number(r.job_seconds ?? 0));
+  }
+
+  const serviceMetrics = (budgetRows.rows as {
+    service_id: number | null;
+    service_name: string;
+    budget_minutes: string;
+    completed_jobs: number;
+    callbacks: number;
+  }[]).map(r => {
+    const key = r.service_id != null ? String(r.service_id) : "null";
+    const budgetMinutes = Number(r.budget_minutes ?? 0);
+    const jobSeconds = subMap.get(key) ?? 0;
+    const completedJobs = Number(r.completed_jobs ?? 0);
+    const callbacks = Number(r.callbacks ?? 0);
+    const callbackRatio = completedJobs > 0 ? Math.round((callbacks / completedJobs) * 100) : 0;
+    return {
+      serviceId: r.service_id ?? null,
+      serviceName: r.service_name ?? "Unspecified",
+      budgetMinutes,
+      jobSeconds: Math.round(jobSeconds),
+      completedJobs,
+      callbacks,
+      callbackRatio,
+      budgetEfficiency: budgetEff(budgetMinutes, jobSeconds),
+    };
+  }).sort((a, b) => b.completedJobs - a.completedJobs);
+
+  res.json({ period, rangeStart: rangeStart.toISOString(), rangeEnd: rangeEnd.toISOString(), services: serviceMetrics });
+});
+
+// ── GET /efficiency/trend?userId=&days=30 ────────────────────────────────────
+router.get("/efficiency/trend", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const { userId, days = "30" } = req.query as Record<string, string>;
+  const daysNum = Math.min(parseInt(days, 10) || 30, 90);
+  const since = subDays(new Date(), daysNum);
+
+  const dailyClock = await db.execute(sql`
+    SELECT
+      DATE(clocked_in_at AT TIME ZONE 'UTC') AS day,
+      SUM(total_minutes) AS clock_minutes
+    FROM time_entries
+    WHERE tenant_id = ${tenantId}
+      AND is_master_clock = true
+      ${userId ? sql`AND user_id = ${parseInt(userId, 10)}` : sql``}
+      AND clocked_in_at >= ${since.toISOString()}::timestamptz
+    GROUP BY day
+    ORDER BY day
+  `);
+
+  const dailySub = await db.execute(sql`
+    SELECT
+      DATE(started_at AT TIME ZONE 'UTC') AS day,
+      SUM(
+        CASE WHEN is_active THEN EXTRACT(EPOCH FROM (NOW() - started_at)) ELSE elapsed_seconds END
+      ) AS job_seconds
+    FROM sub_timers
+    WHERE tenant_id = ${tenantId}
+      AND job_id IS NOT NULL
+      ${userId ? sql`AND user_id = ${parseInt(userId, 10)}` : sql``}
+      AND started_at >= ${since.toISOString()}::timestamptz
+    GROUP BY day
+    ORDER BY day
+  `);
+
+  // Daily budget minutes (completed jobs)
+  const dailyBudget = await db.execute(sql`
+    SELECT
+      DATE(completed_at AT TIME ZONE 'UTC') AS day,
+      COALESCE(SUM(estimated_duration), 0) AS budget_minutes
+    FROM jobs
+    WHERE tenant_id = ${tenantId}
+      AND status = 'completed'
+      ${userId ? sql`AND assignee_id = ${parseInt(userId, 10)}` : sql``}
+      AND completed_at >= ${since.toISOString()}::timestamptz
+      AND estimated_duration IS NOT NULL
+    GROUP BY day
+    ORDER BY day
+  `);
+
+  const clockByDay = new Map<string, number>();
+  for (const r of dailyClock.rows as { day: string; clock_minutes: number }[]) {
+    clockByDay.set(String(r.day).slice(0, 10), Number(r.clock_minutes ?? 0));
+  }
+  const subByDay = new Map<string, number>();
+  for (const r of dailySub.rows as { day: string; job_seconds: number }[]) {
+    subByDay.set(String(r.day).slice(0, 10), Number(r.job_seconds ?? 0));
+  }
+  const budgetByDay = new Map<string, number>();
+  for (const r of dailyBudget.rows as { day: string; budget_minutes: number }[]) {
+    budgetByDay.set(String(r.day).slice(0, 10), Number(r.budget_minutes ?? 0));
+  }
+
+  const allDays = Array.from(new Set([...clockByDay.keys(), ...subByDay.keys()])).sort();
+  const trend = allDays.map(day => {
+    const clockMins = clockByDay.get(day) ?? 0;
+    const jobSecs = subByDay.get(day) ?? 0;
+    const budgetMins = budgetByDay.get(day) ?? 0;
+    return {
+      date: day,
+      efficiencyRate: clockMins > 0 ? Math.min(Math.round((jobSecs / (clockMins * 60)) * 100), 200) : null,
+      budgetEfficiency: budgetEff(budgetMins, jobSecs),
+      clockMinutes: clockMins,
+      jobMinutes: Math.round(jobSecs / 60),
+      budgetMinutes: budgetMins,
+    };
+  });
+
+  res.json({ userId: userId ? parseInt(userId, 10) : null, days: daysNum, trend });
+});
 
 export default router;

@@ -1473,7 +1473,7 @@ router.post("/jobs/:id/approve-cancellation", async (req, res): Promise<void> =>
   // This must happen BEFORE any invoice or Stripe work to prevent double-charging.
   const [claimedJob] = await db
     .update(jobsTable)
-    .set({ status: "cancelled", cancellationRequestedAt: null } as any)
+    .set({ status: "cancelled", cancellationRequestedAt: null, rescheduleRequestedAt: null, reschedulePreferredDate: null } as any)
     .where(
       and(
         eq(jobsTable.id, id),
@@ -1639,6 +1639,48 @@ router.post("/jobs/:id/deny-cancellation", async (req, res): Promise<void> => {
     .set({
       cancellationRequestedAt: null,
       cancellationReason: null,
+    } as any)
+    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
+    .returning();
+
+  res.json(formatJob(updated));
+});
+
+// ---------------------------------------------------------------------------
+// POST /jobs/:id/dismiss-reschedule-request — staff acknowledges/clears a reschedule request
+// ---------------------------------------------------------------------------
+router.post("/jobs/:id/dismiss-reschedule-request", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  const id = parseInt(req.params.id, 10);
+
+  const admin = await isAdminRole(tenantId, userId);
+  if (!admin) {
+    res.status(403).json({ error: "Office/admin role required to dismiss reschedule requests" });
+    return;
+  }
+
+  const [job] = await db
+    .select()
+    .from(jobsTable)
+    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
+    .limit(1);
+
+  if (!job) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+
+  if (!(job as any).rescheduleRequestedAt) {
+    res.status(409).json({ error: "No pending reschedule request on this job" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(jobsTable)
+    .set({
+      rescheduleRequestedAt: null,
+      reschedulePreferredDate: null,
     } as any)
     .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
     .returning();

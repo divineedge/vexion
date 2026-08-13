@@ -128,6 +128,12 @@ export const jobsTable = pgTable("jobs", {
   /** FK to an invoice created as a cancellation fee charge; set when a fee is auto-created on portal cancel. */
   cancellationChargeId: integer("cancellation_charge_id"),
 
+  // ── Customer reschedule request ───────────────────────────────────────────
+  /** Set when a customer submits a reschedule request via the portal. Staff must act on it. */
+  rescheduleRequestedAt: timestamp("reschedule_requested_at", { withTimezone: true }),
+  /** ISO date string (YYYY-MM-DD) of the customer's preferred new date, if they provided one. */
+  reschedulePreferredDate: text("reschedule_preferred_date"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

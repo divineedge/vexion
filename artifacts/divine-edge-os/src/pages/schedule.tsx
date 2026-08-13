@@ -60,7 +60,7 @@ import {
   Bell, BellOff, Send, Package, Search, Images, RefreshCw, Pause, Play, X,
   SkipForward, ListEnd, Wrench, Square, Timer, Warehouse, Truck,
   Route as RouteIcon, ExternalLink, PhoneCall, CheckCircle, FileText, Phone, Mail, Copy,
-  Ban, CreditCard,
+  Ban, CreditCard, CalendarSearch,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -389,6 +389,10 @@ export default function SchedulePage() {
       customFetch<void>(`/api/jobs/${id}/deny-cancellation`, { method: 'POST', body: JSON.stringify({ denyReason }) }),
   });
   const [denyDialogOpen, setDenyDialogOpen] = useState(false);
+  const dismissRescheduleRequest = useMutation({
+    mutationFn: ({ id }: { id: number }) =>
+      customFetch<void>(`/api/jobs/${id}/dismiss-reschedule-request`, { method: 'POST' }),
+  });
 
   // Route templates (for route filter dropdown + job detail route assignment)
   const { data: routeTemplates } = useListRouteTemplates(undefined, {
@@ -1047,6 +1051,12 @@ export default function SchedulePage() {
                               <span className="text-[10px] font-medium">Cancel requested</span>
                             </div>
                           )}
+                          {(job as any).rescheduleRequestedAt && (
+                            <div className="mt-0.5 flex items-center gap-1 text-amber-700 bg-amber-50 rounded px-1 py-0.5 w-fit" title="Customer requested reschedule">
+                              <CalendarSearch className="w-2.5 h-2.5 shrink-0" />
+                              <span className="text-[10px] font-medium">Reschedule requested</span>
+                            </div>
+                          )}
                           {((job as any).customerNotes || (job as any).propertyNotes) && (
                             <div className="mt-0.5 flex items-center gap-1 text-blue-700 bg-blue-50 rounded px-1 py-0.5 w-fit" title={(job as any).customerNotes || (job as any).propertyNotes}>
                               <Bell className="w-2.5 h-2.5 shrink-0" />
@@ -1212,6 +1222,11 @@ export default function SchedulePage() {
                         <Ban className="w-3 h-3" /> Cancel Requested
                       </Badge>
                     )}
+                    {(selectedJob as any).rescheduleRequestedAt && (
+                      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 text-xs gap-1" title="Customer requested reschedule via portal">
+                        <CalendarSearch className="w-3 h-3" /> Reschedule Requested
+                      </Badge>
+                    )}
                     {(selectedJob as any).priority && (selectedJob as any).priority !== 'normal' && (
                       <Badge variant="outline" className={`capitalize text-xs ${(selectedJob as any).priority === 'urgent' ? 'bg-red-50 text-red-700 border-red-300' : (selectedJob as any).priority === 'high' ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-muted text-muted-foreground'}`} title={`Priority: ${(selectedJob as any).priority}`}>
                         {(selectedJob as any).priority}
@@ -1247,6 +1262,44 @@ export default function SchedulePage() {
               </SheetHeader>
 
               <div className="space-y-5">
+                {/* Reschedule request banner */}
+                {canManageJobs && (selectedJob as any).rescheduleRequestedAt && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+                    <p className="text-sm font-medium text-amber-800 flex items-center gap-1.5">
+                      <CalendarSearch className="w-4 h-4" /> Reschedule Requested by Customer
+                    </p>
+                    {(selectedJob as any).reschedulePreferredDate && (
+                      <p className="text-xs text-amber-700 bg-amber-100 rounded px-2 py-1">
+                        Preferred new date: <strong>{(selectedJob as any).reschedulePreferredDate}</strong>
+                      </p>
+                    )}
+                    <p className="text-xs text-amber-600">
+                      Requested {new Date((selectedJob as any).rescheduleRequestedAt).toLocaleString()}
+                    </p>
+                    <div className="flex gap-2 pt-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs gap-1 border-amber-300 text-amber-800 hover:bg-amber-100"
+                        disabled={dismissRescheduleRequest.isPending}
+                        title="Acknowledge and clear this reschedule request (then reschedule the job manually)"
+                        onClick={() => {
+                          dismissRescheduleRequest.mutate({ id: selectedJobId! }, {
+                            onSuccess: () => {
+                              toast.success('Reschedule request acknowledged');
+                              qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                              qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId!) });
+                            },
+                            onError: () => toast.error('Failed to dismiss reschedule request'),
+                          });
+                        }}
+                      >
+                        <CheckCircle className="w-3 h-3" /> Acknowledge & Dismiss
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Cancellation request banner */}
                 {canManageJobs && (selectedJob as any).cancellationRequestedAt && (
                   <div className="rounded-lg border border-red-200 bg-red-50 p-3 space-y-2">

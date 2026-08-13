@@ -2189,8 +2189,15 @@ router.post("/portal/jobs/:id/cancel-request", requirePortalAuth, async (req: an
     return;
   }
 
+  // Cancellation and reschedule are mutually exclusive pending states.
+  if ((job as any).rescheduleRequestedAt) {
+    res.status(409).json({ error: "A reschedule request is already pending for this job. Please contact us to change your request." });
+    return;
+  }
+
   // ── Atomically mark cancellation requested ─────────────────────────────────
-  // isNull guard ensures only one concurrent request wins the race.
+  // Both isNull guards ensure only one request type can win and no concurrent
+  // reschedule request can be set in the same window.
   const hoursUntilJob = (new Date(job.scheduledAt).getTime() - Date.now()) / (1000 * 60 * 60);
 
   const [claimedJob] = await db
@@ -2204,12 +2211,13 @@ router.post("/portal/jobs/:id/cancel-request", requirePortalAuth, async (req: an
         eq(jobsTable.id, jobId),
         eq(jobsTable.tenantId, portalTenantId),
         isNull((jobsTable as any).cancellationRequestedAt),
+        isNull((jobsTable as any).rescheduleRequestedAt),
       ),
     )
     .returning();
 
   if (!claimedJob) {
-    res.status(409).json({ error: "A cancellation request is already pending for this job" });
+    res.status(409).json({ error: "A cancellation or reschedule request is already pending for this job" });
     return;
   }
 
@@ -2241,6 +2249,115 @@ router.post("/portal/jobs/:id/cancel-request", requirePortalAuth, async (req: an
   })();
 
   res.status(201).json({ message: "Cancellation request submitted" });
+});
+
+// ---------------------------------------------------------------------------
+// POST /portal/jobs/:id/reschedule-request
+// ---------------------------------------------------------------------------
+router.post("/portal/jobs/:id/reschedule-request", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+  const jobId = parseInt(req.params.id, 10);
+  const { preferredDate, reason } = req.body as { preferredDate?: string; reason?: string };
+
+  const [job] = await db
+    .select()
+    .from(jobsTable)
+    .where(
+      and(
+        eq(jobsTable.id, jobId),
+        eq(jobsTable.customerId, portalCustomerId),
+        eq(jobsTable.tenantId, portalTenantId),
+      ),
+    )
+    .limit(1);
+
+  if (!job) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+
+  if (job.status !== "scheduled") {
+    res.status(409).json({ error: "Only scheduled jobs can have a reschedule requested" });
+    return;
+  }
+
+  if ((job as any).rescheduleRequestedAt) {
+    res.status(409).json({ error: "A reschedule request is already pending for this job" });
+    return;
+  }
+
+  // Cancellation and reschedule are mutually exclusive pending states.
+  if ((job as any).cancellationRequestedAt) {
+    res.status(409).json({ error: "A cancellation request is already pending for this job. Please contact us to change your request." });
+    return;
+  }
+
+  // Validate optional preferred date: must be a strict YYYY-MM-DD string and a valid calendar date.
+  let cleanPreferredDate: string | null = null;
+  if (preferredDate !== undefined && preferredDate !== null && preferredDate !== "") {
+    const isoDateRe = /^\d{4}-\d{2}-\d{2}$/;
+    if (!isoDateRe.test(preferredDate)) {
+      res.status(400).json({ error: "preferredDate must be in YYYY-MM-DD format" });
+      return;
+    }
+    const d = new Date(`${preferredDate}T12:00:00Z`);
+    if (isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== preferredDate) {
+      res.status(400).json({ error: "preferredDate is not a valid calendar date" });
+      return;
+    }
+    cleanPreferredDate = preferredDate;
+  }
+
+  const [claimedJob] = await db
+    .update(jobsTable)
+    .set({
+      rescheduleRequestedAt: new Date(),
+      reschedulePreferredDate: cleanPreferredDate,
+    } as any)
+    .where(
+      and(
+        eq(jobsTable.id, jobId),
+        eq(jobsTable.tenantId, portalTenantId),
+        isNull((jobsTable as any).rescheduleRequestedAt),
+        isNull((jobsTable as any).cancellationRequestedAt),
+      ),
+    )
+    .returning();
+
+  if (!claimedJob) {
+    res.status(409).json({ error: "A cancellation or reschedule request is already pending for this job" });
+    return;
+  }
+
+  // Notify all non-technician staff (fire-and-forget)
+  (async () => {
+    try {
+      const staffUsers = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(and(eq(usersTable.tenantId, portalTenantId), ne(usersTable.role, "technician")));
+
+      if (staffUsers.length > 0) {
+        const preferredDateLabel = cleanPreferredDate
+          ? ` — preferred new date: ${cleanPreferredDate}`
+          : "";
+        const reasonLabel = reason?.trim() ? `: "${reason.trim()}"` : "";
+        await db.insert(taskNotificationsTable).values(
+          staffUsers.map(u => ({
+            tenantId: portalTenantId,
+            recipientUserId: u.id,
+            type: "job_reschedule_requested" as string,
+            message: `Customer requested reschedule of job "${job.title}"${reasonLabel}${preferredDateLabel}`,
+            linkPath: `/schedule?jobId=${jobId}`,
+          })),
+        );
+      }
+    } catch (err) {
+      logger.error({ err }, "Failed to insert job reschedule request notifications");
+    }
+  })();
+
+  res.status(201).json({ message: "Reschedule request submitted" });
 });
 
 // ---------------------------------------------------------------------------
@@ -2280,6 +2397,8 @@ function formatPortalJob(j: typeof jobsTable.$inferSelect, propertyAddress: stri
     assignedToName: assignedToName ?? null,
     cancellationRequestedAt: (j as any).cancellationRequestedAt ? new Date((j as any).cancellationRequestedAt).toISOString() : null,
     cancellationReason: (j as any).cancellationReason ?? null,
+    rescheduleRequestedAt: (j as any).rescheduleRequestedAt ? new Date((j as any).rescheduleRequestedAt).toISOString() : null,
+    reschedulePreferredDate: (j as any).reschedulePreferredDate ?? null,
   };
 }
 

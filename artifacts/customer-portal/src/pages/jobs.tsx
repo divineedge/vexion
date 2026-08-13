@@ -1,26 +1,42 @@
-import { usePortalListJobs, usePortalRequestJobCancellation, usePortalGetJobDetail, getPortalListJobsQueryKey } from "@workspace/api-client-react";
+import { usePortalListJobs, usePortalRequestJobCancellation, usePortalRequestJobReschedule, usePortalGetJobDetail, getPortalListJobsQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
-import { CalendarClock, MapPin, Briefcase, Clock, CheckCircle2, User, Search, Ban, FlaskConical, Package, ChevronRight, CloudRain, ShieldAlert, AlertCircle, DollarSign } from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
+import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
+import { CalendarClock, MapPin, Briefcase, Clock, CheckCircle2, User, Search, Ban, CalendarSearch, FlaskConical, Package, ChevronRight, CloudRain, ShieldAlert, AlertCircle, DollarSign, TriangleAlert } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+type RequestType = "cancel" | "reschedule";
+
+interface RequestDialogState {
+  jobId: number;
+  type: RequestType;
+}
+
 export default function Jobs() {
   const { data: jobs, isLoading } = usePortalListJobs();
   const qc = useQueryClient();
   const requestCancellation = usePortalRequestJobCancellation();
+  const requestReschedule = usePortalRequestJobReschedule();
+
   const [jobSearch, setJobSearch] = useState('');
-  const [cancelDialogJobId, setCancelDialogJobId] = useState<number | null>(null);
-  const [cancelReason, setCancelReason] = useState('');
+  const [requestDialog, setRequestDialog] = useState<RequestDialogState | null>(null);
+  const [requestReason, setRequestReason] = useState('');
+  const [preferredDate, setPreferredDate] = useState('');
   const [detailJobId, setDetailJobId] = useState<number | null>(null);
+
+  const closeRequestDialog = () => {
+    setRequestDialog(null);
+    setRequestReason('');
+    setPreferredDate('');
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -35,24 +51,48 @@ export default function Jobs() {
   const upcomingJobs = (jobs?.filter(j => j.status === 'scheduled' || j.status === 'in_progress') || []).filter(j => !jobSearch || j.title.toLowerCase().includes(jobSearch.toLowerCase()) || ((j as any).propertyAddress ?? '').toLowerCase().includes(jobSearch.toLowerCase()));
   const pastJobs = (jobs?.filter(j => j.status === 'completed' || j.status === 'cancelled') || []).filter(j => !jobSearch || j.title.toLowerCase().includes(jobSearch.toLowerCase()) || ((j as any).propertyAddress ?? '').toLowerCase().includes(jobSearch.toLowerCase()));
 
-  const handleRequestCancellation = () => {
-    if (!cancelDialogJobId) return;
-    requestCancellation.mutate(
-      { id: cancelDialogJobId, data: cancelReason.trim() ? { reason: cancelReason.trim() } : undefined },
-      {
-        onSuccess: () => {
-          toast.success('Cancellation request submitted. Our team will be in touch shortly.');
-          qc.invalidateQueries({ queryKey: getPortalListJobsQueryKey() });
-          setCancelDialogJobId(null);
-          setCancelReason('');
+  const handleSubmitRequest = () => {
+    if (!requestDialog) return;
+    const { jobId, type } = requestDialog;
+
+    if (type === "cancel") {
+      requestCancellation.mutate(
+        { id: jobId, data: requestReason.trim() ? { reason: requestReason.trim() } : undefined },
+        {
+          onSuccess: () => {
+            toast.success('Cancellation request submitted. Our team will be in touch shortly.');
+            qc.invalidateQueries({ queryKey: getPortalListJobsQueryKey() });
+            closeRequestDialog();
+          },
+          onError: (err: any) => {
+            toast.error(err?.response?.data?.error ?? 'Failed to submit cancellation request.');
+          },
         },
-        onError: (err: any) => {
-          const msg = err?.response?.data?.error ?? 'Failed to submit cancellation request.';
-          toast.error(msg);
+      );
+    } else {
+      requestReschedule.mutate(
+        {
+          id: jobId,
+          data: {
+            ...(requestReason.trim() ? { reason: requestReason.trim() } : {}),
+            ...(preferredDate ? { preferredDate } : {}),
+          },
         },
-      },
-    );
+        {
+          onSuccess: () => {
+            toast.success('Reschedule request submitted. Our team will be in touch shortly.');
+            qc.invalidateQueries({ queryKey: getPortalListJobsQueryKey() });
+            closeRequestDialog();
+          },
+          onError: (err: any) => {
+            toast.error(err?.response?.data?.error ?? 'Failed to submit reschedule request.');
+          },
+        },
+      );
+    }
   };
+
+  const isPending = requestCancellation.isPending || requestReschedule.isPending;
 
   const PriceDisplay = ({ job }: { job: any }) => {
     const isPlanVisit = job.planId != null && (job.totalAmount === 0 || job.totalAmount == null);
@@ -68,94 +108,119 @@ export default function Jobs() {
     );
   };
 
-  const JobCard = ({ job, showCancel }: { job: any; showCancel?: boolean }) => (
-    <Card className="shadow-sm overflow-hidden group cursor-pointer hover:shadow-md transition-shadow" onClick={() => setDetailJobId(job.id)}>
-      <div className="h-2 w-full bg-secondary"></div>
-      <CardContent className="p-6">
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-4">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3 mb-2 flex-wrap">
-              <h3 className="text-xl font-bold text-foreground">{job.title}</h3>
-              {getStatusBadge(job.status)}
-              {job.cancellationRequestedAt && (
-                <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 gap-1 text-xs">
-                  <Ban className="w-3 h-3" /> Cancellation Requested
-                </Badge>
-              )}
-            </div>
-            {job.description && (
-              <p className="text-sm text-muted-foreground mb-4">{job.description}</p>
-            )}
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-3 gap-x-6">
-              <div className="flex items-start gap-2">
-                <CalendarClock className="w-4 h-4 text-muted-foreground mt-0.5" />
-                <div>
-                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">SCHEDULED</p>
-                  <p className="text-sm text-foreground">{formatDateTime(job.scheduledAt)}</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-2">
-                <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />
-                <div>
-                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">LOCATION</p>
-                  <p className="text-sm text-foreground">{job.propertyAddress}</p>
-                </div>
-              </div>
-              {job.assignedToName && (
-                <div className="flex items-start gap-2">
-                  <User className="w-4 h-4 text-muted-foreground mt-0.5" />
-                  <div>
-                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">TECHNICIAN</p>
-                    <p className="text-sm text-foreground">{job.assignedToName}</p>
-                  </div>
-                </div>
-              )}
-              {job.status === 'completed' && job.completedAt && (
-                <div className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5" />
-                  <div>
-                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">COMPLETED</p>
-                    <p className="text-sm text-foreground">{formatDate(job.completedAt)}</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-          
-          <PriceDisplay job={job} />
-        </div>
+  const JobCard = ({ job, showActions }: { job: any; showActions?: boolean }) => {
+    const hasCancelRequest = !!(job as any).cancellationRequestedAt;
+    const hasRescheduleRequest = !!(job as any).rescheduleRequestedAt;
+    const hasPendingRequest = hasCancelRequest || hasRescheduleRequest;
 
-        {/* Cancel request button / pending notice */}
-        {showCancel && (
-          <div className="mt-2 pt-4 border-t border-border/50 flex items-center justify-between gap-4">
-            {job.cancellationRequestedAt ? (
-              <p className="text-sm text-muted-foreground flex items-center gap-2">
-                <Ban className="w-4 h-4 text-red-500 shrink-0" />
-                Your cancellation request is pending review. We'll confirm shortly.
-              </p>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-destructive border-destructive/30 hover:bg-destructive/5 gap-2"
-                onClick={(e) => { e.stopPropagation(); setCancelDialogJobId(job.id); setCancelReason(''); }}
-              >
-                <Ban className="w-4 h-4" />
-                Request Cancellation
-              </Button>
-            )}
-            <ChevronRight className="w-4 h-4 text-muted-foreground opacity-40 shrink-0" />
+    return (
+      <Card className="shadow-sm overflow-hidden group cursor-pointer hover:shadow-md transition-shadow" onClick={() => setDetailJobId(job.id)}>
+        <div className="h-2 w-full bg-secondary"></div>
+        <CardContent className="p-6">
+          <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-4">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-3 mb-2 flex-wrap">
+                <h3 className="text-xl font-bold text-foreground">{job.title}</h3>
+                {getStatusBadge(job.status)}
+                {hasCancelRequest && (
+                  <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 gap-1 text-xs">
+                    <Ban className="w-3 h-3" /> Cancellation Requested
+                  </Badge>
+                )}
+                {hasRescheduleRequest && (
+                  <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 gap-1 text-xs">
+                    <CalendarSearch className="w-3 h-3" /> Reschedule Requested
+                  </Badge>
+                )}
+              </div>
+              {job.description && (
+                <p className="text-sm text-muted-foreground mb-4">{job.description}</p>
+              )}
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-3 gap-x-6">
+                <div className="flex items-start gap-2">
+                  <CalendarClock className="w-4 h-4 text-muted-foreground mt-0.5" />
+                  <div>
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">SCHEDULED</p>
+                    <p className="text-sm text-foreground">{formatDateTime(job.scheduledAt)}</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />
+                  <div>
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">LOCATION</p>
+                    <p className="text-sm text-foreground">{job.propertyAddress}</p>
+                  </div>
+                </div>
+                {job.assignedToName && (
+                  <div className="flex items-start gap-2">
+                    <User className="w-4 h-4 text-muted-foreground mt-0.5" />
+                    <div>
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">TECHNICIAN</p>
+                      <p className="text-sm text-foreground">{job.assignedToName}</p>
+                    </div>
+                  </div>
+                )}
+                {job.status === 'completed' && job.completedAt && (
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5" />
+                    <div>
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">COMPLETED</p>
+                      <p className="text-sm text-foreground">{formatDate(job.completedAt)}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <PriceDisplay job={job} />
           </div>
-        )}
-        {!showCancel && (
-          <div className="flex justify-end pt-1">
-            <ChevronRight className="w-4 h-4 text-muted-foreground opacity-40" />
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
+
+          {/* Action bar / pending notice */}
+          {showActions && (
+            <div className="mt-2 pt-4 border-t border-border/50 flex items-center justify-between gap-4">
+              {hasPendingRequest ? (
+                <p className="text-sm text-muted-foreground flex items-center gap-2">
+                  {hasCancelRequest
+                    ? <><Ban className="w-4 h-4 text-red-500 shrink-0" /> Your cancellation request is pending review.</>
+                    : <><CalendarSearch className="w-4 h-4 text-amber-500 shrink-0" /> Your reschedule request is pending review.</>
+                  }
+                  {' '}We'll confirm shortly.
+                </p>
+              ) : (
+                <div className="flex items-center gap-2 flex-wrap" onClick={e => e.stopPropagation()}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-amber-700 border-amber-300 hover:bg-amber-50 gap-2"
+                    onClick={() => { setRequestDialog({ jobId: job.id, type: "reschedule" }); setRequestReason(''); setPreferredDate(''); }}
+                  >
+                    <CalendarSearch className="w-4 h-4" />
+                    Request Reschedule
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-destructive border-destructive/30 hover:bg-destructive/5 gap-2"
+                    onClick={() => { setRequestDialog({ jobId: job.id, type: "cancel" }); setRequestReason(''); setPreferredDate(''); }}
+                  >
+                    <Ban className="w-4 h-4" />
+                    Request Cancellation
+                  </Button>
+                </div>
+              )}
+              <ChevronRight className="w-4 h-4 text-muted-foreground opacity-40 shrink-0" />
+            </div>
+          )}
+          {!showActions && (
+            <div className="flex justify-end pt-1">
+              <ChevronRight className="w-4 h-4 text-muted-foreground opacity-40" />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -179,7 +244,7 @@ export default function Jobs() {
           {isLoading ? (
             Array(3).fill(0).map((_, i) => <Skeleton key={i} className="h-40 w-full rounded-xl" />)
           ) : upcomingJobs.length > 0 ? (
-            upcomingJobs.map(job => <JobCard key={job.id} job={job} showCancel />)
+            upcomingJobs.map(job => <JobCard key={job.id} job={job} showActions />)
           ) : (
             <Card className="border-dashed shadow-none bg-muted/20">
               <CardContent className="p-12 text-center">
@@ -208,35 +273,69 @@ export default function Jobs() {
         </TabsContent>
       </Tabs>
 
-      {/* Cancellation confirmation dialog */}
-      <Dialog open={cancelDialogJobId !== null} onOpenChange={open => { if (!open) { setCancelDialogJobId(null); setCancelReason(''); } }}>
-        <DialogContent>
+      {/* Shared cancellation / reschedule request dialog */}
+      <Dialog open={requestDialog !== null} onOpenChange={open => { if (!open) closeRequestDialog(); }}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Request Cancellation</DialogTitle>
+            <DialogTitle>
+              {requestDialog?.type === "reschedule" ? "Request Reschedule" : "Request Cancellation"}
+            </DialogTitle>
             <DialogDescription>
-              Your request will be sent to our team for review. This does not immediately cancel the appointment — we'll confirm with you shortly.
+              {requestDialog?.type === "reschedule"
+                ? "Let us know you'd like a new date and we'll reach out to confirm."
+                : "Your request will be sent to our team for review. This does not immediately cancel the appointment — we'll confirm with you shortly."}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Reason <span className="text-muted-foreground font-normal">(optional)</span></label>
-            <Textarea
-              placeholder="Let us know why you'd like to cancel…"
-              value={cancelReason}
-              onChange={e => setCancelReason(e.target.value)}
-              rows={3}
-              maxLength={500}
-            />
+
+          {/* Fee warning — shown for both types */}
+          <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            <TriangleAlert className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+            <p>
+              <span className="font-semibold">Please note —</span> cancellations or rescheduling may be subject to an additional charge. A team member will reach out to confirm.
+            </p>
           </div>
+
+          <div className="space-y-3">
+            {/* Preferred date — only for reschedule */}
+            {requestDialog?.type === "reschedule" && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Preferred new date <span className="text-muted-foreground font-normal">(optional)</span></label>
+                <Input
+                  type="date"
+                  value={preferredDate}
+                  onChange={e => setPreferredDate(e.target.value)}
+                  min={new Date().toISOString().slice(0, 10)}
+                />
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">
+                {requestDialog?.type === "reschedule" ? "Reason / notes" : "Reason"}
+                {" "}<span className="text-muted-foreground font-normal">(optional)</span>
+              </label>
+              <Textarea
+                placeholder={requestDialog?.type === "reschedule"
+                  ? "Let us know why you need to reschedule or any other details…"
+                  : "Let us know why you'd like to cancel…"}
+                value={requestReason}
+                onChange={e => setRequestReason(e.target.value)}
+                rows={3}
+                maxLength={500}
+              />
+            </div>
+          </div>
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setCancelDialogJobId(null); setCancelReason(''); }}>
+            <Button variant="outline" onClick={closeRequestDialog}>
               Never mind
             </Button>
             <Button
-              variant="destructive"
-              onClick={handleRequestCancellation}
-              disabled={requestCancellation.isPending}
+              variant={requestDialog?.type === "reschedule" ? "default" : "destructive"}
+              onClick={handleSubmitRequest}
+              disabled={isPending}
             >
-              {requestCancellation.isPending ? 'Submitting…' : 'Submit Request'}
+              {isPending ? 'Submitting…' : 'Submit Request'}
             </Button>
           </DialogFooter>
         </DialogContent>

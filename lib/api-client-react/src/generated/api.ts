@@ -215,6 +215,8 @@ import type {
   PortalProperty,
   PortalRequestJobCancellation201,
   PortalRequestJobCancellationBody,
+  PortalRequestJobReschedule201,
+  PortalRequestJobRescheduleBody,
   PortalRequestPlanCancellation201,
   PortalServiceRequestInput,
   PortalSummary,
@@ -14601,6 +14603,149 @@ export const usePortalRequestJobCancellation = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getPortalRequestJobCancellationMutationOptions(options));
+    }
+
+export const getPortalRequestJobRescheduleUrl = (id: number,) => {
+
+
+
+
+  return `/api/portal/jobs/${id}/reschedule-request`
+}
+
+/**
+ * @summary Request rescheduling of a scheduled job
+ */
+export const portalRequestJobReschedule = async (id: number,
+    portalRequestJobRescheduleBody?: PortalRequestJobRescheduleBody, options?: RequestInit): Promise<PortalRequestJobReschedule201> => {
+
+  return customFetch<PortalRequestJobReschedule201>(getPortalRequestJobRescheduleUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(portalRequestJobRescheduleBody)
+  }
+);}
+
+
+
+
+
+export const getPortalRequestJobRescheduleMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalRequestJobReschedule>>, TError,{id: number;data?: BodyType<PortalRequestJobRescheduleBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof portalRequestJobReschedule>>, TError,{id: number;data?: BodyType<PortalRequestJobRescheduleBody>}, TContext> => {
+
+const mutationKey = ['portalRequestJobReschedule'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof portalRequestJobReschedule>>, {id: number;data?: BodyType<PortalRequestJobRescheduleBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  portalRequestJobReschedule(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PortalRequestJobRescheduleMutationResult = NonNullable<Awaited<ReturnType<typeof portalRequestJobReschedule>>>
+    export type PortalRequestJobRescheduleMutationBody = BodyType<PortalRequestJobRescheduleBody> | undefined
+    export type PortalRequestJobRescheduleMutationError = ErrorType<void>
+
+    /**
+ * @summary Request rescheduling of a scheduled job
+ */
+export const usePortalRequestJobReschedule = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof portalRequestJobReschedule>>, TError,{id: number;data?: BodyType<PortalRequestJobRescheduleBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof portalRequestJobReschedule>>,
+        TError,
+        {id: number;data?: BodyType<PortalRequestJobRescheduleBody>},
+        TContext
+      > => {
+      return useMutation(getPortalRequestJobRescheduleMutationOptions(options));
+    }
+
+export const getDismissJobRescheduleRequestUrl = (id: number,) => {
+
+
+
+
+  return `/api/jobs/${id}/dismiss-reschedule-request`
+}
+
+/**
+ * @summary Dismiss a customer reschedule request — clears the request flag
+ */
+export const dismissJobRescheduleRequest = async (id: number, options?: RequestInit): Promise<Job> => {
+
+  return customFetch<Job>(getDismissJobRescheduleRequestUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getDismissJobRescheduleRequestMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dismissJobRescheduleRequest>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof dismissJobRescheduleRequest>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['dismissJobRescheduleRequest'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof dismissJobRescheduleRequest>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  dismissJobRescheduleRequest(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DismissJobRescheduleRequestMutationResult = NonNullable<Awaited<ReturnType<typeof dismissJobRescheduleRequest>>>
+
+    export type DismissJobRescheduleRequestMutationError = ErrorType<void>
+
+    /**
+ * @summary Dismiss a customer reschedule request — clears the request flag
+ */
+export const useDismissJobRescheduleRequest = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dismissJobRescheduleRequest>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof dismissJobRescheduleRequest>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDismissJobRescheduleRequestMutationOptions(options));
     }
 
 export const getApproveJobCancellationUrl = (id: number,) => {

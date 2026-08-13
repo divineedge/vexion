@@ -340,6 +340,8 @@ export * from './portalPlanVisit';
 export * from './portalProperty';
 export * from './portalRequestJobCancellation201';
 export * from './portalRequestJobCancellationBody';
+export * from './portalRequestJobReschedule201';
+export * from './portalRequestJobRescheduleBody';
 export * from './portalRequestPlanCancellation201';
 export * from './portalServiceRequestInput';
 export * from './portalSummary';

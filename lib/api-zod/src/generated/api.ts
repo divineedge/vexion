@@ -1286,6 +1286,8 @@ export const ListJobsResponseItem = zod.object({
   "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
   "cancellationRequestedAt": zod.string().nullish().describe('Set when the customer has requested cancellation via the portal; null means no pending request'),
   "cancellationReason": zod.string().nullish().describe('Optional reason provided by the customer when requesting cancellation'),
+  "rescheduleRequestedAt": zod.string().nullish().describe('Set when the customer has requested rescheduling via the portal; null means no pending request'),
+  "reschedulePreferredDate": zod.string().nullish().describe('Customer\'s preferred new date (YYYY-MM-DD), if provided with the reschedule request'),
   "createdAt": zod.string()
 })
 export const ListJobsResponse = zod.array(ListJobsResponseItem)
@@ -1398,6 +1400,8 @@ export const CreateJobResponse = zod.object({
   "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
   "cancellationRequestedAt": zod.string().nullish().describe('Set when the customer has requested cancellation via the portal; null means no pending request'),
   "cancellationReason": zod.string().nullish().describe('Optional reason provided by the customer when requesting cancellation'),
+  "rescheduleRequestedAt": zod.string().nullish().describe('Set when the customer has requested rescheduling via the portal; null means no pending request'),
+  "reschedulePreferredDate": zod.string().nullish().describe('Customer\'s preferred new date (YYYY-MM-DD), if provided with the reschedule request'),
   "createdAt": zod.string()
 })
 
@@ -1481,6 +1485,8 @@ export const GetJobResponse = zod.object({
   "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
   "cancellationRequestedAt": zod.string().nullish().describe('Set when the customer has requested cancellation via the portal; null means no pending request'),
   "cancellationReason": zod.string().nullish().describe('Optional reason provided by the customer when requesting cancellation'),
+  "rescheduleRequestedAt": zod.string().nullish().describe('Set when the customer has requested rescheduling via the portal; null means no pending request'),
+  "reschedulePreferredDate": zod.string().nullish().describe('Customer\'s preferred new date (YYYY-MM-DD), if provided with the reschedule request'),
   "createdAt": zod.string()
 })
 
@@ -1595,6 +1601,8 @@ export const UpdateJobResponse = zod.object({
   "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
   "cancellationRequestedAt": zod.string().nullish().describe('Set when the customer has requested cancellation via the portal; null means no pending request'),
   "cancellationReason": zod.string().nullish().describe('Optional reason provided by the customer when requesting cancellation'),
+  "rescheduleRequestedAt": zod.string().nullish().describe('Set when the customer has requested rescheduling via the portal; null means no pending request'),
+  "reschedulePreferredDate": zod.string().nullish().describe('Customer\'s preferred new date (YYYY-MM-DD), if provided with the reschedule request'),
   "createdAt": zod.string()
 })
 
@@ -1725,6 +1733,8 @@ export const SkipNextOccurrenceResponse = zod.object({
   "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
   "cancellationRequestedAt": zod.string().nullish().describe('Set when the customer has requested cancellation via the portal; null means no pending request'),
   "cancellationReason": zod.string().nullish().describe('Optional reason provided by the customer when requesting cancellation'),
+  "rescheduleRequestedAt": zod.string().nullish().describe('Set when the customer has requested rescheduling via the portal; null means no pending request'),
+  "reschedulePreferredDate": zod.string().nullish().describe('Customer\'s preferred new date (YYYY-MM-DD), if provided with the reschedule request'),
   "createdAt": zod.string()
 })
 
@@ -1813,6 +1823,8 @@ export const PauseRecurringSeriesResponse = zod.object({
   "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
   "cancellationRequestedAt": zod.string().nullish().describe('Set when the customer has requested cancellation via the portal; null means no pending request'),
   "cancellationReason": zod.string().nullish().describe('Optional reason provided by the customer when requesting cancellation'),
+  "rescheduleRequestedAt": zod.string().nullish().describe('Set when the customer has requested rescheduling via the portal; null means no pending request'),
+  "reschedulePreferredDate": zod.string().nullish().describe('Customer\'s preferred new date (YYYY-MM-DD), if provided with the reschedule request'),
   "createdAt": zod.string()
 })
 
@@ -1910,6 +1922,8 @@ export const CompleteJobResponse = zod.object({
   "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
   "cancellationRequestedAt": zod.string().nullish().describe('Set when the customer has requested cancellation via the portal; null means no pending request'),
   "cancellationReason": zod.string().nullish().describe('Optional reason provided by the customer when requesting cancellation'),
+  "rescheduleRequestedAt": zod.string().nullish().describe('Set when the customer has requested rescheduling via the portal; null means no pending request'),
+  "reschedulePreferredDate": zod.string().nullish().describe('Customer\'s preferred new date (YYYY-MM-DD), if provided with the reschedule request'),
   "createdAt": zod.string()
 })
 
@@ -2015,6 +2029,8 @@ export const AddJobPartResponse = zod.object({
   "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
   "cancellationRequestedAt": zod.string().nullish().describe('Set when the customer has requested cancellation via the portal; null means no pending request'),
   "cancellationReason": zod.string().nullish().describe('Optional reason provided by the customer when requesting cancellation'),
+  "rescheduleRequestedAt": zod.string().nullish().describe('Set when the customer has requested rescheduling via the portal; null means no pending request'),
+  "reschedulePreferredDate": zod.string().nullish().describe('Customer\'s preferred new date (YYYY-MM-DD), if provided with the reschedule request'),
   "createdAt": zod.string()
 })
 
@@ -2099,6 +2115,8 @@ export const RemoveJobPartResponse = zod.object({
   "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
   "cancellationRequestedAt": zod.string().nullish().describe('Set when the customer has requested cancellation via the portal; null means no pending request'),
   "cancellationReason": zod.string().nullish().describe('Optional reason provided by the customer when requesting cancellation'),
+  "rescheduleRequestedAt": zod.string().nullish().describe('Set when the customer has requested rescheduling via the portal; null means no pending request'),
+  "reschedulePreferredDate": zod.string().nullish().describe('Customer\'s preferred new date (YYYY-MM-DD), if provided with the reschedule request'),
   "createdAt": zod.string()
 })
 
@@ -6093,7 +6111,9 @@ export const PortalGetSummaryResponse = zod.object({
   "totalAmount": zod.number().optional(),
   "assignedToName": zod.string().nullish(),
   "cancellationRequestedAt": zod.string().nullish().describe('Set when the customer has a pending cancellation request'),
-  "cancellationReason": zod.string().nullish().describe('Optional reason provided by the customer')
+  "cancellationReason": zod.string().nullish().describe('Optional reason provided by the customer'),
+  "rescheduleRequestedAt": zod.string().nullish().describe('Set when the customer has a pending reschedule request'),
+  "reschedulePreferredDate": zod.string().nullish().describe('Customer\'s preferred new date (YYYY-MM-DD), if provided')
 })),
   "recentInvoices": zod.array(zod.object({
   "id": zod.number(),
@@ -6140,7 +6160,9 @@ export const PortalListJobsResponseItem = zod.object({
   "totalAmount": zod.number().optional(),
   "assignedToName": zod.string().nullish(),
   "cancellationRequestedAt": zod.string().nullish().describe('Set when the customer has a pending cancellation request'),
-  "cancellationReason": zod.string().nullish().describe('Optional reason provided by the customer')
+  "cancellationReason": zod.string().nullish().describe('Optional reason provided by the customer'),
+  "rescheduleRequestedAt": zod.string().nullish().describe('Set when the customer has a pending reschedule request'),
+  "reschedulePreferredDate": zod.string().nullish().describe('Customer\'s preferred new date (YYYY-MM-DD), if provided')
 })
 export const PortalListJobsResponse = zod.array(PortalListJobsResponseItem)
 
@@ -6158,6 +6180,108 @@ export const PortalRequestJobCancellationBody = zod.object({
 
 export const PortalRequestJobCancellationResponse = zod.object({
   "message": zod.string().optional()
+})
+
+
+/**
+ * @summary Request rescheduling of a scheduled job
+ */
+export const PortalRequestJobRescheduleParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const PortalRequestJobRescheduleBody = zod.object({
+  "preferredDate": zod.string().optional().describe('Customer\'s preferred new date (YYYY-MM-DD), optional'),
+  "reason": zod.string().optional()
+})
+
+export const PortalRequestJobRescheduleResponse = zod.object({
+  "message": zod.string().optional()
+})
+
+
+/**
+ * @summary Dismiss a customer reschedule request — clears the request flag
+ */
+export const DismissJobRescheduleRequestParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DismissJobRescheduleRequestResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "status": zod.enum(['scheduled', 'in_progress', 'completed', 'cancelled', 'on_hold']),
+  "priority": zod.enum(['low', 'normal', 'high', 'urgent']).optional(),
+  "customerId": zod.number().nullish(),
+  "customerName": zod.string().nullish(),
+  "propertyId": zod.number().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "assigneeId": zod.number().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "crewId": zod.number().nullish(),
+  "crewName": zod.string().nullish(),
+  "scheduledAt": zod.string(),
+  "estimatedDuration": zod.number().nullish().describe('Duration stored in minutes; display as hours or minutes per tenant durationUnit setting'),
+  "completedAt": zod.string().nullish(),
+  "totalAmount": zod.number().optional(),
+  "invoiceId": zod.number().nullish(),
+  "blueprintId": zod.number().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "inventoryItemId": zod.number().nullish(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional(),
+  "jobParts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional().describe('Parts used on this job from inventory'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site'),
+  "recurrenceRule": zod.object({
+  "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
+  "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
+  "daysOfWeek": zod.array(zod.number()).optional().describe('0=Sun…6=Sat; used by weekly and biweekly'),
+  "dayOfMonth": zod.number().optional().describe('1–31; used by monthly_date'),
+  "weekOfMonth": zod.number().optional().describe('1=first…5=last; used by monthly_weekday'),
+  "dayOfWeek": zod.number().optional().describe('0=Sun…6=Sat; used by monthly_weekday'),
+  "endCondition": zod.enum(['never', 'after', 'on_date']),
+  "endAfter": zod.number().optional().describe('Used when endCondition is after'),
+  "endDate": zod.string().optional().describe('ISO date string; used when endCondition is on_date')
+}).nullish().describe('Present only on series root jobs'),
+  "recurrenceParentId": zod.number().nullish().describe('FK to series root for generated instances'),
+  "recurrenceIndex": zod.number().nullish().describe('0-based index of this occurrence'),
+  "isRecurrencePaused": zod.boolean().optional(),
+  "resumeAt": zod.string().nullish().describe('Off-season pause: date the series will auto-resume'),
+  "recurrenceCount": zod.number().optional(),
+  "pendingWeeklyInvoice": zod.boolean().optional().describe('True when this completed non-recurring job is waiting to be swept into a weekly batch invoice'),
+  "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
+  "routeTemplateId": zod.number().nullish(),
+  "routeName": zod.string().nullish().describe('Name of the assigned route template, joined server-side for display'),
+  "sequenceOrder": zod.number().nullish(),
+  "isOneTimeReschedule": zod.boolean().optional(),
+  "originalScheduledDate": zod.string().nullish(),
+  "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
+  "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
+  "tags": zod.array(zod.string()).optional().describe('Tag names applied to this job'),
+  "skipReasonId": zod.number().nullish().describe('FK to skip_reasons — set when this occurrence was skipped with a reason'),
+  "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
+  "cancellationRequestedAt": zod.string().nullish().describe('Set when the customer has requested cancellation via the portal; null means no pending request'),
+  "cancellationReason": zod.string().nullish().describe('Optional reason provided by the customer when requesting cancellation'),
+  "rescheduleRequestedAt": zod.string().nullish().describe('Set when the customer has requested rescheduling via the portal; null means no pending request'),
+  "reschedulePreferredDate": zod.string().nullish().describe('Customer\'s preferred new date (YYYY-MM-DD), if provided with the reschedule request'),
+  "createdAt": zod.string()
 })
 
 
@@ -6240,6 +6364,8 @@ export const ApproveJobCancellationResponse = zod.object({
   "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
   "cancellationRequestedAt": zod.string().nullish().describe('Set when the customer has requested cancellation via the portal; null means no pending request'),
   "cancellationReason": zod.string().nullish().describe('Optional reason provided by the customer when requesting cancellation'),
+  "rescheduleRequestedAt": zod.string().nullish().describe('Set when the customer has requested rescheduling via the portal; null means no pending request'),
+  "reschedulePreferredDate": zod.string().nullish().describe('Customer\'s preferred new date (YYYY-MM-DD), if provided with the reschedule request'),
   "createdAt": zod.string()
 })
 
@@ -6327,6 +6453,8 @@ export const DenyJobCancellationResponse = zod.object({
   "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
   "cancellationRequestedAt": zod.string().nullish().describe('Set when the customer has requested cancellation via the portal; null means no pending request'),
   "cancellationReason": zod.string().nullish().describe('Optional reason provided by the customer when requesting cancellation'),
+  "rescheduleRequestedAt": zod.string().nullish().describe('Set when the customer has requested rescheduling via the portal; null means no pending request'),
+  "reschedulePreferredDate": zod.string().nullish().describe('Customer\'s preferred new date (YYYY-MM-DD), if provided with the reschedule request'),
   "createdAt": zod.string()
 })
 
@@ -6501,7 +6629,9 @@ export const PortalListServiceRequestsResponseItem = zod.object({
   "totalAmount": zod.number().optional(),
   "assignedToName": zod.string().nullish(),
   "cancellationRequestedAt": zod.string().nullish().describe('Set when the customer has a pending cancellation request'),
-  "cancellationReason": zod.string().nullish().describe('Optional reason provided by the customer')
+  "cancellationReason": zod.string().nullish().describe('Optional reason provided by the customer'),
+  "rescheduleRequestedAt": zod.string().nullish().describe('Set when the customer has a pending reschedule request'),
+  "reschedulePreferredDate": zod.string().nullish().describe('Customer\'s preferred new date (YYYY-MM-DD), if provided')
 })
 export const PortalListServiceRequestsResponse = zod.array(PortalListServiceRequestsResponseItem)
 
@@ -6527,7 +6657,9 @@ export const PortalCreateServiceRequestResponse = zod.object({
   "totalAmount": zod.number().optional(),
   "assignedToName": zod.string().nullish(),
   "cancellationRequestedAt": zod.string().nullish().describe('Set when the customer has a pending cancellation request'),
-  "cancellationReason": zod.string().nullish().describe('Optional reason provided by the customer')
+  "cancellationReason": zod.string().nullish().describe('Optional reason provided by the customer'),
+  "rescheduleRequestedAt": zod.string().nullish().describe('Set when the customer has a pending reschedule request'),
+  "reschedulePreferredDate": zod.string().nullish().describe('Customer\'s preferred new date (YYYY-MM-DD), if provided')
 })
 
 

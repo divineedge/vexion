@@ -3981,6 +3981,66 @@ paths:
         "409":
           description: Already has a pending request or not cancellable
 
+  /portal/jobs/{id}/reschedule-request:
+    post:
+      operationId: portalRequestJobReschedule
+      tags: [portal]
+      summary: Request rescheduling of a scheduled job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                preferredDate:
+                  type: string
+                  description: "Customer's preferred new date (YYYY-MM-DD), optional"
+                reason:
+                  type: string
+      responses:
+        "201":
+          description: Reschedule request recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        "404":
+          description: Job not found
+        "409":
+          description: Already has a pending request or not rescheduable
+
+  /jobs/{id}/dismiss-reschedule-request:
+    post:
+      operationId: dismissJobRescheduleRequest
+      tags: [jobs]
+      summary: Dismiss a customer reschedule request — clears the request flag
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Reschedule request cleared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          description: Job not found
+        "409":
+          description: No pending reschedule request
+
   /jobs/{id}/approve-cancellation:
     post:
       operationId: approveJobCancellation
@@ -8776,6 +8836,12 @@ components:
         cancellationReason:
           type: ["string", "null"]
           description: "Optional reason provided by the customer when requesting cancellation"
+        rescheduleRequestedAt:
+          type: ["string", "null"]
+          description: "Set when the customer has requested rescheduling via the portal; null means no pending request"
+        reschedulePreferredDate:
+          type: ["string", "null"]
+          description: "Customer's preferred new date (YYYY-MM-DD), if provided with the reschedule request"
         createdAt:
           type: string
 
@@ -12068,6 +12134,12 @@ components:
         cancellationReason:
           type: ["string", "null"]
           description: "Optional reason provided by the customer"
+        rescheduleRequestedAt:
+          type: ["string", "null"]
+          description: "Set when the customer has a pending reschedule request"
+        reschedulePreferredDate:
+          type: ["string", "null"]
+          description: "Customer's preferred new date (YYYY-MM-DD), if provided"
 
     PortalInvoice:
       type: object

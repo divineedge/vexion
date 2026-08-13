@@ -118,5 +118,15 @@ export interface Job {
      * @nullable
      */
   cancellationReason?: string | null;
+  /**
+     * Set when the customer has requested rescheduling via the portal; null means no pending request
+     * @nullable
+     */
+  rescheduleRequestedAt?: string | null;
+  /**
+     * Customer's preferred new date (YYYY-MM-DD), if provided with the reschedule request
+     * @nullable
+     */
+  reschedulePreferredDate?: string | null;
   createdAt: string;
 }

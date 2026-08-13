@@ -30,4 +30,14 @@ export interface PortalJob {
      * @nullable
      */
   cancellationReason?: string | null;
+  /**
+     * Set when the customer has a pending reschedule request
+     * @nullable
+     */
+  rescheduleRequestedAt?: string | null;
+  /**
+     * Customer's preferred new date (YYYY-MM-DD), if provided
+     * @nullable
+     */
+  reschedulePreferredDate?: string | null;
 }

@@ -1402,6 +1402,16 @@ export interface Job {
      * @nullable
      */
   cancellationReason?: string | null;
+  /**
+     * Set when the customer has requested rescheduling via the portal; null means no pending request
+     * @nullable
+     */
+  rescheduleRequestedAt?: string | null;
+  /**
+     * Customer's preferred new date (YYYY-MM-DD), if provided with the reschedule request
+     * @nullable
+     */
+  reschedulePreferredDate?: string | null;
   createdAt: string;
 }
 
@@ -3929,6 +3939,16 @@ export interface PortalJob {
      * @nullable
      */
   cancellationReason?: string | null;
+  /**
+     * Set when the customer has a pending reschedule request
+     * @nullable
+     */
+  rescheduleRequestedAt?: string | null;
+  /**
+     * Customer's preferred new date (YYYY-MM-DD), if provided
+     * @nullable
+     */
+  reschedulePreferredDate?: string | null;
 }
 
 export interface PortalInvoice {
@@ -5200,6 +5220,16 @@ export type PortalRequestJobCancellationBody = {
 };
 
 export type PortalRequestJobCancellation201 = {
+  message?: string;
+};
+
+export type PortalRequestJobRescheduleBody = {
+  /** Customer's preferred new date (YYYY-MM-DD), optional */
+  preferredDate?: string;
+  reason?: string;
+};
+
+export type PortalRequestJobReschedule201 = {
   message?: string;
 };
 

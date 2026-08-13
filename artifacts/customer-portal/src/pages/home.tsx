@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
-import { ArrowRight, Bell, CalendarClock, Briefcase, FileText, MapPin, CheckCircle2, Clock, ClipboardList, ClipboardCheck, User, CloudRain, ShieldAlert } from "lucide-react";
+import { ArrowRight, Bell, CalendarClock, Briefcase, FileText, MapPin, CheckCircle2, Clock, ClipboardList, ClipboardCheck, User, CloudRain, ShieldAlert, MessageSquare } from "lucide-react";
 
 export default function Home() {
   const { data: summary, isLoading: isSummaryLoading } = usePortalGetSummary();
@@ -84,6 +84,29 @@ export default function Home() {
             <Link href="/alerts">
               <Button variant="outline" className="border-destructive/20 hover:bg-destructive/10">
                 View Alerts
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {summary?.unreadMessageCount ? (
+        <Card className="border-blue-200/60 bg-blue-50/50 dark:border-blue-800/40 dark:bg-blue-950/20 shadow-sm">
+          <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded-full text-blue-600 dark:text-blue-400">
+                <MessageSquare className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-foreground">New Message{summary.unreadMessageCount > 1 ? 's' : ''} from Our Team</h3>
+                <p className="text-sm text-muted-foreground">
+                  You have {summary.unreadMessageCount} unread message{summary.unreadMessageCount > 1 ? 's' : ''}. Tap below to read and reply.
+                </p>
+              </div>
+            </div>
+            <Link href="/messages">
+              <Button variant="outline" className="border-blue-200 hover:bg-blue-100 dark:border-blue-800 dark:hover:bg-blue-900/40">
+                View Messages
               </Button>
             </Link>
           </CardContent>

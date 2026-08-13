@@ -12091,7 +12091,7 @@ components:
 
     PortalSummary:
       type: object
-      required: [upcomingJobs, recentInvoices, unreadAlertCount, openRequestCount]
+      required: [upcomingJobs, recentInvoices, unreadAlertCount, openRequestCount, unreadMessageCount]
       properties:
         upcomingJobs:
           type: array
@@ -12105,6 +12105,9 @@ components:
           type: integer
         openRequestCount:
           type: integer
+        unreadMessageCount:
+          type: integer
+          description: "Number of staff-sent messages the customer has not yet read"
 
     PortalJob:
       type: object

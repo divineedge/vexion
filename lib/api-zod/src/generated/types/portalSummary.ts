@@ -13,4 +13,6 @@ export interface PortalSummary {
   recentInvoices: PortalInvoice[];
   unreadAlertCount: number;
   openRequestCount: number;
+  /** Number of staff-sent messages the customer has not yet read */
+  unreadMessageCount: number;
 }

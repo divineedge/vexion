@@ -6142,7 +6142,8 @@ export const PortalGetSummaryResponse = zod.object({
   "createdAt": zod.string()
 })),
   "unreadAlertCount": zod.number(),
-  "openRequestCount": zod.number()
+  "openRequestCount": zod.number(),
+  "unreadMessageCount": zod.number().describe('Number of staff-sent messages the customer has not yet read')
 })
 
 

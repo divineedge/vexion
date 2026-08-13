@@ -585,7 +585,7 @@ router.get("/portal/summary", requirePortalAuth, async (req: any, res): Promise<
 
   const now = new Date();
 
-  const [upcomingJobs, recentInvoices, pendingAlerts, openRequests, pendingEstimates, tenant] = await Promise.all([
+  const [upcomingJobs, recentInvoices, pendingAlerts, openRequests, pendingEstimates, tenant, unreadMessages] = await Promise.all([
     db
       .select({ job: jobsTable, propertyAddress: propertiesTable.address, assignedToName: usersTable.name })
       .from(jobsTable)
@@ -643,6 +643,17 @@ router.get("/portal/summary", requirePortalAuth, async (req: any, res): Promise<
         ),
       ),
     db.select().from(tenantsTable).where(eq(tenantsTable.id, portalTenantId)).limit(1),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(portalMessagesTable)
+      .where(
+        and(
+          eq(portalMessagesTable.customerId, portalCustomerId),
+          eq(portalMessagesTable.tenantId, portalTenantId),
+          eq(portalMessagesTable.direction, "outbound"),
+          isNull(portalMessagesTable.readAt),
+        ),
+      ),
   ]);
 
   const tenantRecord = tenant[0];
@@ -652,6 +663,7 @@ router.get("/portal/summary", requirePortalAuth, async (req: any, res): Promise<
     unreadAlertCount: pendingAlerts.length,
     openRequestCount: openRequests[0]?.count ?? 0,
     pendingEstimateCount: pendingEstimates[0]?.count ?? 0,
+    unreadMessageCount: unreadMessages[0]?.count ?? 0,
     tenantPhone: tenantRecord?.businessPhone ?? null,
     tenantEmail: tenantRecord?.businessEmail ?? null,
   });

@@ -34,7 +34,7 @@ import { useDebounce } from '@/hooks/use-debounce';
 import { format } from 'date-fns';
 import {
   Plus, FileText, DollarSign, TrendingUp, Send, Briefcase, Trash2,
-  ChevronRight, Eye, Clock, User, MapPin, CheckCircle2, XCircle, Phone, Mail, Globe, Building2, Printer, Search, Edit2, RefreshCw, Copy, X, Target, Package, Layers, Calendar, Loader2, Receipt,
+  ChevronRight, ChevronDown, Eye, Clock, User, MapPin, CheckCircle2, XCircle, Phone, Mail, Globe, Building2, Printer, Search, Edit2, RefreshCw, Copy, X, Target, Package, Layers, Calendar, Loader2, Receipt,
 } from 'lucide-react';
 import { Link, useSearch, useLocation } from 'wouter';
 import { printEstimate } from '@/lib/printUtils';
@@ -64,6 +64,8 @@ interface LineItem {
   acceptedByCustomer: boolean;
   /** Items sharing the same non-empty groupId are mutually exclusive (radio set) */
   groupId?: string;
+  /** Cost category used for the breakdown view. Defaults to 'labor'. */
+  category?: 'labor' | 'parts' | 'other';
   // Catalog linking
   serviceId?: number;
   serviceName?: string;
@@ -107,6 +109,17 @@ function calcItem(item: LineItem) {
   return afterMarkup * (1 - item.discount / 100);
 }
 
+/** Returns the cost category for a line item, defaulting to 'labor'. */
+function getItemCategory(item: LineItem): 'labor' | 'parts' | 'other' {
+  return item.category ?? 'labor';
+}
+
+const CATEGORY_LABELS: Record<'labor' | 'parts' | 'other', string> = {
+  labor: 'Labor',
+  parts: 'Parts / Materials',
+  other: 'Other',
+};
+
 // ── Inline Estimate Preview ──────────────────────────────────────────────────
 function EstimatePreviewDialog({ estimate, settings, open, onClose }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -116,10 +129,16 @@ function EstimatePreviewDialog({ estimate, settings, open, onClose }: {
   open: boolean;
   onClose: () => void;
 }) {
+  const [showPreviewBreakdown, setShowPreviewBreakdown] = useState(false);
   const items = (estimate?.lineItems ?? []) as LineItem[];
   const required = items.filter(i => !i.isOptional);
   const optional = items.filter(i => i.isOptional);
   const total = items.reduce((s, i) => s + calcItem(i), 0);
+
+  // Build category groups for preview breakdown
+  const previewCatGroups = (['labor', 'parts', 'other'] as const)
+    .map(key => ({ key, label: CATEGORY_LABELS[key], items: required.filter(i => getItemCategory(i) === key) }))
+    .filter(g => g.items.length > 0);
   const apiBase = (() => {
     const base = import.meta.env.BASE_URL ?? '/';
     return base.endsWith('/') ? base.slice(0, -1) : base;
@@ -176,55 +195,74 @@ function EstimatePreviewDialog({ estimate, settings, open, onClose }: {
             </div>
 
             {/* Line items */}
-            <div className="bg-white rounded-xl border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50">
-                  <tr>
-                    <th className="text-left px-4 py-2.5 font-semibold text-xs uppercase tracking-wide">Service</th>
-                    <th className="text-center px-3 py-2.5 font-semibold text-xs uppercase tracking-wide w-16">Qty</th>
-                    <th className="text-right px-4 py-2.5 font-semibold text-xs uppercase tracking-wide">Price</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {required.map(item => (
-                    <tr key={item.id}>
-                      <td className="px-4 py-3">
-                        <p className="font-medium">{item.description || '—'}</p>
-                        {(item.markup > 0 || item.discount > 0) && (
-                          <p className="text-xs text-muted-foreground">
-                            ${item.unitPrice.toFixed(2)} each{item.markup > 0 && ` + ${item.markup}% markup`}{item.discount > 0 && ` − ${item.discount}% off`}
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-3 py-3 text-center text-muted-foreground">{item.qty}</td>
-                      <td className="px-4 py-3 text-right font-medium">${calcItem(item).toFixed(2)}</td>
-                    </tr>
-                  ))}
+            <div className="bg-white rounded-xl border p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-sm">Services</h3>
+                <button
+                  className="text-xs text-primary hover:underline flex items-center gap-1"
+                  onClick={() => setShowPreviewBreakdown(v => !v)}
+                  title={showPreviewBreakdown ? 'Collapse to total only' : 'Expand to see cost breakdown by category'}
+                >
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showPreviewBreakdown ? 'rotate-180' : ''}`} />
+                  {showPreviewBreakdown ? 'Hide breakdown' : 'View breakdown'}
+                </button>
+              </div>
+
+              {showPreviewBreakdown ? (
+                <div className="space-y-3">
+                  {previewCatGroups.map(cat => {
+                    const catTotal = cat.items.reduce((s, i) => s + calcItem(i), 0);
+                    return (
+                      <div key={cat.key}>
+                        <div className="flex justify-between items-center mb-1.5">
+                          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{cat.label}</span>
+                          <span className="text-xs font-semibold text-muted-foreground">${catTotal.toFixed(2)}</span>
+                        </div>
+                        <div className="pl-3 border-l-2 border-muted space-y-2">
+                          {cat.items.map(item => (
+                            <div key={item.id} className="flex items-start justify-between gap-4 text-sm">
+                              <div className="flex-1">
+                                <p className="font-medium">{item.description || '—'}</p>
+                                {(item.markup > 0 || item.discount > 0) && (
+                                  <p className="text-xs text-muted-foreground">
+                                    ${item.unitPrice.toFixed(2)} each{item.markup > 0 && ` + ${item.markup}% markup`}{item.discount > 0 && ` − ${item.discount}% off`}
+                                  </p>
+                                )}
+                              </div>
+                              <span className="font-medium shrink-0">${calcItem(item).toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                   {optional.length > 0 && (
-                    <>
-                      <tr className="bg-amber-50/60">
-                        <td colSpan={3} className="px-4 py-2 text-xs font-semibold text-amber-700 uppercase tracking-wide">Optional Add-Ons</td>
-                      </tr>
-                      {optional.map(item => (
-                        <tr key={item.id} className="bg-amber-50/30">
-                          <td className="px-4 py-3">
-                            <p className="font-medium">{item.description || '—'}</p>
-                            {item.optionalPitchLine && <p className="text-xs text-muted-foreground italic">{item.optionalPitchLine}</p>}
-                          </td>
-                          <td className="px-3 py-3 text-center text-muted-foreground">{item.qty}</td>
-                          <td className="px-4 py-3 text-right font-medium">${calcItem(item).toFixed(2)}</td>
-                        </tr>
-                      ))}
-                    </>
+                    <div className="pt-1">
+                      <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2">Optional Add-Ons</p>
+                      <div className="space-y-1">
+                        {optional.map(item => (
+                          <div key={item.id} className="flex items-start justify-between gap-4 text-sm bg-amber-50/40 rounded p-2">
+                            <div className="flex-1">
+                              <p className="font-medium">{item.description || '—'}</p>
+                              {item.optionalPitchLine && <p className="text-xs text-muted-foreground italic">{item.optionalPitchLine}</p>}
+                            </div>
+                            <span className="font-medium shrink-0">${calcItem(item).toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   )}
-                </tbody>
-                <tfoot className="bg-muted/30 border-t-2">
-                  <tr>
-                    <td colSpan={2} className="px-4 py-3 font-bold text-right">Total</td>
-                    <td className="px-4 py-3 text-right text-lg font-bold">${total.toFixed(2)}</td>
-                  </tr>
-                </tfoot>
-              </table>
+                  <div className="border-t pt-3 flex justify-between items-center font-bold">
+                    <span>Total</span>
+                    <span className="text-lg">${total.toFixed(2)}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="border-t pt-3 flex justify-between items-center font-bold">
+                  <span>Total</span>
+                  <span className="text-lg">${total.toFixed(2)}</span>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-center gap-3 pb-4">
@@ -367,11 +405,14 @@ export default function EstimatesPage() {
     { query: { enabled: addingCreateSupply, queryKey: getListInventoryItemsQueryKey({ q: debouncedCreateSupplySearch || undefined }) } }
   );
 
+  const [showBreakdown, setShowBreakdown] = useState(false);
+
   useEffect(() => {
     setNotesVal(selectedEstimate?.notes ?? '');
     setEditingNotes(false);
     setEditingLineItems(false);
     setEditLineItemsList([]);
+    setShowBreakdown(false); // collapse breakdown when switching estimates
   }, [selectedId]);
 
   // Load service catalog and plan templates when create sheet opens
@@ -433,6 +474,7 @@ export default function EstimatesPage() {
           isOptional: i.isOptional,
           optionalPitchLine: i.optionalPitchLine || null,
           groupId: i.groupId || null,
+          category: i.category ?? 'labor',
           acceptedByCustomer: !i.isOptional,
           serviceId: i.serviceId ?? null,
           serviceName: i.serviceName ?? null,
@@ -1237,11 +1279,21 @@ export default function EstimatesPage() {
                         <Input type="number" min={0} step={1} title="Discount percentage subtracted from the marked-up price" value={item.discount} onChange={e => updateLineItem(idx, { discount: parseFloat(e.target.value) || 0 })} />
                       </div>
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3 flex-wrap">
                       <label className="flex items-center gap-2 cursor-pointer text-sm">
                         <input type="checkbox" checked={item.isOptional} onChange={e => updateLineItem(idx, { isOptional: e.target.checked })} className="rounded" />
                         Mark as Optional (Add-On)
                       </label>
+                      <Select value={item.category ?? 'labor'} onValueChange={v => updateLineItem(idx, { category: v as LineItem['category'] })}>
+                        <SelectTrigger className="h-7 text-xs w-36" title="Cost category shown in breakdown view">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="labor">Labor</SelectItem>
+                          <SelectItem value="parts">Parts / Materials</SelectItem>
+                          <SelectItem value="other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
                       <span className="ml-auto text-sm font-medium" title={`Line total: $${calcItem(item).toFixed(2)}`}>${calcItem(item).toFixed(2)}</span>
                     </div>
                     {item.isOptional && (
@@ -1639,35 +1691,47 @@ export default function EstimatesPage() {
                     </div>
                     <div className="space-y-2">
                       {editLineItemsList.map((item, idx) => (
-                        <div key={item.id} className="flex items-center gap-2">
-                          <input
-                            className="flex-1 border rounded-md px-2 py-1.5 text-sm bg-background"
-                            value={item.description}
-                            onChange={e => setEditLineItemsList(list => list.map((i, k) => k === idx ? { ...i, description: e.target.value } : i))}
-                            placeholder="Description"
-                            title="Line item description"
-                          />
-                          <input
-                            type="number" min={0.01} step={0.01}
-                            className="w-16 border rounded-md px-2 py-1.5 text-sm bg-background text-right"
-                            value={item.qty}
-                            onChange={e => setEditLineItemsList(list => list.map((i, k) => k === idx ? { ...i, qty: parseFloat(e.target.value) || 0 } : i))}
-                            title="Quantity"
-                          />
-                          <span className="text-muted-foreground text-xs shrink-0">×</span>
-                          <input
-                            type="number" min={0} step={0.01}
-                            className="w-24 border rounded-md px-2 py-1.5 text-sm bg-background text-right"
-                            value={item.unitPrice}
-                            onChange={e => setEditLineItemsList(list => list.map((i, k) => k === idx ? { ...i, unitPrice: parseFloat(e.target.value) || 0 } : i))}
-                            title="Unit price ($)"
-                          />
-                          <span className="text-sm font-medium w-16 text-right shrink-0">${((item.qty || 0) * (item.unitPrice || 0)).toFixed(2)}</span>
-                          <button
-                            className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
-                            onClick={() => setEditLineItemsList(list => list.filter((_, k) => k !== idx))}
-                            title="Remove this line item"
-                          ><X className="w-3.5 h-3.5" /></button>
+                        <div key={item.id} className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <input
+                              className="flex-1 border rounded-md px-2 py-1.5 text-sm bg-background"
+                              value={item.description}
+                              onChange={e => setEditLineItemsList(list => list.map((i, k) => k === idx ? { ...i, description: e.target.value } : i))}
+                              placeholder="Description"
+                              title="Line item description"
+                            />
+                            <input
+                              type="number" min={0.01} step={0.01}
+                              className="w-16 border rounded-md px-2 py-1.5 text-sm bg-background text-right"
+                              value={item.qty}
+                              onChange={e => setEditLineItemsList(list => list.map((i, k) => k === idx ? { ...i, qty: parseFloat(e.target.value) || 0 } : i))}
+                              title="Quantity"
+                            />
+                            <span className="text-muted-foreground text-xs shrink-0">×</span>
+                            <input
+                              type="number" min={0} step={0.01}
+                              className="w-24 border rounded-md px-2 py-1.5 text-sm bg-background text-right"
+                              value={item.unitPrice}
+                              onChange={e => setEditLineItemsList(list => list.map((i, k) => k === idx ? { ...i, unitPrice: parseFloat(e.target.value) || 0 } : i))}
+                              title="Unit price ($)"
+                            />
+                            <span className="text-sm font-medium w-16 text-right shrink-0">${((item.qty || 0) * (item.unitPrice || 0)).toFixed(2)}</span>
+                            <button
+                              className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                              onClick={() => setEditLineItemsList(list => list.filter((_, k) => k !== idx))}
+                              title="Remove this line item"
+                            ><X className="w-3.5 h-3.5" /></button>
+                          </div>
+                          <select
+                            className="text-xs border rounded px-1.5 py-0.5 bg-background text-muted-foreground w-36"
+                            value={item.category ?? 'labor'}
+                            onChange={e => setEditLineItemsList(list => list.map((i, k) => k === idx ? { ...i, category: e.target.value as LineItem['category'] } : i))}
+                            title="Cost category for breakdown view"
+                          >
+                            <option value="labor">Labor</option>
+                            <option value="parts">Parts / Materials</option>
+                            <option value="other">Other</option>
+                          </select>
                         </div>
                       ))}
                       <button
@@ -1689,99 +1753,147 @@ export default function EstimatesPage() {
                     const items = (selectedEstimate.lineItems ?? []) as LineItem[];
                     const required = items.filter(i => !i.isOptional);
                     const optional = items.filter(i => i.isOptional);
+                    const grandTotal = selectedEstimate.total ?? 0;
+                    const acceptedSubtotal = items
+                      .filter(i => !i.isOptional || i.acceptedByCustomer)
+                      .reduce((s, i) => s + calcItem(i), 0);
+                    const taxAmt = Math.max(0, grandTotal - acceptedSubtotal);
+
+                    // Category groups for breakdown view
+                    const catGroups = (['labor', 'parts', 'other'] as const)
+                      .map(key => ({ key, label: CATEGORY_LABELS[key], items: required.filter(i => getItemCategory(i) === key) }))
+                      .filter(g => g.items.length > 0);
+
+                    const OptionalRow = ({ item, indicator }: { item: LineItem; indicator: React.ReactNode }) => (
+                      <div className={`flex items-start justify-between gap-4 text-sm rounded-md p-2 ${item.acceptedByCustomer ? 'bg-amber-50 border border-amber-200' : 'opacity-60'}`}>
+                        <div className="flex-1 flex items-start gap-2">
+                          <span className="mt-0.5 text-amber-600 shrink-0">{indicator}</span>
+                          <div>
+                            <p className="font-medium">{item.description || '—'}{item.acceptedByCustomer ? ' ✓' : ''}</p>
+                            {item.optionalPitchLine && <p className="text-xs text-muted-foreground italic">{item.optionalPitchLine}</p>}
+                            <p className="text-muted-foreground text-xs">Qty {item.qty} × ${item.unitPrice.toFixed(2)}</p>
+                          </div>
+                        </div>
+                        <span className="font-medium shrink-0">${calcItem(item).toFixed(2)}</span>
+                      </div>
+                    );
+
+                    const OptionalSection = () => {
+                      const ungrouped = optional.filter(i => !i.groupId);
+                      const grouped = optional.filter(i => !!i.groupId);
+                      const groups = grouped.reduce<Record<string, LineItem[]>>((acc, item) => {
+                        const g = item.groupId!;
+                        if (!acc[g]) acc[g] = [];
+                        acc[g].push(item);
+                        return acc;
+                      }, {});
+                      return (
+                        <>
+                          <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Add-On Services</p>
+                          {ungrouped.map(item => <OptionalRow key={item.id} item={item} indicator="☐" />)}
+                          {Object.entries(groups).map(([groupName, groupItems]) => (
+                            <div key={groupName} className="rounded-md border border-dashed border-amber-300 bg-amber-50/30 p-2 space-y-1">
+                              <p className="text-xs font-medium text-amber-700 flex items-center gap-1">
+                                <span>⊙</span> {groupName} <span className="text-muted-foreground font-normal">(pick one)</span>
+                              </p>
+                              {groupItems.map(item => <OptionalRow key={item.id} item={item} indicator="○" />)}
+                            </div>
+                          ))}
+                        </>
+                      );
+                    };
+
                     return (
                       <div className="space-y-4">
+                        {/* Header */}
                         <div className="flex items-center justify-between">
                           <h3 className="font-semibold text-sm">Services</h3>
-                          {canManageOffice && (
+                          <div className="flex items-center gap-3">
                             <button
                               className="text-xs text-primary hover:underline flex items-center gap-1"
-                              onClick={startEditLineItems}
-                              title="Edit line items on this estimate"
+                              onClick={() => setShowBreakdown(v => !v)}
+                              title={showBreakdown ? 'Collapse to total only' : 'Expand to see cost breakdown by category'}
                             >
-                              <Edit2 className="w-3 h-3" /> Edit items
+                              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showBreakdown ? 'rotate-180' : ''}`} />
+                              {showBreakdown ? 'Hide breakdown' : 'View breakdown'}
                             </button>
-                          )}
-                        </div>
-                        {required.map((item) => (
-                          <div key={item.id} className="flex items-start justify-between gap-4 text-sm">
-                            <div className="flex-1">
-                              <p className="font-medium" title={item.description || undefined}>
-                                {item.description || '—'}
-                                {(item as any).secondaryServiceId && (
-                                  <Badge variant="outline" className="ml-1.5 text-[10px] px-1 text-indigo-600 border-indigo-300 align-middle">bundled</Badge>
-                                )}
-                                {(item as any).planTemplateId && (
-                                  <Badge variant="outline" className="ml-1.5 text-[10px] px-1 text-violet-600 border-violet-300 align-middle gap-0.5">
-                                    <Package className="w-2.5 h-2.5" /> plan
-                                  </Badge>
-                                )}
-                              </p>
-                              <p className="text-muted-foreground text-xs">Qty {item.qty} × ${item.unitPrice.toFixed(2)}{item.markup > 0 && ` + ${item.markup}% markup`}{item.discount > 0 && ` − ${item.discount}% disc`}{(item as any).planBillingCycle && ` · ${(item as any).planBillingCycle}`}</p>
-                            </div>
-                            <span className="font-medium shrink-0" title={`Line total: $${calcItem(item).toFixed(2)}`}>${calcItem(item).toFixed(2)}</span>
+                            {canManageOffice && (
+                              <button
+                                className="text-xs text-primary hover:underline flex items-center gap-1"
+                                onClick={startEditLineItems}
+                                title="Edit line items on this estimate"
+                              >
+                                <Edit2 className="w-3 h-3" /> Edit items
+                              </button>
+                            )}
                           </div>
-                        ))}
-                        {optional.length > 0 && (() => {
-                          const ungrouped = optional.filter(i => !i.groupId);
-                          const grouped = optional.filter(i => !!i.groupId);
-                          const groups = grouped.reduce<Record<string, LineItem[]>>((acc, item) => {
-                            const g = item.groupId!;
-                            if (!acc[g]) acc[g] = [];
-                            acc[g].push(item);
-                            return acc;
-                          }, {});
-                          const OptionalRow = ({ item, indicator }: { item: LineItem; indicator: React.ReactNode }) => (
-                            <div className={`flex items-start justify-between gap-4 text-sm rounded-md p-2 ${item.acceptedByCustomer ? 'bg-amber-50 border border-amber-200' : 'opacity-60'}`}>
-                              <div className="flex-1 flex items-start gap-2">
-                                <span className="mt-0.5 text-amber-600 shrink-0">{indicator}</span>
-                                <div>
-                                  <p className="font-medium">{item.description || '—'}{item.acceptedByCustomer ? ' ✓' : ''}</p>
-                                  {item.optionalPitchLine && <p className="text-xs text-muted-foreground italic">{item.optionalPitchLine}</p>}
-                                  <p className="text-muted-foreground text-xs">Qty {item.qty} × ${item.unitPrice.toFixed(2)}</p>
+                        </div>
+
+                        {showBreakdown ? (
+                          /* Expanded: items grouped by category */
+                          <div className="space-y-4">
+                            {catGroups.map(cat => {
+                              const catTotal = cat.items.reduce((s, i) => s + calcItem(i), 0);
+                              return (
+                                <div key={cat.key}>
+                                  <div className="flex justify-between items-center mb-1.5">
+                                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{cat.label}</span>
+                                    <span className="text-xs font-semibold text-muted-foreground">${catTotal.toFixed(2)}</span>
+                                  </div>
+                                  <div className="pl-3 border-l-2 border-muted space-y-2">
+                                    {cat.items.map(item => (
+                                      <div key={item.id} className="flex items-start justify-between gap-4 text-sm">
+                                        <div className="flex-1">
+                                          <p className="font-medium" title={item.description || undefined}>
+                                            {item.description || '—'}
+                                            {(item as any).secondaryServiceId && (
+                                              <Badge variant="outline" className="ml-1.5 text-[10px] px-1 text-indigo-600 border-indigo-300 align-middle">bundled</Badge>
+                                            )}
+                                            {(item as any).planTemplateId && (
+                                              <Badge variant="outline" className="ml-1.5 text-[10px] px-1 text-violet-600 border-violet-300 align-middle gap-0.5">
+                                                <Package className="w-2.5 h-2.5" /> plan
+                                              </Badge>
+                                            )}
+                                          </p>
+                                          <p className="text-muted-foreground text-xs">Qty {item.qty} × ${item.unitPrice.toFixed(2)}{item.markup > 0 && ` + ${item.markup}% markup`}{item.discount > 0 && ` − ${item.discount}% disc`}{(item as any).planBillingCycle && ` · ${(item as any).planBillingCycle}`}</p>
+                                        </div>
+                                        <span className="font-medium shrink-0">${calcItem(item).toFixed(2)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
-                              </div>
-                              <span className="font-medium shrink-0">${calcItem(item).toFixed(2)}</span>
-                            </div>
-                          );
-                          return (
-                            <>
-                              <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mt-3">Add-On Services</p>
-                              {ungrouped.map(item => <OptionalRow key={item.id} item={item} indicator="☐" />)}
-                              {Object.entries(groups).map(([groupName, items]) => (
-                                <div key={groupName} className="rounded-md border border-dashed border-amber-300 bg-amber-50/30 p-2 space-y-1">
-                                  <p className="text-xs font-medium text-amber-700 flex items-center gap-1">
-                                    <span>⊙</span> {groupName} <span className="text-muted-foreground font-normal">(pick one)</span>
-                                  </p>
-                                  {items.map(item => <OptionalRow key={item.id} item={item} indicator="○" />)}
-                                </div>
-                              ))}
-                            </>
-                          );
-                        })()}
-                        <Separator />
-                        {(() => {
-                          const subtotal = items.filter(i => !i.isOptional || i.acceptedByCustomer).reduce((s, i) => s + calcItem(i), 0);
-                          const tax = (selectedEstimate.total ?? 0) - subtotal;
-                          return (
+                              );
+                            })}
+                            {optional.length > 0 && <OptionalSection />}
+                            <Separator />
                             <div className="space-y-1.5 text-sm">
-                              <div className="flex justify-between text-muted-foreground">
-                                <span>Subtotal</span>
-                                <span title={`Subtotal: $${subtotal.toFixed(2)}`}>${subtotal.toFixed(2)}</span>
-                              </div>
-                              {Math.abs(tax) >= 0.01 && (
+                              {taxAmt >= 0.01 && (
                                 <div className="flex justify-between text-muted-foreground">
                                   <span>Tax</span>
-                                  <span title={`Tax: $${tax.toFixed(2)}`}>${tax.toFixed(2)}</span>
+                                  <span>${taxAmt.toFixed(2)}</span>
                                 </div>
                               )}
                               <div className="flex justify-between items-center pt-1 border-t">
                                 <span className="font-semibold">Total</span>
-                                <span className="text-xl font-bold" title={`Grand total: $${(selectedEstimate.total ?? 0).toFixed(2)}`}>${(selectedEstimate.total ?? 0).toFixed(2)}</span>
+                                <span className="text-xl font-bold">${grandTotal.toFixed(2)}</span>
                               </div>
                             </div>
-                          );
-                        })()}
+                          </div>
+                        ) : (
+                          /* Collapsed: just the total */
+                          <div className="space-y-1.5 text-sm">
+                            {taxAmt >= 0.01 && (
+                              <div className="flex justify-between text-muted-foreground">
+                                <span>Tax</span>
+                                <span>${taxAmt.toFixed(2)}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between items-center border-t pt-1">
+                              <span className="font-semibold">Total</span>
+                              <span className="text-xl font-bold" title={`Grand total: $${grandTotal.toFixed(2)}`}>${grandTotal.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })()

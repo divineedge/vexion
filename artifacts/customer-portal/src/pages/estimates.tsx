@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { FileText, Clock, CheckCircle2, XCircle, ThumbsUp, ThumbsDown, Loader2, ChevronRight, Sparkles, CreditCard, ShieldCheck } from "lucide-react";
+import { FileText, Clock, CheckCircle2, XCircle, ThumbsUp, ThumbsDown, Loader2, ChevronRight, ChevronDown, Sparkles, CreditCard, ShieldCheck } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react";
 import { toast } from "sonner";
 import { loadStripe, type Stripe as StripeInstance } from "@stripe/stripe-js";
@@ -49,7 +49,19 @@ interface DetailLineItem {
   acceptedByCustomer: boolean;
   /** Items sharing the same non-empty groupId are mutually exclusive (radio set) */
   groupId?: string | null;
+  /** Cost category for breakdown view. Defaults to 'labor'. */
+  category?: 'labor' | 'parts' | 'other';
 }
+
+function getItemCategory(item: DetailLineItem): 'labor' | 'parts' | 'other' {
+  return item.category ?? 'labor';
+}
+
+const CATEGORY_LABELS: Record<'labor' | 'parts' | 'other', string> = {
+  labor: 'Labor',
+  parts: 'Parts / Materials',
+  other: 'Other',
+};
 
 interface EstimateDetail {
   id: number;
@@ -170,6 +182,7 @@ export default function Estimates() {
   const [payStep, setPayStep] = useState<null | "confirm" | "add-card">(null);
   const [savedCard, setSavedCard] = useState<SavedCard | null | undefined>(undefined);
   const [payingDeposit, setPayingDeposit] = useState(false);
+  const [showBreakdown, setShowBreakdown] = useState(false);
   const [stripePromise, setStripePromise] = useState<Promise<StripeInstance | null> | null>(null);
   const [cardSetupSecret, setCardSetupSecret] = useState<string | null>(null);
 
@@ -187,6 +200,7 @@ export default function Estimates() {
     setDetail(null);
     setDetailLoading(true);
     setOptionalSelections({});
+    setShowBreakdown(false);
     setPayStep(null);
     setSavedCard(undefined);
     setCardSetupSecret(null);
@@ -499,24 +513,64 @@ export default function Estimates() {
               )}
 
               {/* Required line items */}
-              {requiredItems.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">What's Included</p>
-                  <div className="rounded-lg border overflow-hidden">
-                    {requiredItems.map((item, i) => (
-                      <div key={item.idx} className={`flex items-start justify-between gap-3 px-4 py-3 text-sm ${i > 0 ? "border-t" : ""}`}>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium">{item.description}</p>
-                          {item.quantity !== 1 && (
-                            <p className="text-xs text-muted-foreground">{item.quantity} × {formatCurrency(item.unitPrice)}</p>
-                          )}
-                        </div>
-                        <p className="font-medium shrink-0">{formatCurrency(item.total)}</p>
+              {requiredItems.length > 0 && (() => {
+                const requiredTotal = requiredItems.reduce((s, i) => s + i.total, 0);
+                const catGroups = (['labor', 'parts', 'other'] as const)
+                  .map(key => ({ key, label: CATEGORY_LABELS[key], items: requiredItems.filter(i => getItemCategory(i) === key) }))
+                  .filter(g => g.items.length > 0);
+
+                return (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">What's Included</p>
+                      <button
+                        className="text-xs text-primary hover:underline flex items-center gap-1"
+                        onClick={() => setShowBreakdown(v => !v)}
+                        title={showBreakdown ? 'Show total only' : 'See cost breakdown by category'}
+                      >
+                        <ChevronDown className={`w-3 h-3 transition-transform ${showBreakdown ? 'rotate-180' : ''}`} />
+                        {showBreakdown ? 'Hide details' : 'Details'}
+                      </button>
+                    </div>
+
+                    {showBreakdown ? (
+                      /* Expanded: items grouped by category */
+                      <div className="space-y-3">
+                        {catGroups.map(cat => {
+                          const catTotal = cat.items.reduce((s, i) => s + i.total, 0);
+                          return (
+                            <div key={cat.key}>
+                              <div className="flex justify-between items-center mb-1.5">
+                                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{cat.label}</span>
+                                <span className="text-xs font-semibold text-muted-foreground">{formatCurrency(catTotal)}</span>
+                              </div>
+                              <div className="pl-3 border-l-2 border-muted space-y-2">
+                                {cat.items.map(item => (
+                                  <div key={item.idx} className="flex items-start justify-between gap-3 text-sm">
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-medium">{item.description}</p>
+                                      {item.quantity !== 1 && (
+                                        <p className="text-xs text-muted-foreground">{item.quantity} × {formatCurrency(item.unitPrice)}</p>
+                                      )}
+                                    </div>
+                                    <p className="font-medium shrink-0">{formatCurrency(item.total)}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    ))}
+                    ) : (
+                      /* Collapsed: single services total line only */
+                      <div className="flex items-center justify-between rounded-lg border px-4 py-3 text-sm">
+                        <span className="font-medium text-muted-foreground">Services</span>
+                        <span className="font-semibold">{formatCurrency(requiredTotal)}</span>
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Optional add-ons */}
               {optionalItems.length > 0 && (() => {

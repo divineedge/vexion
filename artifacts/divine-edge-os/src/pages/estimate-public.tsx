@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { CheckCircle2, XCircle, MapPin, Clock, AlertTriangle, Phone, Mail, Globe, Building2, CreditCard, Lock } from 'lucide-react';
+import { CheckCircle2, XCircle, MapPin, Clock, AlertTriangle, Phone, Mail, Globe, Building2, CreditCard, Lock, ChevronDown } from 'lucide-react';
 import { loadStripe, type Stripe as StripeInstance } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
@@ -22,7 +22,19 @@ interface LineItem {
   isOptional: boolean;
   optionalPitchLine?: string | null;
   acceptedByCustomer: boolean;
+  /** Cost category for breakdown view. Defaults to 'labor'. */
+  category?: 'labor' | 'parts' | 'other';
 }
+
+function getItemCategory(item: LineItem): 'labor' | 'parts' | 'other' {
+  return item.category ?? 'labor';
+}
+
+const CATEGORY_LABELS: Record<'labor' | 'parts' | 'other', string> = {
+  labor: 'Labor',
+  parts: 'Parts / Materials',
+  other: 'Other',
+};
 
 function calcItem(item: LineItem) {
   const base = item.qty * item.unitPrice;
@@ -152,6 +164,7 @@ export default function EstimatePublicPage() {
   const [declineReason, setDeclineReason] = useState('');
   const [responded, setResponded] = useState<'approved' | 'declined' | null>(null);
   const [showDeclineForm, setShowDeclineForm] = useState(false);
+  const [showBreakdown, setShowBreakdown] = useState(false);
   const [stripePromise, setStripePromise] = useState<Promise<StripeInstance | null> | null>(null);
 
   const { data: estimate, isLoading, error } = useGetPublicEstimate(token!, {
@@ -377,32 +390,67 @@ export default function EstimatePublicPage() {
         </div>
 
         {/* Required services */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Services Included</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {required.length === 0 && <p className="text-sm text-muted-foreground">No services listed.</p>}
-            {required.map(item => (
-              <div key={item.id} className="flex items-start justify-between gap-4">
-                <div className="flex-1">
-                  <p className="font-medium text-sm">{item.description}</p>
-                  <p className="text-xs text-muted-foreground">Qty {item.qty} × ${item.unitPrice.toFixed(2)}</p>
+        {(() => {
+          const catGroups = (['labor', 'parts', 'other'] as const)
+            .map(key => ({ key, label: CATEGORY_LABELS[key], items: required.filter(i => getItemCategory(i) === key) }))
+            .filter(g => g.items.length > 0);
+
+          return (
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">Services Included</CardTitle>
+                  <button
+                    className="text-xs text-primary hover:underline flex items-center gap-1"
+                    onClick={() => setShowBreakdown(v => !v)}
+                    title={showBreakdown ? 'Show total only' : 'See cost breakdown by category'}
+                  >
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showBreakdown ? 'rotate-180' : ''}`} />
+                    {showBreakdown ? 'Hide details' : 'Details'}
+                  </button>
                 </div>
-                <span className="font-semibold text-sm shrink-0">${calcItem(item).toFixed(2)}</span>
-              </div>
-            ))}
-            {optional.length === 0 && (
-              <>
-                <Separator />
-                <div className="flex justify-between items-center font-bold">
-                  <span>Total</span>
-                  <span className="text-xl">${grandTotal.toFixed(2)}</span>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {required.length === 0 && <p className="text-sm text-muted-foreground">No services listed.</p>}
+
+                {showBreakdown ? (
+                  catGroups.map(cat => {
+                    const catTotal = cat.items.reduce((s, i) => s + calcItem(i), 0);
+                    return (
+                      <div key={cat.key}>
+                        <div className="flex justify-between items-center mb-1.5">
+                          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{cat.label}</span>
+                          <span className="text-xs font-semibold text-muted-foreground">${catTotal.toFixed(2)}</span>
+                        </div>
+                        <div className="pl-3 border-l-2 border-muted/60 space-y-2">
+                          {cat.items.map(item => (
+                            <div key={item.id} className="flex items-start justify-between gap-4">
+                              <div className="flex-1">
+                                <p className="font-medium text-sm">{item.description}</p>
+                                <p className="text-xs text-muted-foreground">Qty {item.qty} × ${item.unitPrice.toFixed(2)}</p>
+                              </div>
+                              <span className="font-semibold text-sm shrink-0">${calcItem(item).toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : null}
+
+                {optional.length === 0 && (
+                  <>
+                    <Separator />
+                    <div className="flex justify-between items-center font-bold">
+                      <span>Total</span>
+                      <span className="text-xl">${grandTotal.toFixed(2)}</span>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })()}
 
         {/* Optional add-ons */}
         {optional.length > 0 && (

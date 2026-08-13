@@ -7328,6 +7328,19 @@ components:
           type: ["string", "null"]
         propertyAddress:
           type: ["string", "null"]
+        paymentRequirement:
+          type: string
+          enum: [none, full, deposit_pct, deposit_fixed]
+          description: "Payment required on acceptance: none=no payment, full=full total, deposit_pct=% of total, deposit_fixed=fixed $"
+        depositValue:
+          type: ["number", "null"]
+          description: "Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)"
+        depositPaidAt:
+          type: ["string", "null"]
+          description: "ISO timestamp when the deposit/payment was collected"
+        depositPaymentIntentId:
+          type: ["string", "null"]
+          description: "Stripe PaymentIntent ID for the deposit charge"
         createdAt:
           type: string
         updatedAt:
@@ -7442,6 +7455,12 @@ components:
           description: "Supplies the crew will need on site"
           items:
             $ref: "#/components/schemas/SupplyItem"
+        paymentRequirement:
+          type: string
+          enum: [none, full, deposit_pct, deposit_fixed]
+        depositValue:
+          type: number
+          description: "Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)"
 
     UpdateEstimateInput:
       type: object
@@ -7476,6 +7495,12 @@ components:
           description: "Supplies the crew will need on site"
           items:
             $ref: "#/components/schemas/SupplyItem"
+        paymentRequirement:
+          type: string
+          enum: [none, full, deposit_pct, deposit_fixed]
+        depositValue:
+          type: number
+          description: "Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)"
 
     EstimateRespondInput:
       type: object

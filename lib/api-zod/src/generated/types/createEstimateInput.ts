@@ -5,6 +5,7 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { CreateEstimateInputPaymentRequirement } from './createEstimateInputPaymentRequirement';
 import type { CreateEstimateInputVisitMode } from './createEstimateInputVisitMode';
 import type { EstimateLineItem } from './estimateLineItem';
 import type { SupplyItem } from './supplyItem';
@@ -24,4 +25,7 @@ export interface CreateEstimateInput {
   estimatedDurationMin?: number;
   /** Supplies the crew will need on site */
   suppliesNeeded?: SupplyItem[];
+  paymentRequirement?: CreateEstimateInputPaymentRequirement;
+  /** Percentage (deposit_pct) or fixed dollar amount (deposit_fixed) */
+  depositValue?: number;
 }

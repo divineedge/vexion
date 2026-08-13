@@ -246,6 +246,13 @@
       "when": 1755058800000,
       "tag": "0038_add_rainfast_rain_threshold_to_tenants",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1755500000000,
+      "tag": "0042_add_estimate_deposit",
+      "breakpoints": true
     }
   ]
 }

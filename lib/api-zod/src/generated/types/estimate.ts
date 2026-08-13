@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { EstimateLineItem } from './estimateLineItem';
+import type { EstimatePaymentRequirement } from './estimatePaymentRequirement';
 import type { EstimateStatus } from './estimateStatus';
 import type { EstimateVisitMode } from './estimateVisitMode';
 import type { SupplyItem } from './supplyItem';
@@ -62,6 +63,23 @@ export interface Estimate {
   assigneeName?: string | null;
   /** @nullable */
   propertyAddress?: string | null;
+  /** Payment required on acceptance: none=no payment, full=full total, deposit_pct=% of total, deposit_fixed=fixed $ */
+  paymentRequirement?: EstimatePaymentRequirement;
+  /**
+     * Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)
+     * @nullable
+     */
+  depositValue?: number | null;
+  /**
+     * ISO timestamp when the deposit/payment was collected
+     * @nullable
+     */
+  depositPaidAt?: string | null;
+  /**
+     * Stripe PaymentIntent ID for the deposit charge
+     * @nullable
+     */
+  depositPaymentIntentId?: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -7410,6 +7410,10 @@ export const ListEstimatesResponseItem = zod.object({
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
+  "paymentRequirement": zod.enum(['none', 'full', 'deposit_pct', 'deposit_fixed']).optional().describe('Payment required on acceptance: none=no payment, full=full total, deposit_pct=% of total, deposit_fixed=fixed $'),
+  "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
+  "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),
+  "depositPaymentIntentId": zod.string().nullish().describe('Stripe PaymentIntent ID for the deposit charge'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -7447,7 +7451,9 @@ export const CreateEstimateBody = zod.object({
   "name": zod.string(),
   "quantity": zod.number(),
   "unit": zod.string()
-})).optional().describe('Supplies the crew will need on site')
+})).optional().describe('Supplies the crew will need on site'),
+  "paymentRequirement": zod.enum(['none', 'full', 'deposit_pct', 'deposit_fixed']).optional(),
+  "depositValue": zod.number().optional().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)')
 })
 
 export const CreateEstimateResponse = zod.object({
@@ -7495,6 +7501,10 @@ export const CreateEstimateResponse = zod.object({
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
+  "paymentRequirement": zod.enum(['none', 'full', 'deposit_pct', 'deposit_fixed']).optional().describe('Payment required on acceptance: none=no payment, full=full total, deposit_pct=% of total, deposit_fixed=fixed $'),
+  "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
+  "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),
+  "depositPaymentIntentId": zod.string().nullish().describe('Stripe PaymentIntent ID for the deposit charge'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -7561,6 +7571,10 @@ export const GetEstimateResponse = zod.object({
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
+  "paymentRequirement": zod.enum(['none', 'full', 'deposit_pct', 'deposit_fixed']).optional().describe('Payment required on acceptance: none=no payment, full=full total, deposit_pct=% of total, deposit_fixed=fixed $'),
+  "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
+  "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),
+  "depositPaymentIntentId": zod.string().nullish().describe('Stripe PaymentIntent ID for the deposit charge'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -7600,7 +7614,9 @@ export const UpdateEstimateBody = zod.object({
   "name": zod.string(),
   "quantity": zod.number(),
   "unit": zod.string()
-})).optional().describe('Supplies the crew will need on site')
+})).optional().describe('Supplies the crew will need on site'),
+  "paymentRequirement": zod.enum(['none', 'full', 'deposit_pct', 'deposit_fixed']).optional(),
+  "depositValue": zod.number().optional().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)')
 })
 
 export const UpdateEstimateResponse = zod.object({
@@ -7648,6 +7664,10 @@ export const UpdateEstimateResponse = zod.object({
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
+  "paymentRequirement": zod.enum(['none', 'full', 'deposit_pct', 'deposit_fixed']).optional().describe('Payment required on acceptance: none=no payment, full=full total, deposit_pct=% of total, deposit_fixed=fixed $'),
+  "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
+  "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),
+  "depositPaymentIntentId": zod.string().nullish().describe('Stripe PaymentIntent ID for the deposit charge'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -7715,6 +7735,10 @@ export const SendEstimateResponse = zod.object({
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
+  "paymentRequirement": zod.enum(['none', 'full', 'deposit_pct', 'deposit_fixed']).optional().describe('Payment required on acceptance: none=no payment, full=full total, deposit_pct=% of total, deposit_fixed=fixed $'),
+  "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
+  "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),
+  "depositPaymentIntentId": zod.string().nullish().describe('Stripe PaymentIntent ID for the deposit charge'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -7846,6 +7870,10 @@ export const GetPublicEstimateResponse = zod.object({
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
+  "paymentRequirement": zod.enum(['none', 'full', 'deposit_pct', 'deposit_fixed']).optional().describe('Payment required on acceptance: none=no payment, full=full total, deposit_pct=% of total, deposit_fixed=fixed $'),
+  "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
+  "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),
+  "depositPaymentIntentId": zod.string().nullish().describe('Stripe PaymentIntent ID for the deposit charge'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 }).and(zod.object({
@@ -7947,6 +7975,10 @@ export const RespondToEstimateResponse = zod.object({
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
+  "paymentRequirement": zod.enum(['none', 'full', 'deposit_pct', 'deposit_fixed']).optional().describe('Payment required on acceptance: none=no payment, full=full total, deposit_pct=% of total, deposit_fixed=fixed $'),
+  "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
+  "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),
+  "depositPaymentIntentId": zod.string().nullish().describe('Stripe PaymentIntent ID for the deposit charge'),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })

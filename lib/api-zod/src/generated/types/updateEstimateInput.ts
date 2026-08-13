@@ -7,6 +7,7 @@
  */
 import type { EstimateLineItem } from './estimateLineItem';
 import type { SupplyItem } from './supplyItem';
+import type { UpdateEstimateInputPaymentRequirement } from './updateEstimateInputPaymentRequirement';
 import type { UpdateEstimateInputStatus } from './updateEstimateInputStatus';
 import type { UpdateEstimateInputVisitMode } from './updateEstimateInputVisitMode';
 
@@ -24,4 +25,7 @@ export interface UpdateEstimateInput {
   estimatedDurationMin?: number;
   /** Supplies the crew will need on site */
   suppliesNeeded?: SupplyItem[];
+  paymentRequirement?: UpdateEstimateInputPaymentRequirement;
+  /** Percentage (deposit_pct) or fixed dollar amount (deposit_fixed) */
+  depositValue?: number;
 }

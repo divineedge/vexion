@@ -301,6 +301,7 @@ function formatEstimate(
     sentAt: e.sentAt?.toISOString() ?? null,
     approvedAt: e.approvedAt?.toISOString() ?? null,
     declinedAt: e.declinedAt?.toISOString() ?? null,
+    depositPaidAt: e.depositPaidAt?.toISOString() ?? null,
     createdAt: e.createdAt.toISOString(),
     updatedAt: e.updatedAt.toISOString(),
     customerName: extras?.customerName ?? null,
@@ -308,6 +309,44 @@ function formatEstimate(
     propertyAddress: extras?.propertyAddress ?? null,
     templateName: extras?.templateName ?? null,
   };
+}
+
+/** Compute the deposit amount in dollars given estimate totals and payment requirement. */
+function calcDepositAmount(paymentRequirement: string | null, depositValue: number | null, total: number): number {
+  if (!paymentRequirement || paymentRequirement === "none") return 0;
+  if (paymentRequirement === "full") return total;
+  if (paymentRequirement === "deposit_pct") return Math.round((depositValue ?? 0) / 100 * total * 100) / 100;
+  if (paymentRequirement === "deposit_fixed") return depositValue ?? 0;
+  return 0;
+}
+
+const VALID_PAYMENT_REQUIREMENTS = ["none", "full", "deposit_pct", "deposit_fixed"] as const;
+
+/**
+ * Validates payment-term fields.
+ * Returns a human-readable error string on failure, or null when valid.
+ */
+function validatePaymentTerms(
+  req: string | null | undefined,
+  val: number | null | undefined,
+): string | null {
+  const r = req ?? "none";
+  if (!(VALID_PAYMENT_REQUIREMENTS as readonly string[]).includes(r)) {
+    return `paymentRequirement must be one of: ${VALID_PAYMENT_REQUIREMENTS.join(", ")}`;
+  }
+  if (r === "deposit_pct") {
+    const n = typeof val === "number" ? val : (val != null ? parseFloat(String(val)) : NaN);
+    if (!isFinite(n) || n <= 0 || n > 100) {
+      return "depositValue must be a number in (0, 100] for deposit_pct";
+    }
+  }
+  if (r === "deposit_fixed") {
+    const n = typeof val === "number" ? val : (val != null ? parseFloat(String(val)) : NaN);
+    if (!isFinite(n) || n <= 0) {
+      return "depositValue must be a finite positive number for deposit_fixed";
+    }
+  }
+  return null;
 }
 
 // ── LIST ──────────────────────────────────────────────────────────────────────
@@ -376,7 +415,7 @@ router.get("/estimates/pipeline", async (req, res): Promise<void> => {
 // ── CREATE ────────────────────────────────────────────────────────────────────
 router.post("/estimates", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { customerId, propertyId, blueprintId, assigneeId, visitMode, scheduledAt, expiresAt, notes, lineItems, templateId, estimatedDurationMin, suppliesNeeded } = req.body;
+  const { customerId, propertyId, blueprintId, assigneeId, visitMode, scheduledAt, expiresAt, notes, lineItems, templateId, estimatedDurationMin, suppliesNeeded, paymentRequirement, depositValue } = req.body;
 
   let items: EstimateLineItem[] = lineItems ?? [];
   let resolvedTemplateId: number | null = null;
@@ -392,6 +431,10 @@ router.post("/estimates", async (req, res): Promise<void> => {
   }
 
   const { subtotal, tax, total } = calcTotals(items);
+
+  // Validate payment terms before persisting
+  const payTermErr = validatePaymentTerms(paymentRequirement, depositValue != null ? parseFloat(String(depositValue)) : undefined);
+  if (payTermErr) { res.status(400).json({ error: payTermErr }); return; }
 
   // Default expiry 30 days
   const defaultExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
@@ -413,6 +456,8 @@ router.post("/estimates", async (req, res): Promise<void> => {
     total,
     estimatedDurationMin: estimatedDurationMin != null ? parseInt(String(estimatedDurationMin), 10) : null,
     suppliesNeeded: normaliseSupplies(suppliesNeeded),
+    paymentRequirement: paymentRequirement ?? "none",
+    depositValue: depositValue != null ? parseFloat(String(depositValue)) : null,
     status: "draft",
   }).returning();
 
@@ -447,7 +492,30 @@ router.get("/estimates/:id", async (req, res): Promise<void> => {
 router.patch("/estimates/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(req.params.id, 10);
-  const { customerId, propertyId, assigneeId, visitMode, scheduledAt, expiresAt, notes, lineItems, status, estimatedDurationMin, suppliesNeeded } = req.body;
+  const { customerId, propertyId, assigneeId, visitMode, scheduledAt, expiresAt, notes, lineItems, status, estimatedDurationMin, suppliesNeeded, paymentRequirement, depositValue } = req.body;
+
+  // Always fetch the current record upfront — needed for status-transition
+  // validation, deposit-paid guard, and payment-term validation on partial updates.
+  const [current] = await db
+    .select({ status: estimatesTable.status, depositPaidAt: estimatesTable.depositPaidAt, paymentRequirement: estimatesTable.paymentRequirement, depositValue: estimatesTable.depositValue })
+    .from(estimatesTable)
+    .where(and(eq(estimatesTable.id, id), eq(estimatesTable.tenantId, tenantId)));
+  if (!current) { res.status(404).json({ error: "Not found" }); return; }
+
+  // Once a deposit or full payment has been collected, lock the fields that
+  // determine the charged amount. Allowing staff to change line items or payment
+  // terms after the customer has paid would either break the 409 integrity check
+  // at approval time (full/pct) or silently change the approved scope (fixed).
+  if (current.depositPaidAt) {
+    const lockedFields = ["lineItems", "paymentRequirement", "depositValue", "status"] as const;
+    const attempted = lockedFields.filter(f => req.body[f] !== undefined);
+    if (attempted.length > 0) {
+      res.status(409).json({
+        error: `Cannot change ${attempted.join(", ")} after a deposit has been collected for this estimate. Issue a refund first if the scope needs to change.`,
+      });
+      return;
+    }
+  }
 
   const updateData: Partial<typeof estimatesTable.$inferInsert> = {};
   if (customerId !== undefined) updateData.customerId = customerId ? parseInt(customerId, 10) : null;
@@ -458,11 +526,6 @@ router.patch("/estimates/:id", async (req, res): Promise<void> => {
   if (expiresAt !== undefined) updateData.expiresAt = expiresAt ? new Date(expiresAt) : null;
   if (notes !== undefined) updateData.notes = notes;
   if (status) {
-    // Fetch current status to validate transition
-    const [current] = await db.select({ status: estimatesTable.status })
-      .from(estimatesTable)
-      .where(and(eq(estimatesTable.id, id), eq(estimatesTable.tenantId, tenantId)));
-    if (!current) { res.status(404).json({ error: "Not found" }); return; }
     const allowed = ALLOWED_TRANSITIONS[current.status] ?? [];
     if (!allowed.includes(status)) {
       res.status(409).json({ error: `Cannot transition estimate from '${current.status}' to '${status}'` });
@@ -472,6 +535,19 @@ router.patch("/estimates/:id", async (req, res): Promise<void> => {
   }
   if (estimatedDurationMin !== undefined) updateData.estimatedDurationMin = estimatedDurationMin != null ? parseInt(String(estimatedDurationMin), 10) : null;
   if (suppliesNeeded !== undefined) (updateData as any).suppliesNeeded = normaliseSupplies(suppliesNeeded);
+  if (paymentRequirement !== undefined || depositValue !== undefined) {
+    // Resolve the effective term set: use the incoming value if provided, otherwise
+    // fall back to the value already persisted.  This prevents partial updates from
+    // silently bypassing validation (e.g. sending only depositValue=0 with an existing
+    // deposit_pct requirement).
+    const effectiveReq = paymentRequirement !== undefined ? (paymentRequirement ?? "none") : (current.paymentRequirement ?? "none");
+    const rawVal = depositValue !== undefined ? depositValue : current.depositValue;
+    const effectiveVal = rawVal != null ? parseFloat(String(rawVal)) : undefined;
+    const payTermErr = validatePaymentTerms(effectiveReq, effectiveVal);
+    if (payTermErr) { res.status(400).json({ error: payTermErr }); return; }
+    if (paymentRequirement !== undefined) updateData.paymentRequirement = effectiveReq;
+    if (depositValue !== undefined) updateData.depositValue = effectiveVal != null ? effectiveVal : null;
+  }
   if (lineItems !== undefined) {
     const items: EstimateLineItem[] = lineItems;
     const { subtotal, tax, total } = calcTotals(items);
@@ -941,16 +1017,36 @@ router.post("/estimates/:id/convert", async (req, res): Promise<void> => {
       const invTotal = invSubtotal + invTax;
       const invoiceNum = `INV-${Date.now().toString().slice(-8)}`;
 
+      // Apply any deposit already collected at acceptance time so the customer is
+      // not double-charged.  Original subtotal, tax, and total are always preserved
+      // so billing/reporting retains correct revenue figures.  For full-payment
+      // estimates mark the invoice as paid; for deposits add a note documenting the
+      // credit and remaining balance (staff can see what has already been collected).
+      const depositCharged: number = (estimate as any).depositChargedAmount ?? 0;
+      const payReq = estimate.paymentRequirement ?? "none";
+      const isFullyPaid = payReq === "full" && depositCharged > 0;
+      const remainingBalance = Math.max(0, Math.round((invTotal - depositCharged) * 100) / 100);
+      const depositNote = depositCharged > 0
+        ? (isFullyPaid
+            ? `Paid in full via deposit at estimate acceptance (Stripe PI: ${(estimate as any).depositPaymentIntentId ?? "unknown"}).`
+            : `Deposit of $${depositCharged.toFixed(2)} collected at estimate acceptance — balance due: $${remainingBalance.toFixed(2)} (Stripe PI: ${(estimate as any).depositPaymentIntentId ?? "unknown"}).`)
+        : null;
+
       const [invoice] = await db.insert(invoicesTable).values({
         tenantId,
         invoiceNumber: invoiceNum,
         customerId: estimate.customerId,
         jobId: job.id,
-        status: "draft",
+        // Preserve original subtotal + tax + total so revenue reporting is correct.
+        // A full-payment invoice is marked paid; a deposit invoice remains draft
+        // with the collected amount documented in notes.
+        status: isFullyPaid ? "paid" : "draft",
         subtotal: invSubtotal,
         tax: invTax,
         total: invTotal,
         lineItems: jobItems,
+        paidAt: isFullyPaid ? new Date() : null,
+        notes: depositNote,
       }).returning();
       invoiceId = invoice.id;
 
@@ -1002,6 +1098,7 @@ router.get("/public/estimates/:token", async (req, res): Promise<void> => {
   const optional = items.filter(i => i.isOptional);
 
   const stripeEnabled = !!(tenant?.stripeEnabled && getStripeClient());
+  const depositAmount = calcDepositAmount(row.estimate.paymentRequirement, row.estimate.depositValue, row.estimate.total ?? 0);
 
   res.json({
     ...formatEstimate(row.estimate, { customerName: row.customerName, propertyAddress: row.propertyAddress }),
@@ -1011,6 +1108,7 @@ router.get("/public/estimates/:token", async (req, res): Promise<void> => {
     expired: !!expired,
     stripeEnabled,
     stripePublishableKey: stripeEnabled ? (getStripePublishableKey() ?? null) : null,
+    depositAmount,
     businessProfile: {
       companyName: tenant?.name ?? null,
       logoUrl: tenant?.logoUrl ?? null,
@@ -1101,72 +1199,130 @@ router.post("/public/estimates/:token/respond", async (req, res): Promise<void> 
     return;
   }
 
-  // When approving and Stripe is enabled, a payment method must be supplied.
-  // If stripeEnabled is true but the server Stripe client is unavailable (missing secret key),
-  // fail closed — do NOT allow acceptance without a payment method.
+  // When approving: enforce payment requirements and optionally save a payment method.
+  // Payment enforcement is checked independently of Stripe enablement so that a
+  // required-payment estimate cannot be approved even if Stripe is misconfigured.
   if (action === "approve") {
     const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, estimate.tenantId));
+
+    // ── Payment-requirement gate (fail closed, outside Stripe branch) ──────────
+    // If a deposit or full payment was configured but depositPaidAt is still null,
+    // reject regardless of whether Stripe is enabled. The portal's authenticated
+    // pay-deposit endpoint is the only path that legitimately sets depositPaidAt;
+    // direct calls to this public endpoint that skip that step are blocked here.
+    if (estimate.paymentRequirement && estimate.paymentRequirement !== "none" && !estimate.depositPaidAt) {
+      if (!tenant?.stripeEnabled) {
+        res.status(503).json({ error: "This estimate requires payment before acceptance, but payment processing is not configured. Contact your service provider." });
+      } else {
+        res.status(402).json({ error: "Payment is required before approving this estimate. Please complete payment in the customer portal." });
+      }
+      return;
+    }
+
     if (tenant?.stripeEnabled) {
       const stripe = getStripeClient();
       if (!stripe) {
         res.status(503).json({ error: "Payment method required but Stripe is not configured on this server. Contact support." });
         return;
       }
-      if (!paymentMethodId) {
+
+      if (paymentMethodId) {
+        // Standard flow (no deposit requirement) or customer providing a card: attach
+        // and set as default for future invoices.
+        if (!estimate.customerId) {
+          res.status(400).json({ error: "Estimate has no linked customer" });
+          return;
+        }
+        const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, estimate.customerId));
+        if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
+
+        const stripeCustomerId = await ensureStripeCustomer(
+          customer.id,
+          customer.name,
+          customer.email,
+          customer.stripeCustomerId,
+        );
+
+        // Retrieve the PaymentMethod to check its current attachment status.
+        // confirmCardSetup already attaches it to our customer, so re-calling attach
+        // on an already-attached PM raises a Stripe error. Only attach if needed.
+        const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+        if (pm.customer === null || pm.customer === undefined) {
+          // Not yet attached — attach it now
+          await stripe.paymentMethods.attach(paymentMethodId, { customer: stripeCustomerId });
+        } else if (pm.customer !== stripeCustomerId) {
+          // Attached to a different customer — reject to prevent cross-customer data leak
+          res.status(422).json({ error: "Payment method belongs to a different customer" });
+          return;
+        }
+        // Already attached to the correct customer — skip attach
+
+        await stripe.customers.update(stripeCustomerId, {
+          invoice_settings: { default_payment_method: paymentMethodId },
+        });
+
+        // Persist the Stripe payment method ID to our DB
+        await db.update(customersTable)
+          .set({ stripeDefaultPaymentMethodId: paymentMethodId })
+          .where(eq(customersTable.id, estimate.customerId));
+      } else if (!estimate.depositPaidAt) {
+        // No deposit paid and no card provided on a Stripe-enabled tenant.
+        // This covers estimates with paymentRequirement='none' where we still want a card on file.
         res.status(422).json({ error: "paymentMethodId is required when Stripe is enabled" });
         return;
       }
-      if (!estimate.customerId) {
-        res.status(400).json({ error: "Estimate has no linked customer" });
-        return;
-      }
-      const [customer] = await db.select().from(customersTable).where(eq(customersTable.id, estimate.customerId));
-      if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
-
-      const stripeCustomerId = await ensureStripeCustomer(
-        customer.id,
-        customer.name,
-        customer.email,
-        customer.stripeCustomerId,
-      );
-
-      // Retrieve the PaymentMethod to check its current attachment status.
-      // confirmCardSetup already attaches it to our customer, so re-calling attach
-      // on an already-attached PM raises a Stripe error. Only attach if needed.
-      const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
-      if (pm.customer === null || pm.customer === undefined) {
-        // Not yet attached — attach it now
-        await stripe.paymentMethods.attach(paymentMethodId, { customer: stripeCustomerId });
-      } else if (pm.customer !== stripeCustomerId) {
-        // Attached to a different customer — reject to prevent cross-customer data leak
-        res.status(422).json({ error: "Payment method belongs to a different customer" });
-        return;
-      }
-      // Already attached to the correct customer — skip attach
-
-      await stripe.customers.update(stripeCustomerId, {
-        invoice_settings: { default_payment_method: paymentMethodId },
-      });
-
-      // Persist the Stripe payment method ID to our DB
-      await db.update(customersTable)
-        .set({ stripeDefaultPaymentMethodId: paymentMethodId })
-        .where(eq(customersTable.id, estimate.customerId));
+      // else: deposit was paid via the authenticated pay-deposit endpoint, which
+      // already attached the card and set it as the customer's default. Nothing more needed.
     }
   }
 
   const items = (estimate.lineItems as EstimateLineItem[]) ?? [];
-  const acceptedIds: string[] = acceptedOptionalItemIds ?? [];
 
-  // Mark accepted optional items, then enforce one-per-group for grouped add-ons
-  const markedItems = items.map(item => ({
-    ...item,
-    acceptedByCustomer: item.isOptional ? acceptedIds.includes(item.id) : true,
-  }));
+  // When a deposit has already been paid, the optional-item selection was locked
+  // at payment time (the optional-items PATCH blocks changes after payment, and the
+  // pay-deposit write uses an atomic line-items snapshot).  Use the authoritative
+  // stored selections rather than the caller-supplied list to prevent any post-payment
+  // scope change — including via a direct API call with a different acceptedOptionalItemIds.
+  let markedItems: EstimateLineItem[];
+  if (action === "approve" && estimate.depositPaidAt) {
+    // Trust the DB snapshot: required items stay true, optional items keep their
+    // stored acceptedByCustomer flag as locked at payment time.
+    markedItems = items.map(item => ({
+      ...item,
+      acceptedByCustomer: item.isOptional ? (item.acceptedByCustomer ?? false) : true,
+    }));
+  } else {
+    const acceptedIds: string[] = acceptedOptionalItemIds ?? [];
+    markedItems = items.map(item => ({
+      ...item,
+      acceptedByCustomer: item.isOptional ? acceptedIds.includes(item.id) : true,
+    }));
+  }
   const updatedItems = normalizeGroupedSelections(markedItems);
 
   // Recompute totals from the post-approval line items (required + accepted optional only)
   const { subtotal, tax, total } = calcTotals(updatedItems);
+
+  // ── Deposit-amount integrity check ──────────────────────────────────────────
+  // If a deposit was collected we validate that the final approved total matches
+  // the amount charged within a cent tolerance. A mismatch means the customer
+  // changed their optional-item selection after payment (the optional-items endpoint
+  // blocks this, but we check again here as a belt-and-suspenders defence).
+  if (action === "approve" && estimate.depositPaidAt && (estimate as any).depositChargedAmount != null) {
+    const charged: number = (estimate as any).depositChargedAmount;
+    const req = estimate.paymentRequirement ?? "none";
+    let expectedCharge = 0;
+    if (req === "full") expectedCharge = total;
+    else if (req === "deposit_pct") expectedCharge = Math.round((estimate.depositValue ?? 0) / 100 * total * 100) / 100;
+    else if (req === "deposit_fixed") expectedCharge = estimate.depositValue ?? 0;
+    // Allow 1 cent rounding tolerance
+    if (Math.abs(charged - expectedCharge) > 0.01) {
+      res.status(409).json({
+        error: "The payment collected does not match the current estimate total. The estimate may have been modified after payment. Please contact your service provider.",
+      });
+      return;
+    }
+  }
 
   const isApproved = action === "approve";
   const now = new Date();

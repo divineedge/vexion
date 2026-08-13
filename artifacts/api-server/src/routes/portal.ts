@@ -1889,6 +1889,9 @@ router.get("/portal/estimates", requirePortalAuth, async (req: any, res): Promis
       createdAt: e.createdAt.toISOString(),
       expiresAt: e.expiresAt ? e.expiresAt.toISOString() : null,
       publicToken: e.approvalToken,
+      paymentRequirement: e.paymentRequirement ?? "none",
+      depositValue: e.depositValue ?? null,
+      depositPaidAt: e.depositPaidAt ? e.depositPaidAt.toISOString() : null,
     })),
   );
 });
@@ -1934,6 +1937,14 @@ router.get("/portal/estimates/:id", requirePortalAuth, async (req: any, res): Pr
     };
   });
 
+  const paymentRequirement = estimate.paymentRequirement ?? "none";
+  const depositValue = estimate.depositValue ?? null;
+  const total = estimate.total ?? 0;
+  let depositAmount = 0;
+  if (paymentRequirement === "full") depositAmount = total;
+  else if (paymentRequirement === "deposit_pct") depositAmount = Math.round((depositValue ?? 0) / 100 * total * 100) / 100;
+  else if (paymentRequirement === "deposit_fixed") depositAmount = depositValue ?? 0;
+
   res.json({
     id: estimate.id,
     title: `Estimate #${estimate.id}`,
@@ -1947,6 +1958,10 @@ router.get("/portal/estimates/:id", requirePortalAuth, async (req: any, res): Pr
     expiresAt: estimate.expiresAt ? estimate.expiresAt.toISOString() : null,
     createdAt: estimate.createdAt.toISOString(),
     publicToken: estimate.approvalToken ?? null,
+    paymentRequirement,
+    depositValue,
+    depositPaidAt: estimate.depositPaidAt ? estimate.depositPaidAt.toISOString() : null,
+    depositAmount,
   });
 });
 
@@ -1962,7 +1977,7 @@ router.patch("/portal/estimates/:id/optional-items", requirePortalAuth, async (r
   if (!Array.isArray(selections)) { res.status(400).json({ error: "selections must be an array" }); return; }
 
   const [estimate] = await db
-    .select({ lineItems: estimatesTable.lineItems })
+    .select({ lineItems: estimatesTable.lineItems, depositPaidAt: estimatesTable.depositPaidAt })
     .from(estimatesTable)
     .where(and(
       eq(estimatesTable.id, estimateId),
@@ -1973,6 +1988,14 @@ router.patch("/portal/estimates/:id/optional-items", requirePortalAuth, async (r
     .limit(1);
 
   if (!estimate) { res.status(404).json({ error: "Estimate not found or not editable" }); return; }
+
+  // Once a deposit has been collected the optional-item selection is locked to the
+  // snapshot used when computing the charge. Any change would create a mismatch
+  // between what was paid and what is ultimately approved.
+  if (estimate.depositPaidAt) {
+    res.status(409).json({ error: "Optional items cannot be changed after payment has been collected for this estimate." });
+    return;
+  }
 
   type RawItem = Record<string, unknown> & { isOptional?: boolean; groupId?: string | null; acceptedByCustomer?: boolean };
   // Apply the customer's boolean selections
@@ -1993,10 +2016,10 @@ router.patch("/portal/estimates/:id/optional-items", requirePortalAuth, async (r
   });
 
   // Use raw SQL to bypass Drizzle jsonb mapper quirks.
-  // Gate on status = 'sent' so a stale in-flight PATCH cannot overwrite
-  // an already-approved estimate; check rowCount to detect the race.
+  // Gate on status = 'sent' AND deposit_paid_at IS NULL so a stale in-flight PATCH
+  // cannot overwrite an already-approved estimate or one whose deposit was just collected.
   const result = await db.execute(
-    sql`UPDATE estimates SET line_items = ${JSON.stringify(updated)}::jsonb WHERE id = ${estimateId} AND tenant_id = ${portalTenantId} AND status = 'sent'`
+    sql`UPDATE estimates SET line_items = ${JSON.stringify(updated)}::jsonb WHERE id = ${estimateId} AND tenant_id = ${portalTenantId} AND status = 'sent' AND deposit_paid_at IS NULL`
   );
   const rowsAffected = (result as any).rowCount ?? 0;
   if (rowsAffected === 0) {
@@ -2005,6 +2028,227 @@ router.patch("/portal/estimates/:id/optional-items", requirePortalAuth, async (r
   }
 
   res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// POST /portal/estimates/:id/pay-deposit
+// Charges the customer's saved card for the deposit/full amount required on
+// acceptance.  Call this BEFORE the /public/estimates/:token/respond endpoint.
+// ---------------------------------------------------------------------------
+router.post("/portal/estimates/:id/pay-deposit", requirePortalAuth, async (req: any, res): Promise<void> => {
+  const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
+  const estimateId = parseInt(req.params.id, 10);
+  if (isNaN(estimateId)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const [estimate] = await db
+    .select()
+    .from(estimatesTable)
+    .where(and(
+      eq(estimatesTable.id, estimateId),
+      eq(estimatesTable.customerId, portalCustomerId),
+      eq(estimatesTable.tenantId, portalTenantId),
+      eq(estimatesTable.status, "sent" as string),
+    ))
+    .limit(1);
+
+  if (!estimate) { res.status(404).json({ error: "Estimate not found or not open" }); return; }
+  if (estimate.expiresAt && estimate.expiresAt < new Date()) {
+    res.status(410).json({ error: "Estimate has expired" });
+    return;
+  }
+  if (estimate.depositPaidAt) {
+    // Already paid — idempotent success
+    res.json({ ok: true, alreadyPaid: true });
+    return;
+  }
+
+  const paymentRequirement = estimate.paymentRequirement ?? "none";
+  if (paymentRequirement === "none") {
+    res.status(400).json({ error: "This estimate has no payment requirement" });
+    return;
+  }
+
+  const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, portalTenantId));
+  if (!tenant?.stripeEnabled) {
+    res.status(400).json({ error: "Payments are not enabled for this account. Contact your service provider." });
+    return;
+  }
+
+  const stripe = getStripeClient();
+  if (!stripe) { res.status(503).json({ error: "Payment system unavailable" }); return; }
+
+  const [customer] = await db.select().from(customersTable)
+    .where(and(eq(customersTable.id, portalCustomerId), eq(customersTable.tenantId, portalTenantId)));
+  if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
+
+  // Recompute totals from the current accepted line-item selections rather than
+  // the stale stored estimate.total.  The customer may have toggled optional add-ons
+  // since the estimate was last saved, so the stored total can be outdated.
+  // This mirrors the same logic used by the public respond endpoint so the deposit
+  // matches the amount the customer will actually be invoiced.
+  type RawLineItem = Record<string, unknown> & {
+    isOptional?: boolean; groupId?: string | null; acceptedByCustomer?: boolean;
+    qty?: number; unitPrice?: number; markup?: number; discount?: number;
+  };
+  const rawItems = (estimate.lineItems as RawLineItem[]) ?? [];
+  const countedDepositGroups = new Set<string>();
+  let computedTotal = 0;
+  for (const item of rawItems) {
+    if (item.isOptional && !item.acceptedByCustomer) continue;
+    if (item.isOptional && item.groupId) {
+      if (countedDepositGroups.has(item.groupId)) continue;
+      countedDepositGroups.add(item.groupId);
+    }
+    const base = (item.qty ?? 1) * (item.unitPrice ?? 0);
+    computedTotal += base * (1 + (item.markup ?? 0) / 100) * (1 - (item.discount ?? 0) / 100);
+  }
+
+  let depositAmount = 0;
+  if (paymentRequirement === "full") depositAmount = computedTotal;
+  else if (paymentRequirement === "deposit_pct") depositAmount = Math.round((estimate.depositValue ?? 0) / 100 * computedTotal * 100) / 100;
+  else if (paymentRequirement === "deposit_fixed") depositAmount = estimate.depositValue ?? 0;
+
+  if (depositAmount <= 0) {
+    res.status(400).json({ error: "Deposit amount is zero — nothing to charge" });
+    return;
+  }
+
+  // Get or create the Stripe customer
+  const { ensureStripeCustomer } = await import("../lib/stripe");
+  const stripeCustomerId = await ensureStripeCustomer(portalCustomerId, customer.name, customer.email, customer.stripeCustomerId);
+
+  const paymentMethodId = req.body?.paymentMethodId ?? customer.stripeDefaultPaymentMethodId;
+  if (!paymentMethodId) {
+    res.status(422).json({ error: "No saved payment method. Please add a card first.", requiresCard: true });
+    return;
+  }
+
+  // Attach payment method to the stripe customer if needed (in case a new PM was just set up)
+  try {
+    const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+    if (!pm.customer) {
+      await stripe.paymentMethods.attach(paymentMethodId, { customer: stripeCustomerId });
+    } else if (pm.customer !== stripeCustomerId) {
+      res.status(422).json({ error: "Payment method belongs to a different customer" });
+      return;
+    }
+  } catch (err: any) {
+    logger.error({ err, estimateId }, "Failed to retrieve/attach payment method for deposit");
+    res.status(422).json({ error: "Invalid payment method" });
+    return;
+  }
+
+  // Snapshot the accepted line-items now (before charging) so the idempotency key
+  // encodes the exact selection set and the atomic conditional UPDATE can verify
+  // the DB hasn't changed between our read and write.
+  const lineItemsSnapshot = JSON.stringify(rawItems);
+
+  // Build an idempotency key that includes a hash of the current line-items
+  // snapshot so each selection is keyed independently.  This means a retry after
+  // a selection-race refund with the *same* selections will return Stripe's cached
+  // (but refunded) PI — we detect that below and re-issue with a fresh key.
+  const lineItemsHash = crypto.createHash("sha256").update(lineItemsSnapshot).digest("hex").slice(0, 12);
+  const baseIdempotencyKey = `deposit-est-${estimateId}-cust-${portalCustomerId}-${lineItemsHash}`;
+
+  const piParams = {
+    amount: Math.round(depositAmount * 100), // cents
+    currency: "usd",
+    customer: stripeCustomerId,
+    payment_method: paymentMethodId,
+    confirm: true,
+    off_session: true,
+    description: `Deposit for Estimate #${estimateId}`,
+    metadata: { estimateId: String(estimateId), tenantId: String(portalTenantId) },
+    expand: ["latest_charge"],
+  } as const;
+
+  let pi: Awaited<ReturnType<typeof stripe.paymentIntents.create>>;
+  try {
+    pi = await stripe.paymentIntents.create(piParams as any, { idempotencyKey: baseIdempotencyKey });
+  } catch (err: any) {
+    logger.error({ err, estimateId }, "Stripe PaymentIntent creation failed for deposit");
+    const msg = err?.raw?.message ?? err?.message ?? "Payment failed";
+    res.status(402).json({ error: msg });
+    return;
+  }
+
+  // The idempotency cache may return a PI that was previously refunded (when the
+  // conditional DB update failed and we issued a refund).  Detect this via the
+  // expanded latest_charge.refunded flag and re-issue with a fresh, non-cached key.
+  const lc = pi.latest_charge;
+  const wasRefunded = lc && typeof lc === "object" && "refunded" in lc && (lc as { refunded: boolean }).refunded;
+  if (wasRefunded) {
+    const freshKey = `${baseIdempotencyKey}-reissue-${Date.now()}`;
+    try {
+      pi = await stripe.paymentIntents.create(piParams as any, { idempotencyKey: freshKey });
+    } catch (err: any) {
+      logger.error({ err, estimateId }, "Stripe PI re-issue failed after refund detection");
+      const msg = err?.raw?.message ?? err?.message ?? "Payment failed";
+      res.status(402).json({ error: msg });
+      return;
+    }
+  }
+
+  if (pi.status !== "succeeded") {
+    res.status(402).json({ error: "Payment did not succeed. Please check your card details.", stripeStatus: pi.status });
+    return;
+  }
+
+  // Persist deposit collected using an atomic conditional UPDATE that validates the
+  // line-items snapshot hasn't changed since we computed the charge amount.
+  // This closes the race between pay-deposit reading selections and an optional-items
+  // PATCH that commits just before our write.  The JSONB equality operator normalises
+  // key order, so the comparison is reliable regardless of serialisation order.
+  const now = new Date();
+  const updateResult = await db.execute(
+    sql`UPDATE estimates
+        SET deposit_paid_at = ${now.toISOString()}::timestamptz,
+            deposit_payment_intent_id = ${pi.id},
+            deposit_charged_amount = ${depositAmount}
+        WHERE id = ${estimateId}
+          AND tenant_id = ${portalTenantId}
+          AND status = 'sent'
+          AND deposit_paid_at IS NULL
+          AND line_items = ${lineItemsSnapshot}::jsonb`
+  );
+  const rowsUpdated = (updateResult as any).rowCount ?? 0;
+
+  if (rowsUpdated === 0) {
+    // Either selections changed between our read and the UPDATE, or a concurrent
+    // request already recorded the payment.  Determine which case we're in.
+    const [fresh] = await db
+      .select({ depositPaidAt: estimatesTable.depositPaidAt })
+      .from(estimatesTable)
+      .where(and(eq(estimatesTable.id, estimateId), eq(estimatesTable.tenantId, portalTenantId)))
+      .limit(1);
+
+    if (fresh?.depositPaidAt) {
+      // Concurrent payment already recorded — return idempotent success
+      // (the same idempotency key ensures Stripe returned the same PI).
+      res.json({ ok: true, chargedAmount: depositAmount, paymentIntentId: pi.id, alreadyPaid: true });
+      return;
+    }
+
+    // Selections changed after we charged — issue a full refund and ask the
+    // customer to retry so they confirm the updated amount.
+    try {
+      await stripe.refunds.create({ payment_intent: pi.id, reason: "requested_by_customer" });
+    } catch (refundErr) {
+      logger.error({ refundErr, estimateId, paymentIntentId: pi.id }, "Failed to auto-refund deposit after selection race");
+    }
+    res.status(409).json({
+      error: "Your selection changed while payment was processing. The charge has been refunded. Please review your choices and try again.",
+    });
+    return;
+  }
+
+  // Also persist the payment method as the customer's default so it's saved for future use
+  await stripe.customers.update(stripeCustomerId, { invoice_settings: { default_payment_method: paymentMethodId } });
+  await db.update(customersTable)
+    .set({ stripeDefaultPaymentMethodId: paymentMethodId })
+    .where(and(eq(customersTable.id, portalCustomerId), eq(customersTable.tenantId, portalTenantId)));
+
+  res.json({ ok: true, chargedAmount: depositAmount, paymentIntentId: pi.id });
 });
 
 router.post("/portal/plans/:id/cancel-request", requirePortalAuth, async (req: any, res): Promise<void> => {

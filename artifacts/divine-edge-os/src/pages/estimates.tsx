@@ -309,6 +309,8 @@ export default function EstimatesPage() {
     notes: '',
     templateId: '',
     estimatedDurationMin: '',
+    paymentRequirement: 'none',
+    depositValue: '',
   });
   const [lineItems, setLineItems] = useState<LineItem[]>([emptyItem()]);
   const [catalogServices, setCatalogServices] = useState<CatalogService[] | null>(null);
@@ -418,6 +420,8 @@ export default function EstimatesPage() {
           ? Math.round(parseFloat(form.estimatedDurationMin) * ((settings as any)?.durationUnit === 'hours' ? 60 : 1))
           : undefined,
         suppliesNeeded: createSupplies.length > 0 ? createSupplies : undefined,
+        paymentRequirement: form.paymentRequirement as 'none' | 'full' | 'deposit_pct' | 'deposit_fixed',
+        depositValue: form.paymentRequirement !== 'none' && form.depositValue ? parseFloat(form.depositValue) : undefined,
       },
     }, {
       onSuccess: (e) => {
@@ -428,7 +432,7 @@ export default function EstimatesPage() {
         setCreateSupplies([]);
         setAddingCreateSupply(false);
         setCreateSupplySearch('');
-        setForm({ customerId: '', propertyId: '', assigneeId: '', visitMode: 'scheduled', scheduledAt: '', expiresAt: '', notes: '', templateId: '', estimatedDurationMin: '' });
+        setForm({ customerId: '', propertyId: '', assigneeId: '', visitMode: 'scheduled', scheduledAt: '', expiresAt: '', notes: '', templateId: '', estimatedDurationMin: '', paymentRequirement: 'none', depositValue: '' });
         setSelectedId(e.id);
       },
       onError: () => toast.error('Failed to create estimate'),
@@ -990,6 +994,51 @@ export default function EstimatesPage() {
               <Textarea rows={2} title="Internal notes or scope of work (not shown on the customer-facing estimate)" placeholder="Internal notes or scope..." value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
             </div>
 
+            {/* Payment on acceptance */}
+            <div className="rounded-lg border p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Receipt className="w-4 h-4 text-muted-foreground" />
+                <label className="text-sm font-medium">Payment on acceptance</label>
+              </div>
+              <Select value={form.paymentRequirement} onValueChange={v => setForm(f => ({ ...f, paymentRequirement: v, depositValue: '' }))}>
+                <SelectTrigger title="Choose what payment is required when the customer accepts this estimate">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None — accept without payment</SelectItem>
+                  <SelectItem value="full">Full payment upfront</SelectItem>
+                  <SelectItem value="deposit_pct">Deposit — % of total</SelectItem>
+                  <SelectItem value="deposit_fixed">Deposit — fixed amount</SelectItem>
+                </SelectContent>
+              </Select>
+              {(form.paymentRequirement === 'deposit_pct' || form.paymentRequirement === 'deposit_fixed') && (
+                <div className="flex items-center gap-2">
+                  {form.paymentRequirement === 'deposit_pct' && <span className="text-sm text-muted-foreground">%</span>}
+                  {form.paymentRequirement === 'deposit_fixed' && <span className="text-sm text-muted-foreground">$</span>}
+                  <Input
+                    type="number"
+                    min={0}
+                    step={form.paymentRequirement === 'deposit_pct' ? 1 : 0.01}
+                    max={form.paymentRequirement === 'deposit_pct' ? 100 : undefined}
+                    placeholder={form.paymentRequirement === 'deposit_pct' ? 'e.g. 25' : 'e.g. 150.00'}
+                    value={form.depositValue}
+                    onChange={e => setForm(f => ({ ...f, depositValue: e.target.value }))}
+                    className="flex-1"
+                    title={form.paymentRequirement === 'deposit_pct' ? 'Percentage of estimate total due on acceptance' : 'Fixed dollar amount due on acceptance'}
+                  />
+                  <span className="text-xs text-muted-foreground">{form.paymentRequirement === 'deposit_pct' ? 'of total' : 'USD'}</span>
+                </div>
+              )}
+              {form.paymentRequirement !== 'none' && (
+                <p className="text-xs text-muted-foreground">
+                  {form.paymentRequirement === 'full' && 'Customer will be prompted to pay the full estimate total when they accept.'}
+                  {form.paymentRequirement === 'deposit_pct' && `Customer pays ${form.depositValue || '?'}% of the total as a deposit when accepting.`}
+                  {form.paymentRequirement === 'deposit_fixed' && `Customer pays $${form.depositValue || '?'} as a deposit when accepting.`}
+                  {' '}Requires Stripe to be enabled.
+                </p>
+              )}
+            </div>
+
             <Separator />
 
             {/* Line items */}
@@ -1438,6 +1487,36 @@ export default function EstimatesPage() {
                     </p>
                   </div>
                 )}
+
+                {/* Payment requirement */}
+                {(() => {
+                  const req = (selectedEstimate as any).paymentRequirement as string | undefined;
+                  const val = (selectedEstimate as any).depositValue as number | null | undefined;
+                  const paidAt = (selectedEstimate as any).depositPaidAt as string | null | undefined;
+                  if (!req || req === 'none') return null;
+                  const label =
+                    req === 'full' ? 'Full payment required on acceptance' :
+                    req === 'deposit_pct' ? `${val ?? '?'}% deposit required on acceptance` :
+                    req === 'deposit_fixed' ? `$${(val ?? 0).toFixed(2)} deposit required on acceptance` : null;
+                  if (!label) return null;
+                  return (
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1.5">
+                        <Receipt className="w-3.5 h-3.5" /> Payment Requirement
+                      </p>
+                      <div className="flex items-center gap-2 text-sm">
+                        <span>{label}</span>
+                        {paidAt ? (
+                          <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 border-emerald-300 gap-1">
+                            <CheckCircle2 className="w-3 h-3" /> Deposit collected {format(new Date(paidAt), 'MMM d, yyyy')}
+                          </Badge>
+                        ) : selectedEstimate.status === 'sent' ? (
+                          <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300">Pending payment</Badge>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {(selectedEstimate as any).estimatedDurationMin != null && (
                   <div className="space-y-1">

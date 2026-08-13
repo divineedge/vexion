@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, real, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, jsonb, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -59,6 +59,17 @@ export const estimatesTable = pgTable("estimates", {
   /** Supplies the crew will need on site: [{inventoryItemId, name, quantity, unit}] */
   suppliesNeeded: jsonb("supplies_needed").default("[]"),
   convertedToJobId: integer("converted_to_job_id"),
+  /** Payment requirement on acceptance: none | full | deposit_pct | deposit_fixed */
+  paymentRequirement: text("payment_requirement").notNull().default("none"),
+  /** For deposit_pct: percentage (e.g. 20 = 20%). For deposit_fixed: dollar amount. */
+  depositValue: real("deposit_value"),
+  /** Timestamp when the deposit/full payment was collected */
+  depositPaidAt: timestamp("deposit_paid_at", { withTimezone: true }),
+  /** Stripe PaymentIntent ID for the deposit charge */
+  depositPaymentIntentId: text("deposit_payment_intent_id"),
+  /** Exact dollar amount charged when depositPaidAt was set. Used to validate
+   *  that the final approved total matches what was collected; immutable once set. */
+  depositChargedAmount: real("deposit_charged_amount"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

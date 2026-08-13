@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import * as React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,9 +9,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { FileText, Clock, CheckCircle2, XCircle, ThumbsUp, ThumbsDown, Loader2, ChevronRight, Sparkles } from "lucide-react";
+import { FileText, Clock, CheckCircle2, XCircle, ThumbsUp, ThumbsDown, Loader2, ChevronRight, Sparkles, CreditCard, ShieldCheck } from "lucide-react";
 import { customFetch } from "@workspace/api-client-react";
 import { toast } from "sonner";
+import { loadStripe, type Stripe as StripeInstance } from "@stripe/stripe-js";
+import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
 
 interface PortalEstimate {
   id: number;
@@ -22,6 +25,15 @@ interface PortalEstimate {
   createdAt: string;
   expiresAt: string | null;
   publicToken: string | null;
+  paymentRequirement?: string | null;
+  depositValue?: number | null;
+  depositPaidAt?: string | null;
+}
+
+interface SavedCard {
+  label: string;
+  last4: string;
+  brand: string;
 }
 
 interface DetailLineItem {
@@ -52,6 +64,73 @@ interface EstimateDetail {
   expiresAt: string | null;
   createdAt: string;
   publicToken: string | null;
+  paymentRequirement?: string | null;
+  depositValue?: number | null;
+  depositPaidAt?: string | null;
+  depositAmount?: number;
+  depositChargedAmount?: number | null;
+}
+
+/** Inline card form — receives a pre-created setup intent clientSecret */
+function InlineCardFormInner({
+  clientSecret,
+  depositAmount,
+  onSuccess,
+  onCancel,
+}: {
+  clientSecret: string;
+  depositAmount: number;
+  onSuccess: (pmId: string) => void;
+  onCancel: () => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [busy, setBusy] = React.useState(false);
+  const [ready, setReady] = React.useState(false);
+
+  const handleSubmit = async () => {
+    if (!stripe || !elements) return;
+    const cardEl = elements.getElement(CardElement);
+    if (!cardEl) return;
+    setBusy(true);
+    try {
+      const result = await stripe.confirmCardSetup(clientSecret, { payment_method: { card: cardEl } });
+      if (result.error) { toast.error(result.error.message ?? "Card setup failed"); return; }
+      const pmId = result.setupIntent?.payment_method as string | undefined;
+      if (!pmId) { toast.error("No payment method returned"); return; }
+      await customFetch("/api/portal/me/attach-payment-method", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentMethodId: pmId }),
+      });
+      onSuccess(pmId);
+    } catch {
+      toast.error("Failed to save card");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-lg border p-3 bg-white">
+        <CardElement
+          options={{ style: { base: { fontSize: "16px", color: "#374151" } } }}
+          onChange={e => setReady(e.complete)}
+        />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Your card will be charged {formatCurrency(depositAmount)} immediately after saving.
+      </p>
+      <div className="flex gap-2">
+        <Button variant="outline" size="sm" onClick={onCancel} disabled={busy} className="flex-1">Cancel</Button>
+        <Button size="sm" disabled={!ready || busy} onClick={handleSubmit} className="flex-1 gap-2">
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
+          {busy ? "Processing…" : "Add Card & Pay"}
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -84,6 +163,16 @@ export default function Estimates() {
   // approved selection after the estimate status has changed to 'approved'.
   const pendingPatchRef = useRef<Promise<void> | null>(null);
 
+  // ── Deposit payment flow ─────────────────────────────────────────────────
+  // payStep: null = show normal approve/decline
+  //          'confirm' = show "charge your saved card $X" confirmation
+  //          'add-card' = show Stripe card form to add a card first
+  const [payStep, setPayStep] = useState<null | "confirm" | "add-card">(null);
+  const [savedCard, setSavedCard] = useState<SavedCard | null | undefined>(undefined);
+  const [payingDeposit, setPayingDeposit] = useState(false);
+  const [stripePromise, setStripePromise] = useState<Promise<StripeInstance | null> | null>(null);
+  const [cardSetupSecret, setCardSetupSecret] = useState<string | null>(null);
+
   const { data: estimates, isLoading } = useQuery<PortalEstimate[]>({
     queryKey: ["portal-estimates"],
     queryFn: () => customFetch<PortalEstimate[]>("/api/portal/estimates"),
@@ -98,6 +187,9 @@ export default function Estimates() {
     setDetail(null);
     setDetailLoading(true);
     setOptionalSelections({});
+    setPayStep(null);
+    setSavedCard(undefined);
+    setCardSetupSecret(null);
     try {
       const data = await customFetch<EstimateDetail>(`/api/portal/estimates/${id}`);
       setDetail(data);
@@ -108,11 +200,105 @@ export default function Estimates() {
         if (item.isOptional) init[item.idx] = item.acceptedByCustomer;
       });
       setOptionalSelections(init);
+
+      // If this is a "sent" estimate with a payment requirement, pre-fetch the
+      // customer's saved card so the payment step renders without a loading flash.
+      if (data.status === "sent" && data.paymentRequirement && data.paymentRequirement !== "none" && !data.depositPaidAt) {
+        customFetch<{ paymentMethod: SavedCard | null }>("/api/portal/me/payment-method")
+          .then(r => setSavedCard(r.paymentMethod))
+          .catch(() => setSavedCard(null));
+      }
     } catch {
       toast.error("Could not load estimate details. Please try again.");
       setReviewEstimateId(null);
     } finally {
       setDetailLoading(false);
+    }
+  };
+
+  /** Charge the deposit for the current estimate using the given payment method. */
+  const payDeposit = async (paymentMethodId?: string): Promise<boolean> => {
+    if (!reviewEstimateId) return false;
+    setPayingDeposit(true);
+    try {
+      await customFetch(`/api/portal/estimates/${reviewEstimateId}/pay-deposit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(paymentMethodId ? { paymentMethodId } : {}),
+      });
+      return true;
+    } catch (err: any) {
+      toast.error(err?.message ?? "Payment failed. Please try again.");
+      return false;
+    } finally {
+      setPayingDeposit(false);
+    }
+  };
+
+  /** Entry point for the "Approve" button — checks payment requirement first. */
+  const handleApprove = async () => {
+    if (!detail) return;
+
+    // Await any in-flight optional-item persistence so the server has the final
+    // selection committed before we compute and charge the deposit amount.
+    // If the patch already failed, toggleOptional already showed an error toast;
+    // we still proceed (the server will use whatever state it has).
+    if (pendingPatchRef.current) {
+      try { await pendingPatchRef.current; } catch { /* error already surfaced */ }
+      pendingPatchRef.current = null;
+    }
+
+    const req = detail.paymentRequirement;
+    const depositPaidAt = detail.depositPaidAt;
+
+    // No payment required or already paid → go straight to respond
+    if (!req || req === "none" || depositPaidAt) {
+      respond("approve");
+      return;
+    }
+
+    // Payment required — show payment step (savedCard may still be loading)
+    // If card is already known to be present show confirm, otherwise show add-card
+    if (savedCard) {
+      setPayStep("confirm");
+    } else {
+      // savedCard === null (no card) or undefined (still loading)
+      // If still loading, wait
+      if (savedCard === undefined) {
+        // Fetch synchronously
+        try {
+          const r = await customFetch<{ paymentMethod: SavedCard | null }>("/api/portal/me/payment-method");
+          setSavedCard(r.paymentMethod);
+          if (r.paymentMethod) {
+            setPayStep("confirm");
+          } else {
+            await prepareCardStep();
+          }
+        } catch {
+          await prepareCardStep();
+        }
+      } else {
+        await prepareCardStep();
+      }
+    }
+  };
+
+  const prepareCardStep = async () => {
+    try {
+      const r = await customFetch<{ clientSecret: string; publishableKey: string }>("/api/portal/me/setup-intent", { method: "POST" });
+      setCardSetupSecret(r.clientSecret);
+      if (!stripePromise) setStripePromise(loadStripe(r.publishableKey));
+      setPayStep("add-card");
+    } catch {
+      toast.error("Could not prepare card form. Please try again.");
+    }
+  };
+
+  const handleConfirmCharge = async () => {
+    const ok = await payDeposit();
+    if (ok) {
+      setPayStep(null);
+      respond("approve");
     }
   };
 
@@ -171,6 +357,20 @@ export default function Estimates() {
     const tax = Math.round(subtotal * taxRate * 100) / 100;
     return { subtotal, tax, total: subtotal + tax };
   })() : null;
+
+  // Compute the deposit amount from the LIVE selection total so the displayed
+  // confirmation amount always matches what the server will charge — not the stale
+  // stored detail.depositAmount which reflects the total at load time.
+  const computedDepositAmount = (() => {
+    if (!detail) return 0;
+    const liveTotal = computedTotals?.total ?? detail.total;
+    const req = detail.paymentRequirement;
+    if (!req || req === "none") return 0;
+    if (req === "full") return liveTotal;
+    if (req === "deposit_pct") return Math.round((detail.depositValue ?? 0) / 100 * liveTotal * 100) / 100;
+    if (req === "deposit_fixed") return detail.depositValue ?? 0;
+    return 0;
+  })();
 
   const respond = async (action: "approve" | "decline") => {
     if (!reviewToken) return;
@@ -467,18 +667,90 @@ export default function Estimates() {
                 </p>
               )}
 
+              {/* Deposit requirement callout */}
+              {detail.paymentRequirement && detail.paymentRequirement !== "none" && (
+                <div className={`rounded-lg border p-3 text-sm ${detail.depositPaidAt ? "bg-emerald-50 border-emerald-200" : "bg-blue-50 border-blue-200"}`}>
+                  <div className="flex items-center gap-2 font-medium">
+                    {detail.depositPaidAt
+                      ? <><CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /><span className="text-emerald-800">Deposit paid — {formatCurrency(detail.depositChargedAmount ?? computedDepositAmount)}</span></>
+                      : <><CreditCard className="w-4 h-4 text-blue-600 shrink-0" /><span className="text-blue-800">
+                          {detail.paymentRequirement === "full" ? "Full payment required" :
+                           detail.paymentRequirement === "deposit_pct" ? `${detail.depositValue ?? 0}% deposit required` :
+                           `${formatCurrency(detail.depositValue ?? 0)} deposit required`}
+                          {" — "}{formatCurrency(computedDepositAmount)} due on acceptance
+                        </span>
+                      </>
+                    }
+                  </div>
+                </div>
+              )}
+
               {detail.expiresAt && (
                 <p className="text-xs text-muted-foreground">This estimate expires {formatDate(detail.expiresAt)}.</p>
               )}
             </div>
           ) : null}
 
-          {detail?.status === "sent" && (
+          {/* Payment step: confirm charge to saved card */}
+          {detail?.status === "sent" && payStep === "confirm" && savedCard && (
+            <div className="mt-4 space-y-3 rounded-lg border bg-muted/30 p-4">
+              <p className="text-sm font-medium flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                Payment required to confirm acceptance
+              </p>
+              <div className="flex items-center gap-3 text-sm text-muted-foreground rounded-lg border bg-white px-3 py-2.5">
+                <CreditCard className="w-4 h-4 shrink-0" />
+                <span>{savedCard.label}</span>
+              </div>
+              <p className="text-sm">
+                We'll charge <strong>{formatCurrency(computedDepositAmount)}</strong> to your card when you confirm.
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setPayStep(null)} disabled={payingDeposit} className="flex-1">
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={handleConfirmCharge} disabled={payingDeposit} className="flex-1 gap-2">
+                  {payingDeposit ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                  {payingDeposit ? "Processing…" : `Pay ${formatCurrency(computedDepositAmount)} & Approve`}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Payment step: add card first */}
+          {detail?.status === "sent" && payStep === "add-card" && stripePromise && cardSetupSecret && (
+            <div className="mt-4 space-y-3 rounded-lg border bg-muted/30 p-4">
+              <p className="text-sm font-medium flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-blue-600 shrink-0" />
+                Add a payment method to continue
+              </p>
+              <p className="text-sm text-muted-foreground">
+                A deposit of <strong>{formatCurrency(computedDepositAmount)}</strong> is required to accept this estimate.
+              </p>
+              <Elements stripe={stripePromise}>
+                <InlineCardFormInner
+                  clientSecret={cardSetupSecret}
+                  depositAmount={computedDepositAmount}
+                  onSuccess={async (pmId) => {
+                    setSavedCard(null); // refresh after attach
+                    const ok = await payDeposit(pmId);
+                    if (ok) {
+                      setPayStep(null);
+                      respond("approve");
+                    }
+                  }}
+                  onCancel={() => setPayStep(null)}
+                />
+              </Elements>
+            </div>
+          )}
+
+          {detail?.status === "sent" && !payStep && (
             <DialogFooter className="flex-col sm:flex-row gap-2 mt-2">
               <Button
                 variant="outline"
                 className="gap-2 border-red-200 text-red-700 hover:bg-red-50"
-                disabled={!!acting}
+                disabled={!!acting || payingDeposit}
                 onClick={() => respond("decline")}
               >
                 {acting === "decline" ? <Loader2 className="w-4 h-4 animate-spin" /> : <ThumbsDown className="w-4 h-4" />}
@@ -486,11 +758,13 @@ export default function Estimates() {
               </Button>
               <Button
                 className="gap-2"
-                disabled={!!acting}
-                onClick={() => respond("approve")}
+                disabled={!!acting || payingDeposit}
+                onClick={handleApprove}
               >
                 {acting === "approve" ? <Loader2 className="w-4 h-4 animate-spin" /> : <ThumbsUp className="w-4 h-4" />}
-                Approve Estimate
+                {detail?.depositPaidAt || !detail?.paymentRequirement || detail.paymentRequirement === "none"
+                  ? "Approve Estimate"
+                  : `Approve & Pay ${formatCurrency(computedDepositAmount)}`}
               </Button>
             </DialogFooter>
           )}

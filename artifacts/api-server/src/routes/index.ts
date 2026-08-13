@@ -50,6 +50,7 @@ import planCancelRequestsRouter from "./planCancelRequests";
 import tagsRouter from "./tags";
 import skipReasonsRouter from "./skipReasons";
 import portalMessagesRouter from "./portalMessages";
+import staffNotesRouter from "./staffNotes";
 
 const router: IRouter = Router();
 
@@ -104,5 +105,6 @@ router.use(planCancelRequestsRouter);
 router.use(tagsRouter);
 router.use(skipReasonsRouter);
 router.use(portalMessagesRouter);
+router.use(staffNotesRouter);
 
 export default router;

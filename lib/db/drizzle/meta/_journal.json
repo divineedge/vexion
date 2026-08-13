@@ -253,6 +253,20 @@
       "when": 1755500000000,
       "tag": "0042_add_estimate_deposit",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1755600000000,
+      "tag": "0043_add_staff_notes",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1755700000000,
+      "tag": "0044_add_staff_sessions",
+      "breakpoints": true
     }
   ]
 }

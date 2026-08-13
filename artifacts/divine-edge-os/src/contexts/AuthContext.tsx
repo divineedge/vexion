@@ -2,12 +2,17 @@ import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { setDefaultHeaders } from '@workspace/api-client-react';
 import type { User } from '@workspace/api-client-react';
 
-function applyUserHeaders(u: User | null) {
+const SESSION_TOKEN_KEY = 'divine_edge_session_token';
+
+function applyUserHeaders(u: User | null, sessionToken?: string) {
   if (u) {
-    setDefaultHeaders({
+    const headers: Record<string, string> = {
       'x-tenant-id': String(u.tenantId),
       'x-user-id': String(u.id),
-    });
+    };
+    const token = sessionToken ?? localStorage.getItem(SESSION_TOKEN_KEY) ?? undefined;
+    if (token) headers['x-staff-session'] = token;
+    setDefaultHeaders(headers);
   } else {
     setDefaultHeaders({});
   }
@@ -16,7 +21,7 @@ function applyUserHeaders(u: User | null) {
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
-  login: (user: User) => void;
+  login: (user: User, sessionToken?: string) => void;
   logout: () => void;
   isOwner: boolean;
   isManager: boolean;
@@ -45,15 +50,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   });
 
-  const login = (u: User) => {
+  const login = (u: User, sessionToken?: string) => {
     setUser(u);
     localStorage.setItem('divine_edge_user', JSON.stringify(u));
-    applyUserHeaders(u);
+    if (sessionToken) localStorage.setItem(SESSION_TOKEN_KEY, sessionToken);
+    applyUserHeaders(u, sessionToken);
   };
 
   const logout = () => {
     setUser(null);
     localStorage.removeItem('divine_edge_user');
+    localStorage.removeItem(SESSION_TOKEN_KEY);
     applyUserHeaders(null);
   };
 

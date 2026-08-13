@@ -51,7 +51,7 @@ export default function SignupPage() {
           password: form.password,
         }),
       });
-      login(data.user);
+      login(data.user, data.sessionToken);
       localStorage.setItem('de_onboarding_pending', '1');
       localStorage.setItem('de_onboarding_new_biz', '1');
       setLocation('/dashboard');

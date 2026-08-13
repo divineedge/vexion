@@ -44,6 +44,7 @@ import { Link } from 'wouter';
 import CustomerAvatar from '@/components/media/CustomerAvatar';
 import PropertyThumbnail from '@/components/media/PropertyThumbnail';
 import CustomerPlansTab from '@/components/customer/CustomerPlansTab';
+import { StaffNotesPanel } from '@/components/StaffNotesPanel';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import type { CustomerFieldConfig, TenantSettings } from '@/lib/fieldConfig';
@@ -872,6 +873,7 @@ export default function CustomerDetailPage() {
           <TabsTrigger value="jobs" title="Job history for this customer">Jobs ({jobs?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="invoices" title="Invoices and billing history">Invoices {custInvoices && custInvoices.length > 0 ? `(${custInvoices.filter(i => i.status !== 'paid' && i.status !== 'cancelled').length > 0 ? `${custInvoices.filter(i => i.status !== 'paid' && i.status !== 'cancelled').length} open` : custInvoices.length})` : ''}</TabsTrigger>
           <TabsTrigger value="messages" title="SMS and email message history">Messages ({messages?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="staff-notes" title="Private staff notes — never visible to the customer">Staff Notes</TabsTrigger>
           <TabsTrigger value="plans" title="Active and past service plans">Plans {customerPlans && customerPlans.length > 0 ? `(${customerPlans.filter(p => p.status === 'active').length} active)` : ''}</TabsTrigger>
         </TabsList>
 
@@ -1723,6 +1725,28 @@ export default function CustomerDetailPage() {
               </Card>
             );
           })()}
+        </TabsContent>
+
+        {/* Staff Notes tab — private, staff-only notes about this customer */}
+        <TabsContent value="staff-notes" className="focus-visible:outline-none">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                Staff Notes
+              </CardTitle>
+              <CardDescription>
+                Private notes visible only to your team — never shown to the customer.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <StaffNotesPanel
+                entityType="customer"
+                entityId={id}
+                currentUserId={user?.id ?? 0}
+                isAdmin={canManageOffice}
+              />
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Plans tab */}

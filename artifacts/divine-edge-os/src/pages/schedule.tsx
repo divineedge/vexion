@@ -41,6 +41,7 @@ import {
 } from '@workspace/api-client-react';
 import { useMutation } from '@tanstack/react-query';
 import MediaGallery from '@/components/media/MediaGallery';
+import { StaffNotesPanel } from '@/components/StaffNotesPanel';
 import { JobFormFields, EMPTY_JOB, buildRecurrenceRule, type NewJobForm } from '@/components/jobs/JobFormFields';
 import { useAuth } from '@/contexts/AuthContext';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
@@ -209,7 +210,7 @@ function JobDescriptionEditor({ jobId, initialDescription, canEdit }: { jobId: n
 }
 
 export default function SchedulePage() {
-  const { user, isTechnician, canManageJobs } = useAuth();
+  const { user, isTechnician, canManageJobs, canManageOffice } = useAuth();
   const [, setLocation] = useLocation();
   const qc = useQueryClient();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -1908,6 +1909,15 @@ export default function SchedulePage() {
                     />
                   </>
                 )}
+
+                {/* Internal staff notes — visible to staff only, never to customers */}
+                <Separator />
+                <StaffNotesPanel
+                  entityType="job"
+                  entityId={selectedJobId!}
+                  currentUserId={user?.id ?? 0}
+                  isAdmin={canManageOffice}
+                />
 
                 {/* Parts used on job */}
                 <Separator />

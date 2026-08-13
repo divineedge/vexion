@@ -798,6 +798,8 @@ export interface User {
 export interface AuthResponse {
   user: User;
   token: string;
+  /** Server-side session token for staff-authenticated endpoints */
+  sessionToken?: string;
 }
 
 export type UserInputRole = typeof UserInputRole[keyof typeof UserInputRole];

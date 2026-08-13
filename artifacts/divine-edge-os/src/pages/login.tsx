@@ -26,7 +26,7 @@ export default function LoginPage() {
       { data: { email, password } },
       {
         onSuccess: (data) => {
-          login(data.user);
+          login(data.user, data.sessionToken);
           setLocation(data.user.role === 'technician' ? '/schedule' : '/dashboard');
         },
         onError: (err: unknown) => {

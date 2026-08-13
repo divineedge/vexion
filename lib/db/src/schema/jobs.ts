@@ -134,6 +134,16 @@ export const jobsTable = pgTable("jobs", {
   /** ISO date string (YYYY-MM-DD) of the customer's preferred new date, if they provided one. */
   reschedulePreferredDate: text("reschedule_preferred_date"),
 
+  // ── Staff responses to cancel/reschedule requests ─────────────────────────
+  /** 'pending' | 'approved' | 'declined' — set when staff respond to a cancel request. Null = no request. */
+  cancelRequestStatus: text("cancel_request_status"),
+  /** Optional reply message staff send when responding to a cancellation request. */
+  cancelRequestReply: text("cancel_request_reply"),
+  /** 'pending' | 'approved' | 'declined' — set when staff respond to a reschedule request. Null = no request. */
+  rescheduleRequestStatus: text("reschedule_request_status"),
+  /** Optional reply message staff send when responding to a reschedule request. */
+  rescheduleRequestReply: text("reschedule_request_reply"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

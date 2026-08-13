@@ -22,7 +22,7 @@ function normaliseSupplies(raw: unknown): { inventoryItemId: number; name: strin
   return out;
 }
 import crypto from "crypto";
-import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable, invoicesTable, tenantsTable, blueprintsTable, chemicalApplicationsTable, chemicalProductsTable, chemicalMixtureItemsTable, customerPlansTable, equipmentFuelLogsTable, routeTemplatesTable, skipReasonsTable, taskNotificationsTable, internalTasksTable } from "@workspace/db";
+import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable, invoicesTable, tenantsTable, blueprintsTable, chemicalApplicationsTable, chemicalProductsTable, chemicalMixtureItemsTable, customerPlansTable, equipmentFuelLogsTable, routeTemplatesTable, skipReasonsTable, taskNotificationsTable, internalTasksTable, portalMessagesTable } from "@workspace/db";
 import { eq, and, or, sql, desc, asc, isNotNull, isNull, ne, inArray, min, gt } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { getCallerRole, isAdminRole } from "../lib/roles";
@@ -460,6 +460,78 @@ router.post("/jobs", async (req, res): Promise<void> => {
   await db.insert(activityLogTable).values({ tenantId, userId, type: "job_created", message: `Job "${title}" created`, entityId: job.id });
 
   res.status(201).json(formatJob(job));
+});
+
+// ---------------------------------------------------------------------------
+// GET /jobs/pending-requests — list all jobs with a pending cancel or reschedule request
+// Registered BEFORE /jobs/:id to avoid Express treating "pending-requests" as an id.
+// ---------------------------------------------------------------------------
+router.get("/jobs/pending-requests", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const admin = await isAdminRole(tenantId, getUserId(req));
+  if (!admin) {
+    res.status(403).json({ error: "Office/admin role required" });
+    return;
+  }
+
+  const rows = await db
+    .select({
+      id: jobsTable.id,
+      title: jobsTable.title,
+      status: jobsTable.status,
+      scheduledAt: jobsTable.scheduledAt,
+      customerId: jobsTable.customerId,
+      customerName: customersTable.name,
+      cancellationRequestedAt: (jobsTable as any).cancellationRequestedAt,
+      cancellationReason: (jobsTable as any).cancellationReason,
+      cancelRequestStatus: (jobsTable as any).cancelRequestStatus,
+      rescheduleRequestedAt: (jobsTable as any).rescheduleRequestedAt,
+      reschedulePreferredDate: (jobsTable as any).reschedulePreferredDate,
+      rescheduleRequestStatus: (jobsTable as any).rescheduleRequestStatus,
+    })
+    .from(jobsTable)
+    .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
+    .where(
+      and(
+        eq(jobsTable.tenantId, tenantId),
+        or(
+          and(
+            isNotNull((jobsTable as any).cancellationRequestedAt),
+            or(
+              isNull((jobsTable as any).cancelRequestStatus),
+              eq((jobsTable as any).cancelRequestStatus, "pending"),
+            ),
+          ),
+          and(
+            isNotNull((jobsTable as any).rescheduleRequestedAt),
+            or(
+              isNull((jobsTable as any).rescheduleRequestStatus),
+              eq((jobsTable as any).rescheduleRequestStatus, "pending"),
+            ),
+          ),
+        ),
+      ),
+    )
+    .orderBy(asc(jobsTable.scheduledAt));
+
+  res.json(rows.map(r => ({
+    id: r.id,
+    title: r.title,
+    status: r.status,
+    scheduledAt: r.scheduledAt.toISOString(),
+    customerId: r.customerId,
+    customerName: r.customerName ?? null,
+    // Derive requestType from whichever request is actually pending (including legacy null-status).
+    requestType: (
+      r.cancellationRequestedAt &&
+      (r.cancelRequestStatus === "pending" || r.cancelRequestStatus === null)
+    ) ? "cancel" : "reschedule",
+    requestedAt: r.cancellationRequestedAt
+      ? new Date(r.cancellationRequestedAt).toISOString()
+      : new Date(r.rescheduleRequestedAt).toISOString(),
+    reason: r.cancellationReason ?? null,
+    preferredDate: r.reschedulePreferredDate ?? null,
+  })));
 });
 
 router.get("/jobs/:id", async (req, res): Promise<void> => {
@@ -1581,18 +1653,25 @@ router.post("/jobs/:id/approve-cancellation", async (req, res): Promise<void> =>
     return;
   }
 
+  // Read reply before the atomic claim so it can be persisted in the same UPDATE.
+  const { reply: approveReply } = req.body as { reply?: string };
+
   // ── Atomic claim: cancel the job in one conditional UPDATE ──────────────────
-  // WHERE includes `cancellationRequestedAt IS NOT NULL` so only one concurrent
-  // request can win; any racing approver gets 0 rows and 409s.
+  // WHERE includes `cancellationRequestedAt IS NOT NULL` and status guard so
+  // only one concurrent request can win; any racing approver gets 0 rows and 409s.
   // This must happen BEFORE any invoice or Stripe work to prevent double-charging.
   const [claimedJob] = await db
     .update(jobsTable)
-    .set({ status: "cancelled", cancellationRequestedAt: null, rescheduleRequestedAt: null, reschedulePreferredDate: null } as any)
+    .set({ status: "cancelled", cancelRequestStatus: "approved", cancelRequestReply: approveReply?.trim() || null } as any)
     .where(
       and(
         eq(jobsTable.id, id),
         eq(jobsTable.tenantId, tenantId),
         isNotNull((jobsTable as any).cancellationRequestedAt),
+        or(
+          isNull((jobsTable as any).cancelRequestStatus),
+          eq((jobsTable as any).cancelRequestStatus, "pending"),
+        ),
       ),
     )
     .returning();
@@ -1714,12 +1793,22 @@ router.post("/jobs/:id/approve-cancellation", async (req, res): Promise<void> =>
     }
   }
 
+  // ── Notify customer via portal message (fire-and-forget) ────────────────────
+  if (claimedJob.customerId) {
+    const approveBody = approveReply?.trim()
+      ? `Your cancellation request for "${claimedJob.title}" has been approved. ${approveReply.trim()}`
+      : `Your cancellation request for "${claimedJob.title}" has been approved.`;
+    db.insert(portalMessagesTable)
+      .values({ tenantId, customerId: claimedJob.customerId, direction: "outbound", body: approveBody })
+      .catch(err => logger.error({ err, jobId: id }, "Failed to send cancellation-approved portal message"));
+  }
+
   // Job was atomically cancelled in the claim step above; return the claimed record.
   res.json(formatJob(claimedJob));
 });
 
 // ---------------------------------------------------------------------------
-// POST /jobs/:id/deny-cancellation — staff denies a portal cancel request
+// POST /jobs/:id/deny-cancellation — staff declines a portal cancel request
 // ---------------------------------------------------------------------------
 router.post("/jobs/:id/deny-cancellation", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
@@ -1732,47 +1821,62 @@ router.post("/jobs/:id/deny-cancellation", async (req, res): Promise<void> => {
     return;
   }
 
-  const [job] = await db
-    .select()
-    .from(jobsTable)
-    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
-    .limit(1);
+  const { reply } = req.body as { reply?: string };
 
-  if (!job) {
-    res.status(404).json({ error: "Job not found" });
-    return;
-  }
-
-  if (!(job as any).cancellationRequestedAt) {
-    res.status(409).json({ error: "No pending cancellation request on this job" });
-    return;
-  }
-
+  // Atomic claim: only declines a job that is still in the pending state.
+  // Concurrent approvals or double-declines both get 0 rows → 409.
   const [updated] = await db
     .update(jobsTable)
     .set({
-      cancellationRequestedAt: null,
-      cancellationReason: null,
+      cancelRequestStatus: "declined",
+      cancelRequestReply: reply?.trim() || null,
     } as any)
-    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
+    .where(
+      and(
+        eq(jobsTable.id, id),
+        eq(jobsTable.tenantId, tenantId),
+        isNotNull((jobsTable as any).cancellationRequestedAt),
+        or(
+          isNull((jobsTable as any).cancelRequestStatus),
+          eq((jobsTable as any).cancelRequestStatus, "pending"),
+        ),
+      ),
+    )
     .returning();
+
+  if (!updated) {
+    res.status(409).json({ error: "No pending cancellation request on this job, or it was already processed" });
+    return;
+  }
+
+  // Notify customer via portal message (fire-and-forget)
+  if (updated.customerId) {
+    const body = reply?.trim()
+      ? `Your cancellation request for "${updated.title}" was not approved. ${reply.trim()}`
+      : `Your cancellation request for "${updated.title}" was not approved. Your job remains scheduled — please contact us if you have questions.`;
+    db.insert(portalMessagesTable)
+      .values({ tenantId, customerId: updated.customerId, direction: "outbound", body })
+      .catch(err => logger.error({ err, jobId: id }, "Failed to send cancellation-denied portal message"));
+  }
 
   res.json(formatJob(updated));
 });
 
 // ---------------------------------------------------------------------------
-// POST /jobs/:id/dismiss-reschedule-request — staff acknowledges/clears a reschedule request
+// POST /jobs/:id/approve-reschedule — staff approves a portal reschedule request
 // ---------------------------------------------------------------------------
-router.post("/jobs/:id/dismiss-reschedule-request", async (req, res): Promise<void> => {
+router.post("/jobs/:id/approve-reschedule", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
   const id = parseInt(req.params.id, 10);
 
   const admin = await isAdminRole(tenantId, userId);
   if (!admin) {
-    res.status(403).json({ error: "Office/admin role required to dismiss reschedule requests" });
+    res.status(403).json({ error: "Office/admin role required to approve reschedule requests" });
     return;
   }
+
+  const { approvedDate, reply } = req.body as { approvedDate?: string; reply?: string };
 
   const [job] = await db
     .select()
@@ -1790,14 +1894,122 @@ router.post("/jobs/:id/dismiss-reschedule-request", async (req, res): Promise<vo
     return;
   }
 
+  // Determine the new scheduled date: use the staff-confirmed date if provided,
+  // otherwise fall back to the customer's preferred date.
+  const newDateStr = approvedDate?.trim() || (job as any).reschedulePreferredDate;
+  if (!newDateStr) {
+    res.status(400).json({ error: "approvedDate is required when the customer did not provide a preferred date" });
+    return;
+  }
+  const isoDateRe = /^\d{4}-\d{2}-\d{2}$/;
+  if (!isoDateRe.test(newDateStr)) {
+    res.status(400).json({ error: "approvedDate must be in YYYY-MM-DD format" });
+    return;
+  }
+
+  // Keep the original time-of-day, move only the calendar date.
+  const originalScheduled = new Date(job.scheduledAt);
+  const newScheduled = new Date(`${newDateStr}T${originalScheduled.toISOString().slice(11)}`);
+
+  // Guard invalid dates (e.g. 2025-13-01, 2025-99-99) before calling toISOString(),
+  // which would throw on an invalid Date. Then also validate round-trip to catch
+  // impossible-but-normalised values like Feb 30 → Mar 2.
+  if (isNaN(newScheduled.getTime()) || newScheduled.toISOString().slice(0, 10) !== newDateStr) {
+    res.status(400).json({ error: "approvedDate is not a valid calendar date" });
+    return;
+  }
+
+  // Atomic claim: only approves while still in the pending state.
   const [updated] = await db
     .update(jobsTable)
     .set({
-      rescheduleRequestedAt: null,
-      reschedulePreferredDate: null,
+      scheduledAt: newScheduled,
+      rescheduleRequestStatus: "approved",
+      rescheduleRequestReply: reply?.trim() || null,
     } as any)
-    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
+    .where(
+      and(
+        eq(jobsTable.id, id),
+        eq(jobsTable.tenantId, tenantId),
+        isNotNull((jobsTable as any).rescheduleRequestedAt),
+        or(
+          isNull((jobsTable as any).rescheduleRequestStatus),
+          eq((jobsTable as any).rescheduleRequestStatus, "pending"),
+        ),
+      ),
+    )
     .returning();
+
+  if (!updated) {
+    res.status(409).json({ error: "No pending reschedule request on this job, or it was already processed" });
+    return;
+  }
+
+  // Notify customer via portal message (fire-and-forget)
+  if (job.customerId) {
+    const dateLabel = new Date(`${newDateStr}T12:00:00Z`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+    const body = reply?.trim()
+      ? `Your reschedule request for "${job.title}" has been approved. Your new date is ${dateLabel}. ${reply.trim()}`
+      : `Your reschedule request for "${job.title}" has been approved. Your new scheduled date is ${dateLabel}.`;
+    db.insert(portalMessagesTable)
+      .values({ tenantId, customerId: job.customerId, direction: "outbound", body })
+      .catch(err => logger.error({ err, jobId: id }, "Failed to send reschedule-approved portal message"));
+  }
+
+  res.json(formatJob(updated));
+});
+
+// ---------------------------------------------------------------------------
+// POST /jobs/:id/dismiss-reschedule-request — staff declines a portal reschedule request
+// ---------------------------------------------------------------------------
+router.post("/jobs/:id/dismiss-reschedule-request", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  const id = parseInt(req.params.id, 10);
+
+  const admin = await isAdminRole(tenantId, userId);
+  if (!admin) {
+    res.status(403).json({ error: "Office/admin role required to dismiss reschedule requests" });
+    return;
+  }
+
+  const { reply } = req.body as { reply?: string };
+
+  // Atomic claim: only declines a job that is still in the pending state.
+  // Concurrent approvals or double-declines both get 0 rows → 409.
+  const [updated] = await db
+    .update(jobsTable)
+    .set({
+      rescheduleRequestStatus: "declined",
+      rescheduleRequestReply: reply?.trim() || null,
+    } as any)
+    .where(
+      and(
+        eq(jobsTable.id, id),
+        eq(jobsTable.tenantId, tenantId),
+        isNotNull((jobsTable as any).rescheduleRequestedAt),
+        or(
+          isNull((jobsTable as any).rescheduleRequestStatus),
+          eq((jobsTable as any).rescheduleRequestStatus, "pending"),
+        ),
+      ),
+    )
+    .returning();
+
+  if (!updated) {
+    res.status(409).json({ error: "No pending reschedule request on this job, or it was already processed" });
+    return;
+  }
+
+  // Notify customer via portal message (fire-and-forget)
+  if (updated.customerId) {
+    const body = reply?.trim()
+      ? `Your reschedule request for "${updated.title}" was not approved. ${reply.trim()}`
+      : `Your reschedule request for "${updated.title}" was not approved. Your job remains scheduled — please contact us if you have questions.`;
+    db.insert(portalMessagesTable)
+      .values({ tenantId, customerId: updated.customerId, direction: "outbound", body })
+      .catch(err => logger.error({ err, jobId: id }, "Failed to send reschedule-declined portal message"));
+  }
 
   res.json(formatJob(updated));
 });

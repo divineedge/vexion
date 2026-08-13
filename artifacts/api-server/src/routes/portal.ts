@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable, mediaAttachmentsTable, tenantsTable, communicationsLogTable, customerPlansTable, usersTable, planCancelRequestsTable, estimatesTable, taskNotificationsTable, portalMessagesTable, internalTasksTable, chemicalApplicationsTable } from "@workspace/db";
-import { eq, and, gt, desc, lte, isNotNull, ne, sql, isNull, inArray } from "drizzle-orm";
+import { eq, and, gt, desc, lte, isNotNull, ne, sql, isNull, inArray, or } from "drizzle-orm";
 import { objectStorageService } from "./storage";
 import crypto from "crypto";
 import { getTenantId } from "../lib/tenantHelper";
@@ -2440,20 +2440,26 @@ router.post("/portal/jobs/:id/cancel-request", requirePortalAuth, async (req: an
     return;
   }
 
-  if ((job as any).cancellationRequestedAt) {
+  // Block only if a cancel request is actively pending (not if it was already declined).
+  const cancelStatus: string | null = (job as any).cancelRequestStatus ?? null;
+  const rescheduleStatus: string | null = (job as any).rescheduleRequestStatus ?? null;
+  const cancelIsPending = cancelStatus === "pending" || (!cancelStatus && !!(job as any).cancellationRequestedAt);
+  const rescheduleIsPending = rescheduleStatus === "pending" || (!rescheduleStatus && !!(job as any).rescheduleRequestedAt);
+
+  if (cancelIsPending) {
     res.status(409).json({ error: "A cancellation request is already pending for this job" });
     return;
   }
 
   // Cancellation and reschedule are mutually exclusive pending states.
-  if ((job as any).rescheduleRequestedAt) {
+  if (rescheduleIsPending) {
     res.status(409).json({ error: "A reschedule request is already pending for this job. Please contact us to change your request." });
     return;
   }
 
   // ── Atomically mark cancellation requested ─────────────────────────────────
-  // Both isNull guards ensure only one request type can win and no concurrent
-  // reschedule request can be set in the same window.
+  // Allows a new request when the previous one was declined (status = 'declined').
+  // WHERE rejects concurrent racing requests and any actively-pending request.
   const hoursUntilJob = (new Date(job.scheduledAt).getTime() - Date.now()) / (1000 * 60 * 60);
 
   const [claimedJob] = await db
@@ -2461,13 +2467,23 @@ router.post("/portal/jobs/:id/cancel-request", requirePortalAuth, async (req: an
     .set({
       cancellationRequestedAt: new Date(),
       cancellationReason: reason?.trim() || null,
+      cancelRequestStatus: "pending",
     } as any)
     .where(
       and(
         eq(jobsTable.id, jobId),
         eq(jobsTable.tenantId, portalTenantId),
-        isNull((jobsTable as any).cancellationRequestedAt),
-        isNull((jobsTable as any).rescheduleRequestedAt),
+        // Allow only when no active pending cancel exists
+        or(
+          isNull((jobsTable as any).cancellationRequestedAt),
+          eq((jobsTable as any).cancelRequestStatus, "declined"),
+        ),
+        // Block while a reschedule is pending
+        or(
+          isNull((jobsTable as any).rescheduleRequestedAt),
+          eq((jobsTable as any).rescheduleRequestStatus, "declined"),
+          eq((jobsTable as any).rescheduleRequestStatus, "approved"),
+        ),
       ),
     )
     .returning();
@@ -2537,13 +2553,19 @@ router.post("/portal/jobs/:id/reschedule-request", requirePortalAuth, async (req
     return;
   }
 
-  if ((job as any).rescheduleRequestedAt) {
+  // Block only if a reschedule request is actively pending (not if it was already declined/approved).
+  const rCancelStatus: string | null = (job as any).cancelRequestStatus ?? null;
+  const rRescheduleStatus: string | null = (job as any).rescheduleRequestStatus ?? null;
+  const rCancelIsPending = rCancelStatus === "pending" || (!rCancelStatus && !!(job as any).cancellationRequestedAt);
+  const rRescheduleIsPending = rRescheduleStatus === "pending" || (!rRescheduleStatus && !!(job as any).rescheduleRequestedAt);
+
+  if (rRescheduleIsPending) {
     res.status(409).json({ error: "A reschedule request is already pending for this job" });
     return;
   }
 
   // Cancellation and reschedule are mutually exclusive pending states.
-  if ((job as any).cancellationRequestedAt) {
+  if (rCancelIsPending) {
     res.status(409).json({ error: "A cancellation request is already pending for this job. Please contact us to change your request." });
     return;
   }
@@ -2569,13 +2591,24 @@ router.post("/portal/jobs/:id/reschedule-request", requirePortalAuth, async (req
     .set({
       rescheduleRequestedAt: new Date(),
       reschedulePreferredDate: cleanPreferredDate,
+      rescheduleRequestStatus: "pending",
     } as any)
     .where(
       and(
         eq(jobsTable.id, jobId),
         eq(jobsTable.tenantId, portalTenantId),
-        isNull((jobsTable as any).rescheduleRequestedAt),
-        isNull((jobsTable as any).cancellationRequestedAt),
+        // Allow only when no active pending reschedule exists
+        or(
+          isNull((jobsTable as any).rescheduleRequestedAt),
+          eq((jobsTable as any).rescheduleRequestStatus, "declined"),
+          eq((jobsTable as any).rescheduleRequestStatus, "approved"),
+        ),
+        // Block while a cancel is pending
+        or(
+          isNull((jobsTable as any).cancellationRequestedAt),
+          eq((jobsTable as any).cancelRequestStatus, "declined"),
+          eq((jobsTable as any).cancelRequestStatus, "approved"),
+        ),
       ),
     )
     .returning();
@@ -2653,8 +2686,12 @@ function formatPortalJob(j: typeof jobsTable.$inferSelect, propertyAddress: stri
     assignedToName: assignedToName ?? null,
     cancellationRequestedAt: (j as any).cancellationRequestedAt ? new Date((j as any).cancellationRequestedAt).toISOString() : null,
     cancellationReason: (j as any).cancellationReason ?? null,
+    cancelRequestStatus: (j as any).cancelRequestStatus ?? null,
+    cancelRequestReply: (j as any).cancelRequestReply ?? null,
     rescheduleRequestedAt: (j as any).rescheduleRequestedAt ? new Date((j as any).rescheduleRequestedAt).toISOString() : null,
     reschedulePreferredDate: (j as any).reschedulePreferredDate ?? null,
+    rescheduleRequestStatus: (j as any).rescheduleRequestStatus ?? null,
+    rescheduleRequestReply: (j as any).rescheduleRequestReply ?? null,
   };
 }
 

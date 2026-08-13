@@ -9,7 +9,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Users, Briefcase, FileText, DollarSign, Clock, CheckCircle, Gauge, PhoneCall, Trophy, AlertTriangle, Inbox, MessageSquare } from 'lucide-react';
+import { Users, Briefcase, FileText, DollarSign, Clock, CheckCircle, Gauge, PhoneCall, Trophy, AlertTriangle, Inbox, MessageSquare, Ban, CalendarSearch } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { MyTasksWidget } from '@/components/tasks/MyTasksWidget';
 import { FollowupQueueWidget } from '@/components/followups/FollowupQueueWidget';
@@ -303,13 +303,21 @@ function PortalActivityWidget() {
     queryFn: () => customFetch<any[]>('/api/jobs?source=portal&status=pending&limit=5'),
     refetchInterval: 60_000,
   });
+  const { data: pendingRequests } = useQuery<{ id: number; title: string; customerName: string | null; requestType: 'cancel' | 'reschedule'; requestedAt: string }[]>({
+    queryKey: ['portal-cancel-reschedule-pending'],
+    queryFn: () => customFetch<any[]>('/api/jobs/pending-requests'),
+    refetchInterval: 60_000,
+  });
 
   const unread = unreadData?.count ?? 0;
   const requests = portalJobs ?? [];
+  const pendingCancelReschedule = pendingRequests ?? [];
 
   // Hide while loading and when there's genuinely no activity
-  if (unreadData === undefined && portalJobs === undefined) return null;
-  if ((unreadData?.count ?? 0) === 0 && (portalJobs?.length ?? 0) === 0) return null;
+  if (unreadData === undefined && portalJobs === undefined && pendingRequests === undefined) return null;
+  if (unread === 0 && requests.length === 0 && pendingCancelReschedule.length === 0) return null;
+
+  const totalActivity = unread + requests.length + pendingCancelReschedule.length;
 
   return (
     <Card className="border-l-4 border-l-primary shadow-sm">
@@ -317,8 +325,8 @@ function PortalActivityWidget() {
         <CardTitle className="text-sm flex items-center justify-between">
           <span className="flex items-center gap-2 font-semibold text-primary">
             <Inbox className="w-4 h-4" /> Portal Activity
-            {unread > 0 && (
-              <Badge className="bg-primary text-primary-foreground text-xs h-5 px-1.5">{unread} unread</Badge>
+            {totalActivity > 0 && (
+              <Badge className="bg-primary text-primary-foreground text-xs h-5 px-1.5">{totalActivity}</Badge>
             )}
           </span>
           <button
@@ -338,6 +346,28 @@ function PortalActivityWidget() {
             <MessageSquare className="w-4 h-4 text-primary shrink-0" />
             <span className="font-semibold text-primary">{unread} unread message{unread !== 1 ? 's' : ''} from customers</span>
           </button>
+        )}
+        {pendingCancelReschedule.length > 0 && (
+          <div className="divide-y">
+            {pendingCancelReschedule.slice(0, 4).map((r: any) => (
+              <button
+                key={`req-${r.id}-${r.requestType}`}
+                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-muted/50 transition-colors text-left"
+                onClick={() => setLocation(`/schedule?jobId=${r.id}`)}
+              >
+                {r.requestType === 'cancel'
+                  ? <Ban className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                  : <CalendarSearch className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                }
+                <span className="flex-1 truncate">
+                  {r.customerName ?? 'Customer'} — {r.requestType === 'cancel' ? 'cancel request' : 'reschedule request'} for "{r.title}"
+                </span>
+                <Badge variant="outline" className={`text-[10px] shrink-0 ${r.requestType === 'cancel' ? 'border-red-200 text-red-700' : 'border-amber-200 text-amber-700'}`}>
+                  {r.requestType === 'cancel' ? 'cancel' : 'reschedule'}
+                </Badge>
+              </button>
+            ))}
+          </div>
         )}
         {requests.length > 0 && (
           <div className="divide-y">

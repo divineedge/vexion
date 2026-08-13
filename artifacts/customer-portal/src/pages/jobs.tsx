@@ -109,9 +109,16 @@ export default function Jobs() {
   };
 
   const JobCard = ({ job, showActions }: { job: any; showActions?: boolean }) => {
-    const hasCancelRequest = !!(job as any).cancellationRequestedAt;
-    const hasRescheduleRequest = !!(job as any).rescheduleRequestedAt;
-    const hasPendingRequest = hasCancelRequest || hasRescheduleRequest;
+    const cancelStatus: string | null = (job as any).cancelRequestStatus ?? null;
+    const rescheduleStatus: string | null = (job as any).rescheduleRequestStatus ?? null;
+    // A request is "pending" if status is explicitly 'pending' or if the timestamp is set but no status yet (legacy)
+    const hasCancelPending = cancelStatus === 'pending' || (!cancelStatus && !!(job as any).cancellationRequestedAt);
+    const hasReschedulePending = rescheduleStatus === 'pending' || (!rescheduleStatus && !!(job as any).rescheduleRequestedAt);
+    const hasCancelDeclined = cancelStatus === 'declined';
+    const hasCancelApproved = cancelStatus === 'approved';
+    const hasRescheduleDeclined = rescheduleStatus === 'declined';
+    const hasRescheduleApproved = rescheduleStatus === 'approved';
+    const hasPendingRequest = hasCancelPending || hasReschedulePending;
 
     return (
       <Card className="shadow-sm overflow-hidden group cursor-pointer hover:shadow-md transition-shadow" onClick={() => setDetailJobId(job.id)}>
@@ -122,14 +129,34 @@ export default function Jobs() {
               <div className="flex items-center gap-3 mb-2 flex-wrap">
                 <h3 className="text-xl font-bold text-foreground">{job.title}</h3>
                 {getStatusBadge(job.status)}
-                {hasCancelRequest && (
+                {hasCancelPending && (
                   <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 gap-1 text-xs">
                     <Ban className="w-3 h-3" /> Cancellation Requested
                   </Badge>
                 )}
-                {hasRescheduleRequest && (
+                {hasCancelDeclined && (
+                  <Badge variant="outline" className="bg-gray-50 text-gray-600 border-gray-200 gap-1 text-xs">
+                    <Ban className="w-3 h-3" /> Cancellation Declined
+                  </Badge>
+                )}
+                {hasCancelApproved && (
+                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 gap-1 text-xs">
+                    <CheckCircle2 className="w-3 h-3" /> Cancellation Approved
+                  </Badge>
+                )}
+                {hasReschedulePending && (
                   <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 gap-1 text-xs">
                     <CalendarSearch className="w-3 h-3" /> Reschedule Requested
+                  </Badge>
+                )}
+                {hasRescheduleApproved && (
+                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 gap-1 text-xs">
+                    <CalendarSearch className="w-3 h-3" /> Reschedule Approved
+                  </Badge>
+                )}
+                {hasRescheduleDeclined && (
+                  <Badge variant="outline" className="bg-gray-50 text-gray-600 border-gray-200 gap-1 text-xs">
+                    <CalendarSearch className="w-3 h-3" /> Reschedule Declined
                   </Badge>
                 )}
               </div>
@@ -176,18 +203,60 @@ export default function Jobs() {
             <PriceDisplay job={job} />
           </div>
 
-          {/* Action bar / pending notice */}
+          {/* Action bar / pending notice / staff response */}
           {showActions && (
-            <div className="mt-2 pt-4 border-t border-border/50 flex items-center justify-between gap-4">
-              {hasPendingRequest ? (
+            <div className="mt-2 pt-4 border-t border-border/50 space-y-3">
+              {/* Terminal states: approved cancellation or pending requests — no action buttons shown */}
+              {hasCancelApproved ? (
+                <div className="space-y-1">
+                  <p className="text-sm text-green-700 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" /> Your cancellation request was approved — this job has been cancelled.
+                  </p>
+                  {(job as any).cancelRequestReply && (
+                    <p className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">"{(job as any).cancelRequestReply}"</p>
+                  )}
+                </div>
+              ) : hasRescheduleApproved && !hasPendingRequest ? (
+                <p className="text-sm text-green-700 flex items-center gap-2">
+                  <CalendarSearch className="w-4 h-4 shrink-0" /> Your reschedule was approved — see the updated date above.
+                  {(job as any).rescheduleRequestReply && (
+                    <span className="text-xs text-muted-foreground"> "{(job as any).rescheduleRequestReply}"</span>
+                  )}
+                </p>
+              ) : hasPendingRequest ? (
                 <p className="text-sm text-muted-foreground flex items-center gap-2">
-                  {hasCancelRequest
+                  {hasCancelPending
                     ? <><Ban className="w-4 h-4 text-red-500 shrink-0" /> Your cancellation request is pending review.</>
                     : <><CalendarSearch className="w-4 h-4 text-amber-500 shrink-0" /> Your reschedule request is pending review.</>
                   }
                   {' '}We'll confirm shortly.
                 </p>
-              ) : (
+              ) : null}
+
+              {/* Staff response history for declined requests — shown alongside fresh action buttons */}
+              {!hasCancelApproved && !hasPendingRequest && hasCancelDeclined && (
+                <div className="space-y-1">
+                  <p className="text-sm text-gray-600 flex items-center gap-2">
+                    <Ban className="w-4 h-4 shrink-0" /> Your previous cancellation request was not approved — your job remains scheduled.
+                  </p>
+                  {(job as any).cancelRequestReply && (
+                    <p className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">"{(job as any).cancelRequestReply}"</p>
+                  )}
+                </div>
+              )}
+              {!hasCancelApproved && !hasPendingRequest && hasRescheduleDeclined && (
+                <div className="space-y-1">
+                  <p className="text-sm text-gray-600 flex items-center gap-2">
+                    <CalendarSearch className="w-4 h-4 shrink-0" /> Your previous reschedule request was not approved — your job remains scheduled.
+                  </p>
+                  {(job as any).rescheduleRequestReply && (
+                    <p className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">"{(job as any).rescheduleRequestReply}"</p>
+                  )}
+                </div>
+              )}
+
+              {/* Fresh action buttons — show whenever job is scheduled and no request is actively pending */}
+              {!hasCancelApproved && !hasPendingRequest && job.status === 'scheduled' && (
                 <div className="flex items-center gap-2 flex-wrap" onClick={e => e.stopPropagation()}>
                   <Button
                     variant="outline"
@@ -209,7 +278,6 @@ export default function Jobs() {
                   </Button>
                 </div>
               )}
-              <ChevronRight className="w-4 h-4 text-muted-foreground opacity-40 shrink-0" />
             </div>
           )}
           {!showActions && (

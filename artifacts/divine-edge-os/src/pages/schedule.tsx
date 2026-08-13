@@ -383,17 +383,29 @@ export default function SchedulePage() {
   const [deleteBlockedMsg, setDeleteBlockedMsg] = useState<string | null>(null);
   const updateJobRoute = useUpdateJobRoute();
   const approveJobCancellation = useMutation({
-    mutationFn: ({ id }: { id: number }) =>
-      customFetch<void>(`/api/jobs/${id}/approve-cancellation`, { method: 'POST' }),
+    mutationFn: ({ id, reply }: { id: number; reply?: string }) =>
+      customFetch<void>(`/api/jobs/${id}/approve-cancellation`, { method: 'POST', body: JSON.stringify({ reply }) }),
   });
   const denyJobCancellation = useMutation({
-    mutationFn: ({ id, denyReason }: { id: number; denyReason?: string }) =>
-      customFetch<void>(`/api/jobs/${id}/deny-cancellation`, { method: 'POST', body: JSON.stringify({ denyReason }) }),
+    mutationFn: ({ id, reply }: { id: number; reply?: string }) =>
+      customFetch<void>(`/api/jobs/${id}/deny-cancellation`, { method: 'POST', body: JSON.stringify({ reply }) }),
   });
   const [denyDialogOpen, setDenyDialogOpen] = useState(false);
+  const [denyReply, setDenyReply] = useState('');
+  const [cancelApproveOpen, setCancelApproveOpen] = useState(false);
+  const [cancelApproveReply, setCancelApproveReply] = useState('');
+  const approveReschedule = useMutation({
+    mutationFn: ({ id, approvedDate, reply }: { id: number; approvedDate?: string; reply?: string }) =>
+      customFetch<void>(`/api/jobs/${id}/approve-reschedule`, { method: 'POST', body: JSON.stringify({ approvedDate, reply }) }),
+  });
+  const [rescheduleApproveOpen, setRescheduleApproveOpen] = useState(false);
+  const [rescheduleApproveDate, setRescheduleApproveDate] = useState('');
+  const [rescheduleApproveReply, setRescheduleApproveReply] = useState('');
+  const [rescheduleDeclineOpen, setRescheduleDeclineOpen] = useState(false);
+  const [rescheduleDeclineReply, setRescheduleDeclineReply] = useState('');
   const dismissRescheduleRequest = useMutation({
-    mutationFn: ({ id }: { id: number }) =>
-      customFetch<void>(`/api/jobs/${id}/dismiss-reschedule-request`, { method: 'POST' }),
+    mutationFn: ({ id, reply }: { id: number; reply?: string }) =>
+      customFetch<void>(`/api/jobs/${id}/dismiss-reschedule-request`, { method: 'POST', body: JSON.stringify({ reply }) }),
   });
   const completeAndInvoiceJob = useCompleteAndInvoiceJob();
   const updateInvoice = useUpdateInvoice();
@@ -1367,7 +1379,8 @@ export default function SchedulePage() {
                 <Separator />
 
                 {/* Reschedule request banner */}
-                {canManageJobs && (selectedJob as any).rescheduleRequestedAt && (
+                {/* Reschedule request banner — pending */}
+                {canManageJobs && (selectedJob as any).rescheduleRequestedAt && (!((selectedJob as any).rescheduleRequestStatus) || (selectedJob as any).rescheduleRequestStatus === 'pending') && (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
                     <p className="text-sm font-medium text-amber-800 flex items-center gap-1.5">
                       <CalendarSearch className="w-4 h-4" /> Reschedule Requested by Customer
@@ -1384,28 +1397,44 @@ export default function SchedulePage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-7 text-xs gap-1 border-amber-300 text-amber-800 hover:bg-amber-100"
-                        disabled={dismissRescheduleRequest.isPending}
-                        title="Acknowledge and clear this reschedule request (then reschedule the job manually)"
+                        className="h-7 text-xs gap-1 border-green-300 text-green-800 hover:bg-green-50"
+                        title="Approve this reschedule request"
                         onClick={() => {
-                          dismissRescheduleRequest.mutate({ id: selectedJobId! }, {
-                            onSuccess: () => {
-                              toast.success('Reschedule request acknowledged');
-                              qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
-                              qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId!) });
-                            },
-                            onError: () => toast.error('Failed to dismiss reschedule request'),
-                          });
+                          setRescheduleApproveDate((selectedJob as any).reschedulePreferredDate ?? '');
+                          setRescheduleApproveReply('');
+                          setRescheduleApproveOpen(true);
                         }}
                       >
-                        <CheckCircle className="w-3 h-3" /> Acknowledge & Dismiss
+                        <CheckCircle className="w-3 h-3" /> Approve Reschedule
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs gap-1"
+                        title="Decline this reschedule request"
+                        onClick={() => { setRescheduleDeclineReply(''); setRescheduleDeclineOpen(true); }}
+                      >
+                        <X className="w-3 h-3" /> Decline
                       </Button>
                     </div>
                   </div>
                 )}
 
-                {/* Cancellation request banner */}
-                {canManageJobs && (selectedJob as any).cancellationRequestedAt && (
+                {/* Reschedule request banner — already responded */}
+                {canManageJobs && (selectedJob as any).rescheduleRequestedAt && (selectedJob as any).rescheduleRequestStatus && (selectedJob as any).rescheduleRequestStatus !== 'pending' && (
+                  <div className={`rounded-lg border p-3 space-y-1 ${(selectedJob as any).rescheduleRequestStatus === 'approved' ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50'}`}>
+                    <p className={`text-xs font-medium flex items-center gap-1.5 ${(selectedJob as any).rescheduleRequestStatus === 'approved' ? 'text-green-800' : 'text-gray-600'}`}>
+                      <CalendarSearch className="w-3 h-3" />
+                      Reschedule request {(selectedJob as any).rescheduleRequestStatus === 'approved' ? 'approved' : 'declined'}
+                    </p>
+                    {(selectedJob as any).rescheduleRequestReply && (
+                      <p className="text-xs text-muted-foreground">Reply sent: "{(selectedJob as any).rescheduleRequestReply}"</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Cancellation request banner — pending */}
+                {canManageJobs && (selectedJob as any).cancellationRequestedAt && (!((selectedJob as any).cancelRequestStatus) || (selectedJob as any).cancelRequestStatus === 'pending') && (
                   <div className="rounded-lg border border-red-200 bg-red-50 p-3 space-y-2">
                     <p className="text-sm font-medium text-red-800 flex items-center gap-1.5">
                       <Ban className="w-4 h-4" /> Cancellation Requested by Customer
@@ -1423,19 +1452,8 @@ export default function SchedulePage() {
                         size="sm"
                         variant="destructive"
                         className="h-7 text-xs gap-1"
-                        disabled={approveJobCancellation.isPending}
                         title="Approve the request and cancel this job"
-                        onClick={() => {
-                          if (!window.confirm('Approve cancellation? This will cancel the job.')) return;
-                          approveJobCancellation.mutate({ id: selectedJobId! }, {
-                            onSuccess: () => {
-                              toast.success('Job cancelled');
-                              qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
-                              qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId!) });
-                            },
-                            onError: () => toast.error('Failed to approve cancellation'),
-                          });
-                        }}
+                        onClick={() => { setCancelApproveReply(''); setCancelApproveOpen(true); }}
                       >
                         <CheckCircle className="w-3 h-3" /> Approve & Cancel Job
                       </Button>
@@ -1444,12 +1462,24 @@ export default function SchedulePage() {
                         variant="outline"
                         className="h-7 text-xs gap-1"
                         disabled={denyJobCancellation.isPending}
-                        title="Deny the request — clears it and keeps the job scheduled"
-                        onClick={() => setDenyDialogOpen(true)}
+                        title="Decline the request — job stays scheduled, customer is notified"
+                        onClick={() => { setDenyReply(''); setDenyDialogOpen(true); }}
                       >
-                        <X className="w-3 h-3" /> Deny Request
+                        <X className="w-3 h-3" /> Decline Request
                       </Button>
                     </div>
+                  </div>
+                )}
+
+                {/* Cancellation request banner — already declined */}
+                {canManageJobs && (selectedJob as any).cancellationRequestedAt && (selectedJob as any).cancelRequestStatus === 'declined' && (
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-1">
+                    <p className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
+                      <Ban className="w-3 h-3" /> Cancellation request declined
+                    </p>
+                    {(selectedJob as any).cancelRequestReply && (
+                      <p className="text-xs text-muted-foreground">Reply sent: "{(selectedJob as any).cancelRequestReply}"</p>
+                    )}
                   </div>
                 )}
 
@@ -2913,30 +2943,169 @@ export default function SchedulePage() {
       </Dialog>
 
       {/* Cancel Series Confirmation */}
-      {/* Deny cancellation request dialog */}
-      <Dialog open={denyDialogOpen} onOpenChange={open => { if (!open) setDenyDialogOpen(false); }}>
+      {/* Approve cancellation request dialog */}
+      <Dialog open={cancelApproveOpen} onOpenChange={open => { if (!open) { setCancelApproveOpen(false); setCancelApproveReply(''); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Deny Cancellation Request</DialogTitle>
-            <DialogDescription>This will clear the customer's cancellation request and keep the job scheduled.</DialogDescription>
+            <DialogTitle>Approve Cancellation</DialogTitle>
+            <DialogDescription>This will cancel the job. The customer will be notified via a portal message.</DialogDescription>
           </DialogHeader>
+          <div className="space-y-3 pt-1">
+            <Textarea
+              placeholder="Optional message to customer (e.g. 'Your cancellation has been processed — no further action needed.')"
+              value={cancelApproveReply}
+              onChange={e => setCancelApproveReply(e.target.value)}
+              rows={3}
+              className="text-sm"
+            />
+          </div>
           <div className="flex gap-3 justify-end pt-2">
-            <Button variant="outline" onClick={() => setDenyDialogOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setCancelApproveOpen(false); setCancelApproveReply(''); }}>Cancel</Button>
             <Button
-              disabled={denyJobCancellation.isPending}
+              variant="destructive"
+              disabled={approveJobCancellation.isPending}
               onClick={() => {
-                denyJobCancellation.mutate({ id: selectedJobId! }, {
+                approveJobCancellation.mutate({ id: selectedJobId!, reply: cancelApproveReply.trim() || undefined }, {
                   onSuccess: () => {
-                    toast.success('Cancellation request denied — job remains scheduled');
+                    toast.success('Job cancelled — customer notified via portal message');
                     qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
                     qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId!) });
-                    setDenyDialogOpen(false);
+                    setCancelApproveOpen(false);
+                    setCancelApproveReply('');
                   },
-                  onError: () => toast.error('Failed to deny cancellation request'),
+                  onError: () => toast.error('Failed to approve cancellation'),
                 });
               }}
             >
-              {denyJobCancellation.isPending ? 'Saving…' : 'Deny Request'}
+              {approveJobCancellation.isPending ? 'Cancelling…' : 'Approve & Cancel Job'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Decline cancellation request dialog */}
+      <Dialog open={denyDialogOpen} onOpenChange={open => { if (!open) { setDenyDialogOpen(false); setDenyReply(''); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Decline Cancellation Request</DialogTitle>
+            <DialogDescription>The job stays scheduled. The customer will receive a portal message with your reply.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 pt-1">
+            <Textarea
+              placeholder="Optional reply to customer (e.g. 'We were unable to cancel within the required window — please call us.')"
+              value={denyReply}
+              onChange={e => setDenyReply(e.target.value)}
+              rows={3}
+              className="text-sm"
+            />
+          </div>
+          <div className="flex gap-3 justify-end pt-2">
+            <Button variant="outline" onClick={() => { setDenyDialogOpen(false); setDenyReply(''); }}>Cancel</Button>
+            <Button
+              disabled={denyJobCancellation.isPending}
+              onClick={() => {
+                denyJobCancellation.mutate({ id: selectedJobId!, reply: denyReply.trim() || undefined }, {
+                  onSuccess: () => {
+                    toast.success('Cancellation request declined — customer notified');
+                    qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                    qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId!) });
+                    setDenyDialogOpen(false);
+                    setDenyReply('');
+                  },
+                  onError: () => toast.error('Failed to decline cancellation request'),
+                });
+              }}
+            >
+              {denyJobCancellation.isPending ? 'Saving…' : 'Decline Request'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Approve reschedule dialog */}
+      <Dialog open={rescheduleApproveOpen} onOpenChange={open => { if (!open) setRescheduleApproveOpen(false); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Approve Reschedule</DialogTitle>
+            <DialogDescription>Confirm the new date and send an optional message to the customer.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 pt-1">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">New scheduled date</label>
+              <Input
+                type="date"
+                value={rescheduleApproveDate}
+                onChange={e => setRescheduleApproveDate(e.target.value)}
+                className="text-sm"
+              />
+              {(selectedJob as any)?.reschedulePreferredDate && (
+                <p className="text-xs text-muted-foreground">Customer preferred: {(selectedJob as any).reschedulePreferredDate}</p>
+              )}
+            </div>
+            <Textarea
+              placeholder="Optional message to customer"
+              value={rescheduleApproveReply}
+              onChange={e => setRescheduleApproveReply(e.target.value)}
+              rows={2}
+              className="text-sm"
+            />
+          </div>
+          <div className="flex gap-3 justify-end pt-2">
+            <Button variant="outline" onClick={() => setRescheduleApproveOpen(false)}>Cancel</Button>
+            <Button
+              disabled={approveReschedule.isPending || !rescheduleApproveDate}
+              onClick={() => {
+                approveReschedule.mutate({ id: selectedJobId!, approvedDate: rescheduleApproveDate, reply: rescheduleApproveReply.trim() || undefined }, {
+                  onSuccess: () => {
+                    toast.success('Reschedule approved — customer notified');
+                    qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                    qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId!) });
+                    setRescheduleApproveOpen(false);
+                  },
+                  onError: () => toast.error('Failed to approve reschedule'),
+                });
+              }}
+            >
+              {approveReschedule.isPending ? 'Saving…' : 'Approve'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Decline reschedule dialog */}
+      <Dialog open={rescheduleDeclineOpen} onOpenChange={open => { if (!open) { setRescheduleDeclineOpen(false); setRescheduleDeclineReply(''); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Decline Reschedule Request</DialogTitle>
+            <DialogDescription>The job stays on its current date. The customer will receive a portal message.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 pt-1">
+            <Textarea
+              placeholder="Optional reply to customer"
+              value={rescheduleDeclineReply}
+              onChange={e => setRescheduleDeclineReply(e.target.value)}
+              rows={3}
+              className="text-sm"
+            />
+          </div>
+          <div className="flex gap-3 justify-end pt-2">
+            <Button variant="outline" onClick={() => { setRescheduleDeclineOpen(false); setRescheduleDeclineReply(''); }}>Cancel</Button>
+            <Button
+              disabled={dismissRescheduleRequest.isPending}
+              onClick={() => {
+                dismissRescheduleRequest.mutate({ id: selectedJobId!, reply: rescheduleDeclineReply.trim() || undefined }, {
+                  onSuccess: () => {
+                    toast.success('Reschedule request declined — customer notified');
+                    qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+                    qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId!) });
+                    setRescheduleDeclineOpen(false);
+                    setRescheduleDeclineReply('');
+                  },
+                  onError: () => toast.error('Failed to decline reschedule request'),
+                });
+              }}
+            >
+              {dismissRescheduleRequest.isPending ? 'Saving…' : 'Decline Request'}
             </Button>
           </div>
         </DialogContent>

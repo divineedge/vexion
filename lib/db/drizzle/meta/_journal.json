@@ -267,6 +267,20 @@
       "when": 1755700000000,
       "tag": "0044_add_staff_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1755800000000,
+      "tag": "0045_add_updated_at_to_staff_notes",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1755900000000,
+      "tag": "0046_add_job_request_status",
+      "breakpoints": true
     }
   ]
 }

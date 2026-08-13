@@ -12,6 +12,7 @@ import { startFollowupScheduler } from "./lib/followupScheduler";
 import { startClockOutScheduler } from "./lib/clockOutScheduler";
 import { startBroadcastScheduler } from "./lib/broadcastScheduler";
 import { startCardExpiryReminderScheduler } from "./lib/cardExpiryReminderScheduler";
+import { startSupplyShortageScheduler } from "./lib/supplyShortageScheduler";
 
 const app: Express = express();
 
@@ -75,5 +76,8 @@ startBroadcastScheduler();
 
 // Start card expiry reminder scheduler
 startCardExpiryReminderScheduler();
+
+// Start supply shortage early-warning scheduler
+startSupplyShortageScheduler();
 
 export default app;

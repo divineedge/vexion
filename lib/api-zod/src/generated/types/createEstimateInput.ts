@@ -7,6 +7,7 @@
  */
 import type { CreateEstimateInputVisitMode } from './createEstimateInputVisitMode';
 import type { EstimateLineItem } from './estimateLineItem';
+import type { SupplyItem } from './supplyItem';
 
 export interface CreateEstimateInput {
   customerId?: number;
@@ -21,4 +22,6 @@ export interface CreateEstimateInput {
   templateId?: number;
   /** Expected job duration in minutes */
   estimatedDurationMin?: number;
+  /** Supplies the crew will need on site */
+  suppliesNeeded?: SupplyItem[];
 }

@@ -28,7 +28,9 @@ import {
   useListProperties, getListPropertiesQueryKey,
   useListEstimateTemplates, getListEstimateTemplatesQueryKey,
   useGetTenantSettings, getGetTenantSettingsQueryKey,
+  useListInventoryItems, getListInventoryItemsQueryKey,
 } from '@workspace/api-client-react';
+import { useDebounce } from '@/hooks/use-debounce';
 import { format } from 'date-fns';
 import {
   Plus, FileText, DollarSign, TrendingUp, Send, Briefcase, Trash2,
@@ -86,6 +88,13 @@ interface CatalogPlan {
   price: number;
   billingCycle: string;
   description: string | null;
+}
+
+interface SupplyItem {
+  inventoryItemId: number;
+  name: string;
+  quantity: number;
+  unit: string;
 }
 
 function emptyItem(): LineItem {
@@ -305,6 +314,13 @@ export default function EstimatesPage() {
   const [catalogServices, setCatalogServices] = useState<CatalogService[] | null>(null);
   const [catalogPlans, setCatalogPlans] = useState<CatalogPlan[] | null>(null);
 
+  // Supplies state for create form
+  const [createSupplies, setCreateSupplies] = useState<SupplyItem[]>([]);
+  const [addingCreateSupply, setAddingCreateSupply] = useState(false);
+  const [createSupplySearch, setCreateSupplySearch] = useState('');
+  const debouncedCreateSupplySearch = useDebounce(createSupplySearch, 300);
+  const [createSupplyQtys, setCreateSupplyQtys] = useState<Record<number, string>>({});
+
   const listParams = { ...(statusFilter ? { status: statusFilter } : {}), ...(assigneeFilter ? { assigneeId: assigneeFilter } : {}) };
   const { data: estimates, isLoading } = useListEstimates(listParams, {
     query: { queryKey: getListEstimatesQueryKey(listParams) },
@@ -318,6 +334,10 @@ export default function EstimatesPage() {
   const { data: properties } = useListProperties({}, { query: { enabled: createOpen, queryKey: getListPropertiesQueryKey({}) } });
   const { data: templates } = useListEstimateTemplates({ query: { enabled: createOpen, queryKey: getListEstimateTemplatesQueryKey() } });
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
+  const { data: supplySearchItems } = useListInventoryItems(
+    { q: debouncedCreateSupplySearch || undefined },
+    { query: { enabled: addingCreateSupply, queryKey: getListInventoryItemsQueryKey({ q: debouncedCreateSupplySearch || undefined }) } }
+  );
 
   useEffect(() => {
     setNotesVal(selectedEstimate?.notes ?? '');
@@ -397,6 +417,7 @@ export default function EstimatesPage() {
         estimatedDurationMin: form.estimatedDurationMin
           ? Math.round(parseFloat(form.estimatedDurationMin) * ((settings as any)?.durationUnit === 'hours' ? 60 : 1))
           : undefined,
+        suppliesNeeded: createSupplies.length > 0 ? createSupplies : undefined,
       },
     }, {
       onSuccess: (e) => {
@@ -404,6 +425,9 @@ export default function EstimatesPage() {
         invalidate();
         setCreateOpen(false);
         setLineItems([emptyItem()]);
+        setCreateSupplies([]);
+        setAddingCreateSupply(false);
+        setCreateSupplySearch('');
         setForm({ customerId: '', propertyId: '', assigneeId: '', visitMode: 'scheduled', scheduledAt: '', expiresAt: '', notes: '', templateId: '', estimatedDurationMin: '' });
         setSelectedId(e.id);
       },
@@ -882,6 +906,85 @@ export default function EstimatesPage() {
               </div>
             </div>
 
+            {/* Supplies needed */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium flex items-center gap-1.5">
+                  <Package className="w-3.5 h-3.5 text-muted-foreground" /> Supplies Needed
+                  {createSupplies.length > 0 && <Badge variant="secondary" className="h-4 px-1 text-[10px]">{createSupplies.length}</Badge>}
+                </label>
+                <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => { setAddingCreateSupply(true); setCreateSupplySearch(''); setCreateSupplyQtys({}); }}>
+                  <Plus className="w-3 h-3" /> Add
+                </Button>
+              </div>
+              {addingCreateSupply && (
+                <div className="rounded-lg border p-3 space-y-2 bg-muted/30">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                    <input
+                      className="w-full pl-8 pr-8 py-1.5 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      placeholder="Search inventory..."
+                      value={createSupplySearch}
+                      onChange={e => setCreateSupplySearch(e.target.value)}
+                      autoFocus
+                    />
+                    {createSupplySearch && <button onClick={() => setCreateSupplySearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>}
+                  </div>
+                  {supplySearchItems && supplySearchItems.length > 0 && (
+                    <div className="rounded-md border divide-y text-sm max-h-40 overflow-y-auto">
+                      {supplySearchItems.slice(0, 8).map(item => (
+                        <div key={item.id} className="flex items-center gap-2 px-2 py-1.5 hover:bg-muted/50">
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium truncate">{item.name}</div>
+                            <div className="text-xs text-muted-foreground">{item.quantity} {item.unit} in stock</div>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number" min={1}
+                              className="w-14 text-xs border rounded px-1.5 py-1 text-right"
+                              value={createSupplyQtys[item.id] ?? '1'}
+                              onChange={e => setCreateSupplyQtys(prev => ({ ...prev, [item.id]: e.target.value }))}
+                              onClick={e => e.stopPropagation()}
+                            />
+                            <Button size="sm" className="h-6 px-2 text-xs" onClick={() => {
+                              const qty = parseFloat(createSupplyQtys[item.id] ?? '1');
+                              if (isNaN(qty) || qty <= 0) { toast.error('Enter a valid quantity'); return; }
+                              const existing = createSupplies.find(s => s.inventoryItemId === item.id);
+                              setCreateSupplies(existing
+                                ? createSupplies.map(s => s.inventoryItemId === item.id ? { ...s, quantity: s.quantity + qty } : s)
+                                : [...createSupplies, { inventoryItemId: item.id, name: item.name, quantity: qty, unit: item.unit ?? '' }]
+                              );
+                              setAddingCreateSupply(false);
+                              setCreateSupplySearch('');
+                            }}>Add</Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {createSupplySearch && supplySearchItems?.length === 0 && (
+                    <p className="text-xs text-muted-foreground">No items found for "{createSupplySearch}"</p>
+                  )}
+                  <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setAddingCreateSupply(false)}>Cancel</Button>
+                </div>
+              )}
+              {createSupplies.length > 0 && (
+                <div className="rounded-lg border divide-y text-sm">
+                  {createSupplies.map((s, i) => (
+                    <div key={i} className="flex items-center justify-between px-3 py-2">
+                      <div>
+                        <span className="font-medium">{s.name}</span>
+                        <span className="text-xs text-muted-foreground ml-2">{s.quantity} {s.unit}</span>
+                      </div>
+                      <button onClick={() => setCreateSupplies(createSupplies.filter((_, idx) => idx !== i))} className="text-muted-foreground/40 hover:text-destructive">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Notes</label>
               <Textarea rows={2} title="Internal notes or scope of work (not shown on the customer-facing estimate)" placeholder="Internal notes or scope..." value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
@@ -1350,6 +1453,22 @@ export default function EstimatesPage() {
                         return `${h} hr ${m} min`;
                       })()}
                     </p>
+                  </div>
+                )}
+
+                {Array.isArray((selectedEstimate as any).suppliesNeeded) && (selectedEstimate as any).suppliesNeeded.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1.5">
+                      <Package className="w-3.5 h-3.5" /> Supplies Needed
+                    </p>
+                    <div className="rounded-lg border divide-y text-sm">
+                      {((selectedEstimate as any).suppliesNeeded as SupplyItem[]).map((s, i) => (
+                        <div key={i} className="flex items-center justify-between px-3 py-2">
+                          <span className="font-medium">{s.name}</span>
+                          <span className="text-xs text-muted-foreground">{s.quantity} {s.unit}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 

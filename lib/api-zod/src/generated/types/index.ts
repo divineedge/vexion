@@ -461,6 +461,7 @@ export * from './subTimerType';
 export * from './suggestedPart';
 export * from './suggestedPartsInput';
 export * from './suggestedPartWithStock';
+export * from './supplyItem';
 export * from './syncBankTransactions200';
 export * from './taskBundle';
 export * from './taskBundleCompletion';

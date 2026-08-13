@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { EstimateLineItem } from './estimateLineItem';
+import type { SupplyItem } from './supplyItem';
 import type { UpdateEstimateInputStatus } from './updateEstimateInputStatus';
 import type { UpdateEstimateInputVisitMode } from './updateEstimateInputVisitMode';
 
@@ -21,4 +22,6 @@ export interface UpdateEstimateInput {
   status?: UpdateEstimateInputStatus;
   /** Expected job duration in minutes */
   estimatedDurationMin?: number;
+  /** Supplies the crew will need on site */
+  suppliesNeeded?: SupplyItem[];
 }

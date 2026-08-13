@@ -56,6 +56,8 @@ export const estimatesTable = pgTable("estimates", {
   declineReason: text("decline_reason"),
   /** Expected job duration in minutes, set by the estimator */
   estimatedDurationMin: integer("estimated_duration_min"),
+  /** Supplies the crew will need on site: [{inventoryItemId, name, quantity, unit}] */
+  suppliesNeeded: jsonb("supplies_needed").default("[]"),
   convertedToJobId: integer("converted_to_job_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

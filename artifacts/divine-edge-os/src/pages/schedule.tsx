@@ -257,6 +257,11 @@ export default function SchedulePage() {
   const debouncedPartsSearch = useDebounce(partsSearch, 300);
   const [addingPart, setAddingPart] = useState(false);
   const [partQtys, setPartQtys] = useState<Record<number, string>>({});
+
+  const [suppliesSearch, setSuppliesSearch] = useState('');
+  const debouncedSuppliesSearch = useDebounce(suppliesSearch, 300);
+  const [addingSupply, setAddingSupply] = useState(false);
+  const [supplyQtys, setSupplyQtys] = useState<Record<number, string>>({});
   const [chemFormOpen, setChemFormOpen] = useState(false);
   const [chemForm, setChemForm] = useState({
     mixtureId: '', productId: '', volumeApplied: '', volumeUnit: 'gal',
@@ -436,6 +441,10 @@ export default function SchedulePage() {
   const { data: inventoryItems } = useListInventoryItems(
     { q: debouncedPartsSearch || undefined },
     { query: { enabled: addingPart, queryKey: getListInventoryItemsQueryKey({ q: debouncedPartsSearch || undefined }) } }
+  );
+  const { data: supplyInventoryItems } = useListInventoryItems(
+    { q: debouncedSuppliesSearch || undefined },
+    { query: { enabled: addingSupply, queryKey: getListInventoryItemsQueryKey({ q: debouncedSuppliesSearch || undefined }) } }
   );
 
   // Estimates and visits for schedule calendar
@@ -1938,6 +1947,144 @@ export default function SchedulePage() {
                     </div>
                   ) : !addingPart && (
                     <p className="text-sm text-muted-foreground py-1">No parts logged yet.</p>
+                  )}
+                </div>
+
+                {/* Supplies needed for job */}
+                <Separator />
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1.5">
+                      <Package className="w-3.5 h-3.5" /> Supplies Needed
+                      {Array.isArray((selectedJob as any).suppliesNeeded) && (selectedJob as any).suppliesNeeded.length > 0 && (
+                        <Badge variant="secondary" className="h-4 px-1 text-[10px]">{(selectedJob as any).suppliesNeeded.length}</Badge>
+                      )}
+                    </p>
+                    {canManageJobs && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs gap-1"
+                        title="Add a supply item this crew will need on site"
+                        onClick={() => { setAddingSupply(true); setSuppliesSearch(''); setSupplyQtys({}); }}
+                      >
+                        <Plus className="w-3 h-3" /> Add Supply
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Add supply form */}
+                  {addingSupply && (
+                    <div className="rounded-lg border p-3 space-y-2 bg-muted/30">
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                        <input
+                          className="w-full pl-8 pr-8 py-1.5 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          title="Search inventory by name or SKU"
+                          placeholder="Search supplies..."
+                          value={suppliesSearch}
+                          onChange={e => setSuppliesSearch(e.target.value)}
+                          autoFocus
+                        />
+                        {suppliesSearch && <button title="Clear search" onClick={() => setSuppliesSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>}
+                      </div>
+                      {supplyInventoryItems && supplyInventoryItems.length > 0 && (
+                        <div className="rounded-md border divide-y text-sm max-h-48 overflow-y-auto">
+                          {supplyInventoryItems.slice(0, 8).map(item => (
+                            <div key={item.id} className="flex items-center gap-2 px-2 py-1.5 hover:bg-muted/50">
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium truncate" title={item.name}>{item.name}</div>
+                                <div className="text-xs text-muted-foreground">{item.quantity} {item.unit} in stock</div>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  min={1}
+                                  title="Quantity needed"
+                                  className="w-14 text-xs border rounded px-1.5 py-1 text-right"
+                                  value={supplyQtys[item.id] ?? '1'}
+                                  onChange={e => setSupplyQtys(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                  onClick={e => e.stopPropagation()}
+                                />
+                                <Button
+                                  size="sm"
+                                  className="h-6 px-2 text-xs"
+                                  title={`Add ${item.name} to supplies needed`}
+                                  disabled={updateJob.isPending}
+                                  onClick={() => {
+                                    if (!selectedJobId || !selectedJob) return;
+                                    const qty = parseFloat(supplyQtys[item.id] ?? '1');
+                                    if (isNaN(qty) || qty <= 0) { toast.error('Enter a valid quantity'); return; }
+                                    const existing: { inventoryItemId: number; name: string; quantity: number; unit: string }[] =
+                                      Array.isArray((selectedJob as any).suppliesNeeded) ? (selectedJob as any).suppliesNeeded : [];
+                                    const alreadyAdded = existing.find(s => s.inventoryItemId === item.id);
+                                    const updated = alreadyAdded
+                                      ? existing.map(s => s.inventoryItemId === item.id ? { ...s, quantity: s.quantity + qty } : s)
+                                      : [...existing, { inventoryItemId: item.id, name: item.name, quantity: qty, unit: item.unit }];
+                                    updateJob.mutate(
+                                      { id: selectedJobId, data: { suppliesNeeded: updated } as any },
+                                      {
+                                        onSuccess: () => {
+                                          toast.success(`${item.name} added to supplies`);
+                                          qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId) });
+                                          setAddingSupply(false);
+                                          setSuppliesSearch('');
+                                        },
+                                        onError: () => toast.error('Failed to update supplies'),
+                                      }
+                                    );
+                                  }}
+                                >{updateJob.isPending ? 'Saving…' : 'Add'}</Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {suppliesSearch && supplyInventoryItems?.length === 0 && (
+                        <p className="text-xs text-muted-foreground px-1">No items found for "{suppliesSearch}"</p>
+                      )}
+                      <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setAddingSupply(false)}>Cancel</Button>
+                    </div>
+                  )}
+
+                  {/* Supplies list */}
+                  {Array.isArray((selectedJob as any).suppliesNeeded) && (selectedJob as any).suppliesNeeded.length > 0 ? (
+                    <div className="rounded-lg border divide-y text-sm">
+                      {((selectedJob as any).suppliesNeeded as { inventoryItemId: number; name: string; quantity: number; unit: string }[]).map((supply, i) => (
+                        <div key={i} className="flex items-center justify-between px-3 py-2">
+                          <div className="flex-1 min-w-0">
+                            <span className="font-medium truncate block" title={supply.name}>{supply.name}</span>
+                            <span className="text-xs text-muted-foreground">{supply.quantity} {supply.unit}</span>
+                          </div>
+                          {canManageJobs && (
+                            <button
+                              className="text-muted-foreground/40 hover:text-destructive transition-colors"
+                              title="Remove this supply"
+                              onClick={() => {
+                                if (!selectedJobId || !selectedJob) return;
+                                const existing: { inventoryItemId: number; name: string; quantity: number; unit: string }[] =
+                                  Array.isArray((selectedJob as any).suppliesNeeded) ? (selectedJob as any).suppliesNeeded : [];
+                                const updated = existing.filter(s => s.inventoryItemId !== supply.inventoryItemId);
+                                updateJob.mutate(
+                                  { id: selectedJobId, data: { suppliesNeeded: updated } as any },
+                                  {
+                                    onSuccess: () => {
+                                      toast.success('Supply removed');
+                                      qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId) });
+                                    },
+                                    onError: () => toast.error('Failed to update supplies'),
+                                  }
+                                );
+                              }}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : !addingSupply && (
+                    <p className="text-sm text-muted-foreground py-1">No supplies listed for this job.</p>
                   )}
                 </div>
 

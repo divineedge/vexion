@@ -7230,6 +7230,11 @@ components:
         estimatedDurationMin:
           type: ["integer", "null"]
           description: Expected job duration in minutes
+        suppliesNeeded:
+          type: array
+          description: "Supplies the crew will need on site"
+          items:
+            $ref: "#/components/schemas/SupplyItem"
         convertedToJobId:
           type: ["integer", "null"]
         templateId:
@@ -7351,6 +7356,11 @@ components:
         estimatedDurationMin:
           type: integer
           description: Expected job duration in minutes
+        suppliesNeeded:
+          type: array
+          description: "Supplies the crew will need on site"
+          items:
+            $ref: "#/components/schemas/SupplyItem"
 
     UpdateEstimateInput:
       type: object
@@ -7380,6 +7390,11 @@ components:
         estimatedDurationMin:
           type: integer
           description: Expected job duration in minutes
+        suppliesNeeded:
+          type: array
+          description: "Supplies the crew will need on site"
+          items:
+            $ref: "#/components/schemas/SupplyItem"
 
     EstimateRespondInput:
       type: object
@@ -8698,6 +8713,11 @@ components:
           description: "Parts used on this job from inventory"
           items:
             $ref: "#/components/schemas/JobPart"
+        suppliesNeeded:
+          type: array
+          description: "Supplies the crew will need on site"
+          items:
+            $ref: "#/components/schemas/SupplyItem"
         recurrenceRule:
           allOf:
             - $ref: "#/components/schemas/RecurrenceRule"
@@ -8776,6 +8796,19 @@ components:
         total:
           type: number
 
+    SupplyItem:
+      type: object
+      required: [inventoryItemId, name, quantity, unit]
+      properties:
+        inventoryItemId:
+          type: integer
+        name:
+          type: string
+        quantity:
+          type: number
+        unit:
+          type: string
+
     JobPart:
       type: object
       required: [inventoryItemId, name, quantity, unitPrice, total]
@@ -8833,6 +8866,11 @@ components:
         smsReminderEnabled:
           type: boolean
           description: "Enable SMS reminder for this job"
+        suppliesNeeded:
+          type: array
+          description: "Supplies the crew will need on site"
+          items:
+            $ref: "#/components/schemas/SupplyItem"
 
     JobUpdate:
       type: object
@@ -8867,6 +8905,11 @@ components:
         holdFromBilling:
           type: boolean
           description: "When true, exclude this job from the next automatic overnight billing run"
+        suppliesNeeded:
+          type: array
+          description: "Supplies the crew will need on site"
+          items:
+            $ref: "#/components/schemas/SupplyItem"
 
     Crew:
       type: object

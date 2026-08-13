@@ -1250,6 +1250,12 @@ export const ListJobsResponseItem = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional().describe('Parts used on this job from inventory'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site'),
   "recurrenceRule": zod.object({
   "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
   "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
@@ -1311,7 +1317,13 @@ export const CreateJobBody = zod.object({
   "endAfter": zod.number().optional().describe('Used when endCondition is after'),
   "endDate": zod.string().optional().describe('ISO date string; used when endCondition is on_date')
 }).optional(),
-  "smsReminderEnabled": zod.boolean().optional().describe('Enable SMS reminder for this job')
+  "smsReminderEnabled": zod.boolean().optional().describe('Enable SMS reminder for this job'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site')
 })
 
 export const CreateJobResponse = zod.object({
@@ -1350,6 +1362,12 @@ export const CreateJobResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional().describe('Parts used on this job from inventory'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site'),
   "recurrenceRule": zod.object({
   "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
   "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
@@ -1427,6 +1445,12 @@ export const GetJobResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional().describe('Parts used on this job from inventory'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site'),
   "recurrenceRule": zod.object({
   "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
   "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
@@ -1490,7 +1514,13 @@ export const UpdateJobBody = zod.object({
 }).optional(),
   "editScope": zod.enum(['this', 'forward', 'all']).optional().describe('Scope of the edit for recurring jobs'),
   "smsReminderEnabled": zod.boolean().optional().describe('Enable or disable SMS reminder for this job'),
-  "holdFromBilling": zod.boolean().optional().describe('When true, exclude this job from the next automatic overnight billing run')
+  "holdFromBilling": zod.boolean().optional().describe('When true, exclude this job from the next automatic overnight billing run'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site')
 })
 
 export const UpdateJobResponse = zod.object({
@@ -1529,6 +1559,12 @@ export const UpdateJobResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional().describe('Parts used on this job from inventory'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site'),
   "recurrenceRule": zod.object({
   "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
   "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
@@ -1653,6 +1689,12 @@ export const SkipNextOccurrenceResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional().describe('Parts used on this job from inventory'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site'),
   "recurrenceRule": zod.object({
   "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
   "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
@@ -1735,6 +1777,12 @@ export const PauseRecurringSeriesResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional().describe('Parts used on this job from inventory'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site'),
   "recurrenceRule": zod.object({
   "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
   "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
@@ -1826,6 +1874,12 @@ export const CompleteJobResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional().describe('Parts used on this job from inventory'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site'),
   "recurrenceRule": zod.object({
   "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
   "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
@@ -1925,6 +1979,12 @@ export const AddJobPartResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional().describe('Parts used on this job from inventory'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site'),
   "recurrenceRule": zod.object({
   "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
   "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
@@ -2003,6 +2063,12 @@ export const RemoveJobPartResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional().describe('Parts used on this job from inventory'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site'),
   "recurrenceRule": zod.object({
   "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
   "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
@@ -6138,6 +6204,12 @@ export const ApproveJobCancellationResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional().describe('Parts used on this job from inventory'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site'),
   "recurrenceRule": zod.object({
   "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
   "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
@@ -6219,6 +6291,12 @@ export const DenyJobCancellationResponse = zod.object({
   "unitPrice": zod.number(),
   "total": zod.number()
 })).optional().describe('Parts used on this job from inventory'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site'),
   "recurrenceRule": zod.object({
   "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
   "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
@@ -7150,6 +7228,12 @@ export const ListEstimatesResponseItem = zod.object({
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
   "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site'),
   "convertedToJobId": zod.number().nullish(),
   "templateId": zod.number().nullish(),
   "templateName": zod.string().nullish(),
@@ -7187,7 +7271,13 @@ export const CreateEstimateBody = zod.object({
   "acceptedByCustomer": zod.boolean()
 })).optional(),
   "templateId": zod.number().optional(),
-  "estimatedDurationMin": zod.number().optional().describe('Expected job duration in minutes')
+  "estimatedDurationMin": zod.number().optional().describe('Expected job duration in minutes'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site')
 })
 
 export const CreateEstimateResponse = zod.object({
@@ -7223,6 +7313,12 @@ export const CreateEstimateResponse = zod.object({
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
   "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site'),
   "convertedToJobId": zod.number().nullish(),
   "templateId": zod.number().nullish(),
   "templateName": zod.string().nullish(),
@@ -7283,6 +7379,12 @@ export const GetEstimateResponse = zod.object({
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
   "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site'),
   "convertedToJobId": zod.number().nullish(),
   "templateId": zod.number().nullish(),
   "templateName": zod.string().nullish(),
@@ -7322,7 +7424,13 @@ export const UpdateEstimateBody = zod.object({
   "acceptedByCustomer": zod.boolean()
 })).optional(),
   "status": zod.enum(['draft', 'sent', 'approved', 'declined', 'expired']).optional(),
-  "estimatedDurationMin": zod.number().optional().describe('Expected job duration in minutes')
+  "estimatedDurationMin": zod.number().optional().describe('Expected job duration in minutes'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site')
 })
 
 export const UpdateEstimateResponse = zod.object({
@@ -7358,6 +7466,12 @@ export const UpdateEstimateResponse = zod.object({
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
   "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site'),
   "convertedToJobId": zod.number().nullish(),
   "templateId": zod.number().nullish(),
   "templateName": zod.string().nullish(),
@@ -7419,6 +7533,12 @@ export const SendEstimateResponse = zod.object({
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
   "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site'),
   "convertedToJobId": zod.number().nullish(),
   "templateId": zod.number().nullish(),
   "templateName": zod.string().nullish(),
@@ -7544,6 +7664,12 @@ export const GetPublicEstimateResponse = zod.object({
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
   "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site'),
   "convertedToJobId": zod.number().nullish(),
   "templateId": zod.number().nullish(),
   "templateName": zod.string().nullish(),
@@ -7639,6 +7765,12 @@ export const RespondToEstimateResponse = zod.object({
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
   "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site'),
   "convertedToJobId": zod.number().nullish(),
   "templateId": zod.number().nullish(),
   "templateName": zod.string().nullish(),

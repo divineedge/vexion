@@ -9,6 +9,7 @@ import type { JobUpdateEditScope } from './jobUpdateEditScope';
 import type { JobUpdatePriority } from './jobUpdatePriority';
 import type { JobUpdateStatus } from './jobUpdateStatus';
 import type { RecurrenceRule } from './recurrenceRule';
+import type { SupplyItem } from './supplyItem';
 
 export interface JobUpdate {
   title?: string;
@@ -26,4 +27,6 @@ export interface JobUpdate {
   smsReminderEnabled?: boolean;
   /** When true, exclude this job from the next automatic overnight billing run */
   holdFromBilling?: boolean;
+  /** Supplies the crew will need on site */
+  suppliesNeeded?: SupplyItem[];
 }

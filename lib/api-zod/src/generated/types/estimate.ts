@@ -8,6 +8,7 @@
 import type { EstimateLineItem } from './estimateLineItem';
 import type { EstimateStatus } from './estimateStatus';
 import type { EstimateVisitMode } from './estimateVisitMode';
+import type { SupplyItem } from './supplyItem';
 
 export interface Estimate {
   id: number;
@@ -47,6 +48,8 @@ export interface Estimate {
      * @nullable
      */
   estimatedDurationMin?: number | null;
+  /** Supplies the crew will need on site */
+  suppliesNeeded?: SupplyItem[];
   /** @nullable */
   convertedToJobId?: number | null;
   /** @nullable */

@@ -1,6 +1,26 @@
 import { Router, type IRouter } from "express";
 import { getStripeClient } from "../lib/stripeClient";
 import { logger } from "../lib/logger";
+
+// Supply item validation — strips items that could not have come from a
+// legitimate picker (non-integer ID, non-positive quantity, empty name).
+function normaliseSupplies(raw: unknown): { inventoryItemId: number; name: string; quantity: number; unit: string }[] {
+  if (!Array.isArray(raw)) return [];
+  const out: { inventoryItemId: number; name: string; quantity: number; unit: string }[] = [];
+  for (const s of raw) {
+    if (typeof s !== "object" || s === null) continue;
+    const { inventoryItemId, name, quantity, unit } = s as Record<string, unknown>;
+    // Reject any non-integer value — parseInt("1.5") → 1 and parseInt("1abc") → 1
+    // would both pass an isInteger check, so we only accept already-integer numbers.
+    if (!Number.isInteger(inventoryItemId) || (inventoryItemId as number) <= 0) continue;
+    const id = inventoryItemId as number;
+    const qty = typeof quantity === "number" ? quantity : (typeof quantity === "string" && /^\d+(\.\d+)?$/.test(quantity.trim()) ? parseFloat(quantity) : NaN);
+    if (!isFinite(qty) || qty <= 0) continue;
+    if (typeof name !== "string" || !name.trim()) continue;
+    out.push({ inventoryItemId: id, name: String(name).trim(), quantity: qty, unit: typeof unit === "string" ? unit.trim() : "" });
+  }
+  return out;
+}
 import crypto from "crypto";
 import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable, invoicesTable, tenantsTable, blueprintsTable, chemicalApplicationsTable, chemicalProductsTable, chemicalMixtureItemsTable, customerPlansTable, equipmentFuelLogsTable, routeTemplatesTable, skipReasonsTable, taskNotificationsTable, internalTasksTable } from "@workspace/db";
 import { eq, and, or, sql, desc, asc, isNotNull, isNull, ne, inArray, min, gt } from "drizzle-orm";
@@ -412,7 +432,7 @@ router.get("/jobs/series", async (req, res): Promise<void> => {
 router.post("/jobs", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
-  const { title, description, status, priority, customerId, propertyId, assigneeId, crewId, scheduledAt, estimatedDuration, blueprintId, recurrenceRule, smsReminderEnabled } = req.body;
+  const { title, description, status, priority, customerId, propertyId, assigneeId, crewId, scheduledAt, estimatedDuration, blueprintId, recurrenceRule, smsReminderEnabled, suppliesNeeded } = req.body;
 
   if (!title || !scheduledAt) {
     res.status(400).json({ error: "title and scheduledAt are required" });
@@ -434,6 +454,7 @@ router.post("/jobs", async (req, res): Promise<void> => {
     estimatedDuration: estimatedDuration ?? null,
     recurrenceRule: recurrenceRule ?? null,
     smsReminderEnabled: smsReminderEnabled === true || smsReminderEnabled === "true",
+    suppliesNeeded: normaliseSupplies(suppliesNeeded),
   }).returning();
 
   await db.insert(activityLogTable).values({ tenantId, userId, type: "job_created", message: `Job "${title}" created`, entityId: job.id });
@@ -466,7 +487,7 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const { title, description, status, priority, assigneeId, crewId, scheduledAt, estimatedDuration, recurrenceRule, editScope, smsReminderEnabled, holdFromBilling, planId, tags } = req.body;
+  const { title, description, status, priority, assigneeId, crewId, scheduledAt, estimatedDuration, recurrenceRule, editScope, smsReminderEnabled, holdFromBilling, planId, tags, suppliesNeeded } = req.body;
 
   // Fetch current job to check if it's a recurring instance
   const [currentJob] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
@@ -517,6 +538,7 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
     ...(crewId !== undefined && { crewId: crewId ? parseInt(crewId, 10) : null }),
     ...(scheduledAt !== undefined && { scheduledAt: new Date(scheduledAt) }),
     ...(estimatedDuration !== undefined && { estimatedDuration }),
+    ...(suppliesNeeded !== undefined && { suppliesNeeded: normaliseSupplies(suppliesNeeded) }),
     ...(smsReminderEnabled !== undefined && { smsReminderEnabled: smsReminderEnabled === true || smsReminderEnabled === "true" }),
     ...(holdFromBilling !== undefined && { holdFromBilling: holdFromBilling === true || holdFromBilling === "true" }),
     ...(resolvedPlanId !== undefined && { planId: resolvedPlanId }),

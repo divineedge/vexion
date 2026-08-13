@@ -10,6 +10,7 @@ import type { JobPart } from './jobPart';
 import type { JobPriority } from './jobPriority';
 import type { JobStatus } from './jobStatus';
 import type { RecurrenceRule } from './recurrenceRule';
+import type { SupplyItem } from './supplyItem';
 
 export interface Job {
   id: number;
@@ -51,6 +52,8 @@ export interface Job {
   lineItems?: JobLineItem[];
   /** Parts used on this job from inventory */
   jobParts?: JobPart[];
+  /** Supplies the crew will need on site */
+  suppliesNeeded?: SupplyItem[];
   /** Present only on series root jobs */
   recurrenceRule?: RecurrenceRule | null;
   /**

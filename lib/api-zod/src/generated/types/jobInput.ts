@@ -8,6 +8,7 @@
 import type { JobInputPriority } from './jobInputPriority';
 import type { JobInputStatus } from './jobInputStatus';
 import type { RecurrenceRule } from './recurrenceRule';
+import type { SupplyItem } from './supplyItem';
 
 export interface JobInput {
   title: string;
@@ -24,4 +25,6 @@ export interface JobInput {
   recurrenceRule?: RecurrenceRule;
   /** Enable SMS reminder for this job */
   smsReminderEnabled?: boolean;
+  /** Supplies the crew will need on site */
+  suppliesNeeded?: SupplyItem[];
 }

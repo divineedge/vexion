@@ -40,6 +40,13 @@ export const EstimateVisitMode = {
   drive_by: 'drive_by',
 } as const;
 
+export interface SupplyItem {
+  inventoryItemId: number;
+  name: string;
+  quantity: number;
+  unit: string;
+}
+
 export interface Estimate {
   id: number;
   tenantId: number;
@@ -78,6 +85,8 @@ export interface Estimate {
      * @nullable
      */
   estimatedDurationMin?: number | null;
+  /** Supplies the crew will need on site */
+  suppliesNeeded?: SupplyItem[];
   /** @nullable */
   convertedToJobId?: number | null;
   /** @nullable */
@@ -226,6 +235,8 @@ export interface CreateEstimateInput {
   templateId?: number;
   /** Expected job duration in minutes */
   estimatedDurationMin?: number;
+  /** Supplies the crew will need on site */
+  suppliesNeeded?: SupplyItem[];
 }
 
 export type UpdateEstimateInputVisitMode = typeof UpdateEstimateInputVisitMode[keyof typeof UpdateEstimateInputVisitMode];
@@ -260,6 +271,8 @@ export interface UpdateEstimateInput {
   status?: UpdateEstimateInputStatus;
   /** Expected job duration in minutes */
   estimatedDurationMin?: number;
+  /** Supplies the crew will need on site */
+  suppliesNeeded?: SupplyItem[];
 }
 
 export type EstimateRespondInputAction = typeof EstimateRespondInputAction[keyof typeof EstimateRespondInputAction];
@@ -1323,6 +1336,8 @@ export interface Job {
   lineItems?: JobLineItem[];
   /** Parts used on this job from inventory */
   jobParts?: JobPart[];
+  /** Supplies the crew will need on site */
+  suppliesNeeded?: SupplyItem[];
   /** Present only on series root jobs */
   recurrenceRule?: RecurrenceRule | null;
   /**
@@ -1431,6 +1446,8 @@ export interface JobInput {
   recurrenceRule?: RecurrenceRule;
   /** Enable SMS reminder for this job */
   smsReminderEnabled?: boolean;
+  /** Supplies the crew will need on site */
+  suppliesNeeded?: SupplyItem[];
 }
 
 export type JobUpdateStatus = typeof JobUpdateStatus[keyof typeof JobUpdateStatus];
@@ -1482,6 +1499,8 @@ export interface JobUpdate {
   smsReminderEnabled?: boolean;
   /** When true, exclude this job from the next automatic overnight billing run */
   holdFromBilling?: boolean;
+  /** Supplies the crew will need on site */
+  suppliesNeeded?: SupplyItem[];
 }
 
 export interface CrewMember {

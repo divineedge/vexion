@@ -27,6 +27,28 @@ import {
 const router: IRouter = Router();
 
 // ---------------------------------------------------------------------------
+// Supply item validation
+// Only keeps items with a positive-integer inventoryItemId and a positive finite
+// quantity. Strips anything that could not have come from a legitimate picker.
+function normaliseSupplies(raw: unknown): { inventoryItemId: number; name: string; quantity: number; unit: string }[] {
+  if (!Array.isArray(raw)) return [];
+  const out: { inventoryItemId: number; name: string; quantity: number; unit: string }[] = [];
+  for (const s of raw) {
+    if (typeof s !== "object" || s === null) continue;
+    const { inventoryItemId, name, quantity, unit } = s as Record<string, unknown>;
+    // Reject any non-integer value — parseInt("1.5") → 1 and parseInt("1abc") → 1
+    // would both pass an isInteger check, so we only accept already-integer numbers.
+    if (!Number.isInteger(inventoryItemId) || (inventoryItemId as number) <= 0) continue;
+    const id = inventoryItemId as number;
+    const qty = typeof quantity === "number" ? quantity : (typeof quantity === "string" && /^\d+(\.\d+)?$/.test(quantity.trim()) ? parseFloat(quantity) : NaN);
+    if (!isFinite(qty) || qty <= 0) continue;
+    if (typeof name !== "string" || !name.trim()) continue;
+    out.push({ inventoryItemId: id, name: String(name).trim(), quantity: qty, unit: typeof unit === "string" ? unit.trim() : "" });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Bulk import / export
 // ---------------------------------------------------------------------------
 
@@ -354,7 +376,7 @@ router.get("/estimates/pipeline", async (req, res): Promise<void> => {
 // ── CREATE ────────────────────────────────────────────────────────────────────
 router.post("/estimates", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { customerId, propertyId, blueprintId, assigneeId, visitMode, scheduledAt, expiresAt, notes, lineItems, templateId, estimatedDurationMin } = req.body;
+  const { customerId, propertyId, blueprintId, assigneeId, visitMode, scheduledAt, expiresAt, notes, lineItems, templateId, estimatedDurationMin, suppliesNeeded } = req.body;
 
   let items: EstimateLineItem[] = lineItems ?? [];
   let resolvedTemplateId: number | null = null;
@@ -390,6 +412,7 @@ router.post("/estimates", async (req, res): Promise<void> => {
     tax,
     total,
     estimatedDurationMin: estimatedDurationMin != null ? parseInt(String(estimatedDurationMin), 10) : null,
+    suppliesNeeded: normaliseSupplies(suppliesNeeded),
     status: "draft",
   }).returning();
 
@@ -424,7 +447,7 @@ router.get("/estimates/:id", async (req, res): Promise<void> => {
 router.patch("/estimates/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(req.params.id, 10);
-  const { customerId, propertyId, assigneeId, visitMode, scheduledAt, expiresAt, notes, lineItems, status, estimatedDurationMin } = req.body;
+  const { customerId, propertyId, assigneeId, visitMode, scheduledAt, expiresAt, notes, lineItems, status, estimatedDurationMin, suppliesNeeded } = req.body;
 
   const updateData: Partial<typeof estimatesTable.$inferInsert> = {};
   if (customerId !== undefined) updateData.customerId = customerId ? parseInt(customerId, 10) : null;
@@ -448,6 +471,7 @@ router.patch("/estimates/:id", async (req, res): Promise<void> => {
     updateData.status = status;
   }
   if (estimatedDurationMin !== undefined) updateData.estimatedDurationMin = estimatedDurationMin != null ? parseInt(String(estimatedDurationMin), 10) : null;
+  if (suppliesNeeded !== undefined) (updateData as any).suppliesNeeded = normaliseSupplies(suppliesNeeded);
   if (lineItems !== undefined) {
     const items: EstimateLineItem[] = lineItems;
     const { subtotal, tax, total } = calcTotals(items);
@@ -901,6 +925,7 @@ router.post("/estimates/:id/convert", async (req, res): Promise<void> => {
     totalAmount: total,
     estimateId: estimate.id,
     estimatedDuration: estimate.estimatedDurationMin ?? undefined,
+    suppliesNeeded: (estimate as any).suppliesNeeded ?? [],
     invoiceAfterJob: !invoiceNow,
   }).returning();
 

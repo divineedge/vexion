@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   useGetDashboardSummary, getGetDashboardSummaryQueryKey,
   useGetJobsByStatus, getGetJobsByStatusQueryKey,
@@ -9,7 +9,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Users, Briefcase, FileText, DollarSign, Clock, CheckCircle, Gauge, PhoneCall, Trophy, AlertTriangle, Inbox, MessageSquare, Ban, CalendarSearch } from 'lucide-react';
+import { Users, Briefcase, FileText, DollarSign, Clock, CheckCircle, Gauge, PhoneCall, Trophy, AlertTriangle, Inbox, MessageSquare, Ban, CalendarSearch, ChevronDown, ChevronUp } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { MyTasksWidget } from '@/components/tasks/MyTasksWidget';
 import { FollowupQueueWidget } from '@/components/followups/FollowupQueueWidget';
@@ -35,6 +35,7 @@ export default function DashboardPage() {
   const { data: jobsByStatus } = useGetJobsByStatus({ query: { queryKey: getGetJobsByStatusQueryKey() }});
   const { data: revenueTrend } = useGetRevenueTrend({ query: { queryKey: getGetRevenueTrendQueryKey() }});
   const { data: recentActivity } = useGetRecentActivity({ query: { queryKey: getGetRecentActivityQueryKey() }});
+  const [activityExpanded, setActivityExpanded] = useState(false);
   const { data: efficiency } = useQuery<EfficiencyResponse>({
     queryKey: ['efficiency', 'today'],
     queryFn: () => customFetch<EfficiencyResponse>('/api/efficiency?period=today'),
@@ -246,45 +247,56 @@ export default function DashboardPage() {
           <FollowupQueueWidget />
         </div>
         <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
+          <CardHeader className="cursor-pointer select-none" onClick={() => setActivityExpanded(e => !e)}>
+            <div className="flex items-center justify-between">
+              <CardTitle>Recent Activity</CardTitle>
+              <div className="flex items-center gap-2">
+                {!activityExpanded && recentActivity && recentActivity.length > 1 && (
+                  <span className="text-xs text-muted-foreground">{recentActivity.length - 1} more</span>
+                )}
+                {activityExpanded
+                  ? <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                  : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+              </div>
+            </div>
           </CardHeader>
-        <CardContent>
-          <div className="space-y-6">
-            {recentActivity?.map((activity) => {
-              const href = activity.entityId != null ? (() => {
-                if (activity.type === 'job_created' || activity.type === 'job_completed') return `schedule?jobId=${activity.entityId}`;
-                if (activity.type === 'invoice_sent' || activity.type === 'payment_received') return `financials?invoiceId=${activity.entityId}`;
-                if (activity.type === 'customer_added') return `customers/${activity.entityId}`;
-                return null;
-              })() : null;
-              return (
-                <div key={activity.id} className="flex gap-4">
-                  <div className="relative flex flex-col items-center">
-                    <div className="w-2 h-2 bg-primary rounded-full z-10" />
-                    <div className="w-px h-full bg-border absolute top-2" />
+          <CardContent>
+            <div className="space-y-6">
+              {(activityExpanded ? recentActivity : recentActivity?.slice(0, 1))?.map((activity, idx, arr) => {
+                const href = activity.entityId != null ? (() => {
+                  if (activity.type === 'job_created' || activity.type === 'job_completed') return `schedule?jobId=${activity.entityId}`;
+                  if (activity.type === 'invoice_sent' || activity.type === 'payment_received') return `financials?invoiceId=${activity.entityId}`;
+                  if (activity.type === 'customer_added') return `customers/${activity.entityId}`;
+                  return null;
+                })() : null;
+                const isLast = idx === arr.length - 1;
+                return (
+                  <div key={activity.id} className="flex gap-4">
+                    <div className="relative flex flex-col items-center">
+                      <div className="w-2 h-2 bg-primary rounded-full z-10 mt-1 shrink-0" />
+                      {!isLast && <div className="w-px flex-1 bg-border mt-1" />}
+                    </div>
+                    <div className={`flex-1 ${!isLast ? 'pb-6' : ''}`}>
+                      <p
+                        className={`text-sm font-medium ${href ? 'cursor-pointer hover:underline text-primary' : ''}`}
+                        title={activity.message}
+                        onClick={href ? (e) => { e.stopPropagation(); setLocation(href); } : undefined}
+                      >{activity.message}</p>
+                      <p className="text-xs text-muted-foreground mt-1" title={new Date(activity.createdAt).toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}>
+                        {new Date(activity.createdAt).toLocaleString()} {activity.userName && `• by ${activity.userName}`}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex-1 pb-6">
-                    <p
-                      className={`text-sm font-medium ${href ? 'cursor-pointer hover:underline text-primary' : ''}`}
-                      title={activity.message}
-                      onClick={href ? () => setLocation(href) : undefined}
-                    >{activity.message}</p>
-                    <p className="text-xs text-muted-foreground mt-1" title={new Date(activity.createdAt).toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}>
-                      {new Date(activity.createdAt).toLocaleString()} {activity.userName && `• by ${activity.userName}`}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-            {(!recentActivity || recentActivity.length === 0) && (
-              <div className="text-center py-6 text-muted-foreground">No recent activity</div>
-            )}
-            {recentActivity && recentActivity.length >= 15 && (
-              <p className="text-xs text-center text-muted-foreground pt-1">Showing last 15 events</p>
-            )}
-          </div>
-        </CardContent>
+                );
+              })}
+              {(!recentActivity || recentActivity.length === 0) && (
+                <div className="text-center py-6 text-muted-foreground">No recent activity</div>
+              )}
+              {activityExpanded && recentActivity && recentActivity.length >= 15 && (
+                <p className="text-xs text-center text-muted-foreground pt-1">Showing last 15 events</p>
+              )}
+            </div>
+          </CardContent>
         </Card>
       </div>
     </div>

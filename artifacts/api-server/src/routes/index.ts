@@ -52,6 +52,7 @@ import skipReasonsRouter from "./skipReasons";
 import portalMessagesRouter from "./portalMessages";
 import staffNotesRouter from "./staffNotes";
 import invoiceTemplatesRouter from "./invoiceTemplates";
+import jobMessagesRouter from "./jobMessages";
 
 const router: IRouter = Router();
 
@@ -108,5 +109,6 @@ router.use(skipReasonsRouter);
 router.use(portalMessagesRouter);
 router.use(staffNotesRouter);
 router.use(invoiceTemplatesRouter);
+router.use(jobMessagesRouter);
 
 export default router;

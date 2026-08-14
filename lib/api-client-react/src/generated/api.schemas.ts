@@ -1557,6 +1557,22 @@ export interface Job {
   createdAt: string;
 }
 
+export interface JobMessage {
+  id: number;
+  tenantId: number;
+  jobId: number;
+  senderId: number;
+  senderName: string;
+  senderRole: string;
+  body: string;
+  createdAt: string;
+}
+
+export interface JobMessageUnreadSummaryItem {
+  jobId: number;
+  count: number;
+}
+
 export interface JobPartInput {
   inventoryItemId: number;
   quantity: number;
@@ -5240,6 +5256,14 @@ export type CancelRecurringSeriesParams = {
  * forward=cancel from next onwards; all=cancel entire series
  */
 scope?: CancelSeriesScope;
+};
+
+export type CreateJobMessageBody = {
+  body: string;
+};
+
+export type GetJobMessageUnreadCount200 = {
+  count: number;
 };
 
 export type ListInventoryItemsParams = {

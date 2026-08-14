@@ -65,6 +65,7 @@ import type {
   CreateEstimateTemplateInput,
   CreateExpenseInput,
   CreateInvoiceTemplateInput,
+  CreateJobMessageBody,
   CreatePlanTemplateInput,
   CreateRecurringTemplateInput,
   CreateSkipReasonBody,
@@ -126,6 +127,7 @@ import type {
   GetEquipmentLedgerParams,
   GetGmailAuthorizeUrl200,
   GetInventorySalesReportParams,
+  GetJobMessageUnreadCount200,
   GetJobProfitabilityReportParams,
   GetPlStatementReportParams,
   GetQuickBooksAuthorizeUrl200,
@@ -156,6 +158,8 @@ import type {
   InvoiceUpdate,
   Job,
   JobInput,
+  JobMessage,
+  JobMessageUnreadSummaryItem,
   JobPart,
   JobPartInput,
   JobProfitabilityReport,
@@ -4575,6 +4579,309 @@ export const useRemoveJobPart = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getRemoveJobPartMutationOptions(options));
     }
+
+export const getGetJobMessagesUnreadSummaryUrl = () => {
+
+
+
+
+  return `/api/jobs/messages/unread-summary`
+}
+
+/**
+ * @summary Get unread message counts for all jobs with unread messages (staff only)
+ */
+export const getJobMessagesUnreadSummary = async ( options?: RequestInit): Promise<JobMessageUnreadSummaryItem[]> => {
+
+  return customFetch<JobMessageUnreadSummaryItem[]>(getGetJobMessagesUnreadSummaryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetJobMessagesUnreadSummaryQueryKey = () => {
+    return [
+    `/api/jobs/messages/unread-summary`
+    ] as const;
+    }
+
+
+export const getGetJobMessagesUnreadSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getJobMessagesUnreadSummary>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getJobMessagesUnreadSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetJobMessagesUnreadSummaryQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getJobMessagesUnreadSummary>>> = ({ signal }) => getJobMessagesUnreadSummary({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getJobMessagesUnreadSummary>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetJobMessagesUnreadSummaryQueryResult = NonNullable<Awaited<ReturnType<typeof getJobMessagesUnreadSummary>>>
+export type GetJobMessagesUnreadSummaryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get unread message counts for all jobs with unread messages (staff only)
+ */
+
+export function useGetJobMessagesUnreadSummary<TData = Awaited<ReturnType<typeof getJobMessagesUnreadSummary>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getJobMessagesUnreadSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetJobMessagesUnreadSummaryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListJobMessagesUrl = (jobId: number,) => {
+
+
+
+
+  return `/api/jobs/${jobId}/messages`
+}
+
+/**
+ * @summary List staff messages for a job (marks them read for the caller)
+ */
+export const listJobMessages = async (jobId: number, options?: RequestInit): Promise<JobMessage[]> => {
+
+  return customFetch<JobMessage[]>(getListJobMessagesUrl(jobId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListJobMessagesQueryKey = (jobId: number,) => {
+    return [
+    `/api/jobs/${jobId}/messages`
+    ] as const;
+    }
+
+
+export const getListJobMessagesQueryOptions = <TData = Awaited<ReturnType<typeof listJobMessages>>, TError = ErrorType<unknown>>(jobId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listJobMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListJobMessagesQueryKey(jobId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listJobMessages>>> = ({ signal }) => listJobMessages(jobId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: jobId !== null && jobId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listJobMessages>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListJobMessagesQueryResult = NonNullable<Awaited<ReturnType<typeof listJobMessages>>>
+export type ListJobMessagesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List staff messages for a job (marks them read for the caller)
+ */
+
+export function useListJobMessages<TData = Awaited<ReturnType<typeof listJobMessages>>, TError = ErrorType<unknown>>(
+ jobId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listJobMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListJobMessagesQueryOptions(jobId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateJobMessageUrl = (jobId: number,) => {
+
+
+
+
+  return `/api/jobs/${jobId}/messages`
+}
+
+/**
+ * @summary Send a staff message on a job thread
+ */
+export const createJobMessage = async (jobId: number,
+    createJobMessageBody: CreateJobMessageBody, options?: RequestInit): Promise<JobMessage> => {
+
+  return customFetch<JobMessage>(getCreateJobMessageUrl(jobId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createJobMessageBody)
+  }
+);}
+
+
+
+
+
+export const getCreateJobMessageMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createJobMessage>>, TError,{jobId: number;data: BodyType<CreateJobMessageBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createJobMessage>>, TError,{jobId: number;data: BodyType<CreateJobMessageBody>}, TContext> => {
+
+const mutationKey = ['createJobMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createJobMessage>>, {jobId: number;data: BodyType<CreateJobMessageBody>}> = (props) => {
+          const {jobId,data} = props ?? {};
+
+          return  createJobMessage(jobId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateJobMessageMutationResult = NonNullable<Awaited<ReturnType<typeof createJobMessage>>>
+    export type CreateJobMessageMutationBody = BodyType<CreateJobMessageBody>
+    export type CreateJobMessageMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Send a staff message on a job thread
+ */
+export const useCreateJobMessage = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createJobMessage>>, TError,{jobId: number;data: BodyType<CreateJobMessageBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createJobMessage>>,
+        TError,
+        {jobId: number;data: BodyType<CreateJobMessageBody>},
+        TContext
+      > => {
+      return useMutation(getCreateJobMessageMutationOptions(options));
+    }
+
+export const getGetJobMessageUnreadCountUrl = (jobId: number,) => {
+
+
+
+
+  return `/api/jobs/${jobId}/messages/unread-count`
+}
+
+/**
+ * @summary Get unread message count for a single job (staff only)
+ */
+export const getJobMessageUnreadCount = async (jobId: number, options?: RequestInit): Promise<GetJobMessageUnreadCount200> => {
+
+  return customFetch<GetJobMessageUnreadCount200>(getGetJobMessageUnreadCountUrl(jobId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetJobMessageUnreadCountQueryKey = (jobId: number,) => {
+    return [
+    `/api/jobs/${jobId}/messages/unread-count`
+    ] as const;
+    }
+
+
+export const getGetJobMessageUnreadCountQueryOptions = <TData = Awaited<ReturnType<typeof getJobMessageUnreadCount>>, TError = ErrorType<unknown>>(jobId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getJobMessageUnreadCount>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetJobMessageUnreadCountQueryKey(jobId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getJobMessageUnreadCount>>> = ({ signal }) => getJobMessageUnreadCount(jobId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: jobId !== null && jobId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getJobMessageUnreadCount>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetJobMessageUnreadCountQueryResult = NonNullable<Awaited<ReturnType<typeof getJobMessageUnreadCount>>>
+export type GetJobMessageUnreadCountQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get unread message count for a single job (staff only)
+ */
+
+export function useGetJobMessageUnreadCount<TData = Awaited<ReturnType<typeof getJobMessageUnreadCount>>, TError = ErrorType<unknown>>(
+ jobId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getJobMessageUnreadCount>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetJobMessageUnreadCountQueryOptions(jobId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getListCrewsUrl = () => {
 

@@ -2159,6 +2159,71 @@ export const RemoveJobPartResponse = zod.object({
 
 
 /**
+ * @summary Get unread message counts for all jobs with unread messages (staff only)
+ */
+export const GetJobMessagesUnreadSummaryResponseItem = zod.object({
+  "jobId": zod.number(),
+  "count": zod.number()
+})
+export const GetJobMessagesUnreadSummaryResponse = zod.array(GetJobMessagesUnreadSummaryResponseItem)
+
+
+/**
+ * @summary List staff messages for a job (marks them read for the caller)
+ */
+export const ListJobMessagesParams = zod.object({
+  "jobId": zod.coerce.number()
+})
+
+export const ListJobMessagesResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "jobId": zod.number(),
+  "senderId": zod.number(),
+  "senderName": zod.string(),
+  "senderRole": zod.string(),
+  "body": zod.string(),
+  "createdAt": zod.string()
+})
+export const ListJobMessagesResponse = zod.array(ListJobMessagesResponseItem)
+
+
+/**
+ * @summary Send a staff message on a job thread
+ */
+export const CreateJobMessageParams = zod.object({
+  "jobId": zod.coerce.number()
+})
+
+export const CreateJobMessageBody = zod.object({
+  "body": zod.string()
+})
+
+export const CreateJobMessageResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "jobId": zod.number(),
+  "senderId": zod.number(),
+  "senderName": zod.string(),
+  "senderRole": zod.string(),
+  "body": zod.string(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Get unread message count for a single job (staff only)
+ */
+export const GetJobMessageUnreadCountParams = zod.object({
+  "jobId": zod.coerce.number()
+})
+
+export const GetJobMessageUnreadCountResponse = zod.object({
+  "count": zod.number()
+})
+
+
+/**
  * @summary List all crews
  */
 export const ListCrewsResponseItem = zod.object({

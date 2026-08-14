@@ -36,6 +36,9 @@ import {
   useListTags, getListTagsQueryKey,
   useListSkipReasons, getListSkipReasonsQueryKey,
   useCompleteAndInvoiceJob, useUpdateInvoice,
+  useListJobMessages, getListJobMessagesQueryKey,
+  useCreateJobMessage,
+  useGetJobMessagesUnreadSummary, getGetJobMessagesUnreadSummaryQueryKey,
 } from '@workspace/api-client-react';
 import { useMutation } from '@tanstack/react-query';
 import MediaGallery from '@/components/media/MediaGallery';
@@ -60,7 +63,7 @@ import {
   Bell, BellOff, Send, Package, Search, Images, RefreshCw, Pause, Play, X,
   SkipForward, ListEnd, Square, Timer, Warehouse, Truck,
   Route as RouteIcon, ExternalLink, PhoneCall, CheckCircle, FileText, Phone, Mail, Copy,
-  Ban, CreditCard, CalendarSearch,
+  Ban, CreditCard, CalendarSearch, MessageSquare,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -454,6 +457,52 @@ export default function SchedulePage() {
   const [createdInvoiceId, setCreatedInvoiceId] = useState<number | null>(null);
   const [createdInvoiceTotal, setCreatedInvoiceTotal] = useState(0);
   const [pauseResumeAt, setPauseResumeAt] = useState('');
+
+  // ── Job messages ─────────────────────────────────────────────────────────
+  const [msgInput, setMsgInput] = useState('');
+  const msgEndRef = React.useRef<HTMLDivElement>(null);
+
+  // Unread summary for job card badges — fetch once when schedule loads
+  const { data: unreadSummaryRaw, refetch: refetchUnreadSummary } = useGetJobMessagesUnreadSummary({
+    query: { queryKey: getGetJobMessagesUnreadSummaryQueryKey(), refetchInterval: 30000 },
+  });
+  const unreadByJob = React.useMemo<Map<number, number>>(() => {
+    const m = new Map<number, number>();
+    (unreadSummaryRaw ?? []).forEach(item => m.set(item.jobId, item.count));
+    return m;
+  }, [unreadSummaryRaw]);
+
+  // Messages for the currently-open job drawer — poll every 15 s while open
+  const { data: jobMessages = [], refetch: refetchMessages } = useListJobMessages(
+    selectedJobId!,
+    { query: { enabled: selectedJobId != null, queryKey: getListJobMessagesQueryKey(selectedJobId ?? 0), refetchInterval: selectedJobId != null ? 15000 : false } },
+  );
+  const createJobMessage = useCreateJobMessage();
+
+  // Auto-scroll to bottom when new messages arrive
+  React.useEffect(() => {
+    msgEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [jobMessages.length]);
+
+  // Clear input when switching jobs
+  React.useEffect(() => { setMsgInput(''); }, [selectedJobId]);
+
+  function handleSendMessage() {
+    const body = msgInput.trim();
+    if (!body || !selectedJobId || createJobMessage.isPending) return;
+    createJobMessage.mutate(
+      { jobId: selectedJobId, data: { body } },
+      {
+        onSuccess: () => {
+          setMsgInput('');
+          refetchMessages();
+          refetchUnreadSummary();
+          qc.invalidateQueries({ queryKey: getGetJobMessagesUnreadSummaryQueryKey() });
+        },
+        onError: () => toast.error('Failed to send message'),
+      },
+    );
+  }
 
   const { data: bizTags = [] } = useListTags({ query: { queryKey: getListTagsQueryKey() } });
   const { data: skipReasons = [] } = useListSkipReasons({ query: { queryKey: getListSkipReasonsQueryKey() } });
@@ -1102,6 +1151,12 @@ export default function SchedulePage() {
                             <div className="mt-0.5 flex items-center gap-1 text-blue-700 bg-blue-50 rounded px-1 py-0.5 w-fit" title={(job as any).customerNotes || (job as any).propertyNotes}>
                               <Bell className="w-2.5 h-2.5 shrink-0" />
                               <span className="text-[10px] font-medium">Notes</span>
+                            </div>
+                          )}
+                          {(unreadByJob.get(job.id) ?? 0) > 0 && (
+                            <div className="mt-0.5 flex items-center gap-1 text-violet-700 bg-violet-50 rounded px-1 py-0.5 w-fit" title={`${unreadByJob.get(job.id)} unread staff message${(unreadByJob.get(job.id) ?? 0) > 1 ? 's' : ''}`}>
+                              <MessageSquare className="w-2.5 h-2.5 shrink-0" />
+                              <span className="text-[10px] font-medium">{unreadByJob.get(job.id)} msg</span>
                             </div>
                           )}
                           {(job as any).jobParts?.length > 0 && (
@@ -2015,6 +2070,75 @@ export default function SchedulePage() {
                   currentUserId={user?.id ?? 0}
                   isAdmin={canManageOffice}
                 />
+
+                {/* Staff message thread — staff-only, scoped to this job */}
+                <Separator />
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1.5">
+                      <MessageSquare className="w-3.5 h-3.5" /> Staff Messages
+                    </p>
+                    {jobMessages.length > 0 && (
+                      <Badge variant="secondary" className="h-4 px-1 text-[10px]" title={`${jobMessages.length} message${jobMessages.length !== 1 ? 's' : ''} in this thread`}>
+                        {jobMessages.length}
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Thread */}
+                  {jobMessages.length === 0 ? (
+                    <p className="text-xs text-muted-foreground italic" title="No messages yet — be the first to send one">No messages yet. Start the conversation.</p>
+                  ) : (
+                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                      {jobMessages.map((msg: any) => {
+                        const isOwn = msg.senderId === user?.id;
+                        return (
+                          <div key={msg.id} className={`flex flex-col gap-0.5 ${isOwn ? 'items-end' : 'items-start'}`}>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[10px] font-medium text-foreground" title={msg.senderName}>{msg.senderName}</span>
+                              <Badge variant="outline" className="h-3.5 px-1 text-[9px] capitalize" title={`Role: ${msg.senderRole?.replace('_', ' ')}`}>
+                                {msg.senderRole?.replace('_', ' ')}
+                              </Badge>
+                              <span className="text-[10px] text-muted-foreground" title={new Date(msg.createdAt).toLocaleString()}>
+                                {format(new Date(msg.createdAt), 'MMM d h:mm a')}
+                              </span>
+                            </div>
+                            <div className={`rounded-lg px-3 py-2 text-sm max-w-[90%] whitespace-pre-wrap break-words ${isOwn ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'}`}>
+                              {msg.body}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div ref={msgEndRef} />
+                    </div>
+                  )}
+
+                  {/* Compose */}
+                  <div className="flex gap-2 items-end">
+                    <Textarea
+                      title="Type a message to send to staff on this job"
+                      placeholder="Message staff…"
+                      rows={2}
+                      value={msgInput}
+                      onChange={e => setMsgInput(e.target.value)}
+                      className="text-sm resize-none flex-1"
+                      maxLength={4000}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); }
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      className="gap-1.5 h-auto py-2 self-end"
+                      disabled={!msgInput.trim() || createJobMessage.isPending}
+                      onClick={handleSendMessage}
+                      title="Send message (Enter)"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      {createJobMessage.isPending ? 'Sending…' : 'Send'}
+                    </Button>
+                  </div>
+                </div>
 
                 {/* Parts used on job */}
                 <Separator />

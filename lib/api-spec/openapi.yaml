@@ -1250,6 +1250,93 @@ paths:
               schema:
                 $ref: "#/components/schemas/Job"
 
+  # JOB MESSAGES (staff-only thread per job)
+  /jobs/messages/unread-summary:
+    get:
+      operationId: getJobMessagesUnreadSummary
+      tags: [jobs]
+      summary: Get unread message counts for all jobs with unread messages (staff only)
+      responses:
+        "200":
+          description: List of job IDs with unread counts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/JobMessageUnreadSummaryItem"
+
+  /jobs/{jobId}/messages:
+    get:
+      operationId: listJobMessages
+      tags: [jobs]
+      summary: List staff messages for a job (marks them read for the caller)
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Message list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/JobMessage"
+    post:
+      operationId: createJobMessage
+      tags: [jobs]
+      summary: Send a staff message on a job thread
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body:
+                  type: string
+      responses:
+        "201":
+          description: Message created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobMessage"
+
+  /jobs/{jobId}/messages/unread-count:
+    get:
+      operationId: getJobMessageUnreadCount
+      tags: [jobs]
+      summary: Get unread message count for a single job (staff only)
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Unread count
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count]
+                properties:
+                  count:
+                    type: integer
+
   # CREWS
   /crews:
     get:
@@ -9102,6 +9189,36 @@ components:
           type: number
         unit:
           type: string
+
+    JobMessage:
+      type: object
+      required: [id, tenantId, jobId, senderId, senderName, senderRole, body, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        jobId:
+          type: integer
+        senderId:
+          type: integer
+        senderName:
+          type: string
+        senderRole:
+          type: string
+        body:
+          type: string
+        createdAt:
+          type: string
+
+    JobMessageUnreadSummaryItem:
+      type: object
+      required: [jobId, count]
+      properties:
+        jobId:
+          type: integer
+        count:
+          type: integer
 
     JobPart:
       type: object

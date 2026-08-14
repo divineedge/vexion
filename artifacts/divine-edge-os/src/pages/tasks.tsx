@@ -114,7 +114,11 @@ export default function TasksPage() {
       filtered = filtered.filter(t => !!t.archivedAt);
     }
     if (assigneeFilter !== '__all__') {
-      filtered = filtered.filter(t => String((t as any).assignedToId ?? '') === assigneeFilter || t.assignedToRole === assigneeFilter);
+      filtered = filtered.filter(t => {
+        const uid = (t as any).assignedToUserId;
+        const key = uid != null ? `id:${uid}` : `role:${t.assignedToRole}`;
+        return key === assigneeFilter;
+      });
     }
     return filtered;
   })();
@@ -210,7 +214,11 @@ export default function TasksPage() {
             </Select>
             {isAdmin && scope === 'all' && (() => {
               const assignees = Array.from(
-                new Map(tasks.map(t => [(t as any).assignedToId ? `id:${(t as any).assignedToId}` : `role:${t.assignedToRole}`, { key: (t as any).assignedToId ? `id:${(t as any).assignedToId}` : `role:${t.assignedToRole}`, label: (t as any).assignedToName ?? roleBucketLabel(t.assignedToRole) }])).values()
+                new Map(tasks.map(t => {
+                  const uid = (t as any).assignedToUserId;
+                  const key = uid != null ? `id:${uid}` : `role:${t.assignedToRole}`;
+                  return [key, { key, label: (t as any).assignedToName ?? roleBucketLabel(t.assignedToRole) }];
+                })).values()
               );
               return assignees.length > 1 ? (
                 <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>

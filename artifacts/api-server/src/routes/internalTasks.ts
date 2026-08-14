@@ -5,7 +5,7 @@ import {
 } from "@workspace/db";
 import { eq, and, desc, or, inArray, isNull } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
-import { ADMIN_ROLES, getCallerRole } from "../lib/roles";
+import { ADMIN_ROLES, getCallerRole, getSingleAdmin } from "../lib/roles";
 import { validateTaskAssignment, roleBucketMatches } from "../lib/taskRouting";
 
 const router: IRouter = Router();
@@ -154,8 +154,30 @@ router.post("/tasks", async (req, res): Promise<void> => {
 
   if (!title) { res.status(400).json({ error: "title is required" }); return; }
 
-  const check = await validateTaskAssignment(tenantId, userId, role, { assignedToUserId, assignedToRole });
-  if (!check.ok) { res.status(403).json({ error: check.error }); return; }
+  // Determine whether the caller is providing an explicit assignment.
+  // When neither is provided we attempt system-level auto-assignment to the sole admin — this
+  // bypasses the user-facing routing rules (validateTaskAssignment) because the target is chosen
+  // by the server, not the caller, and is always a valid admin. The validate call below still
+  // runs for all user-provided assignments to enforce normal routing rules.
+  const callerProvidedAssignee = !!(assignedToUserId || assignedToRole);
+
+  let resolvedAssignedToUserId: number | null = assignedToUserId ?? null;
+  let resolvedAssignedToRole: string | null = assignedToRole ?? null;
+
+  if (!callerProvidedAssignee) {
+    const singleAdmin = await getSingleAdmin(tenantId);
+    if (singleAdmin) {
+      resolvedAssignedToUserId = singleAdmin.id;
+      // Skip validateTaskAssignment — the target is server-chosen and always valid.
+    } else {
+      // Multiple admins: require the caller to pick one.
+      res.status(400).json({ error: "Task must be assigned to a person or a role (Any Manager / Any Admin/Office / Any Technician)" });
+      return;
+    }
+  } else {
+    const check = await validateTaskAssignment(tenantId, userId, role, { assignedToUserId: resolvedAssignedToUserId, assignedToRole: resolvedAssignedToRole });
+    if (!check.ok) { res.status(403).json({ error: check.error }); return; }
+  }
 
   const [row] = await db.insert(internalTasksTable).values({
     tenantId,
@@ -163,8 +185,8 @@ router.post("/tasks", async (req, res): Promise<void> => {
     description: description ?? null,
     taskType: taskType ?? null,
     createdById: userId,
-    assignedToUserId: assignedToUserId ?? null,
-    assignedToRole: assignedToRole ?? null,
+    assignedToUserId: resolvedAssignedToUserId,
+    assignedToRole: resolvedAssignedToRole,
     priority: priority ?? "normal",
     status: "open",
     dueDate: dueDate ?? null,

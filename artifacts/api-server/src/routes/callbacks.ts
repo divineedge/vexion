@@ -14,10 +14,11 @@ router.get("/callbacks", async (req, res): Promise<void> => {
   const userId = getUserId(req);
   const { assigneeId, status, jobId } = req.query as Record<string, string>;
 
-  // Enforce callbacks.seeAll permission: if the role can't see all, restrict to own assignments
+  // Enforce callbacks.seeAll permission: callers without this permission are always restricted
+  // to their own callbacks — any caller-supplied assigneeId is overridden, not just absent ones.
   const callerRole = await getCallerRole(tenantId, userId);
   const canSeeAll = await checkPermission(tenantId, callerRole, "callbacks.seeAll");
-  const effectiveAssigneeId = !canSeeAll && !assigneeId ? String(userId) : assigneeId;
+  const effectiveAssigneeId = !canSeeAll ? String(userId) : assigneeId;
 
   const rows = await db
     .select({

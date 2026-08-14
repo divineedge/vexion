@@ -103,6 +103,19 @@ export function TaskFormDrawer({ open, onOpenChange, lockedContext, onCreated, i
     setTitle(action.titleTemplate());
   }
 
+  // Detect single admin for auto-assign: if the tenant has exactly one admin/owner, we can
+  // skip the picker and assign directly to them.
+  const ADMIN_ROLES_FE = new Set(['company_owner', 'office_manager', 'department_manager']);
+  const adminUsers = users.filter(u => ADMIN_ROLES_FE.has(u.role));
+  const singleAdmin = !isAdminOffice && adminUsers.length === 1 ? adminUsers[0] : null;
+
+  // Auto-set assignee to the sole admin when the drawer opens (non-admin callers only).
+  useEffect(() => {
+    if (!open || isAdminOffice || assignee) return;
+    if (singleAdmin) setAssignee(`user:${singleAdmin.id}`);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, singleAdmin?.id, isAdminOffice]);
+
   // Assignee options available to the current caller, per role-routing rules.
   const assigneeOptions: { value: string; label: string }[] = [];
   if (isAdminOffice) {
@@ -189,12 +202,19 @@ export function TaskFormDrawer({ open, onOpenChange, lockedContext, onCreated, i
 
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Assign To <span className="text-destructive">*</span></label>
-            <Select value={assignee} onValueChange={setAssignee}>
-              <SelectTrigger title="Team member or role responsible for completing this task"><SelectValue placeholder="Select assignee..." /></SelectTrigger>
-              <SelectContent>
-                {assigneeOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            {singleAdmin ? (
+              <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                <span>1 admin found — will auto-assign to</span>
+                <span className="font-medium text-foreground">{singleAdmin.name}</span>
+              </div>
+            ) : (
+              <Select value={assignee} onValueChange={setAssignee}>
+                <SelectTrigger title="Team member or role responsible for completing this task"><SelectValue placeholder="Select assignee..." /></SelectTrigger>
+                <SelectContent>
+                  {assigneeOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <Separator />

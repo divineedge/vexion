@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
-import { CalendarClock, MapPin, Briefcase, Clock, CheckCircle2, User, Search, Ban, CalendarSearch, FlaskConical, Package, ChevronRight, CloudRain, ShieldAlert, AlertCircle, DollarSign, TriangleAlert } from "lucide-react";
+import { CalendarClock, MapPin, Briefcase, Clock, CheckCircle2, User, Search, Ban, CalendarSearch, FlaskConical, Package, ChevronRight, CloudRain, ShieldAlert, AlertCircle, DollarSign, TriangleAlert, Repeat } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useState } from "react";
@@ -48,7 +48,26 @@ export default function Jobs() {
     }
   };
 
-  const upcomingJobs = (jobs?.filter(j => j.status === 'scheduled' || j.status === 'in_progress') || []).filter(j => !jobSearch || j.title.toLowerCase().includes(jobSearch.toLowerCase()) || ((j as any).propertyAddress ?? '').toLowerCase().includes(jobSearch.toLowerCase()));
+  const now = new Date();
+  const thirtyDaysOut = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+  // Upcoming: next 30 days only, sorted soonest-first, one entry per recurring plan
+  const allUpcoming = (jobs?.filter(j =>
+    (j.status === 'scheduled' || j.status === 'in_progress') &&
+    new Date((j as any).scheduledAt) <= thirtyDaysOut,
+  ) ?? []).sort((a, b) => new Date((a as any).scheduledAt).getTime() - new Date((b as any).scheduledAt).getTime());
+
+  const seenPlanIds = new Set<number>();
+  const upcomingJobs = allUpcoming
+    .filter(j => {
+      const planId: number | null = (j as any).planId ?? null;
+      if (planId == null) return true;          // one-off job — always include
+      if (seenPlanIds.has(planId)) return false; // already showing this plan
+      seenPlanIds.add(planId);
+      return true;
+    })
+    .filter(j => !jobSearch || j.title.toLowerCase().includes(jobSearch.toLowerCase()) || ((j as any).propertyAddress ?? '').toLowerCase().includes(jobSearch.toLowerCase()));
+
   const pastJobs = (jobs?.filter(j => j.status === 'completed' || j.status === 'cancelled') || []).filter(j => !jobSearch || j.title.toLowerCase().includes(jobSearch.toLowerCase()) || ((j as any).propertyAddress ?? '').toLowerCase().includes(jobSearch.toLowerCase()));
 
   const handleSubmitRequest = () => {
@@ -129,6 +148,11 @@ export default function Jobs() {
               <div className="flex items-center gap-3 mb-2 flex-wrap">
                 <h3 className="text-xl font-bold text-foreground">{job.title}</h3>
                 {getStatusBadge(job.status)}
+                {(job as any).planId != null && (
+                  <Badge variant="outline" className="text-xs gap-1 text-indigo-700 border-indigo-200 bg-indigo-50 dark:bg-indigo-900/20 dark:text-indigo-300">
+                    <Repeat className="w-3 h-3" /> Recurring
+                  </Badge>
+                )}
                 {hasCancelPending && (
                   <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 gap-1 text-xs">
                     <Ban className="w-3 h-3" /> Cancellation Requested
@@ -293,8 +317,8 @@ export default function Jobs() {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">Service History</h1>
-        <p className="text-muted-foreground mt-1">View your scheduled and past appointments.</p>
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">My Services</h1>
+        <p className="text-muted-foreground mt-1">Upcoming appointments and past service history.</p>
       </div>
 
       <div className="relative max-w-xs">
@@ -304,7 +328,7 @@ export default function Jobs() {
 
       <Tabs defaultValue="upcoming" className="w-full">
         <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="upcoming">Upcoming & Active {upcomingJobs.length > 0 && <span className="ml-1.5 inline-flex items-center justify-center bg-primary text-primary-foreground rounded-full text-[10px] font-bold w-4 h-4">{upcomingJobs.length}</span>}</TabsTrigger>
+          <TabsTrigger value="upcoming">Next 30 Days {upcomingJobs.length > 0 && <span className="ml-1.5 inline-flex items-center justify-center bg-primary text-primary-foreground rounded-full text-[10px] font-bold w-4 h-4">{upcomingJobs.length}</span>}</TabsTrigger>
           <TabsTrigger value="past">Past Services {pastJobs.length > 0 && <span className="ml-1.5 inline-flex items-center justify-center bg-muted text-muted-foreground rounded-full text-[10px] font-medium w-4 h-4">{pastJobs.length}</span>}</TabsTrigger>
         </TabsList>
         

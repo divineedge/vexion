@@ -7,6 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { adminNavSections, techNavItems } from './navConfig';
 import { SidebarSection } from './SidebarSection';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Breadcrumb } from './Breadcrumb';
 import { NotificationBell } from '@/components/tasks/NotificationBell';
 import { QuickAddBar } from './QuickAddBar';
@@ -74,6 +75,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     return null;
   }
 
+  const { can } = usePermissions();
+
   // Role map used to filter sections
   const roleMap: Record<string, boolean> = {
     isCrewManager,
@@ -84,11 +87,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     canManageJobs: isCrewManager || canManageOffice,
   };
 
-  // Filter sections for current user's role
-  const visibleSections = adminNavSections.filter(section => {
-    if (!section.roles) return true;
-    return section.roles.some(r => roleMap[r]);
-  });
+  // Filter sections for current user's role, then filter items by permissionKey
+  const visibleSections = adminNavSections
+    .filter(section => {
+      if (!section.roles) return true;
+      return section.roles.some(r => roleMap[r]);
+    })
+    .map(section => ({
+      ...section,
+      items: section.items.filter(item =>
+        !item.permissionKey || can(item.permissionKey as any)
+      ),
+    }))
+    .filter(section => section.items.length > 0);
 
   const userInitials = user?.name.slice(0, 2).toUpperCase() ?? '??';
 

@@ -6,26 +6,21 @@ import {
   useListUsers, getListUsersQueryKey,
   useCreateUser, useUpdateUser, useDeleteUser,
   useListPlans, getListPlansQueryKey,
-  useListChemicalProducts, getListChemicalProductsQueryKey,
-  useCreateChemicalProduct, useUpdateChemicalProduct, useDeleteChemicalProduct,
-  useListChemicalMixtures, getListChemicalMixturesQueryKey,
-  useCreateChemicalMixture, useUpdateChemicalMixture, useDeleteChemicalMixture,
   useUpdateFollowupTriggerConfig,
   useGetGmailAuthorizeUrl, getGetGmailAuthorizeUrlQueryKey,
   useDisconnectGmail,
-  useListEquipmentTypes, getListEquipmentTypesQueryKey,
-  useCreateEquipmentType, useUpdateEquipmentType, useDeleteEquipmentType,
   useListTags, getListTagsQueryKey, useCreateTag, useUpdateTag, useDeleteTag,
   useListSkipReasons, getListSkipReasonsQueryKey, useCreateSkipReason, useUpdateSkipReason, useDeleteSkipReason,
   customFetch,
 } from '@workspace/api-client-react';
 import type { FollowupTriggerConfig } from '@workspace/api-client-react';
-import type { ChemicalProduct, ChemicalMixture, ChemicalMixtureItem, PaymentReminderRule, EquipmentType } from '@workspace/api-client-react';
+import type { PaymentReminderRule } from '@workspace/api-client-react';
 import { Repeat as RepeatIcon, ClipboardList, Search } from 'lucide-react';
 import { format } from 'date-fns';
 import PlanTemplatesSettings from '@/components/settings/PlanTemplatesSettings';
 import EstimateTemplatesSettings from '@/components/settings/EstimateTemplatesSettings';
 import InvoiceTemplatesSettings from '@/components/settings/InvoiceTemplatesSettings';
+import RolePermissionsSettings from '@/components/settings/RolePermissionsSettings';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -63,19 +58,10 @@ export default function SettingsPage() {
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
   const { data: users } = useListUsers({ query: { queryKey: getListUsersQueryKey() } });
   const { data: plans } = useListPlans({ query: { enabled: isSuperAdmin, queryKey: getListPlansQueryKey() } });
-  const { data: chemProducts } = useListChemicalProducts({ query: { queryKey: getListChemicalProductsQueryKey() } });
-  const { data: chemMixtures } = useListChemicalMixtures({ query: { queryKey: getListChemicalMixturesQueryKey() } });
-
   const updateSettings = useUpdateTenantSettings();
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();
   const deleteUser = useDeleteUser();
-  const createChemProduct = useCreateChemicalProduct();
-  const updateChemProduct = useUpdateChemicalProduct();
-  const deleteChemProduct = useDeleteChemicalProduct();
-  const createChemMixture = useCreateChemicalMixture();
-  const updateChemMixture = useUpdateChemicalMixture();
-  const deleteChemMixture = useDeleteChemicalMixture();
   const gmailAuthorizeUrl = useGetGmailAuthorizeUrl({ query: { enabled: false, queryKey: getGetGmailAuthorizeUrlQueryKey() } });
   const disconnectGmail = useDisconnectGmail({
     mutation: {
@@ -116,7 +102,6 @@ export default function SettingsPage() {
   const [autoInvoiceFrequency, setAutoInvoiceFrequency] = useState<'off' | 'daily' | 'weekly' | 'bi_monthly' | 'monthly'>('off');
   const [nonRecurringInvoiceCadence, setNonRecurringInvoiceCadence] = useState<'immediate' | 'weekly'>('immediate');
   const [maxClockInHours, setMaxClockInHours] = useState('');
-  const [p4pMasterPct, setP4pMasterPct] = useState('0');
   const [dailyTaskHourlyRate, setDailyTaskHourlyRate] = useState('0');
   // Estimate & Invoice defaults
   const [estimateExpiryDays, setEstimateExpiryDays] = useState('30');
@@ -134,19 +119,6 @@ export default function SettingsPage() {
   const [cancellationFeeAmount, setCancellationFeeAmount] = useState('50');
   const [teamSearch, setTeamSearch] = useState('');
   const [teamRoleFilter, setTeamRoleFilter] = useState('all');
-
-  // Equipment thresholds
-  const [equipRepairPct, setEquipRepairPct] = useState('50');
-  const [equipResalePct, setEquipResalePct] = useState('20');
-
-  // Equipment types
-  const { data: equipmentTypes = [] } = useListEquipmentTypes({ query: { queryKey: getListEquipmentTypesQueryKey() } });
-  const createEquipmentType = useCreateEquipmentType();
-  const updateEquipmentType = useUpdateEquipmentType();
-  const deleteEquipmentType = useDeleteEquipmentType();
-  const [newTypeLabel, setNewTypeLabel] = useState('');
-  const [editingTypeId, setEditingTypeId] = useState<number | null>(null);
-  const [editingTypeLabel, setEditingTypeLabel] = useState('');
 
   // Business Tags
   const { data: bizTags = [] } = useListTags({ query: { queryKey: getListTagsQueryKey() } });
@@ -215,10 +187,6 @@ export default function SettingsPage() {
   const [editUserOpen, setEditUserOpen] = useState(false);
   const [editUserForm, setEditUserForm] = useState<{ id: number; name: string; role: string; hourlyRate: string; hireDate: string; applicatorLicense: string } | null>(null);
 
-  // Chemicals – Product form
-  const [prodFormOpen, setProdFormOpen] = useState(false);
-  const [editingProd, setEditingProd] = useState<ChemicalProduct | null>(null);
-  const [prodForm, setProdForm] = useState({ name: '', epaRegNumber: '', activeIngredients: '', signalWord: '', rei: '', phi: '', labelSdsUrl: '', unit: 'oz', rainfastHours: '' });
 
   // Branding
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -261,11 +229,6 @@ export default function SettingsPage() {
   const [reviewCustomLink2Label, setReviewCustomLink2Label] = useState('');
   const [reviewCustomLink2Url, setReviewCustomLink2Url] = useState('');
 
-  // Chemicals – Mixture form
-  const [mixFormOpen, setMixFormOpen] = useState(false);
-  const [editingMix, setEditingMix] = useState<ChemicalMixture | null>(null);
-  const [mixForm, setMixForm] = useState({ name: '', description: '' });
-  const [mixItems, setMixItems] = useState<Array<{ productId: string; ratioAmount: string; ratioUnit: string }>>([]);
 
   useEffect(() => {
     if (settings) {
@@ -279,7 +242,6 @@ export default function SettingsPage() {
       setAutoInvoiceFrequency((settings.autoInvoiceFrequency as 'off' | 'daily' | 'weekly' | 'bi_monthly' | 'monthly') ?? 'off');
       setNonRecurringInvoiceCadence(((settings as any).nonRecurringInvoiceCadence as 'immediate' | 'weekly') ?? 'immediate');
       setMaxClockInHours((settings as any).maxClockInHours != null ? String((settings as any).maxClockInHours) : '');
-      setP4pMasterPct(String((settings as any).p4pMasterPercentage ?? 0));
       setDailyTaskHourlyRate(String(settings.dailyTaskHourlyRate ?? 0));
       setEstimateExpiryDays(String((settings as any).estimateExpiryDays ?? 30));
       setInvoiceDueDays(String((settings as any).invoiceDueDays ?? 30));
@@ -291,8 +253,6 @@ export default function SettingsPage() {
       setRenewalWarningDays(String((settings as any).renewalWarningDays ?? 30));
       setCancellationFeeEnabled((settings as any).cancellationFeeEnabled ?? false);
       setCancellationFeeAmount(String((settings as any).cancellationFeeAmount ?? 50));
-      setEquipRepairPct(String((settings as any).equipmentRepairThresholdPct ?? 50));
-      setEquipResalePct(String((settings as any).equipmentResaleThresholdPct ?? 20));
       setDefaultGeofenceRadius(String((settings as any).defaultGeofenceRadius ?? 100));
       setDefaultGeofenceUnit(((settings as any).defaultGeofenceUnit as 'm' | 'ft') ?? 'm');
       setAutoCreateGeofence((settings as any).autoCreateGeofence ?? false);
@@ -467,20 +427,10 @@ export default function SettingsPage() {
 
   const saveOperational = () => {
     updateSettings.mutate(
-      { data: { durationUnit, autoInvoiceFrequency, nonRecurringInvoiceCadence, maxClockInHours: maxClockInHours ? parseFloat(maxClockInHours) : null, p4pMasterPercentage: parseFloat(p4pMasterPct) || 0, dailyTaskHourlyRate: parseFloat(dailyTaskHourlyRate) || 0 } as Parameters<typeof updateSettings.mutate>[0]['data'] },
+      { data: { durationUnit, autoInvoiceFrequency, nonRecurringInvoiceCadence, maxClockInHours: maxClockInHours ? parseFloat(maxClockInHours) : null, dailyTaskHourlyRate: parseFloat(dailyTaskHourlyRate) || 0 } as Parameters<typeof updateSettings.mutate>[0]['data'] },
       {
         onSuccess: () => { toast.success('Operational settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
         onError: () => toast.error('Failed to save settings'),
-      },
-    );
-  };
-
-  const saveEquipmentThresholds = () => {
-    updateSettings.mutate(
-      { data: { equipmentRepairThresholdPct: parseFloat(equipRepairPct) || 50, equipmentResaleThresholdPct: parseFloat(equipResalePct) || 20 } as Parameters<typeof updateSettings.mutate>[0]['data'] },
-      {
-        onSuccess: () => { toast.success('Equipment thresholds saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
-        onError: () => toast.error('Failed to save equipment thresholds'),
       },
     );
   };
@@ -632,7 +582,6 @@ export default function SettingsPage() {
           <TabsTrigger value="routing"><MapPin className="w-4 h-4 mr-2" />Routing</TabsTrigger>
           <TabsTrigger value="operational"><SettingsIcon className="w-4 h-4 mr-2" />Operational</TabsTrigger>
           <TabsTrigger value="measurements"><MapPin className="w-4 h-4 mr-2" />Maps & Quotes</TabsTrigger>
-          <TabsTrigger value="chemicals"><FlaskConical className="w-4 h-4 mr-2" />Chemicals</TabsTrigger>
           <TabsTrigger value="branding"><ImageIcon className="w-4 h-4 mr-2" />Branding</TabsTrigger>
           <TabsTrigger value="payment-reminders"><Bell className="w-4 h-4 mr-2" />Payment Reminders</TabsTrigger>
           <TabsTrigger value="followups"><PhoneMissedIcon className="w-4 h-4 mr-2" />Follow-Ups</TabsTrigger>
@@ -640,6 +589,7 @@ export default function SettingsPage() {
           <TabsTrigger value="reviews"><StarIcon className="w-4 h-4 mr-2" />Reviews</TabsTrigger>
           <TabsTrigger value="tags"><Tag className="w-4 h-4 mr-2" />Tags</TabsTrigger>
           <TabsTrigger value="skip-reasons"><SkipForward className="w-4 h-4 mr-2" />Skip Reasons</TabsTrigger>
+          {isOwner && <TabsTrigger value="roles"><Shield className="w-4 h-4 mr-2" />Roles</TabsTrigger>}
           {isOwner && <TabsTrigger value="advanced"><Shield className="w-4 h-4 mr-2" />Advanced</TabsTrigger>}
         </TabsList>
 
@@ -2133,34 +2083,6 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* P4P Master Percentage */}
-              <div className="col-span-2 space-y-2 pt-2 border-t">
-                <label className="text-sm font-medium flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-primary" />
-                  Global P4P Master Payout Percentage
-                </label>
-                <p className="text-xs text-muted-foreground">
-                  Default Pay-for-Performance rate applied to all services. Individual service blueprints can override this with their own percentage.
-                  Set to 0 to disable P4P calculations.
-                </p>
-                <div className="flex items-center gap-2 w-fit">
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={0.5}
-                    className="w-24 text-right"
-                    title="Global P4P payout percentage (0 = P4P disabled; individual services can override this)"
-                    value={p4pMasterPct}
-                    onChange={e => setP4pMasterPct(e.target.value)}
-                  />
-                  <span className="text-sm font-medium text-muted-foreground">%</span>
-                  <span className="text-xs text-muted-foreground ml-2">
-                    {parseFloat(p4pMasterPct) > 0 ? `= ${parseFloat(p4pMasterPct)} per $100 of net labor revenue` : 'P4P disabled'}
-                  </span>
-                </div>
-              </div>
-
               {/* Daily Task Hourly Rate */}
               <div className="col-span-2 space-y-2 pt-2 border-t">
                 <label className="text-sm font-medium flex items-center gap-2">
@@ -2198,197 +2120,6 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
-
-          {/* Equipment Sell Thresholds */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">Equipment Sell Thresholds</CardTitle>
-              <CardDescription>
-                Configure when the system should recommend selling a piece of equipment.
-                A sell badge appears when either condition is met.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Repair Cost Threshold (%)</label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number" min={0} max={200} step={5}
-                      className="w-24 text-right"
-                      title="Flag equipment for review when cumulative repair costs exceed this percentage of its purchase price"
-                      value={equipRepairPct}
-                      onChange={e => setEquipRepairPct(e.target.value)}
-                    />
-                    <span className="text-sm text-muted-foreground">% of purchase price</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Flag when total repair cost exceeds this % of the original purchase price.
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Resale Value Threshold (%)</label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number" min={0} max={100} step={5}
-                      className="w-24 text-right"
-                      title="Flag equipment when its estimated resale value falls below this percentage of the purchase price"
-                      value={equipResalePct}
-                      onChange={e => setEquipResalePct(e.target.value)}
-                    />
-                    <span className="text-sm text-muted-foreground">% of purchase price</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Flag when estimated resale value (age-depreciated) falls below this %.
-                  </p>
-                </div>
-              </div>
-              <Button title="Save equipment condition thresholds" onClick={saveEquipmentThresholds} disabled={updateSettings.isPending} variant="outline">
-                Save Equipment Thresholds
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Equipment Types */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">Equipment Types</CardTitle>
-              <CardDescription>
-                Define the type labels available when adding or editing equipment.
-                Staff can still type a custom value if a type isn't listed here.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Existing types list */}
-              {equipmentTypes.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No types defined yet. Add your first type below.</p>
-              ) : (
-                <div className="divide-y border rounded-lg">
-                  {equipmentTypes.map((et: EquipmentType) => (
-                    <div key={et.id} className="flex items-center gap-2 px-3 py-2">
-                      {editingTypeId === et.id ? (
-                        <>
-                          <Input
-                            className="h-7 text-sm flex-1"
-                            value={editingTypeLabel}
-                            onChange={e => setEditingTypeLabel(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') {
-                                if (!editingTypeLabel.trim()) return;
-                                updateEquipmentType.mutate(
-                                  { id: et.id, data: { label: editingTypeLabel.trim() } },
-                                  {
-                                    onSuccess: () => {
-                                      qc.invalidateQueries({ queryKey: getListEquipmentTypesQueryKey() });
-                                      setEditingTypeId(null);
-                                    },
-                                    onError: () => toast.error('Failed to rename type'),
-                                  }
-                                );
-                              }
-                              if (e.key === 'Escape') setEditingTypeId(null);
-                            }}
-                            autoFocus
-                          />
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 px-2 text-xs"
-                            onClick={() => {
-                              if (!editingTypeLabel.trim()) return;
-                              updateEquipmentType.mutate(
-                                { id: et.id, data: { label: editingTypeLabel.trim() } },
-                                {
-                                  onSuccess: () => {
-                                    qc.invalidateQueries({ queryKey: getListEquipmentTypesQueryKey() });
-                                    setEditingTypeId(null);
-                                  },
-                                  onError: () => toast.error('Failed to rename type'),
-                                }
-                              );
-                            }}
-                          >Save</Button>
-                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setEditingTypeId(null)}>Cancel</Button>
-                        </>
-                      ) : (
-                        <>
-                          <span className="flex-1 text-sm">{et.label}</span>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-7 w-7"
-                            title="Edit this equipment type label"
-                            onClick={() => { setEditingTypeId(et.id); setEditingTypeLabel(et.label); }}
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                            title="Delete this equipment type"
-                            onClick={() => {
-                              deleteEquipmentType.mutate({ id: et.id }, {
-                                onSuccess: () => qc.invalidateQueries({ queryKey: getListEquipmentTypesQueryKey() }),
-                                onError: () => toast.error('Failed to delete type'),
-                              });
-                            }}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Add new type */}
-              <div className="flex gap-2">
-                <Input
-                  className="flex-1"
-                  title="Enter a new equipment type name"
-                  placeholder="New type label (e.g. Riding Mower)"
-                  value={newTypeLabel}
-                  onChange={e => setNewTypeLabel(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      if (!newTypeLabel.trim()) return;
-                      createEquipmentType.mutate(
-                        { data: { label: newTypeLabel.trim(), sortOrder: equipmentTypes.length } },
-                        {
-                          onSuccess: () => {
-                            qc.invalidateQueries({ queryKey: getListEquipmentTypesQueryKey() });
-                            setNewTypeLabel('');
-                          },
-                          onError: () => toast.error('Failed to add type'),
-                        }
-                      );
-                    }
-                  }}
-                />
-                <Button
-                  variant="outline"
-                  disabled={!newTypeLabel.trim() || createEquipmentType.isPending}
-                  onClick={() => {
-                    if (!newTypeLabel.trim()) return;
-                    createEquipmentType.mutate(
-                      { data: { label: newTypeLabel.trim(), sortOrder: equipmentTypes.length } },
-                      {
-                        onSuccess: () => {
-                          qc.invalidateQueries({ queryKey: getListEquipmentTypesQueryKey() });
-                          setNewTypeLabel('');
-                        },
-                        onError: () => toast.error('Failed to add type'),
-                      }
-                    );
-                  }}
-                >
-                  <Plus className="w-4 h-4 mr-1" /> Add
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
         </TabsContent>
         {/* ── Chemicals ── */}
         {isOwner && (
@@ -2397,327 +2128,6 @@ export default function SettingsPage() {
           </TabsContent>
         )}
 
-        <TabsContent value="chemicals" className="space-y-6 focus-visible:outline-none">
-          {/* Products Library */}
-          <Card>
-            <CardHeader className="flex flex-row items-start justify-between pb-2">
-              <div>
-                <CardTitle className="flex items-center gap-2"><FlaskConical className="w-5 h-5" /> Chemical Products</CardTitle>
-                <CardDescription>Pesticides, herbicides, and fertilizers with EPA registration and safety data.</CardDescription>
-              </div>
-              <Button size="sm" className="gap-2 ml-4 shrink-0" onClick={() => { setEditingProd(null); setProdForm({ name: '', epaRegNumber: '', activeIngredients: '', signalWord: '', rei: '', phi: '', labelSdsUrl: '', unit: 'oz', rainfastHours: '' }); setProdFormOpen(true); }}>
-                <Plus className="w-4 h-4" /> Add Product
-              </Button>
-            </CardHeader>
-            <CardContent className="p-0">
-              {(chemProducts ?? []).length === 0 ? (
-                <p className="text-sm text-muted-foreground px-6 py-4">No chemical products yet. Add your first product to build your library.</p>
-              ) : (
-                <div className="divide-y">
-                  {(chemProducts ?? []).map(p => (
-                    <div key={p.id} className={`flex items-start gap-4 px-6 py-3 ${!p.isActive ? 'opacity-50' : ''}`}>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium text-sm">{p.name}</span>
-                          {p.signalWord && (
-                            <Badge variant="outline" className={`text-[10px] px-1.5 ${p.signalWord === 'DANGER' ? 'bg-red-50 text-red-700 border-red-200' : p.signalWord === 'WARNING' ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>
-                              {p.signalWord}
-                            </Badge>
-                          )}
-                          {!p.isActive && <Badge variant="outline" className="text-[10px] px-1.5">Inactive</Badge>}
-                        </div>
-                        {p.epaRegNumber && <p className="text-xs text-muted-foreground mt-0.5">EPA #{p.epaRegNumber}</p>}
-                        {p.activeIngredients && <p className="text-xs text-muted-foreground">{p.activeIngredients}</p>}
-                        <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
-                          <span>Unit: {p.unit}</span>
-                          {(p as any).rainfastHours != null && <span>Rainfast: {(p as any).rainfastHours}h</span>}
-                          {p.rei != null && <span>REI: {p.rei}h</span>}
-                          {p.phi != null && <span>PHI: {p.phi}d</span>}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => {
-                          setEditingProd(p);
-                          setProdForm({ name: p.name, epaRegNumber: p.epaRegNumber ?? '', activeIngredients: p.activeIngredients ?? '', signalWord: p.signalWord ?? '', rei: p.rei != null ? String(p.rei) : '', phi: p.phi != null ? String(p.phi) : '', labelSdsUrl: p.labelSdsUrl ?? '', unit: p.unit, rainfastHours: (p as any).rainfastHours != null ? String((p as any).rainfastHours) : '' });
-                          setProdFormOpen(true);
-                        }}>
-                          <Pencil className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground hover:text-destructive" onClick={() => {
-                          deleteChemProduct.mutate({ id: p.id }, {
-                            onSuccess: () => { toast.success('Product deleted'); qc.invalidateQueries({ queryKey: getListChemicalProductsQueryKey() }); },
-                            onError: () => toast.error('Failed to delete'),
-                          });
-                        }}>
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Mixtures Library */}
-          <Card>
-            <CardHeader className="flex flex-row items-start justify-between pb-2">
-              <div>
-                <CardTitle>Tank Mixtures</CardTitle>
-                <CardDescription>Named mixes (e.g. "Broadleaf Control Mix") that auto-expand to per-product breakdown when applied.</CardDescription>
-              </div>
-              <Button size="sm" className="gap-2 ml-4 shrink-0" onClick={() => { setEditingMix(null); setMixForm({ name: '', description: '' }); setMixItems([]); setMixFormOpen(true); }}>
-                <Plus className="w-4 h-4" /> Add Mixture
-              </Button>
-            </CardHeader>
-            <CardContent className="p-0">
-              {(chemMixtures ?? []).length === 0 ? (
-                <p className="text-sm text-muted-foreground px-6 py-4">No mixtures yet. Create a mixture to let field staff log complex applications as a single entry.</p>
-              ) : (
-                <div className="divide-y">
-                  {(chemMixtures ?? []).map(m => (
-                    <div key={m.id} className={`px-6 py-3 ${!m.isActive ? 'opacity-50' : ''}`}>
-                      <div className="flex items-start gap-4">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-sm">{m.name}</span>
-                            {!m.isActive && <Badge variant="outline" className="text-[10px] px-1.5">Inactive</Badge>}
-                          </div>
-                          {m.description && <p className="text-xs text-muted-foreground mt-0.5">{m.description}</p>}
-                          {m.items.length > 0 && (
-                            <div className="mt-1.5 space-y-0.5">
-                              {m.items.map((item: ChemicalMixtureItem) => (
-                                <p key={item.id} className="text-xs text-muted-foreground">
-                                  {item.productName ?? `Product #${item.productId}`}: {item.ratioAmount} {item.ratioUnit} per gal
-                                </p>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => {
-                            setEditingMix(m);
-                            setMixForm({ name: m.name, description: m.description ?? '' });
-                            setMixItems(m.items.map((i: ChemicalMixtureItem) => ({ productId: String(i.productId), ratioAmount: String(i.ratioAmount), ratioUnit: i.ratioUnit })));
-                            setMixFormOpen(true);
-                          }}>
-                            <Pencil className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground hover:text-destructive" onClick={() => {
-                            deleteChemMixture.mutate({ id: m.id }, {
-                              onSuccess: () => { toast.success('Mixture deleted'); qc.invalidateQueries({ queryKey: getListChemicalMixturesQueryKey() }); },
-                              onError: () => toast.error('Failed to delete'),
-                            });
-                          }}>
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Product Form Sheet */}
-          <Sheet open={prodFormOpen} onOpenChange={open => { if (!open) { setProdFormOpen(false); setEditingProd(null); } }}>
-            <SheetContent className="w-full sm:max-w-md overflow-y-auto">
-              <SheetHeader className="pb-4">
-                <SheetTitle>{editingProd ? 'Edit Product' : 'Add Chemical Product'}</SheetTitle>
-                <SheetDescription>Fill in the product details for your chemical library.</SheetDescription>
-              </SheetHeader>
-              <div className="space-y-4 pb-6">
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Product Name <span className="text-destructive">*</span></label>
-                  <Input placeholder="e.g. RoundUp Pro Concentrate" value={prodForm.name} onChange={e => setProdForm(f => ({ ...f, name: e.target.value }))} />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium">EPA Reg #</label>
-                    <Input placeholder="524-343" value={prodForm.epaRegNumber} onChange={e => setProdForm(f => ({ ...f, epaRegNumber: e.target.value }))} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Signal Word</label>
-                    <Select value={prodForm.signalWord} onValueChange={v => setProdForm(f => ({ ...f, signalWord: v }))}>
-                      <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">None</SelectItem>
-                        <SelectItem value="CAUTION">CAUTION</SelectItem>
-                        <SelectItem value="WARNING">WARNING</SelectItem>
-                        <SelectItem value="DANGER">DANGER</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Active Ingredients</label>
-                  <Input placeholder="e.g. Glyphosate 41%" value={prodForm.activeIngredients} onChange={e => setProdForm(f => ({ ...f, activeIngredients: e.target.value }))} />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Unit</label>
-                    <Select value={prodForm.unit} onValueChange={v => setProdForm(f => ({ ...f, unit: v }))}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="oz">oz</SelectItem>
-                        <SelectItem value="fl oz">fl oz</SelectItem>
-                        <SelectItem value="lb">lb</SelectItem>
-                        <SelectItem value="gal">gal</SelectItem>
-                        <SelectItem value="l">L</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium">PHI (days)</label>
-                    <Input type="number" min={0} placeholder="0" value={prodForm.phi} onChange={e => setProdForm(f => ({ ...f, phi: e.target.value }))} />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Rainfast hours</label>
-                    <p className="text-xs text-muted-foreground">Hours until rain won't affect the application</p>
-                    <Input type="number" min={0} step="0.5" placeholder="e.g. 2" value={prodForm.rainfastHours} onChange={e => setProdForm(f => ({ ...f, rainfastHours: e.target.value }))} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Re-entry interval (hrs)</label>
-                    <p className="text-xs text-muted-foreground">Hours people must stay out after application</p>
-                    <Input type="number" min={0} placeholder="4" value={prodForm.rei} onChange={e => setProdForm(f => ({ ...f, rei: e.target.value }))} />
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Label / SDS URL</label>
-                  <Input placeholder="https://…" value={prodForm.labelSdsUrl} onChange={e => setProdForm(f => ({ ...f, labelSdsUrl: e.target.value }))} />
-                </div>
-                <Separator />
-                <div className="flex gap-3 justify-end">
-                  <Button variant="outline" onClick={() => setProdFormOpen(false)}>Cancel</Button>
-                  <Button onClick={() => {
-                    if (!prodForm.name) { toast.error('Name is required'); return; }
-                    const data = {
-                      name: prodForm.name,
-                      epaRegNumber: prodForm.epaRegNumber || undefined,
-                      activeIngredients: prodForm.activeIngredients || undefined,
-                      signalWord: (prodForm.signalWord && prodForm.signalWord !== 'none') ? prodForm.signalWord as 'CAUTION' | 'WARNING' | 'DANGER' : undefined,
-                      rei: prodForm.rei ? parseInt(prodForm.rei, 10) : undefined,
-                      phi: prodForm.phi ? parseInt(prodForm.phi, 10) : undefined,
-                      labelSdsUrl: prodForm.labelSdsUrl || undefined,
-                      unit: prodForm.unit,
-                      rainfastHours: prodForm.rainfastHours ? parseFloat(prodForm.rainfastHours) : undefined,
-                    } as any;
-                    if (editingProd) {
-                      updateChemProduct.mutate({ id: editingProd.id, data }, {
-                        onSuccess: () => { toast.success('Product updated'); qc.invalidateQueries({ queryKey: getListChemicalProductsQueryKey() }); setProdFormOpen(false); },
-                        onError: () => toast.error('Failed to update'),
-                      });
-                    } else {
-                      createChemProduct.mutate({ data }, {
-                        onSuccess: () => { toast.success('Product added'); qc.invalidateQueries({ queryKey: getListChemicalProductsQueryKey() }); setProdFormOpen(false); },
-                        onError: () => toast.error('Failed to add product'),
-                      });
-                    }
-                  }} disabled={createChemProduct.isPending || updateChemProduct.isPending}>
-                    {editingProd ? 'Save Changes' : 'Add Product'}
-                  </Button>
-                </div>
-              </div>
-            </SheetContent>
-          </Sheet>
-
-          {/* Mixture Form Sheet */}
-          <Sheet open={mixFormOpen} onOpenChange={open => { if (!open) { setMixFormOpen(false); setEditingMix(null); } }}>
-            <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
-              <SheetHeader className="pb-4">
-                <SheetTitle>{editingMix ? 'Edit Mixture' : 'Add Tank Mixture'}</SheetTitle>
-                <SheetDescription>Define a named mix by specifying how much of each product goes into a gallon of solution.</SheetDescription>
-              </SheetHeader>
-              <div className="space-y-4 pb-6">
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Mixture Name <span className="text-destructive">*</span></label>
-                  <Input placeholder="e.g. Broadleaf Control Mix" value={mixForm.name} onChange={e => setMixForm(f => ({ ...f, name: e.target.value }))} />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Description</label>
-                  <Input placeholder="What is this mixture used for?" value={mixForm.description} onChange={e => setMixForm(f => ({ ...f, description: e.target.value }))} />
-                </div>
-
-                <Separator />
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">Products in this mixture</p>
-                  <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setMixItems(items => [...items, { productId: '', ratioAmount: '', ratioUnit: 'oz' }])}>
-                    <Plus className="w-3 h-3" /> Add Product
-                  </Button>
-                </div>
-                {mixItems.length === 0 && <p className="text-sm text-muted-foreground">Add at least one product to define the mixture ratio.</p>}
-                <div className="space-y-3">
-                  {mixItems.map((item, i) => (
-                    <div key={i} className="flex gap-2 items-end">
-                      <div className="flex-1 space-y-1">
-                        <label className="text-xs text-muted-foreground">Product</label>
-                        <Select value={item.productId} onValueChange={v => setMixItems(items => items.map((x, j) => j === i ? { ...x, productId: v } : x))}>
-                          <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select…" /></SelectTrigger>
-                          <SelectContent>
-                            {(chemProducts ?? []).filter(p => p.isActive).map(p => (
-                              <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="w-20 space-y-1">
-                        <label className="text-xs text-muted-foreground">Amount</label>
-                        <Input className="h-8 text-sm" type="number" min={0} step={0.1} placeholder="2" value={item.ratioAmount} onChange={e => setMixItems(items => items.map((x, j) => j === i ? { ...x, ratioAmount: e.target.value } : x))} />
-                      </div>
-                      <div className="w-24 space-y-1">
-                        <label className="text-xs text-muted-foreground">Unit/gal</label>
-                        <Select value={item.ratioUnit} onValueChange={v => setMixItems(items => items.map((x, j) => j === i ? { ...x, ratioUnit: v } : x))}>
-                          <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="oz">oz</SelectItem>
-                            <SelectItem value="fl oz">fl oz</SelectItem>
-                            <SelectItem value="lb">lb</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive mb-0.5" onClick={() => setMixItems(items => items.filter((_, j) => j !== i))}>
-                        <X className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-
-                <Separator />
-                <div className="flex gap-3 justify-end">
-                  <Button variant="outline" onClick={() => setMixFormOpen(false)}>Cancel</Button>
-                  <Button onClick={() => {
-                    if (!mixForm.name) { toast.error('Name is required'); return; }
-                    const data = {
-                      name: mixForm.name,
-                      description: mixForm.description || undefined,
-                      items: mixItems.filter(i => i.productId && i.ratioAmount).map(i => ({
-                        productId: parseInt(i.productId, 10),
-                        ratioAmount: parseFloat(i.ratioAmount),
-                        ratioUnit: i.ratioUnit,
-                      })),
-                    };
-                    if (editingMix) {
-                      updateChemMixture.mutate({ id: editingMix.id, data }, {
-                        onSuccess: () => { toast.success('Mixture updated'); qc.invalidateQueries({ queryKey: getListChemicalMixturesQueryKey() }); setMixFormOpen(false); },
-                        onError: () => toast.error('Failed to update'),
-                      });
-                    } else {
-                      createChemMixture.mutate({ data }, {
-                        onSuccess: () => { toast.success('Mixture created'); qc.invalidateQueries({ queryKey: getListChemicalMixturesQueryKey() }); setMixFormOpen(false); },
-                        onError: () => toast.error('Failed to create'),
-                      });
-                    }
-                  }} disabled={createChemMixture.isPending || updateChemMixture.isPending}>
-                    {editingMix ? 'Save Changes' : 'Create Mixture'}
-                  </Button>
-                </div>
-              </div>
-            </SheetContent>
-          </Sheet>
-        </TabsContent>
 
         {/* ── Branding ── */}
         <TabsContent value="branding" className="space-y-6 focus-visible:outline-none">
@@ -3748,6 +3158,13 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* ── Roles ── */}
+        {isOwner && (
+          <TabsContent value="roles" className="space-y-6 focus-visible:outline-none">
+            <RolePermissionsSettings />
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Remove User Confirmation */}

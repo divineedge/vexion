@@ -1,5 +1,12 @@
 import React, { useState } from 'react';
-import { useListChemicalApplications, useListUsers, getListChemicalApplicationsQueryKey } from '@workspace/api-client-react';
+import {
+  useListChemicalApplications, useListUsers, getListChemicalApplicationsQueryKey,
+  useListChemicalProducts, getListChemicalProductsQueryKey,
+  useCreateChemicalProduct, useUpdateChemicalProduct, useDeleteChemicalProduct,
+  useListChemicalMixtures, getListChemicalMixturesQueryKey,
+  useCreateChemicalMixture, useUpdateChemicalMixture, useDeleteChemicalMixture,
+} from '@workspace/api-client-react';
+import type { ChemicalProduct, ChemicalMixture, ChemicalMixtureItem } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -7,21 +14,24 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { FlaskConical, Download, Filter, ChevronDown, ChevronRight } from 'lucide-react';
+import { FlaskConical, Download, Filter, ChevronDown, ChevronRight, Plus, Pencil, Trash2, X } from 'lucide-react';
 
-export default function ChemicalsReportPage() {
+export default function ChemicalsPage() {
   const { isAuthenticated } = useAuth();
   const qc = useQueryClient();
 
+  // ── Application records state ───────────────────────────────────────────────
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [applicatorId, setApplicatorId] = useState('');
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
-  // Build query params
   const params: Record<string, string | number | undefined> = {};
   if (startDate) params.startDate = startDate;
   if (endDate) params.endDate = endDate;
@@ -31,13 +41,103 @@ export default function ChemicalsReportPage() {
     Object.keys(params).length ? params : undefined,
     { query: { queryKey: getListChemicalApplicationsQueryKey(Object.keys(params).length ? params : undefined) } }
   );
-
   const { data: users } = useListUsers();
 
-  const handleExportPDF = () => {
-    window.print();
+  // ── Products state ──────────────────────────────────────────────────────────
+  const { data: chemProducts } = useListChemicalProducts({ query: { queryKey: getListChemicalProductsQueryKey() } });
+  const createChemProduct = useCreateChemicalProduct();
+  const updateChemProduct = useUpdateChemicalProduct();
+  const deleteChemProduct = useDeleteChemicalProduct();
+
+  const [prodFormOpen, setProdFormOpen] = useState(false);
+  const [editingProd, setEditingProd] = useState<ChemicalProduct | null>(null);
+  const [prodForm, setProdForm] = useState({ name: '', epaRegNumber: '', activeIngredients: '', signalWord: '', rei: '', phi: '', labelSdsUrl: '', unit: 'oz', rainfastHours: '' });
+
+  const openAddProd = () => {
+    setEditingProd(null);
+    setProdForm({ name: '', epaRegNumber: '', activeIngredients: '', signalWord: '', rei: '', phi: '', labelSdsUrl: '', unit: 'oz', rainfastHours: '' });
+    setProdFormOpen(true);
+  };
+  const openEditProd = (p: ChemicalProduct) => {
+    setEditingProd(p);
+    setProdForm({ name: p.name, epaRegNumber: p.epaRegNumber ?? '', activeIngredients: p.activeIngredients ?? '', signalWord: p.signalWord ?? '', rei: p.rei != null ? String(p.rei) : '', phi: p.phi != null ? String(p.phi) : '', labelSdsUrl: p.labelSdsUrl ?? '', unit: p.unit, rainfastHours: (p as any).rainfastHours != null ? String((p as any).rainfastHours) : '' });
+    setProdFormOpen(true);
+  };
+  const saveProd = () => {
+    if (!prodForm.name) { toast.error('Name is required'); return; }
+    const data = {
+      name: prodForm.name,
+      epaRegNumber: prodForm.epaRegNumber || undefined,
+      activeIngredients: prodForm.activeIngredients || undefined,
+      signalWord: (prodForm.signalWord && prodForm.signalWord !== 'none') ? prodForm.signalWord as 'CAUTION' | 'WARNING' | 'DANGER' : undefined,
+      rei: prodForm.rei ? parseInt(prodForm.rei, 10) : undefined,
+      phi: prodForm.phi ? parseInt(prodForm.phi, 10) : undefined,
+      labelSdsUrl: prodForm.labelSdsUrl || undefined,
+      unit: prodForm.unit,
+      rainfastHours: prodForm.rainfastHours ? parseFloat(prodForm.rainfastHours) : undefined,
+    } as any;
+    if (editingProd) {
+      updateChemProduct.mutate({ id: editingProd.id, data }, {
+        onSuccess: () => { toast.success('Product updated'); qc.invalidateQueries({ queryKey: getListChemicalProductsQueryKey() }); setProdFormOpen(false); },
+        onError: () => toast.error('Failed to update'),
+      });
+    } else {
+      createChemProduct.mutate({ data }, {
+        onSuccess: () => { toast.success('Product added'); qc.invalidateQueries({ queryKey: getListChemicalProductsQueryKey() }); setProdFormOpen(false); },
+        onError: () => toast.error('Failed to add product'),
+      });
+    }
   };
 
+  // ── Mixtures state ──────────────────────────────────────────────────────────
+  const { data: chemMixtures } = useListChemicalMixtures({ query: { queryKey: getListChemicalMixturesQueryKey() } });
+  const createChemMixture = useCreateChemicalMixture();
+  const updateChemMixture = useUpdateChemicalMixture();
+  const deleteChemMixture = useDeleteChemicalMixture();
+
+  const [mixFormOpen, setMixFormOpen] = useState(false);
+  const [editingMix, setEditingMix] = useState<ChemicalMixture | null>(null);
+  const [mixForm, setMixForm] = useState({ name: '', description: '' });
+  const [mixItems, setMixItems] = useState<Array<{ productId: string; ratioAmount: string; ratioUnit: string }>>([]);
+
+  const openAddMix = () => {
+    setEditingMix(null);
+    setMixForm({ name: '', description: '' });
+    setMixItems([]);
+    setMixFormOpen(true);
+  };
+  const openEditMix = (m: ChemicalMixture) => {
+    setEditingMix(m);
+    setMixForm({ name: m.name, description: m.description ?? '' });
+    setMixItems(m.items.map((i: ChemicalMixtureItem) => ({ productId: String(i.productId), ratioAmount: String(i.ratioAmount), ratioUnit: i.ratioUnit })));
+    setMixFormOpen(true);
+  };
+  const saveMix = () => {
+    if (!mixForm.name) { toast.error('Name is required'); return; }
+    const data = {
+      name: mixForm.name,
+      description: mixForm.description || undefined,
+      items: mixItems.filter(i => i.productId && i.ratioAmount).map(i => ({
+        productId: parseInt(i.productId, 10),
+        ratioAmount: parseFloat(i.ratioAmount),
+        ratioUnit: i.ratioUnit,
+      })),
+    };
+    if (editingMix) {
+      updateChemMixture.mutate({ id: editingMix.id, data }, {
+        onSuccess: () => { toast.success('Mixture updated'); qc.invalidateQueries({ queryKey: getListChemicalMixturesQueryKey() }); setMixFormOpen(false); },
+        onError: () => toast.error('Failed to update'),
+      });
+    } else {
+      createChemMixture.mutate({ data }, {
+        onSuccess: () => { toast.success('Mixture created'); qc.invalidateQueries({ queryKey: getListChemicalMixturesQueryKey() }); setMixFormOpen(false); },
+        onError: () => toast.error('Failed to create'),
+      });
+    }
+  };
+
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+  const handleExportPDF = () => window.print();
   const handleExportCSV = () => {
     const base = `${window.location.origin}/api/chemical-applications/export`;
     const qs = new URLSearchParams();
@@ -46,11 +146,8 @@ export default function ChemicalsReportPage() {
     if (applicatorId && applicatorId !== 'all') qs.set('applicatorId', applicatorId);
     const url = qs.toString() ? `${base}?${qs}` : base;
     const a = document.createElement('a');
-    a.href = url;
-    a.download = '';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    a.href = url; a.download = '';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
   };
 
   const SIGNAL_COLORS: Record<string, string> = {
@@ -58,24 +155,8 @@ export default function ChemicalsReportPage() {
     WARNING: 'bg-orange-100 text-orange-800 border-orange-200',
     DANGER: 'bg-red-100 text-red-800 border-red-200',
   };
-
-  type BreakdownItem = {
-    productName?: string | null;
-    activeIngredients?: string | null;
-    epaRegNumber?: string | null;
-    amountApplied: number;
-    unit: string;
-    ratePerAcre?: number | null;
-    ratePer1000Sqft?: number | null;
-  };
-
-  // Determine if any application has a non-null rate so we can show/hide the rate column
-  const hasAnyRate = (applications ?? []).some(app =>
-    Array.isArray(app.breakdown) &&
-    (app.breakdown as BreakdownItem[]).some(b => b.ratePerAcre != null || b.ratePer1000Sqft != null)
-  );
-
-  // Pick the best rate summary for a single application (prefer per-acre if present)
+  type BreakdownItem = { productName?: string | null; activeIngredients?: string | null; epaRegNumber?: string | null; amountApplied: number; unit: string; ratePerAcre?: number | null; ratePer1000Sqft?: number | null; };
+  const hasAnyRate = (applications ?? []).some(app => Array.isArray(app.breakdown) && (app.breakdown as BreakdownItem[]).some(b => b.ratePerAcre != null || b.ratePer1000Sqft != null));
   const getSummaryRate = (breakdown: unknown[]): string | null => {
     const items = breakdown as BreakdownItem[];
     const withAcre = items.find(b => b.ratePerAcre != null);
@@ -85,213 +166,459 @@ export default function ChemicalsReportPage() {
     return null;
   };
 
+  const SIGNAL_LABEL_COLORS: Record<string, string> = {
+    CAUTION: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+    WARNING: 'bg-orange-50 text-orange-700 border-orange-200',
+    DANGER: 'bg-red-50 text-red-700 border-red-200',
+  };
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto animate-in fade-in duration-500">
+      {/* Page header */}
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-            <FlaskConical className="w-8 h-8 text-primary" />
-            Chemical Applications Report
-          </h1>
-          <p className="text-muted-foreground mt-1">Complete application history for state compliance reporting.</p>
-        </div>
-        <div className="flex gap-2 print:hidden">
-          <Button variant="outline" onClick={handleExportCSV} className="gap-2">
-            <Download className="w-4 h-4" /> Export CSV
-          </Button>
-          <Button variant="outline" onClick={handleExportPDF} className="gap-2">
-            <Download className="w-4 h-4" /> Export PDF
-          </Button>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+            <FlaskConical className="w-5 h-5" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Chemicals</h1>
+            <p className="text-sm text-muted-foreground">Application records, product library, and tank mixtures.</p>
+          </div>
         </div>
       </div>
 
-      {/* Filters */}
-      <Card className="print:hidden">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2"><Filter className="w-4 h-4" /> Filters</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Start Date</label>
-              <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">End Date</label>
-              <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Applicator</label>
-              <Select value={applicatorId} onValueChange={setApplicatorId}>
-                <SelectTrigger><SelectValue placeholder="All applicators" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All applicators</SelectItem>
-                  {(users ?? []).map(u => (
-                    <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-end">
-              <Button variant="outline" onClick={() => { setStartDate(''); setEndDate(''); setApplicatorId(''); }} className="w-full">
-                Clear Filters
+      <Tabs defaultValue="applications" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="applications">Applications</TabsTrigger>
+          <TabsTrigger value="products">Products</TabsTrigger>
+          <TabsTrigger value="mixtures">Tank Mixtures</TabsTrigger>
+        </TabsList>
+
+        {/* ── Applications tab ─────────────────────────────────────────────── */}
+        <TabsContent value="applications" className="space-y-4 focus-visible:outline-none">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold">Application Records</h2>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExportCSV} title="Download application records as CSV">
+                <Download className="w-3.5 h-3.5" /> CSV
+              </Button>
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExportPDF} title="Print application records">
+                <Download className="w-3.5 h-3.5" /> PDF
               </Button>
             </div>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Results */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Application Records</CardTitle>
-            <span className="text-sm text-muted-foreground">
-              {applications?.length ?? 0} record{(applications?.length ?? 0) !== 1 ? 's' : ''}
-            </span>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="p-8 text-center text-muted-foreground">Loading records…</div>
-          ) : !applications?.length ? (
-            <div className="p-8 text-center text-muted-foreground">
-              <FlaskConical className="w-10 h-10 mx-auto mb-3 opacity-30" />
-              <p>No application records found for the selected filters.</p>
-            </div>
-          ) : (
-            <div className="divide-y">
-              {applications.map(app => (
-                <div key={app.id}>
-                  {/* Summary row */}
-                  <div
-                    className="flex items-center gap-4 px-6 py-4 cursor-pointer hover:bg-muted/30 transition-colors"
-                    onClick={() => setExpandedId(expandedId === app.id ? null : app.id)}
-                  >
-                    <div className="shrink-0 text-muted-foreground">
-                      {expandedId === app.id ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                    </div>
-                    <div className={`flex-1 min-w-0 grid gap-4 text-sm ${hasAnyRate ? 'grid-cols-2 md:grid-cols-6' : 'grid-cols-2 md:grid-cols-5'}`}>
-                      <div>
-                        <p className="font-medium">{app.mixtureName ?? app.productName ?? 'Unknown'}</p>
-                        <p className="text-muted-foreground text-xs">{app.jobTitle ?? `Job #${app.jobId}`}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground text-xs uppercase tracking-wide">Volume</p>
-                        <p className="font-medium">{app.volumeApplied} {app.volumeUnit}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground text-xs uppercase tracking-wide">Treated Area</p>
-                        <p className="font-medium">
-                          {(() => {
-                            const a = app as unknown as { treatedArea?: number | null; areaUnit?: string | null };
-                            return a.treatedArea != null ? `${a.treatedArea} ${a.areaUnit ?? 'sqft'}` : '—';
-                          })()}
-                        </p>
-                      </div>
-                      {hasAnyRate && (
-                        <div>
-                          <p className="text-muted-foreground text-xs uppercase tracking-wide">Rate</p>
-                          <p className="font-medium">{Array.isArray(app.breakdown) ? (getSummaryRate(app.breakdown as unknown[]) ?? '—') : '—'}</p>
-                        </div>
-                      )}
-                      <div>
-                        <p className="text-muted-foreground text-xs uppercase tracking-wide">Applied</p>
-                        <p className="font-medium">{format(new Date(app.appliedAt), 'MMM d, yyyy')}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground text-xs uppercase tracking-wide">Applicator</p>
-                        <p className="font-medium truncate">{app.applicatorName ?? '—'}</p>
-                      </div>
-                    </div>
-                    {app.applicationMethod && (
-                      <Badge variant="outline" className="shrink-0 capitalize">{app.applicationMethod}</Badge>
-                    )}
-                  </div>
-
-                  {/* Expanded detail */}
-                  {expandedId === app.id && (
-                    <div className="bg-muted/20 border-t px-6 py-4 space-y-4">
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                        {app.targetPest && (
-                          <div>
-                            <p className="text-xs text-muted-foreground uppercase tracking-wide">Target Pest</p>
-                            <p>{app.targetPest}</p>
-                          </div>
-                        )}
-                        {app.propertyAddress && (
-                          <div>
-                            <p className="text-xs text-muted-foreground uppercase tracking-wide">Property</p>
-                            <p>{app.propertyAddress}</p>
-                          </div>
-                        )}
-                        {app.temperature != null && (
-                          <div>
-                            <p className="text-xs text-muted-foreground uppercase tracking-wide">Temperature</p>
-                            <p>{app.temperature}°F</p>
-                          </div>
-                        )}
-                        {app.windSpeed != null && (
-                          <div>
-                            <p className="text-xs text-muted-foreground uppercase tracking-wide">Wind</p>
-                            <p>{app.windSpeed} mph {app.windDirection ?? ''}</p>
-                          </div>
-                        )}
-                        {app.applicatorLicenseNumber && (
-                          <div>
-                            <p className="text-xs text-muted-foreground uppercase tracking-wide">License #</p>
-                            <p className="font-mono text-xs">{app.applicatorLicenseNumber}</p>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Per-ingredient breakdown */}
-                      {Array.isArray(app.breakdown) && app.breakdown.length > 0 && (
-                        <div>
-                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Active Ingredient Breakdown</p>
-                          <div className="rounded-lg border overflow-hidden">
-                            <Table>
-                              <TableHeader>
-                                <TableRow>
-                                  <TableHead>Product</TableHead>
-                                  <TableHead>Active Ingredients</TableHead>
-                                  <TableHead>EPA Reg #</TableHead>
-                                  <TableHead>Amount Applied</TableHead>
-                                  <TableHead>Rate / Acre</TableHead>
-                                  <TableHead>Rate / 1000 sqft</TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {(app.breakdown as BreakdownItem[]).map((b, i) => (
-                                  <TableRow key={i}>
-                                    <TableCell className="font-medium">{b.productName ?? '—'}</TableCell>
-                                    <TableCell className="text-sm">{b.activeIngredients ?? '—'}</TableCell>
-                                    <TableCell className="font-mono text-xs">{b.epaRegNumber ?? '—'}</TableCell>
-                                    <TableCell>{b.amountApplied?.toFixed(2)} {b.unit}</TableCell>
-                                    <TableCell>{b.ratePerAcre != null ? `${b.ratePerAcre.toFixed(3)}` : '—'}</TableCell>
-                                    <TableCell>{b.ratePer1000Sqft != null ? `${b.ratePer1000Sqft.toFixed(3)}` : '—'}</TableCell>
-                                  </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
-                          </div>
-                        </div>
-                      )}
-
-                      {app.notes && (
-                        <div>
-                          <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Notes</p>
-                          <p className="text-sm">{app.notes}</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
+          {/* Filters */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm font-medium"><Filter className="w-4 h-4" /> Filters</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-4 items-end">
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground font-medium">Start Date</label>
+                  <Input type="date" className="h-8 text-sm w-40" value={startDate} onChange={e => setStartDate(e.target.value)} />
                 </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground font-medium">End Date</label>
+                  <Input type="date" className="h-8 text-sm w-40" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground font-medium">Applicator</label>
+                  <Select value={applicatorId || 'all'} onValueChange={v => setApplicatorId(v === 'all' ? '' : v)}>
+                    <SelectTrigger className="h-8 text-sm w-44"><SelectValue placeholder="All applicators" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All applicators</SelectItem>
+                      {(users ?? []).map(u => (
+                        <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {(startDate || endDate || applicatorId) && (
+                  <Button variant="ghost" size="sm" className="h-8 text-xs gap-1" onClick={() => { setStartDate(''); setEndDate(''); setApplicatorId(''); }}>
+                    <X className="w-3 h-3" /> Clear
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Records */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium">
+                  {isLoading ? 'Loading…' : `${(applications ?? []).length} record${(applications ?? []).length !== 1 ? 's' : ''}`}
+                </CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {isLoading ? (
+                <div className="px-6 py-8 text-center text-sm text-muted-foreground">Loading application records…</div>
+              ) : (applications ?? []).length === 0 ? (
+                <div className="px-6 py-8 text-center text-sm text-muted-foreground">No application records found. Records appear here after chemical applications are logged on jobs.</div>
+              ) : (
+                <div className="divide-y">
+                  {(applications ?? []).map(app => {
+                    const isExpanded = expandedId === app.id;
+                    const breakdown = Array.isArray(app.breakdown) ? app.breakdown as BreakdownItem[] : [];
+                    const summaryRate = breakdown.length ? getSummaryRate(breakdown) : null;
+                    return (
+                      <div key={app.id}>
+                        <button
+                          className="w-full text-left px-6 py-3 hover:bg-muted/50 transition-colors"
+                          onClick={() => setExpandedId(isExpanded ? null : app.id)}
+                        >
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-2 min-w-0">
+                              {isExpanded ? <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />}
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium truncate">
+                                  {app.mixtureName ?? app.productName ?? 'Application'}
+                                </p>
+                                <p className="text-xs text-muted-foreground">Job #{app.jobId} · {app.propertyAddress ?? 'Unknown property'}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-4 text-xs text-muted-foreground shrink-0">
+                              <span>{app.volumeApplied} {app.volumeUnit} applied</span>
+                              {(app as any).areaOfTreatment && <span>{(app as any).areaOfTreatment.toLocaleString()} sqft</span>}
+                              {summaryRate && hasAnyRate && <span>{summaryRate}</span>}
+                              <span>{app.appliedAt ? format(new Date(app.appliedAt), 'MMM d, yyyy') : '—'}</span>
+                              <span>{app.applicatorName ?? '—'}</span>
+                              {app.applicationMethod && (
+                                <Badge variant="outline" className="text-[10px] px-1.5 capitalize">{app.applicationMethod.replace(/_/g, ' ')}</Badge>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+
+                        {isExpanded && (
+                          <div className="px-6 pb-4 pt-1 bg-muted/30 space-y-4">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                              {app.targetPest && <div><p className="text-xs text-muted-foreground">Target Pest</p><p className="font-medium">{app.targetPest}</p></div>}
+                              {app.propertyAddress && <div><p className="text-xs text-muted-foreground">Property</p><p className="font-medium">{app.propertyAddress}</p></div>}
+                              {(app as any).temperatureF != null && <div><p className="text-xs text-muted-foreground">Temperature</p><p className="font-medium">{(app as any).temperatureF}°F</p></div>}
+                              {(app as any).windSpeedMph != null && <div><p className="text-xs text-muted-foreground">Wind Speed</p><p className="font-medium">{(app as any).windSpeedMph} mph</p></div>}
+                              {(app as any).applicatorLicense && <div><p className="text-xs text-muted-foreground">License #</p><p className="font-medium">{(app as any).applicatorLicense}</p></div>}
+                            </div>
+
+                            {breakdown.length > 0 && (
+                              <div>
+                                <p className="text-xs font-medium text-muted-foreground mb-2">Product Breakdown</p>
+                                <Table>
+                                  <TableHeader>
+                                    <TableRow>
+                                      <TableHead className="text-xs h-7">Product</TableHead>
+                                      <TableHead className="text-xs h-7">Active Ingredients</TableHead>
+                                      <TableHead className="text-xs h-7">EPA Reg #</TableHead>
+                                      <TableHead className="text-xs h-7 text-right">Amount</TableHead>
+                                      {hasAnyRate && <TableHead className="text-xs h-7 text-right">Rate</TableHead>}
+                                    </TableRow>
+                                  </TableHeader>
+                                  <TableBody>
+                                    {breakdown.map((b, i) => (
+                                      <TableRow key={i}>
+                                        <TableCell className="text-xs py-1.5">{b.productName ?? '—'}</TableCell>
+                                        <TableCell className="text-xs py-1.5 text-muted-foreground">{b.activeIngredients ?? '—'}</TableCell>
+                                        <TableCell className="text-xs py-1.5 text-muted-foreground">{b.epaRegNumber ?? '—'}</TableCell>
+                                        <TableCell className="text-xs py-1.5 text-right">{b.amountApplied} {b.unit}</TableCell>
+                                        {hasAnyRate && (
+                                          <TableCell className="text-xs py-1.5 text-right text-muted-foreground">
+                                            {b.ratePerAcre != null ? `${b.ratePerAcre.toFixed(3)}/ac` : b.ratePer1000Sqft != null ? `${b.ratePer1000Sqft.toFixed(3)}/ksqft` : '—'}
+                                          </TableCell>
+                                        )}
+                                      </TableRow>
+                                    ))}
+                                  </TableBody>
+                                </Table>
+                              </div>
+                            )}
+
+                            {app.notes && (
+                              <div>
+                                <p className="text-xs text-muted-foreground font-medium">Notes</p>
+                                <p className="text-sm mt-0.5">{app.notes}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Products tab ─────────────────────────────────────────────────── */}
+        <TabsContent value="products" className="focus-visible:outline-none">
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between pb-2">
+              <div>
+                <CardTitle className="flex items-center gap-2"><FlaskConical className="w-5 h-5" /> Chemical Products</CardTitle>
+                <CardDescription>Pesticides, herbicides, and fertilizers with EPA registration and safety data.</CardDescription>
+              </div>
+              <Button size="sm" className="gap-2 ml-4 shrink-0" onClick={openAddProd}>
+                <Plus className="w-4 h-4" /> Add Product
+              </Button>
+            </CardHeader>
+            <CardContent className="p-0">
+              {(chemProducts ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground px-6 py-4">No chemical products yet. Add your first product to build your library.</p>
+              ) : (
+                <div className="divide-y">
+                  {(chemProducts ?? []).map(p => (
+                    <div key={p.id} className={`flex items-start gap-4 px-6 py-3 ${!p.isActive ? 'opacity-50' : ''}`}>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-sm">{p.name}</span>
+                          {p.signalWord && (
+                            <Badge variant="outline" className={`text-[10px] px-1.5 ${SIGNAL_LABEL_COLORS[p.signalWord] ?? ''}`}>
+                              {p.signalWord}
+                            </Badge>
+                          )}
+                          {!p.isActive && <Badge variant="outline" className="text-[10px] px-1.5">Inactive</Badge>}
+                        </div>
+                        {p.epaRegNumber && <p className="text-xs text-muted-foreground mt-0.5">EPA #{p.epaRegNumber}</p>}
+                        {p.activeIngredients && <p className="text-xs text-muted-foreground">{p.activeIngredients}</p>}
+                        <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
+                          <span>Unit: {p.unit}</span>
+                          {(p as any).rainfastHours != null && <span>Rainfast: {(p as any).rainfastHours}h</span>}
+                          {p.rei != null && <span>REI: {p.rei}h</span>}
+                          {p.phi != null && <span>PHI: {p.phi}d</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => openEditProd(p)}>
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground hover:text-destructive" onClick={() => {
+                          deleteChemProduct.mutate({ id: p.id }, {
+                            onSuccess: () => { toast.success('Product deleted'); qc.invalidateQueries({ queryKey: getListChemicalProductsQueryKey() }); },
+                            onError: () => toast.error('Failed to delete'),
+                          });
+                        }}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Product Form Sheet */}
+          <Sheet open={prodFormOpen} onOpenChange={open => { if (!open) { setProdFormOpen(false); setEditingProd(null); } }}>
+            <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+              <SheetHeader className="pb-4">
+                <SheetTitle>{editingProd ? 'Edit Product' : 'Add Chemical Product'}</SheetTitle>
+                <SheetDescription>Fill in the product details for your chemical library.</SheetDescription>
+              </SheetHeader>
+              <div className="space-y-4 pb-6">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Product Name <span className="text-destructive">*</span></label>
+                  <Input placeholder="e.g. RoundUp Pro Concentrate" value={prodForm.name} onChange={e => setProdForm(f => ({ ...f, name: e.target.value }))} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">EPA Reg #</label>
+                    <Input placeholder="524-343" value={prodForm.epaRegNumber} onChange={e => setProdForm(f => ({ ...f, epaRegNumber: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Signal Word</label>
+                    <Select value={prodForm.signalWord} onValueChange={v => setProdForm(f => ({ ...f, signalWord: v }))}>
+                      <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        <SelectItem value="CAUTION">CAUTION</SelectItem>
+                        <SelectItem value="WARNING">WARNING</SelectItem>
+                        <SelectItem value="DANGER">DANGER</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Active Ingredients</label>
+                  <Input placeholder="e.g. Glyphosate 41%" value={prodForm.activeIngredients} onChange={e => setProdForm(f => ({ ...f, activeIngredients: e.target.value }))} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Unit</label>
+                    <Select value={prodForm.unit} onValueChange={v => setProdForm(f => ({ ...f, unit: v }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="oz">oz</SelectItem>
+                        <SelectItem value="fl oz">fl oz</SelectItem>
+                        <SelectItem value="lb">lb</SelectItem>
+                        <SelectItem value="gal">gal</SelectItem>
+                        <SelectItem value="l">L</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">PHI (days)</label>
+                    <Input type="number" min={0} placeholder="0" value={prodForm.phi} onChange={e => setProdForm(f => ({ ...f, phi: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Rainfast hours</label>
+                    <p className="text-xs text-muted-foreground">Hours until rain won't affect the application</p>
+                    <Input type="number" min={0} step="0.5" placeholder="e.g. 2" value={prodForm.rainfastHours} onChange={e => setProdForm(f => ({ ...f, rainfastHours: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Re-entry interval (hrs)</label>
+                    <p className="text-xs text-muted-foreground">Hours people must stay out after application</p>
+                    <Input type="number" min={0} placeholder="4" value={prodForm.rei} onChange={e => setProdForm(f => ({ ...f, rei: e.target.value }))} />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Label / SDS URL</label>
+                  <Input placeholder="https://…" value={prodForm.labelSdsUrl} onChange={e => setProdForm(f => ({ ...f, labelSdsUrl: e.target.value }))} />
+                </div>
+                <Separator />
+                <div className="flex gap-3 justify-end">
+                  <Button variant="outline" onClick={() => setProdFormOpen(false)}>Cancel</Button>
+                  <Button onClick={saveProd} disabled={createChemProduct.isPending || updateChemProduct.isPending}>
+                    {editingProd ? 'Save Changes' : 'Add Product'}
+                  </Button>
+                </div>
+              </div>
+            </SheetContent>
+          </Sheet>
+        </TabsContent>
+
+        {/* ── Mixtures tab ─────────────────────────────────────────────────── */}
+        <TabsContent value="mixtures" className="focus-visible:outline-none">
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between pb-2">
+              <div>
+                <CardTitle>Tank Mixtures</CardTitle>
+                <CardDescription>Named mixes (e.g. "Broadleaf Control Mix") that auto-expand to per-product breakdown when applied.</CardDescription>
+              </div>
+              <Button size="sm" className="gap-2 ml-4 shrink-0" onClick={openAddMix}>
+                <Plus className="w-4 h-4" /> Add Mixture
+              </Button>
+            </CardHeader>
+            <CardContent className="p-0">
+              {(chemMixtures ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground px-6 py-4">No mixtures yet. Create a mixture to let field staff log complex applications as a single entry.</p>
+              ) : (
+                <div className="divide-y">
+                  {(chemMixtures ?? []).map(m => (
+                    <div key={m.id} className={`px-6 py-3 ${!m.isActive ? 'opacity-50' : ''}`}>
+                      <div className="flex items-start gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm">{m.name}</span>
+                            {!m.isActive && <Badge variant="outline" className="text-[10px] px-1.5">Inactive</Badge>}
+                          </div>
+                          {m.description && <p className="text-xs text-muted-foreground mt-0.5">{m.description}</p>}
+                          {m.items.length > 0 && (
+                            <div className="mt-1.5 space-y-0.5">
+                              {m.items.map((item: ChemicalMixtureItem) => (
+                                <p key={item.id} className="text-xs text-muted-foreground">
+                                  {item.productName ?? `Product #${item.productId}`}: {item.ratioAmount} {item.ratioUnit} per gal
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => openEditMix(m)}>
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground hover:text-destructive" onClick={() => {
+                            deleteChemMixture.mutate({ id: m.id }, {
+                              onSuccess: () => { toast.success('Mixture deleted'); qc.invalidateQueries({ queryKey: getListChemicalMixturesQueryKey() }); },
+                              onError: () => toast.error('Failed to delete'),
+                            });
+                          }}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Mixture Form Sheet */}
+          <Sheet open={mixFormOpen} onOpenChange={open => { if (!open) { setMixFormOpen(false); setEditingMix(null); } }}>
+            <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+              <SheetHeader className="pb-4">
+                <SheetTitle>{editingMix ? 'Edit Mixture' : 'Add Tank Mixture'}</SheetTitle>
+                <SheetDescription>Define a named mix by specifying how much of each product goes into a gallon of solution.</SheetDescription>
+              </SheetHeader>
+              <div className="space-y-4 pb-6">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Mixture Name <span className="text-destructive">*</span></label>
+                  <Input placeholder="e.g. Broadleaf Control Mix" value={mixForm.name} onChange={e => setMixForm(f => ({ ...f, name: e.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Description</label>
+                  <Input placeholder="What is this mixture used for?" value={mixForm.description} onChange={e => setMixForm(f => ({ ...f, description: e.target.value }))} />
+                </div>
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Products in this mixture</p>
+                  <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setMixItems(items => [...items, { productId: '', ratioAmount: '', ratioUnit: 'oz' }])}>
+                    <Plus className="w-3 h-3" /> Add Product
+                  </Button>
+                </div>
+                {mixItems.length === 0 && <p className="text-sm text-muted-foreground">Add at least one product to define the mixture ratio.</p>}
+                <div className="space-y-3">
+                  {mixItems.map((item, i) => (
+                    <div key={i} className="flex gap-2 items-end">
+                      <div className="flex-1 space-y-1">
+                        <label className="text-xs text-muted-foreground">Product</label>
+                        <Select value={item.productId} onValueChange={v => setMixItems(items => items.map((x, j) => j === i ? { ...x, productId: v } : x))}>
+                          <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select…" /></SelectTrigger>
+                          <SelectContent>
+                            {(chemProducts ?? []).filter(p => p.isActive).map(p => (
+                              <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="w-20 space-y-1">
+                        <label className="text-xs text-muted-foreground">Amount</label>
+                        <Input className="h-8 text-sm" type="number" min={0} step={0.1} placeholder="2" value={item.ratioAmount} onChange={e => setMixItems(items => items.map((x, j) => j === i ? { ...x, ratioAmount: e.target.value } : x))} />
+                      </div>
+                      <div className="w-24 space-y-1">
+                        <label className="text-xs text-muted-foreground">Unit/gal</label>
+                        <Select value={item.ratioUnit} onValueChange={v => setMixItems(items => items.map((x, j) => j === i ? { ...x, ratioUnit: v } : x))}>
+                          <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="oz">oz</SelectItem>
+                            <SelectItem value="fl oz">fl oz</SelectItem>
+                            <SelectItem value="lb">lb</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive mb-0.5" onClick={() => setMixItems(items => items.filter((_, j) => j !== i))}>
+                        <X className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                <Separator />
+                <div className="flex gap-3 justify-end">
+                  <Button variant="outline" onClick={() => setMixFormOpen(false)}>Cancel</Button>
+                  <Button onClick={saveMix} disabled={createChemMixture.isPending || updateChemMixture.isPending}>
+                    {editingMix ? 'Save Changes' : 'Create Mixture'}
+                  </Button>
+                </div>
+              </div>
+            </SheetContent>
+          </Sheet>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

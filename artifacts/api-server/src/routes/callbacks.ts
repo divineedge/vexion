@@ -3,13 +3,21 @@ import { db, callbacksTable, jobsTable, usersTable, activityLogTable, customersT
 import { eq, and, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { getCallbackRatioStats } from "../lib/callbackRatio";
+import { getCallerRole } from "../lib/roles";
+import { checkPermission } from "../lib/rolePermissions";
 
 const router: IRouter = Router();
 
 // GET /callbacks — list all callbacks for tenant
 router.get("/callbacks", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
+  const userId = getUserId(req);
   const { assigneeId, status, jobId } = req.query as Record<string, string>;
+
+  // Enforce callbacks.seeAll permission: if the role can't see all, restrict to own assignments
+  const callerRole = await getCallerRole(tenantId, userId);
+  const canSeeAll = await checkPermission(tenantId, callerRole, "callbacks.seeAll");
+  const effectiveAssigneeId = !canSeeAll && !assigneeId ? String(userId) : assigneeId;
 
   const rows = await db
     .select({
@@ -37,8 +45,8 @@ router.get("/callbacks", async (req, res): Promise<void> => {
     scheduledFixDate: r.callback.scheduledFixDate?.toISOString() ?? null,
   }));
 
-  if (assigneeId) {
-    result = result.filter(r => r.originalAssigneeId === parseInt(assigneeId, 10));
+  if (effectiveAssigneeId) {
+    result = result.filter(r => r.originalAssigneeId === parseInt(effectiveAssigneeId, 10));
   }
   if (status) {
     result = result.filter(r => r.status === status);

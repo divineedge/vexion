@@ -13,6 +13,8 @@ export interface NavItem {
   name: string;
   href: string;
   icon: LucideIcon;
+  /** If set, this item is hidden when the current user's can(permissionKey) returns false */
+  permissionKey?: string;
 }
 
 export interface NavSection {
@@ -75,8 +77,8 @@ export const adminNavSections: NavSection[] = [
     roles: ['canManageOffice'],
     items: [
       { name: 'Inventory',  href: '/inventory',  icon: PackageSearch },
-      { name: 'Services',   href: '/services',   icon: Briefcase },
-      { name: 'Equipment',  href: '/equipment',  icon: Wrench },
+      { name: 'Services',   href: '/services',   icon: Briefcase,    permissionKey: 'pages.services' },
+      { name: 'Equipment',  href: '/equipment',  icon: Wrench,       permissionKey: 'pages.equipment' },
     ],
   },
   {
@@ -84,8 +86,8 @@ export const adminNavSections: NavSection[] = [
     label: 'Finance',
     roles: ['canManageOffice'],
     items: [
-      { name: 'Financials', href: '/financials', icon: DollarSign },
-      { name: 'Reports',    href: '/reports',    icon: BarChart3 },
+      { name: 'Financials', href: '/financials', icon: DollarSign, permissionKey: 'pages.billing' },
+      { name: 'Reports',    href: '/reports',    icon: BarChart3,  permissionKey: 'pages.reports' },
       { name: 'Plans',      href: '/plans',      icon: Repeat },
     ],
   },

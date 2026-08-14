@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import { setDefaultHeaders } from '@workspace/api-client-react';
 import type { User } from '@workspace/api-client-react';
+import { buildEffectivePermissions, type PermissionKey } from '@/hooks/usePermissions';
 
 const SESSION_TOKEN_KEY = 'divine_edge_session_token';
 
@@ -33,6 +34,15 @@ interface AuthContextType {
   canManageOffice: boolean;
   /** True for roles that can create/edit jobs (owner, manager, department_manager, crew_manager) */
   canManageJobs: boolean;
+  /**
+   * Check a permission for the current user.
+   * Always returns true for company_owner.
+   * Uses default restrictions if no tenant config is loaded yet.
+   * Note: for live tenant-config-aware checks use `usePermissions()` from the permissions hook.
+   */
+  can: (key: PermissionKey) => boolean;
+  /** Load/refresh the permission map from the resolved tenant rolePermissions JSONB. */
+  setTenantPermissions: (perms: Record<string, Record<string, boolean>> | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -50,6 +60,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   });
 
+  // Tenant role-permission config — loaded via setTenantPermissions after settings fetch
+  const [tenantPermissions, setTenantPermissionsState] = useState<Record<string, Record<string, boolean>> | null>(null);
+
+  const setTenantPermissions = useCallback((perms: Record<string, Record<string, boolean>> | null) => {
+    setTenantPermissionsState(perms);
+  }, []);
+
   const login = (u: User, sessionToken?: string) => {
     setUser(u);
     localStorage.setItem('divine_edge_user', JSON.stringify(u));
@@ -59,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     setUser(null);
+    setTenantPermissionsState(null);
     localStorage.removeItem('divine_edge_user');
     localStorage.removeItem(SESSION_TOKEN_KEY);
     applyUserHeaders(null);
@@ -72,6 +90,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isTechnician = role === 'technician';
   const canManageOffice = isOwner || isManager || isDepartmentManager;
   const canManageJobs = isOwner || isManager || isDepartmentManager || isCrewManager;
+
+  // Compute effective permissions for the current role
+  const effectivePerms = buildEffectivePermissions(role ?? 'technician', tenantPermissions);
+
+  const can = useCallback(
+    (key: PermissionKey): boolean => {
+      if (role === 'company_owner') return true;
+      return effectivePerms[key] ?? true;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [role, JSON.stringify(effectivePerms)]
+  );
 
   return (
     <AuthContext.Provider value={{
@@ -87,6 +117,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isSuperAdmin: false,
       canManageOffice,
       canManageJobs,
+      can,
+      setTenantPermissions,
     }}>
       {children}
     </AuthContext.Provider>

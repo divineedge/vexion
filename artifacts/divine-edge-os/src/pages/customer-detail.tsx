@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { usePermissions } from '@/hooks/usePermissions';
 import { loadStripe, type Stripe as StripeInstance } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import {
@@ -217,6 +218,7 @@ export default function CustomerDetailPage() {
   const id = Number(params.id);
   const [, setLocation] = useLocation();
   const { user, canManageOffice } = useAuth();
+  const { can } = usePermissions();
   const qc = useQueryClient();
 
   // Business tags library
@@ -769,8 +771,8 @@ export default function CustomerDetailPage() {
 
           <div className="flex flex-wrap gap-4 mt-2 text-sm text-muted-foreground">
             {customer.company && <span className="flex items-center gap-1" title={customer.company}><Building className="w-4 h-4" />{customer.company}</span>}
-            <span className="flex items-center gap-1" title={customer.phone}><Phone className="w-4 h-4" />{customer.phone}</span>
-            <span className="flex items-center gap-1" title={customer.email}><Mail className="w-4 h-4" />{customer.email}</span>
+            {can('customerInfo.phone') && <span className="flex items-center gap-1" title={customer.phone}><Phone className="w-4 h-4" />{customer.phone}</span>}
+            {can('customerInfo.email') && <span className="flex items-center gap-1" title={customer.email}><Mail className="w-4 h-4" />{customer.email}</span>}
             {customer.paymentStanding && (customer.paymentStanding.overdueAmount ?? 0) > 0 && customer.paymentStanding.status !== 'overdue' && (
               <span className="flex items-center gap-1 text-orange-600">
                 <AlertTriangle className="w-3.5 h-3.5" />
@@ -884,13 +886,13 @@ export default function CustomerDetailPage() {
               <CardHeader><CardTitle className="text-base flex items-center gap-2"><User className="w-4 h-4" />Contact Information</CardTitle></CardHeader>
               <CardContent className="space-y-3 text-sm">
                 <Row label="Name" value={customer.name} />
-                {customer.email
+                {can('customerInfo.email') && (customer.email
                   ? <div className="flex justify-between"><span className="text-muted-foreground">Email</span><a href={`mailto:${customer.email}`} title={`Send email to ${customer.email}`} className="hover:underline text-primary">{customer.email}</a></div>
-                  : <Row label="Email" value={customer.email} />}
-                {customer.phone
+                  : <Row label="Email" value={customer.email} />)}
+                {can('customerInfo.phone') && (customer.phone
                   ? <div className="flex justify-between"><span className="text-muted-foreground">Phone</span><a href={`tel:${customer.phone}`} title={`Call ${customer.phone}`} className="hover:underline text-primary">{customer.phone}</a></div>
-                  : <Row label="Phone" value={customer.phone} />}
-                {customer.secondaryPhone && <div className="flex justify-between"><span className="text-muted-foreground">Secondary Phone</span><a href={`tel:${customer.secondaryPhone}`} title={`Call ${customer.secondaryPhone}`} className="hover:underline text-primary">{customer.secondaryPhone}</a></div>}
+                  : <Row label="Phone" value={customer.phone} />)}
+                {can('customerInfo.phone') && customer.secondaryPhone && <div className="flex justify-between"><span className="text-muted-foreground">Secondary Phone</span><a href={`tel:${customer.secondaryPhone}`} title={`Call ${customer.secondaryPhone}`} className="hover:underline text-primary">{customer.secondaryPhone}</a></div>}
                 {customer.company && <Row label="Company" value={customer.company} />}
                 {customer.customerType && <Row label="Customer Type" value={customer.customerType} />}
                 {customer.referralSource && <Row label="Referral Source" value={customer.referralSource} />}

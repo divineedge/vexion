@@ -37,6 +37,7 @@ import { TaskActions } from '@/components/tasks/TaskActions';
 import { priorityBadgeClass, statusBadgeClass } from '@/lib/taskConstants';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { EquipmentSettingsPanel } from '@/components/equipment/EquipmentSettingsPanel';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -52,6 +53,7 @@ import {
   CalendarCheck2, Pencil,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { SlidersHorizontal } from 'lucide-react';
 
 // EQUIPMENT_TYPES is now loaded from the tenant's equipment types list via API.
 // The combobox below falls back to free-form entry for values not in the list.
@@ -993,6 +995,7 @@ export default function EquipmentPage() {
   const qc = useQueryClient();
   const { isTechnician, isOwner } = useAuth();
 
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [includeArchived, setIncludeArchived] = useState(false);
   const [equipmentSearch, setEquipmentSearch] = useState('');
   const { data: equipment, isLoading } = useListEquipment(
@@ -1204,6 +1207,11 @@ export default function EquipmentPage() {
               exportQuery={{ includeArchived: includeArchived ? 'true' : undefined }}
               onImportComplete={() => qc.invalidateQueries({ queryKey: getListEquipmentQueryKey({ includeArchived }) })}
             />
+          )}
+          {isOwner && (
+            <Button variant="outline" size="icon" title="Equipment settings (types and sell thresholds)" onClick={() => setSettingsOpen(true)}>
+              <SlidersHorizontal className="w-4 h-4" />
+            </Button>
           )}
           {!isTechnician && (
             <Button onClick={openCreate} className="gap-2" title="Add a new piece of equipment">
@@ -1533,6 +1541,17 @@ export default function EquipmentPage() {
           </div>
         </div>
       )}
+
+      {/* Equipment Settings Sheet */}
+      <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+          <SheetHeader className="pb-2">
+            <SheetTitle>Equipment Settings</SheetTitle>
+            <SheetDescription>Configure sell thresholds and equipment type labels.</SheetDescription>
+          </SheetHeader>
+          <EquipmentSettingsPanel />
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

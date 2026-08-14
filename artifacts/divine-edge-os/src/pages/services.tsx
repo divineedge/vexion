@@ -323,6 +323,15 @@ export default function ServicesPage() {
 
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
   const globalP4pRate = (settings as any)?.p4pMasterPercentage ?? 0;
+
+  // P4P inline edit
+  const [p4pEditing, setP4pEditing] = useState(false);
+  const [p4pInput, setP4pInput] = useState('');
+  const updateSettings = useMutation({
+    mutationFn: (data: object) => customFetch('/api/settings', { method: 'PATCH', body: JSON.stringify(data), headers: { 'Content-Type': 'application/json' } }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); toast.success('P4P rate updated'); setP4pEditing(false); },
+    onError: () => toast.error('Failed to save P4P rate'),
+  });
   const zoneTypes: ZoneType[] = (settings as any)?.measurementZoneTypes ?? [];
 
   const { data: services, isLoading } = useQuery<Service[]>({
@@ -520,14 +529,33 @@ export default function ServicesPage() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className={canManageOffice ? 'cursor-pointer hover:bg-muted/30 transition-colors' : ''} onClick={() => { if (!canManageOffice || p4pEditing) return; setP4pInput(String(globalP4pRate)); setP4pEditing(true); }}>
           <CardContent className="p-6 flex items-center gap-4">
             <div className="w-10 h-10 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
               <TrendingUp className="w-5 h-5" />
             </div>
-            <div>
-              <p className="text-3xl font-bold">{globalP4pRate}%</p>
-              <p className="text-sm text-muted-foreground">Global P4P Rate</p>
+            <div className="flex-1 min-w-0">
+              {p4pEditing ? (
+                <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                  <input
+                    autoFocus
+                    type="number" min={0} max={100} step={0.5}
+                    className="w-20 text-2xl font-bold bg-transparent border-b-2 border-primary outline-none"
+                    value={p4pInput}
+                    onChange={e => setP4pInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') updateSettings.mutate({ p4pMasterPercentage: parseFloat(p4pInput) || 0 });
+                      if (e.key === 'Escape') setP4pEditing(false);
+                    }}
+                  />
+                  <span className="text-xl font-bold text-muted-foreground">%</span>
+                  <button className="text-xs text-primary font-medium ml-2" onClick={() => updateSettings.mutate({ p4pMasterPercentage: parseFloat(p4pInput) || 0 })}>Save</button>
+                  <button className="text-xs text-muted-foreground" onClick={() => setP4pEditing(false)}>Cancel</button>
+                </div>
+              ) : (
+                <p className="text-3xl font-bold">{globalP4pRate}%</p>
+              )}
+              <p className="text-sm text-muted-foreground">Global P4P Rate{canManageOffice && !p4pEditing && <span className="ml-1 text-xs opacity-60">· click to edit</span>}</p>
             </div>
           </CardContent>
         </Card>

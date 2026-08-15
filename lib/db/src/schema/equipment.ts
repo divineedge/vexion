@@ -30,6 +30,10 @@ export const equipmentTable = pgTable("equipment", {
   /** Set when equipment is archived (soft-deleted) instead of hard-deleted; preserves maintenance/fuel history. */
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   notes: text("notes"),
+  /** Sell the unit when currentHours reaches this threshold (optional). Null = no threshold set. */
+  sellAfterHours: real("sell_after_hours"),
+  /** When true, the sell-recommendation logic is suppressed for this unit regardless of thresholds. */
+  neverSell: boolean("never_sell").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

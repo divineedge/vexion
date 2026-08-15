@@ -281,15 +281,19 @@ function computeEquipmentMetrics(
   const repairExceeded = purchasePrice > 0 && totalRepairCost > purchasePrice * (repairThresholdPct / 100);
   const resaleTooLow =
     estimatedResaleValue !== null && purchasePrice > 0 && estimatedResaleValue < purchasePrice * (resaleThresholdPct / 100);
-  const sellRecommended = repairExceeded || resaleTooLow;
+  const hoursExceeded =
+    eq_row.sellAfterHours != null && currentHours >= eq_row.sellAfterHours;
+
+  // neverSell suppresses all sell recommendations for this unit
+  const sellRecommended = !eq_row.neverSell && (repairExceeded || resaleTooLow || hoursExceeded);
 
   let sellReason: string | null = null;
-  if (repairExceeded && resaleTooLow) {
-    sellReason = `Repairs exceed ${repairThresholdPct}% of purchase price and resale value is below ${resaleThresholdPct}%.`;
-  } else if (repairExceeded) {
-    sellReason = `Total repair cost exceeds ${repairThresholdPct}% of purchase price.`;
-  } else if (resaleTooLow) {
-    sellReason = `Estimated resale value has fallen below ${resaleThresholdPct}% of purchase price.`;
+  if (!eq_row.neverSell) {
+    const reasons: string[] = [];
+    if (repairExceeded) reasons.push(`Repairs exceed ${repairThresholdPct}% of purchase price.`);
+    if (resaleTooLow) reasons.push(`Estimated resale value has fallen below ${resaleThresholdPct}%.`);
+    if (hoursExceeded) reasons.push(`Hours (${currentHours.toFixed(0)}) have reached the sell-after threshold of ${eq_row.sellAfterHours}.`);
+    sellReason = reasons.length ? reasons.join(" ") : null;
   }
 
   return { costPerHour, estimatedResaleValue, sellRecommended, sellReason };
@@ -363,6 +367,8 @@ function formatEquipment(
     isActive: row.isActive,
     archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
     notes: row.notes ?? null,
+    sellAfterHours: row.sellAfterHours ?? null,
+    neverSell: row.neverSell ?? false,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     ...metrics,
@@ -453,7 +459,7 @@ router.get("/equipment/:id", async (req, res): Promise<void> => {
 
 router.post("/equipment", requireOfficeRole, async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { name, type, purchaseDate, purchasePrice, expectedLifespanYears, expectedLifespanHours, currentHours, currentMiles, notes } = req.body;
+  const { name, type, purchaseDate, purchasePrice, expectedLifespanYears, expectedLifespanHours, currentHours, currentMiles, notes, sellAfterHours, neverSell } = req.body;
   if (!name) { res.status(400).json({ error: "name is required" }); return; }
   const [row] = await db.insert(equipmentTable).values({
     tenantId,
@@ -466,6 +472,8 @@ router.post("/equipment", requireOfficeRole, async (req, res): Promise<void> => 
     currentHours: currentHours != null ? parseFloat(currentHours) : 0,
     currentMiles: currentMiles != null ? parseFloat(currentMiles) : null,
     notes: notes ?? null,
+    sellAfterHours: sellAfterHours != null ? parseFloat(sellAfterHours) : null,
+    neverSell: neverSell === true || neverSell === "true",
   }).returning();
   const thresholds = await getTenantThresholds(tenantId);
   res.status(201).json(formatEquipment(row, thresholds.repairThresholdPct, thresholds.resaleThresholdPct));
@@ -475,7 +483,7 @@ router.patch("/equipment/:id", requireOfficeRole, async (req, res): Promise<void
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
-  const { name, type, purchaseDate, purchasePrice, expectedLifespanYears, expectedLifespanHours, currentHours, currentMiles, isActive, notes } = req.body;
+  const { name, type, purchaseDate, purchasePrice, expectedLifespanYears, expectedLifespanHours, currentHours, currentMiles, isActive, notes, sellAfterHours, neverSell } = req.body;
   const updates: Partial<typeof equipmentTable.$inferInsert> = {};
   if (name != null) updates.name = name;
   if (type != null) updates.type = type;
@@ -485,6 +493,8 @@ router.patch("/equipment/:id", requireOfficeRole, async (req, res): Promise<void
   if (expectedLifespanHours !== undefined) updates.expectedLifespanHours = expectedLifespanHours != null ? parseFloat(expectedLifespanHours) : null;
   if (currentHours != null) updates.currentHours = parseFloat(currentHours);
   if (currentMiles !== undefined) updates.currentMiles = currentMiles != null ? parseFloat(currentMiles) : null;
+  if (sellAfterHours !== undefined) updates.sellAfterHours = sellAfterHours != null ? parseFloat(sellAfterHours) : null;
+  if (neverSell !== undefined) updates.neverSell = neverSell === true || neverSell === "true";
 
   // Track whether this PATCH is a restore so we can log a lifecycle event after the update
   let isRestoring = false;

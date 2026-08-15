@@ -92,12 +92,14 @@ interface EquipmentFormState {
   currentHours: string;
   currentMiles: string;
   notes: string;
+  sellAfterHours: string;
+  neverSell: boolean;
 }
 
 const EMPTY_EQ_FORM: EquipmentFormState = {
   name: '', type: '', purchaseDate: '', purchasePrice: '',
   expectedLifespanYears: '', expectedLifespanHours: '', currentHours: '',
-  currentMiles: '', notes: '',
+  currentMiles: '', notes: '', sellAfterHours: '', neverSell: false,
 };
 
 function equipmentToForm(e: Equipment): EquipmentFormState {
@@ -111,6 +113,8 @@ function equipmentToForm(e: Equipment): EquipmentFormState {
     currentHours: String(e.currentHours ?? ''),
     currentMiles: e.currentMiles != null ? String(e.currentMiles) : '',
     notes: e.notes ?? '',
+    sellAfterHours: (e as any).sellAfterHours != null ? String((e as any).sellAfterHours) : '',
+    neverSell: !!(e as any).neverSell,
   };
 }
 
@@ -1181,6 +1185,8 @@ export default function EquipmentPage() {
       currentHours: form.currentHours ? parseFloat(form.currentHours) : 0,
       currentMiles: form.currentMiles ? parseFloat(form.currentMiles) : undefined,
       notes: form.notes || undefined,
+      sellAfterHours: form.neverSell ? undefined : (form.sellAfterHours ? parseFloat(form.sellAfterHours) : undefined),
+      neverSell: form.neverSell,
     };
 
     if (editingItem) {
@@ -1609,6 +1615,47 @@ export default function EquipmentPage() {
               <label className="text-sm font-medium">Notes</label>
               <Input title="Free-form notes about this equipment (condition, quirks, storage location, etc.)" placeholder="Any notes about this equipment" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
             </div>
+
+            {/* Sell threshold */}
+            <div className="rounded-lg border p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">Sell Threshold</p>
+                  <p className="text-xs text-muted-foreground">When to recommend selling this unit</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={form.neverSell}
+                  onClick={() => setForm(f => ({ ...f, neverSell: !f.neverSell, sellAfterHours: !f.neverSell ? '' : f.sellAfterHours }))}
+                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none ${form.neverSell ? 'bg-primary' : 'bg-muted'}`}
+                  title="Toggle never-sell mode — suppresses all sell recommendations for this unit"
+                >
+                  <span className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${form.neverSell ? 'translate-x-4' : 'translate-x-0'}`} />
+                </button>
+                <label className="text-sm cursor-pointer" onClick={() => setForm(f => ({ ...f, neverSell: !f.neverSell }))}>Never sell this equipment</label>
+              </div>
+              {!form.neverSell && (
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground">Sell after (hours) — optional</label>
+                  <Input
+                    type="number" min="0" step="1"
+                    title="System will flag this unit for sale once current hours reach this value"
+                    placeholder="e.g. 2000"
+                    value={form.sellAfterHours}
+                    onChange={e => setForm(f => ({ ...f, sellAfterHours: e.target.value }))}
+                  />
+                  {form.sellAfterHours && (
+                    <p className="text-xs text-muted-foreground">
+                      ⚡ Sell recommended flag triggers at {parseFloat(form.sellAfterHours).toLocaleString()} hrs
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
             <Separator />
             <div className="flex gap-3 justify-end">
               <Button variant="outline" title="Discard equipment form changes" onClick={() => setFormOpen(false)}>Cancel</Button>

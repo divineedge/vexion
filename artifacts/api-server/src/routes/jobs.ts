@@ -1236,7 +1236,11 @@ router.post("/jobs/:id/skip-next", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
   const id = parseInt(req.params.id, 10);
-  const { reasonId, note, feeAmount, feeNote } = req.body as { reasonId?: number; note?: string; feeAmount?: number; feeNote?: string };
+  const { reasonId, note, feeAmount, feeNote, feeType, feePercent } = req.body as {
+    reasonId?: number; note?: string;
+    feeAmount?: number; feeNote?: string;
+    feeType?: 'flat' | 'percent' | 'both'; feePercent?: number;
+  };
 
   // Resolve root
   const [job] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
@@ -1314,24 +1318,44 @@ router.post("/jobs/:id/skip-next", async (req, res): Promise<void> => {
   res.json(formatJob(updated));
 
   // ── Skip fee invoice (fire-and-forget) ────────────────────────────────────
-  if (feeAmount && feeAmount > 0 && updated.customerId) {
-    (async () => {
-      try {
-        const desc = feeNote?.trim() || "Skip fee";
-        await db.insert(invoicesTable).values({
-          tenantId,
-          customerId: updated.customerId!,
-          jobId: updated.id,
-          status: "draft",
-          subtotal: feeAmount,
-          total: feeAmount,
-          lineItems: [{ description: desc, quantity: 1, unitPrice: feeAmount, total: feeAmount }],
-          dueDate: null,
-          notes: `Skip fee generated automatically on ${new Date().toLocaleDateString()}`,
-          createdById: userId,
-        } as any);
-      } catch { /* fire-and-forget */ }
-    })();
+  {
+    const resolvedType = feeType ?? 'flat';
+    const hasFlat = (resolvedType === 'flat' || resolvedType === 'both') && feeAmount && feeAmount > 0;
+    const hasPct  = (resolvedType === 'percent' || resolvedType === 'both') && feePercent && feePercent > 0;
+    if ((hasFlat || hasPct) && updated.customerId) {
+      (async () => {
+        try {
+          const lineItems: Array<{ description: string; quantity: number; unitPrice: number; total: number }> = [];
+          if (hasFlat) {
+            const desc = feeNote?.trim() || "Skip fee";
+            lineItems.push({ description: desc, quantity: 1, unitPrice: feeAmount!, total: feeAmount! });
+          }
+          if (hasPct) {
+            const jobLineItems = (updated.lineItems as Array<{ quantity?: number; unitPrice?: number; total?: number }>) ?? [];
+            const jobTotal = jobLineItems.reduce((s, li) => s + (li.total ?? (li.unitPrice ?? 0) * (li.quantity ?? 1)), 0);
+            const pctAmount = jobTotal > 0 ? Math.round(jobTotal * feePercent! / 100 * 100) / 100 : 0;
+            if (pctAmount > 0) {
+              lineItems.push({ description: `${feePercent}% skip surcharge`, quantity: 1, unitPrice: pctAmount, total: pctAmount });
+            }
+          }
+          if (lineItems.length > 0) {
+            const total = lineItems.reduce((s, li) => s + li.total, 0);
+            await db.insert(invoicesTable).values({
+              tenantId,
+              customerId: updated.customerId!,
+              jobId: updated.id,
+              status: "draft",
+              subtotal: total,
+              total,
+              lineItems,
+              dueDate: null,
+              notes: `Skip fee generated automatically on ${new Date().toLocaleDateString()}`,
+              createdById: userId,
+            } as any);
+          }
+        } catch { /* fire-and-forget */ }
+      })();
+    }
   }
 
   // ── Post-skip side-effects (fire-and-forget) ──────────────────────────────

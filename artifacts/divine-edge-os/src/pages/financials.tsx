@@ -13,7 +13,6 @@ import {
   useRunRecurringTemplateNow,
   usePreviewRecurringTemplateBilling, getPreviewRecurringTemplateBillingQueryKey,
   useGetBillingAutomationStatus, getGetBillingAutomationStatusQueryKey,
-  useRetryBillingEmail,
   useListCustomers, getListCustomersQueryKey,
   usePrintMailInvoice,
   useSendInvoiceReminder,
@@ -51,7 +50,7 @@ import {
   Plus, ArrowUpRight, DollarSign, Clock, FileText, CheckCircle, CheckCircle2, Calendar,
   User, ChevronDown, Package, RefreshCw, Play, Pause, Mail, MailCheck, MailX, Trash2, Pencil,
   Building2, ShieldAlert, Check, X, Phone, Globe, Eye, AlertTriangle, Search, Printer, Send,
-  Briefcase, Loader2, Layers,
+  Briefcase, Loader2, Layers, MapPin,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useLocation } from 'wouter';
@@ -219,9 +218,10 @@ interface CreateInvoiceSheetProps {
   onClose: () => void;
   customers: Array<{ id: number; name: string }>;
   invoiceDueDays?: number | null;
+  onSaveAndSend?: (id: number) => void;
 }
 
-function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays }: CreateInvoiceSheetProps) {
+function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAndSend }: CreateInvoiceSheetProps) {
   const qc = useQueryClient();
   const createInvoice = useCreateInvoice();
 
@@ -310,7 +310,7 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays }: Create
 
   const subtotal = lineItems.reduce((s, li) => s + li.total, 0);
 
-  const handleSave = () => {
+  const handleSave = (andSend = false) => {
     if (!customerId) { toast.error('Customer is required'); return; }
     const validLineItems = lineItems.filter(li => li.description.trim() !== '');
     createInvoice.mutate(
@@ -325,11 +325,12 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays }: Create
         } as any,
       },
       {
-        onSuccess: () => {
+        onSuccess: (data: any) => {
           toast.success('Invoice created');
           qc.invalidateQueries({ queryKey: getListInvoicesQueryKey() });
           qc.invalidateQueries({ queryKey: getGetFinancialsSummaryQueryKey() });
           onClose();
+          if (andSend && data?.id && onSaveAndSend) onSaveAndSend(data.id);
         },
         onError: () => toast.error('Failed to create invoice'),
       },
@@ -531,9 +532,15 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays }: Create
             <Input title="Optional notes printed at the bottom of this invoice" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional notes on invoice" />
           </div>
 
-          <Button className="w-full" size="lg" title="Create and save the invoice" onClick={handleSave} disabled={createInvoice.isPending}>
-            {createInvoice.isPending ? 'Creating...' : 'Create Invoice'}
-          </Button>
+          <div className="flex gap-3">
+            <Button className="flex-1" variant="outline" size="lg" title="Create invoice and close" onClick={() => handleSave(false)} disabled={createInvoice.isPending}>
+              {createInvoice.isPending ? 'Creating…' : 'Save & Close'}
+            </Button>
+            <Button className="flex-1 gap-2" size="lg" title="Create invoice then open send options" onClick={() => handleSave(true)} disabled={createInvoice.isPending}>
+              <Send className="w-4 h-4" />
+              {createInvoice.isPending ? 'Creating…' : 'Save & Send'}
+            </Button>
+          </div>
         </div>
       </SheetContent>
     </Sheet>
@@ -617,7 +624,7 @@ function PreviewBillingDialog({ templateId, templateName, onClose, onGenerate, i
 
 // ── Edit Invoice Sheet ──────────────────────────────────────────────────────────
 
-function EditInvoiceSheet({ invoiceId, onClose }: { invoiceId: number | null; onClose: () => void }) {
+function EditInvoiceSheet({ invoiceId, onClose, autoOpenSend }: { invoiceId: number | null; onClose: () => void; autoOpenSend?: boolean }) {
   const qc = useQueryClient();
   const { data: invoice, isLoading } = useGetInvoice(invoiceId ?? 0, {
     query: { queryKey: getGetInvoiceQueryKey(invoiceId ?? 0), enabled: invoiceId != null },
@@ -625,7 +632,6 @@ function EditInvoiceSheet({ invoiceId, onClose }: { invoiceId: number | null; on
   const updateInvoice = useUpdateInvoice();
   const updateJob = useUpdateJob();
   const sendReminder = useSendInvoiceReminder();
-  const retryBillingEmail = useRetryBillingEmail();
   const printMail = usePrintMailInvoice();
   const { data: job } = useGetJob((invoice as any)?.jobId ?? 0, {
     query: { queryKey: getGetJobQueryKey((invoice as any)?.jobId ?? 0), enabled: !!(invoice as any)?.jobId },
@@ -647,6 +653,11 @@ function EditInvoiceSheet({ invoiceId, onClose }: { invoiceId: number | null; on
       setDueDate((invoice as any).dueDate ? new Date((invoice as any).dueDate).toISOString().slice(0, 10) : '');
     }
   }, [invoice]);
+
+  // Auto-open send dialog when navigated here via "Save & Send"
+  useEffect(() => {
+    if (autoOpenSend && invoice) setShowSendDialog(true);
+  }, [autoOpenSend, invoice]);
 
   const invalidateInvoice = () => {
     qc.invalidateQueries({ queryKey: getGetInvoiceQueryKey(invoiceId ?? 0) });
@@ -710,15 +721,15 @@ function EditInvoiceSheet({ invoiceId, onClose }: { invoiceId: number | null; on
   const subtotal = lineItems.reduce((s, li) => s + li.total, 0);
   const canSend = user?.role !== 'technician';
   const [showSendDialog, setShowSendDialog] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   const handleSendInvoiceEmail = useCallback((): Promise<void> => {
-    return new Promise<void>((resolve, reject) => {
-      retryBillingEmail.mutate({ id: invoiceId! }, {
-        onSuccess: () => { toast.success('Invoice email sent'); resolve(); },
-        onError: () => { toast.error('Failed to send invoice'); reject(new Error('Failed')); },
-      });
-    });
-  }, [invoiceId, retryBillingEmail]);
+    setIsSendingEmail(true);
+    return customFetch(`/api/invoices/${invoiceId}/resend-email`, { method: 'POST' })
+      .then(() => { toast.success('Invoice email sent'); })
+      .catch(() => { toast.error('Failed to send invoice'); throw new Error('Failed'); })
+      .finally(() => setIsSendingEmail(false));
+  }, [invoiceId]);
 
   const STATUS_ACTIONS: Record<string, { label: string; variant: 'default' | 'outline' | 'destructive' }[]> = {
     draft: [{ label: 'Mark Sent', variant: 'default' }],
@@ -808,7 +819,7 @@ function EditInvoiceSheet({ invoiceId, onClose }: { invoiceId: number | null; on
                 ? `${window.location.origin}/invoice/${(invoice as any).publicToken}`
                 : null}
               onSendEmail={handleSendInvoiceEmail}
-              isSendingEmail={retryBillingEmail.isPending}
+              isSendingEmail={isSendingEmail}
             />
 
             {/* Public link */}
@@ -971,6 +982,7 @@ export default function FinancialsPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
   const [editInvoiceId, setEditInvoiceId] = useState<number | null>(null);
+  const [autoOpenSendForId, setAutoOpenSendForId] = useState<number | null>(null);
   const [templateSheetOpen, setTemplateSheetOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<RecurringInvoiceTemplate | null>(null);
   const [deleteTemplateId, setDeleteTemplateId] = useState<{ id: number; name: string } | null>(null);
@@ -1184,7 +1196,14 @@ export default function FinancialsPage() {
                     return (
                       <TableRow key={inv.id} className="cursor-pointer hover:bg-muted/50" onClick={() => setEditInvoiceId(inv.id)}>
                         <TableCell className="font-mono text-xs">{invAny.invoiceNumber}</TableCell>
-                        <TableCell className="font-medium">{invAny.customerName ?? '—'}</TableCell>
+                        <TableCell>
+                          <div className="font-medium">{invAny.customerName ?? '—'}</div>
+                          {invAny.propertyAddress && (
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                              <MapPin className="w-3 h-3 shrink-0" />{invAny.propertyAddress}
+                            </div>
+                          )}
+                        </TableCell>
                         <TableCell>
                           <Badge className={`${STATUS_COLORS[inv.status] ?? ''} border text-xs capitalize`}>{inv.status}</Badge>
                         </TableCell>
@@ -1357,7 +1376,11 @@ export default function FinancialsPage() {
       </Tabs>
 
       {/* Sheets & Dialogs */}
-      <EditInvoiceSheet invoiceId={editInvoiceId} onClose={() => setEditInvoiceId(null)} />
+      <EditInvoiceSheet
+        invoiceId={editInvoiceId ?? autoOpenSendForId}
+        onClose={() => { setEditInvoiceId(null); setAutoOpenSendForId(null); }}
+        autoOpenSend={autoOpenSendForId != null && editInvoiceId == null}
+      />
 
       <TemplateSheet
         open={templateSheetOpen}
@@ -1371,6 +1394,7 @@ export default function FinancialsPage() {
         onClose={() => setCreateInvoiceOpen(false)}
         customers={customerOptions}
         invoiceDueDays={(settings as any)?.invoiceDueDays}
+        onSaveAndSend={(id) => { setCreateInvoiceOpen(false); setAutoOpenSendForId(id); }}
       />
 
       <PreviewBillingDialog

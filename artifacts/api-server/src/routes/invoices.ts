@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, invoicesTable, customersTable, jobsTable, activityLogTable, tenantsTable, integrationSyncLogsTable, customerPlansTable, stopServiceFlagsTable, invoiceTemplatesTable } from "@workspace/db";
+import { db, invoicesTable, customersTable, jobsTable, activityLogTable, tenantsTable, integrationSyncLogsTable, customerPlansTable, stopServiceFlagsTable, invoiceTemplatesTable, propertiesTable } from "@workspace/db";
 import { eq, and, sql, inArray, ne } from "drizzle-orm";
 import crypto from "crypto";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
@@ -157,11 +157,12 @@ router.post("/invoices/import/commit", importUpload.single("file"), async (req, 
   await handleImportCommit(req, res, getTenantId(req), invoicesImportExportConfig);
 });
 
-function formatInvoice(i: typeof invoicesTable.$inferSelect, customerName?: string | null) {
+function formatInvoice(i: typeof invoicesTable.$inferSelect, customerName?: string | null, propertyAddress?: string | null) {
   return {
     ...i,
     lineItems: (i.lineItems as unknown[]) ?? [],
     customerName: customerName ?? null,
+    propertyAddress: propertyAddress ?? null,
     planId: i.planId ?? null,
     invoiceDate: i.invoiceDate ?? null,
     dueDate: i.dueDate?.toISOString() ?? null,
@@ -217,13 +218,15 @@ router.get("/invoices", async (req, res): Promise<void> => {
   if (customerId) where = and(where, eq(invoicesTable.customerId, parseInt(customerId, 10))) as typeof where;
 
   const rows = await db
-    .select({ invoice: invoicesTable, customerName: customersTable.name })
+    .select({ invoice: invoicesTable, customerName: customersTable.name, propertyAddress: propertiesTable.address })
     .from(invoicesTable)
     .leftJoin(customersTable, eq(invoicesTable.customerId, customersTable.id))
+    .leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id))
+    .leftJoin(propertiesTable, eq(jobsTable.propertyId, propertiesTable.id))
     .where(where)
     .orderBy(sql`${invoicesTable.createdAt} DESC`);
 
-  res.json(rows.map(r => formatInvoice(r.invoice, r.customerName)));
+  res.json(rows.map(r => formatInvoice(r.invoice, r.customerName, r.propertyAddress)));
 });
 
 router.post("/invoices/from-job/:jobId", async (req, res): Promise<void> => {
@@ -388,6 +391,7 @@ router.post("/invoices", async (req, res): Promise<void> => {
     lateFeeAmount: templateFields.lateFeeAmount,
     lateFeeDaysGrace: templateFields.lateFeeDaysGrace,
     showJobCompletionDate: templateFields.showJobCompletionDate,
+    publicToken: generateInvoiceToken(),
   }).returning();
 
   // Write lateFeeSchedule via raw SQL (Drizzle silently drops new JSONB cols in set())
@@ -405,13 +409,15 @@ router.get("/invoices/:id", async (req, res): Promise<void> => {
   const id = parseInt(rawId, 10);
 
   const [row] = await db
-    .select({ invoice: invoicesTable, customerName: customersTable.name })
+    .select({ invoice: invoicesTable, customerName: customersTable.name, propertyAddress: propertiesTable.address })
     .from(invoicesTable)
     .leftJoin(customersTable, eq(invoicesTable.customerId, customersTable.id))
+    .leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id))
+    .leftJoin(propertiesTable, eq(jobsTable.propertyId, propertiesTable.id))
     .where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId)));
 
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
-  res.json(formatInvoice(row.invoice, row.customerName));
+  res.json(formatInvoice(row.invoice, row.customerName, row.propertyAddress));
 });
 
 router.patch("/invoices/:id", async (req, res): Promise<void> => {

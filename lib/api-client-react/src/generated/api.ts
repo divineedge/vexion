@@ -52,6 +52,7 @@ import type {
   ChemicalMixtureInput,
   ChemicalProduct,
   ChemicalProductInput,
+  ClockLocationInput,
   CommunicationsLogEntry,
   CompletableJob,
   CompleteTaskBundleInput,
@@ -295,6 +296,7 @@ import type {
   StockTransferResult,
   StopServiceFlag,
   SubTimer,
+  SubTimerAdjustInput,
   SubTimerInput,
   SubmitReviewFeedbackInput,
   SubmitReviewRatingInput,
@@ -8464,14 +8466,14 @@ export const getStartMasterClockUrl = () => {
 /**
  * @summary Start the master clock (clock in)
  */
-export const startMasterClock = async ( options?: RequestInit): Promise<MasterClockState> => {
+export const startMasterClock = async (clockLocationInput?: ClockLocationInput, options?: RequestInit): Promise<MasterClockState> => {
 
   return customFetch<MasterClockState>(getStartMasterClockUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(clockLocationInput)
   }
 );}
 
@@ -8480,8 +8482,8 @@ export const startMasterClock = async ( options?: RequestInit): Promise<MasterCl
 
 
 export const getStartMasterClockMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startMasterClock>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof startMasterClock>>, TError,void, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startMasterClock>>, TError,{data?: BodyType<ClockLocationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startMasterClock>>, TError,{data?: BodyType<ClockLocationInput>}, TContext> => {
 
 const mutationKey = ['startMasterClock'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -8493,10 +8495,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startMasterClock>>, void> = () => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startMasterClock>>, {data?: BodyType<ClockLocationInput>}> = (props) => {
+          const {data} = props ?? {};
 
-
-          return  startMasterClock(requestOptions)
+          return  startMasterClock(data,requestOptions)
         }
 
 
@@ -8507,18 +8509,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type StartMasterClockMutationResult = NonNullable<Awaited<ReturnType<typeof startMasterClock>>>
-
+    export type StartMasterClockMutationBody = BodyType<ClockLocationInput> | undefined
     export type StartMasterClockMutationError = ErrorType<unknown>
 
     /**
  * @summary Start the master clock (clock in)
  */
 export const useStartMasterClock = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startMasterClock>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startMasterClock>>, TError,{data?: BodyType<ClockLocationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof startMasterClock>>,
         TError,
-        void,
+        {data?: BodyType<ClockLocationInput>},
         TContext
       > => {
       return useMutation(getStartMasterClockMutationOptions(options));
@@ -8535,14 +8537,14 @@ export const getStopMasterClockUrl = () => {
 /**
  * @summary Stop the master clock (clock out)
  */
-export const stopMasterClock = async ( options?: RequestInit): Promise<MasterClockState> => {
+export const stopMasterClock = async (clockLocationInput?: ClockLocationInput, options?: RequestInit): Promise<MasterClockState> => {
 
   return customFetch<MasterClockState>(getStopMasterClockUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(clockLocationInput)
   }
 );}
 
@@ -8551,8 +8553,8 @@ export const stopMasterClock = async ( options?: RequestInit): Promise<MasterClo
 
 
 export const getStopMasterClockMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof stopMasterClock>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof stopMasterClock>>, TError,void, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof stopMasterClock>>, TError,{data?: BodyType<ClockLocationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof stopMasterClock>>, TError,{data?: BodyType<ClockLocationInput>}, TContext> => {
 
 const mutationKey = ['stopMasterClock'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -8564,10 +8566,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof stopMasterClock>>, void> = () => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof stopMasterClock>>, {data?: BodyType<ClockLocationInput>}> = (props) => {
+          const {data} = props ?? {};
 
-
-          return  stopMasterClock(requestOptions)
+          return  stopMasterClock(data,requestOptions)
         }
 
 
@@ -8578,18 +8580,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type StopMasterClockMutationResult = NonNullable<Awaited<ReturnType<typeof stopMasterClock>>>
-
+    export type StopMasterClockMutationBody = BodyType<ClockLocationInput> | undefined
     export type StopMasterClockMutationError = ErrorType<unknown>
 
     /**
  * @summary Stop the master clock (clock out)
  */
 export const useStopMasterClock = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof stopMasterClock>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof stopMasterClock>>, TError,{data?: BodyType<ClockLocationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof stopMasterClock>>,
         TError,
-        void,
+        {data?: BodyType<ClockLocationInput>},
         TContext
       > => {
       return useMutation(getStopMasterClockMutationOptions(options));
@@ -8754,14 +8756,15 @@ export const getStopSubTimerUrl = (id: number,) => {
 /**
  * @summary Stop a specific sub-timer
  */
-export const stopSubTimer = async (id: number, options?: RequestInit): Promise<SubTimer> => {
+export const stopSubTimer = async (id: number,
+    clockLocationInput?: ClockLocationInput, options?: RequestInit): Promise<SubTimer> => {
 
   return customFetch<SubTimer>(getStopSubTimerUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(clockLocationInput)
   }
 );}
 
@@ -8770,8 +8773,8 @@ export const stopSubTimer = async (id: number, options?: RequestInit): Promise<S
 
 
 export const getStopSubTimerMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof stopSubTimer>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof stopSubTimer>>, TError,{id: number}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof stopSubTimer>>, TError,{id: number;data?: BodyType<ClockLocationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof stopSubTimer>>, TError,{id: number;data?: BodyType<ClockLocationInput>}, TContext> => {
 
 const mutationKey = ['stopSubTimer'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -8783,10 +8786,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof stopSubTimer>>, {id: number}> = (props) => {
-          const {id} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof stopSubTimer>>, {id: number;data?: BodyType<ClockLocationInput>}> = (props) => {
+          const {id,data} = props ?? {};
 
-          return  stopSubTimer(id,requestOptions)
+          return  stopSubTimer(id,data,requestOptions)
         }
 
 
@@ -8797,21 +8800,93 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type StopSubTimerMutationResult = NonNullable<Awaited<ReturnType<typeof stopSubTimer>>>
-
+    export type StopSubTimerMutationBody = BodyType<ClockLocationInput> | undefined
     export type StopSubTimerMutationError = ErrorType<unknown>
 
     /**
  * @summary Stop a specific sub-timer
  */
 export const useStopSubTimer = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof stopSubTimer>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof stopSubTimer>>, TError,{id: number;data?: BodyType<ClockLocationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof stopSubTimer>>,
         TError,
-        {id: number},
+        {id: number;data?: BodyType<ClockLocationInput>},
         TContext
       > => {
       return useMutation(getStopSubTimerMutationOptions(options));
+    }
+
+export const getAdjustSubTimerUrl = (id: number,) => {
+
+
+
+
+  return `/api/time-tracking/sub-timers/${id}/adjust`
+}
+
+/**
+ * @summary Confirm or correct clock-in/out times for a late-arrival job timer
+ */
+export const adjustSubTimer = async (id: number,
+    subTimerAdjustInput: SubTimerAdjustInput, options?: RequestInit): Promise<SubTimer> => {
+
+  return customFetch<SubTimer>(getAdjustSubTimerUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(subTimerAdjustInput)
+  }
+);}
+
+
+
+
+
+export const getAdjustSubTimerMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adjustSubTimer>>, TError,{id: number;data: BodyType<SubTimerAdjustInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adjustSubTimer>>, TError,{id: number;data: BodyType<SubTimerAdjustInput>}, TContext> => {
+
+const mutationKey = ['adjustSubTimer'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adjustSubTimer>>, {id: number;data: BodyType<SubTimerAdjustInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  adjustSubTimer(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdjustSubTimerMutationResult = NonNullable<Awaited<ReturnType<typeof adjustSubTimer>>>
+    export type AdjustSubTimerMutationBody = BodyType<SubTimerAdjustInput>
+    export type AdjustSubTimerMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Confirm or correct clock-in/out times for a late-arrival job timer
+ */
+export const useAdjustSubTimer = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adjustSubTimer>>, TError,{id: number;data: BodyType<SubTimerAdjustInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adjustSubTimer>>,
+        TError,
+        {id: number;data: BodyType<SubTimerAdjustInput>},
+        TContext
+      > => {
+      return useMutation(getAdjustSubTimerMutationOptions(options));
     }
 
 export const getGetTodayScheduleUrl = () => {

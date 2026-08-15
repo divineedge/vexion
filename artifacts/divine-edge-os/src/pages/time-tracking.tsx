@@ -9,11 +9,13 @@ import {
   useUpdateJob,
   useUpdateVisit,
   customFetch,
+  SubTimer,
 } from '@workspace/api-client-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Clock, Play, Square, Timer, History, ClipboardList, AlertTriangle,
   MapPin, User, CalendarClock, CheckCircle2,
@@ -83,6 +85,9 @@ export default function TimeTrackingPage() {
     { date: today },
     { query: { queryKey: getListTimeEntriesQueryKey({ date: today }) } }
   );
+  const { data: subTimers } = useListSubTimers({
+    query: { queryKey: getListSubTimersQueryKey(), refetchInterval: 15000 },
+  });
 
   const { data: dailyTaskHours } = useQuery<DailyTaskHoursResponse>({
     queryKey: ['daily-task-hours', today],
@@ -100,6 +105,9 @@ export default function TimeTrackingPage() {
   const [completePrompt, setCompletePrompt] = useState<{
     timerId: number; label: string; kind: string; id: number;
   } | null>(null);
+
+  // Track which schedule items recorded a late arrival after clock-out
+  const [lateItemIds, setLateItemIds] = useState<Map<string, number>>(new Map()); // key=`${kind}-${id}`, val=lateByMinutes
 
   const [liveMasterSeconds, setLiveMasterSeconds] = useState(0);
 
@@ -120,9 +128,9 @@ export default function TimeTrackingPage() {
 
   const handleMasterToggle = () => {
     if (masterClock?.isClockedIn) {
-      stopMaster.mutate(undefined, { onSuccess: invalidateAll });
+      stopMaster.mutate({}, { onSuccess: invalidateAll });
     } else {
-      startMaster.mutate(undefined, { onSuccess: invalidateAll });
+      startMaster.mutate({}, { onSuccess: invalidateAll });
     }
   };
 
@@ -150,9 +158,19 @@ export default function TimeTrackingPage() {
     stopSub.mutate(
       { id: timerId },
       {
-        onSuccess: () => {
+        onSuccess: (data: SubTimer) => {
           invalidateAll();
           toast.success(`Clocked out: ${label}`);
+          // Track late arrivals so we can surface the badge on the schedule row
+          const d = data as SubTimer & { isLateArrival?: boolean; lateByMinutes?: number };
+          if (d.isLateArrival && d.lateByMinutes != null) {
+            setLateItemIds(prev => {
+              const next = new Map(prev);
+              next.set(`${kind}-${id}`, d.lateByMinutes!);
+              return next;
+            });
+            toast.warning(`Late arrival detected — ${d.lateByMinutes} min past scheduled time`);
+          }
           if (markComplete) {
             if (kind === 'job') {
               updateJob.mutate(
@@ -292,6 +310,19 @@ export default function TimeTrackingPage() {
                           <Badge variant="outline" className="text-xs capitalize">
                             {item.status.replace(/_/g, ' ')}
                           </Badge>
+                          {lateItemIds.has(`${item.kind}-${item.id}`) && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Badge variant="destructive" className="text-xs gap-1">
+                                    <AlertTriangle className="w-3 h-3" />
+                                    Late {lateItemIds.get(`${item.kind}-${item.id}`)}m
+                                  </Badge>
+                                </TooltipTrigger>
+                                <TooltipContent>Employee arrived late for this job</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
                         </div>
                         <div className="flex items-center gap-3 mt-1 flex-wrap">
                           <span className="text-xs text-muted-foreground flex items-center gap-1">
@@ -404,6 +435,106 @@ export default function TimeTrackingPage() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* ── Sub-timer Log ────────────────────────────────────────────────────── */}
+      {subTimers && subTimers.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Timer className="w-5 h-5" /> Job / Visit Timers
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Individual clock-in records for each job or visit today.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Label</TableHead>
+                  <TableHead>In</TableHead>
+                  <TableHead>Out</TableHead>
+                  <TableHead className="text-right">Duration</TableHead>
+                  <TableHead className="text-right">Flags</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {subTimers.map((st) => {
+                  const hasLocation = (st as any).startLat != null || (st as any).endLat != null;
+                  const isLate = st.isLateArrival;
+                  const adjustedStart = (st as any).adjustedStartedAt as string | null | undefined;
+                  const adjustedEnd = (st as any).adjustedStoppedAt as string | null | undefined;
+                  return (
+                    <TableRow key={st.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-medium text-sm">{st.label}</span>
+                          {hasLocation && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <MapPin className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+                                </TooltipTrigger>
+                                <TooltipContent>GPS location captured</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        <span className={adjustedStart ? 'line-through text-muted-foreground mr-1.5' : ''}>
+                          {formatTime(st.startedAt)}
+                        </span>
+                        {adjustedStart && (
+                          <span className="text-blue-600 font-medium">{formatTime(adjustedStart)}</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {st.stoppedAt ? (
+                          <>
+                            <span className={adjustedEnd ? 'line-through text-muted-foreground mr-1.5' : ''}>
+                              {formatTime(st.stoppedAt)}
+                            </span>
+                            {adjustedEnd && (
+                              <span className="text-blue-600 font-medium">{formatTime(adjustedEnd)}</span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-primary animate-pulse text-xs font-medium">ACTIVE</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm">
+                        {st.elapsedSeconds != null ? formatElapsedSeconds(st.elapsedSeconds) : '—'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {isLate && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Badge variant="destructive" className="text-xs gap-1">
+                                    <AlertTriangle className="w-3 h-3" />
+                                    Late {st.lateByMinutes}m
+                                  </Badge>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  Arrived {st.lateByMinutes} min past scheduled time
+                                  {adjustedStart ? ' · Time adjusted' : ''}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                          {!isLate && <span className="text-xs text-muted-foreground">—</span>}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Daily Task Time ───────────────────────────────────────────────────── */}
       <Card>

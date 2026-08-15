@@ -3488,6 +3488,11 @@ export const GetMasterClockResponse = zod.object({
 /**
  * @summary Start the master clock (clock in)
  */
+export const StartMasterClockBody = zod.object({
+  "lat": zod.number().optional(),
+  "lng": zod.number().optional()
+})
+
 export const StartMasterClockResponse = zod.object({
   "userId": zod.number(),
   "isClockedIn": zod.boolean(),
@@ -3500,6 +3505,11 @@ export const StartMasterClockResponse = zod.object({
 /**
  * @summary Stop the master clock (clock out)
  */
+export const StopMasterClockBody = zod.object({
+  "lat": zod.number().optional(),
+  "lng": zod.number().optional()
+})
+
 export const StopMasterClockResponse = zod.object({
   "userId": zod.number(),
   "isClockedIn": zod.boolean(),
@@ -3521,7 +3531,16 @@ export const ListSubTimersResponseItem = zod.object({
   "startedAt": zod.string(),
   "stoppedAt": zod.string().nullish(),
   "elapsedSeconds": zod.number().optional(),
-  "isActive": zod.boolean()
+  "isActive": zod.boolean(),
+  "startLat": zod.number().nullish(),
+  "startLng": zod.number().nullish(),
+  "endLat": zod.number().nullish(),
+  "endLng": zod.number().nullish(),
+  "isLateArrival": zod.boolean(),
+  "lateByMinutes": zod.number().nullish(),
+  "adjustedStartedAt": zod.string().nullish(),
+  "adjustedStoppedAt": zod.string().nullish(),
+  "jobScheduledAt": zod.string().nullish()
 })
 export const ListSubTimersResponse = zod.array(ListSubTimersResponseItem)
 
@@ -3532,7 +3551,9 @@ export const ListSubTimersResponse = zod.array(ListSubTimersResponseItem)
 export const StartSubTimerBody = zod.object({
   "label": zod.string(),
   "type": zod.enum(['job', 'routine', 'other']),
-  "jobId": zod.number().optional()
+  "jobId": zod.number().optional(),
+  "lat": zod.number().optional(),
+  "lng": zod.number().optional()
 })
 
 export const StartSubTimerResponse = zod.object({
@@ -3544,7 +3565,16 @@ export const StartSubTimerResponse = zod.object({
   "startedAt": zod.string(),
   "stoppedAt": zod.string().nullish(),
   "elapsedSeconds": zod.number().optional(),
-  "isActive": zod.boolean()
+  "isActive": zod.boolean(),
+  "startLat": zod.number().nullish(),
+  "startLng": zod.number().nullish(),
+  "endLat": zod.number().nullish(),
+  "endLng": zod.number().nullish(),
+  "isLateArrival": zod.boolean(),
+  "lateByMinutes": zod.number().nullish(),
+  "adjustedStartedAt": zod.string().nullish(),
+  "adjustedStoppedAt": zod.string().nullish(),
+  "jobScheduledAt": zod.string().nullish()
 })
 
 
@@ -3553,6 +3583,11 @@ export const StartSubTimerResponse = zod.object({
  */
 export const StopSubTimerParams = zod.object({
   "id": zod.coerce.number()
+})
+
+export const StopSubTimerBody = zod.object({
+  "lat": zod.number().optional(),
+  "lng": zod.number().optional()
 })
 
 export const StopSubTimerResponse = zod.object({
@@ -3564,7 +3599,50 @@ export const StopSubTimerResponse = zod.object({
   "startedAt": zod.string(),
   "stoppedAt": zod.string().nullish(),
   "elapsedSeconds": zod.number().optional(),
-  "isActive": zod.boolean()
+  "isActive": zod.boolean(),
+  "startLat": zod.number().nullish(),
+  "startLng": zod.number().nullish(),
+  "endLat": zod.number().nullish(),
+  "endLng": zod.number().nullish(),
+  "isLateArrival": zod.boolean(),
+  "lateByMinutes": zod.number().nullish(),
+  "adjustedStartedAt": zod.string().nullish(),
+  "adjustedStoppedAt": zod.string().nullish(),
+  "jobScheduledAt": zod.string().nullish()
+})
+
+
+/**
+ * @summary Confirm or correct clock-in/out times for a late-arrival job timer
+ */
+export const AdjustSubTimerParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AdjustSubTimerBody = zod.object({
+  "adjustedStartedAt": zod.string().optional(),
+  "adjustedStoppedAt": zod.string().optional()
+})
+
+export const AdjustSubTimerResponse = zod.object({
+  "id": zod.number(),
+  "userId": zod.number(),
+  "label": zod.string(),
+  "type": zod.enum(['job', 'routine', 'other']),
+  "jobId": zod.number().nullish(),
+  "startedAt": zod.string(),
+  "stoppedAt": zod.string().nullish(),
+  "elapsedSeconds": zod.number().optional(),
+  "isActive": zod.boolean(),
+  "startLat": zod.number().nullish(),
+  "startLng": zod.number().nullish(),
+  "endLat": zod.number().nullish(),
+  "endLng": zod.number().nullish(),
+  "isLateArrival": zod.boolean(),
+  "lateByMinutes": zod.number().nullish(),
+  "adjustedStartedAt": zod.string().nullish(),
+  "adjustedStoppedAt": zod.string().nullish(),
+  "jobScheduledAt": zod.string().nullish()
 })
 
 
@@ -3581,7 +3659,12 @@ export const GetTodayScheduleResponseItem = zod.object({
   "status": zod.string(),
   "activeTimerId": zod.number().nullish(),
   "activeTimerStartedAt": zod.string().nullish(),
-  "elapsedSeconds": zod.number().optional()
+  "elapsedSeconds": zod.number().optional(),
+  "propertyLat": zod.number().nullish(),
+  "propertyLng": zod.number().nullish(),
+  "propertyGeofenceLat": zod.number().nullish(),
+  "propertyGeofenceLng": zod.number().nullish(),
+  "propertyGeofenceRadius": zod.number().nullish()
 })
 export const GetTodayScheduleResponse = zod.array(GetTodayScheduleResponseItem)
 

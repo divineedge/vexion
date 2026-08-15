@@ -23,4 +23,14 @@ export interface ScheduleItem {
   /** @nullable */
   activeTimerStartedAt?: string | null;
   elapsedSeconds?: number;
+  /** @nullable */
+  propertyLat?: number | null;
+  /** @nullable */
+  propertyLng?: number | null;
+  /** @nullable */
+  propertyGeofenceLat?: number | null;
+  /** @nullable */
+  propertyGeofenceLng?: number | null;
+  /** @nullable */
+  propertyGeofenceRadius?: number | null;
 }

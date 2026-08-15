@@ -576,10 +576,8 @@ export default function SettingsPage() {
           <TabsTrigger value="communications"><MessageSquare className="w-4 h-4 mr-2" />Communications</TabsTrigger>
           <TabsTrigger value="users"><Users className="w-4 h-4 mr-2" />Team</TabsTrigger>
           {isSuperAdmin && <TabsTrigger value="plans"><Shield className="w-4 h-4 mr-2" />Plans</TabsTrigger>}
-          <TabsTrigger value="service-plans"><RepeatIcon className="w-4 h-4 mr-2" />Service Plans</TabsTrigger>
           <TabsTrigger value="estimate-templates"><FileText className="w-4 h-4 mr-2" />Estimate Templates</TabsTrigger>
           <TabsTrigger value="invoice-templates"><FileText className="w-4 h-4 mr-2" />Invoice Templates</TabsTrigger>
-          <TabsTrigger value="routing"><MapPin className="w-4 h-4 mr-2" />Routing</TabsTrigger>
           <TabsTrigger value="operational"><SettingsIcon className="w-4 h-4 mr-2" />Operational</TabsTrigger>
           <TabsTrigger value="measurements"><MapPin className="w-4 h-4 mr-2" />Maps & Quotes</TabsTrigger>
           <TabsTrigger value="branding"><ImageIcon className="w-4 h-4 mr-2" />Branding</TabsTrigger>
@@ -1984,11 +1982,6 @@ export default function SettingsPage() {
           </TabsContent>
         )}
 
-        {/* ── Service Plans ── */}
-        <TabsContent value="service-plans" className="focus-visible:outline-none">
-          <PlanTemplatesSettings />
-        </TabsContent>
-
         {/* ── Estimate Templates ── */}
         <TabsContent value="estimate-templates" className="focus-visible:outline-none">
           <EstimateTemplatesSettings />
@@ -1997,11 +1990,6 @@ export default function SettingsPage() {
         {/* ── Invoice Templates ── */}
         <TabsContent value="invoice-templates" className="focus-visible:outline-none">
           <InvoiceTemplatesSettings />
-        </TabsContent>
-
-        {/* ── Routing ── */}
-        <TabsContent value="routing" className="focus-visible:outline-none">
-          <RoutingSettings />
         </TabsContent>
 
         {/* ── Operational ── */}

@@ -635,7 +635,7 @@ function EquipmentDetailPanel({ equipment, onClose, onEdit }: { equipment: Equip
 
           {/* Maintenance tab */}
           <TabsContent value="maintenance" className="space-y-3 mt-4">
-            {!isTechnician && !equipment.archivedAt && (
+            {!equipment.archivedAt && (
               <Button size="sm" title="Log a new maintenance event or repair for this equipment" className="w-full gap-2" onClick={() => setMaintOpen(true)}>
                 <Plus className="w-4 h-4" /> Log Maintenance / Repair
               </Button>

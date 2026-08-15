@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,21 +8,27 @@ import {
   RefreshControl,
   ActivityIndicator,
   Platform,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as Location from 'expo-location';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useGetMasterClock, getGetMasterClockQueryKey,
   useStartMasterClock, useStopMasterClock,
-  useStartSubTimer, useStopSubTimer,
+  useStartSubTimer, useStopSubTimer, useAdjustSubTimer,
   useGetTodaySchedule, getGetTodayScheduleQueryKey,
   getListSubTimersQueryKey,
   getListTimeEntriesQueryKey,
+  SubTimer,
 } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
+
+// ── Types ────────────────────────────────────────────────────────────────────
 
 type ScheduleItem = {
   kind: 'job' | 'visit';
@@ -35,7 +41,52 @@ type ScheduleItem = {
   activeTimerId: number | null;
   activeTimerStartedAt: string | null;
   elapsedSeconds: number;
+  propertyLat?: number | null;
+  propertyLng?: number | null;
+  propertyGeofenceLat?: number | null;
+  propertyGeofenceLng?: number | null;
+  propertyGeofenceRadius?: number | null;
 };
+
+type LateArrivalPrompt = {
+  timerId: number;
+  startedAt: string;
+  stoppedAt: string;
+  jobScheduledAt: string;
+  lateByMinutes: number;
+};
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Request foreground location permission and return the current GPS fix, or null if unavailable. */
+async function getLocation(): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') return null;
+    const pos = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.High,
+    });
+    return { lat: pos.coords.latitude, lng: pos.coords.longitude };
+  } catch {
+    return null; // Don't block clock-in if GPS is unavailable
+  }
+}
+
+/** Haversine distance in metres between two GPS points. */
+function haversineMetres(
+  lat1: number, lng1: number,
+  lat2: number, lng2: number,
+): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 function formatElapsed(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -56,6 +107,14 @@ function formatDayTotal(minutes: number): string {
   return `${h}h ${String(m).padStart(2, '0')}m`;
 }
 
+function addMinutes(iso: string, minutes: number): string {
+  const d = new Date(iso);
+  d.setMinutes(d.getMinutes() + minutes);
+  return d.toISOString();
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
 function LiveTimer({ startedAt, initialElapsed }: { startedAt: string; initialElapsed: number }) {
   const [elapsed, setElapsed] = useState(initialElapsed);
   useEffect(() => {
@@ -67,6 +126,161 @@ function LiveTimer({ startedAt, initialElapsed }: { startedAt: string; initialEl
   }, [startedAt]);
   return <Text style={styles.timerText}>{formatElapsed(elapsed)}</Text>;
 }
+
+/** Modal shown when an employee clocked into a job late — lets them confirm or adjust the actual start/end times. */
+function LateArrivalModal({
+  prompt,
+  onConfirm,
+  onDismiss,
+  colors,
+}: {
+  prompt: LateArrivalPrompt;
+  onConfirm: (adjustedStartedAt: string | null, adjustedStoppedAt: string | null) => void;
+  onDismiss: () => void;
+  colors: ReturnType<typeof useColors>;
+}) {
+  const [startTime, setStartTime] = useState(prompt.startedAt);
+  const [endTime, setEndTime] = useState(prompt.stoppedAt);
+
+  const isStartAdjusted = startTime !== prompt.startedAt;
+  const isEndAdjusted = endTime !== prompt.stoppedAt;
+  const hasAdjustment = isStartAdjusted || isEndAdjusted;
+
+  return (
+    <Modal visible animationType="fade" transparent statusBarTranslucent>
+      <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
+        <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          {/* Header */}
+          <View style={[styles.modalHeader, { backgroundColor: '#f59e0b18', borderBottomColor: colors.border }]}>
+            <Ionicons name="time-outline" size={20} color="#d97706" />
+            <Text style={[styles.modalTitle, { color: '#92400e' }]}>Late Arrival Detected</Text>
+          </View>
+
+          <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+            {/* Context row */}
+            <View style={[styles.lateContextBox, { backgroundColor: colors.muted + '60', borderColor: colors.border }]}>
+              <View style={styles.lateContextRow}>
+                <Text style={[styles.lateContextLabel, { color: colors.mutedForeground }]}>Scheduled</Text>
+                <Text style={[styles.lateContextValue, { color: colors.foreground }]}>{formatTime(prompt.jobScheduledAt)}</Text>
+              </View>
+              <View style={styles.lateContextRow}>
+                <Text style={[styles.lateContextLabel, { color: colors.mutedForeground }]}>Clocked in</Text>
+                <Text style={[styles.lateContextValue, { color: '#d97706' }]}>
+                  {formatTime(prompt.startedAt)} ({prompt.lateByMinutes} min late)
+                </Text>
+              </View>
+            </View>
+
+            <Text style={[styles.modalSubTitle, { color: colors.mutedForeground }]}>
+              Did you arrive at the scheduled time but forget to clock in? Adjust the times below if needed.
+            </Text>
+
+            {/* Start time adjuster */}
+            <View style={[styles.timeAdjuster, { borderColor: colors.border }]}>
+              <View style={styles.timeAdjusterHeader}>
+                <Text style={[styles.timeAdjusterLabel, { color: colors.mutedForeground }]}>Start time</Text>
+                {isStartAdjusted && (
+                  <TouchableOpacity onPress={() => setStartTime(prompt.startedAt)}>
+                    <Text style={{ fontSize: 11, color: colors.primary }}>Reset</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              <View style={styles.timeAdjusterRow}>
+                <TouchableOpacity
+                  style={[styles.adjBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}
+                  onPress={() => setStartTime(t => addMinutes(t, -5))}
+                >
+                  <Ionicons name="remove" size={16} color={colors.foreground} />
+                  <Text style={[styles.adjBtnText, { color: colors.foreground }]}>5m</Text>
+                </TouchableOpacity>
+                <View style={[styles.timeDisplay, { backgroundColor: isStartAdjusted ? colors.primary + '18' : colors.muted + '40' }]}>
+                  <Text style={[styles.timeDisplayText, { color: isStartAdjusted ? colors.primary : colors.foreground }]}>
+                    {formatTime(startTime)}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.adjBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}
+                  onPress={() => setStartTime(t => addMinutes(t, 5))}
+                >
+                  <Text style={[styles.adjBtnText, { color: colors.foreground }]}>5m</Text>
+                  <Ionicons name="add" size={16} color={colors.foreground} />
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity
+                style={[styles.useScheduledBtn, { borderColor: colors.primary + '60' }]}
+                onPress={() => setStartTime(prompt.jobScheduledAt)}
+              >
+                <Text style={[styles.useScheduledBtnText, { color: colors.primary }]}>
+                  Use scheduled time ({formatTime(prompt.jobScheduledAt)})
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* End time adjuster */}
+            <View style={[styles.timeAdjuster, { borderColor: colors.border }]}>
+              <View style={styles.timeAdjusterHeader}>
+                <Text style={[styles.timeAdjusterLabel, { color: colors.mutedForeground }]}>End time</Text>
+                {isEndAdjusted && (
+                  <TouchableOpacity onPress={() => setEndTime(prompt.stoppedAt)}>
+                    <Text style={{ fontSize: 11, color: colors.primary }}>Reset</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              <View style={styles.timeAdjusterRow}>
+                <TouchableOpacity
+                  style={[styles.adjBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}
+                  onPress={() => setEndTime(t => addMinutes(t, -5))}
+                >
+                  <Ionicons name="remove" size={16} color={colors.foreground} />
+                  <Text style={[styles.adjBtnText, { color: colors.foreground }]}>5m</Text>
+                </TouchableOpacity>
+                <View style={[styles.timeDisplay, { backgroundColor: isEndAdjusted ? colors.primary + '18' : colors.muted + '40' }]}>
+                  <Text style={[styles.timeDisplayText, { color: isEndAdjusted ? colors.primary : colors.foreground }]}>
+                    {formatTime(endTime)}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.adjBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}
+                  onPress={() => setEndTime(t => addMinutes(t, 5))}
+                >
+                  <Text style={[styles.adjBtnText, { color: colors.foreground }]}>5m</Text>
+                  <Ionicons name="add" size={16} color={colors.foreground} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ScrollView>
+
+          {/* Actions */}
+          <View style={[styles.modalFooter, { borderTopColor: colors.border }]}>
+            <TouchableOpacity
+              style={[styles.modalBtn, { backgroundColor: colors.muted + '60', borderColor: colors.border }]}
+              onPress={onDismiss}
+            >
+              <Text style={[styles.modalBtnText, { color: colors.mutedForeground }]}>Keep Original</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalBtn, {
+                backgroundColor: hasAdjustment ? colors.primary : colors.muted,
+                borderColor: hasAdjustment ? colors.primary : colors.border,
+              }]}
+              onPress={() => onConfirm(
+                isStartAdjusted ? startTime : null,
+                isEndAdjusted ? endTime : null,
+              )}
+              disabled={!hasAdjustment}
+            >
+              <Text style={[styles.modalBtnText, { color: hasAdjustment ? '#fff' : colors.mutedForeground }]}>
+                Save Adjusted Times
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ── Main screen ───────────────────────────────────────────────────────────────
 
 export default function TimeTrackingScreen() {
   const colors = useColors();
@@ -85,10 +299,12 @@ export default function TimeTrackingScreen() {
   const stopMaster = useStopMasterClock();
   const startSub = useStartSubTimer();
   const stopSub = useStopSubTimer();
+  const adjustSub = useAdjustSubTimer();
 
   const [masterElapsed, setMasterElapsed] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [lateArrivalPrompt, setLateArrivalPrompt] = useState<LateArrivalPrompt | null>(null);
 
   useEffect(() => {
     if (!masterClock?.isClockedIn || !masterClock?.clockedInAt) {
@@ -111,10 +327,12 @@ export default function TimeTrackingScreen() {
 
   const handleMasterToggle = useCallback(async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const loc = await getLocation();
+    const locData = loc ? { lat: loc.lat, lng: loc.lng } : undefined;
     if (masterClock?.isClockedIn) {
-      stopMaster.mutate(undefined, { onSuccess: invalidateAll });
+      stopMaster.mutate({ data: locData }, { onSuccess: invalidateAll });
     } else {
-      startMaster.mutate(undefined, { onSuccess: invalidateAll });
+      startMaster.mutate({ data: locData }, { onSuccess: invalidateAll });
     }
   }, [masterClock?.isClockedIn, startMaster, stopMaster, invalidateAll]);
 
@@ -122,15 +340,28 @@ export default function TimeTrackingScreen() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const busyKey = `${item.kind}-${item.id}`;
     setBusyId(busyKey);
-    const label = item.kind === 'job'
-      ? item.label
-      : `visit:${item.id}:${item.label}`;
+    const loc = await getLocation();
+
+    // Check geofence distance — inform the employee if they're outside the boundary
+    if (loc && item.propertyGeofenceLat != null && item.propertyGeofenceLng != null && item.propertyGeofenceRadius != null) {
+      const dist = haversineMetres(
+        loc.lat, loc.lng,
+        item.propertyGeofenceLat, item.propertyGeofenceLng,
+      );
+      if (dist > item.propertyGeofenceRadius * 2) {
+        // Still allow clock-in — just note the distance; a future enhancement can prompt
+        console.log(`[geofence] ${dist.toFixed(0)}m from property centre (radius: ${item.propertyGeofenceRadius}m)`);
+      }
+    }
+
+    const label = item.kind === 'job' ? item.label : `visit:${item.id}:${item.label}`;
     const type = item.kind === 'job' ? 'job' : 'routine';
-    const payload: any = { label, type };
+    const payload: Record<string, unknown> = { label, type };
     if (item.kind === 'job') payload.jobId = item.id;
+    if (loc) { payload.lat = loc.lat; payload.lng = loc.lng; }
 
     startSub.mutate(
-      { data: payload },
+      { data: payload as any },
       {
         onSuccess: () => { invalidateAll(); setBusyId(null); },
         onError: () => setBusyId(null),
@@ -143,14 +374,51 @@ export default function TimeTrackingScreen() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const busyKey = `${item.kind}-${item.id}`;
     setBusyId(busyKey);
+    const loc = await getLocation();
+
     stopSub.mutate(
-      { id: item.activeTimerId },
+      { id: item.activeTimerId, data: loc ? { lat: loc.lat, lng: loc.lng } : undefined },
       {
-        onSuccess: () => { invalidateAll(); setBusyId(null); },
+        onSuccess: (data: SubTimer) => {
+          invalidateAll();
+          setBusyId(null);
+          // If this job timer recorded a late arrival, prompt the employee to review the times
+          const d = data as SubTimer & { jobScheduledAt?: string | null };
+          if (d.isLateArrival && d.jobScheduledAt && d.stoppedAt && d.lateByMinutes != null) {
+            setLateArrivalPrompt({
+              timerId: d.id,
+              startedAt: d.startedAt,
+              stoppedAt: d.stoppedAt,
+              jobScheduledAt: d.jobScheduledAt,
+              lateByMinutes: d.lateByMinutes,
+            });
+          }
+        },
         onError: () => setBusyId(null),
       }
     );
   }, [stopSub, invalidateAll]);
+
+  const handleLateArrivalConfirm = useCallback((
+    adjustedStartedAt: string | null,
+    adjustedStoppedAt: string | null,
+  ) => {
+    if (!lateArrivalPrompt) return;
+    if (adjustedStartedAt || adjustedStoppedAt) {
+      adjustSub.mutate(
+        {
+          id: lateArrivalPrompt.timerId,
+          data: {
+            ...(adjustedStartedAt ? { adjustedStartedAt } : {}),
+            ...(adjustedStoppedAt ? { adjustedStoppedAt } : {}),
+          },
+        },
+        { onSettled: () => setLateArrivalPrompt(null) }
+      );
+    } else {
+      setLateArrivalPrompt(null);
+    }
+  }, [lateArrivalPrompt, adjustSub]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -303,9 +571,21 @@ export default function TimeTrackingScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
         }
       />
+
+      {/* Late arrival confirmation modal */}
+      {lateArrivalPrompt && (
+        <LateArrivalModal
+          prompt={lateArrivalPrompt}
+          colors={colors}
+          onConfirm={handleLateArrivalConfirm}
+          onDismiss={() => setLateArrivalPrompt(null)}
+        />
+      )}
     </View>
   );
 }
+
+// ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -377,4 +657,108 @@ const styles = StyleSheet.create({
 
   empty: { alignItems: 'center', paddingVertical: 48, gap: 12 },
   emptyText: { fontSize: 14, fontFamily: 'Inter_400Regular', textAlign: 'center', paddingHorizontal: 32 },
+
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  modalCard: {
+    width: '100%',
+    maxHeight: '85%',
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  modalTitle: { fontSize: 15, fontFamily: 'Inter_700Bold' },
+  modalBody: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 },
+  modalSubTitle: {
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+
+  lateContextBox: {
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 12,
+    marginBottom: 14,
+    gap: 6,
+  },
+  lateContextRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  lateContextLabel: { fontSize: 12, fontFamily: 'Inter_400Regular' },
+  lateContextValue: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+
+  timeAdjuster: {
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 12,
+    marginBottom: 12,
+    gap: 8,
+  },
+  timeAdjusterHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  timeAdjusterLabel: { fontSize: 12, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.4 },
+  timeAdjusterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  adjBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  adjBtnText: { fontSize: 11, fontFamily: 'Inter_600SemiBold' },
+  timeDisplay: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  timeDisplayText: { fontSize: 18, fontFamily: 'Inter_700Bold', letterSpacing: 0.5 },
+  useScheduledBtn: {
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  useScheduledBtnText: { fontSize: 12, fontFamily: 'Inter_400Regular' },
+
+  modalFooter: {
+    flexDirection: 'row',
+    gap: 10,
+    padding: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  modalBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 11,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  modalBtnText: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
 });

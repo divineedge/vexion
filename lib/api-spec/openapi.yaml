@@ -2310,6 +2310,12 @@ paths:
       operationId: startMasterClock
       tags: [timeTracking]
       summary: Start the master clock (clock in)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClockLocationInput"
       responses:
         "200":
           description: Master clock started
@@ -2323,6 +2329,12 @@ paths:
       operationId: stopMasterClock
       tags: [timeTracking]
       summary: Stop the master clock (clock out)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClockLocationInput"
       responses:
         "200":
           description: Master clock stopped
@@ -2374,9 +2386,40 @@ paths:
           required: true
           schema:
             type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClockLocationInput"
       responses:
         "200":
           description: Sub-timer stopped
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubTimer"
+
+  /time-tracking/sub-timers/{id}/adjust:
+    patch:
+      operationId: adjustSubTimer
+      tags: [timeTracking]
+      summary: Confirm or correct clock-in/out times for a late-arrival job timer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubTimerAdjustInput"
+      responses:
+        "200":
+          description: Sub-timer times adjusted
           content:
             application/json:
               schema:
@@ -10354,7 +10397,7 @@ components:
 
     SubTimer:
       type: object
-      required: [id, userId, label, type, startedAt, isActive]
+      required: [id, userId, label, type, startedAt, isActive, isLateArrival]
       properties:
         id:
           type: integer
@@ -10375,6 +10418,24 @@ components:
           type: integer
         isActive:
           type: boolean
+        startLat:
+          type: ["number", "null"]
+        startLng:
+          type: ["number", "null"]
+        endLat:
+          type: ["number", "null"]
+        endLng:
+          type: ["number", "null"]
+        isLateArrival:
+          type: boolean
+        lateByMinutes:
+          type: ["integer", "null"]
+        adjustedStartedAt:
+          type: ["string", "null"]
+        adjustedStoppedAt:
+          type: ["string", "null"]
+        jobScheduledAt:
+          type: ["string", "null"]
 
     ScheduleItem:
       type: object
@@ -10401,6 +10462,16 @@ components:
           type: ["string", "null"]
         elapsedSeconds:
           type: integer
+        propertyLat:
+          type: ["number", "null"]
+        propertyLng:
+          type: ["number", "null"]
+        propertyGeofenceLat:
+          type: ["number", "null"]
+        propertyGeofenceLng:
+          type: ["number", "null"]
+        propertyGeofenceRadius:
+          type: ["integer", "null"]
 
     SubTimerInput:
       type: object
@@ -10413,6 +10484,26 @@ components:
           enum: [job, routine, other]
         jobId:
           type: integer
+        lat:
+          type: number
+        lng:
+          type: number
+
+    ClockLocationInput:
+      type: object
+      properties:
+        lat:
+          type: number
+        lng:
+          type: number
+
+    SubTimerAdjustInput:
+      type: object
+      properties:
+        adjustedStartedAt:
+          type: string
+        adjustedStoppedAt:
+          type: string
 
     TimeEntry:
       type: object

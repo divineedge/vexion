@@ -31,8 +31,11 @@ import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronRight, MapPinned, Route as RouteIcon, ArrowUp, ArrowDown,
   Wand2, Clock, User, Building, CalendarClock, Plus, Play, Square, Timer,
-  Printer, CheckCircle, Eye, MessageSquare,
+  Printer, CheckCircle, Eye, MessageSquare, Users,
 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import RoutingSettings from '@/components/settings/RoutingSettings';
+import { useListCrews, getListCrewsQueryKey } from '@workspace/api-client-react';
 import { startOfWeek, addWeeks, subWeeks, format, addDays } from 'date-fns';
 import { JobFormFields, EMPTY_JOB, buildRecurrenceRule, type NewJobForm } from '@/components/jobs/JobFormFields';
 
@@ -82,8 +85,10 @@ export default function RoutesDashboardPage() {
   const [newJobOpen, setNewJobOpen] = useState(false);
   const [newJob, setNewJob] = useState<NewJobForm>(EMPTY_JOB);
   const [capacityWarning, setCapacityWarning] = useState<{ message: string; onConfirm: () => void } | null>(null);
+  const [routeTab, setRouteTab] = useState('dashboard');
 
   const weekStartStr = format(weekStart, 'yyyy-MM-dd');
+  const weekEndStr = format(addDays(weekStart, 6), 'yyyy-MM-dd');
 
   const { data: divisions } = useListDivisions({ query: { queryKey: getListDivisionsQueryKey() } });
   const { data: dashboard, isLoading } = useGetRoutesDashboard(
@@ -106,6 +111,13 @@ export default function RoutesDashboardPage() {
     { query: { enabled: !!dayDetail, queryKey: getListJobsQueryKey({ startDate: dayDetail?.date, endDate: dayDetailEndDate }) } },
   );
   const unassignedJobsForDay = (dayJobs ?? []).filter(j => j.routeTemplateId !== dayDetail?.routeTemplateId);
+
+  // By Crew tab: all jobs for the selected week, grouped by crew
+  const { data: weekJobs } = useListJobs(
+    { startDate: weekStartStr, endDate: weekEndStr },
+    { query: { enabled: routeTab === 'by-crew', queryKey: getListJobsQueryKey({ startDate: weekStartStr, endDate: weekEndStr }) } },
+  );
+  const { data: crews } = useListCrews({ query: { enabled: routeTab === 'by-crew', queryKey: getListCrewsQueryKey() } });
 
   // Sub-timer (clock in/out per stop)
   const { data: subTimers } = useListSubTimers({ query: { queryKey: getListSubTimersQueryKey() } });
@@ -331,36 +343,44 @@ export default function RoutesDashboardPage() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Routes</h1>
-          <p className="text-muted-foreground mt-1">Weekly route capacity by division — click a route to see and sequence its stops.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Select value={divisionFilter} onValueChange={setDivisionFilter}>
-            <SelectTrigger className="w-44" title="Filter routes by division"><SelectValue placeholder="All Divisions" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Divisions</SelectItem>
-              {(divisions ?? []).map(d => <SelectItem key={d.id} value={String(d.id)}>{d.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <div className="flex items-center gap-1 border rounded-lg px-1">
-            <Button variant="ghost" size="icon" className="h-8 w-8" title="Go to previous week" onClick={() => setWeekStart(w => subWeeks(w, 1))}>
-              <ChevronLeft className="w-4 h-4" />
-            </Button>
-            <span className="text-sm font-medium px-2 whitespace-nowrap flex items-center gap-2">
-              {format(weekStart, 'MMM d')} – {format(addDays(weekStart, 6), 'MMM d, yyyy')}
-              {format(weekStart, 'yyyy-MM-dd') === format(startOfWeek(new Date(), { weekStartsOn: 0 }), 'yyyy-MM-dd') && (
-                <span className="text-xs font-normal text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">This week</span>
-              )}
-            </span>
-            <Button variant="ghost" size="icon" className="h-8 w-8" title="Go to next week" onClick={() => setWeekStart(w => addWeeks(w, 1))}>
-              <ChevronRight className="w-4 h-4" />
-            </Button>
-          </div>
-          <Button variant="outline" size="sm" title="Jump to the current week" onClick={() => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 0 }))}>This Week</Button>
-        </div>
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Routes</h1>
+        <p className="text-muted-foreground mt-1">Plan, sequence, and manage your field routes.</p>
       </div>
+
+      <Tabs value={routeTab} onValueChange={setRouteTab}>
+        <TabsList>
+          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+          <TabsTrigger value="by-crew">By Crew</TabsTrigger>
+          <TabsTrigger value="manage">Manage</TabsTrigger>
+        </TabsList>
+
+        {/* ── Dashboard tab ── */}
+        <TabsContent value="dashboard" className="space-y-4 mt-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={divisionFilter} onValueChange={setDivisionFilter}>
+              <SelectTrigger className="w-44" title="Filter routes by division"><SelectValue placeholder="All Divisions" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Divisions</SelectItem>
+                {(divisions ?? []).map(d => <SelectItem key={d.id} value={String(d.id)}>{d.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <div className="flex items-center gap-1 border rounded-lg px-1">
+              <Button variant="ghost" size="icon" className="h-8 w-8" title="Go to previous week" onClick={() => setWeekStart(w => subWeeks(w, 1))}>
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <span className="text-sm font-medium px-2 whitespace-nowrap flex items-center gap-2">
+                {format(weekStart, 'MMM d')} – {format(addDays(weekStart, 6), 'MMM d, yyyy')}
+                {format(weekStart, 'yyyy-MM-dd') === format(startOfWeek(new Date(), { weekStartsOn: 0 }), 'yyyy-MM-dd') && (
+                  <span className="text-xs font-normal text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">This week</span>
+                )}
+              </span>
+              <Button variant="ghost" size="icon" className="h-8 w-8" title="Go to next week" onClick={() => setWeekStart(w => addWeeks(w, 1))}>
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+            <Button variant="outline" size="sm" title="Jump to the current week" onClick={() => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 0 }))}>This Week</Button>
+          </div>
 
       {!isLoading && (dashboard ?? []).length > 0 && (() => {
         const allEntries = (dashboard ?? []);
@@ -383,7 +403,7 @@ export default function RoutesDashboardPage() {
           <CardContent className="py-16 text-center">
             <MapPinned className="w-12 h-12 mx-auto text-muted-foreground/40 mb-4" />
             <p className="font-semibold text-lg mb-2">No routes this week</p>
-            <p className="text-muted-foreground text-sm">Set up divisions and route templates in Settings → Routing.</p>
+            <p className="text-muted-foreground text-sm">Set up divisions and route templates in the Manage tab.</p>
           </CardContent>
         </Card>
       ) : (
@@ -426,6 +446,96 @@ export default function RoutesDashboardPage() {
           ))}
         </div>
       )}
+
+        </TabsContent>
+
+        {/* ── By Crew tab ── */}
+        <TabsContent value="by-crew" className="space-y-4 mt-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1 border rounded-lg px-1">
+              <Button variant="ghost" size="icon" className="h-8 w-8" title="Previous week" onClick={() => setWeekStart(w => subWeeks(w, 1))}>
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <span className="text-sm font-medium px-2 whitespace-nowrap flex items-center gap-2">
+                {format(weekStart, 'MMM d')} – {format(addDays(weekStart, 6), 'MMM d, yyyy')}
+                {format(weekStart, 'yyyy-MM-dd') === format(startOfWeek(new Date(), { weekStartsOn: 0 }), 'yyyy-MM-dd') && (
+                  <span className="text-xs font-normal text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">This week</span>
+                )}
+              </span>
+              <Button variant="ghost" size="icon" className="h-8 w-8" title="Next week" onClick={() => setWeekStart(w => addWeeks(w, 1))}>
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 0 }))}>This Week</Button>
+          </div>
+          {(() => {
+            const jobs = weekJobs ?? [];
+            if (jobs.length === 0) {
+              return (
+                <Card>
+                  <CardContent className="py-12 text-center">
+                    <Users className="w-10 h-10 mx-auto text-muted-foreground/40 mb-3" />
+                    <p className="font-medium mb-1">No jobs this week</p>
+                    <p className="text-sm text-muted-foreground">Jobs assigned to crews will appear here grouped by crew.</p>
+                  </CardContent>
+                </Card>
+              );
+            }
+            // Group jobs by crewId
+            const byCrewMap = new Map<string, { crewId: number | null; crewName: string | null; jobs: typeof jobs }>();
+            for (const j of jobs) {
+              const key = (j as any).crewId ? String((j as any).crewId) : 'unassigned';
+              if (!byCrewMap.has(key)) {
+                byCrewMap.set(key, { crewId: (j as any).crewId ?? null, crewName: (j as any).crewName ?? null, jobs: [] });
+              }
+              byCrewMap.get(key)!.jobs.push(j);
+            }
+            const groups = [...byCrewMap.values()].sort((a, b) => {
+              if (!a.crewId) return 1; // unassigned last
+              if (!b.crewId) return -1;
+              return (a.crewName ?? '').localeCompare(b.crewName ?? '');
+            });
+            return (
+              <div className="space-y-4">
+                {groups.map(g => (
+                  <div key={g.crewId ?? 'unassigned'}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Users className="w-4 h-4 text-muted-foreground" />
+                      <h2 className="text-sm font-semibold">{g.crewName ?? 'Unassigned'}</h2>
+                      <Badge variant="secondary" title={`${g.jobs.length} job${g.jobs.length !== 1 ? 's' : ''} for this crew`}>{g.jobs.length} job{g.jobs.length !== 1 ? 's' : ''}</Badge>
+                    </div>
+                    <div className="rounded-lg border divide-y overflow-hidden">
+                      {[...g.jobs].sort((a, b) => new Date(a.scheduledAt ?? '').getTime() - new Date(b.scheduledAt ?? '').getTime()).map(j => (
+                        <div key={j.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate">{j.title}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {j.scheduledAt ? format(new Date(j.scheduledAt), 'EEE MMM d · h:mm a') : '—'}
+                              {j.customerName ? ` · ${j.customerName}` : ''}
+                              {(j as any).assigneeName ? ` · ${(j as any).assigneeName}` : ''}
+                            </p>
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className={j.status === 'completed' ? 'border-emerald-300 text-emerald-700 bg-emerald-50' : j.status === 'in_progress' ? 'border-blue-300 text-blue-700 bg-blue-50' : ''}
+                          >
+                            {j.status.replace(/_/g, ' ')}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </TabsContent>
+
+        {/* ── Manage tab — Divisions, Route Templates, exception fee ── */}
+        <TabsContent value="manage" className="mt-2">
+          <RoutingSettings />
+        </TabsContent>
+      </Tabs>
 
       {/* Day Detail Sheet */}
       <Sheet open={!!dayDetail} onOpenChange={open => { if (!open) setDayDetail(null); }}>

@@ -207,9 +207,9 @@ export default function JobsScreen() {
   const handleClockToggle = useCallback(async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (masterClock?.isClockedIn) {
-      stopMasterClock.mutate(undefined, { onSuccess: () => refetchMasterClock() });
+      stopMasterClock.mutate({}, { onSuccess: () => refetchMasterClock() });
     } else {
-      startMasterClock.mutate(undefined, { onSuccess: () => refetchMasterClock() });
+      startMasterClock.mutate({}, { onSuccess: () => refetchMasterClock() });
     }
   }, [masterClock?.isClockedIn, startMasterClock, stopMasterClock, refetchMasterClock]);
 

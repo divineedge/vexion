@@ -40,12 +40,15 @@ router.get("/time-tracking/master-clock", async (req, res): Promise<void> => {
 router.post("/time-tracking/master-clock/start", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
+  const { lat, lng } = req.body ?? {};
 
   const [entry] = await db.insert(timeEntriesTable).values({
     tenantId,
     userId,
     clockedInAt: new Date(),
     isMasterClock: true,
+    clockInLat: lat != null ? Number(lat) : null,
+    clockInLng: lng != null ? Number(lng) : null,
   }).returning();
 
   res.json({ userId, isClockedIn: true, clockedInAt: entry.clockedInAt.toISOString(), totalMinutesToday: 0, entryId: entry.id });
@@ -54,6 +57,7 @@ router.post("/time-tracking/master-clock/start", async (req, res): Promise<void>
 router.post("/time-tracking/master-clock/stop", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
+  const { lat, lng } = req.body ?? {};
 
   const [active] = await db.select().from(timeEntriesTable).where(and(
     eq(timeEntriesTable.userId, userId),
@@ -67,7 +71,12 @@ router.post("/time-tracking/master-clock/stop", async (req, res): Promise<void> 
   const now = new Date();
   const totalMinutes = Math.floor((now.getTime() - active.clockedInAt.getTime()) / 60000);
 
-  await db.update(timeEntriesTable).set({ clockedOutAt: now, totalMinutes }).where(eq(timeEntriesTable.id, active.id));
+  await db.update(timeEntriesTable).set({
+    clockedOutAt: now,
+    totalMinutes,
+    clockOutLat: lat != null ? Number(lat) : null,
+    clockOutLng: lng != null ? Number(lng) : null,
+  }).where(eq(timeEntriesTable.id, active.id));
 
   res.json({ userId, isClockedIn: false, clockedInAt: null, totalMinutesToday: totalMinutes, entryId: null });
 });
@@ -93,9 +102,27 @@ router.get("/time-tracking/sub-timers", async (req, res): Promise<void> => {
 router.post("/time-tracking/sub-timers", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
-  const { label, type, jobId } = req.body;
+  const { label, type, jobId, lat, lng } = req.body;
 
   if (!label || !type) { res.status(400).json({ error: "label and type required" }); return; }
+
+  // Detect late arrival: compare now vs job's scheduledAt (5-min grace period)
+  let isLateArrival = false;
+  let lateByMinutes: number | null = null;
+  if (jobId) {
+    const jobIdNum = parseInt(jobId, 10);
+    const [job] = await db
+      .select({ scheduledAt: jobsTable.scheduledAt })
+      .from(jobsTable)
+      .where(and(eq(jobsTable.id, jobIdNum), eq(jobsTable.tenantId, tenantId)));
+    if (job?.scheduledAt) {
+      const diffMin = Math.floor((Date.now() - job.scheduledAt.getTime()) / 60000);
+      if (diffMin > 5) {
+        isLateArrival = true;
+        lateByMinutes = diffMin;
+      }
+    }
+  }
 
   // Atomically stop any active timers and start the new one
   const timer = await db.transaction(async (tx) => {
@@ -123,18 +150,31 @@ router.post("/time-tracking/sub-timers", async (req, res): Promise<void> => {
       label,
       type,
       jobId: jobId ? parseInt(jobId, 10) : null,
+      startLat: lat != null ? Number(lat) : null,
+      startLng: lng != null ? Number(lng) : null,
+      isLateArrival,
+      lateByMinutes,
     }).returning();
 
     return newTimer;
   });
 
-  res.status(201).json({ ...timer, startedAt: timer.startedAt.toISOString(), stoppedAt: null, createdAt: timer.createdAt.toISOString() });
+  res.status(201).json({
+    ...timer,
+    startedAt: timer.startedAt.toISOString(),
+    stoppedAt: null,
+    adjustedStartedAt: null,
+    adjustedStoppedAt: null,
+    jobScheduledAt: null,
+    createdAt: timer.createdAt.toISOString(),
+  });
 });
 
 router.post("/time-tracking/sub-timers/:id/stop", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
+  const { lat, lng } = req.body ?? {};
 
   const [timer] = await db.select().from(subTimersTable).where(and(eq(subTimersTable.id, id), eq(subTimersTable.tenantId, tenantId)));
   if (!timer) { res.status(404).json({ error: "Not found" }); return; }
@@ -142,8 +182,66 @@ router.post("/time-tracking/sub-timers/:id/stop", async (req, res): Promise<void
   const now = new Date();
   const elapsed = Math.floor((now.getTime() - timer.startedAt.getTime()) / 1000);
 
-  const [updated] = await db.update(subTimersTable).set({ stoppedAt: now, elapsedSeconds: elapsed, isActive: false }).where(eq(subTimersTable.id, id)).returning();
-  res.json({ ...updated, startedAt: updated.startedAt.toISOString(), stoppedAt: updated.stoppedAt?.toISOString() ?? null, createdAt: updated.createdAt.toISOString() });
+  const [updated] = await db.update(subTimersTable).set({
+    stoppedAt: now,
+    elapsedSeconds: elapsed,
+    isActive: false,
+    endLat: lat != null ? Number(lat) : null,
+    endLng: lng != null ? Number(lng) : null,
+  }).where(eq(subTimersTable.id, id)).returning();
+
+  // When a late-arrival job timer is stopped, fetch the job's scheduledAt so the
+  // field app can show the confirmation/adjustment dialog.
+  let jobScheduledAt: string | null = null;
+  if (updated.isLateArrival && updated.jobId) {
+    const [job] = await db.select({ scheduledAt: jobsTable.scheduledAt }).from(jobsTable).where(eq(jobsTable.id, updated.jobId));
+    jobScheduledAt = job?.scheduledAt?.toISOString() ?? null;
+  }
+
+  res.json({
+    ...updated,
+    startedAt: updated.startedAt.toISOString(),
+    stoppedAt: updated.stoppedAt?.toISOString() ?? null,
+    adjustedStartedAt: updated.adjustedStartedAt?.toISOString() ?? null,
+    adjustedStoppedAt: updated.adjustedStoppedAt?.toISOString() ?? null,
+    createdAt: updated.createdAt.toISOString(),
+    jobScheduledAt,
+  });
+});
+
+router.patch("/time-tracking/sub-timers/:id/adjust", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+  const { adjustedStartedAt, adjustedStoppedAt } = req.body ?? {};
+
+  const [timer] = await db.select().from(subTimersTable).where(and(
+    eq(subTimersTable.id, id),
+    eq(subTimersTable.tenantId, tenantId),
+    eq(subTimersTable.userId, userId),
+  ));
+  if (!timer) { res.status(404).json({ error: "Not found" }); return; }
+
+  const updates: Partial<typeof subTimersTable.$inferInsert> = {};
+  if (adjustedStartedAt) updates.adjustedStartedAt = new Date(adjustedStartedAt);
+  if (adjustedStoppedAt) updates.adjustedStoppedAt = new Date(adjustedStoppedAt);
+
+  if (Object.keys(updates).length === 0) {
+    res.status(400).json({ error: "No adjustment values provided" });
+    return;
+  }
+
+  const [updated] = await db.update(subTimersTable).set(updates).where(eq(subTimersTable.id, id)).returning();
+  res.json({
+    ...updated,
+    startedAt: updated.startedAt.toISOString(),
+    stoppedAt: updated.stoppedAt?.toISOString() ?? null,
+    adjustedStartedAt: updated.adjustedStartedAt?.toISOString() ?? null,
+    adjustedStoppedAt: updated.adjustedStoppedAt?.toISOString() ?? null,
+    createdAt: updated.createdAt.toISOString(),
+    jobScheduledAt: null,
+  });
 });
 
 router.get("/time-tracking/entries", async (req, res): Promise<void> => {
@@ -215,6 +313,11 @@ router.get("/time-tracking/today-schedule", async (req, res): Promise<void> => {
       scheduledAt: jobsTable.scheduledAt,
       customerName: customersTable.name,
       propertyAddress: propertiesTable.address,
+      propertyLat: propertiesTable.lat,
+      propertyLng: propertiesTable.lng,
+      propertyGeofenceLat: propertiesTable.geofenceLat,
+      propertyGeofenceLng: propertiesTable.geofenceLng,
+      propertyGeofenceRadius: propertiesTable.geofenceRadius,
     })
     .from(jobsTable)
     .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
@@ -265,6 +368,11 @@ router.get("/time-tracking/today-schedule", async (req, res): Promise<void> => {
       activeTimerId: timer?.id ?? null,
       activeTimerStartedAt: timer?.startedAt.toISOString() ?? null,
       elapsedSeconds: elapsed,
+      propertyLat: j.propertyLat ?? null,
+      propertyLng: j.propertyLng ?? null,
+      propertyGeofenceLat: j.propertyGeofenceLat ?? null,
+      propertyGeofenceLng: j.propertyGeofenceLng ?? null,
+      propertyGeofenceRadius: j.propertyGeofenceRadius ?? null,
     });
   }
 

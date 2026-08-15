@@ -11,4 +11,6 @@ export interface SubTimerInput {
   label: string;
   type: SubTimerInputType;
   jobId?: number;
+  lat?: number;
+  lng?: number;
 }

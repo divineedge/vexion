@@ -29,3 +29,5 @@
 - [Blueprint PDF file size storage](blueprint-pdf-size-storage.md) — pdfSizeBytes lives on media_attachments, not a column on blueprintsTable; update both sides when replacing a PDF
 - [Blueprint canvas live map sync](blueprint-canvas-live-map-sync.md) — Leaflet map is a non-interactive rendering slave driven by the existing viewTransform + a lat/lng anchor, not the interaction owner
 - [Multi-tenant auth and signup](multi-tenant-auth.md) — bcrypt login, /auth/register creates tenant+owner, dev seed users bypass bcrypt with passwordHash='mock'
+- [Master clock mutation variables](master-clock-mutation-vars.md) — adding requestBody to startMasterClock/stopMasterClock changes generated mutation variable type from void to {data?: ClockLocationInput}; pass {} not undefined at all call sites
+- [Metro orval cache invalidation](metro-orval-cache.md) — orval's "clean output folder" step transiently deletes generated files; Metro watcher loses resolution; workflow restart required after codegen

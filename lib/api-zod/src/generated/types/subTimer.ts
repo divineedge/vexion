@@ -19,4 +19,21 @@ export interface SubTimer {
   stoppedAt?: string | null;
   elapsedSeconds?: number;
   isActive: boolean;
+  /** @nullable */
+  startLat?: number | null;
+  /** @nullable */
+  startLng?: number | null;
+  /** @nullable */
+  endLat?: number | null;
+  /** @nullable */
+  endLng?: number | null;
+  isLateArrival: boolean;
+  /** @nullable */
+  lateByMinutes?: number | null;
+  /** @nullable */
+  adjustedStartedAt?: string | null;
+  /** @nullable */
+  adjustedStoppedAt?: string | null;
+  /** @nullable */
+  jobScheduledAt?: string | null;
 }

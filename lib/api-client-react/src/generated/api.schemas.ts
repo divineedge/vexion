@@ -2327,6 +2327,23 @@ export interface SubTimer {
   stoppedAt?: string | null;
   elapsedSeconds?: number;
   isActive: boolean;
+  /** @nullable */
+  startLat?: number | null;
+  /** @nullable */
+  startLng?: number | null;
+  /** @nullable */
+  endLat?: number | null;
+  /** @nullable */
+  endLng?: number | null;
+  isLateArrival: boolean;
+  /** @nullable */
+  lateByMinutes?: number | null;
+  /** @nullable */
+  adjustedStartedAt?: string | null;
+  /** @nullable */
+  adjustedStoppedAt?: string | null;
+  /** @nullable */
+  jobScheduledAt?: string | null;
 }
 
 export type ScheduleItemKind = typeof ScheduleItemKind[keyof typeof ScheduleItemKind];
@@ -2353,6 +2370,16 @@ export interface ScheduleItem {
   /** @nullable */
   activeTimerStartedAt?: string | null;
   elapsedSeconds?: number;
+  /** @nullable */
+  propertyLat?: number | null;
+  /** @nullable */
+  propertyLng?: number | null;
+  /** @nullable */
+  propertyGeofenceLat?: number | null;
+  /** @nullable */
+  propertyGeofenceLng?: number | null;
+  /** @nullable */
+  propertyGeofenceRadius?: number | null;
 }
 
 export type SubTimerInputType = typeof SubTimerInputType[keyof typeof SubTimerInputType];
@@ -2368,6 +2395,18 @@ export interface SubTimerInput {
   label: string;
   type: SubTimerInputType;
   jobId?: number;
+  lat?: number;
+  lng?: number;
+}
+
+export interface ClockLocationInput {
+  lat?: number;
+  lng?: number;
+}
+
+export interface SubTimerAdjustInput {
+  adjustedStartedAt?: string;
+  adjustedStoppedAt?: string;
 }
 
 export interface TimeEntry {

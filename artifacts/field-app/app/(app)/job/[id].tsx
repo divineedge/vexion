@@ -810,9 +810,9 @@ export default function JobDetailScreen() {
                 onPress={async () => {
                   await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   if (masterClock?.isClockedIn) {
-                    stopMasterClock.mutate(undefined, { onSuccess: () => refetchMasterClock() });
+                    stopMasterClock.mutate({}, { onSuccess: () => refetchMasterClock() });
                   } else {
-                    startMasterClock.mutate(undefined, { onSuccess: () => refetchMasterClock() });
+                    startMasterClock.mutate({}, { onSuccess: () => refetchMasterClock() });
                   }
                 }}
               >

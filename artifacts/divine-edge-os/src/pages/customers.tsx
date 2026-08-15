@@ -18,7 +18,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
-import { Search, Plus, Building, Phone, Mail, Save, X, User, Tag, FileText, Home, AlertTriangle, Filter, Zap, MapPin, CreditCard, DollarSign, Briefcase } from 'lucide-react';
+import { Search, Plus, Building, Phone, Mail, Save, X, User, Tag, FileText, Home, AlertTriangle, Filter, Zap, MapPin, CreditCard, DollarSign, Briefcase, MoreHorizontal } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useLocation } from 'wouter';
 import { useDebounce } from '@/hooks/use-debounce';
 import { toast } from 'sonner';
@@ -585,18 +586,27 @@ export default function CustomersPage() {
                       <TableCell className="text-right text-sm text-muted-foreground whitespace-nowrap" title={customer.createdAt ? `Customer since ${new Date(customer.createdAt).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}` : undefined}>
                         {customer.createdAt ? new Date(customer.createdAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) : '—'}
                       </TableCell>
-                      <TableCell className="w-24 p-1">
-                        <div className="flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            title="New job"
-                            className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-                            onClick={e => { e.stopPropagation(); setLocation(`/schedule?action=create&customerId=${customer.id}`); }}
-                          ><Briefcase className="w-3.5 h-3.5" /></button>
-                          <button
-                            title="New invoice"
-                            className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-                            onClick={e => { e.stopPropagation(); setLocation(`/financials?action=create&customerId=${customer.id}`); }}
-                          ><FileText className="w-3.5 h-3.5" /></button>
+                      <TableCell className="w-12 p-1">
+                        <div className="flex items-center justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                title="Customer actions"
+                                className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                                onClick={e => e.stopPropagation()}
+                              >
+                                <MoreHorizontal className="w-4 h-4" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" onClick={e => e.stopPropagation()}>
+                              <DropdownMenuItem onClick={() => setLocation(`/schedule?action=create&customerId=${customer.id}`)}>
+                                <Briefcase className="w-4 h-4 mr-2 text-muted-foreground" /> New Job
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setLocation(`/financials?action=create&customerId=${customer.id}`)}>
+                                <FileText className="w-4 h-4 mr-2 text-muted-foreground" /> New Invoice
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </TableCell>
                     </TableRow>

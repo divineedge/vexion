@@ -41,6 +41,8 @@ export const invoicesTable = pgTable("invoices", {
   publicToken: text("public_token").unique(),
   /** Array of offsetDays values (from tenant.paymentReminderSchedule) already sent for this invoice */
   paymentRemindersSent: jsonb("payment_reminders_sent").default("[]"),
+  /** Explicit invoice date (when the invoice is issued); defaults to createdAt when null */
+  invoiceDate: date("invoice_date"),
   /** FK to invoice_templates when this invoice was created from a template */
   invoiceTemplateId: integer("invoice_template_id"),
   /** Visual layout variant for the public invoice page: 'clean' | 'detailed' | 'compact' */

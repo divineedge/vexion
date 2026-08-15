@@ -163,6 +163,7 @@ function formatInvoice(i: typeof invoicesTable.$inferSelect, customerName?: stri
     lineItems: (i.lineItems as unknown[]) ?? [],
     customerName: customerName ?? null,
     planId: i.planId ?? null,
+    invoiceDate: i.invoiceDate ?? null,
     dueDate: i.dueDate?.toISOString() ?? null,
     paidAt: i.paidAt?.toISOString() ?? null,
     stripePaymentUrl: i.stripePaymentUrl ?? null,
@@ -291,7 +292,7 @@ router.post("/invoices/from-job/:jobId", async (req, res): Promise<void> => {
 
 router.post("/invoices", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { customerId, jobId, notes, dueDate, lineItems: bodyLineItems, invoiceTemplateId } = req.body;
+  const { customerId, jobId, notes, dueDate, invoiceDate, lineItems: bodyLineItems, invoiceTemplateId } = req.body;
   if (!customerId) { res.status(400).json({ error: "customerId required" }); return; }
 
   // Resolve template — explicit invoiceTemplateId > tenant default
@@ -355,6 +356,7 @@ router.post("/invoices", async (req, res): Promise<void> => {
     tax,
     total,
     notes: notes ?? null,
+    invoiceDate: invoiceDate ? invoiceDate : null,
     dueDate: dueDate ? new Date(dueDate) : null,
     lineItems,
     invoiceTemplateId: resolvedTemplateId,

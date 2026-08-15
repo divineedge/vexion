@@ -1557,6 +1557,36 @@ export interface Job {
   createdAt: string;
 }
 
+export interface JobEquipmentUse {
+  id: number;
+  tenantId: number;
+  jobId: number;
+  equipmentId?: number | null;
+  equipmentName: string;
+  hoursUsed: number;
+  notes?: string | null;
+  createdAt: string;
+}
+
+export interface JobEquipmentUseInput {
+  equipmentName: string;
+  equipmentId?: number;
+  hoursUsed: number;
+  notes?: string;
+}
+
+export interface EquipmentUseHistoryItem {
+  id: number;
+  jobId: number;
+  equipmentName: string;
+  equipmentId?: number | null;
+  hoursUsed: number;
+  notes?: string | null;
+  createdAt: string;
+  jobTitle?: string | null;
+  jobScheduledAt?: string | null;
+}
+
 export interface JobMessage {
   id: number;
   tenantId: number;

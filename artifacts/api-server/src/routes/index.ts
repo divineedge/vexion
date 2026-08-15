@@ -53,6 +53,7 @@ import portalMessagesRouter from "./portalMessages";
 import staffNotesRouter from "./staffNotes";
 import invoiceTemplatesRouter from "./invoiceTemplates";
 import jobMessagesRouter from "./jobMessages";
+import jobEquipmentUsesRouter from "./jobEquipmentUses";
 
 const router: IRouter = Router();
 
@@ -110,5 +111,6 @@ router.use(portalMessagesRouter);
 router.use(staffNotesRouter);
 router.use(invoiceTemplatesRouter);
 router.use(jobMessagesRouter);
+router.use(jobEquipmentUsesRouter);
 
 export default router;

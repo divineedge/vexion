@@ -2159,6 +2159,84 @@ export const RemoveJobPartResponse = zod.object({
 
 
 /**
+ * @summary List equipment hours logged on a job
+ */
+export const ListJobEquipmentUsesParams = zod.object({
+  "jobId": zod.coerce.number()
+})
+
+export const ListJobEquipmentUsesResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "jobId": zod.number(),
+  "equipmentId": zod.number().nullish(),
+  "equipmentName": zod.string(),
+  "hoursUsed": zod.number(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+export const ListJobEquipmentUsesResponse = zod.array(ListJobEquipmentUsesResponseItem)
+
+
+/**
+ * @summary Log equipment hours on a job
+ */
+export const CreateJobEquipmentUseParams = zod.object({
+  "jobId": zod.coerce.number()
+})
+
+export const CreateJobEquipmentUseBody = zod.object({
+  "equipmentName": zod.string(),
+  "equipmentId": zod.number().optional(),
+  "hoursUsed": zod.number(),
+  "notes": zod.string().optional()
+})
+
+export const CreateJobEquipmentUseResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "jobId": zod.number(),
+  "equipmentId": zod.number().nullish(),
+  "equipmentName": zod.string(),
+  "hoursUsed": zod.number(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Remove an equipment-hours record from a job
+ */
+export const DeleteJobEquipmentUseParams = zod.object({
+  "jobId": zod.coerce.number(),
+  "id": zod.coerce.number()
+})
+
+export const DeleteJobEquipmentUseResponse = zod.void()
+
+
+/**
+ * @summary List all jobs where this equipment was used (Use history tab)
+ */
+export const ListEquipmentUsesParams = zod.object({
+  "equipmentId": zod.coerce.number()
+})
+
+export const ListEquipmentUsesResponseItem = zod.object({
+  "id": zod.number(),
+  "jobId": zod.number(),
+  "equipmentName": zod.string(),
+  "equipmentId": zod.number().nullish(),
+  "hoursUsed": zod.number(),
+  "notes": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "jobTitle": zod.string().nullish(),
+  "jobScheduledAt": zod.string().nullish()
+})
+export const ListEquipmentUsesResponse = zod.array(ListEquipmentUsesResponseItem)
+
+
+/**
  * @summary Get unread message counts for all jobs with unread messages (staff only)
  */
 export const GetJobMessagesUnreadSummaryResponseItem = zod.object({

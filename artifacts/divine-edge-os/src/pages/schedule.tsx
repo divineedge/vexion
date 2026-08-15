@@ -39,6 +39,9 @@ import {
   useListJobMessages, getListJobMessagesQueryKey,
   useCreateJobMessage,
   useGetJobMessagesUnreadSummary, getGetJobMessagesUnreadSummaryQueryKey,
+  useListJobEquipmentUses, getListJobEquipmentUsesQueryKey,
+  useCreateJobEquipmentUse, useDeleteJobEquipmentUse,
+  useListEquipment, getListEquipmentQueryKey,
 } from '@workspace/api-client-react';
 import { useMutation } from '@tanstack/react-query';
 import MediaGallery from '@/components/media/MediaGallery';
@@ -61,7 +64,7 @@ import {
   ChevronLeft, ChevronRight, Clock, MapPin, User, Calendar,
   DollarSign, ClipboardList, Plus, Users, FlaskConical, Trash2, AlertTriangle,
   Bell, BellOff, Send, Package, Search, Images, RefreshCw, Pause, Play, X,
-  SkipForward, ListEnd, Square, Timer, Warehouse, Truck,
+  SkipForward, ListEnd, Square, Timer, Warehouse, Truck, Wrench,
   Route as RouteIcon, ExternalLink, PhoneCall, CheckCircle, FileText, Phone, Mail, Copy,
   Ban, CreditCard, CalendarSearch, MessageSquare,
 } from 'lucide-react';
@@ -451,6 +454,13 @@ export default function SchedulePage() {
   const [skipReasonId, setSkipReasonId] = useState<number | null>(null);
   const [skipNote, setSkipNote] = useState('');
   const [deleteJobPending, setDeleteJobPending] = useState(false);
+
+  // ── Job equipment hours ───────────────────────────────────────────────────
+  const [addingEquipHours, setAddingEquipHours] = useState(false);
+  const [equipHoursForm, setEquipHoursForm] = useState({ equipmentName: '', equipmentId: '' as string | number, hoursUsed: '', notes: '' });
+
+  // ── Waitlist ──────────────────────────────────────────────────────────────
+  const [waitlistOpen, setWaitlistOpen] = useState(false);
   const [completeInvoiceOpen, setCompleteInvoiceOpen] = useState(false);
   const [completeInvoiceStep, setCompleteInvoiceStep] = useState<'review' | 'pay'>('review');
   const [onSitePaymentMethod, setOnSitePaymentMethod] = useState('cash');
@@ -486,6 +496,55 @@ export default function SchedulePage() {
 
   // Clear input when switching jobs
   React.useEffect(() => { setMsgInput(''); }, [selectedJobId]);
+
+  // ── Job equipment hours ───────────────────────────────────────────────────
+  const { data: jobEquipUses = [], refetch: refetchEquipUses } = useListJobEquipmentUses(
+    selectedJobId!,
+    { query: { enabled: selectedJobId != null, queryKey: getListJobEquipmentUsesQueryKey(selectedJobId ?? 0) } },
+  );
+  const createEquipUse = useCreateJobEquipmentUse();
+  const deleteEquipUse = useDeleteJobEquipmentUse();
+
+  // Equipment list for the picker in the equipment-hours form
+  const { data: allEquipment = [] } = useListEquipment(
+    {},
+    { query: { queryKey: getListEquipmentQueryKey(), staleTime: 120000 } },
+  );
+
+  function handleAddEquipHours() {
+    if (!selectedJobId || !equipHoursForm.equipmentName.trim() || !equipHoursForm.hoursUsed) return;
+    const hours = parseFloat(equipHoursForm.hoursUsed);
+    if (isNaN(hours) || hours <= 0) { toast.error('Enter a valid number of hours'); return; }
+    const equipId = typeof equipHoursForm.equipmentId === 'number'
+      ? equipHoursForm.equipmentId
+      : equipHoursForm.equipmentId ? parseInt(equipHoursForm.equipmentId as string, 10) : undefined;
+    createEquipUse.mutate(
+      {
+        jobId: selectedJobId,
+        data: {
+          equipmentName: equipHoursForm.equipmentName.trim(),
+          hoursUsed: hours,
+          ...(equipId && !isNaN(equipId) ? { equipmentId: equipId } : {}),
+          ...(equipHoursForm.notes.trim() ? { notes: equipHoursForm.notes.trim() } : {}),
+        },
+      },
+      {
+        onSuccess: () => {
+          toast.success('Equipment hours logged');
+          setEquipHoursForm({ equipmentName: '', equipmentId: '', hoursUsed: '', notes: '' });
+          setAddingEquipHours(false);
+          refetchEquipUses();
+        },
+        onError: () => toast.error('Failed to log equipment hours'),
+      },
+    );
+  }
+
+  // ── Waitlist ──────────────────────────────────────────────────────────────
+  const { data: waitlistJobs = [], refetch: refetchWaitlist } = useListJobs(
+    { status: 'waitlist' },
+    { query: { enabled: waitlistOpen, queryKey: ['jobs', 'waitlist'] } },
+  );
 
   function handleSendMessage() {
     const body = msgInput.trim();
@@ -807,6 +866,18 @@ export default function SchedulePage() {
             title="Show only jobs not assigned to any route"
           >
             <MapPin className="w-3 h-3" /> No Route
+          </Button>
+          <Button
+            variant={waitlistOpen ? 'default' : 'outline'}
+            size="sm"
+            className="h-8 text-xs px-3 gap-1.5"
+            onClick={() => setWaitlistOpen(v => !v)}
+            title="View and manage the job waitlist"
+          >
+            <ListEnd className="w-3 h-3" /> Waitlist
+            {waitlistJobs.length > 0 && (
+              <span className="ml-1 bg-amber-500 text-white rounded-full text-[10px] w-4 h-4 flex items-center justify-center font-bold shrink-0">{waitlistJobs.length > 99 ? '99+' : waitlistJobs.length}</span>
+            )}
           </Button>
           {crews.length > 0 && (
             <Select value={crewFilter} onValueChange={setCrewFilter}>
@@ -2277,6 +2348,123 @@ export default function SchedulePage() {
                   )}
                 </div>
 
+                {/* Equipment hours */}
+                <Separator />
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1.5">
+                      <Wrench className="w-3.5 h-3.5" /> Equipment Hours
+                      {jobEquipUses.length > 0 && (
+                        <Badge variant="secondary" className="h-4 px-1 text-[10px]">{jobEquipUses.length}</Badge>
+                      )}
+                      {jobEquipUses.length > 0 && (
+                        <span className="text-xs text-muted-foreground font-normal ml-1">
+                          {jobEquipUses.reduce((s, u) => s + u.hoursUsed, 0).toFixed(1)} h total
+                        </span>
+                      )}
+                    </p>
+                    {!isTechnician && !addingEquipHours && (
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1"
+                        title="Log equipment used on this job"
+                        onClick={() => setAddingEquipHours(true)}>
+                        <Plus className="w-3 h-3" /> Log
+                      </Button>
+                    )}
+                  </div>
+
+                  {addingEquipHours && (
+                    <div className="rounded-lg border p-3 space-y-2 bg-muted/30">
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium">Equipment *</label>
+                        {allEquipment.length > 0 ? (
+                          <Select
+                            value={typeof equipHoursForm.equipmentId === 'number' ? String(equipHoursForm.equipmentId) : (equipHoursForm.equipmentId as string)}
+                            onValueChange={val => {
+                              const eq = allEquipment.find(e => e.id === parseInt(val, 10));
+                              setEquipHoursForm(f => ({ ...f, equipmentId: parseInt(val, 10), equipmentName: eq?.name ?? f.equipmentName }));
+                            }}
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue placeholder="Select equipment…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {allEquipment.map(e => (
+                                <SelectItem key={e.id} value={String(e.id)} className="text-xs">{e.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Input
+                            className="h-8 text-xs"
+                            placeholder="Equipment name"
+                            value={equipHoursForm.equipmentName}
+                            onChange={e => setEquipHoursForm(f => ({ ...f, equipmentName: e.target.value }))}
+                          />
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium">Hours *</label>
+                          <Input
+                            type="number" min="0.1" step="0.1" className="h-8 text-xs"
+                            placeholder="e.g. 2.5"
+                            value={equipHoursForm.hoursUsed}
+                            onChange={e => setEquipHoursForm(f => ({ ...f, hoursUsed: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium">Notes</label>
+                          <Input
+                            className="h-8 text-xs"
+                            placeholder="Optional"
+                            value={equipHoursForm.notes}
+                            onChange={e => setEquipHoursForm(f => ({ ...f, notes: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-2 justify-end">
+                        <Button size="sm" variant="outline" className="h-7 text-xs"
+                          onClick={() => { setAddingEquipHours(false); setEquipHoursForm({ equipmentName: '', equipmentId: '', hoursUsed: '', notes: '' }); }}>
+                          Cancel
+                        </Button>
+                        <Button size="sm" className="h-7 text-xs gap-1"
+                          disabled={!equipHoursForm.equipmentName || !equipHoursForm.hoursUsed || createEquipUse.isPending}
+                          onClick={handleAddEquipHours}>
+                          {createEquipUse.isPending ? 'Saving…' : 'Save'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {jobEquipUses.length > 0 && (
+                    <div className="rounded-lg border divide-y text-sm">
+                      {jobEquipUses.map(use => (
+                        <div key={use.id} className="flex items-center justify-between px-3 py-2">
+                          <div className="flex-1 min-w-0">
+                            <span className="font-medium truncate block" title={use.equipmentName}>{use.equipmentName}</span>
+                            {use.notes && <span className="text-xs text-muted-foreground italic">{use.notes}</span>}
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0 ml-2">
+                            <span className="font-semibold tabular-nums">{use.hoursUsed.toFixed(1)} h</span>
+                            {!isTechnician && (
+                              <button
+                                className="text-muted-foreground/40 hover:text-destructive transition-colors"
+                                title="Remove this equipment entry"
+                                onClick={() => deleteEquipUse.mutate(
+                                  { jobId: selectedJobId!, id: use.id },
+                                  { onSuccess: () => { toast.success('Removed'); refetchEquipUses(); }, onError: () => toast.error('Failed to remove') }
+                                )}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 {/* Supplies needed for job */}
                 <Separator />
                 <div className="space-y-2">
@@ -3408,6 +3596,76 @@ export default function SchedulePage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* ── Waitlist sheet ─────────────────────────────────────────────────── */}
+      <Sheet open={waitlistOpen} onOpenChange={setWaitlistOpen}>
+        <SheetContent side="right" className="w-full max-w-md flex flex-col gap-0 p-0">
+          <SheetHeader className="px-6 pt-6 pb-4 border-b shrink-0">
+            <SheetTitle className="flex items-center gap-2">
+              <ListEnd className="w-5 h-5 text-amber-500" />
+              Job Waitlist
+              {waitlistJobs.length > 0 && (
+                <Badge className="bg-amber-500 text-white border-none text-xs">{waitlistJobs.length}</Badge>
+              )}
+            </SheetTitle>
+            <SheetDescription>
+              Jobs queued for scheduling. Open a job to assign a date and move it to the schedule.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto p-6 space-y-3">
+            {waitlistJobs.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <ListEnd className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p className="text-sm font-medium">Waitlist is empty</p>
+                <p className="text-xs mt-1">When creating a job, set its status to "Waitlist" to hold it here until a date is set.</p>
+              </div>
+            ) : (
+              waitlistJobs.map((job: any) => (
+                <div
+                  key={job.id}
+                  className="rounded-lg border p-4 space-y-2 hover:border-primary/40 transition-colors cursor-pointer bg-card"
+                  onClick={() => { setSelectedJobId(job.id); setWaitlistOpen(false); }}
+                  title="Click to open job detail"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{job.title}</p>
+                      {job.customerName && (
+                        <p className="text-xs text-muted-foreground truncate">{job.customerName}</p>
+                      )}
+                    </div>
+                    <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-600 shrink-0">Waitlist</Badge>
+                  </div>
+                  {job.propertyAddress && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <MapPin className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{job.propertyAddress}</span>
+                    </p>
+                  )}
+                  {job.notes && (
+                    <p className="text-xs text-muted-foreground line-clamp-2 italic">{job.notes}</p>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">Added {new Date(job.createdAt ?? job.scheduledAt).toLocaleDateString()}</span>
+                    <Button size="sm" variant="outline" className="h-6 text-xs gap-1"
+                      onClick={e => { e.stopPropagation(); setSelectedJobId(job.id); setWaitlistOpen(false); }}>
+                      <Calendar className="w-3 h-3" /> Schedule
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          {waitlistJobs.length > 0 && (
+            <div className="px-6 py-4 border-t shrink-0">
+              <Button size="sm" variant="ghost" className="w-full h-8 text-xs gap-1.5"
+                onClick={() => refetchWaitlist()}>
+                <RefreshCw className="w-3.5 h-3.5" /> Refresh
+              </Button>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

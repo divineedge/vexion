@@ -2,10 +2,10 @@ import {
   LayoutDashboard, Users, Building, CalendarDays, DraftingCompass, PhoneCall,
   UserCheck, Clock, CheckSquare, Gauge, Banknote,
   PackageSearch, Briefcase, Wrench,
-  DollarSign, Banknote as InvoiceIcon,
+  DollarSign,
   Megaphone, FlaskConical,
   Settings, FileText, Footprints, BarChart3, Star, Repeat, ListTodo,
-  Map, ClipboardList, PhoneMissed, PhoneIncoming, Inbox,
+  Map, ClipboardList, PhoneMissed, PhoneIncoming, Inbox, Layers,
   LucideIcon,
 } from 'lucide-react';
 
@@ -25,50 +25,55 @@ export interface NavSection {
   items: NavItem[];
 }
 
-/** Flat nav shown to technicians — unchanged */
+/** Flat nav shown to technicians */
 export const techNavItems: NavItem[] = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Schedule',  href: '/schedule',  icon: CalendarDays },
+  { name: 'Dashboard',    href: '/dashboard',    icon: LayoutDashboard },
+  { name: 'Schedule',     href: '/schedule',     icon: CalendarDays },
   { name: 'Time Tracking', href: '/time-tracking', icon: Clock },
-  { name: 'Tasks',     href: '/tasks',     icon: ListTodo },
-  { name: 'Callbacks', href: '/callbacks', icon: PhoneCall },
-  { name: 'Daily Tasks', href: '/daily-tasks', icon: ClipboardList },
+  { name: 'Tasks',        href: '/tasks',        icon: ListTodo },
+  { name: 'Callbacks',    href: '/callbacks',    icon: PhoneCall },
+  { name: 'Daily Tasks',  href: '/daily-tasks',  icon: ClipboardList },
+];
+
+/**
+ * Dashboard and Settings are rendered as standalone links in AppLayout —
+ * not inside any collapsible section. They are listed here only so
+ * buildNavIndex can include them in breadcrumb lookups.
+ */
+export const standaloneNavItems: NavItem[] = [
+  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { name: 'Settings',  href: '/settings',  icon: Settings },
 ];
 
 /** Sectioned nav for admin / office / crew-manager roles */
 export const adminNavSections: NavSection[] = [
   {
-    id: 'people-jobs',
-    label: 'People & Jobs',
-    /** Visible to all office-level roles and crew managers; hidden from technicians via flat nav */
+    id: 'customers',
+    label: 'Customers',
     roles: ['canManageOffice', 'isCrewManager'],
     items: [
-      { name: 'Dashboard',      href: '/dashboard',      icon: LayoutDashboard },
-      { name: 'Customers',      href: '/customers',      icon: Users },
-      { name: 'Properties',     href: '/properties',     icon: Building },
-      { name: 'Schedule',       href: '/schedule',       icon: CalendarDays },
-      { name: 'Estimates',      href: '/estimates',      icon: FileText },
-      { name: 'Visits',         href: '/visits',         icon: Footprints },
-      { name: 'Blueprints',     href: '/blueprints',     icon: DraftingCompass },
-      { name: 'Callbacks',      href: '/callbacks',      icon: PhoneCall },
-      { name: 'Calls',          href: '/calls',          icon: PhoneIncoming },
-      { name: 'Tasks',          href: '/tasks',          icon: ListTodo },
-      { name: 'Daily Tasks',    href: '/daily-tasks',    icon: ClipboardList },
+      { name: 'Customers',       href: '/customers',     icon: Users },
+      { name: 'Properties',      href: '/properties',    icon: Building },
+      { name: 'Schedule',        href: '/schedule',      icon: CalendarDays },
+      { name: 'Estimates',       href: '/estimates',     icon: FileText },
+      { name: 'Visits',          href: '/visits',        icon: Footprints },
+      { name: 'Calls',           href: '/calls',         icon: PhoneIncoming },
+      { name: 'Daily Tasks',     href: '/daily-tasks',   icon: ClipboardList },
       { name: 'Follow-Up Queue', href: '/followup-queue', icon: PhoneMissed },
-      { name: 'Portal Inbox',    href: '/portal-inbox',   icon: Inbox },
+      { name: 'Portal Inbox',    href: '/portal-inbox',  icon: Inbox },
     ],
   },
   {
     id: 'field-ops',
     label: 'Field Ops',
-    /** Crew managers need full Field Ops access (Crews, Efficiency, P4P Payroll, etc.) */
     roles: ['canManageOffice', 'isCrewManager'],
     items: [
-      { name: 'Crews',          href: '/crews',          icon: UserCheck },
-      { name: 'Routes',         href: '/routes',         icon: Map },
-      { name: 'Time Tracking',  href: '/time-tracking',  icon: Clock },
-      { name: 'Efficiency',     href: '/efficiency',     icon: Gauge },
-      { name: 'P4P Payroll',    href: '/payroll',        icon: Banknote },
+      { name: 'Crews',         href: '/crews',         icon: UserCheck },
+      { name: 'Routes',        href: '/routes',        icon: Map },
+      { name: 'Blueprints',    href: '/blueprints',    icon: DraftingCompass },
+      { name: 'Time Tracking', href: '/time-tracking', icon: Clock },
+      { name: 'Efficiency',    href: '/efficiency',    icon: Gauge },
+      { name: 'P4P Payroll',   href: '/payroll',       icon: Banknote },
     ],
   },
   {
@@ -76,9 +81,8 @@ export const adminNavSections: NavSection[] = [
     label: 'Inventory & Equipment',
     roles: ['canManageOffice'],
     items: [
-      { name: 'Inventory',  href: '/inventory',  icon: PackageSearch },
-      { name: 'Services',   href: '/services',   icon: Briefcase,    permissionKey: 'pages.services' },
-      { name: 'Equipment',  href: '/equipment',  icon: Wrench,       permissionKey: 'pages.equipment' },
+      { name: 'Inventory', href: '/inventory', icon: PackageSearch },
+      { name: 'Equipment', href: '/equipment', icon: Wrench, permissionKey: 'pages.equipment' },
     ],
   },
   {
@@ -88,7 +92,16 @@ export const adminNavSections: NavSection[] = [
     items: [
       { name: 'Financials', href: '/financials', icon: DollarSign, permissionKey: 'pages.billing' },
       { name: 'Reports',    href: '/reports',    icon: BarChart3,  permissionKey: 'pages.reports' },
-      { name: 'Plans',      href: '/plans',      icon: Repeat },
+    ],
+  },
+  {
+    id: 'service-breakdown',
+    label: 'Service Breakdown',
+    roles: ['canManageOffice'],
+    items: [
+      { name: 'Services',  href: '/services',  icon: Briefcase,   permissionKey: 'pages.services' },
+      { name: 'Plans',     href: '/plans',     icon: Repeat },
+      { name: 'Chemicals', href: '/chemicals', icon: FlaskConical },
     ],
   },
   {
@@ -96,9 +109,8 @@ export const adminNavSections: NavSection[] = [
     label: 'Growth',
     roles: ['canManageOffice'],
     items: [
-      { name: 'Marketing',  href: '/marketing',  icon: Megaphone },
-      { name: 'Reviews',    href: '/reviews',    icon: Star },
-      { name: 'Chemicals',  href: '/chemicals',  icon: FlaskConical },
+      { name: 'Marketing', href: '/marketing', icon: Megaphone },
+      { name: 'Reviews',   href: '/reviews',   icon: Star },
     ],
   },
   {
@@ -106,7 +118,8 @@ export const adminNavSections: NavSection[] = [
     label: 'Admin',
     roles: ['canManageOffice'],
     items: [
-      { name: 'Settings', href: '/settings', icon: Settings },
+      { name: 'Callbacks', href: '/callbacks', icon: PhoneCall },
+      { name: 'Tasks',     href: '/tasks',     icon: ListTodo },
     ],
   },
 ];
@@ -119,5 +132,8 @@ export function buildNavIndex(sections: NavSection[]) {
       map[item.href] = { sectionLabel: section.label, itemName: item.name };
     }
   }
+  // Include standalone items so breadcrumbs resolve them
+  map['/dashboard'] = { sectionLabel: '', itemName: 'Dashboard' };
+  map['/settings']  = { sectionLabel: '', itemName: 'Settings' };
   return map;
 }

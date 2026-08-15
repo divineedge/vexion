@@ -26,6 +26,7 @@ import {
   useCreateTask,
   useListEquipmentLifecycleEvents, getListEquipmentLifecycleEventsQueryKey,
   useListEquipmentTypes, getListEquipmentTypesQueryKey,
+  useListEquipmentUses, getListEquipmentUsesQueryKey,
 } from '@workspace/api-client-react';
 import type { Equipment, EquipmentMaintenance, EquipmentFuelLog, EquipmentLinkedPart } from '@workspace/api-client-react';
 import { Link } from 'wouter';
@@ -329,6 +330,11 @@ function EquipmentDetailPanel({ equipment, onClose, onEdit }: { equipment: Equip
     query: { queryKey: getListEquipmentLifecycleEventsQueryKey(equipment.id) },
   });
 
+  // Use history — jobs this equipment has been logged on
+  const { data: equipmentUses } = useListEquipmentUses(equipment.id, {
+    query: { queryKey: getListEquipmentUsesQueryKey(equipment.id) },
+  });
+
   const handleAddMaintenance = () => {
     if (!maintForm.date || !maintForm.description) { toast.error('Date and description are required'); return; }
     createMaintenance.mutate({
@@ -614,6 +620,9 @@ function EquipmentDetailPanel({ equipment, onClose, onEdit }: { equipment: Equip
             <TabsTrigger value="activity" title="Audit trail of changes to this equipment record" className="flex-1 flex items-center gap-1.5">
               <History className="w-3.5 h-3.5" /> Activity
             </TabsTrigger>
+            <TabsTrigger value="uses" title="All jobs this equipment has been used on" className="flex-1 flex items-center gap-1.5">
+              <CalendarCheck2 className="w-3.5 h-3.5" /> Use ({equipmentUses?.length ?? 0})
+            </TabsTrigger>
           </TabsList>
 
           {/* Maintenance tab */}
@@ -814,6 +823,35 @@ function EquipmentDetailPanel({ equipment, onClose, onEdit }: { equipment: Equip
           {/* Ledger tab — Operating vs Maintenance & Repair cost, side by side */}
           <TabsContent value="ledger" className="mt-4">
             <EquipmentLedgerPanel equipmentId={equipment.id} />
+          </TabsContent>
+
+          {/* Use History tab — all jobs this equipment has been used on */}
+          <TabsContent value="uses" className="mt-4">
+            {equipmentUses && equipmentUses.length > 0 ? (
+              <div className="rounded-lg border divide-y text-sm">
+                {equipmentUses.map(use => (
+                  <div key={use.id} className="flex items-start justify-between px-3 py-2.5">
+                    <div className="flex-1 min-w-0 space-y-0.5">
+                      <p className="font-medium truncate" title={use.jobTitle ?? undefined}>{use.jobTitle ?? `Job #${use.jobId}`}</p>
+                      {use.jobScheduledAt && (
+                        <p className="text-xs text-muted-foreground">{new Date(use.jobScheduledAt).toLocaleDateString()}</p>
+                      )}
+                      {use.notes && <p className="text-xs text-muted-foreground italic">{use.notes}</p>}
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0 ml-3">
+                      <span className="text-sm font-semibold tabular-nums">{use.hoursUsed.toFixed(1)} h</span>
+                      <span className="text-[10px] text-muted-foreground">{new Date(use.createdAt).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                ))}
+                <div className="flex justify-between px-3 py-2 bg-muted/30 font-semibold">
+                  <span>Total hours</span>
+                  <span>{(equipmentUses.reduce((s, u) => s + u.hoursUsed, 0)).toFixed(1)} h</span>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-6">No job usage logged yet. Add equipment hours from the job detail panel.</p>
+            )}
           </TabsContent>
 
           {/* Activity tab — archive / restore lifecycle history */}

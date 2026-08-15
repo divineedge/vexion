@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
-import { LogOut, Menu, X } from 'lucide-react';
+import { LogOut, Menu, X, LayoutDashboard, Settings, Bookmark, BookmarkCheck, Star } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { adminNavSections, techNavItems } from './navConfig';
+import { adminNavSections, techNavItems, type NavItem } from './navConfig';
 import { SidebarSection } from './SidebarSection';
 import { usePermissions } from '@/hooks/usePermissions';
 import { Breadcrumb } from './Breadcrumb';
@@ -15,10 +15,67 @@ import { useListTasks, getListTasksQueryKey, useListFollowupQueueItems, getListF
 import { useQuery } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
 
+// ── Bookmarks hook ────────────────────────────────────────────────────────
+const BOOKMARKS_KEY = 'divine_edge_bookmarks';
+
+function useBookmarks() {
+  const [bookmarks, setBookmarks] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem(BOOKMARKS_KEY) ?? '[]'); } catch { return []; }
+  });
+  const toggleBookmark = useCallback((href: string) => {
+    setBookmarks(prev => {
+      const next = prev.includes(href) ? prev.filter(h => h !== href) : [...prev, href];
+      try { localStorage.setItem(BOOKMARKS_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+  return { bookmarks, toggleBookmark };
+}
+
+// ── Standalone nav link (Dashboard top / Settings bottom) ─────────────────
+function StandaloneLink({
+  item, location, badgeCount, bookmarked, onToggleBookmark, onNavClick,
+}: {
+  item: NavItem; location: string; badgeCount?: number;
+  bookmarked: boolean; onToggleBookmark: (href: string) => void; onNavClick?: () => void;
+}) {
+  const isActive = location === item.href || location.startsWith(item.href + '/');
+  return (
+    <div className="group relative flex items-center">
+      <Link
+        href={item.href}
+        onClick={onNavClick}
+        className={cn(
+          'flex-1 flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors',
+          isActive
+            ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+            : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
+        )}
+      >
+        <item.icon className={cn('w-5 h-5', isActive ? 'text-sidebar-primary' : 'text-sidebar-foreground/50 group-hover:text-sidebar-foreground/80')} />
+        <span className="flex-1">{item.name}</span>
+        {!!badgeCount && (
+          <span className="min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-sidebar-primary text-white text-[10px] font-semibold flex items-center justify-center shrink-0">
+            {badgeCount}
+          </span>
+        )}
+      </Link>
+      <button
+        title={bookmarked ? 'Remove bookmark' : 'Bookmark this page'}
+        onClick={e => { e.stopPropagation(); onToggleBookmark(item.href); }}
+        className="absolute right-1 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded text-sidebar-foreground/40 hover:text-yellow-400"
+      >
+        {bookmarked ? <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" /> : <Star className="w-3 h-3" />}
+      </button>
+    </div>
+  );
+}
+
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, logout, isTechnician, isCrewManager, canManageOffice } = useAuth();
   const [location, setLocation] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { bookmarks, toggleBookmark } = useBookmarks();
 
   const { data: myTasks = [] } = useListTasks(
     { scope: 'mine' },
@@ -71,23 +128,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     }
   }, [isAuthenticated, location, setLocation]);
 
-  if (!isAuthenticated) {
-    return null;
-  }
+  if (!isAuthenticated) return null;
 
   const { can } = usePermissions();
 
-  // Role map used to filter sections
   const roleMap: Record<string, boolean> = {
     isCrewManager,
     canManageOffice,
-    isOwner: canManageOffice,   // covered by canManageOffice
+    isOwner: canManageOffice,
     isManager: canManageOffice,
     isDepartmentManager: canManageOffice,
     canManageJobs: isCrewManager || canManageOffice,
   };
 
-  // Filter sections for current user's role, then filter items by permissionKey
   const visibleSections = adminNavSections
     .filter(section => {
       if (!section.roles) return true;
@@ -95,17 +148,25 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     })
     .map(section => ({
       ...section,
-      items: section.items.filter(item =>
-        !item.permissionKey || can(item.permissionKey as any)
-      ),
+      items: section.items.filter(item => !item.permissionKey || can(item.permissionKey as any)),
     }))
     .filter(section => section.items.length > 0);
 
+  // All nav items flat (for bookmark lookup)
+  const allNavItems: NavItem[] = [
+    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { name: 'Settings',  href: '/settings',  icon: Settings },
+    ...visibleSections.flatMap(s => s.items),
+    ...techNavItems,
+  ];
+
+  // Build bookmarked item objects from hrefs
+  const bookmarkedItems = bookmarks
+    .map(href => allNavItems.find(i => i.href === href))
+    .filter((i): i is NavItem => !!i);
+
   const userInitials = user?.name.slice(0, 2).toUpperCase() ?? '??';
 
-  /* ------------------------------------------------------------------ */
-  /* Sidebar content — shared between desktop + mobile                   */
-  /* ------------------------------------------------------------------ */
   function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
     return (
       <>
@@ -120,56 +181,107 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 px-3 overflow-y-auto pb-4">
+        <nav className="flex-1 px-3 overflow-y-auto pb-2">
           {isTechnician ? (
-            /* Flat technician nav — unchanged */
             <div className="space-y-0.5">
               {techNavItems.map((item) => {
                 const isActive = location === item.href || location.startsWith(item.href + '/');
                 return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={onNavClick}
-                    className={cn(
-                      'flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors group',
-                      isActive
-                        ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                        : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
-                    )}
-                  >
-                    <item.icon
+                  <div key={item.href} className="group relative flex items-center">
+                    <Link
+                      href={item.href}
+                      onClick={onNavClick}
                       className={cn(
-                        'w-5 h-5',
+                        'flex-1 flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors',
                         isActive
-                          ? 'text-sidebar-primary'
-                          : 'text-sidebar-foreground/50 group-hover:text-sidebar-foreground/80'
+                          ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                          : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
                       )}
-                    />
-                    <span className="flex-1">{item.name}</span>
-                    {!!badgeCounts[item.href] && (
-                      <span className="min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-sidebar-primary text-white text-[10px] font-semibold flex items-center justify-center shrink-0">
-                        {badgeCounts[item.href]}
-                      </span>
-                    )}
-                  </Link>
+                    >
+                      <item.icon className={cn('w-5 h-5', isActive ? 'text-sidebar-primary' : 'text-sidebar-foreground/50 group-hover:text-sidebar-foreground/80')} />
+                      <span className="flex-1">{item.name}</span>
+                      {!!badgeCounts[item.href] && (
+                        <span className="min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-sidebar-primary text-white text-[10px] font-semibold flex items-center justify-center shrink-0">
+                          {badgeCounts[item.href]}
+                        </span>
+                      )}
+                    </Link>
+                    <button
+                      title={bookmarks.includes(item.href) ? 'Remove bookmark' : 'Bookmark'}
+                      onClick={e => { e.stopPropagation(); toggleBookmark(item.href); }}
+                      className="absolute right-1 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded text-sidebar-foreground/40 hover:text-yellow-400"
+                    >
+                      {bookmarks.includes(item.href)
+                        ? <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
+                        : <Star className="w-3 h-3" />}
+                    </button>
+                  </div>
                 );
               })}
             </div>
           ) : (
-            /* Sectioned admin/office nav */
-            <div className="space-y-2">
+            <div className="space-y-1">
+              {/* ── Bookmarks section (only shown when user has bookmarks) ── */}
+              {bookmarkedItems.length > 0 && (
+                <div className="mb-2">
+                  <p className="px-3 py-1 text-xs font-semibold uppercase tracking-wider text-yellow-400/80 flex items-center gap-1.5">
+                    <Star className="w-3 h-3 fill-yellow-400/80" /> Bookmarks
+                  </p>
+                  <div className="mt-0.5 space-y-0.5">
+                    {bookmarkedItems.map(item => (
+                      <StandaloneLink
+                        key={item.href}
+                        item={item}
+                        location={location}
+                        badgeCount={badgeCounts[item.href]}
+                        bookmarked
+                        onToggleBookmark={toggleBookmark}
+                        onNavClick={onNavClick}
+                      />
+                    ))}
+                  </div>
+                  <div className="my-2 border-t border-sidebar-border/30" />
+                </div>
+              )}
+
+              {/* ── Standalone Dashboard link ── */}
+              <StandaloneLink
+                item={{ name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard }}
+                location={location}
+                bookmarked={bookmarks.includes('/dashboard')}
+                onToggleBookmark={toggleBookmark}
+                onNavClick={onNavClick}
+              />
+
+              <div className="my-1 border-t border-sidebar-border/20" />
+
+              {/* ── Collapsible sections ── */}
               {visibleSections.map(section => (
                 <SidebarSection
                   key={section.id}
                   section={section}
                   onNavClick={onNavClick}
                   badgeCounts={badgeCounts}
+                  bookmarks={bookmarks}
+                  onToggleBookmark={toggleBookmark}
                 />
               ))}
             </div>
           )}
         </nav>
+
+        {/* ── Standalone Settings link (bottom of nav, above user footer) ── */}
+        {!isTechnician && (
+          <div className="px-3 pb-2 shrink-0 border-t border-sidebar-border/30 pt-2">
+            <StandaloneLink
+              item={{ name: 'Settings', href: '/settings', icon: Settings }}
+              location={location}
+              bookmarked={bookmarks.includes('/settings')}
+              onToggleBookmark={toggleBookmark}
+              onNavClick={onNavClick}
+            />
+          </div>
+        )}
 
         {/* User footer */}
         {user && (
@@ -210,22 +322,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* ── Mobile overlay sidebar ───────────────────────────────────── */}
       {mobileOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/60 md:hidden"
-          onClick={() => setMobileOpen(false)}
-        />
+        <div className="fixed inset-0 z-40 bg-black/60 md:hidden" onClick={() => setMobileOpen(false)} />
       )}
-      <div
-        className={cn(
-          'fixed inset-y-0 left-0 z-50 w-72 bg-sidebar text-sidebar-foreground flex flex-col transition-transform duration-300 md:hidden',
-          mobileOpen ? 'translate-x-0' : '-translate-x-full'
-        )}
-      >
-        <button
-          onClick={() => setMobileOpen(false)}
-          className="absolute top-4 right-4 text-sidebar-foreground/50 hover:text-white"
-          aria-label="Close menu"
-        >
+      <div className={cn(
+        'fixed inset-y-0 left-0 z-50 w-72 bg-sidebar text-sidebar-foreground flex flex-col transition-transform duration-300 md:hidden',
+        mobileOpen ? 'translate-x-0' : '-translate-x-full'
+      )}>
+        <button onClick={() => setMobileOpen(false)} className="absolute top-4 right-4 text-sidebar-foreground/50 hover:text-white" aria-label="Close menu">
           <X className="w-5 h-5" />
         </button>
         <SidebarContent onNavClick={() => setMobileOpen(false)} />
@@ -233,27 +336,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* ── Main content ─────────────────────────────────────────────── */}
       <main className="flex-1 flex flex-col h-full overflow-hidden bg-muted/30">
-        {/* Mobile top bar */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-border/50 md:hidden bg-background shrink-0">
-          <button
-            onClick={() => setMobileOpen(true)}
-            className="text-muted-foreground hover:text-foreground"
-            aria-label="Open menu"
-          >
+          <button onClick={() => setMobileOpen(true)} className="text-muted-foreground hover:text-foreground" aria-label="Open menu">
             <Menu className="w-5 h-5" />
           </button>
           <span className="font-semibold text-sm">Divine Edge OS</span>
           <div className="ml-auto"><NotificationBell /></div>
         </div>
-
-        {/* Desktop top-right bar: shortcuts + notification bell */}
         <div className="hidden md:flex items-center justify-end gap-2 px-6 md:px-8 pt-3">
           <QuickAddBar canCustomize={canManageOffice} />
           <div className="h-4 w-px bg-border" aria-hidden />
           <NotificationBell />
         </div>
         <Breadcrumb isTechnician={isTechnician} />
-
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-7xl mx-auto p-6 md:p-8">
             {children}

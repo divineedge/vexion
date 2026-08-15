@@ -109,6 +109,7 @@ import type {
   EquipmentReadingLogInput,
   EquipmentType,
   EquipmentTypeInput,
+  EquipmentUseHistoryItem,
   Estimate,
   EstimatePipeline,
   EstimateRespondInput,
@@ -157,6 +158,8 @@ import type {
   InvoiceTemplate,
   InvoiceUpdate,
   Job,
+  JobEquipmentUse,
+  JobEquipmentUseInput,
   JobInput,
   JobMessage,
   JobMessageUnreadSummaryItem,
@@ -4579,6 +4582,305 @@ export const useRemoveJobPart = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getRemoveJobPartMutationOptions(options));
     }
+
+export const getListJobEquipmentUsesUrl = (jobId: number,) => {
+
+
+
+
+  return `/api/jobs/${jobId}/equipment-uses`
+}
+
+/**
+ * @summary List equipment hours logged on a job
+ */
+export const listJobEquipmentUses = async (jobId: number, options?: RequestInit): Promise<JobEquipmentUse[]> => {
+
+  return customFetch<JobEquipmentUse[]>(getListJobEquipmentUsesUrl(jobId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListJobEquipmentUsesQueryKey = (jobId: number,) => {
+    return [
+    `/api/jobs/${jobId}/equipment-uses`
+    ] as const;
+    }
+
+
+export const getListJobEquipmentUsesQueryOptions = <TData = Awaited<ReturnType<typeof listJobEquipmentUses>>, TError = ErrorType<unknown>>(jobId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listJobEquipmentUses>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListJobEquipmentUsesQueryKey(jobId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listJobEquipmentUses>>> = ({ signal }) => listJobEquipmentUses(jobId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: jobId !== null && jobId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listJobEquipmentUses>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListJobEquipmentUsesQueryResult = NonNullable<Awaited<ReturnType<typeof listJobEquipmentUses>>>
+export type ListJobEquipmentUsesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List equipment hours logged on a job
+ */
+
+export function useListJobEquipmentUses<TData = Awaited<ReturnType<typeof listJobEquipmentUses>>, TError = ErrorType<unknown>>(
+ jobId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listJobEquipmentUses>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListJobEquipmentUsesQueryOptions(jobId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateJobEquipmentUseUrl = (jobId: number,) => {
+
+
+
+
+  return `/api/jobs/${jobId}/equipment-uses`
+}
+
+/**
+ * @summary Log equipment hours on a job
+ */
+export const createJobEquipmentUse = async (jobId: number,
+    jobEquipmentUseInput: JobEquipmentUseInput, options?: RequestInit): Promise<JobEquipmentUse> => {
+
+  return customFetch<JobEquipmentUse>(getCreateJobEquipmentUseUrl(jobId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(jobEquipmentUseInput)
+  }
+);}
+
+
+
+
+
+export const getCreateJobEquipmentUseMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createJobEquipmentUse>>, TError,{jobId: number;data: BodyType<JobEquipmentUseInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createJobEquipmentUse>>, TError,{jobId: number;data: BodyType<JobEquipmentUseInput>}, TContext> => {
+
+const mutationKey = ['createJobEquipmentUse'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createJobEquipmentUse>>, {jobId: number;data: BodyType<JobEquipmentUseInput>}> = (props) => {
+          const {jobId,data} = props ?? {};
+
+          return  createJobEquipmentUse(jobId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateJobEquipmentUseMutationResult = NonNullable<Awaited<ReturnType<typeof createJobEquipmentUse>>>
+    export type CreateJobEquipmentUseMutationBody = BodyType<JobEquipmentUseInput>
+    export type CreateJobEquipmentUseMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Log equipment hours on a job
+ */
+export const useCreateJobEquipmentUse = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createJobEquipmentUse>>, TError,{jobId: number;data: BodyType<JobEquipmentUseInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createJobEquipmentUse>>,
+        TError,
+        {jobId: number;data: BodyType<JobEquipmentUseInput>},
+        TContext
+      > => {
+      return useMutation(getCreateJobEquipmentUseMutationOptions(options));
+    }
+
+export const getDeleteJobEquipmentUseUrl = (jobId: number,
+    id: number,) => {
+
+
+
+
+  return `/api/jobs/${jobId}/equipment-uses/${id}`
+}
+
+/**
+ * @summary Remove an equipment-hours record from a job
+ */
+export const deleteJobEquipmentUse = async (jobId: number,
+    id: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteJobEquipmentUseUrl(jobId,id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteJobEquipmentUseMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteJobEquipmentUse>>, TError,{jobId: number;id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteJobEquipmentUse>>, TError,{jobId: number;id: number}, TContext> => {
+
+const mutationKey = ['deleteJobEquipmentUse'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteJobEquipmentUse>>, {jobId: number;id: number}> = (props) => {
+          const {jobId,id} = props ?? {};
+
+          return  deleteJobEquipmentUse(jobId,id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteJobEquipmentUseMutationResult = NonNullable<Awaited<ReturnType<typeof deleteJobEquipmentUse>>>
+
+    export type DeleteJobEquipmentUseMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Remove an equipment-hours record from a job
+ */
+export const useDeleteJobEquipmentUse = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteJobEquipmentUse>>, TError,{jobId: number;id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteJobEquipmentUse>>,
+        TError,
+        {jobId: number;id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteJobEquipmentUseMutationOptions(options));
+    }
+
+export const getListEquipmentUsesUrl = (equipmentId: number,) => {
+
+
+
+
+  return `/api/equipment/${equipmentId}/uses`
+}
+
+/**
+ * @summary List all jobs where this equipment was used (Use history tab)
+ */
+export const listEquipmentUses = async (equipmentId: number, options?: RequestInit): Promise<EquipmentUseHistoryItem[]> => {
+
+  return customFetch<EquipmentUseHistoryItem[]>(getListEquipmentUsesUrl(equipmentId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListEquipmentUsesQueryKey = (equipmentId: number,) => {
+    return [
+    `/api/equipment/${equipmentId}/uses`
+    ] as const;
+    }
+
+
+export const getListEquipmentUsesQueryOptions = <TData = Awaited<ReturnType<typeof listEquipmentUses>>, TError = ErrorType<unknown>>(equipmentId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEquipmentUses>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListEquipmentUsesQueryKey(equipmentId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listEquipmentUses>>> = ({ signal }) => listEquipmentUses(equipmentId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: equipmentId !== null && equipmentId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listEquipmentUses>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListEquipmentUsesQueryResult = NonNullable<Awaited<ReturnType<typeof listEquipmentUses>>>
+export type ListEquipmentUsesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all jobs where this equipment was used (Use history tab)
+ */
+
+export function useListEquipmentUses<TData = Awaited<ReturnType<typeof listEquipmentUses>>, TError = ErrorType<unknown>>(
+ equipmentId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEquipmentUses>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListEquipmentUsesQueryOptions(equipmentId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetJobMessagesUnreadSummaryUrl = () => {
 

@@ -1250,6 +1250,92 @@ paths:
               schema:
                 $ref: "#/components/schemas/Job"
 
+  # JOB EQUIPMENT USES (hours logged per job)
+  /jobs/{jobId}/equipment-uses:
+    get:
+      operationId: listJobEquipmentUses
+      tags: [jobs]
+      summary: List equipment hours logged on a job
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Equipment use records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/JobEquipmentUse"
+    post:
+      operationId: createJobEquipmentUse
+      tags: [jobs]
+      summary: Log equipment hours on a job
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobEquipmentUseInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobEquipmentUse"
+
+  /jobs/{jobId}/equipment-uses/{id}:
+    delete:
+      operationId: deleteJobEquipmentUse
+      tags: [jobs]
+      summary: Remove an equipment-hours record from a job
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /equipment/{equipmentId}/uses:
+    get:
+      operationId: listEquipmentUses
+      tags: [equipment]
+      summary: List all jobs where this equipment was used (Use history tab)
+      parameters:
+        - name: equipmentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Use history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EquipmentUseHistoryItem"
+
   # JOB MESSAGES (staff-only thread per job)
   /jobs/messages/unread-summary:
     get:
@@ -9189,6 +9275,69 @@ components:
           type: number
         unit:
           type: string
+
+    JobEquipmentUse:
+      type: object
+      required: [id, tenantId, jobId, equipmentName, hoursUsed, createdAt]
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        jobId:
+          type: integer
+        equipmentId:
+          type: integer
+          nullable: true
+        equipmentName:
+          type: string
+        hoursUsed:
+          type: number
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+
+    JobEquipmentUseInput:
+      type: object
+      required: [equipmentName, hoursUsed]
+      properties:
+        equipmentName:
+          type: string
+        equipmentId:
+          type: integer
+        hoursUsed:
+          type: number
+        notes:
+          type: string
+
+    EquipmentUseHistoryItem:
+      type: object
+      required: [id, jobId, equipmentName, hoursUsed, createdAt]
+      properties:
+        id:
+          type: integer
+        jobId:
+          type: integer
+        equipmentName:
+          type: string
+        equipmentId:
+          type: integer
+          nullable: true
+        hoursUsed:
+          type: number
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+        jobTitle:
+          type: string
+          nullable: true
+        jobScheduledAt:
+          type: string
+          nullable: true
 
     JobMessage:
       type: object

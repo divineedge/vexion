@@ -144,6 +144,48 @@ router.get("/marketing/campaigns/:id/customers", async (req, res): Promise<void>
   })));
 });
 
+// GET /marketing/campaigns/:id/customers-revenue?period=30|90|365
+// Returns linked customers with their paid invoice totals for the given period.
+router.get("/marketing/campaigns/:id/customers-revenue", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const campaignId = parseInt(req.params.id, 10);
+  const periodDays = parseInt((req.query.period as string) ?? "30", 10) || 30;
+  const sinceDate = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000);
+
+  const rows = await db.execute(sql`
+    SELECT
+      cc.id,
+      cc.campaign_id,
+      cc.customer_id,
+      cc.acquired_at,
+      c.name AS customer_name,
+      c.email AS customer_email,
+      COALESCE(SUM(CASE WHEN i.status = 'paid' AND i.paid_at >= ${sinceDate} THEN i.total ELSE 0 END), 0) AS period_revenue,
+      COUNT(CASE WHEN i.status = 'paid' AND i.paid_at >= ${sinceDate} THEN 1 END)::int AS invoice_count
+    FROM campaign_customers cc
+    LEFT JOIN customers c ON cc.customer_id = c.id
+    LEFT JOIN invoices i ON i.customer_id = cc.customer_id AND i.tenant_id = ${tenantId}
+    WHERE cc.campaign_id = ${campaignId} AND cc.tenant_id = ${tenantId}
+    GROUP BY cc.id, cc.campaign_id, cc.customer_id, cc.acquired_at, c.name, c.email
+    ORDER BY period_revenue DESC, c.name
+  `);
+
+  res.json({
+    period: periodDays,
+    sinceDate: sinceDate.toISOString().slice(0, 10),
+    customers: (rows.rows as Record<string, unknown>[]).map(r => ({
+      id: r.id,
+      campaignId: r.campaign_id,
+      customerId: r.customer_id,
+      acquiredAt: r.acquired_at,
+      customerName: r.customer_name,
+      customerEmail: r.customer_email,
+      periodRevenue: Number(r.period_revenue ?? 0),
+      invoiceCount: Number(r.invoice_count ?? 0),
+    })),
+  });
+});
+
 // POST /marketing/campaigns/:id/customers
 router.post("/marketing/campaigns/:id/customers", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);

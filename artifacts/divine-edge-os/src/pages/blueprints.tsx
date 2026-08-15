@@ -421,7 +421,7 @@ export default function BlueprintsPage() {
 
       {/* Suggested Parts Sheet */}
       <Sheet open={suggestedPartsOpen} onOpenChange={open => { if (!open) { setSuggestedPartsOpen(false); setSuggestedPartsBpId(null); } }}>
-        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-[66vw] overflow-y-auto">
           <SheetHeader className="pb-4">
             <SheetTitle className="flex items-center gap-2">
               <Package className="w-5 h-5 text-primary" /> Suggested Parts
@@ -697,7 +697,7 @@ export default function BlueprintsPage() {
 
       {/* Template Browser Sheet */}
       <Sheet open={templateBrowserOpen} onOpenChange={setTemplateBrowserOpen}>
-        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-[66vw] overflow-y-auto">
           <SheetHeader className="pb-4">
             <SheetTitle className="flex items-center gap-2"><Library className="w-5 h-5 text-primary" /> Blueprint Templates</SheetTitle>
             <SheetDescription>Reusable design-rule sets. Apply one to a job or property to create a customizable instance.</SheetDescription>

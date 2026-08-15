@@ -289,7 +289,7 @@ export default function EstimateTemplatesSettings() {
       </Card>
 
       <Sheet open={sheetMode !== null} onOpenChange={open => { if (!open) { setSheetMode(null); setDeleteTemplatePending(false); } }}>
-        <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-[66vw] overflow-y-auto">
           <SheetHeader className="pb-4">
             <SheetTitle>
               {sheetMode === 'create' ? 'Add Estimate Template' : 'Edit Estimate Template'}

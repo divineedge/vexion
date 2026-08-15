@@ -17,7 +17,10 @@ interface SidebarSectionProps {
 export function SidebarSection({ section, onNavClick, badgeCounts, bookmarks = [], onToggleBookmark }: SidebarSectionProps) {
   const [location] = useLocation();
 
-  const isActiveSectionItem = section.items.some(
+  // Items that haven't been bookmarked (bookmarked ones live under Dashboard)
+  const visibleItems = section.items.filter(item => !bookmarks.includes(item.href));
+
+  const isActiveSectionItem = visibleItems.some(
     item => location === item.href || location.startsWith(item.href + '/')
   );
 
@@ -63,7 +66,7 @@ export function SidebarSection({ section, onNavClick, badgeCounts, bookmarks = [
 
       <div className={cn('overflow-hidden transition-all duration-200', open ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0')}>
         <div className="mt-0.5 space-y-0.5 pb-1">
-          {section.items.map((item) => {
+          {visibleItems.map((item) => {
             const isActive = location === item.href || location.startsWith(item.href + '/');
             const isBookmarked = bookmarks.includes(item.href);
             return (

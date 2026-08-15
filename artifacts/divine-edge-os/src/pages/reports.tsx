@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   useGetJobProfitabilityReport,
   useGetEmployeeRevenueReport,
@@ -9,7 +9,9 @@ import {
   useGetInventoryReorderList,
   useListCrews, getListCrewsQueryKey,
   useListUsers, getListUsersQueryKey,
+  customFetch,
 } from '@workspace/api-client-react';
+import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -21,6 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Briefcase, Users, ScrollText, Clock3, Percent, Download, Printer, Settings,
   RefreshCw, ShieldAlert, Package, Search, X, ShoppingCart, Building2, CheckSquare, Square, AlertTriangle,
+  TrendingUp, Gauge,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { downloadCsv } from '@/lib/csvExport';
@@ -36,6 +39,124 @@ function money(n: number | undefined | null) {
   return `$${(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 }
 
+// ── Revenue Per Hour Report ───────────────────────────────────────────────────
+interface RphRow { id: number | null; name: string; revenue: number; hours: number; rph: number | null; }
+interface RphData {
+  dateRange: { start: string; end: string };
+  company: { revenue: number; hours: number; rph: number | null };
+  byService: RphRow[];
+  byCrew: RphRow[];
+  byEmployee: RphRow[];
+}
+
+function HourlyProductivityReport() {
+  const [range, setRange] = useState(defaultRange());
+  const [data, setData] = useState<RphData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [view, setView] = useState<'service' | 'crew' | 'employee'>('service');
+
+  useEffect(() => {
+    setLoading(true);
+    customFetch<RphData>(`/api/reports/revenue-per-hour?start=${range.start}&end=${range.end}`)
+      .then(d => setData(d))
+      .catch(() => toast.error('Failed to load Revenue Per Hour report'))
+      .finally(() => setLoading(false));
+  }, [range.start, range.end]);
+
+  const rows: RphRow[] = view === 'service' ? (data?.byService ?? [])
+    : view === 'crew' ? (data?.byCrew ?? [])
+    : (data?.byEmployee ?? []);
+
+  const RphTable = ({ rows: r }: { rows: RphRow[] }) => (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>{view === 'service' ? 'Service' : view === 'crew' ? 'Crew' : 'Employee'}</TableHead>
+          <TableHead className="text-right">Revenue</TableHead>
+          <TableHead className="text-right">Hours</TableHead>
+          <TableHead className="text-right">$/hr</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {r.length === 0 ? (
+          <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-8">No completed jobs in this period</TableCell></TableRow>
+        ) : r.map((row, i) => (
+          <TableRow key={i}>
+            <TableCell className="font-medium">{row.name}</TableCell>
+            <TableCell className="text-right">{money(row.revenue)}</TableCell>
+            <TableCell className="text-right">{row.hours.toFixed(1)}</TableCell>
+            <TableCell className="text-right">
+              {row.rph != null ? (
+                <span className={`font-semibold ${row.rph >= 75 ? 'text-emerald-700' : row.rph >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
+                  {money(row.rph)}
+                </span>
+              ) : <span className="text-muted-foreground">—</span>}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+
+  return (
+    <div className="space-y-5">
+      {/* Controls */}
+      <div className="flex flex-wrap items-end gap-3 print:hidden">
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">From</label>
+          <Input type="date" className="h-8 text-sm w-36" value={range.start} onChange={e => setRange(r => ({ ...r, start: e.target.value }))} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">To</label>
+          <Input type="date" className="h-8 text-sm w-36" value={range.end} onChange={e => setRange(r => ({ ...r, end: e.target.value }))} />
+        </div>
+        {loading && <RefreshCw className="w-4 h-4 animate-spin text-muted-foreground" />}
+      </div>
+
+      {/* Company Summary */}
+      {data && (
+        <div className="grid grid-cols-3 gap-4">
+          {[
+            { label: 'Total Revenue', val: money(data.company.revenue) },
+            { label: 'Billable Hours', val: `${data.company.hours.toFixed(1)} hrs` },
+            { label: 'Avg $/hr', val: data.company.rph != null ? money(data.company.rph) : '—', highlight: true },
+          ].map(({ label, val, highlight }) => (
+            <div key={label} className={`rounded-xl border p-4 ${highlight ? 'bg-primary text-primary-foreground border-primary' : ''}`}>
+              <p className={`text-xs font-medium mb-1 ${highlight ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>{label}</p>
+              <p className="text-2xl font-bold">{val}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Breakdown toggle */}
+      <div className="flex gap-2">
+        {(['service', 'crew', 'employee'] as const).map(v => (
+          <Button key={v} size="sm" variant={view === v ? 'default' : 'outline'} className="capitalize" onClick={() => setView(v)}>
+            By {v}
+          </Button>
+        ))}
+      </div>
+
+      {/* Table */}
+      <div className="rounded-lg border overflow-hidden">
+        {!data ? (
+          <div className="py-12 text-center text-muted-foreground text-sm">
+            {loading ? 'Loading…' : 'No data'}
+          </div>
+        ) : (
+          <RphTable rows={rows} />
+        )}
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        Includes completed jobs only. Hours = job estimated duration. Rate = revenue ÷ hours.
+        Compare your target rate from the <strong>Budget Calculator</strong> against each row to spot pricing gaps.
+      </p>
+    </div>
+  );
+}
+
 const REPORTS = [
   { id: 'job-profitability', label: 'Job Profitability', icon: Briefcase, description: 'Revenue, cost, and margin for every completed job.' },
   { id: 'employee-revenue', label: 'Employee Revenue', icon: Users, description: 'Revenue and P4P earnings generated per technician.' },
@@ -44,6 +165,7 @@ const REPORTS = [
   { id: 'sales-tax', label: 'Sales Tax', icon: Percent, description: 'Taxable revenue and tax collected, by month.' },
   { id: 'inventory-sales', label: 'Inventory Sales', icon: Package, description: 'Units sold, margin, and commission per inventory item.' },
   { id: 'reorder-list', label: 'Reorder List', icon: ShoppingCart, description: 'Low-stock items grouped by supplier, ready to export as a purchase order.' },
+  { id: 'hourly-productivity', label: 'Revenue / Hour', icon: Gauge, description: 'Revenue per billable hour by service, crew, and employee — compare to your budget target.' },
 ] as const;
 
 export default function ReportsPage() {
@@ -98,6 +220,7 @@ export default function ReportsPage() {
         <TabsContent value="sales-tax"><SalesTaxReport /></TabsContent>
         <TabsContent value="inventory-sales"><InventorySalesReport /></TabsContent>
         <TabsContent value="reorder-list"><ReorderListReportPanel /></TabsContent>
+        <TabsContent value="hourly-productivity"><HourlyProductivityReport /></TabsContent>
       </Tabs>
     </div>
   );

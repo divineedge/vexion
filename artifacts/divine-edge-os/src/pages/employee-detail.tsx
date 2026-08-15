@@ -466,7 +466,7 @@ export default function EmployeeDetailPage() {
 
       {/* Add History Entry Sheet */}
       <Sheet open={addEntryOpen} onOpenChange={setAddEntryOpen}>
-        <SheetContent className="w-full sm:max-w-md">
+        <SheetContent className="w-full sm:max-w-[66vw]">
           <SheetHeader className="pb-4">
             <SheetTitle>Add to Employee File</SheetTitle>
             <SheetDescription>Log a review, complaint, callback, or custom form for {employee.name}.</SheetDescription>
@@ -573,7 +573,7 @@ export default function EmployeeDetailPage() {
       {/* Create Form Template Sheet (admin only) */}
       {canManageOffice && (
         <Sheet open={addTemplateOpen} onOpenChange={setAddTemplateOpen}>
-          <SheetContent className="w-full sm:max-w-lg">
+          <SheetContent className="w-full sm:max-w-[66vw]">
             <SheetHeader className="pb-4">
               <SheetTitle>Create Form Template</SheetTitle>
               <SheetDescription>Define a reusable form schema for employee file entries.</SheetDescription>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
@@ -102,6 +102,11 @@ export default function MarketingPage() {
   const [addCustomerUserId, setAddCustomerUserId] = useState('');
   const [form, setForm] = useState({ name: '', channel: 'google_ads', budget: '', startDate: '', endDate: '', notes: '' });
   const [deleteCampaignId, setDeleteCampaignId] = useState<number | null>(null);
+  const [revenuePeriod, setRevenuePeriod] = useState<30 | 90 | 365>(30);
+  const [customerRevenueData, setCustomerRevenueData] = useState<{
+    period: number; sinceDate: string;
+    customers: { id: number; customerId: number; customerName: string | null; customerEmail: string | null; periodRevenue: number; invoiceCount: number }[];
+  } | null>(null);
 
   const { data: campaigns, isLoading } = useQuery<Campaign[]>({
     queryKey: ['marketing-campaigns'],
@@ -121,6 +126,15 @@ export default function MarketingPage() {
         : Promise.resolve([]),
     enabled: selectedCampaign != null,
   });
+
+  useEffect(() => {
+    if (!selectedCampaign) { setCustomerRevenueData(null); return; }
+    customFetch<typeof customerRevenueData>(
+      `/api/marketing/campaigns/${selectedCampaign.id}/customers-revenue?period=${revenuePeriod}`
+    )
+      .then(d => setCustomerRevenueData(d))
+      .catch(() => {});
+  }, [selectedCampaign?.id, revenuePeriod]);
 
   const { data: allCustomers } = useListCustomers({}, {
     query: { enabled: selectedCampaign != null, queryKey: getListCustomersQueryKey({}) },
@@ -416,7 +430,7 @@ export default function MarketingPage() {
 
       {/* Create Campaign Sheet */}
       <Sheet open={createOpen} onOpenChange={open => { if (!open) setCreateOpen(false); }}>
-        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-[66vw] overflow-y-auto">
           <SheetHeader className="pb-4">
             <SheetTitle>New Marketing Campaign</SheetTitle>
             <SheetDescription>Track marketing spend and link acquired customers to measure ROAS.</SheetDescription>
@@ -470,7 +484,7 @@ export default function MarketingPage() {
 
       {/* Campaign Detail Sheet */}
       <Sheet open={selectedCampaign != null} onOpenChange={open => { if (!open) setSelectedCampaign(null); }}>
-        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-[66vw] overflow-y-auto">
           {selectedCampaign && (
             <>
               <SheetHeader className="pb-4">
@@ -535,33 +549,72 @@ export default function MarketingPage() {
 
                 {/* Customers */}
                 <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Customers Acquired ({selectedCampaign.customerCount})</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
+                      Customers Acquired ({selectedCampaign.customerCount})
+                    </p>
+                    <div className="flex gap-0.5 border rounded-md p-0.5 shrink-0">
+                      {([30, 90, 365] as const).map(p => (
+                        <button
+                          key={p}
+                          className={`text-xs px-2 py-0.5 rounded transition-colors ${revenuePeriod === p ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                          onClick={() => setRevenuePeriod(p)}
+                        >
+                          {p === 365 ? 'Year' : `${p}d`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   {(campaignCustomers ?? []).length === 0 ? (
                     <p className="text-sm text-muted-foreground py-4 text-center border rounded-lg border-dashed">
                       No customers linked yet. Add customers acquired via this campaign to track their lifetime revenue.
                     </p>
                   ) : (
-                    <div className="rounded-lg border divide-y">
-                      {(campaignCustomers ?? []).map(cc => (
-                        <div key={cc.id} className="flex items-center justify-between px-3 py-2.5">
-                          <div>
-                            <p className="text-sm font-medium" title={cc.customerName ?? undefined}>{cc.customerName}</p>
-                            {cc.customerEmail && <p className="text-xs text-muted-foreground" title={`Email: ${cc.customerEmail}`}>{cc.customerEmail}</p>}
-                          </div>
-                          {canManageOffice && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                              title={`Remove ${cc.customerName ?? 'customer'} from this campaign`}
-                              onClick={() => removeCustomerMutation.mutate({ campaignId: selectedCampaign.id, customerId: cc.customerId })}
-                            >
-                              <UserMinus className="w-3.5 h-3.5" />
-                            </Button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
+                    <>
+                      <div className="rounded-lg border divide-y">
+                        {(campaignCustomers ?? []).map(cc => {
+                          const rev = customerRevenueData?.customers?.find(r => r.customerId === cc.customerId);
+                          return (
+                            <div key={cc.id} className="flex items-center justify-between px-3 py-2.5 gap-3">
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium truncate" title={cc.customerName ?? undefined}>{cc.customerName}</p>
+                                {cc.customerEmail && <p className="text-xs text-muted-foreground truncate" title={`Email: ${cc.customerEmail}`}>{cc.customerEmail}</p>}
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                {rev != null && (
+                                  <div className="text-right">
+                                    <p className={`text-sm font-semibold ${rev.periodRevenue > 0 ? 'text-emerald-700' : 'text-muted-foreground'}`}>
+                                      ${rev.periodRevenue.toLocaleString()}
+                                    </p>
+                                    <p className="text-[10px] text-muted-foreground">
+                                      {revenuePeriod === 365 ? 'this year' : `last ${revenuePeriod}d`}
+                                    </p>
+                                  </div>
+                                )}
+                                {canManageOffice && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                    title={`Remove ${cc.customerName ?? 'customer'} from this campaign`}
+                                    onClick={() => removeCustomerMutation.mutate({ campaignId: selectedCampaign.id, customerId: cc.customerId })}
+                                  >
+                                    <UserMinus className="w-3.5 h-3.5" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {customerRevenueData && customerRevenueData.customers.length > 0 && (
+                        <p className="text-xs text-right text-muted-foreground">
+                          Period total: <span className="font-semibold text-emerald-700">
+                            ${customerRevenueData.customers.reduce((s, r) => s + r.periodRevenue, 0).toLocaleString()}
+                          </span>
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -602,7 +655,7 @@ export default function MarketingPage() {
 
       {/* Edit Campaign Sheet */}
       <Sheet open={editOpen} onOpenChange={open => { if (!open) setEditOpen(false); }}>
-        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-[66vw] overflow-y-auto">
           <SheetHeader className="pb-4">
             <SheetTitle>Edit Campaign</SheetTitle>
             <SheetDescription>Update campaign details.</SheetDescription>

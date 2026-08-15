@@ -683,4 +683,101 @@ router.get("/reports/inventory-reorder-list", async (req, res): Promise<void> =>
   });
 });
 
+// ── Revenue Per Hour Report ──────────────────────────────────────────────────
+// GET /reports/revenue-per-hour?start=YYYY-MM-DD&end=YYYY-MM-DD
+// Returns $/hr aggregated by company, service, crew, and employee.
+router.get("/reports/revenue-per-hour", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const { start, end } = req.query as Record<string, string | undefined>;
+  const startDate = start ? new Date(start) : new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
+  const endDate = end ? new Date(end) : new Date();
+
+  const toRph = (revenue: number, minutes: number) =>
+    minutes > 0 ? Math.round((revenue / (minutes / 60)) * 100) / 100 : null;
+
+  const mapRows = (rows: Record<string, unknown>[]) =>
+    rows.map(r => ({
+      id: r.dim_id ?? null,
+      name: (r.dim_name as string) ?? 'Unassigned',
+      revenue: Number(r.revenue ?? 0),
+      hours: Math.round(Number(r.minutes ?? 0) / 60 * 10) / 10,
+      rph: toRph(Number(r.revenue ?? 0), Number(r.minutes ?? 0)),
+    })).sort((a, b) => b.revenue - a.revenue);
+
+  const [companyResult, byServiceResult, byCrewResult, byEmployeeResult] = await Promise.all([
+    db.execute(sql`
+      SELECT
+        COALESCE(SUM(total_amount), 0) AS revenue,
+        COALESCE(SUM(estimated_duration), 0) AS minutes
+      FROM jobs
+      WHERE tenant_id = ${tenantId}
+        AND status = 'completed'
+        AND completed_at >= ${startDate}
+        AND completed_at <= ${endDate}
+    `),
+    db.execute(sql`
+      SELECT
+        j.service_id AS dim_id,
+        COALESCE(s.name, 'No Service') AS dim_name,
+        COALESCE(SUM(j.total_amount), 0) AS revenue,
+        COALESCE(SUM(j.estimated_duration), 0) AS minutes
+      FROM jobs j
+      LEFT JOIN services s ON j.service_id = s.id
+      WHERE j.tenant_id = ${tenantId}
+        AND j.status = 'completed'
+        AND j.completed_at >= ${startDate}
+        AND j.completed_at <= ${endDate}
+      GROUP BY j.service_id, s.name
+      ORDER BY revenue DESC
+    `),
+    db.execute(sql`
+      SELECT
+        j.crew_id AS dim_id,
+        COALESCE(c.name, 'No Crew') AS dim_name,
+        COALESCE(SUM(j.total_amount), 0) AS revenue,
+        COALESCE(SUM(j.estimated_duration), 0) AS minutes
+      FROM jobs j
+      LEFT JOIN crews c ON j.crew_id = c.id
+      WHERE j.tenant_id = ${tenantId}
+        AND j.status = 'completed'
+        AND j.completed_at >= ${startDate}
+        AND j.completed_at <= ${endDate}
+      GROUP BY j.crew_id, c.name
+      ORDER BY revenue DESC
+    `),
+    db.execute(sql`
+      SELECT
+        j.user_id AS dim_id,
+        COALESCE(u.name, 'Unassigned') AS dim_name,
+        COALESCE(SUM(j.total_amount), 0) AS revenue,
+        COALESCE(SUM(j.estimated_duration), 0) AS minutes
+      FROM jobs j
+      LEFT JOIN users u ON j.user_id = u.id
+      WHERE j.tenant_id = ${tenantId}
+        AND j.status = 'completed'
+        AND j.completed_at >= ${startDate}
+        AND j.completed_at <= ${endDate}
+      GROUP BY j.user_id, u.name
+      ORDER BY revenue DESC
+    `),
+  ]);
+
+  const cr = (companyResult.rows[0] ?? {}) as Record<string, unknown>;
+  const companyRevenue = Number(cr.revenue ?? 0);
+  const companyMinutes = Number(cr.minutes ?? 0);
+
+  res.json({
+    generatedAt: new Date().toISOString(),
+    dateRange: { start: startDate.toISOString().slice(0, 10), end: endDate.toISOString().slice(0, 10) },
+    company: {
+      revenue: companyRevenue,
+      hours: Math.round(companyMinutes / 60 * 10) / 10,
+      rph: toRph(companyRevenue, companyMinutes),
+    },
+    byService:   mapRows(byServiceResult.rows  as Record<string, unknown>[]),
+    byCrew:      mapRows(byCrewResult.rows      as Record<string, unknown>[]),
+    byEmployee:  mapRows(byEmployeeResult.rows  as Record<string, unknown>[]),
+  });
+});
+
 export default router;

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { SendDocumentDialog } from '@/components/shared/SendDocumentDialog';
 import {
   useListInvoices, getListInvoicesQueryKey,
   useGetInvoice, getGetInvoiceQueryKey,
@@ -135,7 +136,7 @@ function TemplateSheet({ open, onClose, editing, customers }: TemplateSheetProps
 
   return (
     <Sheet open={open} onOpenChange={o => { if (!o) onClose(); }}>
-      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+      <SheetContent className="w-full sm:max-w-[66vw] overflow-y-auto">
         <SheetHeader className="pb-4">
           <SheetTitle>{editing ? 'Edit Recurring Template' : 'New Recurring Template'}</SheetTitle>
           <SheetDescription>Set up automatic billing for a customer.</SheetDescription>
@@ -708,6 +709,16 @@ function EditInvoiceSheet({ invoiceId, onClose }: { invoiceId: number | null; on
 
   const subtotal = lineItems.reduce((s, li) => s + li.total, 0);
   const canSend = user?.role !== 'technician';
+  const [showSendDialog, setShowSendDialog] = useState(false);
+
+  const handleSendInvoiceEmail = useCallback((): Promise<void> => {
+    return new Promise<void>((resolve, reject) => {
+      retryBillingEmail.mutate({ id: invoiceId! }, {
+        onSuccess: () => { toast.success('Invoice email sent'); resolve(); },
+        onError: () => { toast.error('Failed to send invoice'); reject(new Error('Failed')); },
+      });
+    });
+  }, [invoiceId, retryBillingEmail]);
 
   const STATUS_ACTIONS: Record<string, { label: string; variant: 'default' | 'outline' | 'destructive' }[]> = {
     draft: [{ label: 'Mark Sent', variant: 'default' }],
@@ -718,7 +729,7 @@ function EditInvoiceSheet({ invoiceId, onClose }: { invoiceId: number | null; on
 
   return (
     <Sheet open={invoiceId != null} onOpenChange={o => { if (!o) onClose(); }}>
-      <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+      <SheetContent className="w-full sm:max-w-[66vw] overflow-y-auto">
         <SheetHeader className="pb-4">
           <SheetTitle className="flex items-center gap-2">
             <FileText className="w-5 h-5" />
@@ -765,10 +776,9 @@ function EditInvoiceSheet({ invoiceId, onClose }: { invoiceId: number | null; on
                   disabled={sendReminder.isPending}>
                   <Mail className="w-3.5 h-3.5" /> Send Reminder
                 </Button>
-                <Button size="sm" variant="outline" className="gap-1.5"
-                  onClick={() => retryBillingEmail.mutate({ id: invoiceId! }, { onSuccess: () => toast.success('Invoice email sent'), onError: () => toast.error('Failed to send') })}
-                  disabled={retryBillingEmail.isPending}>
-                  <MailCheck className="w-3.5 h-3.5" /> Send Invoice
+                <Button size="sm" variant="default" className="gap-1.5"
+                  onClick={() => setShowSendDialog(true)}>
+                  <Send className="w-3.5 h-3.5" /> Send…
                 </Button>
                 <Button size="sm" variant="outline" className="gap-1.5" onClick={() => printInvoice((invoice ?? {}) as unknown as Record<string, unknown>, {})}>
                   <Printer className="w-3.5 h-3.5" /> Print
@@ -786,6 +796,20 @@ function EditInvoiceSheet({ invoiceId, onClose }: { invoiceId: number | null; on
                 )}
               </div>
             )}
+
+            {/* Send dialog */}
+            <SendDocumentDialog
+              open={showSendDialog}
+              onOpenChange={setShowSendDialog}
+              type="invoice"
+              docNumber={(invoice as any).invoiceNumber ?? String(invoiceId)}
+              customerName={(invoice as any).customerName ?? null}
+              publicLink={(invoice as any).publicToken
+                ? `${window.location.origin}/invoice/${(invoice as any).publicToken}`
+                : null}
+              onSendEmail={handleSendInvoiceEmail}
+              isSendingEmail={retryBillingEmail.isPending}
+            />
 
             {/* Public link */}
             {(invoice as any).publicToken && (

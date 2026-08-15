@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { Link, useSearch, useLocation } from 'wouter';
 import { printEstimate } from '@/lib/printUtils';
+import { SendDocumentDialog } from '@/components/shared/SendDocumentDialog';
 const STATUS_COLORS: Record<string, string> = {
   draft:    'bg-gray-100 text-gray-700 border-gray-200',
   sent:     'bg-blue-100 text-blue-700 border-blue-200',
@@ -554,6 +555,37 @@ export default function EstimatesPage() {
         invalidate();
       },
       onError: () => toast.error('Failed to send estimate'),
+    });
+  }
+
+  // Wrapped version for SendDocumentDialog (doesn't auto-close the dialog)
+  async function handleSendForDialog(): Promise<void> {
+    if (!sendDialogId) return;
+    if (sendExpiresAt) {
+      try {
+        await fetch(`${import.meta.env.BASE_URL}api/estimates/${sendDialogId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', ...(window as any).__apiHeaders },
+          body: JSON.stringify({ expiresAt: sendExpiresAt }),
+        });
+      } catch { /* non-fatal */ }
+    }
+    return new Promise<void>((resolve, reject) => {
+      sendEstimate.mutate({ id: sendDialogId }, {
+        onSuccess: (r) => {
+          const result = r as typeof r & { emailSent?: boolean; emailError?: string | null };
+          if (result.emailSent) {
+            toast.success('Estimate sent — customer emailed');
+          } else if (result.emailError) {
+            toast.warning('Estimate sent, but email failed', { description: result.emailError });
+          } else {
+            toast.success('Estimate sent');
+          }
+          invalidate();
+          resolve();
+        },
+        onError: () => { toast.error('Failed to send estimate'); reject(new Error('Failed')); },
+      });
     });
   }
 
@@ -1338,7 +1370,7 @@ export default function EstimatesPage() {
 
       {/* Estimate Detail Sheet */}
       <Sheet open={selectedId != null} onOpenChange={open => { if (!open) setSelectedId(null); }}>
-        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-[66vw] overflow-y-auto">
           {selectedEstimate && (
             <>
               <SheetHeader className="pb-4">
@@ -1928,53 +1960,26 @@ export default function EstimatesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Send Confirm — lets staff confirm/adjust expiry before sending */}
-      <Dialog open={sendDialogId != null} onOpenChange={open => { if (!open) setSendDialogId(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Send Estimate to Customer</DialogTitle>
-            <DialogDescription>
-              The customer will receive an email with a link to review and approve this estimate.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Expiry Date</label>
-              <Input
-                type="date"
-                title="The estimate link will stop accepting responses after this date"
-                value={sendExpiresAt}
-                onChange={e => setSendExpiresAt(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">The estimate link will stop accepting responses after this date.</p>
-            </div>
-          </div>
-          <div className="flex gap-3 justify-end mt-2">
-            <Button variant="outline" title="Close without sending this estimate" onClick={() => setSendDialogId(null)}>Cancel</Button>
-            <Button
-              title="Send this estimate to the customer by email"
-              disabled={sendEstimate.isPending}
-              onClick={async () => {
-                if (!sendDialogId) return;
-                // Patch expiry first if changed, then send
-                if (sendExpiresAt) {
-                  try {
-                    await fetch(`/api/estimates/${sendDialogId}`, {
-                      method: 'PATCH',
-                      headers: { 'Content-Type': 'application/json', ...(window as any).__apiHeaders },
-                      body: JSON.stringify({ expiresAt: sendExpiresAt }),
-                    });
-                  } catch { /* non-fatal */ }
-                }
-                handleSend(sendDialogId);
-              }}
-            >
-              <Send className="w-3.5 h-3.5 mr-1.5" />
-              {sendEstimate.isPending ? 'Sending…' : 'Send to Customer'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <SendDocumentDialog
+        open={sendDialogId != null}
+        onOpenChange={open => { if (!open) setSendDialogId(null); }}
+        type="estimate"
+        docNumber={String(sendDialogId ?? '')}
+        customerName={(estimates?.find(e => e.id === sendDialogId) as any)?.customerName ?? null}
+        onSendEmail={handleSendForDialog}
+        isSendingEmail={sendEstimate.isPending}
+      >
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">Expiry Date</label>
+          <Input
+            type="date"
+            title="The estimate link will stop accepting responses after this date"
+            value={sendExpiresAt}
+            onChange={e => setSendExpiresAt(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">The estimate link will stop accepting responses after this date.</p>
+        </div>
+      </SendDocumentDialog>
 
       {/* ── Schedule Job dialog (estimate → job conversion) ────────────────── */}
       <Dialog open={scheduleDialogOpen} onOpenChange={open => { if (!open && !converting) { setScheduleDialogOpen(false); setScheduleEstimateId(null); } }}>

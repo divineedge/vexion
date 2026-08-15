@@ -507,6 +507,28 @@ router.delete("/settings/email/gmail", async (req, res): Promise<void> => {
   res.sendStatus(204);
 });
 
+// ── Budget Data ─────────────────────────────────────────────────────────────
+router.get("/settings/budget", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const result = await db.execute(sql`
+    SELECT budget_data FROM tenants WHERE id = ${tenantId}
+  `);
+  const row = result.rows[0] as Record<string, unknown> | undefined;
+  res.json({ budgetData: row?.budget_data ?? null });
+});
+
+router.patch("/settings/budget", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const { budgetData } = req.body;
+  if (!budgetData || typeof budgetData !== 'object') {
+    res.status(400).json({ error: "budgetData object is required" }); return;
+  }
+  await db.execute(sql`
+    UPDATE tenants SET budget_data = ${JSON.stringify(budgetData)}::jsonb WHERE id = ${tenantId}
+  `);
+  res.json({ ok: true });
+});
+
 router.get("/settings/users", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));

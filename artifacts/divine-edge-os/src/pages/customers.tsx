@@ -257,6 +257,14 @@ export default function CustomersPage() {
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<FormData>(BLANK);
   const [tagInput, setTagInput] = useState('');
+  const [createCampaignId, setCreateCampaignId] = useState('');
+  const [availableCampaigns, setAvailableCampaigns] = useState<{ id: number; name: string }[]>([]);
+
+  useEffect(() => {
+    customFetch<{ id: number; name: string }[]>('/api/marketing/campaigns')
+      .then(data => setAvailableCampaigns((data ?? []).map((c: any) => ({ id: c.id, name: c.name }))))
+      .catch(() => {});
+  }, []);
   const addrInputRef = useRef<HTMLInputElement>(null);
   const [addrFocused, setAddrFocused] = useState(false);
   const [noCardFilter, setNoCardFilter] = useState(false);
@@ -354,6 +362,7 @@ export default function CustomersPage() {
       else body[k] = v;
     }
     body.customFieldValues = customFieldValues;
+    if (createCampaignId) body.acquiredFromCampaignId = parseInt(createCampaignId, 10);
 
     setCreatingBusy(true);
     try {
@@ -374,6 +383,7 @@ export default function CustomersPage() {
       qc.invalidateQueries({ queryKey: getListCustomersQueryKey() });
       setCreating(false);
       setForm(BLANK);
+      setCreateCampaignId('');
       setLocation(`/customers/${customer.id}`);
     } catch {
       toast.error('Failed to create customer');
@@ -684,6 +694,21 @@ export default function CustomersPage() {
                   </Select>
                 </Field>
               ))}
+              {availableCampaigns.length > 0 && (
+                <Field label="Acquired from Campaign">
+                  <Select value={createCampaignId} onValueChange={setCreateCampaignId}>
+                    <SelectTrigger title="Which marketing campaign brought this customer in?">
+                      <SelectValue placeholder="None" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">None</SelectItem>
+                      {availableCampaigns.map(c => (
+                        <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
             </Section>
 
             {activeFields.some(f => f.key === 'billingAddress' && f.visible) && (

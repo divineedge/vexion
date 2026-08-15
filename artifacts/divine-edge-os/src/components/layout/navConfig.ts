@@ -4,7 +4,7 @@ import {
   PackageSearch, Briefcase, Wrench,
   DollarSign,
   Megaphone, FlaskConical,
-  Settings, FileText, Footprints, BarChart3, Star, Repeat, ListTodo,
+  Settings, FileText, Footprints, BarChart3, Star, Repeat, ListTodo, Calculator,
   Map, ClipboardList, PhoneMissed, PhoneIncoming, Inbox, Layers,
   LucideIcon,
 } from 'lucide-react';
@@ -89,6 +89,7 @@ export const adminNavSections: NavSection[] = [
     items: [
       { name: 'Financials', href: '/financials', icon: DollarSign, permissionKey: 'pages.billing' },
       { name: 'Reports',    href: '/reports',    icon: BarChart3,  permissionKey: 'pages.reports' },
+      { name: 'Budget',     href: '/budget',     icon: Calculator, permissionKey: 'pages.billing' },
     ],
   },
   {

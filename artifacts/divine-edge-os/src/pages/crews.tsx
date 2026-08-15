@@ -196,7 +196,7 @@ export default function CrewsPage() {
 
       {/* Create Crew Sheet */}
       <Sheet open={createOpen} onOpenChange={open => { if (!open) { setCreateOpen(false); setNewCrewForm({ name: '', description: '' }); } }}>
-        <SheetContent className="w-full sm:max-w-md">
+        <SheetContent className="w-full sm:max-w-[66vw]">
           <SheetHeader className="pb-4">
             <SheetTitle>New Crew</SheetTitle>
             <SheetDescription>Create a new field crew and add members after creation.</SheetDescription>
@@ -231,7 +231,7 @@ export default function CrewsPage() {
 
       {/* Crew Detail Sheet */}
       <Sheet open={selectedCrewId != null} onOpenChange={open => { if (!open) setSelectedCrewId(null); }}>
-        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-[66vw] overflow-y-auto">
           {selectedCrew ? (
             <>
               <SheetHeader className="pb-4">

@@ -369,7 +369,7 @@ export default function InvoiceTemplatesSettings() {
       </Card>
 
       <Sheet open={sheetMode !== null} onOpenChange={closeSheet}>
-        <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
+        <SheetContent className="w-full sm:max-w-[66vw] overflow-y-auto">
           <SheetHeader className="pb-4">
             <SheetTitle>
               {sheetMode === 'create' ? 'Add Invoice Template' : 'Edit Invoice Template'}

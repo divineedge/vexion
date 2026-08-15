@@ -158,7 +158,7 @@ export function TaskFormDrawer({ open, onOpenChange, lockedContext, onCreated, i
 
   return (
     <Sheet open={open} onOpenChange={o => { if (!o) reset(); onOpenChange(o); }}>
-      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+      <SheetContent className="w-full sm:max-w-[66vw] overflow-y-auto">
         <SheetHeader className="pb-4">
           <SheetTitle>New Task</SheetTitle>
           <SheetDescription>Assign work to a teammate or a role — they'll get an in-app notification.</SheetDescription>

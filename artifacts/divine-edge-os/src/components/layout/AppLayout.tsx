@@ -221,29 +221,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
           ) : (
             <div className="space-y-1">
-              {/* ── Bookmarks section (only shown when user has bookmarks) ── */}
-              {bookmarkedItems.length > 0 && (
-                <div className="mb-2">
-                  <p className="px-3 py-1 text-xs font-semibold uppercase tracking-wider text-yellow-400/80 flex items-center gap-1.5">
-                    <Star className="w-3 h-3 fill-yellow-400/80" /> Bookmarks
-                  </p>
-                  <div className="mt-0.5 space-y-0.5">
-                    {bookmarkedItems.map(item => (
-                      <StandaloneLink
-                        key={item.href}
-                        item={item}
-                        location={location}
-                        badgeCount={badgeCounts[item.href]}
-                        bookmarked
-                        onToggleBookmark={toggleBookmark}
-                        onNavClick={onNavClick}
-                      />
-                    ))}
-                  </div>
-                  <div className="my-2 border-t border-sidebar-border/30" />
-                </div>
-              )}
-
               {/* ── Standalone Dashboard link ── */}
               <StandaloneLink
                 item={{ name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard }}
@@ -252,6 +229,23 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 onToggleBookmark={toggleBookmark}
                 onNavClick={onNavClick}
               />
+
+              {/* ── Bookmarks (below Dashboard, no label) ── */}
+              {bookmarkedItems.length > 0 && (
+                <div className="space-y-0.5">
+                  {bookmarkedItems.map(item => (
+                    <StandaloneLink
+                      key={item.href}
+                      item={item}
+                      location={location}
+                      badgeCount={badgeCounts[item.href]}
+                      bookmarked
+                      onToggleBookmark={toggleBookmark}
+                      onNavClick={onNavClick}
+                    />
+                  ))}
+                </div>
+              )}
 
               <div className="my-1 border-t border-sidebar-border/20" />
 

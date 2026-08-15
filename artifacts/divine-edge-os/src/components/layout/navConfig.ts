@@ -57,10 +57,7 @@ export const adminNavSections: NavSection[] = [
       { name: 'Schedule',        href: '/schedule',      icon: CalendarDays },
       { name: 'Estimates',       href: '/estimates',     icon: FileText },
       { name: 'Visits',          href: '/visits',        icon: Footprints },
-      { name: 'Calls',           href: '/calls',         icon: PhoneIncoming },
       { name: 'Daily Tasks',     href: '/daily-tasks',   icon: ClipboardList },
-      { name: 'Follow-Up Queue', href: '/followup-queue', icon: PhoneMissed },
-      { name: 'Portal Inbox',    href: '/portal-inbox',  icon: Inbox },
     ],
   },
   {
@@ -118,8 +115,11 @@ export const adminNavSections: NavSection[] = [
     label: 'Admin',
     roles: ['canManageOffice'],
     items: [
-      { name: 'Callbacks', href: '/callbacks', icon: PhoneCall },
-      { name: 'Tasks',     href: '/tasks',     icon: ListTodo },
+      { name: 'Callbacks',       href: '/callbacks',     icon: PhoneCall },
+      { name: 'Tasks',           href: '/tasks',         icon: ListTodo },
+      { name: 'Calls',           href: '/calls',         icon: PhoneIncoming },
+      { name: 'Follow-Up Queue', href: '/followup-queue', icon: PhoneMissed },
+      { name: 'Portal Inbox',    href: '/portal-inbox',  icon: Inbox },
     ],
   },
 ];

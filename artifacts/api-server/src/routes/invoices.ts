@@ -169,11 +169,14 @@ function formatInvoice(i: typeof invoicesTable.$inferSelect, customerName?: stri
     stripePaymentUrl: i.stripePaymentUrl ?? null,
     publicToken: i.publicToken ?? null,
     createdAt: i.createdAt.toISOString(),
+    jobCompletedAt: i.jobCompletedAt?.toISOString() ?? null,
     // Template-derived fields
     layout: i.layout ?? "clean",
     termsText: i.termsText ?? null,
     lateFeeEnabled: i.lateFeeEnabled ?? false,
     lateFeeType: i.lateFeeType ?? null,
+    lateFeeSchedule: (i.lateFeeSchedule as unknown[]) ?? [],
+    showJobCompletionDate: i.showJobCompletionDate ?? false,
     lateFeeAmount: i.lateFeeAmount ?? null,
     lateFeeDaysGrace: i.lateFeeDaysGrace ?? 0,
   };
@@ -243,6 +246,8 @@ router.post("/invoices/from-job/:jobId", async (req, res): Promise<void> => {
     lateFeeType: null as string | null,
     lateFeeAmount: null as number | null,
     lateFeeDaysGrace: 0,
+    lateFeeSchedule: [] as unknown[],
+    showJobCompletionDate: false,
   };
 
   if (resolvedTemplateId) {
@@ -255,6 +260,8 @@ router.post("/invoices/from-job/:jobId", async (req, res): Promise<void> => {
         lateFeeType: tmpl.lateFeeType ?? null,
         lateFeeAmount: tmpl.lateFeeAmount ?? null,
         lateFeeDaysGrace: tmpl.lateFeeDaysGrace,
+        lateFeeSchedule: (tmpl.lateFeeSchedule as unknown[]) ?? [],
+        showJobCompletionDate: tmpl.showJobCompletionDate ?? false,
       };
     }
   }
@@ -282,7 +289,15 @@ router.post("/invoices/from-job/:jobId", async (req, res): Promise<void> => {
     lateFeeType: templateFields.lateFeeType,
     lateFeeAmount: templateFields.lateFeeAmount,
     lateFeeDaysGrace: templateFields.lateFeeDaysGrace,
+    showJobCompletionDate: templateFields.showJobCompletionDate,
+    jobCompletedAt: templateFields.showJobCompletionDate && job.completedAt ? job.completedAt : null,
   }).returning();
+
+  // Write lateFeeSchedule via raw SQL (Drizzle silently drops new JSONB cols in set())
+  if (templateFields.lateFeeSchedule.length > 0) {
+    await db.execute(sql`UPDATE invoices SET late_fee_schedule = ${JSON.stringify(templateFields.lateFeeSchedule)}::jsonb WHERE id = ${invoice.id}`);
+    invoice.lateFeeSchedule = templateFields.lateFeeSchedule;
+  }
 
   await db.update(jobsTable).set({ invoiceId: invoice.id }).where(eq(jobsTable.id, jobId));
   await db.insert(activityLogTable).values({ tenantId, userId, type: "invoice_sent", message: `Invoice ${invoiceNum} created from job`, entityId: invoice.id });
@@ -309,6 +324,8 @@ router.post("/invoices", async (req, res): Promise<void> => {
     lateFeeType: string | null;
     lateFeeAmount: number | null;
     lateFeeDaysGrace: number;
+    lateFeeSchedule: unknown[];
+    showJobCompletionDate: boolean;
     templateLineItems: unknown[];
   } = {
     layout: "clean",
@@ -317,6 +334,8 @@ router.post("/invoices", async (req, res): Promise<void> => {
     lateFeeType: null,
     lateFeeAmount: null,
     lateFeeDaysGrace: 0,
+    lateFeeSchedule: [],
+    showJobCompletionDate: false,
     templateLineItems: [],
   };
 
@@ -330,6 +349,8 @@ router.post("/invoices", async (req, res): Promise<void> => {
         lateFeeType: tmpl.lateFeeType ?? null,
         lateFeeAmount: tmpl.lateFeeAmount ?? null,
         lateFeeDaysGrace: tmpl.lateFeeDaysGrace,
+        lateFeeSchedule: (tmpl.lateFeeSchedule as unknown[]) ?? [],
+        showJobCompletionDate: tmpl.showJobCompletionDate ?? false,
         templateLineItems: (tmpl.lineItems as unknown[]) ?? [],
       };
     }
@@ -366,7 +387,14 @@ router.post("/invoices", async (req, res): Promise<void> => {
     lateFeeType: templateFields.lateFeeType,
     lateFeeAmount: templateFields.lateFeeAmount,
     lateFeeDaysGrace: templateFields.lateFeeDaysGrace,
+    showJobCompletionDate: templateFields.showJobCompletionDate,
   }).returning();
+
+  // Write lateFeeSchedule via raw SQL (Drizzle silently drops new JSONB cols in set())
+  if (templateFields.lateFeeSchedule.length > 0) {
+    await db.execute(sql`UPDATE invoices SET late_fee_schedule = ${JSON.stringify(templateFields.lateFeeSchedule)}::jsonb WHERE id = ${invoice.id}`);
+    invoice.lateFeeSchedule = templateFields.lateFeeSchedule;
+  }
 
   res.status(201).json(formatInvoice(invoice));
 });

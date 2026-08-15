@@ -21,6 +21,14 @@ export const invoiceTemplatesTable = pgTable("invoice_templates", {
   lateFeeAmount: real("late_fee_amount"),
   /** Number of grace-period days after the due date before the fee applies */
   lateFeeDaysGrace: integer("late_fee_days_grace").notNull().default(0),
+  /**
+   * Ordered list of late-fee rules that replace the legacy single-fee fields.
+   * Each rule: { id, daysAfterDue, type: 'flat'|'percent', amount, repeatEveryDays? }
+   * When present this takes precedence over lateFeeEnabled/lateFeeType/lateFeeAmount.
+   */
+  lateFeeSchedule: jsonb("late_fee_schedule").default("[]"),
+  /** When true, the job completion date is shown on invoices generated from recurring templates */
+  showJobCompletionDate: boolean("show_job_completion_date").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

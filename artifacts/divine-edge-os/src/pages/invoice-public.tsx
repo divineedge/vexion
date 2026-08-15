@@ -196,15 +196,51 @@ export default function InvoicePublicPage() {
   })();
   const logoUrl = `${apiBase}/public/tenants/${inv.tenantId}/logo`;
 
-  // Late-fee notice: show when overdue and lateFeeEnabled
+  // Late-fee calculation
   const isOverdue = inv.status === 'overdue' || (
     inv.status === 'sent' && inv.dueDate && new Date(inv.dueDate) < new Date()
   );
-  const lateFeeDaysGrace: number = inv.lateFeeDaysGrace ?? 0;
   const daysPastDue = inv.dueDate
     ? differenceInDays(new Date(), parseISO(inv.dueDate))
     : 0;
-  const showLateFeeNotice = inv.lateFeeEnabled && isOverdue && daysPastDue > lateFeeDaysGrace;
+
+  // Multi-rule schedule (new) vs. legacy single-fee (old)
+  const lateFeeSchedule: Array<{
+    id: string; daysAfterDue: number; type: 'flat' | 'percent'; amount: number; repeatEveryDays?: number;
+  }> = ((inv as any).lateFeeSchedule ?? []) as any;
+
+  interface AppliedFee { label: string; feeAmount: number; }
+  const appliedFees: AppliedFee[] = [];
+
+  if (isOverdue && lateFeeSchedule.length > 0) {
+    const sorted = [...lateFeeSchedule].sort((a, b) => a.daysAfterDue - b.daysAfterDue);
+    for (const rule of sorted) {
+      if (daysPastDue < rule.daysAfterDue) continue;
+      const base = inv.subtotal ?? inv.total ?? 0;
+      const feeAmount = rule.type === 'flat' ? rule.amount : base * rule.amount / 100;
+      const fmtAmt = rule.type === 'flat' ? `$${rule.amount.toFixed(2)}` : `${rule.amount}%`;
+      if (rule.repeatEveryDays) {
+        const occurrences = Math.max(1, Math.floor((daysPastDue - rule.daysAfterDue) / rule.repeatEveryDays) + 1);
+        appliedFees.push({
+          label: `${fmtAmt} ${rule.type === 'percent' ? 'of balance ' : ''}(repeating every ${rule.repeatEveryDays} days — applied ${occurrences}×)`,
+          feeAmount: feeAmount * occurrences,
+        });
+      } else {
+        appliedFees.push({
+          label: `${fmtAmt} ${rule.type === 'percent' ? 'of balance ' : ''}after ${rule.daysAfterDue} days`,
+          feeAmount,
+        });
+      }
+    }
+  }
+
+  // Legacy single-fee fallback
+  const legacyLateFee = inv.lateFeeEnabled && isOverdue && daysPastDue > (inv.lateFeeDaysGrace ?? 0) && lateFeeSchedule.length === 0;
+  const showLateFeeNotice = appliedFees.length > 0 || legacyLateFee;
+  const totalAppliedFees = appliedFees.reduce((s, f) => s + f.feeAmount, 0);
+
+  // Job completion date
+  const showCompletionDate = (inv as any).showJobCompletionDate && (inv as any).jobCompletedAt;
 
   return (
     <div className="min-h-screen bg-muted/30 py-8 px-4 print:bg-white print:py-0 print:px-0">
@@ -222,16 +258,44 @@ export default function InvoicePublicPage() {
         {showLateFeeNotice && (
           <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4 print:border-red-400">
             <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-            <div className="text-sm">
+            <div className="text-sm flex-1">
               <p className="font-semibold text-red-800">This invoice is overdue</p>
-              <p className="text-red-700 mt-0.5">
-                {inv.lateFeeType === 'percent'
-                  ? `A ${inv.lateFeeAmount}% late fee`
-                  : `A $${(inv.lateFeeAmount ?? 0).toFixed(2)} late fee`}{' '}
-                applies after {lateFeeDaysGrace} day{lateFeeDaysGrace !== 1 ? 's' : ''} past the due date.
-                Please remit payment as soon as possible.
-              </p>
+              {appliedFees.length > 0 ? (
+                <div className="mt-1.5 space-y-1">
+                  {appliedFees.map((fee, i) => (
+                    <div key={i} className="flex items-center justify-between gap-4">
+                      <span className="text-red-700">{fee.label}</span>
+                      <span className="font-semibold text-red-800 shrink-0">${fee.feeAmount.toFixed(2)}</span>
+                    </div>
+                  ))}
+                  {appliedFees.length > 1 && (
+                    <div className="flex items-center justify-between gap-4 border-t border-red-200 pt-1 mt-1">
+                      <span className="text-red-700 font-medium">Total additional fees</span>
+                      <span className="font-bold text-red-800 shrink-0">${totalAppliedFees.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <p className="text-red-600 text-xs mt-1">Please remit payment as soon as possible to avoid additional charges.</p>
+                </div>
+              ) : (
+                <p className="text-red-700 mt-0.5">
+                  {inv.lateFeeType === 'percent'
+                    ? `A ${inv.lateFeeAmount}% late fee`
+                    : `A $${(inv.lateFeeAmount ?? 0).toFixed(2)} late fee`}{' '}
+                  applies after {inv.lateFeeDaysGrace ?? 0} day{(inv.lateFeeDaysGrace ?? 0) !== 1 ? 's' : ''} past the due date.
+                  Please remit payment as soon as possible.
+                </p>
+              )}
             </div>
+          </div>
+        )}
+
+        {/* Job completion date banner */}
+        {showCompletionDate && (
+          <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+            <span className="text-xs font-medium text-blue-700 uppercase tracking-wide">Job completed</span>
+            <span className="text-sm font-semibold text-blue-900">
+              {format(parseISO((inv as any).jobCompletedAt), 'MMMM d, yyyy')}
+            </span>
           </div>
         )}
 

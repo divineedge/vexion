@@ -15,12 +15,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { Plus, Trash2, FileText, Copy, ChevronUp, ChevronDown } from 'lucide-react';
+import { Plus, Trash2, FileText, Copy, ChevronUp, ChevronDown, RefreshCw, Calendar } from 'lucide-react';
 import type { InvoiceTemplate } from '@workspace/api-client-react';
 
 type Layout = 'clean' | 'detailed' | 'compact';
-type FeeType = 'percent' | 'flat';
 
 interface LineItem {
   id: string;
@@ -29,8 +29,23 @@ interface LineItem {
   unitPrice: number;
 }
 
+interface LateFeeRule {
+  id: string;
+  daysAfterDue: number;
+  type: 'flat' | 'percent';
+  amount: number;
+  repeatEveryDays?: number;
+}
+
 function emptyItem(): LineItem {
   return { id: crypto.randomUUID(), description: '', qty: 1, unitPrice: 0 };
+}
+
+function defaultSchedule(): LateFeeRule[] {
+  return [
+    { id: crypto.randomUUID(), daysAfterDue: 7, type: 'flat', amount: 25 },
+    { id: crypto.randomUUID(), daysAfterDue: 37, type: 'percent', amount: 1.5, repeatEveryDays: 30 },
+  ];
 }
 
 const LAYOUT_LABELS: Record<Layout, string> = {
@@ -44,9 +59,7 @@ const EMPTY_FORM = {
   layout: 'clean' as Layout,
   termsText: '',
   lateFeeEnabled: false,
-  lateFeeType: 'percent' as FeeType,
-  lateFeeAmount: 0,
-  lateFeeDaysGrace: 7,
+  showJobCompletionDate: false,
 };
 
 export default function InvoiceTemplatesSettings() {
@@ -55,6 +68,7 @@ export default function InvoiceTemplatesSettings() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [lineItems, setLineItems] = useState<LineItem[]>([emptyItem()]);
+  const [lateFeeSchedule, setLateFeeSchedule] = useState<LateFeeRule[]>([]);
   const [deleteTemplatePending, setDeleteTemplatePending] = useState(false);
 
   const { data: templates, isLoading } = useListInvoiceTemplates({
@@ -84,9 +98,24 @@ export default function InvoiceTemplatesSettings() {
   const updateLineItem = (idx: number, patch: Partial<LineItem>) =>
     setLineItems(items => items.map((item, i) => (i === idx ? { ...item, ...patch } : item)));
 
+  const updateRule = (ruleId: string, patch: Partial<LateFeeRule>) =>
+    setLateFeeSchedule(rules => rules.map(r => r.id === ruleId ? { ...r, ...patch } : r));
+
+  const removeRule = (ruleId: string) =>
+    setLateFeeSchedule(rules => rules.filter(r => r.id !== ruleId));
+
+  const addRule = () =>
+    setLateFeeSchedule(rules => [...rules, {
+      id: crypto.randomUUID(),
+      daysAfterDue: rules.length > 0 ? Math.max(...rules.map(r => r.daysAfterDue)) + 30 : 7,
+      type: 'flat',
+      amount: 25,
+    }]);
+
   const openCreate = () => {
     setForm(EMPTY_FORM);
     setLineItems([emptyItem()]);
+    setLateFeeSchedule([]);
     setSelectedId(null);
     setDeleteTemplatePending(false);
     setSheetMode('create');
@@ -99,15 +128,31 @@ export default function InvoiceTemplatesSettings() {
       qty: i.quantity ?? i.qty ?? 1,
       unitPrice: i.unitPrice ?? 0,
     }));
+
     setForm({
       name: t.name,
       layout: (t.layout ?? 'clean') as Layout,
       termsText: t.termsText ?? '',
-      lateFeeEnabled: t.lateFeeEnabled ?? false,
-      lateFeeType: (t.lateFeeType ?? 'percent') as FeeType,
-      lateFeeAmount: t.lateFeeAmount ?? 0,
-      lateFeeDaysGrace: t.lateFeeDaysGrace ?? 7,
+      lateFeeEnabled: (t.lateFeeEnabled ?? false) || ((t as any).lateFeeSchedule ?? []).length > 0,
+      showJobCompletionDate: (t as any).showJobCompletionDate ?? false,
     });
+
+    // Load lateFeeSchedule — prefer new schedule, fall back to legacy single-fee fields
+    const existingSchedule: LateFeeRule[] = ((t as any).lateFeeSchedule ?? []) as LateFeeRule[];
+    if (existingSchedule.length > 0) {
+      setLateFeeSchedule(existingSchedule);
+    } else if (t.lateFeeEnabled && t.lateFeeAmount) {
+      // Convert legacy single-fee to schedule
+      setLateFeeSchedule([{
+        id: crypto.randomUUID(),
+        daysAfterDue: t.lateFeeDaysGrace ?? 0,
+        type: (t.lateFeeType ?? 'percent') as 'flat' | 'percent',
+        amount: t.lateFeeAmount ?? 0,
+      }]);
+    } else {
+      setLateFeeSchedule([]);
+    }
+
     setLineItems(items.length > 0 ? items : [emptyItem()]);
     setSelectedId(t.id);
     setDeleteTemplatePending(false);
@@ -129,6 +174,23 @@ export default function InvoiceTemplatesSettings() {
   const handleSave = () => {
     if (!form.name.trim()) { toast.error('Template name is required'); return; }
 
+    // Sort schedule by daysAfterDue before saving
+    const sortedSchedule = [...lateFeeSchedule].sort((a, b) => a.daysAfterDue - b.daysAfterDue);
+
+    // Derive legacy fields from schedule for backward compatibility
+    const firstRule = sortedSchedule[0];
+    const legacyFields = form.lateFeeEnabled && firstRule ? {
+      lateFeeEnabled: true,
+      lateFeeType: firstRule.type,
+      lateFeeAmount: firstRule.amount,
+      lateFeeDaysGrace: firstRule.daysAfterDue,
+    } : {
+      lateFeeEnabled: false,
+      lateFeeType: undefined,
+      lateFeeAmount: undefined,
+      lateFeeDaysGrace: 0,
+    };
+
     const payload = {
       name: form.name.trim(),
       layout: form.layout,
@@ -139,10 +201,9 @@ export default function InvoiceTemplatesSettings() {
         unitPrice: i.unitPrice,
       })),
       termsText: form.termsText.trim() || undefined,
-      lateFeeEnabled: form.lateFeeEnabled,
-      lateFeeType: form.lateFeeEnabled ? form.lateFeeType : undefined,
-      lateFeeAmount: form.lateFeeEnabled ? form.lateFeeAmount : undefined,
-      lateFeeDaysGrace: form.lateFeeDaysGrace,
+      showJobCompletionDate: form.showJobCompletionDate,
+      lateFeeSchedule: form.lateFeeEnabled ? sortedSchedule : [],
+      ...legacyFields,
     };
 
     if (sheetMode === 'create') {
@@ -187,6 +248,22 @@ export default function InvoiceTemplatesSettings() {
   };
 
   const currentDefault = (settings as any)?.defaultInvoiceTemplateId ?? null;
+
+  // Format schedule for the table column
+  const fmtSchedule = (t: InvoiceTemplate): string => {
+    const schedule = (t as any).lateFeeSchedule as LateFeeRule[] | undefined;
+    if (schedule && schedule.length > 0) {
+      const sorted = [...schedule].sort((a, b) => a.daysAfterDue - b.daysAfterDue);
+      const parts = sorted.map(r =>
+        `${r.type === 'flat' ? `$${r.amount}` : `${r.amount}%`} after ${r.daysAfterDue}d${r.repeatEveryDays ? ` +every ${r.repeatEveryDays}d` : ''}`
+      );
+      return parts.slice(0, 2).join(' · ') + (parts.length > 2 ? ` +${parts.length - 2}` : '');
+    }
+    if (t.lateFeeEnabled) {
+      return `${t.lateFeeAmount}${t.lateFeeType === 'percent' ? '%' : '$'} after ${t.lateFeeDaysGrace}d`;
+    }
+    return '—';
+  };
 
   return (
     <div className="space-y-4">
@@ -237,18 +314,19 @@ export default function InvoiceTemplatesSettings() {
                 <TableHead>Template Name</TableHead>
                 <TableHead>Layout</TableHead>
                 <TableHead className="text-right">Items</TableHead>
-                <TableHead>Late Fee</TableHead>
+                <TableHead>Late Fee Schedule</TableHead>
+                <TableHead>Options</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">Loading...</TableCell>
+                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">Loading...</TableCell>
                 </TableRow>
               ) : (templates ?? []).length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-12 text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="py-12 text-center text-muted-foreground">
                     <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
                     No invoice templates yet. Create one to apply a consistent look to every invoice.
                   </TableCell>
@@ -262,10 +340,15 @@ export default function InvoiceTemplatesSettings() {
                   <TableCell className="text-right text-sm">
                     {((t.lineItems as unknown[]) ?? []).length}
                   </TableCell>
+                  <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
+                    {fmtSchedule(t)}
+                  </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {t.lateFeeEnabled
-                      ? `${t.lateFeeAmount}${t.lateFeeType === 'percent' ? '%' : '$'} after ${t.lateFeeDaysGrace}d`
-                      : '—'}
+                    {(t as any).showJobCompletionDate && (
+                      <span className="inline-flex items-center gap-1 text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">
+                        <Calendar className="w-3 h-3" /> Completion Date
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button
@@ -292,7 +375,7 @@ export default function InvoiceTemplatesSettings() {
               {sheetMode === 'create' ? 'Add Invoice Template' : 'Edit Invoice Template'}
             </SheetTitle>
             <SheetDescription>
-              Configure the layout, pre-filled items, terms, and late-fee policy for this template.
+              Configure the layout, pre-filled items, terms, late-fee schedule, and recurring-job options.
             </SheetDescription>
           </SheetHeader>
 
@@ -317,16 +400,11 @@ export default function InvoiceTemplatesSettings() {
                   <label
                     key={value}
                     className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                      form.layout === value
-                        ? 'border-primary bg-primary/5'
-                        : 'hover:bg-muted/50'
+                      form.layout === value ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'
                     }`}
                   >
                     <input
-                      type="radio"
-                      name="layout"
-                      value={value}
-                      checked={form.layout === value}
+                      type="radio" name="layout" value={value} checked={form.layout === value}
                       onChange={() => setForm(f => ({ ...f, layout: value }))}
                       className="shrink-0"
                     />
@@ -348,10 +426,7 @@ export default function InvoiceTemplatesSettings() {
                   <h3 className="text-sm font-semibold">Pre-filled Line Items</h3>
                   <p className="text-xs text-muted-foreground">Auto-added to new invoices using this template.</p>
                 </div>
-                <Button
-                  variant="outline" size="sm"
-                  onClick={() => setLineItems(items => [...items, emptyItem()])}
-                >
+                <Button variant="outline" size="sm" onClick={() => setLineItems(items => [...items, emptyItem()])}>
                   <Plus className="w-3.5 h-3.5 mr-1.5" /> Add Item
                 </Button>
               </div>
@@ -370,19 +445,12 @@ export default function InvoiceTemplatesSettings() {
                       </Button>
                     </div>
                     <div className="flex-1">
-                      <Input
-                        placeholder="Description"
-                        value={item.description}
-                        onChange={e => updateLineItem(idx, { description: e.target.value })}
-                      />
+                      <Input placeholder="Description" value={item.description}
+                        onChange={e => updateLineItem(idx, { description: e.target.value })} />
                     </div>
-                    <Button
-                      variant="ghost" size="sm"
-                      className="text-muted-foreground h-9 w-9 p-0 shrink-0"
+                    <Button variant="ghost" size="sm" className="text-muted-foreground h-9 w-9 p-0 shrink-0"
                       onClick={() => setLineItems(items => items.filter((_, j) => j !== idx))}
-                      disabled={lineItems.length === 1}
-                      title="Remove item"
-                    >
+                      disabled={lineItems.length === 1} title="Remove item">
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>
                   </div>
@@ -418,57 +486,143 @@ export default function InvoiceTemplatesSettings() {
 
             <Separator />
 
-            {/* Late Fee */}
+            {/* Late Fee Schedule */}
             <div className="space-y-3">
               <div className="flex items-center gap-3">
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={form.lateFeeEnabled}
-                    onChange={e => setForm(f => ({ ...f, lateFeeEnabled: e.target.checked }))}
-                    className="rounded"
-                  />
-                  <span className="text-sm font-medium">Enable late-fee notice on overdue invoices</span>
+                <Switch
+                  id="late-fee-enabled"
+                  checked={form.lateFeeEnabled}
+                  onCheckedChange={enabled => {
+                    setForm(f => ({ ...f, lateFeeEnabled: enabled }));
+                    if (enabled && lateFeeSchedule.length === 0) {
+                      setLateFeeSchedule(defaultSchedule());
+                    }
+                  }}
+                />
+                <label htmlFor="late-fee-enabled" className="text-sm font-medium cursor-pointer select-none">
+                  Enable late-fee schedule on overdue invoices
                 </label>
               </div>
+
               {form.lateFeeEnabled && (
-                <div className="pl-6 space-y-3">
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="space-y-1">
-                      <label className="text-xs text-muted-foreground">Fee Type</label>
-                      <select
-                        className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
-                        value={form.lateFeeType}
-                        onChange={e => setForm(f => ({ ...f, lateFeeType: e.target.value as FeeType }))}
-                      >
-                        <option value="percent">Percent (%)</option>
-                        <option value="flat">Flat ($)</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs text-muted-foreground">
-                        {form.lateFeeType === 'percent' ? 'Rate (%)' : 'Amount ($)'}
-                      </label>
-                      <Input
-                        type="number" min={0} step={0.01}
-                        value={form.lateFeeAmount}
-                        onChange={e => setForm(f => ({ ...f, lateFeeAmount: parseFloat(e.target.value) || 0 }))}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs text-muted-foreground">Grace Period (days)</label>
-                      <Input
-                        type="number" min={0} step={1}
-                        value={form.lateFeeDaysGrace}
-                        onChange={e => setForm(f => ({ ...f, lateFeeDaysGrace: parseInt(e.target.value) || 0 }))}
-                      />
-                    </div>
-                  </div>
+                <div className="space-y-3 pl-2">
                   <p className="text-xs text-muted-foreground">
-                    A late-fee notice will appear on the public invoice page once the invoice is overdue by more than {form.lateFeeDaysGrace} day{form.lateFeeDaysGrace !== 1 ? 's' : ''}.
+                    Rules are applied in order by days past due. Repeating rules recur every N days after their first trigger.
                   </p>
+
+                  {lateFeeSchedule
+                    .slice()
+                    .sort((a, b) => a.daysAfterDue - b.daysAfterDue)
+                    .map((rule, idx) => (
+                    <div key={rule.id} className="rounded-lg border p-3 space-y-3 bg-muted/20">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                          Rule {idx + 1}
+                        </span>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                          onClick={() => removeRule(rule.id)} title="Remove rule">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="space-y-1">
+                          <label className="text-xs text-muted-foreground">Days After Due</label>
+                          <Input
+                            type="number" min={1} step={1}
+                            value={rule.daysAfterDue}
+                            onChange={e => updateRule(rule.id, { daysAfterDue: parseInt(e.target.value) || 1 })}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs text-muted-foreground">Fee Type</label>
+                          <select
+                            className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                            value={rule.type}
+                            onChange={e => updateRule(rule.id, { type: e.target.value as 'flat' | 'percent' })}
+                          >
+                            <option value="flat">Flat ($)</option>
+                            <option value="percent">Percent (%)</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs text-muted-foreground">
+                            {rule.type === 'flat' ? 'Amount ($)' : 'Rate (%)'}
+                          </label>
+                          <Input
+                            type="number" min={0} step={0.01}
+                            value={rule.amount}
+                            onChange={e => updateRule(rule.id, { amount: parseFloat(e.target.value) || 0 })}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Repeat */}
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          id={`repeat-${rule.id}`}
+                          checked={!!rule.repeatEveryDays}
+                          onCheckedChange={on => updateRule(rule.id, { repeatEveryDays: on ? 30 : undefined })}
+                        />
+                        <label htmlFor={`repeat-${rule.id}`} className="text-xs text-muted-foreground cursor-pointer flex items-center gap-1.5">
+                          <RefreshCw className="w-3 h-3" />
+                          Repeat every
+                          {rule.repeatEveryDays ? (
+                            <input
+                              type="number" min={1} step={1}
+                              value={rule.repeatEveryDays}
+                              className="w-14 h-6 text-xs border border-input rounded px-1.5 bg-background inline-block"
+                              onClick={e => e.stopPropagation()}
+                              onChange={e => updateRule(rule.id, { repeatEveryDays: parseInt(e.target.value) || 30 })}
+                            />
+                          ) : (
+                            <span className="font-medium">N</span>
+                          )}
+                          days
+                        </label>
+                      </div>
+
+                      <p className="text-[11px] text-muted-foreground">
+                        {rule.type === 'flat'
+                          ? `A $${rule.amount.toFixed(2)} flat fee is added ${rule.daysAfterDue} days after the due date.`
+                          : `A ${rule.amount}% fee is added ${rule.daysAfterDue} days after the due date.`}
+                        {rule.repeatEveryDays && ` Then repeats every ${rule.repeatEveryDays} days.`}
+                      </p>
+                    </div>
+                  ))}
+
+                  <Button variant="outline" size="sm" className="gap-1.5 w-full" onClick={addRule}>
+                    <Plus className="w-3.5 h-3.5" /> Add Fee Rule
+                  </Button>
                 </div>
               )}
+            </div>
+
+            <Separator />
+
+            {/* Recurring job options */}
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold">Recurring Job Options</h3>
+                <p className="text-xs text-muted-foreground">Applied when invoices are auto-generated from recurring billing templates.</p>
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div className="space-y-0.5">
+                  <label htmlFor="show-completion" className="text-sm font-medium cursor-pointer flex items-center gap-1.5">
+                    <Calendar className="w-4 h-4 text-muted-foreground" />
+                    Show job completion date
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    Each line item on auto-generated invoices will include the date the job was completed.
+                  </p>
+                </div>
+                <Switch
+                  id="show-completion"
+                  checked={form.showJobCompletionDate}
+                  onCheckedChange={v => setForm(f => ({ ...f, showJobCompletionDate: v }))}
+                />
+              </div>
             </div>
 
             <Separator />

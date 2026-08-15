@@ -43,6 +43,15 @@ export const invoicesTable = pgTable("invoices", {
   paymentRemindersSent: jsonb("payment_reminders_sent").default("[]"),
   /** Explicit invoice date (when the invoice is issued); defaults to createdAt when null */
   invoiceDate: date("invoice_date"),
+  /**
+   * Copied from the invoice template's lateFeeSchedule at creation time.
+   * Each rule: { id, daysAfterDue, type: 'flat'|'percent', amount, repeatEveryDays? }
+   */
+  lateFeeSchedule: jsonb("late_fee_schedule").default("[]"),
+  /** Copied from the invoice template — show job completion date on public invoice page */
+  showJobCompletionDate: boolean("show_job_completion_date").notNull().default(false),
+  /** Completion date of the linked job, denormalized for display on public invoice pages */
+  jobCompletedAt: timestamp("job_completed_at", { withTimezone: true }),
   /** FK to invoice_templates when this invoice was created from a template */
   invoiceTemplateId: integer("invoice_template_id"),
   /** Visual layout variant for the public invoice page: 'clean' | 'detailed' | 'compact' */

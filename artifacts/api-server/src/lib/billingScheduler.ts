@@ -9,7 +9,7 @@
  *   2. Email Queue — send pending billing emails with retry logic (max 3 attempts).
  */
 
-import { db, recurringInvoiceTemplatesTable, billingEmailQueueTable, invoicesTable, customersTable, tenantsTable, jobsTable, activityLogTable } from "@workspace/db";
+import { db, recurringInvoiceTemplatesTable, billingEmailQueueTable, invoicesTable, customersTable, tenantsTable, jobsTable, activityLogTable, invoiceTemplatesTable } from "@workspace/db";
 import type { RecurringInvoiceTemplate } from "@workspace/db";
 import { eq, and, lte, sql, inArray, notInArray, isNull, asc, min, lt, isNotNull } from "drizzle-orm";
 import { logger } from "./logger";
@@ -125,6 +125,7 @@ async function collectCompletedWorkForCustomer(
   periodEnd: Date,
   excludeJobIds: number[] = [],
   excludeHeld = true,
+  showJobCompletionDate = false,
 ): Promise<{ lineItems: BillingLineItem[]; jobIds: number[] }> {
   const jobs = await tx
     .select()
@@ -145,7 +146,9 @@ async function collectCompletedWorkForCustomer(
     );
 
   const lineItems: BillingLineItem[] = jobs.map(job => ({
-    description: job.title,
+    description: showJobCompletionDate && job.completedAt
+      ? `${job.title} — Completed ${job.completedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+      : job.title,
     quantity: 1,
     unitPrice: job.totalAmount,
     total: job.totalAmount,
@@ -239,11 +242,33 @@ async function generateInvoiceForCustomer(
   }
   // ── End per-customer idempotency check ───────────────────────────────────
 
+  // ── Resolve tenant default invoice template ───────────────────────────────
+  // Used for showJobCompletionDate on line items and lateFeeSchedule on the invoice.
+  let resolvedShowJobCompletionDate = false;
+  let resolvedLateFeeSchedule: unknown[] = [];
+  {
+    const [tenant] = await tx
+      .select({ defaultInvoiceTemplateId: tenantsTable.defaultInvoiceTemplateId })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, template.tenantId));
+    if (tenant?.defaultInvoiceTemplateId) {
+      const [invTmpl] = await tx
+        .select()
+        .from(invoiceTemplatesTable)
+        .where(eq(invoiceTemplatesTable.id, tenant.defaultInvoiceTemplateId));
+      if (invTmpl) {
+        resolvedShowJobCompletionDate = invTmpl.showJobCompletionDate ?? false;
+        resolvedLateFeeSchedule = (invTmpl.lateFeeSchedule as unknown[]) ?? [];
+      }
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   let lineItems: BillingLineItem[];
   let jobIds: number[] = [];
 
   if (template.billingMode === "completed_work") {
-    const result = await collectCompletedWorkForCustomer(tx, template.tenantId, customerId, template.serviceId, periodStart, periodEnd, excludeJobIds, excludeHeld);
+    const result = await collectCompletedWorkForCustomer(tx, template.tenantId, customerId, template.serviceId, periodStart, periodEnd, excludeJobIds, excludeHeld, resolvedShowJobCompletionDate);
     if (result.lineItems.length === 0) return null;
 
     // Atomically claim the found jobs. A concurrent process racing the same
@@ -311,8 +336,14 @@ async function generateInvoiceForCustomer(
       generatedFromTemplateId: template.id,
       billingDate: billingDate ?? null,
       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // net-30
+      showJobCompletionDate: resolvedShowJobCompletionDate,
     })
     .returning();
+
+  // Write lateFeeSchedule via raw SQL (Drizzle silently drops new JSONB cols in set())
+  if (resolvedLateFeeSchedule.length > 0) {
+    await tx.execute(sql`UPDATE invoices SET late_fee_schedule = ${JSON.stringify(resolvedLateFeeSchedule)}::jsonb WHERE id = ${invoice.id}`);
+  }
 
   if (jobIds.length > 0) {
     // Write the real invoiceId and clear the claim lock.  Also clear holdFromBilling

@@ -287,6 +287,8 @@ function formatJob(
     cancellationReason: j.cancellationReason ?? null,
     cancellationChargeId: (j as any).cancellationChargeId ?? null,
     clockInAt: (j as any).clockInAt ? new Date((j as any).clockInAt).toISOString() : null,
+    offSeasonStart: (j as any).offSeasonStart ?? null,
+    offSeasonEnd: (j as any).offSeasonEnd ?? null,
   };
 }
 
@@ -432,7 +434,7 @@ router.get("/jobs/series", async (req, res): Promise<void> => {
 router.post("/jobs", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
-  const { title, description, status, priority, customerId, propertyId, assigneeId, crewId, scheduledAt, estimatedDuration, blueprintId, recurrenceRule, smsReminderEnabled, suppliesNeeded } = req.body;
+  const { title, description, status, priority, customerId, propertyId, assigneeId, crewId, scheduledAt, estimatedDuration, blueprintId, recurrenceRule, smsReminderEnabled, suppliesNeeded, offSeasonStart, offSeasonEnd } = req.body;
 
   if (!title || !scheduledAt) {
     res.status(400).json({ error: "title and scheduledAt are required" });
@@ -455,6 +457,8 @@ router.post("/jobs", async (req, res): Promise<void> => {
     recurrenceRule: recurrenceRule ?? null,
     smsReminderEnabled: smsReminderEnabled === true || smsReminderEnabled === "true",
     suppliesNeeded: normaliseSupplies(suppliesNeeded),
+    ...(offSeasonStart && { offSeasonStart: String(offSeasonStart) }),
+    ...(offSeasonEnd && { offSeasonEnd: String(offSeasonEnd) }),
   }).returning();
 
   await db.insert(activityLogTable).values({ tenantId, userId, type: "job_created", message: `Job "${title}" created`, entityId: job.id });
@@ -615,6 +619,8 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
     ...(holdFromBilling !== undefined && { holdFromBilling: holdFromBilling === true || holdFromBilling === "true" }),
     ...(resolvedPlanId !== undefined && { planId: resolvedPlanId }),
     ...(tags !== undefined && { tags }),
+    ...(req.body.offSeasonStart !== undefined && { offSeasonStart: req.body.offSeasonStart || null }),
+    ...(req.body.offSeasonEnd !== undefined && { offSeasonEnd: req.body.offSeasonEnd || null }),
   };
 
   // Handle "forward" or "all" scope: update the root series template
@@ -1230,7 +1236,7 @@ router.post("/jobs/:id/skip-next", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
   const id = parseInt(req.params.id, 10);
-  const { reasonId, note } = req.body as { reasonId?: number; note?: string };
+  const { reasonId, note, feeAmount, feeNote } = req.body as { reasonId?: number; note?: string; feeAmount?: number; feeNote?: string };
 
   // Resolve root
   const [job] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
@@ -1306,6 +1312,27 @@ router.post("/jobs/:id/skip-next", async (req, res): Promise<void> => {
   const [updated] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, rootId), eq(jobsTable.tenantId, tenantId)));
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
   res.json(formatJob(updated));
+
+  // ── Skip fee invoice (fire-and-forget) ────────────────────────────────────
+  if (feeAmount && feeAmount > 0 && updated.customerId) {
+    (async () => {
+      try {
+        const desc = feeNote?.trim() || "Skip fee";
+        await db.insert(invoicesTable).values({
+          tenantId,
+          customerId: updated.customerId!,
+          jobId: updated.id,
+          status: "draft",
+          subtotal: feeAmount,
+          total: feeAmount,
+          lineItems: [{ description: desc, quantity: 1, unitPrice: feeAmount, total: feeAmount }],
+          dueDate: null,
+          notes: `Skip fee generated automatically on ${new Date().toLocaleDateString()}`,
+          createdById: userId,
+        } as any);
+      } catch { /* fire-and-forget */ }
+    })();
+  }
 
   // ── Post-skip side-effects (fire-and-forget) ──────────────────────────────
   if (skipReason) {

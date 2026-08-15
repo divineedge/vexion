@@ -459,6 +459,9 @@ export default function SchedulePage() {
   const [addingEquipHours, setAddingEquipHours] = useState(false);
   const [equipHoursForm, setEquipHoursForm] = useState({ equipmentName: '', equipmentId: '' as string | number, hoursUsed: '', notes: '' });
 
+  // ── Skip fee ──────────────────────────────────────────────────────────────
+  const [skipFee, setSkipFee] = useState('');
+
   // ── Waitlist ──────────────────────────────────────────────────────────────
   const [waitlistOpen, setWaitlistOpen] = useState(false);
   const [completeInvoiceOpen, setCompleteInvoiceOpen] = useState(false);
@@ -681,6 +684,8 @@ export default function SchedulePage() {
         recurrenceRule,
         smsReminderEnabled: newJob.smsReminderEnabled,
         tags: newJob.tags.length ? newJob.tags : undefined,
+        ...(newJob.offSeasonStart ? { offSeasonStart: newJob.offSeasonStart } : {}),
+        ...(newJob.offSeasonEnd ? { offSeasonEnd: newJob.offSeasonEnd } : {}),
       } as any,
     }, {
       onSuccess: () => {
@@ -3400,7 +3405,7 @@ export default function SchedulePage() {
       </Dialog>
 
       {/* Skip Next Occurrence */}
-      <Dialog open={skipNextDialogId !== null} onOpenChange={open => { if (!open) { setSkipNextDialogId(null); setSkipReasonId(null); setSkipNote(''); } }}>
+      <Dialog open={skipNextDialogId !== null} onOpenChange={open => { if (!open) { setSkipNextDialogId(null); setSkipReasonId(null); setSkipNote(''); setSkipFee(''); } }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Skip Next Occurrence</DialogTitle>
@@ -3439,21 +3444,47 @@ export default function SchedulePage() {
                 onChange={e => setSkipNote(e.target.value)}
               />
             </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-muted-foreground">
+                Skip Fee <span className="font-normal">(optional — added to invoice)</span>
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                <input
+                  type="number" min="0" step="0.01"
+                  className="w-full rounded-md border pl-6 pr-3 py-1.5 text-sm bg-background"
+                  placeholder="0.00"
+                  value={skipFee}
+                  onChange={e => setSkipFee(e.target.value)}
+                />
+              </div>
+              {parseFloat(skipFee) > 0 && (
+                <p className="text-xs text-amber-600">A ${parseFloat(skipFee).toFixed(2)} invoice will be created for this skip.</p>
+              )}
+            </div>
           </div>
           <div className="flex gap-3 justify-end pt-2">
-            <Button variant="outline" onClick={() => { setSkipNextDialogId(null); setSkipReasonId(null); setSkipNote(''); }}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setSkipNextDialogId(null); setSkipReasonId(null); setSkipNote(''); setSkipFee(''); }}>Cancel</Button>
             <Button
               disabled={skipNextOccurrence.isPending}
               onClick={() => {
                 if (!skipNextDialogId) return;
+                const feeAmount = parseFloat(skipFee);
                 skipNextOccurrence.mutate(
-                  { id: skipNextDialogId, data: { ...(skipReasonId && { reasonId: skipReasonId }), ...(skipNote && { note: skipNote }) } },
+                  {
+                    id: skipNextDialogId,
+                    data: {
+                      ...(skipReasonId && { reasonId: skipReasonId }),
+                      ...(skipNote && { note: skipNote }),
+                      ...(feeAmount > 0 && { feeAmount, feeNote: skipNote || 'Skip fee' }),
+                    },
+                  },
                   {
                     onSuccess: () => {
-                      toast.success('Next occurrence skipped');
+                      toast.success(feeAmount > 0 ? `Skipped · $${feeAmount.toFixed(2)} invoice created` : 'Next occurrence skipped');
                       qc.invalidateQueries({ queryKey: getListRecurringSeriesQueryKey() });
                       qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
-                      setSkipNextDialogId(null); setSkipReasonId(null); setSkipNote('');
+                      setSkipNextDialogId(null); setSkipReasonId(null); setSkipNote(''); setSkipFee('');
                     },
                     onError: () => toast.error('Failed to skip'),
                   }

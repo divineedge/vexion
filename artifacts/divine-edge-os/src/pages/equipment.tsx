@@ -32,6 +32,7 @@ import type { Equipment, EquipmentMaintenance, EquipmentFuelLog, EquipmentLinked
 import { Link } from 'wouter';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { TaskFormDrawer } from '@/components/tasks/TaskFormDrawer';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
 import { TaskActions } from '@/components/tasks/TaskActions';
@@ -623,6 +624,9 @@ function EquipmentDetailPanel({ equipment, onClose, onEdit }: { equipment: Equip
             <TabsTrigger value="uses" title="All jobs this equipment has been used on" className="flex-1 flex items-center gap-1.5">
               <CalendarCheck2 className="w-3.5 h-3.5" /> Use ({equipmentUses?.length ?? 0})
             </TabsTrigger>
+            <TabsTrigger value="report" title="Cost and efficiency summary for this equipment" className="flex-1 flex items-center gap-1.5">
+              <BarChart3 className="w-3.5 h-3.5" /> Report
+            </TabsTrigger>
           </TabsList>
 
           {/* Maintenance tab */}
@@ -854,6 +858,79 @@ function EquipmentDetailPanel({ equipment, onClose, onEdit }: { equipment: Equip
             )}
           </TabsContent>
 
+          {/* Report tab — cost and efficiency summary */}
+          <TabsContent value="report" className="mt-4">
+            {(() => {
+              const age = equipment.createdAt
+                ? Math.floor((Date.now() - new Date(equipment.createdAt).getTime()) / (1000 * 60 * 60 * 24 * 365.25))
+                : null;
+              const totalCost = (equipment.purchasePrice ?? 0) + (equipment.totalRepairCost ?? 0) + (equipment.totalFuelCost ?? 0);
+              const repairRatio = (equipment.purchasePrice ?? 0) > 0
+                ? Math.round(((equipment.totalRepairCost ?? 0) / equipment.purchasePrice) * 100)
+                : null;
+              const jobHours = (equipmentUses ?? []).reduce((s, u) => s + u.hoursUsed, 0);
+              return (
+                <div className="space-y-4">
+                  {/* Key metrics grid */}
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { label: 'Purchase Price', value: fmt$(equipment.purchasePrice ?? 0), title: 'Original purchase price of this equipment' },
+                      { label: 'Cost Per Hour', value: equipment.costPerHour != null ? fmt$(equipment.costPerHour) : '—', title: 'Total cost (purchase + repairs + fuel) divided by total hours' },
+                      { label: 'Total Repairs', value: fmt$(equipment.totalRepairCost ?? 0), title: 'Sum of all logged maintenance and repair costs' },
+                      { label: 'Total Fuel', value: fmt$(equipment.totalFuelCost ?? 0), title: 'Sum of all logged fuel costs' },
+                      { label: 'Total Cost', value: fmt$(totalCost), title: 'Purchase + repairs + fuel' },
+                      { label: 'Hours on Record', value: `${fmtHours(equipment.currentHours)}`, title: 'Current hour-meter reading' },
+                    ].map(m => (
+                      <div key={m.label} className="rounded-lg border p-3 space-y-0.5" title={m.title}>
+                        <p className="text-xs text-muted-foreground">{m.label}</p>
+                        <p className="text-base font-semibold tabular-nums">{m.value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Job usage hours (from job_equipment_uses) */}
+                  {jobHours > 0 && (
+                    <div className="rounded-lg border p-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Hours Logged on Jobs</p>
+                        <p className="text-base font-semibold">{jobHours.toFixed(1)} h across {equipmentUses!.length} job{equipmentUses!.length !== 1 ? 's' : ''}</p>
+                      </div>
+                      <CalendarCheck2 className="w-5 h-5 text-muted-foreground" />
+                    </div>
+                  )}
+
+                  {/* Repair cost bar */}
+                  {repairRatio !== null && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground" title="Repair cost as a percentage of original purchase price">Repair Cost vs Purchase Price</span>
+                        <span className={`font-semibold ${repairRatio >= 50 ? 'text-destructive' : repairRatio >= 30 ? 'text-amber-500' : 'text-muted-foreground'}`}>{repairRatio}%</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${repairRatio >= 50 ? 'bg-destructive' : repairRatio >= 30 ? 'bg-amber-500' : 'bg-primary'}`}
+                          style={{ width: `${Math.min(100, repairRatio)}%` }}
+                        />
+                      </div>
+                      {repairRatio >= 50 && (
+                        <p className="text-xs text-destructive flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3" /> Repair cost has exceeded 50% of purchase price — consider replacement.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Age + status */}
+                  <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
+                    {age !== null && <span>Age: <strong className="text-foreground">{age === 0 ? '< 1 year' : `${age} yr${age !== 1 ? 's' : ''}`}</strong></span>}
+                    <span>Status: <strong className="text-foreground">{equipment.archivedAt ? 'Archived' : equipment.isActive ? 'Active' : 'Inactive'}</strong></span>
+                    {equipment.sellRecommended && <span className="text-destructive font-medium flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Sale recommended</span>}
+                  </div>
+                </div>
+              );
+            })()}
+          </TabsContent>
+
           {/* Activity tab — archive / restore lifecycle history */}
           <TabsContent value="activity" className="mt-4">
             {lifecycleEvents && lifecycleEvents.length > 0 ? (
@@ -1032,6 +1109,7 @@ function ReorderSuggestionSheet({
 export default function EquipmentPage() {
   const qc = useQueryClient();
   const { isTechnician, isOwner } = useAuth();
+  const { can } = usePermissions();
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [includeArchived, setIncludeArchived] = useState(false);
@@ -1251,7 +1329,7 @@ export default function EquipmentPage() {
               <SlidersHorizontal className="w-4 h-4" />
             </Button>
           )}
-          {!isTechnician && (
+          {can('actions.addEquipment') && (
             <Button onClick={openCreate} className="gap-2" title="Add a new piece of equipment">
               <Plus className="w-4 h-4" /> Add Equipment
             </Button>
@@ -1313,8 +1391,8 @@ export default function EquipmentPage() {
       )}
 
       <div className="flex gap-6">
-        {/* Equipment list */}
-        <div className={`flex flex-col gap-3 ${selectedEquipment ? 'w-1/2' : 'w-full'}`}>
+        {/* Equipment list — always full width; detail opens in Sheet */}
+        <div className="flex flex-col gap-3 w-full">
           {isLoading && (
             <div className="text-center text-muted-foreground py-12">Loading equipment…</div>
           )}
@@ -1328,7 +1406,7 @@ export default function EquipmentPage() {
                   <p className="font-semibold text-lg">No equipment yet</p>
                   <p className="text-muted-foreground text-sm mt-1">Add your first piece of equipment to start tracking costs.</p>
                 </div>
-                {!isTechnician && <Button onClick={openCreate} className="gap-2" title="Add a new piece of equipment"><Plus className="w-4 h-4" /> Add Equipment</Button>}
+                {can('actions.addEquipment') && <Button onClick={openCreate} className="gap-2" title="Add a new piece of equipment"><Plus className="w-4 h-4" /> Add Equipment</Button>}
               </CardContent>
             </Card>
           )}
@@ -1445,7 +1523,7 @@ export default function EquipmentPage() {
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       )}
-                      <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${selectedId === item.id ? 'rotate-90' : ''}`} />
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
                     </div>
                   </div>
                 </CardContent>
@@ -1454,13 +1532,20 @@ export default function EquipmentPage() {
           })}
         </div>
 
-        {/* Detail panel */}
-        {selectedEquipment && (
-          <div className="w-1/2 border rounded-xl bg-background overflow-hidden sticky top-0 max-h-[calc(100vh-12rem)]">
-            <EquipmentDetailPanel equipment={selectedEquipment} onClose={() => setSelectedId(null)} onEdit={() => openEdit(selectedEquipment)} />
-          </div>
-        )}
       </div>
+
+      {/* Equipment detail — full-width Sheet */}
+      <Sheet open={selectedEquipment !== null} onOpenChange={open => { if (!open) setSelectedId(null); }}>
+        <SheetContent side="right" className="w-full sm:max-w-2xl flex flex-col p-0 gap-0">
+          {selectedEquipment && (
+            <EquipmentDetailPanel
+              equipment={selectedEquipment}
+              onClose={() => setSelectedId(null)}
+              onEdit={() => { setSelectedId(null); openEdit(selectedEquipment); }}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
 
       {/* Add/Edit sheet */}
       <Sheet open={formOpen} onOpenChange={setFormOpen}>

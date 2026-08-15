@@ -107,6 +107,12 @@ export const jobsTable = pgTable("jobs", {
   /** Free-text note added alongside the skip reason */
   skipNote: text("skip_note"),
 
+  // ── Off-season window (standalone recurring jobs) ─────────────────────────
+  /** Off-season pause start in "MM-DD" format (e.g. "12-01"). Mirrors services.off_season_start. */
+  offSeasonStart: text("off_season_start"),
+  /** Off-season pause end in "MM-DD" format (e.g. "03-01"). */
+  offSeasonEnd: text("off_season_end"),
+
   // ── Estimate link ────────────────────────────────────────────────────────────
   /** FK back to the estimate this job was converted from (set by POST /estimates/:id/convert). */
   estimateId: integer("estimate_id"),

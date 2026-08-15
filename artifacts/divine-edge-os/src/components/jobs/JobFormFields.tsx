@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { RefreshCw, MessageSquare, Tag, X } from 'lucide-react';
+import { RefreshCw, MessageSquare, Tag, X, Snowflake } from 'lucide-react';
 
 export type NewJobForm = {
   title: string;
@@ -31,6 +31,8 @@ export type NewJobForm = {
   recurrenceEndAfter: string;
   recurrenceEndDate: string;
   smsReminderEnabled: boolean;
+  offSeasonStart: string;
+  offSeasonEnd: string;
 };
 
 export const EMPTY_JOB: NewJobForm = {
@@ -55,6 +57,8 @@ export const EMPTY_JOB: NewJobForm = {
   recurrenceEndAfter: '12',
   recurrenceEndDate: '',
   smsReminderEnabled: false,
+  offSeasonStart: '',
+  offSeasonEnd: '',
 };
 
 export const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -408,6 +412,51 @@ export function JobFormFields({ form, setForm, customers, properties, users, dur
                 )}
               </div>
             )}
+
+            {/* Off-season window */}
+            <div className="pt-1">
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                  <Snowflake className="w-3.5 h-3.5" /> Off-Season Pause
+                </label>
+              </div>
+              <p className="text-[11px] text-muted-foreground mb-2">
+                Jobs falling in this window are skipped automatically and resume after it ends.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">Pause from (MM-DD)</label>
+                  <Input
+                    type="text"
+                    placeholder="e.g. 12-01"
+                    maxLength={5}
+                    pattern="\d{2}-\d{2}"
+                    className="h-8 text-xs font-mono"
+                    title="Off-season start date in MM-DD format (month-day, e.g. 12-01 for Dec 1)"
+                    value={form.offSeasonStart}
+                    onChange={e => setForm(f => ({ ...f, offSeasonStart: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] text-muted-foreground">Resume on (MM-DD)</label>
+                  <Input
+                    type="text"
+                    placeholder="e.g. 03-01"
+                    maxLength={5}
+                    pattern="\d{2}-\d{2}"
+                    className="h-8 text-xs font-mono"
+                    title="Off-season end date in MM-DD format (month-day, e.g. 03-01 for Mar 1)"
+                    value={form.offSeasonEnd}
+                    onChange={e => setForm(f => ({ ...f, offSeasonEnd: e.target.value }))}
+                  />
+                </div>
+              </div>
+              {form.offSeasonStart && form.offSeasonEnd && (
+                <p className="text-[11px] text-primary mt-1.5">
+                  ❄️ Series will pause {form.offSeasonStart} → {form.offSeasonEnd} each year
+                </p>
+              )}
+            </div>
           </div>
         </>
       )}

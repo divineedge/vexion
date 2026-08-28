@@ -363,7 +363,7 @@ export default function PropertyDetailPage() {
 
   const handleAutoMeasure = async () => {
     try {
-      const result = await customFetch<{ lat: number; lng: number; boundaryPolygon?: [number, number][] | null }>(
+      const result = await customFetch<{ lat: number; lng: number }>(
         `/api/properties/${id}/geocode`
       );
       if (result.lat && result.lng) {

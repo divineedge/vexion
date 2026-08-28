@@ -186,6 +186,24 @@ export default function PropertySatelliteMap({
     setZones(measurementPolygons);
   }, [measurementPolygons]);
 
+  // The saved property pin is the source of truth. Keep both the marker and viewport
+  // centered on it when coordinates load or change after a drag/save.
+  useEffect(() => {
+    if (
+      !mapReady
+      || !mapRef.current
+      || !markersRef.current.pin
+      || lat == null
+      || lng == null
+    ) return;
+
+    const nextPosition: [number, number] = [lat, lng];
+    markersRef.current.pin.setLatLng(nextPosition);
+    mapRef.current.setView(nextPosition, Math.max(mapRef.current.getZoom(), 18), { animate: false });
+    setCurrentLat(lat);
+    setCurrentLng(lng);
+  }, [lat, lng, mapReady]);
+
   // Keep selectedZoneTypeId in sync with effectiveZoneTypes (default to first)
   useEffect(() => {
     if (effectiveZoneTypes.length > 0) {

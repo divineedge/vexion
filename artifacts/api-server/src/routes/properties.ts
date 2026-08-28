@@ -167,48 +167,65 @@ router.post("/properties/import/commit", importUpload.single("file"), async (req
 interface GeocodeResult {
   lat: number;
   lng: number;
-  boundaryPolygon: [number, number][] | null;
 }
 
 async function geocodeAddress(address: string, city?: string | null, state?: string | null, zip?: string | null): Promise<GeocodeResult | null> {
   const fullAddress = [address, city, state, zip].filter(Boolean).join(", ");
+
+  const googleMapsApiKey = process.env.VITE_GOOGLE_MAPS_API_KEY;
+  if (googleMapsApiKey) {
+    try {
+      const googleUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(fullAddress)}&key=${encodeURIComponent(googleMapsApiKey)}`;
+      const response = await fetch(googleUrl);
+      const payload = await response.json() as {
+        status?: string;
+        results?: Array<{ geometry?: { location?: { lat?: number; lng?: number } } }>;
+      };
+      const location = payload.results?.[0]?.geometry?.location;
+      if (
+        payload.status === "OK"
+        && typeof location?.lat === "number"
+        && typeof location.lng === "number"
+      ) {
+        return { lat: location.lat, lng: location.lng };
+      }
+    } catch {
+      // Fall through to Nominatim so geocoding still works if Google is unavailable.
+    }
+  }
+
   try {
     const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(fullAddress)}`;
     const response = await fetch(nominatimUrl, {
       headers: { "User-Agent": "DivineEdgeOS/1.0" },
     });
-    const results = await response.json() as Array<{ lat: string; lon: string; boundingbox: string[] }>;
+    const results = await response.json() as Array<{ lat: string; lon: string }>;
     if (!results || results.length === 0) return null;
 
     const result = results[0];
     const lat = parseFloat(result.lat);
     const lng = parseFloat(result.lon);
-    const bb = result.boundingbox; // [minLat, maxLat, minLon, maxLon]
-
-    let boundaryPolygon: [number, number][] | null = null;
-    if (bb && bb.length === 4) {
-      const minLat = parseFloat(bb[0]);
-      const maxLat = parseFloat(bb[1]);
-      const minLng = parseFloat(bb[2]);
-      const maxLng = parseFloat(bb[3]);
-      boundaryPolygon = [
-        [minLat, minLng],
-        [minLat, maxLng],
-        [maxLat, maxLng],
-        [maxLat, minLng],
-      ];
-    }
-
-    return { lat, lng, boundaryPolygon };
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng };
   } catch {
     return null;
   }
 }
 
+function isAutomaticSuggestedBoundary(zone: unknown): boolean {
+  if (!zone || typeof zone !== "object") return false;
+  const candidate = zone as { id?: unknown; label?: unknown };
+  return candidate.id === "boundary" || candidate.label === "Suggested Boundary";
+}
+
+function withoutAutomaticSuggestedBoundary(zones: unknown): unknown[] {
+  return Array.isArray(zones) ? zones.filter((zone) => !isAutomaticSuggestedBoundary(zone)) : [];
+}
+
 function formatProperty(p: typeof propertiesTable.$inferSelect, customerName?: string | null) {
   return {
     ...p,
-    measurementPolygons: (p.measurementPolygons as unknown[]) ?? [],
+    measurementPolygons: withoutAutomaticSuggestedBoundary(p.measurementPolygons),
     serviceableAreaSqft: p.serviceableAreaSqft ?? null,
     customerName: customerName ?? null,
     createdAt: p.createdAt.toISOString(),
@@ -282,7 +299,6 @@ router.post("/properties", async (req, res): Promise<void> => {
   const latLngExplicitPost = lat !== undefined && lng !== undefined;
   let resolvedLat: number | null = lat ?? null;
   let resolvedLng: number | null = lng ?? null;
-  let seedPolygons: unknown[] | null = null;
   let geocodeStatus: "ok" | "failed" | "skipped" = "skipped";
 
   if (latLngExplicitPost) {
@@ -293,18 +309,6 @@ router.post("/properties", async (req, res): Promise<void> => {
       resolvedLat = geo.lat;
       resolvedLng = geo.lng;
       geocodeStatus = "ok";
-      if (geo.boundaryPolygon) {
-        seedPolygons = [
-          {
-            id: "boundary",
-            label: "Suggested Boundary",
-            vertices: geo.boundaryPolygon,
-            areaSqft: 0,
-            enabled: true,
-            color: "#3B82F6",
-          },
-        ];
-      }
     } else {
       geocodeStatus = "failed";
     }
@@ -323,7 +327,6 @@ router.post("/properties", async (req, res): Promise<void> => {
     type: type ?? null,
     size: size != null ? parseFloat(size) : null,
     sizeUnit: sizeUnit ?? null,
-    ...(seedPolygons ? { measurementPolygons: seedPolygons } : {}),
   }).returning();
 
   res.status(201).json({ ...formatProperty(property), geocodeStatus });
@@ -387,20 +390,6 @@ router.patch("/properties/:id", async (req, res): Promise<void> => {
       resolvedLat = geo.lat;
       resolvedLng = geo.lng;
       geocodeStatus = "ok";
-      // Seed boundary polygon only when polygons are currently empty and not being explicitly set
-      const existingPolygons = (current.measurementPolygons as unknown[]) ?? [];
-      if (existingPolygons.length === 0 && measurementPolygons === undefined && geo.boundaryPolygon) {
-        resolvedPolygons = [
-          {
-            id: "boundary",
-            label: "Suggested Boundary",
-            vertices: geo.boundaryPolygon,
-            areaSqft: 0,
-            enabled: true,
-            color: "#3B82F6",
-          },
-        ];
-      }
     } else {
       geocodeStatus = "failed";
     }
@@ -451,7 +440,7 @@ router.patch("/properties/:id/measurements", async (req, res): Promise<void> => 
   res.json(formatProperty(updated, row?.customerName));
 });
 
-// GET /properties/:id/geocode — geocode address using Nominatim and return lat/lng
+// GET /properties/:id/geocode — geocode address and return lat/lng
 router.get("/properties/:id/geocode", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
@@ -467,7 +456,7 @@ router.get("/properties/:id/geocode", async (req, res): Promise<void> => {
     return;
   }
 
-  res.json({ lat: geo.lat, lng: geo.lng, boundaryPolygon: geo.boundaryPolygon });
+  res.json({ lat: geo.lat, lng: geo.lng });
 });
 
 router.delete("/properties/:id", async (req, res): Promise<void> => {
@@ -570,27 +559,11 @@ router.post("/properties/backfill-geocodes", async (req, res): Promise<void> => 
       continue;
     }
 
-    const existingPolygons = (property.measurementPolygons as unknown[]) ?? [];
-    const seedPolygon =
-      existingPolygons.length === 0 && geo.boundaryPolygon
-        ? [
-            {
-              id: "boundary",
-              label: "Suggested Boundary",
-              vertices: geo.boundaryPolygon,
-              areaSqft: 0,
-              enabled: true,
-              color: "#3B82F6",
-            },
-          ]
-        : undefined;
-
     await db
       .update(propertiesTable)
       .set({
         lat: geo.lat,
         lng: geo.lng,
-        ...(seedPolygon ? { measurementPolygons: seedPolygon } : {}),
       })
       .where(and(eq(propertiesTable.id, property.id), eq(propertiesTable.tenantId, tenantId)));
 

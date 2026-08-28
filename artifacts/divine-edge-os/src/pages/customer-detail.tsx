@@ -39,7 +39,7 @@ import {
   ArrowLeft, Building, Phone, Mail, Edit, Plus, Calendar, MapPin,
   Save, X, User, FileText, Tag, DollarSign, Home, Briefcase, Megaphone, AlertTriangle, Link as LinkIcon,
   MessageSquare, Send, PhoneOff, MailMinus, ChevronRight, PlayCircle, ClipboardList, Eye, RefreshCw,
-  MailWarning, CreditCard, Pencil,
+  MailWarning, CreditCard, Pencil, Archive, ArchiveRestore, Trash2,
 } from 'lucide-react';
 import { Link } from 'wouter';
 import CustomerAvatar from '@/components/media/CustomerAvatar';
@@ -103,12 +103,14 @@ type PropertyForm = {
   city: string;
   state: string;
   zip: string;
+  lat: number | null;
+  lng: number | null;
   type: string;
   notes: string;
   tags: string[];
 };
 
-const BLANK_PROPERTY: PropertyForm = { address: '', city: '', state: '', zip: '', type: '', notes: '', tags: [] };
+const BLANK_PROPERTY: PropertyForm = { address: '', city: '', state: '', zip: '', lat: null, lng: null, type: '', notes: '', tags: [] };
 
 interface DuplicateProperty {
   id: number;
@@ -226,6 +228,9 @@ export default function CustomerDetailPage() {
 
   // Edit customer state
   const [editing, setEditing] = useState(false);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [recordActionBusy, setRecordActionBusy] = useState(false);
   const [form, setForm] = useState<FormData>({});
   const [tagInput, setTagInput] = useState('');
 
@@ -259,7 +264,7 @@ export default function CustomerDetailPage() {
     const ac = new (window as any).google.maps.places.Autocomplete(billingAddrRef.current, {
       types: ['address'],
       componentRestrictions: { country: 'us' },
-      fields: ['address_components'],
+      fields: ['address_components', 'geometry'],
     });
     ac.addListener('place_changed', () => {
       const place = ac.getPlace();
@@ -283,7 +288,7 @@ export default function CustomerDetailPage() {
     const ac = new (window as any).google.maps.places.Autocomplete(propAddrRef.current, {
       types: ['address'],
       componentRestrictions: { country: 'us' },
-      fields: ['address_components'],
+      fields: ['address_components', 'geometry'],
     });
     ac.addListener('place_changed', () => {
       const place = ac.getPlace();
@@ -297,6 +302,8 @@ export default function CustomerDetailPage() {
         city: get('locality') || get('sublocality_level_1'),
         state: getS('administrative_area_level_1'),
         zip: get('postal_code'),
+        lat: place.geometry?.location?.lat?.() ?? null,
+        lng: place.geometry?.location?.lng?.() ?? null,
       }));
     });
     propAcRef.current = ac;
@@ -539,6 +546,42 @@ export default function CustomerDetailPage() {
     );
   };
 
+  const backendError = (error: unknown, fallback: string) =>
+    error instanceof Error && error.message ? error.message : fallback;
+  const handleArchiveCustomer = async () => {
+    setRecordActionBusy(true);
+    try {
+      const archived = !(customer as any).archivedAt;
+      await customFetch(`/api/customers/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archivedAt: archived ? new Date().toISOString() : null }),
+      });
+      qc.invalidateQueries({ queryKey: getGetCustomerQueryKey(id) });
+      qc.invalidateQueries({ queryKey: ['customers'] });
+      toast.success(archived ? 'Customer archived' : 'Customer restored');
+      setArchiveDialogOpen(false);
+      setLocation('/customers');
+    } catch (error) {
+      toast.error(backendError(error, 'Unable to update customer archive status'));
+    } finally {
+      setRecordActionBusy(false);
+    }
+  };
+  const handleDeleteCustomer = async () => {
+    setRecordActionBusy(true);
+    try {
+      await customFetch(`/api/customers/${id}`, { method: 'DELETE' });
+      qc.invalidateQueries({ queryKey: ['customers'] });
+      toast.success('Customer permanently deleted');
+      setDeleteDialogOpen(false);
+      setLocation('/customers');
+    } catch (error) {
+      toast.error(backendError(error, 'Unable to permanently delete customer'));
+    } finally {
+      setRecordActionBusy(false);
+    }
+  };
+
   const addTag = () => {
     const t = tagInput.trim();
     if (!t) return;
@@ -568,6 +611,8 @@ export default function CustomerDetailPage() {
           city: propForm.city || undefined,
           state: propForm.state || undefined,
           zip: propForm.zip || undefined,
+          lat: propForm.lat ?? undefined,
+          lng: propForm.lng ?? undefined,
           type: propForm.type || undefined,
           notes: propForm.notes || undefined,
           tags: propForm.tags.length ? propForm.tags : undefined,
@@ -781,7 +826,7 @@ export default function CustomerDetailPage() {
             )}
           </div>
         </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex gap-2 shrink-0 flex-wrap justify-end">
           {portalLink && (
             <>
               <Button
@@ -838,6 +883,17 @@ export default function CustomerDetailPage() {
           <Button onClick={openEdit} className="gap-2" title="Edit this customer's information">
             <Edit className="w-4 h-4" /> Edit Customer
           </Button>
+          {canManageOffice && (
+            <>
+              <Button variant="outline" className="gap-2" title={(customer as any).archivedAt ? 'Restore this customer' : 'Archive this customer'} onClick={() => setArchiveDialogOpen(true)}>
+                {(customer as any).archivedAt ? <ArchiveRestore className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
+                {(customer as any).archivedAt ? 'Unarchive' : 'Archive'}
+              </Button>
+              <Button variant="destructive" className="gap-2" title="Permanently delete this customer" onClick={() => setDeleteDialogOpen(true)}>
+                <Trash2 className="w-4 h-4" /> Delete
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -1869,6 +1925,35 @@ export default function CustomerDetailPage() {
         </SheetContent>
       </Sheet>
 
+      <Dialog open={archiveDialogOpen} onOpenChange={setArchiveDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{(customer as any).archivedAt ? 'Restore customer?' : 'Archive customer?'}</DialogTitle>
+            <DialogDescription>
+              {(customer as any).archivedAt
+                ? `Restore ${customer.name} and make the customer active again?`
+                : `Archive ${customer.name}? Their history will be retained, but they will no longer appear in active customer workflows.`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" disabled={recordActionBusy} onClick={() => setArchiveDialogOpen(false)}>Cancel</Button>
+            <Button disabled={recordActionBusy} onClick={handleArchiveCustomer}>{recordActionBusy ? 'Saving…' : (customer as any).archivedAt ? 'Unarchive Customer' : 'Archive Customer'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Permanently delete customer?</DialogTitle>
+            <DialogDescription>This permanently deletes {customer.name} and may remove associated records. This cannot be undone.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" disabled={recordActionBusy} onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+            <Button variant="destructive" disabled={recordActionBusy} onClick={handleDeleteCustomer}>{recordActionBusy ? 'Deleting…' : 'Permanently Delete'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Add Property Sheet */}
       <Sheet open={addPropertyOpen} onOpenChange={open => { if (!open) { setAddPropertyOpen(false); setPropForm(BLANK_PROPERTY); } }}>
         <SheetContent className="w-full sm:max-w-md overflow-y-auto">
@@ -1884,7 +1969,7 @@ export default function CustomerDetailPage() {
                 ref={propAddrRef}
                 placeholder="123 Main St"
                 value={propForm.address}
-                onChange={e => setPropForm(f => ({ ...f, address: e.target.value }))}
+                onChange={e => setPropForm(f => ({ ...f, address: e.target.value, lat: null, lng: null }))}
               />
             </div>
 

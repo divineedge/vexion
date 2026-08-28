@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   useListProperties, getListPropertiesQueryKey,
   useCreateProperty,
@@ -31,10 +31,12 @@ type NewPropertyForm = {
   notes: string;
   size: string;
   sizeUnit: string;
+  lat: number | null;
+  lng: number | null;
 };
 
 const EMPTY_FORM: NewPropertyForm = {
-  customerId: '', address: '', city: '', state: '', zip: '', type: '', notes: '', size: '', sizeUnit: 'sqft',
+  customerId: '', address: '', city: '', state: '', zip: '', type: '', notes: '', size: '', sizeUnit: 'sqft', lat: null, lng: null,
 };
 
 export default function PropertiesPage() {
@@ -49,6 +51,58 @@ export default function PropertiesPage() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [geofenceFilter, setGeofenceFilter] = useState(false);
   const [sizeSortDir, setSizeSortDir] = useState<'none' | 'asc' | 'desc'>('none');
+  const addressInputRef = useRef<HTMLInputElement>(null);
+  const placesRef = useRef<unknown>(null);
+
+  const attachAddressPlaces = useCallback(() => {
+    if (!addressInputRef.current || !(window as any).google?.maps?.places || placesRef.current) return;
+    const ac = new (window as any).google.maps.places.Autocomplete(addressInputRef.current, {
+      types: ['address'],
+      componentRestrictions: { country: 'us' },
+      fields: ['address_components', 'geometry'],
+    });
+    ac.addListener('place_changed', () => {
+      const place = ac.getPlace();
+      const components: Array<{ long_name: string; short_name: string; types: string[] }> = place.address_components ?? [];
+      const get = (type: string) => components.find(component => component.types.includes(type))?.long_name ?? '';
+      const getShort = (type: string) => components.find(component => component.types.includes(type))?.short_name ?? '';
+      setForm(current => ({
+        ...current,
+        address: [get('street_number'), get('route')].filter(Boolean).join(' ') || current.address,
+        city: get('locality') || get('sublocality_level_1'),
+        state: getShort('administrative_area_level_1'),
+        zip: get('postal_code'),
+        lat: place.geometry?.location?.lat?.() ?? null,
+        lng: place.geometry?.location?.lng?.() ?? null,
+      }));
+    });
+    placesRef.current = ac;
+  }, []);
+
+  useEffect(() => {
+    if (!addOpen) { placesRef.current = null; return undefined; }
+    const key = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+    if (!key) return undefined;
+    if ((window as any).google?.maps?.places) {
+      const timer = setTimeout(attachAddressPlaces, 50);
+      return () => clearTimeout(timer);
+    }
+    const existing = document.querySelector('#gmaps-script') as HTMLScriptElement | null;
+    if (existing) {
+      const interval = setInterval(() => {
+        if ((window as any).google?.maps?.places) { attachAddressPlaces(); clearInterval(interval); }
+      }, 150);
+      return () => clearInterval(interval);
+    }
+    const script = document.createElement('script');
+    script.id = 'gmaps-script';
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places&loading=async`;
+    script.async = true;
+    script.defer = true;
+    script.onload = attachAddressPlaces;
+    document.head.appendChild(script);
+    return undefined;
+  }, [addOpen, attachAddressPlaces]);
 
   const { data, isLoading } = useListProperties(
     { q: debouncedSearch || undefined },
@@ -77,7 +131,9 @@ export default function PropertiesPage() {
         notes: form.notes || undefined,
         size: form.size ? parseFloat(form.size) : undefined,
         sizeUnit: form.size ? (form.sizeUnit as 'sqft' | 'acres') : undefined,
-      },
+        lat: form.lat ?? undefined,
+        lng: form.lng ?? undefined,
+      } as Parameters<typeof createProperty.mutate>[0]['data'],
     }, {
       onSuccess: (prop) => {
         const geocodeStatus = (prop as unknown as { geocodeStatus?: string }).geocodeStatus;
@@ -252,7 +308,7 @@ export default function PropertiesPage() {
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Street Address <span className="text-destructive">*</span></label>
-              <Input title="Property street address" placeholder="123 Main St" value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value }))} />
+              <Input ref={addressInputRef} title="Property street address" placeholder="123 Main St" value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value, lat: null, lng: null }))} />
             </div>
 
             <div className="grid grid-cols-3 gap-3">

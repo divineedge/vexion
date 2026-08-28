@@ -30,6 +30,8 @@ export const propertiesTable = pgTable("properties", {
   profilePhotoUrl: text("profile_photo_url"),
   /** Tags applied to this property — names drawn from the tenant's businessTagsTable library */
   tags: text("tags").array().default([]),
+  /** Set when the property is archived; null means active */
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

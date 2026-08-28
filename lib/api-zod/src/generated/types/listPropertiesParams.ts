@@ -9,4 +9,8 @@
 export type ListPropertiesParams = {
 customerId?: number;
 q?: string;
+/**
+ * Include archived properties; archived properties are excluded by default
+ */
+includeArchived?: boolean;
 };

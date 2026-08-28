@@ -41,6 +41,8 @@ export const customersTable = pgTable("customers", {
   /** When the card-expiry reminder was last sent; null = never sent */
   cardExpiryReminderSentAt: timestamp("card_expiry_reminder_sent_at", { withTimezone: true }),
   totalSpend: real("total_spend").notNull().default(0),
+  /** Set when the customer is archived; null means active */
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

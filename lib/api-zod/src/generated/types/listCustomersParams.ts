@@ -17,4 +17,8 @@ limit?: number;
  * Filter to customers whose last outbound reminder failed to send
  */
 hasReminderFailure?: boolean;
+/**
+ * Include archived customers; archived customers are excluded by default
+ */
+includeArchived?: boolean;
 };

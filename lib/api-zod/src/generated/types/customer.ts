@@ -62,4 +62,9 @@ export interface Customer {
   hasPaymentMethod?: boolean;
   /** When true, the no-card-on-file alert is suppressed for this customer */
   noCardAlertSilenced?: boolean;
+  /**
+     * Timestamp when the customer was archived; null when active
+     * @nullable
+     */
+  archivedAt?: Date | null;
 }

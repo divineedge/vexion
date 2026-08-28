@@ -501,6 +501,11 @@ paths:
           schema:
             type: boolean
           description: "Filter to customers whose last outbound reminder failed to send"
+        - name: includeArchived
+          in: query
+          schema:
+            type: boolean
+          description: Include archived customers; archived customers are excluded by default
       responses:
         "200":
           description: List of customers
@@ -572,7 +577,7 @@ paths:
     delete:
       operationId: deleteCustomer
       tags: [customers]
-      summary: Delete a customer
+      summary: Permanently delete a customer (owner, office, or department manager only)
       parameters:
         - name: id
           in: path
@@ -582,6 +587,10 @@ paths:
       responses:
         "204":
           description: Deleted
+        "403":
+          description: Restricted to owner, office, or department manager roles
+        "409":
+          description: Customer has related records and cannot be permanently deleted
 
   /customers/{id}/setup-intent:
     post:
@@ -675,6 +684,11 @@ paths:
           in: query
           schema:
             type: string
+        - name: includeArchived
+          in: query
+          schema:
+            type: boolean
+          description: Include archived properties; archived properties are excluded by default
       responses:
         "200":
           description: List of properties
@@ -746,7 +760,7 @@ paths:
     delete:
       operationId: deleteProperty
       tags: [properties]
-      summary: Delete a property
+      summary: Permanently delete a property (owner, office, or department manager only)
       parameters:
         - name: id
           in: path
@@ -756,6 +770,10 @@ paths:
       responses:
         "204":
           description: Deleted
+        "403":
+          description: Restricted to owner, office, or department manager roles
+        "409":
+          description: Property has related records and cannot be permanently deleted
 
   /properties/{id}/geofence:
     patch:
@@ -8668,6 +8686,10 @@ components:
         noCardAlertSilenced:
           type: boolean
           description: "When true, the no-card-on-file alert is suppressed for this customer"
+        archivedAt:
+          type: ["string", "null"]
+          format: date-time
+          description: "Timestamp when the customer was archived; null when active"
 
     ReminderFailure:
       type: object
@@ -8782,6 +8804,10 @@ components:
           type: boolean
         noCardAlertSilenced:
           type: boolean
+        archivedAt:
+          type: ["string", "null"]
+          format: date-time
+          description: "Admin-only archive timestamp; set null to restore"
 
     CustomerListResponse:
       type: object
@@ -8879,6 +8905,10 @@ components:
           items:
             type: string
           description: "Tag names applied to this property"
+        archivedAt:
+          type: ["string", "null"]
+          format: date-time
+          description: "Timestamp when the property was archived; null when active"
         createdAt:
           type: string
 
@@ -8942,6 +8972,10 @@ components:
         sizeUnit:
           type: string
           description: Unit of property size (sqft or acres)
+        archivedAt:
+          type: ["string", "null"]
+          format: date-time
+          description: "Admin-only archive timestamp; set null to restore"
 
     PropertyMeasurementUpdate:
       type: object

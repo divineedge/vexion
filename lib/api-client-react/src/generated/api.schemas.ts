@@ -1069,6 +1069,11 @@ export interface Customer {
   hasPaymentMethod?: boolean;
   /** When true, the no-card-on-file alert is suppressed for this customer */
   noCardAlertSilenced?: boolean;
+  /**
+     * Timestamp when the customer was archived; null when active
+     * @nullable
+     */
+  archivedAt?: string | null;
 }
 
 export type CustomerInputCustomFieldValues = {[key: string]: string};
@@ -1111,6 +1116,11 @@ export interface CustomerUpdate {
   emailOptOut?: boolean;
   autoInvoiceOnCompletion?: boolean;
   noCardAlertSilenced?: boolean;
+  /**
+     * Admin-only archive timestamp; set null to restore
+     * @nullable
+     */
+  archivedAt?: string | null;
 }
 
 export interface CustomerListResponse {
@@ -1190,6 +1200,11 @@ export interface Property {
   sizeUnit?: string | null;
   /** Tag names applied to this property */
   tags?: string[];
+  /**
+     * Timestamp when the property was archived; null when active
+     * @nullable
+     */
+  archivedAt?: string | null;
   createdAt: string;
 }
 
@@ -1224,6 +1239,11 @@ export interface PropertyUpdate {
   size?: number;
   /** Unit of property size (sqft or acres) */
   sizeUnit?: string;
+  /**
+     * Admin-only archive timestamp; set null to restore
+     * @nullable
+     */
+  archivedAt?: string | null;
 }
 
 export interface PropertyMeasurementUpdate {
@@ -5334,6 +5354,10 @@ limit?: number;
  * Filter to customers whose last outbound reminder failed to send
  */
 hasReminderFailure?: boolean;
+/**
+ * Include archived customers; archived customers are excluded by default
+ */
+includeArchived?: boolean;
 };
 
 export type CreateCustomerSetupIntent200 = {
@@ -5348,6 +5372,10 @@ export type AttachCustomerPaymentMethodBody = {
 export type ListPropertiesParams = {
 customerId?: number;
 q?: string;
+/**
+ * Include archived properties; archived properties are excluded by default
+ */
+includeArchived?: boolean;
 };
 
 export type ListJobsParams = {

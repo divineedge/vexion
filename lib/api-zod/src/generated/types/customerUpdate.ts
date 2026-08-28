@@ -26,4 +26,9 @@ export interface CustomerUpdate {
   emailOptOut?: boolean;
   autoInvoiceOnCompletion?: boolean;
   noCardAlertSilenced?: boolean;
+  /**
+     * Admin-only archive timestamp; set null to restore
+     * @nullable
+     */
+  archivedAt?: Date | null;
 }

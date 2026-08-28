@@ -182,3 +182,8 @@
     @apply font-sans antialiased bg-background text-foreground;
   }
 }
+
+/* Google Places renders its results outside React's portal tree. */
+.pac-container {
+  z-index: 1300 !important;
+}

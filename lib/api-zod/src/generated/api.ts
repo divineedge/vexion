@@ -392,7 +392,8 @@ export const ListCustomersQueryParams = zod.object({
   "q": zod.coerce.string().optional().describe('Search query'),
   "page": zod.coerce.number().optional(),
   "limit": zod.coerce.number().optional(),
-  "hasReminderFailure": zod.coerce.boolean().optional().describe('Filter to customers whose last outbound reminder failed to send')
+  "hasReminderFailure": zod.coerce.boolean().optional().describe('Filter to customers whose last outbound reminder failed to send'),
+  "includeArchived": zod.coerce.boolean().optional().describe('Include archived customers; archived customers are excluded by default')
 })
 
 export const ListCustomersResponse = zod.object({
@@ -437,7 +438,8 @@ export const ListCustomersResponse = zod.object({
   "failedAt": zod.string().describe('ISO timestamp of the failure')
 })]).optional(),
   "hasPaymentMethod": zod.boolean().optional().describe('True when a Stripe payment method is saved for this customer'),
-  "noCardAlertSilenced": zod.boolean().optional().describe('When true, the no-card-on-file alert is suppressed for this customer')
+  "noCardAlertSilenced": zod.boolean().optional().describe('When true, the no-card-on-file alert is suppressed for this customer'),
+  "archivedAt": zod.coerce.date().nullish().describe('Timestamp when the customer was archived; null when active')
 })),
   "total": zod.number(),
   "page": zod.number(),
@@ -506,7 +508,8 @@ export const CreateCustomerResponse = zod.object({
   "failedAt": zod.string().describe('ISO timestamp of the failure')
 })]).optional(),
   "hasPaymentMethod": zod.boolean().optional().describe('True when a Stripe payment method is saved for this customer'),
-  "noCardAlertSilenced": zod.boolean().optional().describe('When true, the no-card-on-file alert is suppressed for this customer')
+  "noCardAlertSilenced": zod.boolean().optional().describe('When true, the no-card-on-file alert is suppressed for this customer'),
+  "archivedAt": zod.coerce.date().nullish().describe('Timestamp when the customer was archived; null when active')
 })
 
 
@@ -558,7 +561,8 @@ export const GetCustomerResponse = zod.object({
   "failedAt": zod.string().describe('ISO timestamp of the failure')
 })]).optional(),
   "hasPaymentMethod": zod.boolean().optional().describe('True when a Stripe payment method is saved for this customer'),
-  "noCardAlertSilenced": zod.boolean().optional().describe('When true, the no-card-on-file alert is suppressed for this customer')
+  "noCardAlertSilenced": zod.boolean().optional().describe('When true, the no-card-on-file alert is suppressed for this customer'),
+  "archivedAt": zod.coerce.date().nullish().describe('Timestamp when the customer was archived; null when active')
 })
 
 
@@ -587,7 +591,8 @@ export const UpdateCustomerBody = zod.object({
   "smsOptOut": zod.boolean().optional(),
   "emailOptOut": zod.boolean().optional(),
   "autoInvoiceOnCompletion": zod.boolean().optional(),
-  "noCardAlertSilenced": zod.boolean().optional()
+  "noCardAlertSilenced": zod.boolean().optional(),
+  "archivedAt": zod.coerce.date().nullish().describe('Admin-only archive timestamp; set null to restore')
 })
 
 export const UpdateCustomerResponse = zod.object({
@@ -631,12 +636,13 @@ export const UpdateCustomerResponse = zod.object({
   "failedAt": zod.string().describe('ISO timestamp of the failure')
 })]).optional(),
   "hasPaymentMethod": zod.boolean().optional().describe('True when a Stripe payment method is saved for this customer'),
-  "noCardAlertSilenced": zod.boolean().optional().describe('When true, the no-card-on-file alert is suppressed for this customer')
+  "noCardAlertSilenced": zod.boolean().optional().describe('When true, the no-card-on-file alert is suppressed for this customer'),
+  "archivedAt": zod.coerce.date().nullish().describe('Timestamp when the customer was archived; null when active')
 })
 
 
 /**
- * @summary Delete a customer
+ * @summary Permanently delete a customer (owner, office, or department manager only)
  */
 export const DeleteCustomerParams = zod.object({
   "id": zod.coerce.number()
@@ -710,7 +716,8 @@ export const AttachCustomerPaymentMethodResponse = zod.object({
   "failedAt": zod.string().describe('ISO timestamp of the failure')
 })]).optional(),
   "hasPaymentMethod": zod.boolean().optional().describe('True when a Stripe payment method is saved for this customer'),
-  "noCardAlertSilenced": zod.boolean().optional().describe('When true, the no-card-on-file alert is suppressed for this customer')
+  "noCardAlertSilenced": zod.boolean().optional().describe('When true, the no-card-on-file alert is suppressed for this customer'),
+  "archivedAt": zod.coerce.date().nullish().describe('Timestamp when the customer was archived; null when active')
 })
 
 
@@ -739,7 +746,8 @@ export const GetCustomerPaymentMethodResponse = zod.object({
  */
 export const ListPropertiesQueryParams = zod.object({
   "customerId": zod.coerce.number().optional(),
-  "q": zod.coerce.string().optional()
+  "q": zod.coerce.string().optional(),
+  "includeArchived": zod.coerce.boolean().optional().describe('Include archived properties; archived properties are excluded by default')
 })
 
 export const ListPropertiesResponseItem = zod.object({
@@ -772,6 +780,7 @@ export const ListPropertiesResponseItem = zod.object({
   "size": zod.number().nullish().describe('Property size for chemical rate calculations'),
   "sizeUnit": zod.string().nullish().describe('Unit of property size (sqft or acres)'),
   "tags": zod.array(zod.string()).optional().describe('Tag names applied to this property'),
+  "archivedAt": zod.coerce.date().nullish().describe('Timestamp when the property was archived; null when active'),
   "createdAt": zod.string()
 })
 export const ListPropertiesResponse = zod.array(ListPropertiesResponseItem)
@@ -824,6 +833,7 @@ export const CreatePropertyResponse = zod.object({
   "size": zod.number().nullish().describe('Property size for chemical rate calculations'),
   "sizeUnit": zod.string().nullish().describe('Unit of property size (sqft or acres)'),
   "tags": zod.array(zod.string()).optional().describe('Tag names applied to this property'),
+  "archivedAt": zod.coerce.date().nullish().describe('Timestamp when the property was archived; null when active'),
   "createdAt": zod.string()
 })
 
@@ -865,6 +875,7 @@ export const GetPropertyResponse = zod.object({
   "size": zod.number().nullish().describe('Property size for chemical rate calculations'),
   "sizeUnit": zod.string().nullish().describe('Unit of property size (sqft or acres)'),
   "tags": zod.array(zod.string()).optional().describe('Tag names applied to this property'),
+  "archivedAt": zod.coerce.date().nullish().describe('Timestamp when the property was archived; null when active'),
   "createdAt": zod.string()
 })
 
@@ -897,7 +908,8 @@ export const UpdatePropertyBody = zod.object({
 })).optional(),
   "serviceableAreaSqft": zod.number().optional(),
   "size": zod.number().optional().describe('Property size for chemical rate calculations'),
-  "sizeUnit": zod.string().optional().describe('Unit of property size (sqft or acres)')
+  "sizeUnit": zod.string().optional().describe('Unit of property size (sqft or acres)'),
+  "archivedAt": zod.coerce.date().nullish().describe('Admin-only archive timestamp; set null to restore')
 })
 
 export const UpdatePropertyResponse = zod.object({
@@ -930,12 +942,13 @@ export const UpdatePropertyResponse = zod.object({
   "size": zod.number().nullish().describe('Property size for chemical rate calculations'),
   "sizeUnit": zod.string().nullish().describe('Unit of property size (sqft or acres)'),
   "tags": zod.array(zod.string()).optional().describe('Tag names applied to this property'),
+  "archivedAt": zod.coerce.date().nullish().describe('Timestamp when the property was archived; null when active'),
   "createdAt": zod.string()
 })
 
 
 /**
- * @summary Delete a property
+ * @summary Permanently delete a property (owner, office, or department manager only)
  */
 export const DeletePropertyParams = zod.object({
   "id": zod.coerce.number()
@@ -987,6 +1000,7 @@ export const UpdateGeofencePinResponse = zod.object({
   "size": zod.number().nullish().describe('Property size for chemical rate calculations'),
   "sizeUnit": zod.string().nullish().describe('Unit of property size (sqft or acres)'),
   "tags": zod.array(zod.string()).optional().describe('Tag names applied to this property'),
+  "archivedAt": zod.coerce.date().nullish().describe('Timestamp when the property was archived; null when active'),
   "createdAt": zod.string()
 })
 
@@ -1042,6 +1056,7 @@ export const UpdatePropertyMeasurementsResponse = zod.object({
   "size": zod.number().nullish().describe('Property size for chemical rate calculations'),
   "sizeUnit": zod.string().nullish().describe('Unit of property size (sqft or acres)'),
   "tags": zod.array(zod.string()).optional().describe('Tag names applied to this property'),
+  "archivedAt": zod.coerce.date().nullish().describe('Timestamp when the property was archived; null when active'),
   "createdAt": zod.string()
 })
 
@@ -7063,7 +7078,8 @@ export const ResumeCustomerServiceResponse = zod.object({
   "failedAt": zod.string().describe('ISO timestamp of the failure')
 })]).optional(),
   "hasPaymentMethod": zod.boolean().optional().describe('True when a Stripe payment method is saved for this customer'),
-  "noCardAlertSilenced": zod.boolean().optional().describe('When true, the no-card-on-file alert is suppressed for this customer')
+  "noCardAlertSilenced": zod.boolean().optional().describe('When true, the no-card-on-file alert is suppressed for this customer'),
+  "archivedAt": zod.coerce.date().nullish().describe('Timestamp when the customer was archived; null when active')
 })
 
 

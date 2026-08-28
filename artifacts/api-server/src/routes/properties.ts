@@ -228,6 +228,7 @@ function formatProperty(p: typeof propertiesTable.$inferSelect, customerName?: s
     measurementPolygons: withoutAutomaticSuggestedBoundary(p.measurementPolygons),
     serviceableAreaSqft: p.serviceableAreaSqft ?? null,
     customerName: customerName ?? null,
+    archivedAt: p.archivedAt?.toISOString() ?? null,
     createdAt: p.createdAt.toISOString(),
   };
 }
@@ -263,9 +264,11 @@ router.get("/properties/check", async (req, res): Promise<void> => {
 
 router.get("/properties", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { customerId, q } = req.query as Record<string, string>;
+  const { customerId, q, includeArchived } = req.query as Record<string, string>;
 
-  let baseWhere = eq(propertiesTable.tenantId, tenantId);
+  let baseWhere = includeArchived === "true"
+    ? eq(propertiesTable.tenantId, tenantId)
+    : and(eq(propertiesTable.tenantId, tenantId), isNull(propertiesTable.archivedAt));
   if (customerId) {
     const cid = parseInt(customerId, 10);
     baseWhere = and(baseWhere, eq(propertiesTable.customerId, cid)) as typeof baseWhere;
@@ -361,7 +364,23 @@ router.patch("/properties/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const { address, city, state, zip, lat, lng, notes, type, measurementPolygons, serviceableAreaSqft, size, sizeUnit, tags } = req.body;
+  const { address, city, state, zip, lat, lng, notes, type, measurementPolygons, serviceableAreaSqft, size, sizeUnit, tags, archivedAt } = req.body;
+
+  if (archivedAt !== undefined) {
+    const userId = getUserId(req);
+    if (!(await isAdminRole(tenantId, userId))) {
+      res.status(403).json({ error: "Restricted to owner/office/department manager roles" });
+      return;
+    }
+    if (archivedAt !== null && (
+      typeof archivedAt !== "string"
+      || !/^\d{4}-\d{2}-\d{2}T/.test(archivedAt)
+      || Number.isNaN(Date.parse(archivedAt))
+    )) {
+      res.status(400).json({ error: "archivedAt must be an ISO timestamp string or null" });
+      return;
+    }
+  }
 
   // Auto-geocode when address fields change and lat/lng not explicitly provided
   const addressChanged = address !== undefined || city !== undefined || state !== undefined || zip !== undefined;
@@ -410,6 +429,7 @@ router.patch("/properties/:id", async (req, res): Promise<void> => {
       ...(size !== undefined && { size }),
       ...(sizeUnit !== undefined && { sizeUnit }),
       ...(tags !== undefined && { tags }),
+      ...(archivedAt !== undefined && { archivedAt: archivedAt === null ? null : new Date(archivedAt) }),
     })
     .where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId)))
     .returning();
@@ -463,7 +483,30 @@ router.delete("/properties/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
-  await db.delete(propertiesTable).where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId)));
+  const userId = getUserId(req);
+  if (!(await isAdminRole(tenantId, userId))) {
+    res.status(403).json({ error: "Restricted to owner/office/department manager roles" });
+    return;
+  }
+  const [[{ jobCount }], [{ estimateCount }]] = await Promise.all([
+    db.select({ jobCount: sql<number>`count(*)::int` }).from(jobsTable)
+      .where(and(eq(jobsTable.tenantId, tenantId), eq(jobsTable.propertyId, id))),
+    db.select({ estimateCount: sql<number>`count(*)::int` }).from(estimatesTable)
+      .where(and(eq(estimatesTable.tenantId, tenantId), eq(estimatesTable.propertyId, id))),
+  ]);
+  if (jobCount > 0 || estimateCount > 0) {
+    res.status(409).json({ error: "Cannot permanently delete property because related jobs or estimates still exist." });
+    return;
+  }
+  try {
+    await db.delete(propertiesTable).where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId)));
+  } catch (error: unknown) {
+    if ((error as { code?: string }).code === "23503") {
+      res.status(409).json({ error: "Cannot permanently delete property because related records still exist." });
+      return;
+    }
+    throw error;
+  }
   res.sendStatus(204);
 });
 

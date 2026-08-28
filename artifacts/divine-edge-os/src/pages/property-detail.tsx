@@ -47,6 +47,7 @@ import {
 import MediaGallery from '@/components/media/MediaGallery';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 
 const PropertySatelliteMap = lazy(() => import('@/components/map/PropertySatelliteMap'));
 const QuickQuotePanel = lazy(() => import('@/components/property/QuickQuotePanel'));
@@ -80,8 +81,12 @@ export default function PropertyDetailPage() {
   const id = Number(params.id);
   const [, setLocation] = useLocation();
   const qc = useQueryClient();
+  const { canManageOffice } = useAuth();
 
   const [editing, setEditing] = useState(false);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [recordActionBusy, setRecordActionBusy] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [ownershipHistory, setOwnershipHistory] = useState<OwnershipRecord[]>([]);
   const [ownershipLoading, setOwnershipLoading] = useState(false);
@@ -285,6 +290,43 @@ export default function PropertyDetailPage() {
     );
   };
 
+  const backendError = (error: unknown, fallback: string) =>
+    error instanceof Error && error.message ? error.message : fallback;
+  const handleArchiveProperty = async () => {
+    setRecordActionBusy(true);
+    try {
+      const archived = !(property as any).archivedAt;
+      await customFetch(`/api/properties/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archivedAt: archived ? new Date().toISOString() : null }),
+      });
+      qc.invalidateQueries({ queryKey: getGetPropertyQueryKey(id) });
+      qc.invalidateQueries({ queryKey: ['properties'] });
+      toast.success(archived ? 'Property archived' : 'Property restored');
+      setArchiveDialogOpen(false);
+      setLocation('/properties');
+    } catch (error) {
+      toast.error(backendError(error, 'Unable to update property archive status'));
+    } finally {
+      setRecordActionBusy(false);
+    }
+  };
+  const handleDeleteProperty = async () => {
+    setRecordActionBusy(true);
+    try {
+      await customFetch(`/api/properties/${id}`, { method: 'DELETE' });
+      qc.invalidateQueries({ queryKey: ['properties'] });
+      qc.invalidateQueries({ queryKey: getListJobsQueryKey({ propertyId: id } as Parameters<typeof useListJobs>[0]) });
+      toast.success('Property permanently deleted');
+      setDeleteDialogOpen(false);
+      setLocation('/properties');
+    } catch (error) {
+      toast.error(backendError(error, 'Unable to permanently delete property'));
+    } finally {
+      setRecordActionBusy(false);
+    }
+  };
+
   const handleSaveGeofence = () => {
     const lat = parseFloat(geoInput.lat);
     const lng = parseFloat(geoInput.lng);
@@ -468,6 +510,17 @@ export default function PropertyDetailPage() {
           <Button title="Edit property details" onClick={() => setEditing(true)} className="gap-2">
             <Edit className="w-4 h-4" /> Edit
           </Button>
+          {canManageOffice && (
+            <>
+              <Button variant="outline" title={(property as any).archivedAt ? 'Restore this property' : 'Archive this property'} onClick={() => setArchiveDialogOpen(true)} className="gap-2">
+                {(property as any).archivedAt ? <ArchiveRestore className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
+                {(property as any).archivedAt ? 'Unarchive' : 'Archive'}
+              </Button>
+              <Button variant="destructive" title="Permanently delete this property" onClick={() => setDeleteDialogOpen(true)} className="gap-2">
+                <Trash2 className="w-4 h-4" /> Delete
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -1309,6 +1362,35 @@ export default function PropertyDetailPage() {
             }}>
               {createRepairLog.isPending ? 'Saving…' : 'Log Repair'}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={archiveDialogOpen} onOpenChange={setArchiveDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{(property as any).archivedAt ? 'Restore property?' : 'Archive property?'}</DialogTitle>
+            <DialogDescription>
+              {(property as any).archivedAt
+                ? `Restore ${property.address} and make it active again?`
+                : `Archive ${property.address}? Its history will be retained, but it will no longer appear in active property workflows.`}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" disabled={recordActionBusy} onClick={() => setArchiveDialogOpen(false)}>Cancel</Button>
+            <Button disabled={recordActionBusy} onClick={handleArchiveProperty}>{recordActionBusy ? 'Saving…' : (property as any).archivedAt ? 'Unarchive Property' : 'Archive Property'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Permanently delete property?</DialogTitle>
+            <DialogDescription>This permanently deletes {property.address} and may remove related records. This cannot be undone.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" disabled={recordActionBusy} onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+            <Button variant="destructive" disabled={recordActionBusy} onClick={handleDeleteProperty}>{recordActionBusy ? 'Deleting…' : 'Permanently Delete'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

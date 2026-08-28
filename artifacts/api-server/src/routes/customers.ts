@@ -276,6 +276,7 @@ function formatCustomer(
     hasPaymentMethod: !!c.stripeDefaultPaymentMethodId,
     noCardAlertSilenced: c.noCardAlertSilenced ?? false,
     cardExpiresAt: c.cardExpiresAt ?? null,
+    archivedAt: c.archivedAt?.toISOString() ?? null,
     createdAt: c.createdAt.toISOString(),
   };
 }
@@ -316,12 +317,14 @@ async function fetchLastReminderFailures(tenantId: number, customerIds: number[]
 
 router.get("/customers", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { q, page = "1", limit = "20", hasReminderFailure } = req.query as Record<string, string>;
+  const { q, page = "1", limit = "20", hasReminderFailure, includeArchived } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page, 10));
   const limitNum = Math.min(100, parseInt(limit, 10));
   const offset = (pageNum - 1) * limitNum;
 
-  const baseWhere = eq(customersTable.tenantId, tenantId);
+  const baseWhere = includeArchived === "true"
+    ? eq(customersTable.tenantId, tenantId)
+    : and(eq(customersTable.tenantId, tenantId), isNull(customersTable.archivedAt));
   let where = q ? and(baseWhere, ilike(customersTable.name, `%${q}%`)) : baseWhere;
 
   // If filtering by reminder failure, restrict to customers whose MOST RECENT outbound reminder attempt failed.
@@ -471,7 +474,7 @@ router.patch("/customers/:id", async (req, res): Promise<void> => {
   const {
     name, email, phone, secondaryPhone, company, customerType, referralSource,
     billingAddress, billingCity, billingState, billingZip, notes, tags, customFieldValues,
-    acquiredFromCampaignId, smsOptOut, emailOptOut,
+    acquiredFromCampaignId, smsOptOut, emailOptOut, archivedAt,
   } = req.body;
 
   const updates: Partial<typeof customersTable.$inferInsert> = {};
@@ -497,6 +500,18 @@ router.patch("/customers/:id", async (req, res): Promise<void> => {
   const { autoInvoiceOnCompletion, noCardAlertSilenced } = req.body;
   if (autoInvoiceOnCompletion !== undefined) updates.autoInvoiceOnCompletion = autoInvoiceOnCompletion;
   if (noCardAlertSilenced !== undefined) updates.noCardAlertSilenced = noCardAlertSilenced;
+  if (archivedAt !== undefined) {
+    if (!await requireAdmin(req, res)) return;
+    if (archivedAt !== null && (
+      typeof archivedAt !== "string"
+      || !/^\d{4}-\d{2}-\d{2}T/.test(archivedAt)
+      || Number.isNaN(Date.parse(archivedAt))
+    )) {
+      res.status(400).json({ error: "archivedAt must be an ISO timestamp string or null" });
+      return;
+    }
+    updates.archivedAt = archivedAt === null ? null : new Date(archivedAt);
+  }
 
   const [updated] = await db.update(customersTable)
     .set(updates)
@@ -515,7 +530,28 @@ router.delete("/customers/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
-  await db.delete(customersTable).where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)));
+  if (!await requireAdmin(req, res)) return;
+  const [[{ propertyCount }], [{ jobCount }], [{ invoiceCount }]] = await Promise.all([
+    db.select({ propertyCount: sql<number>`count(*)::int` }).from(propertiesTable)
+      .where(and(eq(propertiesTable.tenantId, tenantId), eq(propertiesTable.customerId, id))),
+    db.select({ jobCount: sql<number>`count(*)::int` }).from(jobsTable)
+      .where(and(eq(jobsTable.tenantId, tenantId), eq(jobsTable.customerId, id))),
+    db.select({ invoiceCount: sql<number>`count(*)::int` }).from(invoicesTable)
+      .where(and(eq(invoicesTable.tenantId, tenantId), eq(invoicesTable.customerId, id))),
+  ]);
+  if (propertyCount > 0 || jobCount > 0 || invoiceCount > 0) {
+    res.status(409).json({ error: "Cannot permanently delete customer because related properties, jobs, or invoices still exist." });
+    return;
+  }
+  try {
+    await db.delete(customersTable).where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)));
+  } catch (error: unknown) {
+    if ((error as { code?: string }).code === "23503") {
+      res.status(409).json({ error: "Cannot permanently delete customer because related records still exist." });
+      return;
+    }
+    throw error;
+  }
   res.sendStatus(204);
 });
 

@@ -2298,7 +2298,7 @@ export const getDeleteCustomerUrl = (id: number,) => {
 }
 
 /**
- * @summary Delete a customer
+ * @summary Permanently delete a customer (owner, office, or department manager only)
  */
 export const deleteCustomer = async (id: number, options?: RequestInit): Promise<void> => {
 
@@ -2315,7 +2315,7 @@ export const deleteCustomer = async (id: number, options?: RequestInit): Promise
 
 
 
-export const getDeleteCustomerMutationOptions = <TError = ErrorType<unknown>,
+export const getDeleteCustomerMutationOptions = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCustomer>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof deleteCustomer>>, TError,{id: number}, TContext> => {
 
@@ -2344,12 +2344,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type DeleteCustomerMutationResult = NonNullable<Awaited<ReturnType<typeof deleteCustomer>>>
 
-    export type DeleteCustomerMutationError = ErrorType<unknown>
+    export type DeleteCustomerMutationError = ErrorType<void>
 
     /**
- * @summary Delete a customer
+ * @summary Permanently delete a customer (owner, office, or department manager only)
  */
-export const useDeleteCustomer = <TError = ErrorType<unknown>,
+export const useDeleteCustomer = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCustomer>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof deleteCustomer>>,
@@ -2893,7 +2893,7 @@ export const getDeletePropertyUrl = (id: number,) => {
 }
 
 /**
- * @summary Delete a property
+ * @summary Permanently delete a property (owner, office, or department manager only)
  */
 export const deleteProperty = async (id: number, options?: RequestInit): Promise<void> => {
 
@@ -2910,7 +2910,7 @@ export const deleteProperty = async (id: number, options?: RequestInit): Promise
 
 
 
-export const getDeletePropertyMutationOptions = <TError = ErrorType<unknown>,
+export const getDeletePropertyMutationOptions = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteProperty>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof deleteProperty>>, TError,{id: number}, TContext> => {
 
@@ -2939,12 +2939,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type DeletePropertyMutationResult = NonNullable<Awaited<ReturnType<typeof deleteProperty>>>
 
-    export type DeletePropertyMutationError = ErrorType<unknown>
+    export type DeletePropertyMutationError = ErrorType<void>
 
     /**
- * @summary Delete a property
+ * @summary Permanently delete a property (owner, office, or department manager only)
  */
-export const useDeleteProperty = <TError = ErrorType<unknown>,
+export const useDeleteProperty = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteProperty>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof deleteProperty>>,

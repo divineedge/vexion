@@ -48,5 +48,10 @@ export interface Property {
   sizeUnit?: string | null;
   /** Tag names applied to this property */
   tags?: string[];
+  /**
+     * Timestamp when the property was archived; null when active
+     * @nullable
+     */
+  archivedAt?: Date | null;
   createdAt: string;
 }

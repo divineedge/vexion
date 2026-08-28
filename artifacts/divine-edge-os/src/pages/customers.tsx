@@ -48,8 +48,9 @@ const GMAPS_KEY = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string |
 
 /**
  * Attaches Google Places Autocomplete to `inputRef` when VITE_GOOGLE_MAPS_API_KEY
- * is set (calls `onSelect` on selection). Falls back to Photon OSM otherwise.
- * When Google is active, `suggestions` is always empty — Places renders its own dropdown.
+ * is set (calls `onSelect` on selection). Photon remains available until Places
+ * actually attaches, so a configured but unavailable Google script never removes
+ * address suggestions.
  */
 function useAddressAutocomplete(
   query: string,
@@ -58,6 +59,7 @@ function useAddressAutocomplete(
 ) {
   const [suggestions, setSuggestions] = useState<PhotonFeature[]>([]);
   const [loading, setLoading] = useState(false);
+  const [placesAttached, setPlacesAttached] = useState(false);
   const debounced = useDebounce(query, 350);
 
   // Keep callback in a ref so the Places listener never goes stale
@@ -68,11 +70,16 @@ function useAddressAutocomplete(
 
   const attachPlaces = useCallback(() => {
     if (!inputRef.current || !(window as any).google?.maps?.places || acRef.current) return;
-    const ac = new (window as any).google.maps.places.Autocomplete(inputRef.current, {
-      types: ['address'],
-      componentRestrictions: { country: 'us' },
-      fields: ['address_components'],
-    });
+    let ac: any;
+    try {
+      ac = new (window as any).google.maps.places.Autocomplete(inputRef.current, {
+        types: ['address'],
+        componentRestrictions: { country: 'us' },
+        fields: ['address_components'],
+      });
+    } catch {
+      return;
+    }
     ac.addListener('place_changed', () => {
       const place = ac.getPlace();
       const comps: Array<{ long_name: string; short_name: string; types: string[] }> =
@@ -87,6 +94,8 @@ function useAddressAutocomplete(
       });
     });
     acRef.current = ac;
+    setPlacesAttached(true);
+    setSuggestions([]);
   }, [inputRef]);
 
   // Load Google Maps script once, then attach
@@ -109,9 +118,9 @@ function useAddressAutocomplete(
     return undefined;
   }, [attachPlaces]);
 
-  // Photon fallback — only used when Google key is absent
+  // Photon fallback remains active until Google Places has successfully attached.
   useEffect(() => {
-    if (GMAPS_KEY) return;
+    if (placesAttached) return;
     if (!debounced || debounced.length < 3) { setSuggestions([]); return; }
     let cancelled = false;
     setLoading(true);
@@ -130,9 +139,9 @@ function useAddressAutocomplete(
       .catch(() => { if (!cancelled) setSuggestions([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [debounced]);
+  }, [debounced, placesAttached]);
 
-  const resetAc = useCallback(() => { acRef.current = null; }, []);
+  const resetAc = useCallback(() => { acRef.current = null; setPlacesAttached(false); }, []);
   return { suggestions, loading, clear: () => setSuggestions([]), attachPlaces, resetAc };
 }
 

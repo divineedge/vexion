@@ -22,4 +22,9 @@ export interface PropertyUpdate {
   size?: number;
   /** Unit of property size (sqft or acres) */
   sizeUnit?: string;
+  /**
+     * Admin-only archive timestamp; set null to restore
+     * @nullable
+     */
+  archivedAt?: Date | null;
 }

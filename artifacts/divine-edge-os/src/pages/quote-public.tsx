@@ -30,12 +30,33 @@ interface BlueprintMaterials {
 interface BlueprintZone {
   label: string;
   areaSqft: number | null;
+  lengthFt: number | null;
+  mode: 'area' | 'linear' | null;
   color: string | null;
 }
 
 interface BlueprintZones {
   zones: BlueprintZone[];
   totalAreaSqft: number | null;
+}
+
+interface QuoteZoneMeasurement {
+  areaSqft: number | null;
+  lengthFt?: number | null;
+  mode?: 'area' | 'linear' | null;
+}
+
+function formatZoneMeasurement(zone: QuoteZoneMeasurement): string | null {
+  const isLinearZone = zone.mode === 'linear' || (zone.areaSqft === 0 && (zone.lengthFt ?? 0) > 0);
+  if (isLinearZone) {
+    return zone.lengthFt != null
+      ? `${zone.lengthFt.toLocaleString(undefined, { maximumFractionDigits: 0 })} ft`
+      : null;
+  }
+
+  return zone.areaSqft != null
+    ? `${zone.areaSqft.toLocaleString(undefined, { maximumFractionDigits: 0 })} sqft`
+    : null;
 }
 
 interface PublicQuote {
@@ -59,7 +80,15 @@ interface PublicQuote {
     zip: string | null;
     lat: number | null;
     lng: number | null;
-    measurementPolygons: Array<{ id: string; label: string; areaSqft: number; enabled: boolean; color: string }>;
+    measurementPolygons: Array<{
+      id: string;
+      label: string;
+      areaSqft: number;
+      lengthFt?: number | null;
+      mode?: 'area' | 'linear';
+      enabled: boolean;
+      color: string;
+    }>;
     serviceableAreaSqft: number | null;
     customerName: string | null;
   } | null;
@@ -209,23 +238,20 @@ export default function QuotePublicPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-0">
-                {quote.blueprintZones.zones.map(zone => (
-                  <div key={zone.label} className="flex items-center justify-between py-2 border-b last:border-0">
-                    <div className="flex items-center gap-2">
-                      {zone.color && (
-                        <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: zone.color }} />
-                      )}
-                      <span className="font-medium text-sm">{zone.label}</span>
+                {quote.blueprintZones.zones.map(zone => {
+                  const measurement = formatZoneMeasurement(zone);
+                  return (
+                    <div key={zone.label} className="flex items-center justify-between py-2 border-b last:border-0">
+                      <div className="flex items-center gap-2">
+                        {zone.color && (
+                          <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: zone.color }} />
+                        )}
+                        <span className="font-medium text-sm">{zone.label}</span>
+                      </div>
+                      <span className="text-sm text-muted-foreground">{measurement ?? '—'}</span>
                     </div>
-                    {zone.areaSqft != null ? (
-                      <span className="text-sm text-muted-foreground">
-                        {zone.areaSqft.toLocaleString(undefined, { maximumFractionDigits: 0 })} sqft
-                      </span>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">—</span>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               {quote.blueprintZones.totalAreaSqft != null && (
                 <div className="flex items-center justify-between pt-3 font-semibold text-sm border-t mt-1">
@@ -250,6 +276,7 @@ export default function QuotePublicPage() {
               <div className="space-y-0">
                 {quote.selectedZoneLabels.map(label => {
                   const zone = quote.property?.measurementPolygons.find(z => z.label === label);
+                  const measurement = zone ? formatZoneMeasurement(zone) : null;
                   return (
                     <div key={label} className="flex items-center justify-between py-2 border-b last:border-0">
                       <div className="flex items-center gap-2">
@@ -258,7 +285,7 @@ export default function QuotePublicPage() {
                       </div>
                       {zone && (
                         <span className="text-sm text-muted-foreground">
-                          {zone.areaSqft.toLocaleString(undefined, { maximumFractionDigits: 0 })} sqft
+                          {measurement ?? '—'}
                         </span>
                       )}
                     </div>

@@ -31,11 +31,24 @@ export interface Customer {
   billingState?: string | null;
   /** @nullable */
   billingZip?: string | null;
+  /**
+     * Service/property street address; billing fields remain the mailing address
+     * @nullable
+     */
+  physicalAddress?: string | null;
+  /** @nullable */
+  physicalCity?: string | null;
+  /** @nullable */
+  physicalState?: string | null;
+  /** @nullable */
+  physicalZip?: string | null;
   /** @nullable */
   notes?: string | null;
   tags?: string[];
   customFieldValues?: CustomerCustomFieldValues;
   propertyCount?: number;
+  /** Property created from the physical address during customer creation */
+  createdPropertyId?: number;
   totalSpend?: number;
   smsOptOut?: boolean;
   emailOptOut?: boolean;

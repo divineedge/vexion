@@ -19,6 +19,16 @@ export interface CustomerInput {
   billingCity?: string;
   billingState?: string;
   billingZip?: string;
+  /** Creates the customer's first linked property when supplied */
+  physicalAddress?: string;
+  physicalCity?: string;
+  physicalState?: string;
+  physicalZip?: string;
+  /** Optional finite latitude for the property; must be supplied with physicalLng */
+  physicalLat?: number;
+  /** Optional finite longitude for the property; must be supplied with physicalLat */
+  physicalLng?: number;
+  physicalPropertyType?: string;
   notes?: string;
   tags?: string[];
   customFieldValues?: CustomerInputCustomFieldValues;

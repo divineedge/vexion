@@ -592,6 +592,28 @@ paths:
         "409":
           description: Customer has related records and cannot be permanently deleted
 
+  /address-suggestions:
+    get:
+      operationId: getAddressSuggestions
+      tags: [properties]
+      summary: Suggest US service addresses near the tenant business address
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+      responses:
+        "200":
+          description: Address suggestions, limited to 200 miles when the business address can be geocoded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddressSuggestionResponse"
+        "400":
+          description: Query is missing or too short
+
   /customers/{id}/setup-intent:
     post:
       operationId: createCustomerSetupIntent
@@ -8641,6 +8663,15 @@ components:
           type: ["string", "null"]
         billingZip:
           type: ["string", "null"]
+        physicalAddress:
+          type: ["string", "null"]
+          description: Service/property street address; billing fields remain the mailing address
+        physicalCity:
+          type: ["string", "null"]
+        physicalState:
+          type: ["string", "null"]
+        physicalZip:
+          type: ["string", "null"]
         notes:
           type: ["string", "null"]
         tags:
@@ -8653,6 +8684,9 @@ components:
             type: string
         propertyCount:
           type: integer
+        createdPropertyId:
+          type: integer
+          description: Property created from the physical address during customer creation
         totalSpend:
           type: number
         smsOptOut:
@@ -8750,6 +8784,24 @@ components:
           type: string
         billingZip:
           type: string
+        physicalAddress:
+          type: string
+          description: Creates the customer's first linked property when supplied
+        physicalCity:
+          type: string
+        physicalState:
+          type: string
+        physicalZip:
+          type: string
+        physicalLat:
+          type: number
+          description: Optional finite latitude for the property; must be supplied with physicalLng
+        physicalLng:
+          type: number
+          description: Optional finite longitude for the property; must be supplied with physicalLat
+        physicalPropertyType:
+          type: string
+          default: residential
         notes:
           type: string
         tags:
@@ -8786,6 +8838,14 @@ components:
           type: string
         billingZip:
           type: string
+        physicalAddress:
+          type: ["string", "null"]
+        physicalCity:
+          type: ["string", "null"]
+        physicalState:
+          type: ["string", "null"]
+        physicalZip:
+          type: ["string", "null"]
         notes:
           type: string
         tags:
@@ -8808,6 +8868,39 @@ components:
           type: ["string", "null"]
           format: date-time
           description: "Admin-only archive timestamp; set null to restore"
+
+    AddressSuggestion:
+      type: object
+      required: [address, lat, lng, label, distanceMiles]
+      properties:
+        address:
+          type: string
+        city:
+          type: ["string", "null"]
+        state:
+          type: ["string", "null"]
+        zip:
+          type: ["string", "null"]
+        lat:
+          type: number
+        lng:
+          type: number
+        label:
+          type: string
+        distanceMiles:
+          type: ["number", "null"]
+    AddressSuggestionResponse:
+      type: object
+      required: [items, radiusApplied]
+      properties:
+        items:
+          type: array
+          maxItems: 10
+          items:
+            $ref: "#/components/schemas/AddressSuggestion"
+        radiusApplied:
+          type: boolean
+          description: False when the tenant business address is missing or cannot be geocoded
 
     CustomerListResponse:
       type: object

@@ -8,6 +8,7 @@ import { getStripeClient } from "../lib/stripe";
 import { sendSms, type SmsProviderConfig } from "../lib/smsProvider";
 import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
 import { logger } from "../lib/logger";
+import { geocodeAddress } from "./properties";
 import {
   importUpload,
   handleExportRequest,
@@ -50,6 +51,10 @@ const customersImportExportConfig: ImportExportEntityConfig = {
     { key: "billingCity", header: "Billing City" },
     { key: "billingState", header: "Billing State" },
     { key: "billingZip", header: "Billing Zip" },
+    { key: "physicalAddress", header: "Physical Address" },
+    { key: "physicalCity", header: "Physical City" },
+    { key: "physicalState", header: "Physical State" },
+    { key: "physicalZip", header: "Physical Zip" },
     { key: "notes", header: "Notes" },
     { key: "tags", header: "Tags", hint: "Comma-separated" },
     { key: "smsOptOut", header: "SMS Opt Out", hint: "true/false" },
@@ -68,6 +73,10 @@ const customersImportExportConfig: ImportExportEntityConfig = {
     { key: "billingCity", header: "Billing City" },
     { key: "billingState", header: "Billing State" },
     { key: "billingZip", header: "Billing Zip" },
+    { key: "physicalAddress", header: "Physical Address" },
+    { key: "physicalCity", header: "Physical City" },
+    { key: "physicalState", header: "Physical State" },
+    { key: "physicalZip", header: "Physical Zip" },
     { key: "notes", header: "Notes" },
     { key: "tags", header: "Tags" },
     { key: "totalSpend", header: "Total Spend" },
@@ -92,6 +101,10 @@ const customersImportExportConfig: ImportExportEntityConfig = {
       billingCity: c.billingCity ?? "",
       billingState: c.billingState ?? "",
       billingZip: c.billingZip ?? "",
+      physicalAddress: c.physicalAddress ?? "",
+      physicalCity: c.physicalCity ?? "",
+      physicalState: c.physicalState ?? "",
+      physicalZip: c.physicalZip ?? "",
       notes: c.notes ?? "",
       tags: (c.tags ?? []).join("; "),
       totalSpend: c.totalSpend,
@@ -122,6 +135,10 @@ const customersImportExportConfig: ImportExportEntityConfig = {
         billingCity: optionalString(raw.billingCity) ?? null,
         billingState: optionalString(raw.billingState) ?? null,
         billingZip: optionalString(raw.billingZip) ?? null,
+        physicalAddress: optionalString(raw.physicalAddress) ?? null,
+        physicalCity: optionalString(raw.physicalCity) ?? null,
+        physicalState: optionalString(raw.physicalState) ?? null,
+        physicalZip: optionalString(raw.physicalZip) ?? null,
         notes: optionalString(raw.notes) ?? null,
         tags,
         smsOptOut: optionalBoolean(raw.smsOptOut) ?? false,
@@ -243,7 +260,7 @@ type LastReminderFailure = {
 
 function formatCustomer(
   c: typeof customersTable.$inferSelect,
-  extras?: { propertyCount?: number; thisYearSpend?: number; lastYearSpend?: number; paymentStanding?: PaymentStanding; lastReminderFailure?: LastReminderFailure }
+  extras?: { propertyCount?: number; createdPropertyId?: number; thisYearSpend?: number; lastYearSpend?: number; paymentStanding?: PaymentStanding; lastReminderFailure?: LastReminderFailure }
 ) {
   return {
     id: c.id,
@@ -259,6 +276,10 @@ function formatCustomer(
     billingCity: c.billingCity ?? null,
     billingState: c.billingState ?? null,
     billingZip: c.billingZip ?? null,
+    physicalAddress: c.physicalAddress ?? null,
+    physicalCity: c.physicalCity ?? null,
+    physicalState: c.physicalState ?? null,
+    physicalZip: c.physicalZip ?? null,
     notes: c.notes ?? null,
     tags: c.tags ?? [],
     customFieldValues: (c.customFieldValues as Record<string, unknown>) ?? {},
@@ -271,6 +292,7 @@ function formatCustomer(
     thisYearSpend: extras?.thisYearSpend ?? null,
     lastYearSpend: extras?.lastYearSpend ?? null,
     propertyCount: extras?.propertyCount ?? 0,
+    ...(extras?.createdPropertyId !== undefined ? { createdPropertyId: extras.createdPropertyId } : {}),
     paymentStanding: extras?.paymentStanding ?? null,
     lastReminderFailure: extras?.lastReminderFailure ?? null,
     hasPaymentMethod: !!c.stripeDefaultPaymentMethodId,
@@ -397,34 +419,67 @@ router.post("/customers", async (req, res): Promise<void> => {
   const userId = getUserId(req);
   const {
     name, email, phone, secondaryPhone, company, customerType, referralSource,
-    billingAddress, billingCity, billingState, billingZip, notes, tags, customFieldValues,
+    billingAddress, billingCity, billingState, billingZip,
+    physicalAddress, physicalCity, physicalState, physicalZip, physicalLat, physicalLng, physicalPropertyType,
+    notes, tags, customFieldValues,
     acquiredFromCampaignId,
   } = req.body;
-  if (!name) {
-    res.status(400).json({ error: "name is required" });
+  if (typeof name !== "string" || !name.trim() || typeof email !== "string" || !email.trim() || typeof phone !== "string" || !phone.trim()) {
+    res.status(400).json({ error: "name, email, and phone are required" });
     return;
   }
 
-  const [customer] = await db.insert(customersTable).values({
-    tenantId, name, email, phone,
-    secondaryPhone: secondaryPhone ?? null,
-    company: company ?? null,
-    customerType: customerType ?? null,
-    referralSource: referralSource ?? null,
-    billingAddress: billingAddress ?? null,
-    billingCity: billingCity ?? null,
-    billingState: billingState ?? null,
-    billingZip: billingZip ?? null,
-    notes: notes ?? null,
-    tags: tags ?? [],
-    customFieldValues: customFieldValues ?? {},
-    acquiredFromCampaignId: acquiredFromCampaignId ? parseInt(acquiredFromCampaignId, 10) : null,
-  }).returning();
+  if (physicalAddress !== undefined && (typeof physicalAddress !== "string" || !physicalAddress.trim())) {
+    res.status(400).json({ error: "physicalAddress must be a non-empty string when provided" });
+    return;
+  }
+  const hasPhysicalCoordinates = physicalLat !== undefined || physicalLng !== undefined;
+  if (hasPhysicalCoordinates && !physicalAddress) {
+    res.status(400).json({ error: "physicalLat and physicalLng require physicalAddress" });
+    return;
+  }
+  if (hasPhysicalCoordinates && (physicalLat === undefined || physicalLng === undefined
+    || !Number.isFinite(Number(physicalLat)) || !Number.isFinite(Number(physicalLng)))) {
+    res.status(400).json({ error: "physicalLat and physicalLng must both be finite numbers" });
+    return;
+  }
+  if (physicalPropertyType !== undefined && (typeof physicalPropertyType !== "string" || !physicalPropertyType.trim())) {
+    res.status(400).json({ error: "physicalPropertyType must be a non-empty string when provided" });
+    return;
+  }
+
+  let physicalCoordinates: { lat: number; lng: number } | null = null;
+  if (physicalAddress) {
+    physicalCoordinates = hasPhysicalCoordinates
+      ? { lat: Number(physicalLat), lng: Number(physicalLng) }
+      : await geocodeAddress(physicalAddress, physicalCity, physicalState, physicalZip);
+  }
+
+  const { customer, createdPropertyId } = await db.transaction(async (tx) => {
+    const [createdCustomer] = await tx.insert(customersTable).values({
+      tenantId, name, email, phone,
+      secondaryPhone: secondaryPhone ?? null, company: company ?? null, customerType: customerType ?? null,
+      referralSource: referralSource ?? null, billingAddress: billingAddress ?? null, billingCity: billingCity ?? null,
+      billingState: billingState ?? null, billingZip: billingZip ?? null,
+      physicalAddress: physicalAddress ?? null, physicalCity: physicalCity ?? null,
+      physicalState: physicalState ?? null, physicalZip: physicalZip ?? null,
+      notes: notes ?? null, tags: tags ?? [], customFieldValues: customFieldValues ?? {},
+      acquiredFromCampaignId: acquiredFromCampaignId ? parseInt(acquiredFromCampaignId, 10) : null,
+    }).returning();
+    if (!physicalAddress) return { customer: createdCustomer, createdPropertyId: undefined };
+    const [property] = await tx.insert(propertiesTable).values({
+      tenantId, customerId: createdCustomer.id, address: physicalAddress.trim(),
+      city: physicalCity ?? null, state: physicalState ?? null, zip: physicalZip ?? null,
+      lat: physicalCoordinates?.lat ?? null, lng: physicalCoordinates?.lng ?? null,
+      type: physicalPropertyType?.trim() || "residential",
+    }).returning({ id: propertiesTable.id });
+    return { customer: createdCustomer, createdPropertyId: property.id };
+  });
 
   await db.insert(activityLogTable).values({ tenantId, userId, type: "customer_added", message: `New customer "${name}" added`, entityId: customer.id });
   void syncCustomerToMailchimp(tenantId, customer);
 
-  res.status(201).json(formatCustomer(customer, { propertyCount: 0 }));
+  res.status(201).json(formatCustomer(customer, { propertyCount: createdPropertyId ? 1 : 0, createdPropertyId }));
 });
 
 router.get("/customers/:id", async (req, res): Promise<void> => {
@@ -473,7 +528,7 @@ router.patch("/customers/:id", async (req, res): Promise<void> => {
 
   const {
     name, email, phone, secondaryPhone, company, customerType, referralSource,
-    billingAddress, billingCity, billingState, billingZip, notes, tags, customFieldValues,
+    billingAddress, billingCity, billingState, billingZip, physicalAddress, physicalCity, physicalState, physicalZip, notes, tags, customFieldValues,
     acquiredFromCampaignId, smsOptOut, emailOptOut, archivedAt,
   } = req.body;
 
@@ -489,6 +544,10 @@ router.patch("/customers/:id", async (req, res): Promise<void> => {
   if (billingCity !== undefined) updates.billingCity = billingCity;
   if (billingState !== undefined) updates.billingState = billingState;
   if (billingZip !== undefined) updates.billingZip = billingZip;
+  if (physicalAddress !== undefined) updates.physicalAddress = physicalAddress;
+  if (physicalCity !== undefined) updates.physicalCity = physicalCity;
+  if (physicalState !== undefined) updates.physicalState = physicalState;
+  if (physicalZip !== undefined) updates.physicalZip = physicalZip;
   if (notes !== undefined) updates.notes = notes;
   if (tags !== undefined) updates.tags = tags;
   if (customFieldValues !== undefined) updates.customFieldValues = customFieldValues;

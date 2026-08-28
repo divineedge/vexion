@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   useListProperties, getListPropertiesQueryKey,
   useCreateProperty,
@@ -20,6 +20,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
+import { AddressAutocomplete } from '@/components/shared/AddressAutocomplete';
 
 type NewPropertyForm = {
   customerId: string;
@@ -51,66 +52,15 @@ export default function PropertiesPage() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [geofenceFilter, setGeofenceFilter] = useState(false);
   const [sizeSortDir, setSizeSortDir] = useState<'none' | 'asc' | 'desc'>('none');
-  const addressInputRef = useRef<HTMLInputElement>(null);
-  const placesRef = useRef<unknown>(null);
-
-  const attachAddressPlaces = useCallback(() => {
-    if (!addressInputRef.current || !(window as any).google?.maps?.places || placesRef.current) return;
-    const ac = new (window as any).google.maps.places.Autocomplete(addressInputRef.current, {
-      types: ['address'],
-      componentRestrictions: { country: 'us' },
-      fields: ['address_components', 'geometry'],
-    });
-    ac.addListener('place_changed', () => {
-      const place = ac.getPlace();
-      const components: Array<{ long_name: string; short_name: string; types: string[] }> = place.address_components ?? [];
-      const get = (type: string) => components.find(component => component.types.includes(type))?.long_name ?? '';
-      const getShort = (type: string) => components.find(component => component.types.includes(type))?.short_name ?? '';
-      setForm(current => ({
-        ...current,
-        address: [get('street_number'), get('route')].filter(Boolean).join(' ') || current.address,
-        city: get('locality') || get('sublocality_level_1'),
-        state: getShort('administrative_area_level_1'),
-        zip: get('postal_code'),
-        lat: place.geometry?.location?.lat?.() ?? null,
-        lng: place.geometry?.location?.lng?.() ?? null,
-      }));
-    });
-    placesRef.current = ac;
-  }, []);
-
-  useEffect(() => {
-    if (!addOpen) { placesRef.current = null; return undefined; }
-    const key = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
-    if (!key) return undefined;
-    if ((window as any).google?.maps?.places) {
-      const timer = setTimeout(attachAddressPlaces, 50);
-      return () => clearTimeout(timer);
-    }
-    const existing = document.querySelector('#gmaps-script') as HTMLScriptElement | null;
-    if (existing) {
-      const interval = setInterval(() => {
-        if ((window as any).google?.maps?.places) { attachAddressPlaces(); clearInterval(interval); }
-      }, 150);
-      return () => clearInterval(interval);
-    }
-    const script = document.createElement('script');
-    script.id = 'gmaps-script';
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places&loading=async`;
-    script.async = true;
-    script.defer = true;
-    script.onload = attachAddressPlaces;
-    document.head.appendChild(script);
-    return undefined;
-  }, [addOpen, attachAddressPlaces]);
 
   const { data, isLoading } = useListProperties(
     { q: debouncedSearch || undefined },
     { query: { queryKey: getListPropertiesQueryKey({ q: debouncedSearch || undefined }) } }
   );
 
-  const { data: customers } = useListCustomers({}, {
-    query: { enabled: addOpen, queryKey: getListCustomersQueryKey({}) },
+  const customerParams = { limit: 100 };
+  const { data: customers, isLoading: customersLoading, isError: customersError } = useListCustomers(customerParams, {
+    query: { enabled: addOpen, queryKey: getListCustomersQueryKey(customerParams) },
   });
 
   const createProperty = useCreateProperty();
@@ -299,7 +249,7 @@ export default function PropertiesPage() {
               <Select value={form.customerId} onValueChange={v => setForm(f => ({ ...f, customerId: v }))}>
                 <SelectTrigger title="Customer who owns or is billed for this property"><SelectValue placeholder="Select customer..." /></SelectTrigger>
                 <SelectContent>
-                  {(customers?.items ?? []).map(c => (
+                  {customersLoading ? <SelectItem value="__loading" disabled>Loading customers…</SelectItem> : customersError ? <SelectItem value="__error" disabled>Could not load customers</SelectItem> : (customers?.items ?? []).length === 0 ? <SelectItem value="__empty" disabled>No customers found</SelectItem> : (customers?.items ?? []).map(c => (
                     <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
                   ))}
                 </SelectContent>
@@ -308,7 +258,8 @@ export default function PropertiesPage() {
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Street Address <span className="text-destructive">*</span></label>
-              <Input ref={addressInputRef} title="Property street address" placeholder="123 Main St" value={form.address} onChange={e => setForm(f => ({ ...f, address: e.target.value, lat: null, lng: null }))} />
+              <AddressAutocomplete title="Property street address" placeholder="123 Main St" value={form.address} onChange={address => setForm(f => ({ ...f, address, lat: null, lng: null }))} onSelect={item => setForm(f => ({ ...f, address: item.address, city: item.city ?? '', state: item.state ?? '', zip: item.zip ?? '', lat: item.lat, lng: item.lng }))} />
+              {form.lat !== null && form.lng !== null && <p className="text-xs text-muted-foreground mt-1">Location selected: {form.lat.toFixed(5)}, {form.lng.toFixed(5)}</p>}
             </div>
 
             <div className="grid grid-cols-3 gap-3">
@@ -333,8 +284,10 @@ export default function PropertiesPage() {
                 <SelectContent>
                   <SelectItem value="residential">Residential</SelectItem>
                   <SelectItem value="commercial">Commercial</SelectItem>
+                  <SelectItem value="hoa">HOA</SelectItem>
                   <SelectItem value="industrial">Industrial</SelectItem>
                   <SelectItem value="municipal">Municipal</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
                 </SelectContent>
               </Select>
             </div>

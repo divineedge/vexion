@@ -25,6 +25,7 @@ import { useDebounce } from '@/hooks/use-debounce';
 import { toast } from 'sonner';
 import { getActiveCustomerFields } from '@/lib/fieldConfig';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
+import { AddressAutocomplete, type AddressSuggestion } from '@/components/shared/AddressAutocomplete';
 
 /** A single address suggestion returned by the Photon geocoder (fallback). */
 interface PhotonFeature {
@@ -248,6 +249,7 @@ const BLANK: FormData = {
   name: '', email: '', phone: '', secondaryPhone: '',
   company: '', customerType: '', referralSource: '',
   billingAddress: '', billingCity: '', billingState: '', billingZip: '',
+  physicalAddress: '', physicalCity: '', physicalState: '', physicalZip: '', physicalLat: '', physicalLng: '',
   notes: '', tags: [],
 };
 
@@ -274,33 +276,18 @@ export default function CustomersPage() {
       .then(data => setAvailableCampaigns((data ?? []).map((c: any) => ({ id: c.id, name: c.name }))))
       .catch(() => {});
   }, []);
-  const addrInputRef = useRef<HTMLInputElement>(null);
-  const [addrFocused, setAddrFocused] = useState(false);
+  const [sameAsPhysical, setSameAsPhysical] = useState(true);
   const [noCardFilter, setNoCardFilter] = useState(false);
   const [addPaymentMethod, setAddPaymentMethod] = useState(false);
   const [stripePromise, setStripePromise] = useState<Promise<StripeInstance | null> | null>(null);
   const cardSetupRef = useRef<CardSetupSectionHandle>(null);
-  const handleGoogleAddressSelect = useCallback((parts: GoogleAddressParts) => {
+  const selectPhysicalAddress = useCallback((item: AddressSuggestion) => {
     setForm(f => ({
-      ...f,
-      billingAddress: parts.street,
-      billingCity: parts.city,
-      billingState: parts.state,
-      billingZip: parts.zip,
+      ...f, physicalAddress: item.address, physicalCity: item.city ?? '', physicalState: item.state ?? '',
+      physicalZip: item.zip ?? '', physicalLat: item.lat?.toString() ?? '', physicalLng: item.lng?.toString() ?? '',
+      ...(sameAsPhysical ? { billingAddress: item.address, billingCity: item.city ?? '', billingState: item.state ?? '', billingZip: item.zip ?? '' } : {}),
     }));
-  }, []);
-
-  const { suggestions: addrSuggestions, loading: addrLoading, clear: clearAddrSuggestions, attachPlaces, resetAc } = useAddressAutocomplete(
-    addrFocused ? (form.billingAddress as string) : '',
-    addrInputRef,
-    handleGoogleAddressSelect,
-  );
-
-  // Re-attach Google Places autocomplete whenever the sheet opens (the input remounts each time)
-  useEffect(() => {
-    if (!creating) { resetAc(); setAddPaymentMethod(false); return; }
-    if ((window as any).google?.maps?.places) attachPlaces();
-  }, [creating, attachPlaces, resetAc]);
+  }, [sameAsPhysical]);
 
   // Load Stripe publishable key when the user opts to add a payment method
   useEffect(() => {
@@ -360,6 +347,10 @@ export default function CustomersPage() {
       toast.error('Customer name is required');
       return;
     }
+    if (!(form.physicalAddress as string | undefined)?.trim()) {
+      toast.error('Physical / service address is required to create the first property');
+      return;
+    }
     if (missing.length > 0) {
       toast.error(`Required: ${missing.join(', ')}`);
       return;
@@ -370,6 +361,9 @@ export default function CustomersPage() {
       if (k.startsWith('cf_')) customFieldValues[k.slice(3)] = v as string;
       else body[k] = v;
     }
+    body.physicalPropertyType = 'residential';
+    body.physicalLat = form.physicalLat ? Number(form.physicalLat) : undefined;
+    body.physicalLng = form.physicalLng ? Number(form.physicalLng) : undefined;
     body.customFieldValues = customFieldValues;
     if (createCampaignId) body.acquiredFromCampaignId = parseInt(createCampaignId, 10);
 
@@ -392,6 +386,7 @@ export default function CustomersPage() {
       qc.invalidateQueries({ queryKey: getListCustomersQueryKey() });
       setCreating(false);
       setForm(BLANK);
+      setSameAsPhysical(true);
       setCreateCampaignId('');
       setLocation(`/customers/${customer.id}`);
     } catch {
@@ -720,58 +715,23 @@ export default function CustomersPage() {
               )}
             </Section>
 
+            <Section title="Physical / Service Address" icon={<Home className="w-4 h-4" />}>
+              <p className="text-xs text-muted-foreground">This physical address becomes this customer's first property.</p>
+              <Field label="Street Address">
+                <AddressAutocomplete title="Customer physical or service address" value={form.physicalAddress as string} onChange={value => setForm(f => ({ ...f, physicalAddress: value, physicalLat: '', physicalLng: '', ...(sameAsPhysical ? { billingAddress: value } : {}) }))} onSelect={selectPhysicalAddress} placeholder="123 Main St" />
+              </Field>
+              <div className="grid grid-cols-3 gap-4">
+                <Field label="City"><Input value={form.physicalCity as string} onChange={e => { const value = e.target.value; setForm(f => ({ ...f, physicalCity: value, ...(sameAsPhysical ? { billingCity: value } : {}) })); }} /></Field>
+                <Field label="State"><Input maxLength={2} value={form.physicalState as string} onChange={e => { const value = e.target.value; setForm(f => ({ ...f, physicalState: value, ...(sameAsPhysical ? { billingState: value } : {}) })); }} /></Field>
+                <Field label="ZIP"><Input value={form.physicalZip as string} onChange={e => { const value = e.target.value; setForm(f => ({ ...f, physicalZip: value, ...(sameAsPhysical ? { billingZip: value } : {}) })); }} /></Field>
+              </div>
+              {form.physicalLat && form.physicalLng && <p className="text-xs text-muted-foreground">Location selected: {form.physicalLat}, {form.physicalLng}</p>}
+            </Section>
             {activeFields.some(f => f.key === 'billingAddress' && f.visible) && (
-              <Section title="Billing Address" icon={<Home className="w-4 h-4" />}>
+              <Section title="Mailing Address" icon={<Home className="w-4 h-4" />}>
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sameAsPhysical} onChange={e => { const checked = e.target.checked; setSameAsPhysical(checked); if (checked) setForm(f => ({ ...f, billingAddress: f.physicalAddress, billingCity: f.physicalCity, billingState: f.physicalState, billingZip: f.physicalZip })); }} /> Same as physical address</label>
                 <Field label="Street Address" required={activeFields.find(f => f.key === 'billingAddress')?.required}>
-                  <div className="relative">
-                    <Input
-                      ref={addrInputRef}
-                      title="Customer's billing street address"
-                      value={form.billingAddress as string}
-                      onChange={e => setField('billingAddress', e.target.value)}
-                      onFocus={() => setAddrFocused(true)}
-                      onBlur={() => setTimeout(() => setAddrFocused(false), 200)}
-                      placeholder="123 Main St"
-                    />
-                    {addrFocused && (addrSuggestions.length > 0 || addrLoading) && (
-                      <div className="absolute z-50 left-0 right-0 top-full mt-1 rounded-md border bg-popover shadow-lg overflow-hidden">
-                        {addrLoading && (
-                          <div className="px-3 py-2 text-xs text-muted-foreground flex items-center gap-2">
-                            <MapPin className="w-3.5 h-3.5 animate-pulse" /> Searching…
-                          </div>
-                        )}
-                        {addrSuggestions.map((s, idx) => {
-                          const p = s.properties;
-                          const street = photonStreet(p);
-                          const city = p.city ?? p.county ?? '';
-                          const state = p.state ?? '';
-                          const zip = p.postcode ?? '';
-                          return (
-                            <button
-                              key={idx}
-                              type="button"
-                              className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors border-b last:border-b-0"
-                              onMouseDown={() => {
-                                setField('billingAddress', street || (form.billingAddress as string));
-                                setField('billingCity', city);
-                                // Photon returns full state names; abbreviate to 2 chars if >2
-                                setField('billingState', toStateAbbr(state));
-                                setField('billingZip', zip.slice(0, 5));
-                                clearAddrSuggestions();
-                                setAddrFocused(false);
-                              }}
-                            >
-                              <span className="font-medium">{street}</span>
-                              {(city || state) && (
-                                <span className="text-muted-foreground ml-1">{[city, state, zip].filter(Boolean).join(', ')}</span>
-                              )}
-                            </button>
-                          );
-                        })}
-                        <div className="px-3 py-1 text-[10px] text-muted-foreground/60 border-t">Powered by OpenStreetMap</div>
-                      </div>
-                    )}
-                  </div>
+                  <AddressAutocomplete title="Customer mailing street address" value={form.billingAddress as string} onChange={value => { setSameAsPhysical(false); setField('billingAddress', value); }} onSelect={item => { setSameAsPhysical(false); setForm(f => ({ ...f, billingAddress: item.address, billingCity: item.city ?? '', billingState: item.state ?? '', billingZip: item.zip ?? '' })); }} placeholder="123 Main St" />
                 </Field>
                 <div className="grid grid-cols-3 gap-4">
                   <div className="col-span-1">

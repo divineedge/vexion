@@ -19,6 +19,14 @@ export interface CustomerUpdate {
   billingCity?: string;
   billingState?: string;
   billingZip?: string;
+  /** @nullable */
+  physicalAddress?: string | null;
+  /** @nullable */
+  physicalCity?: string | null;
+  /** @nullable */
+  physicalState?: string | null;
+  /** @nullable */
+  physicalZip?: string | null;
   notes?: string;
   tags?: string[];
   customFieldValues?: CustomerUpdateCustomFieldValues;

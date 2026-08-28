@@ -411,10 +411,15 @@ export const ListCustomersResponse = zod.object({
   "billingCity": zod.string().nullish(),
   "billingState": zod.string().nullish(),
   "billingZip": zod.string().nullish(),
+  "physicalAddress": zod.string().nullish().describe('Service\/property street address; billing fields remain the mailing address'),
+  "physicalCity": zod.string().nullish(),
+  "physicalState": zod.string().nullish(),
+  "physicalZip": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()).optional(),
   "customFieldValues": zod.record(zod.string(), zod.string()).optional(),
   "propertyCount": zod.number().optional(),
+  "createdPropertyId": zod.number().optional().describe('Property created from the physical address during customer creation'),
   "totalSpend": zod.number().optional(),
   "smsOptOut": zod.boolean().optional(),
   "emailOptOut": zod.boolean().optional(),
@@ -450,6 +455,8 @@ export const ListCustomersResponse = zod.object({
 /**
  * @summary Create a new customer
  */
+export const createCustomerBodyPhysicalPropertyTypeDefault = `residential`;
+
 export const CreateCustomerBody = zod.object({
   "name": zod.string(),
   "email": zod.string(),
@@ -462,6 +469,13 @@ export const CreateCustomerBody = zod.object({
   "billingCity": zod.string().optional(),
   "billingState": zod.string().optional(),
   "billingZip": zod.string().optional(),
+  "physicalAddress": zod.string().optional().describe('Creates the customer\'s first linked property when supplied'),
+  "physicalCity": zod.string().optional(),
+  "physicalState": zod.string().optional(),
+  "physicalZip": zod.string().optional(),
+  "physicalLat": zod.number().optional().describe('Optional finite latitude for the property; must be supplied with physicalLng'),
+  "physicalLng": zod.number().optional().describe('Optional finite longitude for the property; must be supplied with physicalLat'),
+  "physicalPropertyType": zod.string().default(createCustomerBodyPhysicalPropertyTypeDefault),
   "notes": zod.string().optional(),
   "tags": zod.array(zod.string()).optional(),
   "customFieldValues": zod.record(zod.string(), zod.string()).optional()
@@ -481,10 +495,15 @@ export const CreateCustomerResponse = zod.object({
   "billingCity": zod.string().nullish(),
   "billingState": zod.string().nullish(),
   "billingZip": zod.string().nullish(),
+  "physicalAddress": zod.string().nullish().describe('Service\/property street address; billing fields remain the mailing address'),
+  "physicalCity": zod.string().nullish(),
+  "physicalState": zod.string().nullish(),
+  "physicalZip": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()).optional(),
   "customFieldValues": zod.record(zod.string(), zod.string()).optional(),
   "propertyCount": zod.number().optional(),
+  "createdPropertyId": zod.number().optional().describe('Property created from the physical address during customer creation'),
   "totalSpend": zod.number().optional(),
   "smsOptOut": zod.boolean().optional(),
   "emailOptOut": zod.boolean().optional(),
@@ -534,10 +553,15 @@ export const GetCustomerResponse = zod.object({
   "billingCity": zod.string().nullish(),
   "billingState": zod.string().nullish(),
   "billingZip": zod.string().nullish(),
+  "physicalAddress": zod.string().nullish().describe('Service\/property street address; billing fields remain the mailing address'),
+  "physicalCity": zod.string().nullish(),
+  "physicalState": zod.string().nullish(),
+  "physicalZip": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()).optional(),
   "customFieldValues": zod.record(zod.string(), zod.string()).optional(),
   "propertyCount": zod.number().optional(),
+  "createdPropertyId": zod.number().optional().describe('Property created from the physical address during customer creation'),
   "totalSpend": zod.number().optional(),
   "smsOptOut": zod.boolean().optional(),
   "emailOptOut": zod.boolean().optional(),
@@ -585,6 +609,10 @@ export const UpdateCustomerBody = zod.object({
   "billingCity": zod.string().optional(),
   "billingState": zod.string().optional(),
   "billingZip": zod.string().optional(),
+  "physicalAddress": zod.string().nullish(),
+  "physicalCity": zod.string().nullish(),
+  "physicalState": zod.string().nullish(),
+  "physicalZip": zod.string().nullish(),
   "notes": zod.string().optional(),
   "tags": zod.array(zod.string()).optional(),
   "customFieldValues": zod.record(zod.string(), zod.string()).optional(),
@@ -609,10 +637,15 @@ export const UpdateCustomerResponse = zod.object({
   "billingCity": zod.string().nullish(),
   "billingState": zod.string().nullish(),
   "billingZip": zod.string().nullish(),
+  "physicalAddress": zod.string().nullish().describe('Service\/property street address; billing fields remain the mailing address'),
+  "physicalCity": zod.string().nullish(),
+  "physicalState": zod.string().nullish(),
+  "physicalZip": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()).optional(),
   "customFieldValues": zod.record(zod.string(), zod.string()).optional(),
   "propertyCount": zod.number().optional(),
+  "createdPropertyId": zod.number().optional().describe('Property created from the physical address during customer creation'),
   "totalSpend": zod.number().optional(),
   "smsOptOut": zod.boolean().optional(),
   "emailOptOut": zod.boolean().optional(),
@@ -649,6 +682,36 @@ export const DeleteCustomerParams = zod.object({
 })
 
 export const DeleteCustomerResponse = zod.void()
+
+
+/**
+ * @summary Suggest US service addresses near the tenant business address
+ */
+export const getAddressSuggestionsQueryQMin = 2;
+
+
+
+export const GetAddressSuggestionsQueryParams = zod.object({
+  "q": zod.coerce.string().min(getAddressSuggestionsQueryQMin)
+})
+
+export const getAddressSuggestionsResponseItemsMax = 10;
+
+
+
+export const GetAddressSuggestionsResponse = zod.object({
+  "items": zod.array(zod.object({
+  "address": zod.string(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "zip": zod.string().nullish(),
+  "lat": zod.number(),
+  "lng": zod.number(),
+  "label": zod.string(),
+  "distanceMiles": zod.number().nullable()
+})).max(getAddressSuggestionsResponseItemsMax),
+  "radiusApplied": zod.boolean().describe('False when the tenant business address is missing or cannot be geocoded')
+})
 
 
 /**
@@ -689,10 +752,15 @@ export const AttachCustomerPaymentMethodResponse = zod.object({
   "billingCity": zod.string().nullish(),
   "billingState": zod.string().nullish(),
   "billingZip": zod.string().nullish(),
+  "physicalAddress": zod.string().nullish().describe('Service\/property street address; billing fields remain the mailing address'),
+  "physicalCity": zod.string().nullish(),
+  "physicalState": zod.string().nullish(),
+  "physicalZip": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()).optional(),
   "customFieldValues": zod.record(zod.string(), zod.string()).optional(),
   "propertyCount": zod.number().optional(),
+  "createdPropertyId": zod.number().optional().describe('Property created from the physical address during customer creation'),
   "totalSpend": zod.number().optional(),
   "smsOptOut": zod.boolean().optional(),
   "emailOptOut": zod.boolean().optional(),
@@ -7051,10 +7119,15 @@ export const ResumeCustomerServiceResponse = zod.object({
   "billingCity": zod.string().nullish(),
   "billingState": zod.string().nullish(),
   "billingZip": zod.string().nullish(),
+  "physicalAddress": zod.string().nullish().describe('Service\/property street address; billing fields remain the mailing address'),
+  "physicalCity": zod.string().nullish(),
+  "physicalState": zod.string().nullish(),
+  "physicalZip": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "tags": zod.array(zod.string()).optional(),
   "customFieldValues": zod.record(zod.string(), zod.string()).optional(),
   "propertyCount": zod.number().optional(),
+  "createdPropertyId": zod.number().optional().describe('Property created from the physical address during customer creation'),
   "totalSpend": zod.number().optional(),
   "smsOptOut": zod.boolean().optional(),
   "emailOptOut": zod.boolean().optional(),

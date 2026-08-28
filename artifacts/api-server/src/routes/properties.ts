@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, propertiesTable, customersTable, propertyOwnershipHistoryTable, activityLogTable, jobsTable, estimatesTable } from "@workspace/db";
+import { db, propertiesTable, customersTable, propertyOwnershipHistoryTable, activityLogTable, jobsTable, estimatesTable, tenantsTable } from "@workspace/db";
 import { eq, and, ilike, sql, desc, isNull } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
@@ -56,7 +56,10 @@ const propertiesImportExportConfig: ImportExportEntityConfig = {
     const rows = await db
       .select({ property: propertiesTable, customerName: customersTable.name, customerEmail: customersTable.email })
       .from(propertiesTable)
-      .leftJoin(customersTable, eq(propertiesTable.customerId, customersTable.id))
+      .leftJoin(customersTable, and(
+        eq(propertiesTable.customerId, customersTable.id),
+        eq(customersTable.tenantId, tenantId),
+      ))
       .where(where)
       .orderBy(propertiesTable.createdAt);
 
@@ -169,7 +172,7 @@ interface GeocodeResult {
   lng: number;
 }
 
-async function geocodeAddress(address: string, city?: string | null, state?: string | null, zip?: string | null): Promise<GeocodeResult | null> {
+export async function geocodeAddress(address: string, city?: string | null, state?: string | null, zip?: string | null): Promise<GeocodeResult | null> {
   const fullAddress = [address, city, state, zip].filter(Boolean).join(", ");
 
   const googleMapsApiKey = process.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -212,6 +215,178 @@ async function geocodeAddress(address: string, city?: string | null, state?: str
   }
 }
 
+type AddressSuggestion = {
+  address: string;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  lat: number;
+  lng: number;
+  label: string;
+  distanceMiles: number | null;
+};
+
+const businessCenterCache = new Map<number, { address: string; center: GeocodeResult | null; expiresAt: number }>();
+const BUSINESS_CENTER_CACHE_MS = 5 * 60 * 1000;
+
+function distanceMiles(a: GeocodeResult, b: GeocodeResult): number {
+  const radians = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * radians;
+  const dLng = (b.lng - a.lng) * radians;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * radians) * Math.cos(b.lat * radians) * Math.sin(dLng / 2) ** 2;
+  return 3958.8 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+async function getBusinessCenter(tenantId: number): Promise<GeocodeResult | null> {
+  const [tenant] = await db.select({ businessAddress: tenantsTable.businessAddress })
+    .from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
+  const address = tenant?.businessAddress?.trim() ?? "";
+  if (!address) return null;
+  const cached = businessCenterCache.get(tenantId);
+  if (cached && cached.address === address && cached.expiresAt > Date.now()) return cached.center;
+  const center = await geocodeAddress(address);
+  businessCenterCache.set(tenantId, { address, center, expiresAt: Date.now() + BUSINESS_CENTER_CACHE_MS });
+  return center;
+}
+
+function photonSuggestion(feature: { properties?: Record<string, unknown>; geometry?: { coordinates?: unknown[] } }): AddressSuggestion | null {
+  const coords = feature.geometry?.coordinates;
+  const p = feature.properties ?? {};
+  const lng = Number(coords?.[0]);
+  const lat = Number(coords?.[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || String(p.countrycode ?? "").toLowerCase() !== "us") return null;
+  const street = [p.housenumber, p.street].filter((part): part is string => typeof part === "string" && Boolean(part)).join(" ");
+  const address = street || (typeof p.name === "string" ? p.name : "");
+  if (!address) return null;
+  const city = typeof (p.city ?? p.locality ?? p.district) === "string" ? String(p.city ?? p.locality ?? p.district) : null;
+  const state = typeof p.state === "string" ? p.state : null;
+  const zip = typeof p.postcode === "string" ? p.postcode : null;
+  const label = [address, city, state, zip].filter(Boolean).join(", ");
+  return { address, city, state, zip, lat, lng, label, distanceMiles: null };
+}
+
+function nominatimSuggestion(result: {
+  lat?: string;
+  lon?: string;
+  display_name?: string;
+  address?: Record<string, string>;
+}): AddressSuggestion | null {
+  const lat = Number(result.lat);
+  const lng = Number(result.lon);
+  const p = result.address ?? {};
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || (p.country_code && p.country_code.toLowerCase() !== "us")) return null;
+  const road = p.road ?? p.pedestrian ?? p.residential ?? "";
+  const address = [p.house_number, road].filter(Boolean).join(" ") || p.building || p.amenity || "";
+  if (!address) return null;
+  const city = p.city ?? p.town ?? p.village ?? p.hamlet ?? p.municipality ?? null;
+  const state = p.state ?? null;
+  const zip = p.postcode ?? null;
+  return {
+    address,
+    city,
+    state,
+    zip,
+    lat,
+    lng,
+    label: result.display_name ?? [address, city, state, zip].filter(Boolean).join(", "),
+    distanceMiles: null,
+  };
+}
+
+// Auth is applied to this router by the API server's authenticated route mount.
+router.get("/address-suggestions", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  if (q.length < 2) {
+    res.status(400).json({ error: "q must be at least 2 characters" });
+    return;
+  }
+
+  const center = await getBusinessCenter(tenantId);
+  const googleKey = process.env.VITE_GOOGLE_MAPS_API_KEY;
+  const suggestions: AddressSuggestion[] = [];
+  const businessAddress = businessCenterCache.get(tenantId)?.address;
+  if (center && businessAddress && businessAddress.toLowerCase().includes(q.toLowerCase())) {
+    const parts = businessAddress.split(",").map(part => part.trim());
+    const stateZip = parts[2] ?? "";
+    suggestions.push({
+      address: parts[0] || businessAddress,
+      city: parts[1] ?? null,
+      state: stateZip.split(/\s+/)[0] || null,
+      zip: stateZip.match(/\b\d{5}(?:-\d{4})?\b/)?.[0] ?? null,
+      lat: center.lat,
+      lng: center.lng,
+      label: businessAddress,
+      distanceMiles: 0,
+    });
+  }
+
+  if (googleKey) {
+    try {
+      const locationBias = center
+        ? `&location=${center.lat},${center.lng}&radius=${Math.round(200 * 1609.344)}&strictbounds=true`
+        : "";
+      const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(q)}&components=country:us&types=address${locationBias}&key=${encodeURIComponent(googleKey)}`;
+      const payload = await (await fetch(url)).json() as { status?: string; predictions?: Array<{ description?: string }> };
+      if (payload.status === "OK") {
+        for (const prediction of (payload.predictions ?? []).slice(0, 5)) {
+          if (!prediction.description) continue;
+          const geo = await geocodeAddress(prediction.description);
+          if (!geo) continue;
+          const parts = prediction.description.split(",").map(part => part.trim());
+          suggestions.push({
+            address: parts[0] || prediction.description,
+            city: parts[1] ?? null,
+            state: parts[2]?.split(" ")[0] ?? null,
+            zip: parts[2]?.match(/\b\d{5}(?:-\d{4})?\b/)?.[0] ?? null,
+            lat: geo.lat, lng: geo.lng, label: prediction.description, distanceMiles: null,
+          });
+        }
+      }
+    } catch {
+      // Photon below remains available if Google autocomplete is unavailable.
+    }
+  }
+
+  try {
+    const photonBias = center ? `&lat=${center.lat}&lon=${center.lng}` : "";
+    const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=20&lang=en${photonBias}`;
+    const payload = await (await fetch(photonUrl, { headers: { "User-Agent": "DivineEdgeOS/1.0" } })).json() as { features?: Array<{ properties?: Record<string, unknown>; geometry?: { coordinates?: unknown[] } }> };
+    suggestions.push(...(payload.features ?? []).map(photonSuggestion).filter((item): item is AddressSuggestion => item !== null));
+  } catch {
+    // Return usable Google results rather than silently discarding them.
+  }
+
+  try {
+    const viewbox = center
+      ? (() => {
+          const latDelta = 200 / 69;
+          const lngDelta = 200 / (69 * Math.max(0.2, Math.cos(center.lat * Math.PI / 180)));
+          return `&viewbox=${center.lng - lngDelta},${center.lat + latDelta},${center.lng + lngDelta},${center.lat - latDelta}&bounded=1`;
+        })()
+      : "";
+    const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&countrycodes=us&limit=10&q=${encodeURIComponent(q)}${viewbox}`;
+    const payload = await (await fetch(nominatimUrl, {
+      headers: { "User-Agent": "DivineEdgeOS/1.0", "Accept-Language": "en" },
+    })).json() as Array<{ lat?: string; lon?: string; display_name?: string; address?: Record<string, string> }>;
+    suggestions.push(...payload.map(nominatimSuggestion).filter((item): item is AddressSuggestion => item !== null));
+  } catch {
+    // Existing providers may still have usable results.
+  }
+
+  const unique = new Map<string, AddressSuggestion>();
+  for (const suggestion of suggestions) {
+    const distance = center ? distanceMiles(center, suggestion) : null;
+    if (distance !== null && distance > 200) continue;
+    const normalized = { ...suggestion, distanceMiles: distance };
+    unique.set(`${normalized.address}|${normalized.city ?? ""}|${normalized.state ?? ""}|${normalized.zip ?? ""}`.toLowerCase(), normalized);
+  }
+  const items = [...unique.values()]
+    .sort((a, b) => (a.distanceMiles ?? Number.MAX_SAFE_INTEGER) - (b.distanceMiles ?? Number.MAX_SAFE_INTEGER))
+    .slice(0, 10);
+  res.json({ items, radiusApplied: center !== null });
+});
+
 function isAutomaticSuggestedBoundary(zone: unknown): boolean {
   if (!zone || typeof zone !== "object") return false;
   const candidate = zone as { id?: unknown; label?: unknown };
@@ -249,7 +424,10 @@ router.get("/properties/check", async (req, res): Promise<void> => {
       customerName: customersTable.name,
     })
     .from(propertiesTable)
-    .leftJoin(customersTable, eq(propertiesTable.customerId, customersTable.id))
+    .leftJoin(customersTable, and(
+      eq(propertiesTable.customerId, customersTable.id),
+      eq(customersTable.tenantId, tenantId),
+    ))
     .where(and(
       eq(propertiesTable.tenantId, tenantId),
       ilike(propertiesTable.address, `%${address.trim()}%`),
@@ -283,7 +461,10 @@ router.get("/properties", async (req, res): Promise<void> => {
       customerName: customersTable.name,
     })
     .from(propertiesTable)
-    .leftJoin(customersTable, eq(propertiesTable.customerId, customersTable.id))
+    .leftJoin(customersTable, and(
+      eq(propertiesTable.customerId, customersTable.id),
+      eq(customersTable.tenantId, tenantId),
+    ))
     .where(baseWhere)
     .orderBy(propertiesTable.createdAt);
 
@@ -295,6 +476,18 @@ router.post("/properties", async (req, res): Promise<void> => {
   const { customerId, address, city, state, zip, lat, lng, notes, type, size, sizeUnit } = req.body;
   if (!customerId || !address) {
     res.status(400).json({ error: "customerId and address are required" });
+    return;
+  }
+  const parsedCustomerId = Number(customerId);
+  if (!Number.isInteger(parsedCustomerId) || parsedCustomerId <= 0) {
+    res.status(400).json({ error: "customerId must be a positive integer" });
+    return;
+  }
+  const [customer] = await db.select({ id: customersTable.id }).from(customersTable)
+    .where(and(eq(customersTable.id, parsedCustomerId), eq(customersTable.tenantId, tenantId), isNull(customersTable.archivedAt)))
+    .limit(1);
+  if (!customer) {
+    res.status(404).json({ error: "Active customer not found" });
     return;
   }
 
@@ -319,7 +512,7 @@ router.post("/properties", async (req, res): Promise<void> => {
 
   const [property] = await db.insert(propertiesTable).values({
     tenantId,
-    customerId: parseInt(customerId, 10),
+    customerId: parsedCustomerId,
     address,
     city: city ?? null,
     state: state ?? null,
@@ -344,7 +537,10 @@ router.get("/properties/:id", async (req, res): Promise<void> => {
     db
       .select({ property: propertiesTable, customerName: customersTable.name, customerPhone: customersTable.phone, customerEmail: customersTable.email })
       .from(propertiesTable)
-      .leftJoin(customersTable, eq(propertiesTable.customerId, customersTable.id))
+      .leftJoin(customersTable, and(
+        eq(propertiesTable.customerId, customersTable.id),
+        eq(customersTable.tenantId, tenantId),
+      ))
       .where(and(eq(propertiesTable.id, id), eq(propertiesTable.tenantId, tenantId))),
     db
       .select({ completedAt: jobsTable.completedAt })
@@ -436,7 +632,8 @@ router.patch("/properties/:id", async (req, res): Promise<void> => {
 
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
 
-  const [row] = await db.select({ customerName: customersTable.name }).from(customersTable).where(eq(customersTable.id, updated.customerId));
+  const [row] = await db.select({ customerName: customersTable.name }).from(customersTable)
+    .where(and(eq(customersTable.id, updated.customerId), eq(customersTable.tenantId, tenantId)));
   res.json({ ...formatProperty(updated, row?.customerName), ...(geocodeStatus ? { geocodeStatus } : {}) });
 });
 
@@ -456,7 +653,8 @@ router.patch("/properties/:id/measurements", async (req, res): Promise<void> => 
     .returning();
 
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
-  const [row] = await db.select({ customerName: customersTable.name }).from(customersTable).where(eq(customersTable.id, updated.customerId));
+  const [row] = await db.select({ customerName: customersTable.name }).from(customersTable)
+    .where(and(eq(customersTable.id, updated.customerId), eq(customersTable.tenantId, tenantId)));
   res.json(formatProperty(updated, row?.customerName));
 });
 
@@ -523,7 +721,8 @@ router.patch("/properties/:id/geofence", async (req, res): Promise<void> => {
 
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
 
-  const [row] = await db.select({ customerName: customersTable.name }).from(customersTable).where(eq(customersTable.id, updated.customerId));
+  const [row] = await db.select({ customerName: customersTable.name }).from(customersTable)
+    .where(and(eq(customersTable.id, updated.customerId), eq(customersTable.tenantId, tenantId)));
   res.json(formatProperty(updated, row?.customerName));
 });
 

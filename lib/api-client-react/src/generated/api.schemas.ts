@@ -1038,11 +1038,24 @@ export interface Customer {
   billingState?: string | null;
   /** @nullable */
   billingZip?: string | null;
+  /**
+     * Service/property street address; billing fields remain the mailing address
+     * @nullable
+     */
+  physicalAddress?: string | null;
+  /** @nullable */
+  physicalCity?: string | null;
+  /** @nullable */
+  physicalState?: string | null;
+  /** @nullable */
+  physicalZip?: string | null;
   /** @nullable */
   notes?: string | null;
   tags?: string[];
   customFieldValues?: CustomerCustomFieldValues;
   propertyCount?: number;
+  /** Property created from the physical address during customer creation */
+  createdPropertyId?: number;
   totalSpend?: number;
   smsOptOut?: boolean;
   emailOptOut?: boolean;
@@ -1090,6 +1103,16 @@ export interface CustomerInput {
   billingCity?: string;
   billingState?: string;
   billingZip?: string;
+  /** Creates the customer's first linked property when supplied */
+  physicalAddress?: string;
+  physicalCity?: string;
+  physicalState?: string;
+  physicalZip?: string;
+  /** Optional finite latitude for the property; must be supplied with physicalLng */
+  physicalLat?: number;
+  /** Optional finite longitude for the property; must be supplied with physicalLat */
+  physicalLng?: number;
+  physicalPropertyType?: string;
   notes?: string;
   tags?: string[];
   customFieldValues?: CustomerInputCustomFieldValues;
@@ -1109,6 +1132,14 @@ export interface CustomerUpdate {
   billingCity?: string;
   billingState?: string;
   billingZip?: string;
+  /** @nullable */
+  physicalAddress?: string | null;
+  /** @nullable */
+  physicalCity?: string | null;
+  /** @nullable */
+  physicalState?: string | null;
+  /** @nullable */
+  physicalZip?: string | null;
   notes?: string;
   tags?: string[];
   customFieldValues?: CustomerUpdateCustomFieldValues;
@@ -1121,6 +1152,28 @@ export interface CustomerUpdate {
      * @nullable
      */
   archivedAt?: string | null;
+}
+
+export interface AddressSuggestion {
+  address: string;
+  /** @nullable */
+  city?: string | null;
+  /** @nullable */
+  state?: string | null;
+  /** @nullable */
+  zip?: string | null;
+  lat: number;
+  lng: number;
+  label: string;
+  /** @nullable */
+  distanceMiles: number | null;
+}
+
+export interface AddressSuggestionResponse {
+  /** @maxItems 10 */
+  items: AddressSuggestion[];
+  /** False when the tenant business address is missing or cannot be geocoded */
+  radiusApplied: boolean;
 }
 
 export interface CustomerListResponse {
@@ -5358,6 +5411,13 @@ hasReminderFailure?: boolean;
  * Include archived customers; archived customers are excluded by default
  */
 includeArchived?: boolean;
+};
+
+export type GetAddressSuggestionsParams = {
+/**
+ * @minLength 2
+ */
+q: string;
 };
 
 export type CreateCustomerSetupIntent200 = {

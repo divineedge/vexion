@@ -51,6 +51,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import type { CustomerFieldConfig, TenantSettings } from '@/lib/fieldConfig';
 import { getActiveCustomerFields } from '@/lib/fieldConfig';
 import { useDebounce } from '@/hooks/use-debounce';
+import { AddressAutocomplete } from '@/components/shared/AddressAutocomplete';
 
 interface CardSetupInlineHandle {
   setupCard: (customerId: number) => Promise<void>;
@@ -515,6 +516,10 @@ export default function CustomerDetailPage() {
       billingCity: customer.billingCity ?? '',
       billingState: customer.billingState ?? '',
       billingZip: customer.billingZip ?? '',
+      physicalAddress: (customer as any).physicalAddress ?? '',
+      physicalCity: (customer as any).physicalCity ?? '',
+      physicalState: (customer as any).physicalState ?? '',
+      physicalZip: (customer as any).physicalZip ?? '',
       notes: customer.notes ?? '',
       tags: customer.tags ?? [],
       acquiredFromCampaignId: String((customer as any).acquiredFromCampaignId ?? ''),
@@ -1015,11 +1020,11 @@ export default function CustomerDetailPage() {
           </div>
 
           <Card>
-            <CardHeader><CardTitle className="text-base flex items-center gap-2"><FileText className="w-4 h-4" />Billing & Notes</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base flex items-center gap-2"><FileText className="w-4 h-4" />Mailing & Notes</CardTitle></CardHeader>
             <CardContent className="space-y-3 text-sm">
               {customer.billingAddress && (
                 <div>
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Billing Address</p>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Mailing Address</p>
                   <p>{customer.billingAddress}</p>
                   {(customer.billingCity || customer.billingState) && (
                     <p className="text-muted-foreground">{[customer.billingCity, customer.billingState, customer.billingZip].filter(Boolean).join(', ')}</p>
@@ -1965,12 +1970,13 @@ export default function CustomerDetailPage() {
           <div className="space-y-4 pb-6">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Street Address <span className="text-destructive">*</span></label>
-              <Input
-                ref={propAddrRef}
+              <AddressAutocomplete
                 placeholder="123 Main St"
                 value={propForm.address}
-                onChange={e => setPropForm(f => ({ ...f, address: e.target.value, lat: null, lng: null }))}
+                onChange={address => setPropForm(f => ({ ...f, address, lat: null, lng: null }))}
+                onSelect={item => setPropForm(f => ({ ...f, address: item.address, city: item.city ?? '', state: item.state ?? '', zip: item.zip ?? '', lat: item.lat, lng: item.lng }))}
               />
+              {propForm.lat !== null && propForm.lng !== null && <p className="mt-1 text-xs text-muted-foreground">Location selected: {propForm.lat.toFixed(5)}, {propForm.lng.toFixed(5)}</p>}
             </div>
 
             {/* Duplicate warning */}
@@ -2022,7 +2028,7 @@ export default function CustomerDetailPage() {
               <Select value={propForm.type} onValueChange={v => setPropForm(f => ({ ...f, type: v }))}>
                 <SelectTrigger><SelectValue placeholder="Select type..." /></SelectTrigger>
                 <SelectContent>
-                  {['residential', 'commercial', 'hoa', 'industrial', 'other'].map(t => (
+                  {['residential', 'commercial', 'hoa', 'industrial', 'municipal', 'other'].map(t => (
                     <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>
                   ))}
                 </SelectContent>
@@ -2171,9 +2177,20 @@ export default function CustomerDetailPage() {
             )}
 
             {activeFields.some(f => f.key === 'billingAddress' && f.visible) && (
-              <Section title="Billing Address" icon={<Home className="w-4 h-4" />}>
+              <>
+              <Section title="Physical / Service Address" icon={<Home className="w-4 h-4" />}>
+                <Field label="Street Address">
+                  <AddressAutocomplete title="Customer physical or service street address" value={form.physicalAddress as string} onChange={value => setField('physicalAddress', value)} onSelect={item => setForm(f => ({ ...f, physicalAddress: item.address, physicalCity: item.city ?? '', physicalState: item.state ?? '', physicalZip: item.zip ?? '' }))} placeholder="123 Main St" />
+                </Field>
+                <div className="grid grid-cols-3 gap-4">
+                  <Field label="City"><Input value={form.physicalCity as string} onChange={e => setField('physicalCity', e.target.value)} /></Field>
+                  <Field label="State"><Input maxLength={2} value={form.physicalState as string} onChange={e => setField('physicalState', e.target.value)} /></Field>
+                  <Field label="ZIP"><Input value={form.physicalZip as string} onChange={e => setField('physicalZip', e.target.value)} /></Field>
+                </div>
+              </Section>
+              <Section title="Mailing Address" icon={<Home className="w-4 h-4" />}>
                 <Field label="Street Address" required={activeFields.find(f => f.key === 'billingAddress')?.required}>
-                  <Input ref={billingAddrRef} title="Customer's billing street address" value={form.billingAddress as string} onChange={e => setField('billingAddress', e.target.value)} placeholder="123 Main St" />
+                  <AddressAutocomplete title="Customer's mailing street address" value={form.billingAddress as string} onChange={value => setField('billingAddress', value)} onSelect={item => setForm(f => ({ ...f, billingAddress: item.address, billingCity: item.city ?? '', billingState: item.state ?? '', billingZip: item.zip ?? '' }))} placeholder="123 Main St" />
                 </Field>
                 <div className="grid grid-cols-3 gap-4">
                   <div className="col-span-1">
@@ -2189,6 +2206,7 @@ export default function CustomerDetailPage() {
                   </Field>
                 </div>
               </Section>
+              </>
             )}
 
             {activeFields.some(f => f.key === 'notes' && f.visible) && (

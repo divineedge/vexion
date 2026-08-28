@@ -17,6 +17,11 @@ export const customersTable = pgTable("customers", {
   billingCity: text("billing_city"),
   billingState: text("billing_state"),
   billingZip: text("billing_zip"),
+  /** Service/property address. Billing fields above remain the mailing address. */
+  physicalAddress: text("physical_address"),
+  physicalCity: text("physical_city"),
+  physicalState: text("physical_state"),
+  physicalZip: text("physical_zip"),
   notes: text("notes"),
   tags: text("tags").array().default([]),
   customFieldValues: jsonb("custom_field_values").default("{}"),

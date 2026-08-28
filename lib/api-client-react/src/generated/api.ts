@@ -23,6 +23,7 @@ import type {
   ActivityItem,
   AddCrewMemberInput,
   AddMediaInput,
+  AddressSuggestionResponse,
   AgingInvoicesReport,
   ApplyBlueprintTemplateBody,
   AssignFollowupQueueItemInput,
@@ -124,6 +125,7 @@ import type {
   GenerateBlueprintFromAiBody,
   GeocodeResult,
   GeofencePinUpdate,
+  GetAddressSuggestionsParams,
   GetDevToolsEnvironment200,
   GetEmployeeRevenueReportParams,
   GetEquipmentLedgerParams,
@@ -2359,6 +2361,90 @@ export const useDeleteCustomer = <TError = ErrorType<void>,
       > => {
       return useMutation(getDeleteCustomerMutationOptions(options));
     }
+
+export const getGetAddressSuggestionsUrl = (params: GetAddressSuggestionsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/address-suggestions?${stringifiedParams}` : `/api/address-suggestions`
+}
+
+/**
+ * @summary Suggest US service addresses near the tenant business address
+ */
+export const getAddressSuggestions = async (params: GetAddressSuggestionsParams, options?: RequestInit): Promise<AddressSuggestionResponse> => {
+
+  return customFetch<AddressSuggestionResponse>(getGetAddressSuggestionsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAddressSuggestionsQueryKey = (params?: GetAddressSuggestionsParams,) => {
+    return [
+    `/api/address-suggestions`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetAddressSuggestionsQueryOptions = <TData = Awaited<ReturnType<typeof getAddressSuggestions>>, TError = ErrorType<void>>(params: GetAddressSuggestionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAddressSuggestions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAddressSuggestionsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAddressSuggestions>>> = ({ signal }) => getAddressSuggestions(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAddressSuggestions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAddressSuggestionsQueryResult = NonNullable<Awaited<ReturnType<typeof getAddressSuggestions>>>
+export type GetAddressSuggestionsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Suggest US service addresses near the tenant business address
+ */
+
+export function useGetAddressSuggestions<TData = Awaited<ReturnType<typeof getAddressSuggestions>>, TError = ErrorType<void>>(
+ params: GetAddressSuggestionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAddressSuggestions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAddressSuggestionsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getCreateCustomerSetupIntentUrl = (id: number,) => {
 

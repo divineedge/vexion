@@ -49,7 +49,10 @@ export function DivisionPanel({
           </div>
           <div className="mt-4 p-3 rounded-lg bg-muted/40 text-sm">
             <span className="font-medium">{results.manHoursYear.toLocaleString()} billable man-hours / year</span>
-            <span className="text-muted-foreground"> across {results.totalEmployees} worker{results.totalEmployees !== 1 ? 's' : ''} on {division.crewCount} crew{division.crewCount !== 1 ? 's' : ''}</span>
+            <span className="text-muted-foreground">
+              {' '}across {results.productiveWorkers} productive worker{results.productiveWorkers !== 1 ? 's' : ''} on {division.crewCount} crew{division.crewCount !== 1 ? 's' : ''}
+              {results.ownerIsProducing ? ' (owner/manager covering field work)' : ''}
+            </span>
           </div>
         </Section>
 
@@ -63,7 +66,7 @@ export function DivisionPanel({
             <NumField label="Payroll Burden %" value={division.payrollBurdenPct} onChange={v => set('payrollBurdenPct', v)} prefix="%" hint="Taxes, FICA, WC — typically 18–25%" />
           </div>
           <div className="mt-4 p-3 rounded-lg bg-muted/40 text-sm space-y-0.5">
-            <p><span className="font-medium">{results.totalEmployees}</span> field employees total</p>
+            <p><span className="font-medium">{results.totalEmployees}</span> field employees total{results.ownerIsProducing ? ' — salaried owner/manager is producing' : ''}</p>
             <p>Annual field labor: <span className="font-medium">{$(results.totalLaborCost - division.ownerSalaryAnnual)}</span> (wages + burden)</p>
             <p>Total labor incl. owner: <span className="font-medium">{$(results.totalLaborCost)}</span></p>
           </div>

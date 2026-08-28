@@ -197,8 +197,13 @@ export function computeDivision(d: DivisionBudget) {
   // must grow the hours denominator or the required rate would rise just
   // because payroll rose — even though fixed overhead didn't change.
   const totalEmployees = d.crewCount * d.employeesPerCrew;
+  // When there are no field employees, the salaried owner/manager is the
+  // person doing the production work. Give that person one worker's capacity
+  // without adding a second salary or employee wage line.
+  const productiveWorkers = totalEmployees > 0 ? totalEmployees : 1;
+  const ownerIsProducing = totalEmployees === 0;
   const manHoursYear =
-    totalEmployees * d.workWeeksPerYear * d.workDaysPerWeek * d.billableHoursPerDay *
+    productiveWorkers * d.workWeeksPerYear * d.workDaysPerWeek * d.billableHoursPerDay *
     (d.productionEfficiencyPct / 100);
 
   const employeeAnnualWages =
@@ -240,6 +245,8 @@ export function computeDivision(d: DivisionBudget) {
   return {
     manHoursYear: Math.round(manHoursYear),
     totalEmployees,
+    productiveWorkers,
+    ownerIsProducing,
     employeeAnnualWages,
     employeeLaborCost,
     totalLaborCost,

@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import {
-  Save, Loader2, ShieldAlert, CheckCircle2, Plus, X, Pencil, Building2,
+  Save, Loader2, ShieldAlert, CheckCircle2, Plus, X, Pencil, Building2, Printer,
 } from 'lucide-react';
 import { customFetch } from '@workspace/api-client-react';
 import {
@@ -22,6 +22,7 @@ export default function BudgetPage() {
   const [currentYear, setCurrentYear] = useState<number>(new Date().getFullYear());
   const [activeTab, setActiveTab] = useState<string>(COMPANY_TAB);
   const [saving, setSaving] = useState(false);
+  const [divisionSaving, setDivisionSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [renamingId, setRenamingId] = useState<string | null>(null);
 
@@ -71,11 +72,31 @@ export default function BudgetPage() {
     updateYear(y => ({ ...y, divisions: y.divisions.map(d => (d.id === divisionId ? updated : d)) }));
   };
 
-  const addDivision = () => {
+  const addDivision = async () => {
     const name = `Division ${year.divisions.length + 1}`;
     const newDiv = defaultDivision(name);
-    updateYear(y => ({ ...y, divisions: [...y.divisions, newDiv] }));
+    const nextYears = years.map(y => y.year === currentYear
+      ? { ...y, divisions: [...y.divisions, newDiv] }
+      : y);
+    setYears(nextYears);
     setActiveTab(newDiv.id);
+    setDivisionSaving(true);
+    try {
+      await customFetch('/api/settings/budget', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ budgetData: nextYears }),
+      });
+      setRenamingId(newDiv.id);
+    } catch {
+      setYears(prev => prev.map(y => y.year === currentYear
+        ? { ...y, divisions: y.divisions.filter(d => d.id !== newDiv.id) }
+        : y));
+      setActiveTab(COMPANY_TAB);
+      toast.error('Failed to add division');
+    } finally {
+      setDivisionSaving(false);
+    }
   };
 
   const removeDivision = (divisionId: string) => {
@@ -87,14 +108,46 @@ export default function BudgetPage() {
     setActiveTab(COMPANY_TAB);
   };
 
-  const renameDivision = (divisionId: string, name: string) => {
-    updateYear(y => ({
+  const renameDivision = async (divisionId: string, name: string): Promise<boolean> => {
+    const trimmed = name.trim();
+    if (!trimmed) return false;
+    const previousName = years
+      .find(y => y.year === currentYear)
+      ?.divisions.find(d => d.id === divisionId)?.name;
+    if (!previousName || previousName === trimmed) return true;
+    const nextYears = years.map(y => y.year === currentYear ? {
       ...y,
-      divisions: y.divisions.map(d => (d.id === divisionId ? { ...d, name: name || d.name } : d)),
-    }));
+      divisions: y.divisions.map(d => (d.id === divisionId ? { ...d, name: trimmed } : d)),
+    } : y);
+    setYears(nextYears);
+    setDivisionSaving(true);
+    try {
+      await customFetch(`/api/settings/budget/divisions/${encodeURIComponent(divisionId)}/name`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year: currentYear, name: trimmed }),
+      });
+      toast.success('Division name saved');
+      return true;
+    } catch {
+      setYears(prev => prev.map(y => y.year === currentYear ? {
+        ...y,
+        divisions: y.divisions.map(d => (
+          d.id === divisionId && d.name === trimmed ? { ...d, name: previousName } : d
+        )),
+      } : y));
+      toast.error('Failed to save division name');
+      return false;
+    } finally {
+      setDivisionSaving(false);
+    }
   };
 
   const handleSave = async () => {
+    if (renamingId || divisionSaving) {
+      toast.info('Finish editing the division name before saving the budget');
+      return;
+    }
     setSaving(true);
     const toSave = years.map(y => (y.year === currentYear ? { ...y, savedAt: new Date().toISOString() } : y));
     try {
@@ -110,6 +163,10 @@ export default function BudgetPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handlePrint = () => {
+    window.print();
   };
 
   if (!canManageOffice) {
@@ -130,7 +187,7 @@ export default function BudgetPage() {
   const previousDivision = previousYear?.divisions.find(d => d.name === activeDivision?.name) ?? null;
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="budget-print-area space-y-6 animate-in fade-in duration-500">
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -149,10 +206,16 @@ export default function BudgetPage() {
               onChange={e => setCurrentYear(parseInt(e.target.value) || new Date().getFullYear())}
             />
           </div>
-          <Button onClick={handleSave} disabled={saving} className="gap-2">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            Save Budget
-          </Button>
+          <div className="budget-print-controls flex items-center gap-2">
+            <Button variant="outline" onClick={handlePrint} className="gap-2">
+              <Printer className="w-4 h-4" />
+              Print {activeTab === COMPANY_TAB ? 'Company Budget' : 'Division'}
+            </Button>
+            <Button onClick={handleSave} disabled={saving || divisionSaving} className="gap-2">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Save Budget
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -164,7 +227,7 @@ export default function BudgetPage() {
       )}
 
       {/* Division tabs */}
-      <div className="flex items-center gap-2 flex-wrap border-b pb-2">
+      <div className="budget-print-controls flex items-center gap-2 flex-wrap border-b pb-2">
         <button
           onClick={() => setActiveTab(COMPANY_TAB)}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
@@ -180,37 +243,50 @@ export default function BudgetPage() {
                 autoFocus
                 defaultValue={d.name}
                 className="h-8 w-36 text-sm"
-                onBlur={e => { renameDivision(d.id, e.target.value.trim()); setRenamingId(null); }}
+                onBlur={async e => {
+                  const saved = await renameDivision(d.id, e.target.value);
+                  if (saved) setRenamingId(current => current === d.id ? null : current);
+                }}
                 onKeyDown={e => {
-                  if (e.key === 'Enter') { renameDivision(d.id, (e.target as HTMLInputElement).value.trim()); setRenamingId(null); }
+                  if (e.key === 'Enter') e.currentTarget.blur();
                   if (e.key === 'Escape') setRenamingId(null);
                 }}
               />
             ) : (
-              <button
-                onClick={() => setActiveTab(d.id)}
-                onDoubleClick={() => setRenamingId(d.id)}
-                className={`group flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  activeTab === d.id ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
-                }`}
-                title="Double-click to rename"
-              >
-                {d.name}
-                <Pencil
-                  className={`w-3 h-3 opacity-0 group-hover:opacity-60 ${activeTab === d.id ? 'text-primary-foreground' : ''}`}
-                  onClick={e => { e.stopPropagation(); setRenamingId(d.id); }}
-                />
+              <>
+                <button
+                  onClick={() => setActiveTab(d.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    activeTab === d.id ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  {d.name}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRenamingId(d.id)}
+                  className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+                  title={`Edit ${d.name} name`}
+                  aria-label={`Edit ${d.name} name`}
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
                 {year.divisions.length > 1 && (
-                  <X
-                    className={`w-3 h-3 opacity-0 group-hover:opacity-60 ${activeTab === d.id ? 'text-primary-foreground' : ''}`}
-                    onClick={e => { e.stopPropagation(); removeDivision(d.id); }}
-                  />
+                  <button
+                    type="button"
+                    onClick={() => removeDivision(d.id)}
+                    className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-muted"
+                    title={`Remove ${d.name}`}
+                    aria-label={`Remove ${d.name}`}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
                 )}
-              </button>
+              </>
             )}
           </div>
         ))}
-        <Button variant="ghost" size="sm" className="gap-1 text-xs h-8" onClick={addDivision}>
+        <Button variant="ghost" size="sm" className="gap-1 text-xs h-8" onClick={addDivision} disabled={divisionSaving}>
           <Plus className="w-3.5 h-3.5" /> Add Division
         </Button>
       </div>

@@ -511,6 +511,11 @@ router.delete("/settings/email/gmail", async (req, res): Promise<void> => {
 // ── Budget Data ─────────────────────────────────────────────────────────────
 router.get("/settings/budget", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  if (!(await isAdminRole(tenantId, userId))) {
+    res.status(403).json({ error: "Restricted to owner and manager roles" });
+    return;
+  }
   const result = await db.execute(sql`
     SELECT budget_data FROM tenants WHERE id = ${tenantId}
   `);
@@ -520,6 +525,11 @@ router.get("/settings/budget", async (req, res): Promise<void> => {
 
 router.patch("/settings/budget", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  if (!(await isAdminRole(tenantId, userId))) {
+    res.status(403).json({ error: "Restricted to owner and manager roles" });
+    return;
+  }
   const { budgetData } = req.body;
   if (!budgetData || typeof budgetData !== 'object') {
     res.status(400).json({ error: "budgetData object is required" }); return;
@@ -528,6 +538,75 @@ router.patch("/settings/budget", async (req, res): Promise<void> => {
     UPDATE tenants SET budget_data = ${JSON.stringify(budgetData)}::jsonb WHERE id = ${tenantId}
   `);
   res.json({ ok: true });
+});
+
+router.patch("/settings/budget/divisions/:divisionId/name", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  if (!(await isAdminRole(tenantId, userId))) {
+    res.status(403).json({ error: "Restricted to owner and manager roles" });
+    return;
+  }
+  const divisionId = Array.isArray(req.params.divisionId) ? req.params.divisionId[0] : req.params.divisionId;
+  const year = Number(req.body?.year);
+  const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+  if (!divisionId || !Number.isInteger(year) || !name) {
+    res.status(400).json({ error: "divisionId, year, and name are required" });
+    return;
+  }
+
+  const renamed = await db.transaction(async tx => {
+    const result = await tx.execute(sql`
+      SELECT budget_data FROM tenants WHERE id = ${tenantId} FOR UPDATE
+    `);
+    const row = result.rows[0] as { budget_data?: unknown } | undefined;
+    const storedBudgetData = row?.budget_data;
+    const rawYears = Array.isArray(storedBudgetData)
+      ? storedBudgetData
+      : storedBudgetData && typeof storedBudgetData === "object"
+        ? [storedBudgetData]
+        : [];
+    const budgetData = rawYears.map(item => {
+      if (!item || typeof item !== "object") return item;
+      const budgetYear = item as Record<string, unknown>;
+      if (Array.isArray(budgetYear.divisions)) return budgetYear;
+      const itemYear = Number(budgetYear.year) || new Date().getFullYear();
+      return {
+        year: itemYear,
+        divisions: [{
+          ...budgetYear,
+          id: typeof budgetYear.id === "string"
+            ? budgetYear.id
+            : itemYear === year ? divisionId : `legacy-${itemYear}`,
+          name: typeof budgetYear.name === "string" ? budgetYear.name : "Main",
+        }],
+        overheadOverrides: {},
+        companyMidYearCheckup: {},
+        companyEndYearCheckup: {},
+        savedAt: budgetYear.savedAt,
+      };
+    });
+    if (budgetData.length === 0) return false;
+    const budgetYear = budgetData.find(item =>
+      item && typeof item === "object" && Number((item as Record<string, unknown>).year) === year
+    ) as Record<string, unknown> | undefined;
+    if (!budgetYear || !Array.isArray(budgetYear.divisions)) return false;
+    const division = budgetYear.divisions.find(item =>
+      item && typeof item === "object" && (item as Record<string, unknown>).id === divisionId
+    ) as Record<string, unknown> | undefined;
+    if (!division) return false;
+    division.name = name;
+    await tx.execute(sql`
+      UPDATE tenants SET budget_data = ${JSON.stringify(budgetData)}::jsonb WHERE id = ${tenantId}
+    `);
+    return true;
+  });
+
+  if (!renamed) {
+    res.status(404).json({ error: "Budget division not found" });
+    return;
+  }
+  res.json({ ok: true, name });
 });
 
 router.get("/settings/users", async (req, res): Promise<void> => {

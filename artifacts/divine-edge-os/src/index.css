@@ -187,3 +187,39 @@
 .pac-container {
   z-index: 1300 !important;
 }
+
+@media print {
+  body {
+    background: white !important;
+  }
+
+  body > * {
+    visibility: hidden;
+  }
+
+  .budget-print-area,
+  .budget-print-area * {
+    visibility: visible;
+  }
+
+  .budget-print-area {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: white !important;
+  }
+
+  .budget-print-controls {
+    display: none !important;
+  }
+
+  .budget-print-area .lg\:sticky {
+    position: static !important;
+  }
+
+  .budget-print-area .animate-in {
+    animation: none !important;
+  }
+}

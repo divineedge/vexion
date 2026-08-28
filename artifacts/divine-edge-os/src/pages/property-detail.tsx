@@ -171,6 +171,10 @@ export default function PropertyDetailPage() {
   const defaultGeofenceRadiusM = defaultGeofenceUnit === 'ft'
     ? Math.round(defaultGeofenceRadius * 0.3048)
     : defaultGeofenceRadius;
+  const geofenceRadiusForDisplay = (radiusMeters: number) =>
+    defaultGeofenceUnit === 'ft' ? Math.round(radiusMeters / 0.3048) : radiusMeters;
+  const geofenceRadiusToMeters = (radius: number) =>
+    defaultGeofenceUnit === 'ft' ? Math.round(radius * 0.3048) : radius;
 
   const { data: bizTags = [] } = useListTags({ query: { queryKey: getListTagsQueryKey() } });
   const [propTagInput, setPropTagInput] = useState('');
@@ -210,23 +214,28 @@ export default function PropertyDetailPage() {
         sizeUnit: property.sizeUnit ?? 'sqft',
       });
       setFormTags((property as any).tags ?? []);
-      if (property.geofenceLat) {
+      if (property.geofenceLat != null && property.geofenceLng != null) {
         setGeoInput({
           lat: property.geofenceLat.toString(),
-          lng: (property.geofenceLng ?? '').toString(),
-          // Use stored radius; fall back to tenant default (filled by settings effect below)
-          radius: (property.geofenceRadius ?? defaultGeofenceRadiusM).toString(),
+          lng: property.geofenceLng.toString(),
+          radius: geofenceRadiusForDisplay(property.geofenceRadius ?? defaultGeofenceRadiusM).toString(),
+        });
+      } else if (property.lat != null && property.lng != null) {
+        setGeoInput({
+          lat: property.lat.toString(),
+          lng: property.lng.toString(),
+          radius: defaultGeofenceRadius.toString(),
         });
       }
     }
-  }, [property, defaultGeofenceRadiusM]);
+  }, [property, defaultGeofenceRadius, defaultGeofenceRadiusM, defaultGeofenceUnit]);
 
   // Fill in default geofence radius from settings once they load (only when no existing geofence)
   React.useEffect(() => {
-    if (defaultGeofenceRadiusM && !geoInput.lat) {
-      setGeoInput(g => ({ ...g, radius: String(defaultGeofenceRadiusM) }));
+    if (defaultGeofenceRadius && !geoInput.lat) {
+      setGeoInput(g => ({ ...g, radius: String(defaultGeofenceRadius) }));
     }
-  }, [defaultGeofenceRadiusM]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [defaultGeofenceRadius]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-geocode: when the property loads without stored coordinates, silently fetch them
   React.useEffect(() => {
@@ -330,13 +339,33 @@ export default function PropertyDetailPage() {
   const handleSaveGeofence = () => {
     const lat = parseFloat(geoInput.lat);
     const lng = parseFloat(geoInput.lng);
-    const radius = parseFloat(geoInput.radius);
+    const radius = geofenceRadiusToMeters(parseFloat(geoInput.radius));
     if (isNaN(lat) || isNaN(lng)) { toast.error('Invalid coordinates'); return; }
     updateGeofence.mutate(
       { id, data: { lat, lng, radius } },
       {
         onSuccess: () => { toast.success('Geofence updated'); qc.invalidateQueries({ queryKey: getGetPropertyQueryKey(id) }); },
         onError: () => toast.error('Failed to update geofence'),
+      },
+    );
+  };
+
+  const usePropertyPinForGeofence = () => {
+    if (property?.lat == null || property.lng == null) {
+      toast.error('This property does not have an address pin yet. Detect or set its location first.');
+      return;
+    }
+    const radiusDisplay = parseFloat(geoInput.radius) || defaultGeofenceRadius;
+    const radius = geofenceRadiusToMeters(radiusDisplay);
+    setGeoInput(g => ({ ...g, lat: String(property.lat), lng: String(property.lng), radius: String(radiusDisplay) }));
+    updateGeofence.mutate(
+      { id, data: { lat: property.lat, lng: property.lng, radius } },
+      {
+        onSuccess: () => {
+          toast.success('Geofence saved at the property address pin');
+          qc.invalidateQueries({ queryKey: getGetPropertyQueryKey(id) });
+        },
+        onError: () => toast.error('Failed to save geofence'),
       },
     );
   };
@@ -723,7 +752,7 @@ export default function PropertyDetailPage() {
                 <CardTitle className="flex items-center gap-2">
                   <Navigation className="w-5 h-5 text-primary" /> Geofence
                 </CardTitle>
-                <CardDescription>Set coordinates and radius to detect technician arrivals.</CardDescription>
+                  <CardDescription>Use the property address pin as the center to detect technician arrivals.</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="w-full h-40 bg-muted/50 rounded-md border border-dashed flex items-center justify-center relative mb-4 overflow-hidden">
@@ -735,13 +764,13 @@ export default function PropertyDetailPage() {
                     </defs>
                     <rect width="100%" height="100%" fill="url(#grid)" />
                   </svg>
-                  {property.geofenceLat ? (
+                  {geoInput.lat && geoInput.lng ? (
                     <div className="flex flex-col items-center z-10">
                       <div className="w-20 h-20 rounded-full bg-primary/20 border-2 border-primary/40 flex items-center justify-center">
                         <div className="w-3 h-3 bg-primary rounded-full" />
                       </div>
-                      <span className="mt-2 font-mono text-xs text-muted-foreground bg-background px-2 py-0.5 rounded border shadow-sm" title={`Geofence center: ${property.geofenceLat.toFixed(6)}, ${property.geofenceLng?.toFixed(6)} — radius: ${property.geofenceRadius}m`}>
-                        {property.geofenceLat.toFixed(4)}, {property.geofenceLng?.toFixed(4)} · {property.geofenceRadius}m
+                      <span className="mt-2 font-mono text-xs text-muted-foreground bg-background px-2 py-0.5 rounded border shadow-sm" title={`Geofence center: ${Number(geoInput.lat).toFixed(6)}, ${Number(geoInput.lng).toFixed(6)} — radius: ${geoInput.radius || defaultGeofenceRadius}${defaultGeofenceUnit}`}>
+                        {Number(geoInput.lat).toFixed(4)}, {Number(geoInput.lng).toFixed(4)} · {geoInput.radius || defaultGeofenceRadius}{defaultGeofenceUnit}
                       </span>
                     </div>
                   ) : (
@@ -765,6 +794,16 @@ export default function PropertyDetailPage() {
                     <Input type="number" title={`Geofence radius in ${defaultGeofenceUnit === 'ft' ? 'feet' : 'meters'} — technicians inside this circle are considered on-site`} placeholder={String(defaultGeofenceRadius)} value={geoInput.radius} onChange={e => setGeoInput(g => ({ ...g, radius: e.target.value }))} />
                   </div>
                 </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={usePropertyPinForGeofence}
+                  disabled={property.lat == null || property.lng == null || updateGeofence.isPending}
+                  className="w-full mb-3"
+                  title={property.lat == null || property.lng == null ? 'Set the property address pin before centering the geofence' : 'Copy the saved property address coordinates into the geofence center'}
+                >
+                  <MapPin className="w-4 h-4 mr-2" /> Use & Save Property Address Pin
+                </Button>
                 <Button onClick={handleSaveGeofence} disabled={updateGeofence.isPending} className="w-full">
                   {updateGeofence.isPending ? 'Saving...' : 'Set Geofence Pin'}
                 </Button>

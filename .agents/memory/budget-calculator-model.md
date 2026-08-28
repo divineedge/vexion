@@ -18,11 +18,11 @@ Budget data is `BudgetYear[]` (one per fiscal year), each holding `divisions: Di
 **How to apply:** any new capacity/labor field must flow into `manHoursYear` if it represents additional billable capacity, or it will reintroduce this bug.
 
 ## Zero employees means owner-led production
-When a division has zero field employees, use one productive worker's capacity for the salaried owner/manager while keeping employee wages at zero and including the owner salary exactly once.
+Treat the salaried owner/manager as a productive worker whenever the budget says they also work in the field, including after employees are added. Keep the salary included exactly once.
 
-**Why:** a zero-employee operation does not have zero production capacity; the salaried owner or manager performs the field work, so returning zero billable hours and a zero required rate understates the price needed to cover that salary and overhead.
+**Why:** replacing the manager's productive hours with the first employee's hours kept the denominator at one worker while adding employee payroll, causing the displayed man-hour rate to jump instead of spreading costs across both workers.
 
-**How to apply:** assume owner-led production only when no field employees are configured; do not add owner capacity on top of staffed crews.
+**How to apply:** count every person who produces field work in total man-hours. Exclude the owner/manager only when they are explicitly marked as office-only.
 
 ## P4P pay is `max(base, revenue share)`, never `base + bonus`
 `employeeTotalPayPerHour = Math.max(employeeBaseHourlyRate, requiredHourlyRate * p4pPercentage / 100)`.

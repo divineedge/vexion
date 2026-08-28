@@ -38,8 +38,8 @@ export function CompanyTotalPanel({
         {/* Per-division rate comparison */}
         <Card>
           <CardHeader className="pb-2 pt-4">
-            <CardTitle className="text-sm flex items-center gap-2"><Layers className="w-4 h-4 text-muted-foreground" /> Hourly Rate by Division</CardTitle>
-            <CardDescription className="text-xs">Each division's own required rate vs. the blended company-wide rate.</CardDescription>
+            <CardTitle className="text-sm flex items-center gap-2"><Layers className="w-4 h-4 text-muted-foreground" /> Man-Hour Rate by Division</CardTitle>
+            <CardDescription className="text-xs">Each division's required rate per productive man-hour vs. the blended company-wide rate.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             {totals.rows.map(({ division, results }) => (
@@ -47,7 +47,7 @@ export function CompanyTotalPanel({
                 <span>{division.name}</span>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <span>{results.manHoursYear.toLocaleString()} man-hrs</span>
-                  <span className="font-semibold text-foreground">{$(results.requiredHourlyRate, 2)}/hr</span>
+                  <span className="font-semibold text-foreground">{$(results.requiredHourlyRate, 2)}/man-hr</span>
                 </div>
               </div>
             ))}
@@ -121,10 +121,10 @@ export function CompanyTotalPanel({
       <div className="space-y-4 lg:sticky lg:top-4 lg:self-start">
         <Card className="bg-primary text-primary-foreground">
           <CardHeader className="pb-2 pt-4">
-            <CardTitle className="text-sm text-primary-foreground/70">🎯 Combined Hourly Rate</CardTitle>
+            <CardTitle className="text-sm text-primary-foreground/70">Combined Man-Hour Rate</CardTitle>
             <p className="text-4xl font-extrabold">
               {totals.combinedRequiredHourlyRate > 0 ? $(totals.combinedRequiredHourlyRate, 2) : '—'}
-              <span className="text-xl font-normal text-primary-foreground/60"> / hr</span>
+              <span className="text-xl font-normal text-primary-foreground/60"> / man-hr</span>
             </p>
           </CardHeader>
           <CardContent>
@@ -133,7 +133,7 @@ export function CompanyTotalPanel({
             </p>
             {totals.combinedBreakEvenRate > 0 && (
               <p className="text-xs text-primary-foreground/60 mt-1">
-                Break-even: {$(totals.combinedBreakEvenRate, 2)}/hr
+                Break-even: {$(totals.combinedBreakEvenRate, 2)}/man-hr
               </p>
             )}
           </CardContent>
@@ -143,7 +143,7 @@ export function CompanyTotalPanel({
           <ResultCard label="Required Revenue" value={$(totals.combinedRequiredRevenue)} sub="All divisions" />
           <ResultCard label="Net Profit" value={$(totals.combinedNetProfit)} sub="Company-wide" />
           <ResultCard label="Total Costs" value={$(totals.combinedTotalAnnualCosts)} sub="Labor + overhead" />
-          <ResultCard label="Employees" value={String(totals.combinedTotalEmployees)} sub="Across all divisions" />
+          <ResultCard label="Productive Workers" value={String(totals.combinedProductiveWorkers)} sub={`${totals.combinedTotalEmployees} field employees`} />
         </div>
 
         <Card>

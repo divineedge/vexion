@@ -2,8 +2,9 @@ import React, { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import {
-  Users, Building2, Target, TrendingUp, Clock, Package, Timer,
+  Users, Building2, Target, TrendingUp, Clock, Package, Timer, AlertTriangle,
 } from 'lucide-react';
 import {
   DivisionBudget, computeDivision, OVERHEAD_CATEGORIES,
@@ -44,14 +45,27 @@ export function DivisionPanel({
             <NumField label="Number of Crews" value={division.crewCount} onChange={v => set('crewCount', v)} prefix="" hint="Field crews producing revenue" />
             <NumField label="Work Weeks / Year" value={division.workWeeksPerYear} onChange={v => set('workWeeksPerYear', v)} prefix="" hint="e.g., 28–44 weeks for seasonal" />
             <NumField label="Work Days / Week" value={division.workDaysPerWeek} onChange={v => set('workDaysPerWeek', v)} prefix="" hint="Production days only" />
-            <NumField label="Hours / Day / Crew" value={division.billableHoursPerDay} onChange={v => set('billableHoursPerDay', v)} prefix="" hint="Total hours at job sites, per worker" />
+            <NumField label="Billable Hours / Day / Worker" value={division.billableHoursPerDay} onChange={v => set('billableHoursPerDay', v)} prefix="" hint="Productive job-site hours contributed by each worker" />
             <NumField label="Production Efficiency %" value={division.productionEfficiencyPct} onChange={v => set('productionEfficiencyPct', Math.min(100, v))} prefix="%" hint="% of hours that are billable (vs. drive time, setup)" />
+          </div>
+          <div className="mt-4 flex items-center justify-between gap-4 rounded-lg border p-3">
+            <div>
+              <p className="text-sm font-medium">Owner / manager also works in the field</p>
+              <p className="text-xs text-muted-foreground">
+                Counts the owner as one productive worker in addition to field employees.
+              </p>
+            </div>
+            <Switch
+              checked={division.ownerWorksInField !== false}
+              onCheckedChange={checked => set('ownerWorksInField', checked)}
+              aria-label="Owner or manager also works in the field"
+            />
           </div>
           <div className="mt-4 p-3 rounded-lg bg-muted/40 text-sm">
             <span className="font-medium">{results.manHoursYear.toLocaleString()} billable man-hours / year</span>
             <span className="text-muted-foreground">
               {' '}across {results.productiveWorkers} productive worker{results.productiveWorkers !== 1 ? 's' : ''} on {division.crewCount} crew{division.crewCount !== 1 ? 's' : ''}
-              {results.ownerIsProducing ? ' (owner/manager covering field work)' : ''}
+              {results.ownerIsProducing ? ' (including the owner/manager)' : ''}
             </span>
           </div>
         </Section>
@@ -59,14 +73,17 @@ export function DivisionPanel({
         {/* Labor */}
         <Section title="Labor & Payroll" icon={Users}>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-2">
-            <NumField label="Owner / Operator Salary" value={division.ownerSalaryAnnual} onChange={v => set('ownerSalaryAnnual', v)} hint="Annual, not included in hourly labor" />
+            <NumField label="Owner / Operator Salary" value={division.ownerSalaryAnnual} onChange={v => set('ownerSalaryAnnual', v)} hint="Annual salary allocated across all productive man-hours" />
             <NumField label="Employees per Crew" value={division.employeesPerCrew} onChange={v => set('employeesPerCrew', v)} prefix="" hint="Field workers per crew (excl. owner)" />
             <NumField label="Avg. Employee Hourly Rate" value={division.avgEmployeeHourlyRate} onChange={v => set('avgEmployeeHourlyRate', v)} hint="Base wage rate" />
             <NumField label="Avg. Hrs / Week" value={division.avgEmployeeHoursPerWeek} onChange={v => set('avgEmployeeHoursPerWeek', v)} prefix="" hint="Including drive time, meetings" />
             <NumField label="Payroll Burden %" value={division.payrollBurdenPct} onChange={v => set('payrollBurdenPct', v)} prefix="%" hint="Taxes, FICA, WC — typically 18–25%" />
           </div>
           <div className="mt-4 p-3 rounded-lg bg-muted/40 text-sm space-y-0.5">
-            <p><span className="font-medium">{results.totalEmployees}</span> field employees total{results.ownerIsProducing ? ' — salaried owner/manager is producing' : ''}</p>
+            <p>
+              <span className="font-medium">{results.productiveWorkers}</span> productive workers total
+              {' '}({results.totalEmployees} employees{results.ownerIsProducing ? ' + 1 owner/manager' : ''})
+            </p>
             <p>Annual field labor: <span className="font-medium">{$(results.totalLaborCost - division.ownerSalaryAnnual)}</span> (wages + burden)</p>
             <p>Total labor incl. owner: <span className="font-medium">{$(results.totalLaborCost)}</span></p>
           </div>
@@ -108,24 +125,24 @@ export function DivisionPanel({
         <Section title="Employee Pay for Performance (P4P)" icon={TrendingUp} defaultOpen={false}>
           <p className="text-xs text-muted-foreground pt-1 pb-3">
             The employee earns whichever is greater: their guaranteed base rate, or their P4P
-            percentage of revenue-per-hour — never both added together.
+            percentage of revenue per productive man-hour — never both added together.
           </p>
           <div className="grid grid-cols-2 gap-4">
             <NumField label="Employee Base Rate ($/hr)" value={division.employeeBaseHourlyRate} onChange={v => set('employeeBaseHourlyRate', v)} hint="Minimum guaranteed hourly pay" />
-            <NumField label="P4P Percentage (%)" value={division.p4pPercentage} onChange={v => set('p4pPercentage', Math.min(100, v))} prefix="%" hint="% of revenue-per-hour the employee earns instead of base (25–45% is typical)" />
+            <NumField label="P4P Percentage (%)" value={division.p4pPercentage} onChange={v => set('p4pPercentage', Math.min(100, v))} prefix="%" hint="% of revenue per productive man-hour the employee earns instead of base (25–45% is typical)" />
           </div>
           {results.requiredHourlyRate > 0 && (
             <div className="mt-4 rounded-lg border p-4 space-y-3">
-              <p className="text-sm font-semibold">At your target rate of {$(results.requiredHourlyRate, 2)}/hr:</p>
+              <p className="text-sm font-semibold">At your target rate of {$(results.requiredHourlyRate, 2)}/man-hr:</p>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Guaranteed base (with burden)</span>
                   <span>{$(division.employeeBaseHourlyRate * (1 + division.payrollBurdenPct / 100), 2)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">P4P: {division.p4pPercentage}% of revenue/hr</span>
+                  <span className="text-muted-foreground">P4P: {division.p4pPercentage}% of revenue/man-hr</span>
                   <span className={results.isP4PActive ? 'text-emerald-700 font-medium' : 'text-muted-foreground'}>
-                    {$(results.requiredHourlyRate * division.p4pPercentage / 100, 2)}/hr {results.isP4PActive ? '(active — pays more)' : '(below base — base pays)'}
+                    {$(results.requiredHourlyRate * division.p4pPercentage / 100, 2)}/man-hr {results.isP4PActive ? '(active — pays more)' : '(below base — base pays)'}
                   </span>
                 </div>
                 <Separator />
@@ -170,10 +187,10 @@ export function DivisionPanel({
       <div className="space-y-4 lg:sticky lg:top-4 lg:self-start">
         <Card className="bg-primary text-primary-foreground">
           <CardHeader className="pb-2 pt-4">
-            <CardTitle className="text-sm text-primary-foreground/70">🎯 Target Hourly Rate — {division.name}</CardTitle>
+            <CardTitle className="text-sm text-primary-foreground/70">Target Man-Hour Rate — {division.name}</CardTitle>
             <p className="text-4xl font-extrabold">
               {results.requiredHourlyRate > 0 ? $(results.requiredHourlyRate, 2) : '—'}
-              <span className="text-xl font-normal text-primary-foreground/60"> / hr</span>
+              <span className="text-xl font-normal text-primary-foreground/60"> / man-hr</span>
             </p>
           </CardHeader>
           <CardContent>
@@ -182,8 +199,44 @@ export function DivisionPanel({
             </p>
             {results.breakEvenRate > 0 && (
               <p className="text-xs text-primary-foreground/60 mt-1">
-                Break-even: {$(results.breakEvenRate, 2)}/hr
+                Break-even: {$(results.breakEvenRate, 2)}/man-hr
               </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2 pt-4">
+            <CardTitle className="text-sm">How the Man-Hour Rate Is Split</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex justify-between gap-4">
+              <span className="text-muted-foreground">Owner salary + overhead</span>
+              <span className="font-medium">{$(results.fixedCostPerManHour, 2)}/man-hr</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-muted-foreground">Employee wages + burden</span>
+              <span className="font-medium">{$(results.employeeCostPerManHour, 2)}/man-hr</span>
+            </div>
+            <Separator />
+            <div className="flex justify-between gap-4 font-semibold">
+              <span>Break-even rate</span>
+              <span>{$(results.breakEvenRate, 2)}/man-hr</span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {$(results.requiredRevenue)} required revenue ÷ {results.manHoursYear.toLocaleString()} total productive man-hours
+              {' '}= {$(results.requiredHourlyRate, 2)} per man-hour at the {division.targetNetMarginPct}% margin goal.
+            </p>
+            {results.staffingRaisesRate && (
+              <div className="mt-3 flex gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <p>
+                  Adding employees raises this blended rate because each employee currently costs about
+                  {' '}{$(results.employeeBurdenedCostPerProductiveHour, 2)} per productive hour after payroll burden,
+                  which is above the manager-only break-even cost of {$(results.ownerOnlyBreakEvenRate, 2)} per productive hour.
+                  Check the employee wage, paid hours, billable hours, and efficiency inputs.
+                </p>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -192,7 +245,7 @@ export function DivisionPanel({
           <ResultCard label="Required Revenue" value={$(results.requiredRevenue)} sub="Annual gross" />
           <ResultCard label="Net Profit" value={$(results.netProfit)} sub={`${pct(division.targetNetMarginPct)} margin`} />
           <ResultCard label="Total Costs" value={$(results.totalAnnualCosts)} sub="Labor + overhead" />
-          <ResultCard label="Man-Hours" value={results.manHoursYear.toLocaleString()} sub="Per year" />
+          <ResultCard label="Man-Hours" value={results.manHoursYear.toLocaleString()} sub={`${results.productiveWorkers} workers · per year`} />
         </div>
 
         {/* Minimum show-up cost */}
@@ -203,7 +256,7 @@ export function DivisionPanel({
           <CardContent>
             <p className="text-3xl font-bold">{results.minimumShowUpCost > 0 ? $(results.minimumShowUpCost, 2) : '—'}</p>
             <p className="text-xs text-muted-foreground mt-1">
-              What to charge just to send a crew out — {division.minimumVisitHours} minimum billed hour{division.minimumVisitHours !== 1 ? 's' : ''} × {$(results.requiredHourlyRate, 2)}/hr target rate. Never quote below this, even for the smallest job.
+              What to charge just to send a crew out — {division.minimumVisitHours} minimum billed man-hour{division.minimumVisitHours !== 1 ? 's' : ''} × {$(results.requiredHourlyRate, 2)}/man-hr target rate. Never quote below this, even for the smallest job.
             </p>
           </CardContent>
         </Card>
@@ -264,7 +317,7 @@ export function DivisionPanel({
             </CardHeader>
             <CardContent className="space-y-2">
               {[
-                { label: 'Required Rate', curr: results.requiredHourlyRate, prev: previousResults.requiredHourlyRate, fmt: (v: number) => `${$(v, 2)}/hr` },
+                { label: 'Required Man-Hour Rate', curr: results.requiredHourlyRate, prev: previousResults.requiredHourlyRate, fmt: (v: number) => `${$(v, 2)}/man-hr` },
                 { label: 'Total Costs', curr: results.totalAnnualCosts, prev: previousResults.totalAnnualCosts, fmt: $ },
                 { label: 'Net Profit', curr: results.netProfit, prev: previousResults.netProfit, fmt: $ },
               ].map(({ label, curr, prev, fmt }) => {

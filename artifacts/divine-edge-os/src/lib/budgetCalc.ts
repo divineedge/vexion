@@ -78,6 +78,7 @@ export interface DivisionBudget extends OverheadLineItems {
   billableHoursPerDay: number;
   productionEfficiencyPct: number;
   ownerSalaryAnnual: number;
+  ownerWorksInField: boolean;
   employeesPerCrew: number;
   avgEmployeeHourlyRate: number;
   avgEmployeeHoursPerWeek: number;
@@ -101,6 +102,7 @@ export function defaultDivision(name = 'Main'): DivisionBudget {
     billableHoursPerDay: 8,
     productionEfficiencyPct: 80,
     ownerSalaryAnnual: 65000,
+    ownerWorksInField: true,
     employeesPerCrew: 2,
     avgEmployeeHourlyRate: 18,
     avgEmployeeHoursPerWeek: 40,
@@ -193,18 +195,17 @@ export function migrateBudgetPayload(saved: unknown): BudgetYear[] {
 
 // ── Division-level computed results ─────────────────────────────────────────
 export function computeDivision(d: DivisionBudget) {
-  // Man-hours, not crew-hours: adding a worker adds billable capacity, so it
-  // must grow the hours denominator or the required rate would rise just
-  // because payroll rose — even though fixed overhead didn't change.
+  // Man-hours, not crew-hours: every productive person contributes capacity.
+  // The owner/manager remains a productive worker when staff are added unless
+  // the user explicitly marks them as office-only.
   const totalEmployees = d.crewCount * d.employeesPerCrew;
-  // When there are no field employees, the salaried owner/manager is the
-  // person doing the production work. Give that person one worker's capacity
-  // without adding a second salary or employee wage line.
-  const productiveWorkers = totalEmployees > 0 ? totalEmployees : 1;
-  const ownerIsProducing = totalEmployees === 0;
-  const manHoursYear =
-    productiveWorkers * d.workWeeksPerYear * d.workDaysPerWeek * d.billableHoursPerDay *
+  const ownerIsProducing = d.ownerWorksInField !== false;
+  const ownerProductiveWorkers = ownerIsProducing ? 1 : 0;
+  const productiveWorkers = totalEmployees + ownerProductiveWorkers;
+  const manHoursPerProductiveWorker =
+    d.workWeeksPerYear * d.workDaysPerWeek * d.billableHoursPerDay *
     (d.productionEfficiencyPct / 100);
+  const manHoursYear = productiveWorkers * manHoursPerProductiveWorker;
 
   const employeeAnnualWages =
     totalEmployees * d.avgEmployeeHourlyRate * d.avgEmployeeHoursPerWeek * d.workWeeksPerYear;
@@ -219,6 +220,22 @@ export function computeDivision(d: DivisionBudget) {
     totalAnnualCosts / (1 - d.targetNetMarginPct / 100);
   const requiredHourlyRate = manHoursYear > 0 ? requiredRevenue / manHoursYear : 0;
   const breakEvenRate = manHoursYear > 0 ? totalAnnualCosts / manHoursYear : 0;
+  const fixedAnnualCosts = d.ownerSalaryAnnual + annualOverhead;
+  const fixedCostPerManHour = manHoursYear > 0 ? fixedAnnualCosts / manHoursYear : 0;
+  const employeeCostPerManHour = manHoursYear > 0 ? employeeLaborCost / manHoursYear : 0;
+  const ownerOnlyRequiredHourlyRate = manHoursPerProductiveWorker > 0 && d.targetNetMarginPct < 100
+    ? fixedAnnualCosts / (1 - d.targetNetMarginPct / 100) / manHoursPerProductiveWorker
+    : 0;
+  const ownerOnlyBreakEvenRate = manHoursPerProductiveWorker > 0
+    ? fixedAnnualCosts / manHoursPerProductiveWorker
+    : 0;
+  const staffingRateDifference = ownerIsProducing && totalEmployees > 0
+    ? requiredHourlyRate - ownerOnlyRequiredHourlyRate
+    : 0;
+  const employeeBurdenedCostPerProductiveHour = manHoursPerProductiveWorker > 0
+    ? (d.avgEmployeeHourlyRate * d.avgEmployeeHoursPerWeek * d.workWeeksPerYear *
+      (1 + d.payrollBurdenPct / 100)) / manHoursPerProductiveWorker
+    : 0;
   const netProfit = requiredRevenue - totalAnnualCosts;
   const minimumShowUpCost = requiredHourlyRate * d.minimumVisitHours;
 
@@ -247,6 +264,8 @@ export function computeDivision(d: DivisionBudget) {
     totalEmployees,
     productiveWorkers,
     ownerIsProducing,
+    ownerProductiveWorkers,
+    manHoursPerProductiveWorker,
     employeeAnnualWages,
     employeeLaborCost,
     totalLaborCost,
@@ -256,6 +275,13 @@ export function computeDivision(d: DivisionBudget) {
     requiredRevenue,
     requiredHourlyRate,
     breakEvenRate,
+    fixedCostPerManHour,
+    employeeCostPerManHour,
+    ownerOnlyRequiredHourlyRate,
+    ownerOnlyBreakEvenRate,
+    staffingRateDifference,
+    staffingRaisesRate: staffingRateDifference > 0.01,
+    employeeBurdenedCostPerProductiveHour,
     netProfit,
     minimumShowUpCost,
     employeeTotalPayPerHour,
@@ -274,6 +300,7 @@ export function computeCompanyTotal(year: BudgetYear) {
 
   const combinedManHours = rows.reduce((s, r) => s + r.results.manHoursYear, 0);
   const combinedTotalEmployees = rows.reduce((s, r) => s + r.results.totalEmployees, 0);
+  const combinedProductiveWorkers = rows.reduce((s, r) => s + r.results.productiveWorkers, 0);
   const combinedLaborCost = rows.reduce((s, r) => s + r.results.totalLaborCost, 0);
   const combinedMaterialCost = year.divisions.reduce((s, d) => s + d.estimatedAnnualMaterialCost, 0);
 
@@ -307,6 +334,7 @@ export function computeCompanyTotal(year: BudgetYear) {
     rows,
     combinedManHours,
     combinedTotalEmployees,
+    combinedProductiveWorkers,
     combinedLaborCost,
     combinedMaterialCost,
     overheadByCategory,

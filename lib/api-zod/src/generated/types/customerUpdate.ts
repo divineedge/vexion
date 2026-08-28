@@ -15,6 +15,8 @@ export interface CustomerUpdate {
   company?: string;
   customerType?: string;
   referralSource?: string;
+  /** @nullable */
+  referringCustomerId?: number | null;
   billingAddress?: string;
   billingCity?: string;
   billingState?: string;

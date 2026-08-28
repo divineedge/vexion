@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, real, jsonb, boolean, date } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, jsonb, boolean, date, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -13,6 +13,7 @@ export const customersTable = pgTable("customers", {
   company: text("company"),
   customerType: text("customer_type"),
   referralSource: text("referral_source"),
+  referringCustomerId: integer("referring_customer_id").references((): AnyPgColumn => customersTable.id, { onDelete: "set null" }),
   billingAddress: text("billing_address"),
   billingCity: text("billing_city"),
   billingState: text("billing_state"),

@@ -8655,6 +8655,10 @@ components:
           type: ["string", "null"]
         referralSource:
           type: ["string", "null"]
+        referringCustomerId:
+          type: ["integer", "null"]
+        referringCustomerName:
+          type: ["string", "null"]
         billingAddress:
           type: ["string", "null"]
         billingCity:
@@ -8776,6 +8780,8 @@ components:
           type: string
         referralSource:
           type: string
+        referringCustomerId:
+          type: integer
         billingAddress:
           type: string
         billingCity:
@@ -8830,6 +8836,8 @@ components:
           type: string
         referralSource:
           type: string
+        referringCustomerId:
+          type: ["integer", "null"]
         billingAddress:
           type: string
         billingCity:

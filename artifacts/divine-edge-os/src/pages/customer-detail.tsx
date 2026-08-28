@@ -49,9 +49,10 @@ import { StaffNotesPanel } from '@/components/StaffNotesPanel';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import type { CustomerFieldConfig, TenantSettings } from '@/lib/fieldConfig';
-import { getActiveCustomerFields } from '@/lib/fieldConfig';
+import { getActiveCustomerFields, isCustomerFieldVisible } from '@/lib/fieldConfig';
 import { useDebounce } from '@/hooks/use-debounce';
 import { AddressAutocomplete } from '@/components/shared/AddressAutocomplete';
+import { CUSTOMER_REFERRAL_SOURCE, ReferringCustomerPicker } from '@/components/customer/ReferringCustomerPicker';
 
 interface CardSetupInlineHandle {
   setupCard: (customerId: number) => Promise<void>;
@@ -478,6 +479,21 @@ export default function CustomerDetailPage() {
     );
   };
   const activeFields = getActiveCustomerFields(settings as TenantSettings | undefined);
+  const customerTypeField = activeFields.find(f => f.key === 'customerType');
+  const referralSourceField = activeFields.find(f => f.key === 'referralSource');
+  const showCustomerType = isCustomerFieldVisible(activeFields, 'customerType');
+  const showReferralSource = isCustomerFieldVisible(activeFields, 'referralSource');
+  const customerTypeOptions = Array.from(new Set([
+    ...(customerTypeField?.options?.length ? customerTypeField.options : ['residential', 'commercial', 'hoa', 'government', 'other']),
+    ...((customer as any)?.customerType ? [(customer as any).customerType] : []),
+  ]));
+  const referralSourceOptions = Array.from(new Set([
+    ...(referralSourceField?.options?.length
+      ? referralSourceField.options
+      : ['Google', 'Word of Mouth', 'Flyer', 'Repeat Customer', 'Social Media', 'Referral', 'Other']),
+    CUSTOMER_REFERRAL_SOURCE,
+    ...((customer as any)?.referralSource ? [(customer as any).referralSource] : []),
+  ]));
   const { data: portalLink } = useGetCustomerPortalLink(id, {
     query: { enabled: !!id, queryKey: getGetCustomerPortalLinkQueryKey(id) },
   });
@@ -512,6 +528,8 @@ export default function CustomerDetailPage() {
       company: customer.company ?? '',
       customerType: customer.customerType ?? '',
       referralSource: customer.referralSource ?? '',
+      referringCustomerId: String((customer as any).referringCustomerId ?? ''),
+      referringCustomerName: (customer as any).referringCustomerName ?? '',
       billingAddress: customer.billingAddress ?? '',
       billingCity: customer.billingCity ?? '',
       billingState: customer.billingState ?? '',
@@ -538,6 +556,8 @@ export default function CustomerDetailPage() {
       else body[k] = v;
     }
     body.customFieldValues = customFieldValues;
+    body.referringCustomerId = form.referringCustomerId ? Number(form.referringCustomerId) : null;
+    delete body.referringCustomerName;
     updateCustomer.mutate(
       { id, data: body as Parameters<typeof updateCustomer.mutate>[0]['data'] },
       {
@@ -956,7 +976,20 @@ export default function CustomerDetailPage() {
                 {can('customerInfo.phone') && customer.secondaryPhone && <div className="flex justify-between"><span className="text-muted-foreground">Secondary Phone</span><a href={`tel:${customer.secondaryPhone}`} title={`Call ${customer.secondaryPhone}`} className="hover:underline text-primary">{customer.secondaryPhone}</a></div>}
                 {customer.company && <Row label="Company" value={customer.company} />}
                 {customer.customerType && <Row label="Customer Type" value={customer.customerType} />}
-                {customer.referralSource && <Row label="Referral Source" value={customer.referralSource} />}
+                {customer.referralSource && (
+                  <Row
+                    label="Referral Source"
+                    value={customer.referralSource === CUSTOMER_REFERRAL_SOURCE ? 'Customer Referral' : customer.referralSource}
+                  />
+                )}
+                {(customer as any).referringCustomerId && (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">Referred By</span>
+                    <Link href={`/customers/${(customer as any).referringCustomerId}`} className="text-primary hover:underline text-right">
+                      {(customer as any).referringCustomerName ?? `Customer #${(customer as any).referringCustomerId}`}
+                    </Link>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -2130,30 +2163,47 @@ export default function CustomerDetailPage() {
                   <Input title="Company or organization name" value={form.company as string} onChange={e => setField('company', e.target.value)} placeholder="Acme Corp" />
                 </Field>
               ))}
-              {activeFields.filter(f => f.isBuiltIn && f.visible && f.key === 'customerType').map(f => (
-                <Field key={f.key} label={f.label} required={f.required}>
+              {showCustomerType && <Field label={customerTypeField?.label ?? 'Customer Type'} required={customerTypeField?.required}>
                   <Select value={form.customerType as string} onValueChange={v => setField('customerType', v)}>
                     <SelectTrigger title="Customer type (residential, commercial, etc.)"><SelectValue placeholder="Select type..." /></SelectTrigger>
                     <SelectContent>
-                      {['residential', 'commercial', 'hoa', 'government', 'other'].map(t => (
+                      {customerTypeOptions.map(t => (
                         <SelectItem key={t} value={t} className="capitalize">{t}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                </Field>
-              ))}
-              {activeFields.filter(f => f.isBuiltIn && f.visible && f.key === 'referralSource').map(f => (
-                <Field key={f.key} label={f.label} required={f.required}>
-                  <Select value={form.referralSource as string} onValueChange={v => setField('referralSource', v)}>
+              </Field>}
+              {showReferralSource && <Field label={referralSourceField?.label ?? 'Referral Source'} required={referralSourceField?.required}>
+                  <Select value={form.referralSource as string} onValueChange={v => {
+                    setField('referralSource', v);
+                    if (v !== CUSTOMER_REFERRAL_SOURCE) {
+                      setForm(f => ({ ...f, referringCustomerId: '', referringCustomerName: '' }));
+                    }
+                  }}>
                     <SelectTrigger title="How this customer originally found you"><SelectValue placeholder="Select source..." /></SelectTrigger>
                     <SelectContent>
-                      {['Google', 'Word of Mouth', 'Flyer', 'Repeat Customer', 'Social Media', 'Referral', 'Other'].map(s => (
-                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      {referralSourceOptions.map(source => (
+                        <SelectItem key={source} value={source}>
+                          {source === CUSTOMER_REFERRAL_SOURCE ? 'Customer Referral' : source}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+              </Field>}
+              {showReferralSource && form.referralSource === CUSTOMER_REFERRAL_SOURCE && (
+                <Field label="Referring Customer" required>
+                  <ReferringCustomerPicker
+                    value={form.referringCustomerId ? Number(form.referringCustomerId) : null}
+                    selectedName={form.referringCustomerName as string}
+                    excludeCustomerId={id}
+                    onChange={referrer => setForm(f => ({
+                      ...f,
+                      referringCustomerId: referrer ? String(referrer.id) : '',
+                      referringCustomerName: referrer?.name ?? '',
+                    }))}
+                  />
                 </Field>
-              ))}
+              )}
             </Section>
 
             {/* Marketing Campaign */}

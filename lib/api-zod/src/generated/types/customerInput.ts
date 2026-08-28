@@ -15,6 +15,7 @@ export interface CustomerInput {
   company?: string;
   customerType?: string;
   referralSource?: string;
+  referringCustomerId?: number;
   billingAddress?: string;
   billingCity?: string;
   billingState?: string;

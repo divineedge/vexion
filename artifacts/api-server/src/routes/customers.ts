@@ -22,6 +22,24 @@ import {
 } from "../lib/importExport";
 
 const router: IRouter = Router();
+const CUSTOMER_REFERRAL_SOURCE = "customer_referral";
+
+async function validateReferringCustomer(
+  tenantId: number,
+  referringCustomerId: unknown,
+  currentCustomerId?: number,
+): Promise<{ id: number; name: string } | null> {
+  if (referringCustomerId === undefined || referringCustomerId === null || referringCustomerId === "") return null;
+  const id = Number(referringCustomerId);
+  if (!Number.isInteger(id) || id <= 0) throw new Error("Referring customer must be a valid customer");
+  if (currentCustomerId !== undefined && id === currentCustomerId) throw new Error("A customer cannot refer themselves");
+  const [customer] = await db.select({ id: customersTable.id, name: customersTable.name })
+    .from(customersTable)
+    .where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)))
+    .limit(1);
+  if (!customer) throw new Error("Referring customer was not found for this business");
+  return customer;
+}
 
 async function requireAdmin(req: import("express").Request, res: import("express").Response): Promise<boolean> {
   const tenantId = getTenantId(req);
@@ -47,6 +65,7 @@ const customersImportExportConfig: ImportExportEntityConfig = {
     { key: "company", header: "Company" },
     { key: "customerType", header: "Customer Type" },
     { key: "referralSource", header: "Referral Source" },
+    { key: "referringCustomerEmail", header: "Referring Customer Email", hint: "Required when Referral Source is customer_referral" },
     { key: "billingAddress", header: "Billing Address" },
     { key: "billingCity", header: "Billing City" },
     { key: "billingState", header: "Billing State" },
@@ -69,6 +88,7 @@ const customersImportExportConfig: ImportExportEntityConfig = {
     { key: "company", header: "Company" },
     { key: "customerType", header: "Customer Type" },
     { key: "referralSource", header: "Referral Source" },
+    { key: "referringCustomerEmail", header: "Referring Customer Email" },
     { key: "billingAddress", header: "Billing Address" },
     { key: "billingCity", header: "Billing City" },
     { key: "billingState", header: "Billing State" },
@@ -88,6 +108,12 @@ const customersImportExportConfig: ImportExportEntityConfig = {
     const baseWhere = eq(customersTable.tenantId, tenantId);
     const where = query.q ? and(baseWhere, ilike(customersTable.name, `%${query.q}%`)) : baseWhere;
     const rows = await db.select().from(customersTable).where(where).orderBy(customersTable.createdAt);
+    const referrerIds = rows.map((customer) => customer.referringCustomerId).filter((value): value is number => value !== null);
+    const referrers = referrerIds.length > 0
+      ? await db.select({ id: customersTable.id, email: customersTable.email }).from(customersTable)
+          .where(and(eq(customersTable.tenantId, tenantId), inArray(customersTable.id, referrerIds)))
+      : [];
+    const emailById = new Map(referrers.map((customer) => [customer.id, customer.email]));
     return rows.map((c) => ({
       id: c.id,
       name: c.name,
@@ -97,6 +123,7 @@ const customersImportExportConfig: ImportExportEntityConfig = {
       company: c.company ?? "",
       customerType: c.customerType ?? "",
       referralSource: c.referralSource ?? "",
+      referringCustomerEmail: c.referringCustomerId ? emailById.get(c.referringCustomerId) ?? "" : "",
       billingAddress: c.billingAddress ?? "",
       billingCity: c.billingCity ?? "",
       billingState: c.billingState ?? "",
@@ -113,7 +140,7 @@ const customersImportExportConfig: ImportExportEntityConfig = {
       createdAt: c.createdAt.toISOString(),
     }));
   },
-  parseRow: async (_tenantId, raw) => {
+  parseRow: async (tenantId, raw) => {
     const errors: string[] = [];
     const name = requireString(raw.name, "Name", errors);
     const email = requireString(raw.email, "Email", errors);
@@ -121,6 +148,26 @@ const customersImportExportConfig: ImportExportEntityConfig = {
     if (errors.length > 0 || !name || !email || !phone) return { ok: false, errors };
 
     const tags = raw.tags ? raw.tags.split(/[;,]/).map((t) => t.trim()).filter(Boolean) : [];
+    const referralSource = optionalString(raw.referralSource) ?? null;
+    const referringCustomerEmail = optionalString(raw.referringCustomerEmail);
+    if (referringCustomerEmail?.toLowerCase() === email.toLowerCase()) {
+      errors.push("A customer cannot refer themselves");
+    }
+    let referringCustomerId: number | null = null;
+    if (referringCustomerEmail) {
+      const [referrer] = await db.select({ id: customersTable.id }).from(customersTable)
+        .where(and(eq(customersTable.tenantId, tenantId), sql`lower(${customersTable.email}) = lower(${referringCustomerEmail})`))
+        .limit(1);
+      if (!referrer) errors.push("Referring Customer Email must match a customer in this business");
+      else referringCustomerId = referrer.id;
+    }
+    if (referralSource === CUSTOMER_REFERRAL_SOURCE && !referringCustomerId) {
+      errors.push("Referring Customer Email is required for customer_referral");
+    }
+    if (referringCustomerId && referralSource !== CUSTOMER_REFERRAL_SOURCE) {
+      errors.push("Referral Source must be customer_referral when a referring customer is supplied");
+    }
+    if (errors.length > 0) return { ok: false, errors };
     return {
       ok: true,
       values: {
@@ -130,7 +177,8 @@ const customersImportExportConfig: ImportExportEntityConfig = {
         secondaryPhone: optionalString(raw.secondaryPhone) ?? null,
         company: optionalString(raw.company) ?? null,
         customerType: optionalString(raw.customerType) ?? null,
-        referralSource: optionalString(raw.referralSource) ?? null,
+        referralSource,
+        referringCustomerId,
         billingAddress: optionalString(raw.billingAddress) ?? null,
         billingCity: optionalString(raw.billingCity) ?? null,
         billingState: optionalString(raw.billingState) ?? null,
@@ -260,7 +308,7 @@ type LastReminderFailure = {
 
 function formatCustomer(
   c: typeof customersTable.$inferSelect,
-  extras?: { propertyCount?: number; createdPropertyId?: number; thisYearSpend?: number; lastYearSpend?: number; paymentStanding?: PaymentStanding; lastReminderFailure?: LastReminderFailure }
+  extras?: { propertyCount?: number; createdPropertyId?: number; thisYearSpend?: number; lastYearSpend?: number; paymentStanding?: PaymentStanding; lastReminderFailure?: LastReminderFailure; referringCustomerName?: string | null }
 ) {
   return {
     id: c.id,
@@ -272,6 +320,8 @@ function formatCustomer(
     company: c.company ?? null,
     customerType: c.customerType ?? null,
     referralSource: c.referralSource ?? null,
+    referringCustomerId: c.referringCustomerId ?? null,
+    referringCustomerName: extras?.referringCustomerName ?? null,
     billingAddress: c.billingAddress ?? null,
     billingCity: c.billingCity ?? null,
     billingState: c.billingState ?? null,
@@ -386,7 +436,8 @@ router.get("/customers", async (req, res): Promise<void> => {
     .limit(limitNum)
     .offset(offset);
 
-  const [propCounts, failureMap, lastServiceRows] = await Promise.all([
+  const referrerIds = rows.map((row) => row.referringCustomerId).filter((value): value is number => value !== null);
+  const [propCounts, failureMap, lastServiceRows, referrers] = await Promise.all([
     db
       .select({ customerId: propertiesTable.customerId, count: sql<number>`count(*)::int` })
       .from(propertiesTable)
@@ -398,15 +449,21 @@ router.get("/customers", async (req, res): Promise<void> => {
       .from(jobsTable)
       .where(and(eq(jobsTable.tenantId, tenantId), inArray(jobsTable.customerId, rows.map(r => r.id)), eq(jobsTable.status, 'completed')))
       .groupBy(jobsTable.customerId),
+    referrerIds.length > 0
+      ? db.select({ id: customersTable.id, name: customersTable.name }).from(customersTable)
+          .where(and(eq(customersTable.tenantId, tenantId), inArray(customersTable.id, referrerIds)))
+      : Promise.resolve([]),
   ]);
 
   const propMap = Object.fromEntries(propCounts.map(p => [p.customerId, p.count]));
   const lastServiceMap = Object.fromEntries(lastServiceRows.map(r => [r.customerId, r.lastDate]));
+  const referrerMap = Object.fromEntries(referrers.map(r => [r.id, r.name]));
 
   res.json({
     items: rows.map(c => ({ ...formatCustomer(c, {
       propertyCount: propMap[c.id] ?? 0,
       lastReminderFailure: failureMap.get(c.id) ?? null,
+      referringCustomerName: c.referringCustomerId ? referrerMap[c.referringCustomerId] ?? null : null,
     }), lastServiceDate: lastServiceMap[c.id] ?? null })),
     total: count,
     page: pageNum,
@@ -418,7 +475,7 @@ router.post("/customers", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
   const {
-    name, email, phone, secondaryPhone, company, customerType, referralSource,
+    name, email, phone, secondaryPhone, company, customerType, referralSource, referringCustomerId,
     billingAddress, billingCity, billingState, billingZip,
     physicalAddress, physicalCity, physicalState, physicalZip, physicalLat, physicalLng, physicalPropertyType,
     notes, tags, customFieldValues,
@@ -447,6 +504,21 @@ router.post("/customers", async (req, res): Promise<void> => {
     res.status(400).json({ error: "physicalPropertyType must be a non-empty string when provided" });
     return;
   }
+  let referrer: { id: number; name: string } | null;
+  try {
+    referrer = await validateReferringCustomer(tenantId, referringCustomerId);
+  } catch (error) {
+    res.status(400).json({ error: (error as Error).message });
+    return;
+  }
+  if (referralSource === CUSTOMER_REFERRAL_SOURCE && !referrer) {
+    res.status(400).json({ error: "A referring customer is required for customer referrals" });
+    return;
+  }
+  if (referrer && referralSource !== CUSTOMER_REFERRAL_SOURCE) {
+    res.status(400).json({ error: "Referral source must be customer_referral when a referring customer is selected" });
+    return;
+  }
 
   let physicalCoordinates: { lat: number; lng: number } | null = null;
   if (physicalAddress) {
@@ -460,6 +532,7 @@ router.post("/customers", async (req, res): Promise<void> => {
       tenantId, name, email, phone,
       secondaryPhone: secondaryPhone ?? null, company: company ?? null, customerType: customerType ?? null,
       referralSource: referralSource ?? null, billingAddress: billingAddress ?? null, billingCity: billingCity ?? null,
+      referringCustomerId: referrer?.id ?? null,
       billingState: billingState ?? null, billingZip: billingZip ?? null,
       physicalAddress: physicalAddress ?? null, physicalCity: physicalCity ?? null,
       physicalState: physicalState ?? null, physicalZip: physicalZip ?? null,
@@ -479,7 +552,7 @@ router.post("/customers", async (req, res): Promise<void> => {
   await db.insert(activityLogTable).values({ tenantId, userId, type: "customer_added", message: `New customer "${name}" added`, entityId: customer.id });
   void syncCustomerToMailchimp(tenantId, customer);
 
-  res.status(201).json(formatCustomer(customer, { propertyCount: createdPropertyId ? 1 : 0, createdPropertyId }));
+  res.status(201).json(formatCustomer(customer, { propertyCount: createdPropertyId ? 1 : 0, createdPropertyId, referringCustomerName: referrer?.name ?? null }));
 });
 
 router.get("/customers/:id", async (req, res): Promise<void> => {
@@ -501,6 +574,7 @@ router.get("/customers/:id", async (req, res): Promise<void> => {
     [lastYear],
     paymentStanding,
     failureMap,
+    referrer,
   ] = await Promise.all([
     db.select({ count: sql<number>`count(*)::int` }).from(propertiesTable)
       .where(and(eq(propertiesTable.customerId, id), eq(propertiesTable.tenantId, tenantId))),
@@ -510,6 +584,10 @@ router.get("/customers/:id", async (req, res): Promise<void> => {
       .where(and(eq(invoicesTable.tenantId, tenantId), eq(invoicesTable.customerId, id), eq(invoicesTable.status, "paid"), sql`created_at >= ${lastYearStart}::timestamptz AND created_at < ${lastYearEnd}::timestamptz`)),
     computePaymentStanding(tenantId, id),
     fetchLastReminderFailures(tenantId, [id]),
+    customer.referringCustomerId
+      ? db.select({ name: customersTable.name }).from(customersTable)
+          .where(and(eq(customersTable.id, customer.referringCustomerId), eq(customersTable.tenantId, tenantId))).limit(1)
+      : Promise.resolve([]),
   ]);
 
   res.json(formatCustomer(customer, {
@@ -518,6 +596,7 @@ router.get("/customers/:id", async (req, res): Promise<void> => {
     lastYearSpend: lastYear?.total ?? 0,
     paymentStanding,
     lastReminderFailure: failureMap.get(id) ?? null,
+    referringCustomerName: referrer[0]?.name ?? null,
   }));
 });
 
@@ -527,10 +606,33 @@ router.patch("/customers/:id", async (req, res): Promise<void> => {
   const id = parseInt(rawId, 10);
 
   const {
-    name, email, phone, secondaryPhone, company, customerType, referralSource,
+    name, email, phone, secondaryPhone, company, customerType, referralSource, referringCustomerId,
     billingAddress, billingCity, billingState, billingZip, physicalAddress, physicalCity, physicalState, physicalZip, notes, tags, customFieldValues,
     acquiredFromCampaignId, smsOptOut, emailOptOut, archivedAt,
   } = req.body;
+
+  const [existing] = await db.select().from(customersTable)
+    .where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId))).limit(1);
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  const nextReferralSource = referralSource !== undefined ? referralSource : existing.referralSource;
+  const nextReferringCustomerId = referringCustomerId !== undefined
+    ? referringCustomerId
+    : (referralSource !== undefined && referralSource !== CUSTOMER_REFERRAL_SOURCE ? null : existing.referringCustomerId);
+  let referrer: { id: number; name: string } | null;
+  try {
+    referrer = await validateReferringCustomer(tenantId, nextReferringCustomerId, id);
+  } catch (error) {
+    res.status(400).json({ error: (error as Error).message });
+    return;
+  }
+  if (nextReferralSource === CUSTOMER_REFERRAL_SOURCE && !referrer) {
+    res.status(400).json({ error: "A referring customer is required for customer referrals" });
+    return;
+  }
+  if (referrer && nextReferralSource !== CUSTOMER_REFERRAL_SOURCE) {
+    res.status(400).json({ error: "Referral source must be customer_referral when a referring customer is selected" });
+    return;
+  }
 
   const updates: Partial<typeof customersTable.$inferInsert> = {};
   if (name) updates.name = name;
@@ -540,6 +642,7 @@ router.patch("/customers/:id", async (req, res): Promise<void> => {
   if (company !== undefined) updates.company = company;
   if (customerType !== undefined) updates.customerType = customerType;
   if (referralSource !== undefined) updates.referralSource = referralSource;
+  if (referralSource !== undefined || referringCustomerId !== undefined) updates.referringCustomerId = referrer?.id ?? null;
   if (billingAddress !== undefined) updates.billingAddress = billingAddress;
   if (billingCity !== undefined) updates.billingCity = billingCity;
   if (billingState !== undefined) updates.billingState = billingState;
@@ -582,7 +685,7 @@ router.patch("/customers/:id", async (req, res): Promise<void> => {
 
   const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(propertiesTable)
     .where(and(eq(propertiesTable.customerId, id), eq(propertiesTable.tenantId, tenantId)));
-  res.json(formatCustomer(updated, { propertyCount: count }));
+  res.json(formatCustomer(updated, { propertyCount: count, referringCustomerName: referrer?.name ?? null }));
 });
 
 router.delete("/customers/:id", async (req, res): Promise<void> => {

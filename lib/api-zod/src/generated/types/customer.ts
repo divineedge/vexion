@@ -24,6 +24,10 @@ export interface Customer {
   /** @nullable */
   referralSource?: string | null;
   /** @nullable */
+  referringCustomerId?: number | null;
+  /** @nullable */
+  referringCustomerName?: string | null;
+  /** @nullable */
   billingAddress?: string | null;
   /** @nullable */
   billingCity?: string | null;

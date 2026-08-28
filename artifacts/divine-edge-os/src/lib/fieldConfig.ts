@@ -28,7 +28,7 @@ export const BUILT_IN_CUSTOMER_FIELDS: CustomerFieldConfig[] = [
   { key: 'secondaryPhone', label: 'Secondary Phone',       type: 'text',     visible: true, required: false, isBuiltIn: true },
   { key: 'company',        label: 'Company / Business Name', type: 'text',   visible: true, required: false, isBuiltIn: true },
   { key: 'customerType',   label: 'Customer Type',         type: 'select',   options: ['residential', 'commercial', 'hoa', 'government', 'other'], visible: true, required: false, isBuiltIn: true },
-  { key: 'referralSource', label: 'Referral Source',       type: 'select',   options: ['Google', 'Word of Mouth', 'Flyer', 'Repeat Customer', 'Social Media', 'Referral', 'Other'], visible: true, required: false, isBuiltIn: true },
+  { key: 'referralSource', label: 'Referral Source',       type: 'select',   options: ['Google', 'Word of Mouth', 'Flyer', 'Repeat Customer', 'Social Media', 'Referral', 'customer_referral', 'Other'], visible: true, required: false, isBuiltIn: true },
   { key: 'billingAddress', label: 'Billing Address',       type: 'text',     visible: true, required: false, isBuiltIn: true },
   { key: 'notes',          label: 'Notes',                 type: 'textarea', visible: true, required: false, isBuiltIn: true },
   { key: 'tags',           label: 'Tags',                  type: 'text',     visible: true, required: false, isBuiltIn: true },
@@ -55,6 +55,7 @@ export function getActiveCustomerFields(settings?: TenantSettings | null): Custo
       visible: isCore ? true : override.visible,          // core fields are always visible
       required: override.required,
       label: override.label ?? f.label,
+      options: override.options?.length ? override.options : f.options,
     };
   });
 
@@ -62,4 +63,11 @@ export function getActiveCustomerFields(settings?: TenantSettings | null): Custo
   const customFields = stored.filter(f => !BUILT_IN_CUSTOMER_FIELDS.some(b => b.key === f.key));
 
   return [...builtIn, ...customFields];
+}
+
+export function isCustomerFieldVisible(
+  fields: CustomerFieldConfig[],
+  key: string,
+): boolean {
+  return fields.some(field => field.isBuiltIn && field.key === key && field.visible);
 }

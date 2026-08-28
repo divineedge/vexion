@@ -1031,6 +1031,10 @@ export interface Customer {
   /** @nullable */
   referralSource?: string | null;
   /** @nullable */
+  referringCustomerId?: number | null;
+  /** @nullable */
+  referringCustomerName?: string | null;
+  /** @nullable */
   billingAddress?: string | null;
   /** @nullable */
   billingCity?: string | null;
@@ -1099,6 +1103,7 @@ export interface CustomerInput {
   company?: string;
   customerType?: string;
   referralSource?: string;
+  referringCustomerId?: number;
   billingAddress?: string;
   billingCity?: string;
   billingState?: string;
@@ -1128,6 +1133,8 @@ export interface CustomerUpdate {
   company?: string;
   customerType?: string;
   referralSource?: string;
+  /** @nullable */
+  referringCustomerId?: number | null;
   billingAddress?: string;
   billingCity?: string;
   billingState?: string;

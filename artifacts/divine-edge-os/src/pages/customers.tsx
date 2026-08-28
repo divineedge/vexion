@@ -23,9 +23,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useLocation } from 'wouter';
 import { useDebounce } from '@/hooks/use-debounce';
 import { toast } from 'sonner';
-import { getActiveCustomerFields } from '@/lib/fieldConfig';
+import { getActiveCustomerFields, isCustomerFieldVisible } from '@/lib/fieldConfig';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
 import { AddressAutocomplete, type AddressSuggestion } from '@/components/shared/AddressAutocomplete';
+import { CUSTOMER_REFERRAL_SOURCE, ReferringCustomerPicker } from '@/components/customer/ReferringCustomerPicker';
 
 /** A single address suggestion returned by the Photon geocoder (fallback). */
 interface PhotonFeature {
@@ -247,7 +248,7 @@ const CardSetupSectionInner = forwardRef<CardSetupSectionHandle, object>(
 
 const BLANK: FormData = {
   name: '', email: '', phone: '', secondaryPhone: '',
-  company: '', customerType: '', referralSource: '',
+  company: '', customerType: '', referralSource: '', referringCustomerId: '', referringCustomerName: '',
   billingAddress: '', billingCity: '', billingState: '', billingZip: '',
   physicalAddress: '', physicalCity: '', physicalState: '', physicalZip: '', physicalLat: '', physicalLng: '',
   notes: '', tags: [],
@@ -323,6 +324,19 @@ export default function CustomersPage() {
   const createCustomer = useCreateCustomer();
   const { data: bizTags = [] } = useListTags({ query: { queryKey: getListTagsQueryKey() } });
   const activeFields = getActiveCustomerFields(settings);
+  const customerTypeField = activeFields.find(f => f.key === 'customerType');
+  const referralSourceField = activeFields.find(f => f.key === 'referralSource');
+  const showCustomerType = isCustomerFieldVisible(activeFields, 'customerType');
+  const showReferralSource = isCustomerFieldVisible(activeFields, 'referralSource');
+  const customerTypeOptions = customerTypeField?.options?.length
+    ? customerTypeField.options
+    : ['residential', 'commercial', 'hoa', 'government', 'other'];
+  const referralSourceOptions = Array.from(new Set([
+    ...(referralSourceField?.options?.length
+      ? referralSourceField.options
+      : ['Google', 'Word of Mouth', 'Flyer', 'Repeat Customer', 'Social Media', 'Referral', 'Other']),
+    CUSTOMER_REFERRAL_SOURCE,
+  ]));
 
   const setField = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }));
 
@@ -365,6 +379,8 @@ export default function CustomersPage() {
     body.physicalLat = form.physicalLat ? Number(form.physicalLat) : undefined;
     body.physicalLng = form.physicalLng ? Number(form.physicalLng) : undefined;
     body.customFieldValues = customFieldValues;
+    body.referringCustomerId = form.referringCustomerId ? Number(form.referringCustomerId) : undefined;
+    delete body.referringCustomerName;
     if (createCampaignId) body.acquiredFromCampaignId = parseInt(createCampaignId, 10);
 
     setCreatingBusy(true);
@@ -439,8 +455,9 @@ export default function CustomersPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="residential">Residential</SelectItem>
-                <SelectItem value="commercial">Commercial</SelectItem>
+                {customerTypeOptions.map(type => (
+                  <SelectItem key={type} value={type} className="capitalize">{type}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Button
@@ -668,36 +685,46 @@ export default function CustomersPage() {
                   <Input title="Customer's company or organization name" value={form.company as string} onChange={e => setField('company', e.target.value)} placeholder="Acme Corp" />
                 </Field>
               ))}
-              {activeFields.filter(f => f.isBuiltIn && f.visible && f.key === 'customerType').map(f => (
-                <Field key={f.key} label={f.label} required={f.required}>
+              {showCustomerType && <Field label={customerTypeField?.label ?? 'Customer Type'} required={customerTypeField?.required}>
                   <Select value={form.customerType as string} onValueChange={v => setField('customerType', v)}>
                     <SelectTrigger title="Customer category (Residential, Commercial, HOA, etc.)"><SelectValue placeholder="Select type..." /></SelectTrigger>
                     <SelectContent>
-                      {[
-                        { value: 'residential', label: 'Residential' },
-                        { value: 'commercial', label: 'Commercial' },
-                        { value: 'hoa', label: 'HOA' },
-                        { value: 'government', label: 'Government' },
-                        { value: 'other', label: 'Other' },
-                      ].map(t => (
-                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                      {customerTypeOptions.map(type => (
+                        <SelectItem key={type} value={type} className="capitalize">{type}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                </Field>
-              ))}
-              {activeFields.filter(f => f.isBuiltIn && f.visible && f.key === 'referralSource').map(f => (
-                <Field key={f.key} label={f.label} required={f.required}>
-                  <Select value={form.referralSource as string} onValueChange={v => setField('referralSource', v)}>
+              </Field>}
+              {showReferralSource && <Field label={referralSourceField?.label ?? 'Referral Source'} required={referralSourceField?.required}>
+                  <Select value={form.referralSource as string} onValueChange={v => {
+                    setField('referralSource', v);
+                    if (v !== CUSTOMER_REFERRAL_SOURCE) {
+                      setForm(f => ({ ...f, referringCustomerId: '', referringCustomerName: '' }));
+                    }
+                  }}>
                     <SelectTrigger title="How this customer found the business"><SelectValue placeholder="Select source..." /></SelectTrigger>
                     <SelectContent>
-                      {['Google', 'Word of Mouth', 'Flyer', 'Repeat Customer', 'Social Media', 'Referral', 'Other'].map(s => (
-                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      {referralSourceOptions.map(source => (
+                        <SelectItem key={source} value={source}>
+                          {source === CUSTOMER_REFERRAL_SOURCE ? 'Customer Referral' : source}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+              </Field>}
+              {showReferralSource && form.referralSource === CUSTOMER_REFERRAL_SOURCE && (
+                <Field label="Referring Customer" required>
+                  <ReferringCustomerPicker
+                    value={form.referringCustomerId ? Number(form.referringCustomerId) : null}
+                    selectedName={form.referringCustomerName as string}
+                    onChange={customer => setForm(f => ({
+                      ...f,
+                      referringCustomerId: customer ? String(customer.id) : '',
+                      referringCustomerName: customer?.name ?? '',
+                    }))}
+                  />
                 </Field>
-              ))}
+              )}
               {availableCampaigns.length > 0 && (
                 <Field label="Acquired from Campaign">
                   <Select value={createCampaignId} onValueChange={setCreateCampaignId}>

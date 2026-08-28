@@ -1,5 +1,5 @@
 /**
- * Area-based pricing matrix resolver — API server copy.
+ * Measurement-based service pricing resolver — API server copy.
  */
 
 export interface PricingTier {
@@ -13,9 +13,11 @@ export interface PricingTier {
 }
 
 /**
- * Resolve the price for a service given its pricing config and a property area.
+ * Resolve the price for a service given its pricing config and property measurements.
  *
  * - pricingMode 'flat' → returns basePrice unchanged.
+ * - pricingMode 'per_sqft' → returns basePrice × areaSqft.
+ * - pricingMode 'per_linear_ft' → returns basePrice × lengthFt.
  * - pricingMode 'matrix' → finds the matching tier for areaSqft.
  *   Open-ended tier (maxSqft === null) with perSqftRate: returns rate × area.
  *   Otherwise: returns tier.price.
@@ -26,7 +28,10 @@ export function resolveServicePrice(
   basePrice: number,
   pricingMatrix: PricingTier[] | null | undefined,
   areaSqft: number | null | undefined,
+  lengthFt: number | null | undefined = 0,
 ): number {
+  if (pricingMode === "per_sqft") return basePrice * (areaSqft ?? 0);
+  if (pricingMode === "per_linear_ft") return basePrice * (lengthFt ?? 0);
   if (pricingMode !== "matrix" || !pricingMatrix || pricingMatrix.length === 0) {
     return basePrice;
   }

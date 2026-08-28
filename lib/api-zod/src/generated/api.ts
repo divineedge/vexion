@@ -1088,7 +1088,7 @@ export const ListPropertyQuotesResponseItem = zod.object({
   "selectedZoneLabels": zod.array(zod.string()).optional(),
   "totalAreaSqft": zod.number().nullish(),
   "calculatedPrice": zod.number(),
-  "priceType": zod.enum(['flat', 'per_sqft']).optional(),
+  "priceType": zod.enum(['flat', 'per_sqft', 'per_linear_ft', 'matrix']).optional(),
   "status": zod.enum(['pending', 'approved', 'declined']),
   "expiresAt": zod.string().nullish(),
   "respondedAt": zod.string().nullish(),
@@ -1112,7 +1112,7 @@ export const CreatePropertyQuoteBody = zod.object({
   "selectedZoneLabels": zod.array(zod.string()).optional(),
   "totalAreaSqft": zod.number().optional(),
   "calculatedPrice": zod.number().optional(),
-  "priceType": zod.enum(['flat', 'per_sqft']).optional()
+  "priceType": zod.enum(['flat', 'per_sqft', 'per_linear_ft', 'matrix']).optional()
 })
 
 export const CreatePropertyQuoteResponse = zod.object({
@@ -1126,7 +1126,7 @@ export const CreatePropertyQuoteResponse = zod.object({
   "selectedZoneLabels": zod.array(zod.string()).optional(),
   "totalAreaSqft": zod.number().nullish(),
   "calculatedPrice": zod.number(),
-  "priceType": zod.enum(['flat', 'per_sqft']).optional(),
+  "priceType": zod.enum(['flat', 'per_sqft', 'per_linear_ft', 'matrix']).optional(),
   "status": zod.enum(['pending', 'approved', 'declined']),
   "expiresAt": zod.string().nullish(),
   "respondedAt": zod.string().nullish(),
@@ -1154,7 +1154,7 @@ export const GetQuoteByTokenResponse = zod.object({
   "selectedZoneLabels": zod.array(zod.string()).optional(),
   "totalAreaSqft": zod.number().nullish(),
   "calculatedPrice": zod.number(),
-  "priceType": zod.enum(['flat', 'per_sqft']).optional(),
+  "priceType": zod.enum(['flat', 'per_sqft', 'per_linear_ft', 'matrix']).optional(),
   "status": zod.enum(['pending', 'approved', 'declined']),
   "expiresAt": zod.string().nullish(),
   "respondedAt": zod.string().nullish(),
@@ -1210,7 +1210,7 @@ export const RespondToQuoteResponse = zod.object({
   "selectedZoneLabels": zod.array(zod.string()).optional(),
   "totalAreaSqft": zod.number().nullish(),
   "calculatedPrice": zod.number(),
-  "priceType": zod.enum(['flat', 'per_sqft']).optional(),
+  "priceType": zod.enum(['flat', 'per_sqft', 'per_linear_ft', 'matrix']).optional(),
   "status": zod.enum(['pending', 'approved', 'declined']),
   "expiresAt": zod.string().nullish(),
   "respondedAt": zod.string().nullish(),
@@ -9002,6 +9002,7 @@ export const ResolvePlanPriceResponse = zod.object({
   "serviceId": zod.number().optional(),
   "serviceName": zod.string().optional(),
   "areaSqft": zod.number().optional(),
+  "lengthFt": zod.number().optional(),
   "price": zod.number().optional()
 })).optional()
 })

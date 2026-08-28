@@ -12,4 +12,6 @@ export type QuotePriceType = typeof QuotePriceType[keyof typeof QuotePriceType];
 export const QuotePriceType = {
   flat: 'flat',
   per_sqft: 'per_sqft',
+  per_linear_ft: 'per_linear_ft',
+  matrix: 'matrix',
 } as const;

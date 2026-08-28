@@ -10,5 +10,6 @@ export type ResolvePlanPriceResultBreakdownItem = {
   serviceId?: number;
   serviceName?: string;
   areaSqft?: number;
+  lengthFt?: number;
   price?: number;
 };

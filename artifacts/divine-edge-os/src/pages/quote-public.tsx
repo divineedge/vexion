@@ -68,7 +68,7 @@ interface PublicQuote {
   selectedZoneLabels: string[];
   totalAreaSqft: number | null;
   calculatedPrice: number;
-  priceType: 'flat' | 'per_sqft';
+  priceType: 'flat' | 'per_sqft' | 'per_linear_ft' | 'matrix';
   status: 'pending' | 'approved' | 'declined';
   expiresAt: string | null;
   expired: boolean;

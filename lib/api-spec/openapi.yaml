@@ -8193,6 +8193,8 @@ components:
                 type: string
               areaSqft:
                 type: number
+              lengthFt:
+                type: number
               price:
                 type: number
 
@@ -9009,7 +9011,7 @@ components:
           type: number
         priceType:
           type: string
-          enum: [flat, per_sqft]
+          enum: [flat, per_sqft, per_linear_ft, matrix]
         status:
           type: string
           enum: [pending, approved, declined]
@@ -9076,7 +9078,7 @@ components:
           type: number
         priceType:
           type: string
-          enum: [flat, per_sqft]
+          enum: [flat, per_sqft, per_linear_ft, matrix]
 
     QuoteRespondInput:
       type: object

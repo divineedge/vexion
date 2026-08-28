@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, quotesTable, propertiesTable, customersTable, servicesTable, jobsTable, blueprintsTable } from "@workspace/db";
+import { db, quotesTable, propertiesTable, customersTable, servicesTable, jobsTable, blueprintsTable, tenantsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { getTenantId } from "../lib/tenantHelper";
 import { resolveServicePrice, type PricingTier } from "../lib/pricingMatrix";
@@ -19,6 +19,62 @@ function formatQuote(q: typeof quotesTable.$inferSelect) {
     respondedAt: q.respondedAt?.toISOString() ?? null,
     createdAt: q.createdAt.toISOString(),
     updatedAt: q.updatedAt.toISOString(),
+  };
+}
+
+export interface QuoteMeasurementPolygon {
+  label?: string;
+  zoneTypeId?: string | null;
+  areaSqft?: number | null;
+  lengthFt?: number | null;
+  mode?: "area" | "linear";
+  enabled?: boolean;
+}
+
+export interface QuoteMeasurementZoneType {
+  id: string;
+  name: string;
+  mode?: "area" | "linear";
+}
+
+export function resolveQuoteMeasurements(
+  polygons: QuoteMeasurementPolygon[],
+  zoneTypes: QuoteMeasurementZoneType[],
+  selectedZoneLabels: unknown,
+  linkedZoneTypeId?: string | null,
+): { areaSqft: number; lengthFt: number; mode: "area" | "linear" } {
+  const selectedLabels = new Set(
+    Array.isArray(selectedZoneLabels)
+      ? selectedZoneLabels.filter((label): label is string => typeof label === "string")
+      : [],
+  );
+  const zoneTypeById = new Map(zoneTypes.map(zoneType => [zoneType.id, zoneType]));
+  const zoneTypeByName = new Map(zoneTypes.map(zoneType => [zoneType.name, zoneType]));
+  const linkedZoneType = linkedZoneTypeId ? zoneTypeById.get(linkedZoneTypeId) : undefined;
+
+  let areaSqft = 0;
+  let lengthFt = 0;
+  for (const polygon of polygons) {
+    if (polygon.enabled === false || !polygon.label || !selectedLabels.has(polygon.label)) continue;
+
+    const configuredZoneType = (polygon.zoneTypeId ? zoneTypeById.get(polygon.zoneTypeId) : undefined)
+      ?? zoneTypeByName.get(polygon.label);
+    if (linkedZoneTypeId && configuredZoneType?.id !== linkedZoneTypeId && polygon.zoneTypeId !== linkedZoneTypeId) {
+      continue;
+    }
+
+    const mode = polygon.mode ?? configuredZoneType?.mode ?? "area";
+    if (mode === "linear") {
+      lengthFt += polygon.lengthFt ?? 0;
+    } else {
+      areaSqft += polygon.areaSqft ?? 0;
+    }
+  }
+
+  return {
+    areaSqft,
+    lengthFt,
+    mode: linkedZoneType?.mode ?? "area",
   };
 }
 
@@ -52,7 +108,10 @@ router.post("/properties/:id/quotes", async (req, res): Promise<void> => {
   let serviceName = "Custom Quote";
   let serviceDescription: string | null = null;
   let calculatedPrice = 0;
-  const resolvedPriceType = priceType ?? "flat";
+  let resolvedPriceType = ["flat", "per_sqft", "per_linear_ft", "matrix"].includes(priceType)
+    ? priceType
+    : "flat";
+  let resolvedAreaSqft = totalAreaSqft ? parseFloat(totalAreaSqft) : 0;
 
   if (serviceId) {
     const [service] = await db
@@ -63,23 +122,36 @@ router.post("/properties/:id/quotes", async (req, res): Promise<void> => {
     if (service) {
       serviceName = service.name;
       serviceDescription = service.description ?? null;
+      resolvedPriceType = ["flat", "per_sqft", "per_linear_ft", "matrix"].includes(service.pricingMode)
+        ? service.pricingMode
+        : "flat";
+
+      const [tenant] = await db
+        .select({ measurementZoneTypes: tenantsTable.measurementZoneTypes })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, tenantId));
+      const zoneTypes = ((tenant?.measurementZoneTypes as unknown[]) ?? []) as QuoteMeasurementZoneType[];
+      const measurements = resolveQuoteMeasurements(
+        ((property.property.measurementPolygons as unknown[]) ?? []) as QuoteMeasurementPolygon[],
+        zoneTypes,
+        selectedZoneLabels,
+        service.linkedZoneTypeId,
+      );
+      resolvedAreaSqft = measurements.areaSqft;
 
       // Server always resolves the authoritative price from service configuration.
       // Client-supplied calculatedPrice is intentionally ignored for service-backed quotes
       // to prevent price manipulation.
-      if ((service.pricingMode ?? "flat") === "matrix" && service.pricingMatrix) {
-        // Resolve via the area-based matrix; area comes from the sum of selected zones sent by client
-        calculatedPrice = resolveServicePrice(
-          "matrix",
-          service.basePrice,
-          service.pricingMatrix as PricingTier[],
-          totalAreaSqft ? parseFloat(totalAreaSqft) : null,
-        );
-      } else if (resolvedPriceType === "per_sqft" && totalAreaSqft) {
-        calculatedPrice = service.basePrice * parseFloat(totalAreaSqft);
-      } else {
-        calculatedPrice = service.basePrice;
-      }
+      const matrixQuantity = measurements.mode === "linear"
+        ? measurements.lengthFt
+        : measurements.areaSqft;
+      calculatedPrice = resolveServicePrice(
+        resolvedPriceType,
+        service.basePrice,
+        service.pricingMatrix as PricingTier[] | null,
+        resolvedPriceType === "matrix" ? matrixQuantity : measurements.areaSqft,
+        measurements.lengthFt,
+      );
     }
   } else {
     // No serviceId — custom quote; client supplies price and name
@@ -100,7 +172,7 @@ router.post("/properties/:id/quotes", async (req, res): Promise<void> => {
     serviceName,
     serviceDescription,
     selectedZoneLabels: selectedZoneLabels ?? [],
-    totalAreaSqft: totalAreaSqft ?? null,
+    totalAreaSqft: resolvedAreaSqft || null,
     calculatedPrice,
     priceType: resolvedPriceType,
     status: "pending",

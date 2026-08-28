@@ -16,17 +16,17 @@ export const servicesTable = pgTable("services", {
   /** Service-level P4P payout %. null = use tenant p4pMasterPercentage. */
   p4pPercentage: real("p4p_percentage"),
   isActive: boolean("is_active").notNull().default(true),
-  /** 'flat' = fixed basePrice; 'matrix' = tiered by sqft using pricingMatrix */
+  /** 'flat' = fixed basePrice; 'per_sqft'/'per_linear_ft' = basePrice rate; 'matrix' = measurement tiers */
   pricingMode: text("pricing_mode").notNull().default("flat"),
   /**
-   * Area-based pricing tiers.
+   * Measurement-based pricing tiers.
    * Array<{ minSqft: number, maxSqft: number | null, price: number, perSqftRate?: number }>
    * When maxSqft is null it is the catch-all "above X sqft" tier; perSqftRate is used if set.
    */
   pricingMatrix: jsonb("pricing_matrix"),
   /**
    * Optional tenant zone type id (from tenantsTable.measurementZoneTypes).
-   * When set, the resolver uses the area of this zone type from the property's measurement polygons.
+   * When set, the resolver uses the area or linear length of this zone type from the property's measurements.
    */
   linkedZoneTypeId: text("linked_zone_type_id"),
   /** Off-season window start as "MM-DD" (e.g. "11-15"). Null = no off-season. */

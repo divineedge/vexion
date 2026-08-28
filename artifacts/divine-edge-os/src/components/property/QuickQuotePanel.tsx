@@ -95,7 +95,7 @@ export default function QuickQuotePanel({
   const [selectedServiceId, setSelectedServiceId] = useState<string>('');
   const [secondaryServiceId, setSecondaryServiceId] = useState<string>('');
   const [selectedZones, setSelectedZones] = useState<Set<string>>(new Set(zones.filter(z => z.enabled).map(z => z.id)));
-  const [priceType, setPriceType] = useState<'flat' | 'per_sqft'>('flat');
+  const [priceType, setPriceType] = useState<'flat' | 'per_sqft' | 'per_linear_ft'>('flat');
   const [overridePrice, setOverridePrice] = useState('');
 
   // --- Plan mode state ---
@@ -146,6 +146,9 @@ export default function QuickQuotePanel({
   const selectedService = services?.find(s => String(s.id) === selectedServiceId);
   const secondaryService = services?.find(s => String(s.id) === secondaryServiceId);
   const selectedPlan = planTemplates?.find(p => String(p.id) === selectedPlanId);
+  const linkedZoneType = selectedService?.linkedZoneTypeId
+    ? zoneTypes.find(zt => zt.id === selectedService.linkedZoneTypeId)
+    : undefined;
 
   // When primary service changes, auto-select zones linked to its linkedZoneTypeId
   useEffect(() => {
@@ -154,18 +157,23 @@ export default function QuickQuotePanel({
     if (!linkedId || zones.length === 0) return;
     const zoneType = zoneTypes.find(zt => zt.id === linkedId);
     if (!zoneType) return;
-    const matchingZones = zones.filter(z => z.label === zoneType.name);
+    const matchingZones = zones.filter(z => z.enabled && z.label === zoneType.name);
     if (matchingZones.length === 0) return;
     setSelectedZones(new Set(matchingZones.map(z => z.id)));
   }, [selectedService?.linkedZoneTypeId, zones, zoneTypes]);
 
-  const selectedZoneList = zones.filter(z => selectedZones.has(z.id));
-  const totalAreaSqft = selectedZoneList.reduce((s, z) => s + z.areaSqft, 0);
-  const totalLengthFt = selectedZoneList.filter(z => z.mode === 'linear').reduce((s, z) => s + (z.lengthFt ?? 0), 0);
-  const linkedZoneTypeName = selectedService?.linkedZoneTypeId
-    ? zoneTypes.find(zt => zt.id === selectedService.linkedZoneTypeId)?.name
-    : null;
+  const selectedZoneList = zones.filter(z => z.enabled && selectedZones.has(z.id));
+  const pricedZoneList = linkedZoneType
+    ? selectedZoneList.filter(zone => zone.label === linkedZoneType.name)
+    : selectedZoneList;
+  const totalAreaSqft = pricedZoneList.reduce((s, z) => s + z.areaSqft, 0);
+  const totalLengthFt = pricedZoneList.filter(z => z.mode === 'linear').reduce((s, z) => s + (z.lengthFt ?? 0), 0);
+  const linkedZoneTypeName = linkedZoneType?.name ?? null;
   const isMatrixService = selectedService?.pricingMode === 'matrix';
+  const configuredPriceType = selectedService?.pricingMode === 'per_sqft' || selectedService?.pricingMode === 'per_linear_ft'
+    ? selectedService.pricingMode
+    : null;
+  const effectivePriceType = configuredPriceType ?? priceType;
 
   // Calculated price for service mode
   const serviceCalculatedPrice = (() => {
@@ -173,11 +181,16 @@ export default function QuickQuotePanel({
     if (!selectedService) return 0;
     let price1 = 0;
     if (isMatrixService && selectedService.pricingMatrix) {
-      price1 = resolveServicePrice('matrix', selectedService.basePrice, selectedService.pricingMatrix, totalAreaSqft > 0 ? totalAreaSqft : null);
-    } else if (priceType === 'per_sqft' && totalAreaSqft > 0) {
-      price1 = selectedService.basePrice * totalAreaSqft;
+      const matrixQuantity = linkedZoneType?.mode === 'linear' ? totalLengthFt : totalAreaSqft;
+      price1 = resolveServicePrice('matrix', selectedService.basePrice, selectedService.pricingMatrix, matrixQuantity || null);
     } else {
-      price1 = selectedService.basePrice;
+      price1 = resolveServicePrice(
+        effectivePriceType,
+        selectedService.basePrice,
+        null,
+        totalAreaSqft,
+        totalLengthFt,
+      );
     }
     // Add secondary service flat price (bundled services always use flat base price)
     const price2 = secondaryService ? secondaryService.basePrice : 0;
@@ -235,7 +248,7 @@ export default function QuickQuotePanel({
         payload = {
           selectedZoneLabels: selectedZoneList.map(z => z.label),
           totalAreaSqft: totalAreaSqft || null,
-          priceType: isMatrixService ? 'matrix' : priceType,
+          priceType: isMatrixService ? 'matrix' : effectivePriceType,
           calculatedPrice: serviceCalculatedPrice,
           serviceName: nameParts.join(' + '),
           ...(selectedServiceId ? { serviceId: parseInt(selectedServiceId, 10) } : {}),
@@ -421,22 +434,33 @@ export default function QuickQuotePanel({
               </div>
             )}
 
-            {/* Price type (only for non-matrix single services) */}
-            {selectedService && !isMatrixService && !secondaryService && (
+            {/* Price type (only for flat-configured, non-matrix single services) */}
+            {selectedService && !isMatrixService && !configuredPriceType && !secondaryService && (
               <div className="flex items-center gap-3">
                 <span className="text-sm text-muted-foreground">Price type:</span>
                 <div className="flex border rounded-lg overflow-hidden text-sm">
-                  {(['flat', 'per_sqft'] as const).map(t => (
+                  {(['flat', 'per_sqft', 'per_linear_ft'] as const).map(t => (
                     <button
                       key={t}
-                      title={t === 'flat' ? 'Charge a single flat rate for this service' : 'Charge per square foot based on selected zone areas'}
+                      title={t === 'flat'
+                        ? 'Charge a single flat rate for this service'
+                        : t === 'per_sqft'
+                          ? 'Charge per square foot based on selected zone areas'
+                          : 'Charge per linear foot based on selected linear zones'}
                       className={`px-3 py-1.5 transition ${priceType === t ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
                       onClick={() => setPriceType(t)}
                     >
-                      {t === 'flat' ? 'Flat rate' : 'Per sqft'}
+                      {t === 'flat' ? 'Flat rate' : t === 'per_sqft' ? 'Per sqft' : 'Per linear ft'}
                     </button>
                   ))}
                 </div>
+              </div>
+            )}
+            {selectedService && configuredPriceType && (
+              <div className="flex items-center gap-1.5 text-xs text-violet-600 bg-violet-50 border border-violet-200 rounded px-2.5 py-1.5">
+                <Ruler className="w-3 h-3 shrink-0" />
+                {configuredPriceType === 'per_linear_ft' ? 'Per-linear-foot pricing' : 'Per-square-foot pricing'}
+                {linkedZoneTypeName && <> — auto-using <strong>{linkedZoneTypeName}</strong></>}
               </div>
             )}
 
@@ -455,9 +479,15 @@ export default function QuickQuotePanel({
                   {zones.map(zone => (
                     <label
                       key={zone.id}
-                      className={`flex items-center gap-3 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${selectedZones.has(zone.id) ? 'border-primary/40 bg-primary/5' : 'hover:bg-muted/50'}`}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg border transition-colors ${zone.enabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'} ${zone.enabled && selectedZones.has(zone.id) ? 'border-primary/40 bg-primary/5' : zone.enabled ? 'hover:bg-muted/50' : ''}`}
                     >
-                      <input type="checkbox" checked={selectedZones.has(zone.id)} onChange={() => toggleZone(zone.id)} className="rounded" />
+                      <input
+                        type="checkbox"
+                        checked={zone.enabled && selectedZones.has(zone.id)}
+                        disabled={!zone.enabled}
+                        onChange={() => toggleZone(zone.id)}
+                        className="rounded"
+                      />
                       <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: zone.color }} />
                       <span className="flex-1 text-sm font-medium">{zone.label}</span>
                       <span className="text-xs text-muted-foreground">{formatZoneMeasurement(zone, preferredAreaUnit)}</span>
@@ -466,7 +496,8 @@ export default function QuickQuotePanel({
                 </div>
                 {selectedZoneList.length > 0 && (
                   <div className="text-xs text-muted-foreground text-right">
-                    {selectedZoneList.length} zone{selectedZoneList.length !== 1 ? 's' : ''} · {formatArea(totalAreaSqft, preferredAreaUnit)}
+                    {selectedZoneList.length} zone{selectedZoneList.length !== 1 ? 's' : ''}
+                    {totalAreaSqft > 0 && <> · {formatArea(totalAreaSqft, preferredAreaUnit)}</>}
                     {totalLengthFt > 0 && <> · {formatLength(totalLengthFt)} linear</>}
                   </div>
                 )}
@@ -561,9 +592,14 @@ export default function QuickQuotePanel({
                 Matrix price for {formatArea(totalAreaSqft, preferredAreaUnit)}
               </p>
             )}
-            {mode === 'service' && !isMatrixService && priceType === 'per_sqft' && selectedService && totalAreaSqft > 0 && !secondaryService && (
+            {mode === 'service' && !isMatrixService && effectivePriceType === 'per_sqft' && selectedService && totalAreaSqft > 0 && !secondaryService && (
               <p className="text-xs text-muted-foreground">
                 ${selectedService.basePrice}/sqft × {formatArea(totalAreaSqft, preferredAreaUnit)}
+              </p>
+            )}
+            {mode === 'service' && !isMatrixService && effectivePriceType === 'per_linear_ft' && selectedService && totalLengthFt > 0 && !secondaryService && (
+              <p className="text-xs text-muted-foreground">
+                ${selectedService.basePrice}/linear ft × {formatLength(totalLengthFt)}
               </p>
             )}
             {mode === 'plan' && selectedPlan && (

@@ -651,6 +651,7 @@ export type ResolvePlanPriceResultBreakdownItem = {
   serviceId?: number;
   serviceName?: string;
   areaSqft?: number;
+  lengthFt?: number;
   price?: number;
 };
 
@@ -1251,6 +1252,8 @@ export type QuotePriceType = typeof QuotePriceType[keyof typeof QuotePriceType];
 export const QuotePriceType = {
   flat: 'flat',
   per_sqft: 'per_sqft',
+  per_linear_ft: 'per_linear_ft',
+  matrix: 'matrix',
 } as const;
 
 export type QuoteStatus = typeof QuoteStatus[keyof typeof QuoteStatus];
@@ -1319,6 +1322,8 @@ export type QuoteInputPriceType = typeof QuoteInputPriceType[keyof typeof QuoteI
 export const QuoteInputPriceType = {
   flat: 'flat',
   per_sqft: 'per_sqft',
+  per_linear_ft: 'per_linear_ft',
+  matrix: 'matrix',
 } as const;
 
 export interface QuoteInput {

@@ -231,11 +231,26 @@ router.delete("/plan-templates/:id", async (req, res): Promise<void> => {
 
 // ── Plan price resolver ───────────────────────────────────────────────────────
 
-interface MeasurementPolygon {
+export interface MeasurementPolygon {
   id: string;
+  label?: string | null;
   zoneTypeId?: string | null;
   areaSqft?: number | null;
+  lengthFt?: number | null;
+  mode?: "area" | "linear";
   enabled?: boolean;
+}
+
+export interface MeasurementZoneType {
+  id: string;
+  name: string;
+  mode?: "area" | "linear";
+}
+
+export interface ZoneMeasurements {
+  areaSqft: number;
+  lengthFt: number;
+  mode: "area" | "linear";
 }
 
 interface PlanPricingTier {
@@ -254,25 +269,56 @@ function resolvePlanMatrixPrice(matrix: PlanPricingTier[], areaSqft: number): nu
   return null;
 }
 
-function resolveServiceMatrixPrice(
+export function resolveServiceMatrixPrice(
   pricingMode: string,
   basePrice: number,
   pricingMatrix: unknown,
-  areaSqft: number,
+  measurements: ZoneMeasurements,
 ): number {
+  if (pricingMode === "per_sqft") return basePrice * measurements.areaSqft;
+  if (pricingMode === "per_linear_ft") return basePrice * measurements.lengthFt;
   if (pricingMode !== "matrix" || !Array.isArray(pricingMatrix) || pricingMatrix.length === 0) {
     return basePrice;
   }
+  const quantity = measurements.mode === "linear" ? measurements.lengthFt : measurements.areaSqft;
   const sorted = [...(pricingMatrix as PlanPricingTier[])].sort((a, b) => a.minSqft - b.minSqft);
   for (const tier of sorted) {
-    if (areaSqft >= tier.minSqft && (tier.maxSqft === null || areaSqft <= tier.maxSqft)) {
+    if (quantity >= tier.minSqft && (tier.maxSqft === null || quantity <= tier.maxSqft)) {
       if (tier.maxSqft === null && (tier as any).perSqftRate != null && (tier as any).perSqftRate > 0) {
-        return (tier as any).perSqftRate * areaSqft;
+        return (tier as any).perSqftRate * quantity;
       }
       return tier.price;
     }
   }
   return basePrice;
+}
+
+export function buildZoneMeasurementMap(
+  polygons: MeasurementPolygon[],
+  zoneTypes: MeasurementZoneType[],
+): Map<string, ZoneMeasurements> {
+  const zoneTypeById = new Map(zoneTypes.map(zoneType => [zoneType.id, zoneType]));
+  const zoneTypeIdByName = new Map(zoneTypes.map(zoneType => [zoneType.name, zoneType.id]));
+  const measurements = new Map<string, ZoneMeasurements>();
+
+  for (const polygon of polygons) {
+    if (polygon.enabled === false) continue;
+    const zoneTypeId = polygon.zoneTypeId ?? (polygon.label ? zoneTypeIdByName.get(polygon.label) : undefined);
+    if (!zoneTypeId) continue;
+
+    const configuredMode = zoneTypeById.get(zoneTypeId)?.mode ?? "area";
+    const mode = polygon.mode ?? configuredMode;
+    const current = measurements.get(zoneTypeId) ?? { areaSqft: 0, lengthFt: 0, mode };
+    current.mode = mode;
+    if (mode === "linear") {
+      current.lengthFt += polygon.lengthFt ?? 0;
+    } else {
+      current.areaSqft += polygon.areaSqft ?? 0;
+    }
+    measurements.set(zoneTypeId, current);
+  }
+
+  return measurements;
 }
 
 router.post("/plan-templates/resolve-price", async (req, res): Promise<void> => {
@@ -328,27 +374,30 @@ router.post("/plan-templates/resolve-price", async (req, res): Promise<void> => 
       .where(and(inArray(servicesTable.id, serviceIds), eq(servicesTable.tenantId, tenantId)));
 
     const polygons = ((property.measurementPolygons as unknown[]) ?? []) as MeasurementPolygon[];
-
-    // Build a map: zoneTypeId → total sqft (only enabled polygons)
-    const zoneAreaMap = new Map<string, number>();
-    for (const poly of polygons) {
-      if (poly.enabled === false) continue;
-      if (!poly.zoneTypeId || !poly.areaSqft) continue;
-      zoneAreaMap.set(poly.zoneTypeId, (zoneAreaMap.get(poly.zoneTypeId) ?? 0) + poly.areaSqft);
-    }
+    const [tenant] = await db.select({ measurementZoneTypes: tenantsTable.measurementZoneTypes })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, tenantId));
+    const zoneTypes = ((tenant?.measurementZoneTypes as unknown[]) ?? []) as MeasurementZoneType[];
+    const zoneMeasurementMap = buildZoneMeasurementMap(polygons, zoneTypes);
     const totalAreaSqft = property.serviceableAreaSqft ?? 0;
+    const totalLengthFt = [...zoneMeasurementMap.values()].reduce((sum, measurement) => sum + measurement.lengthFt, 0);
 
-    const breakdown: Array<{ serviceId: number; serviceName: string; areaSqft: number; price: number }> = [];
+    const breakdown: Array<{ serviceId: number; serviceName: string; areaSqft: number; lengthFt: number; price: number }> = [];
     let total = 0;
 
     for (const svc of svcRows) {
-      // For zone-linked services use the matching zone area; fall back to total serviceable area
-      const areaSqft = svc.linkedZoneTypeId
-        ? (zoneAreaMap.get(svc.linkedZoneTypeId) ?? totalAreaSqft)
-        : totalAreaSqft;
-      const price = resolveServiceMatrixPrice(svc.pricingMode, svc.basePrice, svc.pricingMatrix, areaSqft);
+      const measurements = svc.linkedZoneTypeId
+        ? (zoneMeasurementMap.get(svc.linkedZoneTypeId) ?? { areaSqft: totalAreaSqft, lengthFt: 0, mode: "area" as const })
+        : { areaSqft: totalAreaSqft, lengthFt: totalLengthFt, mode: svc.pricingMode === "per_linear_ft" ? "linear" as const : "area" as const };
+      const price = resolveServiceMatrixPrice(svc.pricingMode, svc.basePrice, svc.pricingMatrix, measurements);
       total += price;
-      breakdown.push({ serviceId: svc.id, serviceName: svc.name, areaSqft, price });
+      breakdown.push({
+        serviceId: svc.id,
+        serviceName: svc.name,
+        areaSqft: measurements.areaSqft,
+        lengthFt: measurements.lengthFt,
+        price,
+      });
     }
 
     res.json({ resolvedPrice: total, pricingMode: "sum_services", breakdown });
@@ -898,25 +947,29 @@ export async function resolvePlanCurrentPrice(
       .where(and(inArray(servicesTable.id, serviceIds), eq(servicesTable.tenantId, tenantId)));
 
     const polygons = ((property.measurementPolygons as unknown[]) ?? []) as MeasurementPolygon[];
-    const zoneAreaMap = new Map<string, number>();
-    for (const poly of polygons) {
-      if (poly.enabled === false) continue;
-      if (!poly.zoneTypeId || !poly.areaSqft) continue;
-      zoneAreaMap.set(poly.zoneTypeId, (zoneAreaMap.get(poly.zoneTypeId) ?? 0) + poly.areaSqft);
-    }
+    const [tenant] = await db.select({ measurementZoneTypes: tenantsTable.measurementZoneTypes })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, tenantId));
+    const zoneTypes = ((tenant?.measurementZoneTypes as unknown[]) ?? []) as MeasurementZoneType[];
+    const zoneMeasurementMap = buildZoneMeasurementMap(polygons, zoneTypes);
     const totalAreaSqft = property.serviceableAreaSqft ?? 0;
+    const totalLengthFt = [...zoneMeasurementMap.values()].reduce((sum, measurement) => sum + measurement.lengthFt, 0);
 
     let total = 0;
     for (const svc of svcRows) {
-      const areaSqft = svc.linkedZoneTypeId
-        ? (zoneAreaMap.get(svc.linkedZoneTypeId) ?? totalAreaSqft)
-        : totalAreaSqft;
-      total += resolveServiceMatrixPrice(svc.pricingMode, svc.basePrice, svc.pricingMatrix, areaSqft);
+      const measurements = svc.linkedZoneTypeId
+        ? (zoneMeasurementMap.get(svc.linkedZoneTypeId) ?? { areaSqft: totalAreaSqft, lengthFt: 0, mode: "area" as const })
+        : { areaSqft: totalAreaSqft, lengthFt: totalLengthFt, mode: svc.pricingMode === "per_linear_ft" ? "linear" as const : "area" as const };
+      total += resolveServiceMatrixPrice(svc.pricingMode, svc.basePrice, svc.pricingMatrix, measurements);
     }
 
+    const measurementParts = [
+      totalAreaSqft > 0 ? `${totalAreaSqft.toLocaleString()} sqft` : null,
+      totalLengthFt > 0 ? `${totalLengthFt.toLocaleString(undefined, { maximumFractionDigits: 0 })} linear ft` : null,
+    ].filter(Boolean);
     return {
       resolvedPrice: total,
-      areaNote: totalAreaSqft > 0 ? `Resolved from property area (${totalAreaSqft.toLocaleString()} sqft)` : null,
+      areaNote: measurementParts.length > 0 ? `Resolved from property measurements (${measurementParts.join(", ")})` : null,
       pricingMode: "sum_services",
     };
   }

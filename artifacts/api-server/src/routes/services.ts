@@ -77,7 +77,9 @@ router.post("/services", async (req, res): Promise<void> => {
     return;
   }
 
-  const resolvedMode = pricingMode === "matrix" ? "matrix" : "flat";
+  const resolvedMode = ["flat", "per_sqft", "per_linear_ft", "matrix"].includes(pricingMode)
+    ? pricingMode
+    : "flat";
 
   // Off-season: both must be provided together or neither
   const mmddRe = /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
@@ -136,7 +138,9 @@ router.patch("/services/:id", async (req, res): Promise<void> => {
   if (p4pPercentage !== undefined) updates.p4pPercentage = p4pPercentage !== "" && p4pPercentage != null ? parseFloat(p4pPercentage) : null;
   if (isActive !== undefined) updates.isActive = Boolean(isActive);
   if (pricingMode !== undefined) {
-    updates.pricingMode = pricingMode === "matrix" ? "matrix" : "flat";
+    updates.pricingMode = ["flat", "per_sqft", "per_linear_ft", "matrix"].includes(pricingMode)
+      ? pricingMode
+      : "flat";
     updates.pricingMatrix = pricingMode === "matrix" && Array.isArray(pricingMatrix) ? pricingMatrix : null;
   } else if (pricingMatrix !== undefined) {
     updates.pricingMatrix = Array.isArray(pricingMatrix) ? pricingMatrix : null;

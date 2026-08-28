@@ -38,8 +38,15 @@ export const tenantsTable = pgTable("tenants", {
   autoCreateGeofence: boolean("auto_create_geofence").notNull().default(false),
   /** @deprecated use measurementZoneTypes instead — kept for backward-compat migration */
   measurementZoneLabels: jsonb("measurement_zone_labels").default('["Front Lawn","Back Yard","Bed Areas","Side Yard","Common Area"]'),
-  /** Structured zone type definitions: Array<{ id: string, name: string, color: string }> */
-  measurementZoneTypes: jsonb("measurement_zone_types").default('[]'),
+  /**
+   * Structured zone type definitions: Array<{ id: string, name: string, color: string, mode?: 'area' | 'linear' }>.
+   * `mode` defaults to 'area' (closed polygon, e.g. lawns/beds) when absent; 'linear' zone types (e.g. Fence
+   * Line) are drawn as an open polyline and measured in feet instead of sqft. New tenants get a linear
+   * "Fence Line" example type out of the box so the feature is discoverable.
+   */
+  measurementZoneTypes: jsonb("measurement_zone_types").default(
+    '[{"id":"1","name":"Front Lawn","color":"#3B82F6","mode":"area"},{"id":"2","name":"Back Yard","color":"#10B981","mode":"area"},{"id":"3","name":"Bed Areas","color":"#F59E0B","mode":"area"},{"id":"4","name":"Side Yard","color":"#EF4444","mode":"area"},{"id":"5","name":"Common Area","color":"#8B5CF6","mode":"area"},{"id":"6","name":"Fence Line","color":"#06B6D4","mode":"linear"}]'
+  ),
   /** Preferred area unit for measurements: 'sqft' | 'acres' */
   preferredAreaUnit: text("preferred_area_unit").notNull().default("sqft"),
   // ── Communications ───────────────────────────────────────────────────────

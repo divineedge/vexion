@@ -32,3 +32,4 @@
 - [Master clock mutation variables](master-clock-mutation-vars.md) — adding requestBody to startMasterClock/stopMasterClock changes generated mutation variable type from void to {data?: ClockLocationInput}; pass {} not undefined at all call sites
 - [Metro orval cache invalidation](metro-orval-cache.md) — orval's "clean output folder" step transiently deletes generated files; Metro watcher loses resolution; workflow restart required after codegen
 - [Budget calculator financial model](budget-calculator-model.md) — divisions+company-total design, man-hours-not-crew-hours rate calc, P4P max()-not-additive, material markup overhead allocation
+- [MeasurementZone/ZoneType multi-location schema](measurement-zone-multi-location.md) — zone data model duplicated across ~7 files (spec/db/api/3 frontend); quote-public.tsx has an unrelated separate model

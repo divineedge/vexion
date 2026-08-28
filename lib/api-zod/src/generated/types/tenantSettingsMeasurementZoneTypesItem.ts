@@ -5,9 +5,12 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { TenantSettingsMeasurementZoneTypesItemMode } from './tenantSettingsMeasurementZoneTypesItemMode';
 
 export type TenantSettingsMeasurementZoneTypesItem = {
   id: string;
   name: string;
   color: string;
+  /** Default measurement mode for zones of this type — 'area' (default) for polygon-measured zones like lawns, 'linear' for open-path zones like fence lines, edging, or hedges. */
+  mode?: TenantSettingsMeasurementZoneTypesItemMode;
 };

@@ -173,12 +173,13 @@ export default function SettingsPage() {
   const [defaultGeofenceUnit, setDefaultGeofenceUnit] = useState<'m' | 'ft'>('m');
   const [autoCreateGeofence, setAutoCreateGeofence] = useState(false);
   const [preferredAreaUnit, setPreferredAreaUnit] = useState<'sqft' | 'acres'>('sqft');
-  const [zoneTypes, setZoneTypes] = useState<Array<{ id: string; name: string; color: string }>>([
-    { id: '1', name: 'Front Lawn', color: '#3B82F6' },
-    { id: '2', name: 'Back Yard', color: '#10B981' },
-    { id: '3', name: 'Bed Areas', color: '#F59E0B' },
-    { id: '4', name: 'Side Yard', color: '#EF4444' },
-    { id: '5', name: 'Common Area', color: '#8B5CF6' },
+  const [zoneTypes, setZoneTypes] = useState<Array<{ id: string; name: string; color: string; mode?: 'area' | 'linear' }>>([
+    { id: '1', name: 'Front Lawn', color: '#3B82F6', mode: 'area' },
+    { id: '2', name: 'Back Yard', color: '#10B981', mode: 'area' },
+    { id: '3', name: 'Bed Areas', color: '#F59E0B', mode: 'area' },
+    { id: '4', name: 'Side Yard', color: '#EF4444', mode: 'area' },
+    { id: '5', name: 'Common Area', color: '#8B5CF6', mode: 'area' },
+    { id: '6', name: 'Fence Line', color: '#06B6D4', mode: 'linear' },
   ]);
 
   // Team
@@ -257,14 +258,15 @@ export default function SettingsPage() {
       setDefaultGeofenceUnit(((settings as any).defaultGeofenceUnit as 'm' | 'ft') ?? 'm');
       setAutoCreateGeofence((settings as any).autoCreateGeofence ?? false);
       setPreferredAreaUnit(((settings as any).preferredAreaUnit as 'sqft' | 'acres') ?? 'sqft');
-      const rawZoneTypes = (settings as any).measurementZoneTypes as Array<{ id: string; name: string; color: string }> | undefined;
+      const rawZoneTypes = (settings as any).measurementZoneTypes as Array<{ id: string; name: string; color: string; mode?: 'area' | 'linear' }> | undefined;
       if (rawZoneTypes && rawZoneTypes.length > 0) {
-        setZoneTypes(rawZoneTypes);
+        setZoneTypes(rawZoneTypes.map(zt => ({ ...zt, mode: zt.mode ?? 'area' })));
       } else {
-        // Derive from legacy labels with default colors
+        // Derive from legacy labels with default colors. Legacy labels carry no mode info, so
+        // derived zone types always default to 'area'.
         const ZONE_COLORS = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#84CC16','#F97316','#EC4899','#6366F1'];
         const labels: string[] = (settings as any).measurementZoneLabels ?? ['Front Lawn', 'Back Yard', 'Bed Areas', 'Side Yard', 'Common Area'];
-        setZoneTypes(labels.map((name, i) => ({ id: String(i + 1), name, color: ZONE_COLORS[i % ZONE_COLORS.length] })));
+        setZoneTypes(labels.map((name, i) => ({ id: String(i + 1), name, color: ZONE_COLORS[i % ZONE_COLORS.length], mode: 'area' as const })));
       }
       setCustomerFields(getActiveCustomerFields(settings));
       // Branding
@@ -1053,7 +1055,7 @@ export default function SettingsPage() {
                     onClick={() => {
                       const ZONE_COLORS = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#84CC16','#F97316','#EC4899','#6366F1'];
                       const color = ZONE_COLORS[zoneTypes.length % ZONE_COLORS.length];
-                      setZoneTypes(z => [...z, { id: crypto.randomUUID(), name: 'New Zone', color }]);
+                      setZoneTypes(z => [...z, { id: crypto.randomUUID(), name: 'New Zone', color, mode: 'area' as const }]);
                     }}
                   >
                     <Plus className="w-3 h-3" /> Add Zone Type
@@ -1061,6 +1063,8 @@ export default function SettingsPage() {
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Define the zone types available when drawing measurement areas on the satellite map. Each type gets a unique color.
+                  Set a type's mode to <span className="font-medium">Linear</span> for fence lines, edging, or hedges measured in feet
+                  instead of square feet.
                 </p>
                 <div className="space-y-2">
                   {zoneTypes.map((zt, idx) => (
@@ -1089,6 +1093,23 @@ export default function SettingsPage() {
                         onChange={e => setZoneTypes(z => z.map(z2 => z2.id === zt.id ? { ...z2, name: e.target.value } : z2))}
                         placeholder="Zone name"
                       />
+                      {/* Mode toggle: area vs linear */}
+                      <div className="flex items-center rounded-md border overflow-hidden shrink-0" title="Whether this zone type is measured as an area (polygon) or a length (line)">
+                        <button
+                          type="button"
+                          className={`px-2 py-1 text-xs font-medium transition ${(zt.mode ?? 'area') === 'area' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+                          onClick={() => setZoneTypes(z => z.map(z2 => z2.id === zt.id ? { ...z2, mode: 'area' as const } : z2))}
+                        >
+                          Area
+                        </button>
+                        <button
+                          type="button"
+                          className={`px-2 py-1 text-xs font-medium transition ${zt.mode === 'linear' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}
+                          onClick={() => setZoneTypes(z => z.map(z2 => z2.id === zt.id ? { ...z2, mode: 'linear' as const } : z2))}
+                        >
+                          Linear
+                        </button>
+                      </div>
                       {/* Move up */}
                       <button
                         className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-30 transition"
@@ -1132,7 +1153,7 @@ export default function SettingsPage() {
               <Button
                 title="Save measurement settings and zone type definitions"
                 onClick={() => {
-                  const validZoneTypes = zoneTypes.filter(z => z.name.trim());
+                  const validZoneTypes = zoneTypes.filter(z => z.name.trim()).map(z => ({ ...z, mode: z.mode ?? 'area' as const }));
                   updateSettings.mutate(
                     { data: { preferredAreaUnit, measurementZoneTypes: validZoneTypes } as Parameters<typeof updateSettings.mutate>[0]['data'] },
                     { onSuccess: () => toast.success('Measurement settings saved'), onError: () => toast.error('Failed to save') }

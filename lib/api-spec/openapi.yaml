@@ -8806,13 +8806,21 @@ components:
           type: string
         vertices:
           type: array
-          description: "Array of [lat, lng] coordinate pairs"
+          description: "Array of [lat, lng] coordinate pairs. For mode 'linear' this is an open polyline path; for 'area' (default) it is a closed polygon ring."
           items:
             type: array
             items:
               type: number
         areaSqft:
           type: number
+          description: "Computed polygon area in square feet. 0 for linear zones."
+        lengthFt:
+          type: ["number", "null"]
+          description: "Computed polyline length in feet. Only set for mode 'linear' zones (fence lines, edging, hedges, etc)."
+        mode:
+          type: string
+          enum: [area, linear]
+          description: "Measurement mode this zone was drawn in. Defaults to 'area' when absent (pre-existing zones)."
         enabled:
           type: boolean
         color:
@@ -11013,7 +11021,7 @@ components:
           description: "Deprecated: use measurementZoneTypes instead"
         measurementZoneTypes:
           type: array
-          description: "Structured zone type definitions with name and color"
+          description: "Structured zone type definitions with name, color, and measurement mode"
           items:
             type: object
             required: [id, name, color]
@@ -11024,6 +11032,10 @@ components:
                 type: string
               color:
                 type: string
+              mode:
+                type: string
+                enum: [area, linear]
+                description: "Default measurement mode for zones of this type — 'area' (default) for polygon-measured zones like lawns, 'linear' for open-path zones like fence lines, edging, or hedges."
         preferredAreaUnit:
           type: string
           enum: [sqft, acres]
@@ -11484,6 +11496,9 @@ components:
                 type: string
               color:
                 type: string
+              mode:
+                type: string
+                enum: [area, linear]
         preferredAreaUnit:
           type: string
           enum: [sqft, acres]

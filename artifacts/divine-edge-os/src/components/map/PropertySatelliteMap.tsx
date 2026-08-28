@@ -9,9 +9,14 @@ import 'leaflet/dist/leaflet.css';
 export interface MeasurementZone {
   id: string;
   label: string;
-  /** Array of [lat, lng] pairs */
+  /** Array of [lat, lng] pairs. Open polyline path when mode is 'linear', closed polygon ring otherwise. */
   vertices: [number, number][];
+  /** Polygon area in sqft. 0 for linear zones. */
   areaSqft: number;
+  /** Polyline length in feet. Only set when mode is 'linear'. */
+  lengthFt?: number | null;
+  /** Measurement mode this zone was drawn in. Absent/undefined means 'area' (pre-existing zones). */
+  mode?: 'area' | 'linear';
   enabled: boolean;
   color: string;
 }
@@ -20,6 +25,8 @@ export interface ZoneType {
   id: string;
   name: string;
   color: string;
+  /** Default measurement mode when drawing a zone of this type. Defaults to 'area' when absent. */
+  mode?: 'area' | 'linear';
 }
 
 interface PropertySatelliteMapProps {
@@ -70,6 +77,24 @@ function polygonAreaSqft(vertices: [number, number][]): number {
   return areaSqm * 10.7639; // m² to sqft
 }
 
+/** Sum of haversine distances between consecutive [lat, lng] points, in feet. Open path (not closed). */
+function lineLengthFt(vertices: [number, number][]): number {
+  if (vertices.length < 2) return 0;
+  const R = 6371000; // Earth radius in meters
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  let totalM = 0;
+  for (let i = 0; i < vertices.length - 1; i++) {
+    const [lat1, lng1] = vertices[i];
+    const [lat2, lng2] = vertices[i + 1];
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    totalM += R * c;
+  }
+  return totalM * 3.28084; // meters to feet
+}
+
 function formatArea(sqft: number, unit: 'sqft' | 'acres'): string {
   if (unit === 'acres') {
     return `${(sqft / 43560).toFixed(3)} ac`;
@@ -77,16 +102,27 @@ function formatArea(sqft: number, unit: 'sqft' | 'acres'): string {
   return `${sqft.toLocaleString(undefined, { maximumFractionDigits: 0 })} sqft`;
 }
 
+function formatLength(ft: number): string {
+  return `${ft.toLocaleString(undefined, { maximumFractionDigits: 0 })} ft`;
+}
+
+/** Displays a zone's measurement using the right unit for its mode: length in feet for linear zones, area otherwise. */
+function formatZoneMeasurement(zone: MeasurementZone, areaUnit: 'sqft' | 'acres'): string {
+  if (zone.mode === 'linear') return formatLength(zone.lengthFt ?? 0);
+  return formatArea(zone.areaSqft, areaUnit);
+}
+
 function generateId(): string {
   return Math.random().toString(36).slice(2, 9);
 }
 
 const DEFAULT_ZONE_TYPES: ZoneType[] = [
-  { id: '1', name: 'Front Lawn', color: '#3B82F6' },
-  { id: '2', name: 'Back Yard', color: '#10B981' },
-  { id: '3', name: 'Bed Areas', color: '#F59E0B' },
-  { id: '4', name: 'Side Yard', color: '#EF4444' },
-  { id: '5', name: 'Common Area', color: '#8B5CF6' },
+  { id: '1', name: 'Front Lawn', color: '#3B82F6', mode: 'area' },
+  { id: '2', name: 'Back Yard', color: '#10B981', mode: 'area' },
+  { id: '3', name: 'Bed Areas', color: '#F59E0B', mode: 'area' },
+  { id: '4', name: 'Side Yard', color: '#EF4444', mode: 'area' },
+  { id: '5', name: 'Common Area', color: '#8B5CF6', mode: 'area' },
+  { id: '6', name: 'Fence Line', color: '#06B6D4', mode: 'linear' },
 ];
 
 export default function PropertySatelliteMap({
@@ -106,14 +142,16 @@ export default function PropertySatelliteMap({
   onGeofenceChange,
   readonly = false,
 }: PropertySatelliteMapProps) {
-  // Resolve effective zone types: prefer structured zoneTypes, fall back to legacy labels, then built-in defaults
+  // Resolve effective zone types: prefer structured zoneTypes, fall back to legacy labels, then built-in defaults.
+  // Legacy labels carry no mode info, so they always resolve to 'area'.
   const effectiveZoneTypes: ZoneType[] = React.useMemo(() => {
-    if (zoneTypes && zoneTypes.length > 0) return zoneTypes;
+    if (zoneTypes && zoneTypes.length > 0) return zoneTypes.map(zt => ({ ...zt, mode: zt.mode ?? 'area' }));
     if (defaultZoneLabels && defaultZoneLabels.length > 0) {
       return defaultZoneLabels.map((name, i) => ({
         id: String(i + 1),
         name,
         color: ZONE_COLORS[i % ZONE_COLORS.length],
+        mode: 'area' as const,
       }));
     }
     return DEFAULT_ZONE_TYPES;
@@ -123,7 +161,7 @@ export default function PropertySatelliteMap({
   const markersRef = useRef<{
     pin?: import('leaflet').Marker;
     geofenceCircle?: import('leaflet').Circle;
-    polygons: Array<{ id: string; layer: import('leaflet').Polygon }>;
+    polygons: Array<{ id: string; layer: import('leaflet').Polygon | import('leaflet').Polyline }>;
     drawingLayer?: import('leaflet').Polygon;
     tempPoints?: import('leaflet').Polyline;
     tempDots?: import('leaflet').LayerGroup;
@@ -257,30 +295,44 @@ export default function PropertySatelliteMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Draw stored polygons whenever map is ready or zones change
+  // Draw stored zones (polygons or open polylines) whenever map is ready or zones change
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
     import('leaflet').then((L) => {
       const map = mapRef.current;
       if (!map) return;
 
-      // Remove old polygon layers
+      // Remove old zone layers
       markersRef.current.polygons.forEach(({ layer }) => map.removeLayer(layer));
       markersRef.current.polygons = [];
 
       zones.forEach((zone, i) => {
-        if (zone.vertices.length < 3) return;
         const color = zone.color || ZONE_COLORS[i % ZONE_COLORS.length];
-        const poly = L.polygon(zone.vertices, {
-          color,
-          fillColor: color,
-          fillOpacity: zone.enabled ? 0.25 : 0.05,
-          weight: 2,
-          opacity: zone.enabled ? 1 : 0.4,
-        })
-          .addTo(map)
-          .bindPopup(`<b>${zone.label}</b><br/>${formatArea(zone.areaSqft, preferredAreaUnit)}`);
-        markersRef.current.polygons.push({ id: zone.id, layer: poly });
+        const popup = `<b>${zone.label}</b><br/>${formatZoneMeasurement(zone, preferredAreaUnit)}`;
+        if (zone.mode === 'linear') {
+          if (zone.vertices.length < 2) return;
+          const line = L.polyline(zone.vertices, {
+            color,
+            weight: zone.enabled ? 4 : 2,
+            opacity: zone.enabled ? 1 : 0.4,
+            dashArray: zone.enabled ? undefined : '4 4',
+          })
+            .addTo(map)
+            .bindPopup(popup);
+          markersRef.current.polygons.push({ id: zone.id, layer: line });
+        } else {
+          if (zone.vertices.length < 3) return;
+          const poly = L.polygon(zone.vertices, {
+            color,
+            fillColor: color,
+            fillOpacity: zone.enabled ? 0.25 : 0.05,
+            weight: 2,
+            opacity: zone.enabled ? 1 : 0.4,
+          })
+            .addTo(map)
+            .bindPopup(popup);
+          markersRef.current.polygons.push({ id: zone.id, layer: poly });
+        }
       });
     });
   }, [mapReady, zones, preferredAreaUnit]);
@@ -299,12 +351,25 @@ export default function PropertySatelliteMap({
 
   const FIRST_POINT_HIT_RADIUS_PX = 16;
 
+  // Measurement mode for the zone type currently selected in the toolbar. This is what
+  // decides whether the next drawing session produces a closed polygon (area) or an open
+  // polyline (linear) — it's locked in once drawing starts, since the zone-type picker is
+  // hidden while drawingMode is true.
+  const drawMode: 'area' | 'linear' = effectiveZoneTypes.find(z => z.id === selectedZoneTypeId)?.mode ?? 'area';
+  // Kept in sync so handleMapClick (stable identity below) always sees the current mode
+  // without needing it as a dependency.
+  const drawModeRef = useRef(drawMode);
+  useEffect(() => {
+    drawModeRef.current = drawMode;
+  });
+
   // Handle map clicks for drawing
   const handleMapClick = useCallback((e: import('leaflet').LeafletMouseEvent) => {
     setDrawingPoints(prev => {
-      // Clicking on/near the first placed point closes the polygon, once enough points exist.
-      if (prev.length >= 3 && pixelDistance(prev[0], e.latlng) <= FIRST_POINT_HIT_RADIUS_PX) {
-        finishPolygonRef.current(prev);
+      // In area mode, clicking on/near the first placed point closes the polygon, once
+      // enough points exist. Linear zones are an open path, so no closing-click gesture.
+      if (drawModeRef.current === 'area' && prev.length >= 3 && pixelDistance(prev[0], e.latlng) <= FIRST_POINT_HIT_RADIUS_PX) {
+        finishZoneRef.current(prev);
         return prev;
       }
       const next = [...prev, [e.latlng.lat, e.latlng.lng] as [number, number]];
@@ -358,17 +423,19 @@ export default function PropertySatelliteMap({
     });
   }, [drawingPoints, drawingMode, mapReady]);
 
-  const finishPolygon = (pointsOverride?: [number, number][]) => {
+  const finishZone = (pointsOverride?: [number, number][]) => {
     const points = pointsOverride ?? drawingPoints;
-    if (points.length < 3) return;
-    const areaSqft = polygonAreaSqft(points);
+    const mode = drawModeRef.current;
+    if (mode === 'linear' ? points.length < 2 : points.length < 3) return;
     // Resolve the selected zone type (fall back to index-based color if not found)
     const selectedType = effectiveZoneTypes.find(z => z.id === selectedZoneTypeId) ?? effectiveZoneTypes[zones.length % effectiveZoneTypes.length];
     const newZone: MeasurementZone = {
       id: generateId(),
       label: selectedType?.name ?? 'Zone',
       vertices: points,
-      areaSqft,
+      areaSqft: mode === 'linear' ? 0 : polygonAreaSqft(points),
+      lengthFt: mode === 'linear' ? lineLengthFt(points) : undefined,
+      mode,
       enabled: true,
       color: selectedType?.color ?? ZONE_COLORS[zones.length % ZONE_COLORS.length],
     };
@@ -381,10 +448,10 @@ export default function PropertySatelliteMap({
   };
 
   // Kept in sync so handleMapClick (defined earlier, with a stable identity) can always call
-  // the latest finishPolygon without needing it as a dependency.
-  const finishPolygonRef = useRef(finishPolygon);
+  // the latest finishZone without needing it as a dependency.
+  const finishZoneRef = useRef(finishZone);
   useEffect(() => {
-    finishPolygonRef.current = finishPolygon;
+    finishZoneRef.current = finishZone;
   });
 
   const cancelDrawing = () => {
@@ -442,7 +509,8 @@ export default function PropertySatelliteMap({
     setEditingGeofence(false);
   };
 
-  const totalEnabledSqft = zones.filter(z => z.enabled).reduce((s, z) => s + z.areaSqft, 0);
+  const totalEnabledSqft = zones.filter(z => z.enabled && z.mode !== 'linear').reduce((s, z) => s + z.areaSqft, 0);
+  const totalEnabledLengthFt = zones.filter(z => z.enabled && z.mode === 'linear').reduce((s, z) => s + (z.lengthFt ?? 0), 0);
 
   return (
     <div className="flex flex-col gap-3">
@@ -453,11 +521,23 @@ export default function PropertySatelliteMap({
         {/* Drawing overlay controls */}
         {drawingMode && (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] bg-amber-600 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-3 text-sm font-medium">
-            <span>Click map to add vertices ({drawingPoints.length} points)</span>
-            {drawingPoints.length >= 3 && (
+            <span>
+              {drawMode === 'linear'
+                ? `Click map to add points along the line (${drawingPoints.length} points)`
+                : `Click map to add vertices (${drawingPoints.length} points)`}
+            </span>
+            {drawMode === 'linear' && drawingPoints.length >= 2 && (
               <button
                 className="bg-white text-amber-700 px-3 py-0.5 rounded-full font-semibold hover:bg-amber-50 transition"
-                onClick={() => finishPolygon()}
+                onClick={() => finishZone()}
+              >
+                Finish Line
+              </button>
+            )}
+            {drawMode === 'area' && drawingPoints.length >= 3 && (
+              <button
+                className="bg-white text-amber-700 px-3 py-0.5 rounded-full font-semibold hover:bg-amber-50 transition"
+                onClick={() => finishZone()}
               >
                 Close Polygon
               </button>
@@ -492,22 +572,24 @@ export default function PropertySatelliteMap({
                     ) : null;
                   })()}
                   <select
-                    title="Zone type to assign when drawing a new zone"
+                    title="Zone type to assign when drawing a new zone — its mode (area or linear) determines how the zone is drawn"
                     className="text-sm border rounded px-2 py-1.5 bg-background flex-1"
                     value={selectedZoneTypeId}
                     onChange={e => setSelectedZoneTypeId(e.target.value)}
                   >
                     {effectiveZoneTypes.map(zt => (
-                      <option key={zt.id} value={zt.id}>{zt.name}</option>
+                      <option key={zt.id} value={zt.id}>{zt.name}{zt.mode === 'linear' ? ' (linear)' : ''}</option>
                     ))}
                   </select>
                 </div>
                 <button
                   className="text-sm px-3 py-1.5 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition font-medium"
-                  title="Click points on the map to draw a new service zone polygon"
+                  title={drawMode === 'linear'
+                    ? 'Click points on the map to draw a new linear zone (e.g. fence line, edging, hedge)'
+                    : 'Click points on the map to draw a new service zone polygon'}
                   onClick={() => { setDrawingMode(true); setDrawingPoints([]); }}
                 >
-                  ＋ Draw Zone
+                  {drawMode === 'linear' ? '＋ Draw Line' : '＋ Draw Zone'}
                 </button>
               </div>
               {zones.length > 0 && (
@@ -528,7 +610,11 @@ export default function PropertySatelliteMap({
               </button>
             </>
           ) : (
-            <p className="text-sm text-muted-foreground">Click on the map to place vertices, then close the polygon.</p>
+            <p className="text-sm text-muted-foreground">
+              {drawMode === 'linear'
+                ? 'Click on the map to place points along the line, then finish it.'
+                : 'Click on the map to place vertices, then close the polygon.'}
+            </p>
           )}
         </div>
       )}
@@ -564,6 +650,9 @@ export default function PropertySatelliteMap({
             <p className="text-sm font-semibold">Measurement Zones</p>
             <p className="text-sm text-muted-foreground">
               Total: <span className="font-semibold text-foreground">{formatArea(totalEnabledSqft, preferredAreaUnit)}</span>
+              {totalEnabledLengthFt > 0 && (
+                <> · <span className="font-semibold text-foreground">{formatLength(totalEnabledLengthFt)}</span> linear</>
+              )}
             </p>
           </div>
           {zones.map((zone) => (
@@ -588,7 +677,7 @@ export default function PropertySatelliteMap({
                   onClick={() => { if (!readonly) setEditingZoneId(zone.id); }}
                 >{zone.label}</span>
               )}
-              <span className="text-muted-foreground">{formatArea(zone.areaSqft, preferredAreaUnit)}</span>
+              <span className="text-muted-foreground">{formatZoneMeasurement(zone, preferredAreaUnit)}</span>
               {!readonly && (
                 <>
                   <button

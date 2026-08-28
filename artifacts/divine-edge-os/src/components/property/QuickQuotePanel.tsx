@@ -19,6 +19,10 @@ export interface MeasurementZone {
   id: string;
   label: string;
   areaSqft: number;
+  /** Length in feet — only set for linear (open polyline) zones like fence lines, edging, hedges. */
+  lengthFt?: number | null;
+  /** Measurement mode. Absent/undefined means 'area' (pre-existing zones). */
+  mode?: 'area' | 'linear';
   enabled: boolean;
   color: string;
 }
@@ -27,6 +31,8 @@ interface ZoneType {
   id: string;
   name: string;
   color: string;
+  /** Default measurement mode for this zone type. Defaults to 'area' when absent. */
+  mode?: 'area' | 'linear';
 }
 
 interface Service {
@@ -66,6 +72,16 @@ type QuoteMode = 'service' | 'plan';
 function formatArea(sqft: number, unit: 'sqft' | 'acres'): string {
   if (unit === 'acres') return `${(sqft / 43560).toFixed(3)} ac`;
   return `${sqft.toLocaleString(undefined, { maximumFractionDigits: 0 })} sqft`;
+}
+
+function formatLength(ft: number): string {
+  return `${ft.toLocaleString(undefined, { maximumFractionDigits: 0 })} ft`;
+}
+
+/** Shows length in feet for linear zones, area otherwise. */
+function formatZoneMeasurement(zone: MeasurementZone, areaUnit: 'sqft' | 'acres'): string {
+  if (zone.mode === 'linear') return formatLength(zone.lengthFt ?? 0);
+  return formatArea(zone.areaSqft, areaUnit);
 }
 
 export default function QuickQuotePanel({
@@ -145,6 +161,7 @@ export default function QuickQuotePanel({
 
   const selectedZoneList = zones.filter(z => selectedZones.has(z.id));
   const totalAreaSqft = selectedZoneList.reduce((s, z) => s + z.areaSqft, 0);
+  const totalLengthFt = selectedZoneList.filter(z => z.mode === 'linear').reduce((s, z) => s + (z.lengthFt ?? 0), 0);
   const linkedZoneTypeName = selectedService?.linkedZoneTypeId
     ? zoneTypes.find(zt => zt.id === selectedService.linkedZoneTypeId)?.name
     : null;
@@ -443,13 +460,14 @@ export default function QuickQuotePanel({
                       <input type="checkbox" checked={selectedZones.has(zone.id)} onChange={() => toggleZone(zone.id)} className="rounded" />
                       <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: zone.color }} />
                       <span className="flex-1 text-sm font-medium">{zone.label}</span>
-                      <span className="text-xs text-muted-foreground">{formatArea(zone.areaSqft, preferredAreaUnit)}</span>
+                      <span className="text-xs text-muted-foreground">{formatZoneMeasurement(zone, preferredAreaUnit)}</span>
                     </label>
                   ))}
                 </div>
                 {selectedZoneList.length > 0 && (
                   <div className="text-xs text-muted-foreground text-right">
                     {selectedZoneList.length} zone{selectedZoneList.length !== 1 ? 's' : ''} · {formatArea(totalAreaSqft, preferredAreaUnit)}
+                    {totalLengthFt > 0 && <> · {formatLength(totalLengthFt)} linear</>}
                   </div>
                 )}
               </div>

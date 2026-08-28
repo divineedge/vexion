@@ -154,11 +154,12 @@ export default function PropertyDetailPage() {
 
   const preferredAreaUnit = (tenantSettings?.preferredAreaUnit as 'sqft' | 'acres') ?? 'sqft';
   const ZONE_COLORS = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#84CC16','#F97316','#EC4899','#6366F1'];
-  const rawZoneTypes = (tenantSettings as any)?.measurementZoneTypes as Array<{ id: string; name: string; color: string }> | undefined;
+  const rawZoneTypes = (tenantSettings as any)?.measurementZoneTypes as Array<{ id: string; name: string; color: string; mode?: 'area' | 'linear' }> | undefined;
   const zoneTypes = rawZoneTypes && rawZoneTypes.length > 0
-    ? rawZoneTypes
+    ? rawZoneTypes.map(zt => ({ ...zt, mode: zt.mode ?? 'area' as const }))
+    // Legacy labels carry no mode info, so derived zone types always default to 'area'.
     : ((tenantSettings?.measurementZoneLabels as string[] | undefined) ?? ['Front Lawn', 'Back Yard', 'Bed Areas', 'Side Yard', 'Common Area'])
-        .map((name, i) => ({ id: String(i + 1), name, color: ZONE_COLORS[i % ZONE_COLORS.length] }));
+        .map((name, i) => ({ id: String(i + 1), name, color: ZONE_COLORS[i % ZONE_COLORS.length], mode: 'area' as const }));
   const defaultGeofenceRadius = tenantSettings?.defaultGeofenceRadius ?? 100;
   const defaultGeofenceUnit = ((tenantSettings as any)?.defaultGeofenceUnit as 'm' | 'ft') ?? 'm';
   // Convert tenant default to meters (Leaflet always uses meters for L.circle radius)

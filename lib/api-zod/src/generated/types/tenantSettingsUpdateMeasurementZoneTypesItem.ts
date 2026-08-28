@@ -5,9 +5,11 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { TenantSettingsUpdateMeasurementZoneTypesItemMode } from './tenantSettingsUpdateMeasurementZoneTypesItemMode';
 
 export type TenantSettingsUpdateMeasurementZoneTypesItem = {
   id: string;
   name: string;
   color: string;
+  mode?: TenantSettingsUpdateMeasurementZoneTypesItemMode;
 };

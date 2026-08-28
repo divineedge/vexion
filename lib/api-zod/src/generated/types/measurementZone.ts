@@ -5,13 +5,22 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { MeasurementZoneMode } from './measurementZoneMode';
 
 export interface MeasurementZone {
   id: string;
   label: string;
-  /** Array of [lat, lng] coordinate pairs */
+  /** Array of [lat, lng] coordinate pairs. For mode 'linear' this is an open polyline path; for 'area' (default) it is a closed polygon ring. */
   vertices: number[][];
+  /** Computed polygon area in square feet. 0 for linear zones. */
   areaSqft: number;
+  /**
+     * Computed polyline length in feet. Only set for mode 'linear' zones (fence lines, edging, hedges, etc).
+     * @nullable
+     */
+  lengthFt?: number | null;
+  /** Measurement mode this zone was drawn in. Defaults to 'area' when absent (pre-existing zones). */
+  mode?: MeasurementZoneMode;
   enabled: boolean;
   color: string;
 }

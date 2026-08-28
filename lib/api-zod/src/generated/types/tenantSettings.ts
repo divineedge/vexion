@@ -61,7 +61,7 @@ export interface TenantSettings {
   autoCreateGeofence?: boolean;
   /** Deprecated: use measurementZoneTypes instead */
   measurementZoneLabels?: string[];
-  /** Structured zone type definitions with name and color */
+  /** Structured zone type definitions with name, color, and measurement mode */
   measurementZoneTypes?: TenantSettingsMeasurementZoneTypesItem[];
   /** Preferred area unit for property measurements */
   preferredAreaUnit?: TenantSettingsPreferredAreaUnit;

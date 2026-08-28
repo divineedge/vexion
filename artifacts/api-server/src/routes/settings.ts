@@ -18,12 +18,13 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
   const rolePerms = tenant.rolePermissions as Record<string, Record<string, boolean>> | null;
   const defaultZoneLabels = (tenant.measurementZoneLabels as string[] | null) ?? ["Front Lawn", "Back Yard", "Bed Areas", "Side Yard", "Common Area"];
   const DEFAULT_ZONE_COLORS = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#84CC16','#F97316','#EC4899','#6366F1'];
-  // If measurementZoneTypes is populated, use it; otherwise derive from legacy labels
-  const rawZoneTypes = tenant.measurementZoneTypes as Array<{ id: string; name: string; color: string }> | null;
-  const measurementZoneTypes: Array<{ id: string; name: string; color: string }> =
+  // If measurementZoneTypes is populated, use it; otherwise derive from legacy labels.
+  // Legacy labels carry no measurement-mode info, so derived types always default to 'area'.
+  const rawZoneTypes = tenant.measurementZoneTypes as Array<{ id: string; name: string; color: string; mode?: 'area' | 'linear' }> | null;
+  const measurementZoneTypes: Array<{ id: string; name: string; color: string; mode: 'area' | 'linear' }> =
     rawZoneTypes && rawZoneTypes.length > 0
-      ? rawZoneTypes
-      : defaultZoneLabels.map((name, i) => ({ id: String(i + 1), name, color: DEFAULT_ZONE_COLORS[i % DEFAULT_ZONE_COLORS.length] }));
+      ? rawZoneTypes.map(zt => ({ ...zt, mode: zt.mode ?? 'area' }))
+      : defaultZoneLabels.map((name, i) => ({ id: String(i + 1), name, color: DEFAULT_ZONE_COLORS[i % DEFAULT_ZONE_COLORS.length], mode: 'area' as const }));
   const phonePlatformConfig = (tenant.phonePlatformConfig as Record<string, string>) ?? {};
   const emailProviderConfig = (tenant.emailProviderConfig as Record<string, string>) ?? {};
   return {

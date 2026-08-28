@@ -1119,12 +1119,31 @@ export interface CustomerListResponse {
   limit: number;
 }
 
+/**
+ * Measurement mode this zone was drawn in. Defaults to 'area' when absent (pre-existing zones).
+ */
+export type MeasurementZoneMode = typeof MeasurementZoneMode[keyof typeof MeasurementZoneMode];
+
+
+export const MeasurementZoneMode = {
+  area: 'area',
+  linear: 'linear',
+} as const;
+
 export interface MeasurementZone {
   id: string;
   label: string;
-  /** Array of [lat, lng] coordinate pairs */
+  /** Array of [lat, lng] coordinate pairs. For mode 'linear' this is an open polyline path; for 'area' (default) it is a closed polygon ring. */
   vertices: number[][];
+  /** Computed polygon area in square feet. 0 for linear zones. */
   areaSqft: number;
+  /**
+     * Computed polyline length in feet. Only set for mode 'linear' zones (fence lines, edging, hedges, etc).
+     * @nullable
+     */
+  lengthFt?: number | null;
+  /** Measurement mode this zone was drawn in. Defaults to 'area' when absent (pre-existing zones). */
+  mode?: MeasurementZoneMode;
   enabled: boolean;
   color: string;
 }
@@ -2802,10 +2821,23 @@ export const TenantSettingsDefaultGeofenceUnit = {
   ft: 'ft',
 } as const;
 
+/**
+ * Default measurement mode for zones of this type — 'area' (default) for polygon-measured zones like lawns, 'linear' for open-path zones like fence lines, edging, or hedges.
+ */
+export type TenantSettingsMeasurementZoneTypesItemMode = typeof TenantSettingsMeasurementZoneTypesItemMode[keyof typeof TenantSettingsMeasurementZoneTypesItemMode];
+
+
+export const TenantSettingsMeasurementZoneTypesItemMode = {
+  area: 'area',
+  linear: 'linear',
+} as const;
+
 export type TenantSettingsMeasurementZoneTypesItem = {
   id: string;
   name: string;
   color: string;
+  /** Default measurement mode for zones of this type — 'area' (default) for polygon-measured zones like lawns, 'linear' for open-path zones like fence lines, edging, or hedges. */
+  mode?: TenantSettingsMeasurementZoneTypesItemMode;
 };
 
 /**
@@ -2930,7 +2962,7 @@ export interface TenantSettings {
   autoCreateGeofence?: boolean;
   /** Deprecated: use measurementZoneTypes instead */
   measurementZoneLabels?: string[];
-  /** Structured zone type definitions with name and color */
+  /** Structured zone type definitions with name, color, and measurement mode */
   measurementZoneTypes?: TenantSettingsMeasurementZoneTypesItem[];
   /** Preferred area unit for property measurements */
   preferredAreaUnit?: TenantSettingsPreferredAreaUnit;
@@ -3232,10 +3264,19 @@ export const TenantSettingsUpdateDefaultGeofenceUnit = {
   ft: 'ft',
 } as const;
 
+export type TenantSettingsUpdateMeasurementZoneTypesItemMode = typeof TenantSettingsUpdateMeasurementZoneTypesItemMode[keyof typeof TenantSettingsUpdateMeasurementZoneTypesItemMode];
+
+
+export const TenantSettingsUpdateMeasurementZoneTypesItemMode = {
+  area: 'area',
+  linear: 'linear',
+} as const;
+
 export type TenantSettingsUpdateMeasurementZoneTypesItem = {
   id: string;
   name: string;
   color: string;
+  mode?: TenantSettingsUpdateMeasurementZoneTypesItemMode;
 };
 
 export type TenantSettingsUpdatePreferredAreaUnit = typeof TenantSettingsUpdatePreferredAreaUnit[keyof typeof TenantSettingsUpdatePreferredAreaUnit];

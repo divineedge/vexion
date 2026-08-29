@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, equipmentTable, equipmentMaintenanceTable, equipmentFuelLogsTable, equipmentReadingLogsTable, equipmentLifecycleEventsTable, tenantEquipmentTypesTable, tenantsTable, usersTable, jobsTable, taskBundlesItemsTable, inventoryItemsTable } from "@workspace/db";
+import { db, equipmentTable, equipmentMaintenanceTable, equipmentFuelLogsTable, equipmentReadingLogsTable, equipmentLifecycleEventsTable, tenantEquipmentTypesTable, tenantsTable, usersTable, jobsTable, taskBundlesItemsTable, inventoryItemsTable, internalTasksTable } from "@workspace/db";
 import { eq, and, desc, sum, isNull, isNotNull, inArray, or, gte, lte, ilike, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isOwnerRole } from "../lib/roles";
@@ -878,6 +878,67 @@ router.post("/equipment/:id/reading-logs", async (req, res): Promise<void> => {
   }
 
   res.status(201).json({ ...row, createdAt: row.createdAt.toISOString() });
+});
+
+// One atomic pre-trip submission. The inspection task stores the idempotency key:
+// it is created last within the same transaction, so a duplicate key proves every
+// associated fuel and reading write committed as one unit.
+router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  const { idempotencyKey, equipmentId, condition, fuelGallons, fuelCost, readingType, readingValue, concerns } = req.body;
+  if (typeof idempotencyKey !== "string" || !idempotencyKey.trim()) { res.status(400).json({ error: "idempotencyKey is required" }); return; }
+  const normalizedIdempotencyKey = idempotencyKey.trim();
+  if (!Number.isInteger(equipmentId)) { res.status(400).json({ error: "equipmentId must be an integer" }); return; }
+  if (!["good", "needs_attention", "unsafe"].includes(condition)) { res.status(400).json({ error: "condition must be good, needs_attention, or unsafe" }); return; }
+  const hasFuel = fuelGallons != null;
+  const hasReading = readingValue != null;
+  const gallons = hasFuel ? Number(fuelGallons) : null;
+  const cost = fuelCost != null ? Number(fuelCost) : null;
+  const reading = hasReading ? Number(readingValue) : null;
+  if (hasFuel && (!Number.isFinite(gallons) || gallons! <= 0)) { res.status(400).json({ error: "fuelGallons must be a positive number" }); return; }
+  if (cost != null && (!Number.isFinite(cost) || cost < 0)) { res.status(400).json({ error: "fuelCost must be a non-negative number" }); return; }
+  if (cost != null && !hasFuel) { res.status(400).json({ error: "fuelCost requires fuelGallons" }); return; }
+  if (hasReading && (!["hours", "mileage"].includes(readingType) || !Number.isFinite(reading) || reading! < 0)) { res.status(400).json({ error: "readingType and a non-negative readingValue are required together" }); return; }
+
+  const existing = await db.select().from(internalTasksTable).where(and(eq(internalTasksTable.tenantId, tenantId), eq(internalTasksTable.idempotencyKey, normalizedIdempotencyKey))).limit(1);
+  if (existing[0]) { res.json({ taskId: existing[0].id, fuelLogId: existing[0].preTripFuelLogId, readingLogId: existing[0].preTripReadingLogId, duplicate: true }); return; }
+  try {
+    const result = await db.transaction(async (tx) => {
+      const [owned] = await tx.select().from(equipmentTable).where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId))).for("update");
+      if (!owned) throw new Error("Equipment not found");
+      if (owned.archivedAt) throw new Error("Cannot log a pre-trip on archived equipment");
+      if (readingType === "hours" && reading != null && reading < owned.currentHours) throw new Error(`Hour reading cannot be below current reading (${owned.currentHours})`);
+      if (readingType === "mileage" && reading != null && owned.currentMiles != null && reading < owned.currentMiles) throw new Error(`Mileage reading cannot be below current reading (${owned.currentMiles})`);
+      let fuelLogId: number | null = null;
+      let readingLogId: number | null = null;
+      if (gallons != null) {
+        const [fuel] = await tx.insert(equipmentFuelLogsTable).values({ equipmentId, tenantId, date: new Date().toISOString().slice(0, 10), gallons, cost: cost ?? 0, costPerGallon: null, odometerReading: null }).returning();
+        fuelLogId = fuel.id;
+      }
+      if (reading != null) {
+        const [entry] = await tx.insert(equipmentReadingLogsTable).values({ equipmentId, tenantId, date: new Date().toISOString().slice(0, 10), readingType, value: reading, source: "manual" }).returning();
+        readingLogId = entry.id;
+      }
+      const updates: Partial<typeof equipmentTable.$inferInsert> = {};
+      if (gallons != null) {
+        const [total] = await tx.select({ total: sum(equipmentFuelLogsTable.cost) }).from(equipmentFuelLogsTable).where(and(eq(equipmentFuelLogsTable.equipmentId, equipmentId), eq(equipmentFuelLogsTable.tenantId, tenantId)));
+        updates.totalFuelCost = Number(total?.total ?? 0);
+      }
+      if (readingType === "hours" && reading != null && reading > owned.currentHours) updates.currentHours = reading;
+      if (readingType === "mileage" && reading != null && (owned.currentMiles == null || reading > owned.currentMiles)) updates.currentMiles = reading;
+      if (Object.keys(updates).length) await tx.update(equipmentTable).set(updates).where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId)));
+      const [task] = await tx.insert(internalTasksTable).values({ tenantId, title: `Pre-trip inspection: ${owned.name}`, description: `Condition: ${condition.replace("_", " ")}.${typeof concerns === "string" && concerns.trim() ? `\nConcerns: ${concerns.trim()}` : ""}`, taskType: "pre_trip_inspection", createdById: userId, assignedToRole: "admin_office", priority: condition === "unsafe" ? "urgent" : condition === "needs_attention" ? "high" : "normal", status: "open", contextType: "equipment", contextId: equipmentId, idempotencyKey: normalizedIdempotencyKey, preTripFuelLogId: fuelLogId, preTripReadingLogId: readingLogId }).returning();
+      return { taskId: task.id, fuelLogId, readingLogId, duplicate: false };
+    });
+    res.status(201).json(result);
+  } catch (error: any) {
+    // A concurrent retry may have won after our initial lookup.
+    const [duplicate] = await db.select().from(internalTasksTable).where(and(eq(internalTasksTable.tenantId, tenantId), eq(internalTasksTable.idempotencyKey, normalizedIdempotencyKey))).limit(1);
+    if (duplicate) { res.json({ taskId: duplicate.id, fuelLogId: duplicate.preTripFuelLogId, readingLogId: duplicate.preTripReadingLogId, duplicate: true }); return; }
+    const message = error?.message ?? "Unable to save pre-trip";
+    res.status(message === "Equipment not found" ? 404 : 400).json({ error: message });
+  }
 });
 
 // ─── Cost Ledger: Operating vs. Maintenance & Repair ────────────────────────────

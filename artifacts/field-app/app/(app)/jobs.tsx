@@ -14,13 +14,14 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useQueries } from '@tanstack/react-query';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
 import {
   useListJobs,
   useGetMasterClock,
   useStartMasterClock,
   useStopMasterClock,
   getGetRouteDayDetailQueryOptions,
+  getGetJobQueryOptions,
 } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
@@ -94,11 +95,13 @@ function formatDriveTime(minutes: number): string {
 function JobCard({
   job,
   onPress,
+  onPressIn,
   colors,
   routeStopInfo,
 }: {
   job: Job;
   onPress: () => void;
+  onPressIn: () => void;
   colors: ReturnType<typeof useColors>;
   routeStopInfo?: RouteStopInfo;
 }) {
@@ -108,6 +111,7 @@ function JobCard({
     <TouchableOpacity
       style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
       onPress={onPress}
+      onPressIn={onPressIn}
       activeOpacity={0.8}
       testID={`job-card-${job.id}`}
     >
@@ -181,6 +185,7 @@ function JobCard({
 
 export default function JobsScreen() {
   const colors = useColors();
+  const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const { user, signOut } = useAuth();
   const { isOffline, reportNetworkStatus, cacheJobs, getCachedJobs } = useOffline();
@@ -339,10 +344,17 @@ export default function JobsScreen() {
     ? selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
     : `${period.days[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${period.days[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
 
+  const prefetchJobDetail = useCallback((id: number) => {
+    void queryClient.prefetchQuery(getGetJobQueryOptions(id));
+  }, [queryClient]);
+
   const handleJobPress = useCallback(async (id: number) => {
     await Haptics.selectionAsync();
-    router.push(`/(app)/job/${id}`);
-  }, []);
+    router.push({
+      pathname: '/(app)/job/[id]',
+      params: { id: String(id), scheduleMode, scheduleDate: localDateKey(selectedDate) },
+    });
+  }, [scheduleMode, selectedDate]);
 
   const handleSignOut = useCallback(async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -353,6 +365,11 @@ export default function JobsScreen() {
   const handleEquipmentPress = useCallback(async () => {
     await Haptics.selectionAsync();
     router.push('/(app)/equipment');
+  }, []);
+
+  const handlePreTripPress = useCallback(async () => {
+    await Haptics.selectionAsync();
+    router.push('/(app)/pre-trip' as any);
   }, []);
 
   const handleTimeTrackingPress = useCallback(async () => {
@@ -453,6 +470,19 @@ export default function JobsScreen() {
       </TouchableOpacity>
 
       <View style={[styles.scheduleControls, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+        <TouchableOpacity
+          style={[styles.preTripButton, { borderColor: colors.primary + '45', backgroundColor: colors.primary + '10' }]}
+          onPress={handlePreTripPress}
+          activeOpacity={0.8}
+          testID="pre-trip-entry-button"
+        >
+          <Ionicons name="checkmark-circle-outline" size={18} color={colors.primary} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.preTripTitle, { color: colors.primary }]}>Pre-trip equipment check</Text>
+            <Text style={[styles.preTripSubtitle, { color: colors.mutedForeground }]}>Condition, fuel, meter readings, and concerns</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={17} color={colors.primary} />
+        </TouchableOpacity>
         <View style={[styles.segmentedControl, { backgroundColor: colors.muted }]}>
           {(['day', 'week'] as const).map(mode => (
             <TouchableOpacity
@@ -556,7 +586,7 @@ export default function JobsScreen() {
               <Text style={[styles.dayHeadingCount, { color: colors.mutedForeground }]}>{item.count} {item.count === 1 ? 'job' : 'jobs'}</Text>
             </View>
           ) : (
-            <JobCard job={item.job} onPress={() => handleJobPress(item.job.id)} colors={colors} routeStopInfo={routeStopMap.get(item.job.id)} />
+            <JobCard job={item.job} onPress={() => handleJobPress(item.job.id)} onPressIn={() => prefetchJobDetail(item.job.id)} colors={colors} routeStopInfo={routeStopMap.get(item.job.id)} />
           )}
           contentContainerStyle={[
             styles.list,
@@ -649,6 +679,17 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     gap: 9,
   },
+  preTripButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  preTripTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 13 },
+  preTripSubtitle: { fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 1 },
   segmentedControl: {
     flexDirection: 'row',
     alignSelf: 'flex-start',

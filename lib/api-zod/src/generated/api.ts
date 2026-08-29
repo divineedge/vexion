@@ -5882,6 +5882,28 @@ export const CreateEquipmentReadingLogResponse = zod.object({
 
 
 /**
+ * @summary Atomically save an idempotent pre-trip equipment inspection
+ */
+export const CreateEquipmentPreTripBody = zod.object({
+  "idempotencyKey": zod.string(),
+  "equipmentId": zod.number(),
+  "condition": zod.enum(['good', 'needs_attention', 'unsafe']),
+  "fuelGallons": zod.number().optional(),
+  "fuelCost": zod.number().optional(),
+  "readingType": zod.enum(['hours', 'mileage']).optional(),
+  "readingValue": zod.number().optional(),
+  "concerns": zod.string().optional()
+})
+
+export const CreateEquipmentPreTripResponse = zod.object({
+  "taskId": zod.number(),
+  "fuelLogId": zod.number().nullish(),
+  "readingLogId": zod.number().nullish(),
+  "duplicate": zod.boolean()
+})
+
+
+/**
  * @summary Operating vs. Maintenance & Repair cost ledgers for an asset, with running totals over an optional date range
  */
 export const GetEquipmentLedgerParams = zod.object({

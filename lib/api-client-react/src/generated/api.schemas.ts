@@ -4188,6 +4188,43 @@ export interface EquipmentReadingLogInput {
   value: number;
 }
 
+export type EquipmentPreTripInputCondition = typeof EquipmentPreTripInputCondition[keyof typeof EquipmentPreTripInputCondition];
+
+
+export const EquipmentPreTripInputCondition = {
+  good: 'good',
+  needs_attention: 'needs_attention',
+  unsafe: 'unsafe',
+} as const;
+
+export type EquipmentPreTripInputReadingType = typeof EquipmentPreTripInputReadingType[keyof typeof EquipmentPreTripInputReadingType];
+
+
+export const EquipmentPreTripInputReadingType = {
+  hours: 'hours',
+  mileage: 'mileage',
+} as const;
+
+export interface EquipmentPreTripInput {
+  idempotencyKey: string;
+  equipmentId: number;
+  condition: EquipmentPreTripInputCondition;
+  fuelGallons?: number;
+  fuelCost?: number;
+  readingType?: EquipmentPreTripInputReadingType;
+  readingValue?: number;
+  concerns?: string;
+}
+
+export interface EquipmentPreTripResult {
+  taskId: number;
+  /** @nullable */
+  fuelLogId?: number | null;
+  /** @nullable */
+  readingLogId?: number | null;
+  duplicate: boolean;
+}
+
 export type EquipmentLedgerOperating = {
   fuelCost: number;
   runtimeHours: number;

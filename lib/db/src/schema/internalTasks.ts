@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, boolean, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -33,13 +33,20 @@ export const internalTasksTable = pgTable("internal_tasks", {
   /** 'customer' | 'job' | 'property' | 'equipment' | null */
   contextType: text("context_type"),
   contextId: integer("context_id"),
+  /** Client retry key for atomic pre-trip inspections; unique within a tenant. */
+  idempotencyKey: text("idempotency_key"),
+  preTripFuelLogId: integer("pre_trip_fuel_log_id"),
+  preTripReadingLogId: integer("pre_trip_reading_log_id"),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   rejectionReason: text("rejection_reason"),
   /** Set when an admin soft-archives a task; archived tasks are hidden from all default list views. */
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
-});
+}, (table) => [
+  uniqueIndex("internal_tasks_tenant_idempotency_key_unique")
+    .on(table.tenantId, table.idempotencyKey),
+]);
 
 export const insertInternalTaskSchema = createInsertSchema(internalTasksTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertInternalTask = z.infer<typeof insertInternalTaskSchema>;

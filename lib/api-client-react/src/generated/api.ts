@@ -107,6 +107,8 @@ import type {
   EquipmentLinkedPart,
   EquipmentMaintenance,
   EquipmentMaintenanceInput,
+  EquipmentPreTripInput,
+  EquipmentPreTripResult,
   EquipmentReadingLog,
   EquipmentReadingLogInput,
   EquipmentType,
@@ -13208,6 +13210,77 @@ export const useCreateEquipmentReadingLog = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCreateEquipmentReadingLogMutationOptions(options));
+    }
+
+export const getCreateEquipmentPreTripUrl = () => {
+
+
+
+
+  return `/api/equipment/pre-trip`
+}
+
+/**
+ * @summary Atomically save an idempotent pre-trip equipment inspection
+ */
+export const createEquipmentPreTrip = async (equipmentPreTripInput: EquipmentPreTripInput, options?: RequestInit): Promise<EquipmentPreTripResult> => {
+
+  return customFetch<EquipmentPreTripResult>(getCreateEquipmentPreTripUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(equipmentPreTripInput)
+  }
+);}
+
+
+
+
+
+export const getCreateEquipmentPreTripMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEquipmentPreTrip>>, TError,{data: BodyType<EquipmentPreTripInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createEquipmentPreTrip>>, TError,{data: BodyType<EquipmentPreTripInput>}, TContext> => {
+
+const mutationKey = ['createEquipmentPreTrip'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createEquipmentPreTrip>>, {data: BodyType<EquipmentPreTripInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createEquipmentPreTrip(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateEquipmentPreTripMutationResult = NonNullable<Awaited<ReturnType<typeof createEquipmentPreTrip>>>
+    export type CreateEquipmentPreTripMutationBody = BodyType<EquipmentPreTripInput>
+    export type CreateEquipmentPreTripMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Atomically save an idempotent pre-trip equipment inspection
+ */
+export const useCreateEquipmentPreTrip = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEquipmentPreTrip>>, TError,{data: BodyType<EquipmentPreTripInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createEquipmentPreTrip>>,
+        TError,
+        {data: BodyType<EquipmentPreTripInput>},
+        TContext
+      > => {
+      return useMutation(getCreateEquipmentPreTripMutationOptions(options));
     }
 
 export const getGetEquipmentLedgerUrl = (id: number,

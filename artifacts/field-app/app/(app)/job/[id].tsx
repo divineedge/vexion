@@ -21,9 +21,11 @@ import {
   useListSubTimers, useStartSubTimer, useStopSubTimer,
   useGetMasterClock, useStartMasterClock, useStopMasterClock,
   useUpdateJob, useSkipNextOccurrence, useGetRouteDayDetail,
+  getGetJobQueryOptions,
+  type GetJobQueryResult,
   customFetch,
 } from '@workspace/api-client-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useColors } from '@/hooks/useColors';
 import { useOffline } from '@/contexts/OfflineContext';
 
@@ -548,6 +550,7 @@ function InternalNotesSection({ jobId, colors }: { jobId: number; colors: Return
 
 export default function JobDetailScreen() {
   const colors = useColors();
+  const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const jobId = Number(id);
@@ -556,13 +559,20 @@ export default function JobDetailScreen() {
   const [cachedJob, setCachedJob] = useState<unknown | null>(null);
   const [cachedApps, setCachedApps] = useState<ChemApp[] | null>(null);
 
-  const { data: job, isLoading: jobLoading, isError: jobError, refetch: refetchJob } = useGetJob(jobId);
+  const cachedQueryJob = queryClient.getQueryData<GetJobQueryResult>(getGetJobQueryOptions(jobId).queryKey);
+  const { data: job, isLoading: jobLoading, isError: jobError, refetch: refetchJob } = useGetJob(
+    jobId,
+    { query: { queryKey: getGetJobQueryOptions(jobId).queryKey, placeholderData: cachedQueryJob } },
+  );
 
-  // Derive route context from job fields once loaded
-  const jobRouteTemplateId = (job as { routeTemplateId?: number | null } | undefined)?.routeTemplateId ?? null;
-  const jobScheduledAt = (job as { scheduledAt?: string } | undefined)?.scheduledAt;
+  // Query-cache data and persisted offline data are both valid shells while
+  // the network query refreshes.
+  const availableJob = (job ?? cachedJob) as GetJobQueryResult | null;
+  // Derive route context from the available job rather than waiting for refresh.
+  const jobRouteTemplateId = availableJob?.routeTemplateId ?? null;
+  const jobScheduledAt = availableJob?.scheduledAt;
   const jobDateStr = jobScheduledAt ? jobScheduledAt.slice(0, 10) : '';
-  const fieldRequirements = (job as { fieldRequirements?: { requiresChemicalApplication?: boolean; showMaterialsOrParts?: boolean } } | undefined)?.fieldRequirements;
+  const fieldRequirements = availableJob?.fieldRequirements;
   const requiresChemicalApplication = fieldRequirements?.requiresChemicalApplication === true;
   const showMaterialsOrParts = fieldRequirements?.showMaterialsOrParts === true;
 
@@ -630,10 +640,14 @@ export default function JobDetailScreen() {
     }
   }, [appsError, jobId, getCachedApplications]);
 
-  const displayJob = jobError ? cachedJob : job;
+  // React Query retains stale/prefetched data when a refresh fails. Never let
+  // the error flag discard that usable job shell.
+  const displayJob = job ?? cachedJob ?? cachedQueryJob;
   const displayApps: ChemApp[] = (appsError ? cachedApps : (applications as ChemApp[] | undefined)) ?? [];
 
-  const isLoading = jobLoading || (requiresChemicalApplication && appsLoading);
+  // A cached job is a complete loading shell. Only configured chemical work waits
+  // for its application data; a background refresh must never blank the job.
+  const isLoading = (!job && !cachedJob && jobLoading) || (requiresChemicalApplication && appsLoading && !displayJob);
 
   const handleLogApplication = useCallback(async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -761,9 +775,9 @@ export default function JobDetailScreen() {
         </View>
 
         {/* Recurring series banner */}
-        {(job as { recurrenceDescription?: string | null; recurrenceParentId?: number | null }).recurrenceDescription || (job as { recurrenceParentId?: number | null }).recurrenceParentId ? (
-          <RecurringSeriesBanner job={job as RecurringJob} colors={colors} onSkip={() => {
-            const seriesId = (job as RecurringJob).recurrenceParentId ?? (job as RecurringJob).id;
+        {(displayJob as RecurringJob).recurrenceDescription || (displayJob as RecurringJob).recurrenceParentId ? (
+          <RecurringSeriesBanner job={displayJob as RecurringJob} colors={colors} onSkip={() => {
+            const seriesId = (displayJob as RecurringJob).recurrenceParentId ?? (displayJob as RecurringJob).id;
             Alert.alert(
               'Skip this occurrence?',
               'The next scheduled occurrence of this series will be skipped.',
@@ -913,20 +927,31 @@ export default function JobDetailScreen() {
           </View>
         )}
 
+        {!requiresChemicalApplication && !showMaterialsOrParts && (
+          <View style={[styles.section, { marginBottom: 16 }]}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>General Service</Text>
+            <View style={[styles.emptyCard, { backgroundColor: colors.muted, borderColor: colors.border, alignItems: 'flex-start', paddingHorizontal: 14, paddingVertical: 14 }]}>
+              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+                Follow the job notes and instructions from dispatch. This service has no configured chemical or materials requirements.
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* Customer / Property notes (read-only, from dispatch) */}
-        {((job as any)?.customerNotes || (job as any)?.propertyNotes) && (
+        {((displayJob as any)?.customerNotes || (displayJob as any)?.propertyNotes) && (
           <View style={[styles.section, { marginBottom: 8 }]}>
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Notes from Dispatch</Text>
-            {(job as any).customerNotes ? (
+            {(displayJob as any).customerNotes ? (
               <View style={[styles.emptyCard, { backgroundColor: colors.muted, borderColor: colors.border, alignItems: 'flex-start', padding: 12 }]}>
                 <Text style={[{ fontSize: 11, fontFamily: 'Inter_600SemiBold', color: colors.mutedForeground, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }]}>Customer</Text>
-                <Text style={[{ fontSize: 14, fontFamily: 'Inter_400Regular', color: colors.foreground }]}>{(job as any).customerNotes}</Text>
+                <Text style={[{ fontSize: 14, fontFamily: 'Inter_400Regular', color: colors.foreground }]}>{(displayJob as any).customerNotes}</Text>
               </View>
             ) : null}
-            {(job as any).propertyNotes ? (
+            {(displayJob as any).propertyNotes ? (
               <View style={[styles.emptyCard, { backgroundColor: colors.muted, borderColor: colors.border, alignItems: 'flex-start', padding: 12, marginTop: 8 }]}>
                 <Text style={[{ fontSize: 11, fontFamily: 'Inter_600SemiBold', color: colors.mutedForeground, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }]}>Property</Text>
-                <Text style={[{ fontSize: 14, fontFamily: 'Inter_400Regular', color: colors.foreground }]}>{(job as any).propertyNotes}</Text>
+                <Text style={[{ fontSize: 14, fontFamily: 'Inter_400Regular', color: colors.foreground }]}>{(displayJob as any).propertyNotes}</Text>
               </View>
             ) : null}
           </View>
@@ -939,7 +964,7 @@ export default function JobDetailScreen() {
 
         {/* Job Notes section */}
         {!isOffline && (
-          <JobNotesSection jobId={jobId} job={job as any} colors={colors} />
+          <JobNotesSection jobId={jobId} job={displayJob as any} colors={colors} />
         )}
 
         {/* Applications section */}
@@ -1188,23 +1213,6 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     marginVertical: 12,
   },
-  fuelBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    gap: 12,
-  },
-  fuelBtnIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fuelBtnLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 14 },
-  fuelBtnSub: { fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 2 },
   fabContainer: {
     position: 'absolute',
     bottom: 0,

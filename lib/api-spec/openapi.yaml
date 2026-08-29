@@ -3608,6 +3608,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/EquipmentReadingLog"
 
+  /equipment/pre-trip:
+    post:
+      operationId: createEquipmentPreTrip
+      tags: [equipment]
+      summary: Atomically save an idempotent pre-trip equipment inspection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EquipmentPreTripInput"
+      responses:
+        "201":
+          description: Pre-trip saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EquipmentPreTripResult"
+
   /equipment/{id}/ledger:
     get:
       operationId: getEquipmentLedger
@@ -12679,6 +12698,41 @@ components:
           description: "hours | mileage"
         value:
           type: number
+
+    EquipmentPreTripInput:
+      type: object
+      required: [idempotencyKey, equipmentId, condition]
+      properties:
+        idempotencyKey:
+          type: string
+        equipmentId:
+          type: integer
+        condition:
+          type: string
+          enum: [good, needs_attention, unsafe]
+        fuelGallons:
+          type: number
+        fuelCost:
+          type: number
+        readingType:
+          type: string
+          enum: [hours, mileage]
+        readingValue:
+          type: number
+        concerns:
+          type: string
+    EquipmentPreTripResult:
+      type: object
+      required: [taskId, duplicate]
+      properties:
+        taskId:
+          type: integer
+        fuelLogId:
+          type: [integer, "null"]
+        readingLogId:
+          type: [integer, "null"]
+        duplicate:
+          type: boolean
 
     EquipmentLedger:
       type: object

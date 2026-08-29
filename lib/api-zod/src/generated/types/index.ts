@@ -459,6 +459,8 @@ export * from './sendMessageInputChannel';
 export * from './sendReminderInput';
 export * from './sendReminderInputChannel';
 export * from './sendReviewRequestInput';
+export * from './service';
+export * from './serviceFieldRequirements';
 export * from './setCustomerProfilePhoto200';
 export * from './setLocationStockInput';
 export * from './setProfilePhotoInput';

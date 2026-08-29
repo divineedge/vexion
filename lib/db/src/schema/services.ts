@@ -33,6 +33,11 @@ export const servicesTable = pgTable("services", {
   offSeasonStart: text("off_season_start"),
   /** Off-season window end as "MM-DD" (e.g. "03-14"). Null = no off-season. */
   offSeasonEnd: text("off_season_end"),
+  /**
+   * Explicit field-work collection requirements. Keep this extensible rather
+   * than deriving compliance workflows from a service name or category.
+   */
+  fieldRequirements: jsonb("field_requirements").notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

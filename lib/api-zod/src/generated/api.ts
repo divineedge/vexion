@@ -1356,6 +1356,12 @@ export const ListJobsResponseItem = zod.object({
   "completedAt": zod.string().nullish(),
   "totalAmount": zod.number().optional(),
   "invoiceId": zod.number().nullish(),
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
+  "fieldRequirements": zod.object({
+  "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
+  "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
+}).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
   "id": zod.number(),
@@ -1482,6 +1488,12 @@ export const CreateJobResponse = zod.object({
   "completedAt": zod.string().nullish(),
   "totalAmount": zod.number().optional(),
   "invoiceId": zod.number().nullish(),
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
+  "fieldRequirements": zod.object({
+  "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
+  "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
+}).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
   "id": zod.number(),
@@ -1573,6 +1585,12 @@ export const GetJobResponse = zod.object({
   "completedAt": zod.string().nullish(),
   "totalAmount": zod.number().optional(),
   "invoiceId": zod.number().nullish(),
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
+  "fieldRequirements": zod.object({
+  "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
+  "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
+}).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
   "id": zod.number(),
@@ -1701,6 +1719,12 @@ export const UpdateJobResponse = zod.object({
   "completedAt": zod.string().nullish(),
   "totalAmount": zod.number().optional(),
   "invoiceId": zod.number().nullish(),
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
+  "fieldRequirements": zod.object({
+  "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
+  "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
+}).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
   "id": zod.number(),
@@ -1839,6 +1863,12 @@ export const SkipNextOccurrenceResponse = zod.object({
   "completedAt": zod.string().nullish(),
   "totalAmount": zod.number().optional(),
   "invoiceId": zod.number().nullish(),
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
+  "fieldRequirements": zod.object({
+  "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
+  "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
+}).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
   "id": zod.number(),
@@ -1935,6 +1965,12 @@ export const PauseRecurringSeriesResponse = zod.object({
   "completedAt": zod.string().nullish(),
   "totalAmount": zod.number().optional(),
   "invoiceId": zod.number().nullish(),
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
+  "fieldRequirements": zod.object({
+  "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
+  "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
+}).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
   "id": zod.number(),
@@ -2040,6 +2076,12 @@ export const CompleteJobResponse = zod.object({
   "completedAt": zod.string().nullish(),
   "totalAmount": zod.number().optional(),
   "invoiceId": zod.number().nullish(),
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
+  "fieldRequirements": zod.object({
+  "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
+  "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
+}).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
   "id": zod.number(),
@@ -2190,6 +2232,12 @@ export const AddJobPartResponse = zod.object({
   "completedAt": zod.string().nullish(),
   "totalAmount": zod.number().optional(),
   "invoiceId": zod.number().nullish(),
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
+  "fieldRequirements": zod.object({
+  "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
+  "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
+}).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
   "id": zod.number(),
@@ -2282,6 +2330,12 @@ export const RemoveJobPartResponse = zod.object({
   "completedAt": zod.string().nullish(),
   "totalAmount": zod.number().optional(),
   "invoiceId": zod.number().nullish(),
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
+  "fieldRequirements": zod.object({
+  "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
+  "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
+}).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
   "id": zod.number(),
@@ -6793,6 +6847,12 @@ export const DismissJobRescheduleRequestResponse = zod.object({
   "completedAt": zod.string().nullish(),
   "totalAmount": zod.number().optional(),
   "invoiceId": zod.number().nullish(),
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
+  "fieldRequirements": zod.object({
+  "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
+  "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
+}).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
   "id": zod.number(),
@@ -6884,6 +6944,12 @@ export const ApproveJobCancellationResponse = zod.object({
   "completedAt": zod.string().nullish(),
   "totalAmount": zod.number().optional(),
   "invoiceId": zod.number().nullish(),
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
+  "fieldRequirements": zod.object({
+  "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
+  "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
+}).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
   "id": zod.number(),
@@ -6979,6 +7045,12 @@ export const DenyJobCancellationResponse = zod.object({
   "completedAt": zod.string().nullish(),
   "totalAmount": zod.number().optional(),
   "invoiceId": zod.number().nullish(),
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
+  "fieldRequirements": zod.object({
+  "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
+  "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
+}).optional(),
   "blueprintId": zod.number().nullish(),
   "lineItems": zod.array(zod.object({
   "id": zod.number(),

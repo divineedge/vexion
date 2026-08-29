@@ -3,6 +3,7 @@ import { db, servicesTable } from "@workspace/db";
 import { eq, and, ilike, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
+import { normalizeFieldRequirements } from "../lib/serviceFieldRequirements";
 
 async function requireOfficeRole(req: import("express").Request, res: import("express").Response, tenantId: number): Promise<boolean> {
   const userId = getUserId(req);
@@ -40,6 +41,7 @@ router.get("/services", async (req, res): Promise<void> => {
 
   res.json(rows.map(s => ({
     ...s,
+    fieldRequirements: normalizeFieldRequirements(s.fieldRequirements),
     createdAt: s.createdAt.toISOString(),
     updatedAt: s.updatedAt.toISOString(),
   })));
@@ -56,7 +58,7 @@ router.get("/services/:id", async (req, res): Promise<void> => {
     .where(and(eq(servicesTable.id, id), eq(servicesTable.tenantId, tenantId)));
 
   if (!service) { res.status(404).json({ error: "Service not found" }); return; }
-  res.json({ ...service, createdAt: service.createdAt.toISOString(), updatedAt: service.updatedAt.toISOString() });
+  res.json({ ...service, fieldRequirements: normalizeFieldRequirements(service.fieldRequirements), createdAt: service.createdAt.toISOString(), updatedAt: service.updatedAt.toISOString() });
 });
 
 // POST /services — office roles only
@@ -65,7 +67,7 @@ router.post("/services", async (req, res): Promise<void> => {
   if (!await requireOfficeRole(req, res, tenantId)) return;
 
   const { name, description, category, basePrice, estimatedDuration, p4pPercentage, isActive,
-          pricingMode, pricingMatrix, linkedZoneTypeId, offSeasonStart, offSeasonEnd } = req.body;
+           pricingMode, pricingMatrix, linkedZoneTypeId, offSeasonStart, offSeasonEnd, fieldRequirements } = req.body;
   if (!name) { res.status(400).json({ error: "name is required" }); return; }
 
   // Treat empty-string or non-numeric p4pPercentage as null (inherit global rate)
@@ -114,10 +116,11 @@ router.post("/services", async (req, res): Promise<void> => {
       linkedZoneTypeId: linkedZoneTypeId || null,
       offSeasonStart: parsedStart,
       offSeasonEnd: parsedEnd,
+      fieldRequirements: normalizeFieldRequirements(fieldRequirements),
     })
     .returning();
 
-  res.status(201).json({ ...service, createdAt: service.createdAt.toISOString(), updatedAt: service.updatedAt.toISOString() });
+  res.status(201).json({ ...service, fieldRequirements: normalizeFieldRequirements(service.fieldRequirements), createdAt: service.createdAt.toISOString(), updatedAt: service.updatedAt.toISOString() });
 });
 
 // PATCH /services/:id — office roles only
@@ -127,7 +130,7 @@ router.patch("/services/:id", async (req, res): Promise<void> => {
 
   const id = parseInt(req.params.id, 10);
   const { name, description, category, basePrice, estimatedDuration, p4pPercentage, isActive,
-          pricingMode, pricingMatrix, linkedZoneTypeId, offSeasonStart, offSeasonEnd } = req.body;
+           pricingMode, pricingMatrix, linkedZoneTypeId, offSeasonStart, offSeasonEnd, fieldRequirements } = req.body;
 
   const updates: Partial<typeof servicesTable.$inferInsert> = {};
   if (name !== undefined) updates.name = name;
@@ -146,6 +149,7 @@ router.patch("/services/:id", async (req, res): Promise<void> => {
     updates.pricingMatrix = Array.isArray(pricingMatrix) ? pricingMatrix : null;
   }
   if (linkedZoneTypeId !== undefined) updates.linkedZoneTypeId = linkedZoneTypeId || null;
+  if (fieldRequirements !== undefined) updates.fieldRequirements = normalizeFieldRequirements(fieldRequirements);
 
   // Off-season: validate and update together
   if (offSeasonStart !== undefined || offSeasonEnd !== undefined) {
@@ -175,7 +179,7 @@ router.patch("/services/:id", async (req, res): Promise<void> => {
     .returning();
 
   if (!updated) { res.status(404).json({ error: "Service not found" }); return; }
-  res.json({ ...updated, createdAt: updated.createdAt.toISOString(), updatedAt: updated.updatedAt.toISOString() });
+  res.json({ ...updated, fieldRequirements: normalizeFieldRequirements(updated.fieldRequirements), createdAt: updated.createdAt.toISOString(), updatedAt: updated.updatedAt.toISOString() });
 });
 
 // DELETE /services/:id — office roles only

@@ -1072,6 +1072,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Job"
+        "422":
+          description: A required chemical application has not been logged
     delete:
       operationId: deleteJob
       tags: [jobs]
@@ -1200,6 +1202,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Job"
+        "422":
+          description: A required chemical application has not been logged
 
   /jobs/{id}/complete-and-invoice:
     post:
@@ -1221,6 +1225,8 @@ paths:
                 $ref: "#/components/schemas/Invoice"
         "409":
           description: Job already has an invoice
+        "422":
+          description: Job is cancelled or a required chemical application has not been logged
 
   /jobs/{id}/parts:
     get:
@@ -9407,6 +9413,13 @@ components:
           type: number
         invoiceId:
           type: ["integer", "null"]
+        serviceId:
+          type: ["integer", "null"]
+        serviceName:
+          type: ["string", "null"]
+          description: "Name of the linked tenant service, when one is linked"
+        fieldRequirements:
+          $ref: "#/components/schemas/ServiceFieldRequirements"
         blueprintId:
           type: ["integer", "null"]
         lineItems:
@@ -9497,6 +9510,33 @@ components:
           description: "Customer's preferred new date (YYYY-MM-DD), if provided with the reschedule request"
         createdAt:
           type: string
+
+    ServiceFieldRequirements:
+      type: object
+      required: [requiresChemicalApplication, showMaterialsOrParts]
+      properties:
+        requiresChemicalApplication:
+          type: boolean
+          description: "A chemical application must be logged before completing a linked job."
+        showMaterialsOrParts:
+          type: boolean
+          description: "Show materials, parts, and supplies collection in the Field App."
+
+    Service:
+      type: object
+      required: [id, tenantId, name, basePrice, isActive, fieldRequirements, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        name: { type: string }
+        description: { type: ["string", "null"] }
+        category: { type: ["string", "null"] }
+        basePrice: { type: number }
+        isActive: { type: boolean }
+        fieldRequirements:
+          $ref: "#/components/schemas/ServiceFieldRequirements"
+        createdAt: { type: string }
+        updatedAt: { type: string }
 
     JobLineItem:
       type: object

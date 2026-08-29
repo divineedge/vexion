@@ -22,7 +22,7 @@ function normaliseSupplies(raw: unknown): { inventoryItemId: number; name: strin
   return out;
 }
 import crypto from "crypto";
-import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable, invoicesTable, tenantsTable, blueprintsTable, chemicalApplicationsTable, chemicalProductsTable, chemicalMixtureItemsTable, customerPlansTable, equipmentFuelLogsTable, routeTemplatesTable, skipReasonsTable, taskNotificationsTable, internalTasksTable, portalMessagesTable } from "@workspace/db";
+import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable, invoicesTable, tenantsTable, blueprintsTable, chemicalApplicationsTable, chemicalProductsTable, chemicalMixtureItemsTable, customerPlansTable, equipmentFuelLogsTable, routeTemplatesTable, skipReasonsTable, taskNotificationsTable, internalTasksTable, portalMessagesTable, servicesTable } from "@workspace/db";
 import { eq, and, or, sql, desc, asc, isNotNull, isNull, ne, inArray, min, gt } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { getCallerRole, isAdminRole } from "../lib/roles";
@@ -32,6 +32,7 @@ import { enqueueInvoiceEmail } from "../lib/billingScheduler";
 import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
 import { sendSms, type SmsProviderConfig } from "../lib/smsProvider";
 import { checkRainBeforeWindow } from "../lib/weatherCheck";
+import { chemicalCompletionError, normalizeFieldRequirements } from "../lib/serviceFieldRequirements";
 import {
   importUpload,
   handleExportRequest,
@@ -50,6 +51,20 @@ import {
 } from "../lib/importExport";
 
 const router: IRouter = Router();
+
+/** Returns the completion blocker, if this job's tenant service requires an application. */
+async function chemicalCompletionBlocker(tenantId: number, jobId: number): Promise<string | null> {
+  const [row] = await db.select({ requirements: servicesTable.fieldRequirements })
+    .from(jobsTable)
+    .leftJoin(servicesTable, and(eq(jobsTable.serviceId, servicesTable.id), eq(servicesTable.tenantId, tenantId)))
+    .where(and(eq(jobsTable.id, jobId), eq(jobsTable.tenantId, tenantId)));
+  if (!normalizeFieldRequirements(row?.requirements).requiresChemicalApplication) return null;
+  const [application] = await db.select({ id: chemicalApplicationsTable.id })
+    .from(chemicalApplicationsTable)
+    .where(and(eq(chemicalApplicationsTable.tenantId, tenantId), eq(chemicalApplicationsTable.jobId, jobId)))
+    .limit(1);
+  return chemicalCompletionError(row?.requirements, !!application);
+}
 
 function isValidMonthDay(value: unknown): value is string {
   if (typeof value !== "string" || !/^\d{2}-\d{2}$/.test(value)) return false;
@@ -255,7 +270,7 @@ router.post("/jobs/import/commit", importUpload.single("file"), async (req, res)
 
 function formatJob(
   j: typeof jobsTable.$inferSelect,
-  extras?: { customerName?: string | null; customerPhone?: string | null; customerNotes?: string | null; assigneeName?: string | null; propertyAddress?: string | null; propertyNotes?: string | null; crewName?: string | null; planName?: string | null; routeName?: string | null }
+  extras?: { customerName?: string | null; customerPhone?: string | null; customerNotes?: string | null; assigneeName?: string | null; propertyAddress?: string | null; propertyNotes?: string | null; crewName?: string | null; planName?: string | null; routeName?: string | null; serviceName?: string | null; fieldRequirements?: unknown }
 ) {
   const rule = j.recurrenceRule as unknown as RecurrenceRule | null;
   return {
@@ -276,6 +291,8 @@ function formatJob(
     blueprintId: j.blueprintId ?? null,
     crewId: j.crewId ?? null,
     serviceId: j.serviceId ?? null,
+    serviceName: extras?.serviceName ?? null,
+    fieldRequirements: normalizeFieldRequirements(extras?.fieldRequirements),
     planId: j.planId ?? null,
     planName: extras?.planName ?? null,
     cancelReason: j.cancelReason ?? null,
@@ -331,6 +348,8 @@ router.get("/jobs", async (req, res): Promise<void> => {
       crewName: crewsTable.name,
       planName: customerPlansTable.templateName,
       routeName: routeTemplatesTable.name,
+      serviceName: servicesTable.name,
+      fieldRequirements: servicesTable.fieldRequirements,
     })
     .from(jobsTable)
     .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
@@ -339,10 +358,11 @@ router.get("/jobs", async (req, res): Promise<void> => {
     .leftJoin(crewsTable, eq(jobsTable.crewId, crewsTable.id))
     .leftJoin(customerPlansTable, eq(jobsTable.planId, customerPlansTable.id))
     .leftJoin(routeTemplatesTable, eq(jobsTable.routeTemplateId, routeTemplatesTable.id))
+    .leftJoin(servicesTable, and(eq(jobsTable.serviceId, servicesTable.id), eq(servicesTable.tenantId, tenantId)))
     .where(where)
     .orderBy(jobsTable.scheduledAt);
 
-  res.json(rows.map(r => formatJob(r.job, { customerName: r.customerName, customerPhone: r.customerPhone, customerNotes: r.customerNotes, assigneeName: r.assigneeName, propertyAddress: r.propertyAddress, propertyNotes: r.propertyNotes, crewName: r.crewName, planName: r.planName, routeName: r.routeName })));
+  res.json(rows.map(r => formatJob(r.job, { customerName: r.customerName, customerPhone: r.customerPhone, customerNotes: r.customerNotes, assigneeName: r.assigneeName, propertyAddress: r.propertyAddress, propertyNotes: r.propertyNotes, crewName: r.crewName, planName: r.planName, routeName: r.routeName, serviceName: r.serviceName, fieldRequirements: r.fieldRequirements })));
 });
 
 // ── Recurring series list ────────────────────────────────────────────────────
@@ -563,7 +583,7 @@ router.get("/jobs/:id", async (req, res): Promise<void> => {
   const id = parseInt(rawId, 10);
 
   const [row] = await db
-    .select({ job: jobsTable, customerName: customersTable.name, customerPhone: customersTable.phone, customerNotes: customersTable.notes, assigneeName: usersTable.name, propertyAddress: propertiesTable.address, propertyNotes: propertiesTable.notes, crewName: crewsTable.name, planName: customerPlansTable.templateName, routeName: routeTemplatesTable.name })
+    .select({ job: jobsTable, customerName: customersTable.name, customerPhone: customersTable.phone, customerNotes: customersTable.notes, assigneeName: usersTable.name, propertyAddress: propertiesTable.address, propertyNotes: propertiesTable.notes, crewName: crewsTable.name, planName: customerPlansTable.templateName, routeName: routeTemplatesTable.name, serviceName: servicesTable.name, fieldRequirements: servicesTable.fieldRequirements })
     .from(jobsTable)
     .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
     .leftJoin(usersTable, eq(jobsTable.assigneeId, usersTable.id))
@@ -571,10 +591,11 @@ router.get("/jobs/:id", async (req, res): Promise<void> => {
     .leftJoin(crewsTable, eq(jobsTable.crewId, crewsTable.id))
     .leftJoin(customerPlansTable, eq(jobsTable.planId, customerPlansTable.id))
     .leftJoin(routeTemplatesTable, eq(jobsTable.routeTemplateId, routeTemplatesTable.id))
+    .leftJoin(servicesTable, and(eq(jobsTable.serviceId, servicesTable.id), eq(servicesTable.tenantId, tenantId)))
     .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
 
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
-  res.json(formatJob(row.job, { customerName: row.customerName, customerPhone: row.customerPhone, customerNotes: row.customerNotes, assigneeName: row.assigneeName, propertyAddress: row.propertyAddress, propertyNotes: row.propertyNotes, crewName: row.crewName, planName: row.planName, routeName: row.routeName }));
+  res.json(formatJob(row.job, { customerName: row.customerName, customerPhone: row.customerPhone, customerNotes: row.customerNotes, assigneeName: row.assigneeName, propertyAddress: row.propertyAddress, propertyNotes: row.propertyNotes, crewName: row.crewName, planName: row.planName, routeName: row.routeName, serviceName: row.serviceName, fieldRequirements: row.fieldRequirements }));
 });
 
 router.patch("/jobs/:id", async (req, res): Promise<void> => {
@@ -587,6 +608,20 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
   // Fetch current job to check if it's a recurring instance
   const [currentJob] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
   if (!currentJob) { res.status(404).json({ error: "Not found" }); return; }
+  // Completion may affect an entire recurrence scope. Check each target before
+  // any update so a required chemical log cannot be bypassed by series editing.
+  if (status === "completed") {
+    const rootId = currentJob.recurrenceParentId ?? id;
+    const targets = editScope === "all"
+      ? await db.select({ id: jobsTable.id }).from(jobsTable).where(and(eq(jobsTable.tenantId, tenantId), or(eq(jobsTable.id, rootId), eq(jobsTable.recurrenceParentId, rootId))))
+      : editScope === "forward"
+      ? await db.select({ id: jobsTable.id }).from(jobsTable).where(and(eq(jobsTable.tenantId, tenantId), or(eq(jobsTable.id, rootId), and(eq(jobsTable.recurrenceParentId, rootId), eq(jobsTable.status, "scheduled"), sql`${jobsTable.recurrenceIndex} >= ${currentJob.recurrenceIndex ?? 0}`))))
+      : [{ id }];
+    for (const target of targets) {
+      const blocker = await chemicalCompletionBlocker(tenantId, target.id);
+      if (blocker) { res.status(422).json({ error: blocker, message: blocker }); return; }
+    }
+  }
   let offSeasonWindow: ReturnType<typeof resolveOffSeasonWindow>;
   try {
     offSeasonWindow = resolveOffSeasonWindow(offSeasonStart, offSeasonEnd);
@@ -1016,6 +1051,8 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
   const userId = getUserId(req);
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
+  const blocker = await chemicalCompletionBlocker(tenantId, id);
+  if (blocker) { res.status(422).json({ error: blocker, message: blocker }); return; }
 
   // Fetch current description so we can append the completion date
   const [current] = await db
@@ -1174,6 +1211,10 @@ router.post("/jobs/:id/complete-and-invoice", async (req, res): Promise<void> =>
 
   if (!job) { res.status(404).json({ error: "Job not found" }); return; }
   if (job.status === "cancelled") { res.status(422).json({ error: "Cannot invoice a cancelled job" }); return; }
+  if (job.status !== "completed") {
+    const blocker = await chemicalCompletionBlocker(tenantId, id);
+    if (blocker) { res.status(422).json({ error: blocker, message: blocker }); return; }
+  }
   // Pre-flight check (non-locking — transactional guard below provides the real safety)
   if (job.invoiceId) { res.status(409).json({ error: "An invoice already exists for this job" }); return; }
 

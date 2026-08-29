@@ -10,6 +10,7 @@ import type { JobPart } from './jobPart';
 import type { JobPriority } from './jobPriority';
 import type { JobStatus } from './jobStatus';
 import type { RecurrenceRule } from './recurrenceRule';
+import type { ServiceFieldRequirements } from './serviceFieldRequirements';
 import type { SupplyItem } from './supplyItem';
 
 export interface Job {
@@ -47,6 +48,14 @@ export interface Job {
   totalAmount?: number;
   /** @nullable */
   invoiceId?: number | null;
+  /** @nullable */
+  serviceId?: number | null;
+  /**
+     * Name of the linked tenant service, when one is linked
+     * @nullable
+     */
+  serviceName?: string | null;
+  fieldRequirements?: ServiceFieldRequirements;
   /** @nullable */
   blueprintId?: number | null;
   lineItems?: JobLineItem[];

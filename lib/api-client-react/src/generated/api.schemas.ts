@@ -1549,6 +1549,13 @@ export const JobPriority = {
   urgent: 'urgent',
 } as const;
 
+export interface ServiceFieldRequirements {
+  /** A chemical application must be logged before completing a linked job. */
+  requiresChemicalApplication: boolean;
+  /** Show materials, parts, and supplies collection in the Field App. */
+  showMaterialsOrParts: boolean;
+}
+
 export interface JobLineItem {
   id: number;
   name: string;
@@ -1602,6 +1609,14 @@ export interface Job {
   totalAmount?: number;
   /** @nullable */
   invoiceId?: number | null;
+  /** @nullable */
+  serviceId?: number | null;
+  /**
+     * Name of the linked tenant service, when one is linked
+     * @nullable
+     */
+  serviceName?: string | null;
+  fieldRequirements?: ServiceFieldRequirements;
   /** @nullable */
   blueprintId?: number | null;
   lineItems?: JobLineItem[];
@@ -1696,6 +1711,21 @@ export interface Job {
      */
   reschedulePreferredDate?: string | null;
   createdAt: string;
+}
+
+export interface Service {
+  id: number;
+  tenantId: number;
+  name: string;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  category?: string | null;
+  basePrice: number;
+  isActive: boolean;
+  fieldRequirements: ServiceFieldRequirements;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface JobEquipmentUse {

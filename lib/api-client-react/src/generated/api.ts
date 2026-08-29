@@ -3893,7 +3893,7 @@ export const updateJob = async (id: number,
 
 
 
-export const getUpdateJobMutationOptions = <TError = ErrorType<unknown>,
+export const getUpdateJobMutationOptions = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateJob>>, TError,{id: number;data: BodyType<JobUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof updateJob>>, TError,{id: number;data: BodyType<JobUpdate>}, TContext> => {
 
@@ -3922,12 +3922,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type UpdateJobMutationResult = NonNullable<Awaited<ReturnType<typeof updateJob>>>
     export type UpdateJobMutationBody = BodyType<JobUpdate>
-    export type UpdateJobMutationError = ErrorType<unknown>
+    export type UpdateJobMutationError = ErrorType<void>
 
     /**
  * @summary Update a job
  */
-export const useUpdateJob = <TError = ErrorType<unknown>,
+export const useUpdateJob = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateJob>>, TError,{id: number;data: BodyType<JobUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof updateJob>>,
@@ -4336,7 +4336,7 @@ export const completeJob = async (id: number, options?: RequestInit): Promise<Jo
 
 
 
-export const getCompleteJobMutationOptions = <TError = ErrorType<unknown>,
+export const getCompleteJobMutationOptions = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeJob>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof completeJob>>, TError,{id: number}, TContext> => {
 
@@ -4365,12 +4365,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type CompleteJobMutationResult = NonNullable<Awaited<ReturnType<typeof completeJob>>>
 
-    export type CompleteJobMutationError = ErrorType<unknown>
+    export type CompleteJobMutationError = ErrorType<void>
 
     /**
  * @summary Mark a job as complete
  */
-export const useCompleteJob = <TError = ErrorType<unknown>,
+export const useCompleteJob = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeJob>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof completeJob>>,

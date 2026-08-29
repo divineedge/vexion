@@ -562,6 +562,9 @@ export default function JobDetailScreen() {
   const jobRouteTemplateId = (job as { routeTemplateId?: number | null } | undefined)?.routeTemplateId ?? null;
   const jobScheduledAt = (job as { scheduledAt?: string } | undefined)?.scheduledAt;
   const jobDateStr = jobScheduledAt ? jobScheduledAt.slice(0, 10) : '';
+  const fieldRequirements = (job as { fieldRequirements?: { requiresChemicalApplication?: boolean; showMaterialsOrParts?: boolean } } | undefined)?.fieldRequirements;
+  const requiresChemicalApplication = fieldRequirements?.requiresChemicalApplication === true;
+  const showMaterialsOrParts = fieldRequirements?.showMaterialsOrParts === true;
 
   const { data: routeDay } = useGetRouteDayDetail(
     jobRouteTemplateId ?? 0,
@@ -574,7 +577,7 @@ export default function JobDetailScreen() {
     isError: appsError,
     refetch: refetchApps,
     isFetching,
-  } = useListJobChemicalApplications(jobId);
+  } = useListJobChemicalApplications(jobId, { query: { enabled: requiresChemicalApplication, queryKey: ['job-chemical-applications', jobId] } });
   const { data: subTimers, refetch: refetchSubTimers } = useListSubTimers();
   const { data: masterClock, refetch: refetchMasterClock } = useGetMasterClock();
   const startSubTimer = useStartSubTimer();
@@ -630,7 +633,7 @@ export default function JobDetailScreen() {
   const displayJob = jobError ? cachedJob : job;
   const displayApps: ChemApp[] = (appsError ? cachedApps : (applications as ChemApp[] | undefined)) ?? [];
 
-  const isLoading = jobLoading || appsLoading;
+  const isLoading = jobLoading || (requiresChemicalApplication && appsLoading);
 
   const handleLogApplication = useCallback(async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -639,8 +642,8 @@ export default function JobDetailScreen() {
 
   const refetch = useCallback(() => {
     refetchJob();
-    refetchApps();
-  }, [refetchJob, refetchApps]);
+    if (requiresChemicalApplication) refetchApps();
+  }, [refetchJob, refetchApps, requiresChemicalApplication]);
 
   const bottomPad = insets.bottom + (Platform.OS === 'web' ? 34 : 0) + 100;
 
@@ -854,10 +857,19 @@ export default function JobDetailScreen() {
                             { text: 'Not yet', style: 'cancel' },
                             {
                               text: 'Mark Complete',
-                              onPress: () => updateJob.mutate(
-                                { id: jobId, data: { status: 'completed' } },
-                                { onSuccess: () => refetchJob() },
-                              ),
+                              onPress: () => {
+                                if (requiresChemicalApplication && displayApps.length === 0) {
+                                  Alert.alert('Chemical application required', 'Log a chemical application before marking this job complete.');
+                                  return;
+                                }
+                                updateJob.mutate(
+                                  { id: jobId, data: { status: 'completed' } },
+                                  {
+                                    onSuccess: () => refetchJob(),
+                                    onError: (error: any) => Alert.alert('Unable to complete job', error?.message ?? 'A chemical application must be logged before completing this job.'),
+                                  },
+                                );
+                              },
                             },
                           ],
                         );
@@ -884,29 +896,20 @@ export default function JobDetailScreen() {
           </View>
         )}
 
-        {/* Equipment / Fuel section */}
-        {!isOffline && (
+        {showMaterialsOrParts && (
           <View style={[styles.section, { marginBottom: 16 }]}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Equipment & Fuel</Text>
-            <TouchableOpacity
-              style={[styles.fuelBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
-              onPress={async () => {
-                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                router.push(`/(app)/equipment?jobId=${jobId}` as any);
-              }}
-              activeOpacity={0.8}
-            >
-              <View style={[styles.fuelBtnIcon, { backgroundColor: colors.primary + '18' }]}>
-                <Ionicons name="car-outline" size={18} color={colors.primary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.fuelBtnLabel, { color: colors.foreground }]}>Log Fuel Fill</Text>
-                <Text style={[styles.fuelBtnSub, { color: colors.mutedForeground }]}>
-                  Select equipment · cost goes to this job
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={colors.mutedForeground} />
-            </TouchableOpacity>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Materials, Parts & Supplies</Text>
+            <View style={[styles.emptyCard, { backgroundColor: colors.muted, borderColor: colors.border, alignItems: 'flex-start' }]}>
+              {(((displayJob as any).suppliesNeeded ?? []).length === 0 && ((displayJob as any).jobParts ?? []).length === 0) ? (
+                <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No materials, parts, or supplies assigned</Text>
+              ) : (
+                [...((displayJob as any).suppliesNeeded ?? []), ...((displayJob as any).jobParts ?? [])].map((item: any, index: number) => (
+                  <Text key={`${item.id ?? item.inventoryItemId ?? index}`} style={{ color: colors.foreground, fontFamily: 'Inter_400Regular', fontSize: 14, marginBottom: 5 }}>
+                    {item.name ?? item.itemName ?? 'Material'}{item.quantity ? ` · ${item.quantity}${item.unit ? ` ${item.unit}` : ''}` : ''}
+                  </Text>
+                ))
+              )}
+            </View>
           </View>
         )}
 
@@ -940,7 +943,7 @@ export default function JobDetailScreen() {
         )}
 
         {/* Applications section */}
-        <View style={styles.section}>
+        {requiresChemicalApplication && <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
             Chemical Applications
           </Text>
@@ -956,11 +959,11 @@ export default function JobDetailScreen() {
               <AppCard key={app.id} app={app} colors={colors} />
             ))
           )}
-        </View>
+        </View>}
       </ScrollView>
 
       {/* Log Application FAB — disabled offline */}
-      <View
+      {requiresChemicalApplication && <View
         style={[
           styles.fabContainer,
           { paddingBottom: insets.bottom + (Platform.OS === 'web' ? 34 : 0) + 16 },
@@ -975,7 +978,7 @@ export default function JobDetailScreen() {
           <Ionicons name={isOffline ? 'cloud-offline-outline' : 'add-circle-outline'} size={22} color="#ffffff" />
           <Text style={styles.fabText}>{isOffline ? 'Offline' : 'Log Application'}</Text>
         </TouchableOpacity>
-      </View>
+      </View>}
     </View>
   );
 }

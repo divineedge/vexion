@@ -43,6 +43,7 @@ interface Service {
   linkedZoneTypeId: string | null;
   offSeasonStart: string | null;
   offSeasonEnd: string | null;
+  fieldRequirements?: { requiresChemicalApplication?: boolean; showMaterialsOrParts?: boolean } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -63,6 +64,8 @@ type ServiceForm = {
   offSeasonStartDay: string;
   offSeasonEndMonth: string;
   offSeasonEndDay: string;
+  requiresChemicalApplication: boolean;
+  showMaterialsOrParts: boolean;
 };
 
 const EMPTY_FORM: ServiceForm = {
@@ -81,6 +84,8 @@ const EMPTY_FORM: ServiceForm = {
   offSeasonStartDay: '15',
   offSeasonEndMonth: '03',
   offSeasonEndDay: '14',
+  requiresChemicalApplication: false,
+  showMaterialsOrParts: false,
 };
 
 const EMPTY_TIER: TierWithKey = { minSqft: 0, maxSqft: null, price: 0, _key: mkKey() };
@@ -406,6 +411,8 @@ export default function ServicesPage() {
       offSeasonStartDay: startDay,
       offSeasonEndMonth: endMonth,
       offSeasonEndDay: endDay,
+      requiresChemicalApplication: s.fieldRequirements?.requiresChemicalApplication === true,
+      showMaterialsOrParts: s.fieldRequirements?.showMaterialsOrParts === true,
     });
     setSelectedId(s.id);
     setSheetMode('edit');
@@ -438,6 +445,10 @@ export default function ServicesPage() {
       linkedZoneTypeId: form.linkedZoneTypeId || null,
       offSeasonStart,
       offSeasonEnd,
+      fieldRequirements: {
+        requiresChemicalApplication: form.requiresChemicalApplication,
+        showMaterialsOrParts: form.showMaterialsOrParts,
+      },
     };
 
     if (sheetMode === 'create') {
@@ -729,6 +740,27 @@ export default function ServicesPage() {
                 value={form.description}
                 onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
               />
+            </div>
+
+            <div className="rounded-lg border p-4 space-y-4">
+              <div>
+                <p className="text-sm font-medium">Field App requirements</p>
+                <p className="text-xs text-muted-foreground mt-1">Choose exactly what technicians must collect for this service.</p>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <label className="text-sm font-medium">Require chemical application log</label>
+                  <p className="text-xs text-muted-foreground">A job cannot be completed until an application is logged.</p>
+                </div>
+                <Switch checked={form.requiresChemicalApplication} onCheckedChange={checked => setForm(f => ({ ...f, requiresChemicalApplication: checked }))} />
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <label className="text-sm font-medium">Show materials, parts & supplies</label>
+                  <p className="text-xs text-muted-foreground">Show this collection section in the Field App.</p>
+                </div>
+                <Switch checked={form.showMaterialsOrParts} onCheckedChange={checked => setForm(f => ({ ...f, showMaterialsOrParts: checked }))} />
+              </div>
             </div>
 
             <Separator />

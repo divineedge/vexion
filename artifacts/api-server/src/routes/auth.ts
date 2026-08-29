@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, usersTable, tenantsTable, staffSessionsTable } from "@workspace/db";
-import { eq, and, gt } from "drizzle-orm";
+import { eq, and, gt, sql } from "drizzle-orm";
 import { randomBytes, createHash } from "crypto";
 import bcrypt from "bcryptjs";
 
@@ -26,7 +26,15 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     return;
   }
 
-  const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, email));
+  const normalizedEmail = String(email).trim().toLowerCase();
+  if (!normalizedEmail) {
+    res.status(400).json({ error: "email is required" });
+    return;
+  }
+
+  const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(
+    sql`lower(${usersTable.email}) = ${normalizedEmail}`,
+  );
   if (existing) {
     res.status(409).json({ error: "An account with that email already exists" });
     return;
@@ -44,7 +52,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
   const passwordHash = await bcrypt.hash(password, 10);
   const [user] = await db.insert(usersTable).values({
     tenantId: tenant.id,
-    email,
+    email: normalizedEmail,
     name: ownerName,
     role: "company_owner",
     passwordHash,
@@ -85,7 +93,10 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     return;
   }
 
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
+  const normalizedEmail = String(email).trim().toLowerCase();
+  const [user] = await db.select().from(usersTable).where(
+    sql`lower(${usersTable.email}) = ${normalizedEmail}`,
+  );
   if (!user) {
     res.status(401).json({ error: "Invalid email or password" });
     return;

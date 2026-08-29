@@ -29,14 +29,15 @@ export default function LoginScreen() {
   const loginMutation = useLogin();
 
   const handleLogin = async () => {
-    if (!email.trim()) {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
       setError('Email is required');
       return;
     }
     setError('');
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const result = await loginMutation.mutateAsync({ data: { email: email.trim(), password: '' } });
+      const result = await loginMutation.mutateAsync({ data: { email: normalizedEmail, password: '' } });
       const userData = {
         id: result.user.id,
         email: result.user.email,
@@ -48,7 +49,7 @@ export default function LoginScreen() {
       await signIn(result.sessionToken, userData, result.sessionToken ?? undefined);
       router.replace('/(app)/jobs');
     } catch (err: unknown) {
-      let message = 'Invalid email. Please try again.';
+      let message = 'Invalid email or password. Please try again.';
       if (err && typeof err === 'object') {
         // Network/timeout — fetch throws a TypeError when the request never completes
         if (err instanceof TypeError) {
@@ -56,7 +57,7 @@ export default function LoginScreen() {
         } else if ('status' in err) {
           const status = (err as { status: number }).status;
           if (status === 401) {
-            message = 'Invalid email. Please try again.';
+            message = 'Invalid email or password. Please try again.';
           } else if (status >= 500) {
             message = 'Server error, please try again.';
           }
@@ -65,7 +66,7 @@ export default function LoginScreen() {
           const response = (err as { response?: { status?: number } }).response;
           const status = response?.status ?? 0;
           if (status === 401) {
-            message = 'Invalid email. Please try again.';
+            message = 'Invalid email or password. Please try again.';
           } else if (status >= 500) {
             message = 'Server error, please try again.';
           } else if (status === 0 || !status) {

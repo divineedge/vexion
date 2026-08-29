@@ -68,7 +68,6 @@ import type {
   CreateEstimateTemplateInput,
   CreateExpenseInput,
   CreateInvoiceTemplateInput,
-  CreateJobMessageBody,
   CreatePlanTemplateInput,
   CreateRecurringTemplateInput,
   CreateSkipReasonBody,
@@ -171,6 +170,7 @@ import type {
   JobEquipmentUseInput,
   JobInput,
   JobMessage,
+  JobMessageInput,
   JobMessageUnreadSummaryItem,
   JobPart,
   JobPartInput,
@@ -194,6 +194,7 @@ import type {
   ListGeofenceEntriesParams,
   ListInventoryItemsParams,
   ListInvoicesParams,
+  ListJobMessagesParams,
   ListJobsParams,
   ListPlanCancelRequestsParams,
   ListPropertiesParams,
@@ -202,6 +203,7 @@ import type {
   ListRouteTemplatesParams,
   ListServicesParams,
   ListShrinkageReportsParams,
+  ListStaffMessagesParams,
   ListStopServiceFlagsParams,
   ListTaskBundleCompletionsParams,
   ListTaskBundlesParams,
@@ -305,6 +307,10 @@ import type {
   SimulationRunInput,
   SkipNextOccurrenceBody,
   SkipReason,
+  StaffMessage,
+  StaffMessageInput,
+  StaffMessageThreadSummary,
+  StaffMessagesUnreadSummary,
   StatusCount,
   StockAdjustmentInput,
   StockTransferInput,
@@ -5580,20 +5586,29 @@ export function useGetJobMessagesUnreadSummary<TData = Awaited<ReturnType<typeof
 
 
 
-export const getListJobMessagesUrl = (jobId: number,) => {
+export const getListJobMessagesUrl = (jobId: number,
+    params?: ListJobMessagesParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/jobs/${jobId}/messages`
+  return stringifiedParams.length > 0 ? `/api/jobs/${jobId}/messages?${stringifiedParams}` : `/api/jobs/${jobId}/messages`
 }
 
 /**
  * @summary List staff messages for a job (marks them read for the caller)
  */
-export const listJobMessages = async (jobId: number, options?: RequestInit): Promise<JobMessage[]> => {
+export const listJobMessages = async (jobId: number,
+    params?: ListJobMessagesParams, options?: RequestInit): Promise<JobMessage[]> => {
 
-  return customFetch<JobMessage[]>(getListJobMessagesUrl(jobId),
+  return customFetch<JobMessage[]>(getListJobMessagesUrl(jobId,params),
   {
     ...options,
     method: 'GET'
@@ -5606,23 +5621,25 @@ export const listJobMessages = async (jobId: number, options?: RequestInit): Pro
 
 
 
-export const getListJobMessagesQueryKey = (jobId: number,) => {
+export const getListJobMessagesQueryKey = (jobId: number,
+    params?: ListJobMessagesParams,) => {
     return [
-    `/api/jobs/${jobId}/messages`
+    `/api/jobs/${jobId}/messages`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getListJobMessagesQueryOptions = <TData = Awaited<ReturnType<typeof listJobMessages>>, TError = ErrorType<unknown>>(jobId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listJobMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListJobMessagesQueryOptions = <TData = Awaited<ReturnType<typeof listJobMessages>>, TError = ErrorType<unknown>>(jobId: number,
+    params?: ListJobMessagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listJobMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getListJobMessagesQueryKey(jobId);
+  const queryKey =  queryOptions?.queryKey ?? getListJobMessagesQueryKey(jobId,params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof listJobMessages>>> = ({ signal }) => listJobMessages(jobId, { signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listJobMessages>>> = ({ signal }) => listJobMessages(jobId,params, { signal, ...requestOptions });
 
 
 
@@ -5640,11 +5657,12 @@ export type ListJobMessagesQueryError = ErrorType<unknown>
  */
 
 export function useListJobMessages<TData = Awaited<ReturnType<typeof listJobMessages>>, TError = ErrorType<unknown>>(
- jobId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listJobMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ jobId: number,
+    params?: ListJobMessagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listJobMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getListJobMessagesQueryOptions(jobId,options)
+  const queryOptions = getListJobMessagesQueryOptions(jobId,params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -5669,14 +5687,14 @@ export const getCreateJobMessageUrl = (jobId: number,) => {
  * @summary Send a staff message on a job thread
  */
 export const createJobMessage = async (jobId: number,
-    createJobMessageBody: CreateJobMessageBody, options?: RequestInit): Promise<JobMessage> => {
+    jobMessageInput: JobMessageInput, options?: RequestInit): Promise<JobMessage> => {
 
   return customFetch<JobMessage>(getCreateJobMessageUrl(jobId),
   {
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(createJobMessageBody)
+    body: JSON.stringify(jobMessageInput)
   }
 );}
 
@@ -5685,8 +5703,8 @@ export const createJobMessage = async (jobId: number,
 
 
 export const getCreateJobMessageMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createJobMessage>>, TError,{jobId: number;data: BodyType<CreateJobMessageBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof createJobMessage>>, TError,{jobId: number;data: BodyType<CreateJobMessageBody>}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createJobMessage>>, TError,{jobId: number;data: BodyType<JobMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createJobMessage>>, TError,{jobId: number;data: BodyType<JobMessageInput>}, TContext> => {
 
 const mutationKey = ['createJobMessage'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -5698,7 +5716,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createJobMessage>>, {jobId: number;data: BodyType<CreateJobMessageBody>}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createJobMessage>>, {jobId: number;data: BodyType<JobMessageInput>}> = (props) => {
           const {jobId,data} = props ?? {};
 
           return  createJobMessage(jobId,data,requestOptions)
@@ -5712,18 +5730,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type CreateJobMessageMutationResult = NonNullable<Awaited<ReturnType<typeof createJobMessage>>>
-    export type CreateJobMessageMutationBody = BodyType<CreateJobMessageBody>
+    export type CreateJobMessageMutationBody = BodyType<JobMessageInput>
     export type CreateJobMessageMutationError = ErrorType<unknown>
 
     /**
  * @summary Send a staff message on a job thread
  */
 export const useCreateJobMessage = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createJobMessage>>, TError,{jobId: number;data: BodyType<CreateJobMessageBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createJobMessage>>, TError,{jobId: number;data: BodyType<JobMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof createJobMessage>>,
         TError,
-        {jobId: number;data: BodyType<CreateJobMessageBody>},
+        {jobId: number;data: BodyType<JobMessageInput>},
         TContext
       > => {
       return useMutation(getCreateJobMessageMutationOptions(options));
@@ -5805,6 +5823,321 @@ export function useGetJobMessageUnreadCount<TData = Awaited<ReturnType<typeof ge
 
 
 
+
+export const getListStaffMessageThreadsUrl = () => {
+
+
+
+
+  return `/api/staff-messages`
+}
+
+/**
+ * @summary List general staff conversation summaries visible to the caller
+ */
+export const listStaffMessageThreads = async ( options?: RequestInit): Promise<StaffMessageThreadSummary[]> => {
+
+  return customFetch<StaffMessageThreadSummary[]>(getListStaffMessageThreadsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListStaffMessageThreadsQueryKey = () => {
+    return [
+    `/api/staff-messages`
+    ] as const;
+    }
+
+
+export const getListStaffMessageThreadsQueryOptions = <TData = Awaited<ReturnType<typeof listStaffMessageThreads>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listStaffMessageThreads>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListStaffMessageThreadsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listStaffMessageThreads>>> = ({ signal }) => listStaffMessageThreads({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listStaffMessageThreads>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListStaffMessageThreadsQueryResult = NonNullable<Awaited<ReturnType<typeof listStaffMessageThreads>>>
+export type ListStaffMessageThreadsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List general staff conversation summaries visible to the caller
+ */
+
+export function useListStaffMessageThreads<TData = Awaited<ReturnType<typeof listStaffMessageThreads>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listStaffMessageThreads>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListStaffMessageThreadsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetStaffMessagesUnreadSummaryUrl = () => {
+
+
+
+
+  return `/api/staff-messages/unread-summary`
+}
+
+/**
+ * @summary Get general, job, and total unread staff message counts
+ */
+export const getStaffMessagesUnreadSummary = async ( options?: RequestInit): Promise<StaffMessagesUnreadSummary> => {
+
+  return customFetch<StaffMessagesUnreadSummary>(getGetStaffMessagesUnreadSummaryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStaffMessagesUnreadSummaryQueryKey = () => {
+    return [
+    `/api/staff-messages/unread-summary`
+    ] as const;
+    }
+
+
+export const getGetStaffMessagesUnreadSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getStaffMessagesUnreadSummary>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStaffMessagesUnreadSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStaffMessagesUnreadSummaryQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStaffMessagesUnreadSummary>>> = ({ signal }) => getStaffMessagesUnreadSummary({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStaffMessagesUnreadSummary>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStaffMessagesUnreadSummaryQueryResult = NonNullable<Awaited<ReturnType<typeof getStaffMessagesUnreadSummary>>>
+export type GetStaffMessagesUnreadSummaryQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get general, job, and total unread staff message counts
+ */
+
+export function useGetStaffMessagesUnreadSummary<TData = Awaited<ReturnType<typeof getStaffMessagesUnreadSummary>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getStaffMessagesUnreadSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStaffMessagesUnreadSummaryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListStaffMessagesUrl = (threadUserId: number,
+    params?: ListStaffMessagesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/staff-messages/${threadUserId}?${stringifiedParams}` : `/api/staff-messages/${threadUserId}`
+}
+
+/**
+ * @summary List a visible general staff thread and mark incoming messages read
+ */
+export const listStaffMessages = async (threadUserId: number,
+    params?: ListStaffMessagesParams, options?: RequestInit): Promise<StaffMessage[]> => {
+
+  return customFetch<StaffMessage[]>(getListStaffMessagesUrl(threadUserId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListStaffMessagesQueryKey = (threadUserId: number,
+    params?: ListStaffMessagesParams,) => {
+    return [
+    `/api/staff-messages/${threadUserId}`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListStaffMessagesQueryOptions = <TData = Awaited<ReturnType<typeof listStaffMessages>>, TError = ErrorType<unknown>>(threadUserId: number,
+    params?: ListStaffMessagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listStaffMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListStaffMessagesQueryKey(threadUserId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listStaffMessages>>> = ({ signal }) => listStaffMessages(threadUserId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: threadUserId !== null && threadUserId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listStaffMessages>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListStaffMessagesQueryResult = NonNullable<Awaited<ReturnType<typeof listStaffMessages>>>
+export type ListStaffMessagesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List a visible general staff thread and mark incoming messages read
+ */
+
+export function useListStaffMessages<TData = Awaited<ReturnType<typeof listStaffMessages>>, TError = ErrorType<unknown>>(
+ threadUserId: number,
+    params?: ListStaffMessagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listStaffMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListStaffMessagesQueryOptions(threadUserId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateStaffMessageUrl = (threadUserId: number,) => {
+
+
+
+
+  return `/api/staff-messages/${threadUserId}`
+}
+
+/**
+ * @summary Send a message to a visible general staff thread
+ */
+export const createStaffMessage = async (threadUserId: number,
+    staffMessageInput: StaffMessageInput, options?: RequestInit): Promise<StaffMessage> => {
+
+  return customFetch<StaffMessage>(getCreateStaffMessageUrl(threadUserId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(staffMessageInput)
+  }
+);}
+
+
+
+
+
+export const getCreateStaffMessageMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createStaffMessage>>, TError,{threadUserId: number;data: BodyType<StaffMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createStaffMessage>>, TError,{threadUserId: number;data: BodyType<StaffMessageInput>}, TContext> => {
+
+const mutationKey = ['createStaffMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createStaffMessage>>, {threadUserId: number;data: BodyType<StaffMessageInput>}> = (props) => {
+          const {threadUserId,data} = props ?? {};
+
+          return  createStaffMessage(threadUserId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateStaffMessageMutationResult = NonNullable<Awaited<ReturnType<typeof createStaffMessage>>>
+    export type CreateStaffMessageMutationBody = BodyType<StaffMessageInput>
+    export type CreateStaffMessageMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Send a message to a visible general staff thread
+ */
+export const useCreateStaffMessage = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createStaffMessage>>, TError,{threadUserId: number;data: BodyType<StaffMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createStaffMessage>>,
+        TError,
+        {threadUserId: number;data: BodyType<StaffMessageInput>},
+        TContext
+      > => {
+      return useMutation(getCreateStaffMessageMutationOptions(options));
+    }
 
 export const getListCrewsUrl = () => {
 

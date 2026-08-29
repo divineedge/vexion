@@ -5,60 +5,20 @@
  * request carrying an x-portal-token, so customer-portal sessions can never
  * reach them regardless of URL knowledge.
  */
-import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, jobMessagesTable, jobMessageReadsTable, jobsTable, usersTable } from "@workspace/db";
-import { eq, and, ne, notExists, desc, sql, inArray } from "drizzle-orm";
-import { resolveStaffSession } from "./auth";
+import { Router, type IRouter } from "express";
+import { db, jobMessagesTable, jobMessageReadsTable, usersTable } from "@workspace/db";
+import { eq, and, ne, notExists, sql, inArray, desc, lt } from "drizzle-orm";
+import { requireVerifiedStaff, verifiedStaffIdentity } from "../lib/verifiedStaff";
+import { canAccessJobMessages, visibleJobMessageIds } from "../lib/jobMessageAccess";
 
 const router: IRouter = Router();
-
-// ── Staff-session guard ────────────────────────────────────────────────────
-async function requireVerifiedStaff(req: Request, res: Response, next: NextFunction): Promise<void> {
-  // Hard-reject portal sessions — they have no legitimate reason to reach staff-only endpoints
-  if (req.headers["x-portal-token"]) {
-    res.status(403).json({ error: "This endpoint is not available to portal users" });
-    return;
-  }
-
-  const session = await resolveStaffSession(req);
-  if (!session) {
-    res.status(401).json({ error: "Valid staff session required" });
-    return;
-  }
-
-  const [staffUser] = await db
-    .select({ id: usersTable.id })
-    .from(usersTable)
-    .where(
-      and(
-        eq(usersTable.id, session.userId),
-        eq(usersTable.tenantId, session.tenantId),
-        eq(usersTable.isActive, true),
-      ),
-    )
-    .limit(1);
-
-  if (!staffUser) {
-    res.status(401).json({ error: "Staff account is inactive or not found" });
-    return;
-  }
-
-  res.locals["staffTenantId"] = session.tenantId;
-  res.locals["staffUserId"] = session.userId;
-  next();
-}
 
 router.use("/jobs/:jobId/messages", requireVerifiedStaff);
 router.use("/jobs/messages/unread-summary", requireVerifiedStaff);
 
 // ── Helper: assert job belongs to tenant ──────────────────────────────────
-async function assertJobAccess(tenantId: number, jobId: number): Promise<boolean> {
-  const [row] = await db
-    .select({ id: jobsTable.id })
-    .from(jobsTable)
-    .where(and(eq(jobsTable.id, jobId), eq(jobsTable.tenantId, tenantId)))
-    .limit(1);
-  return !!row;
+async function assertJobAccess(tenantId: number, userId: number, jobId: number): Promise<boolean> {
+  return canAccessJobMessages(tenantId, userId, jobId);
 }
 
 // ── GET /jobs/messages/unread-summary ─────────────────────────────────────
@@ -66,8 +26,9 @@ async function assertJobAccess(tenantId: number, jobId: number): Promise<boolean
 // Must be registered BEFORE the /:jobId route so Express doesn't interpret
 // "messages" as a jobId path param.
 router.get("/jobs/messages/unread-summary", async (req, res): Promise<void> => {
-  const tenantId = res.locals["staffTenantId"] as number;
-  const userId = res.locals["staffUserId"] as number;
+  const { tenantId, userId } = verifiedStaffIdentity(res);
+  const visibleJobIds = await visibleJobMessageIds(tenantId, userId);
+  if (visibleJobIds.length === 0) { res.json([]); return; }
 
   // Count unread messages per job: messages not sent by the caller that have no read record for the caller
   const rows = await db
@@ -79,6 +40,7 @@ router.get("/jobs/messages/unread-summary", async (req, res): Promise<void> => {
     .where(
       and(
         eq(jobMessagesTable.tenantId, tenantId),
+        inArray(jobMessagesTable.jobId, visibleJobIds),
         ne(jobMessagesTable.senderId, userId),
         notExists(
           db
@@ -105,7 +67,7 @@ router.get("/jobs/:jobId/messages/unread-count", async (req, res): Promise<void>
   const jobId = parseInt(req.params.jobId, 10);
   if (isNaN(jobId)) { res.status(400).json({ error: "Invalid jobId" }); return; }
 
-  if (!(await assertJobAccess(tenantId, jobId))) {
+  if (!(await assertJobAccess(tenantId, userId, jobId))) {
     res.status(404).json({ error: "Job not found" });
     return;
   }
@@ -141,48 +103,48 @@ router.get("/jobs/:jobId/messages", async (req, res): Promise<void> => {
   const tenantId = res.locals["staffTenantId"] as number;
   const userId = res.locals["staffUserId"] as number;
   const jobId = parseInt(req.params.jobId, 10);
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 100));
+  const beforeId = Number(req.query.beforeId);
   if (isNaN(jobId)) { res.status(400).json({ error: "Invalid jobId" }); return; }
 
-  if (!(await assertJobAccess(tenantId, jobId))) {
+  if (!(await assertJobAccess(tenantId, userId, jobId))) {
     res.status(404).json({ error: "Job not found" });
     return;
   }
 
-  const rows = await db
-    .select({
-      message: jobMessagesTable,
-      senderName: usersTable.name,
-      senderRole: usersTable.role,
-    })
-    .from(jobMessagesTable)
-    .leftJoin(usersTable, eq(jobMessagesTable.senderId, usersTable.id))
-    .where(
-      and(
+  const result = await db.transaction(async (tx) => {
+    const rows = await tx
+      .select({
+        message: jobMessagesTable,
+        senderName: usersTable.name,
+        senderRole: usersTable.role,
+        readCount: sql<number>`cast((select count(*) from job_message_reads jmr where jmr.message_id = ${jobMessagesTable.id} and jmr.user_id <> ${jobMessagesTable.senderId}) as int)`,
+      })
+      .from(jobMessagesTable)
+      .leftJoin(usersTable, and(eq(jobMessagesTable.senderId, usersTable.id), eq(usersTable.tenantId, tenantId)))
+      .where(and(
         eq(jobMessagesTable.tenantId, tenantId),
         eq(jobMessagesTable.jobId, jobId),
-      ),
-    )
-    .orderBy(jobMessagesTable.createdAt);
-
-  const result = rows.map(r => ({
-    ...r.message,
-    senderName: r.senderName ?? "Unknown",
-    senderRole: r.senderRole ?? "staff",
-    createdAt: r.message.createdAt.toISOString(),
-  }));
-
-  // Mark all messages from OTHER senders as read for this user (upsert)
-  const unreadIds = rows
-    .filter(r => r.message.senderId !== userId)
-    .map(r => r.message.id);
-
-  if (unreadIds.length > 0) {
-    await db
-      .insert(jobMessageReadsTable)
-      .values(unreadIds.map(messageId => ({ messageId, userId })))
-      .onConflictDoNothing();
-  }
-
+        ...(Number.isInteger(beforeId) && beforeId > 0 ? [lt(jobMessagesTable.id, beforeId)] : []),
+      ))
+      .orderBy(desc(jobMessagesTable.id))
+      .limit(limit);
+    const returnedNonOwnIds = rows.filter(row => row.message.senderId !== userId).map(row => row.message.id);
+    if (returnedNonOwnIds.length) {
+      await tx.insert(jobMessageReadsTable)
+        .values(returnedNonOwnIds.map(messageId => ({ messageId, userId })))
+        .onConflictDoNothing();
+    }
+    return rows.reverse().map(r => ({
+      ...r.message,
+      senderName: r.senderName ?? "Unknown",
+      senderRole: r.senderRole ?? "staff",
+      createdAt: r.message.createdAt.toISOString(),
+      isReadByCaller: true,
+      readCount: r.readCount,
+      readByOthers: r.readCount > 0,
+    }));
+  });
   res.json(result);
 });
 
@@ -193,26 +155,40 @@ router.post("/jobs/:jobId/messages", async (req, res): Promise<void> => {
   const jobId = parseInt(req.params.jobId, 10);
   if (isNaN(jobId)) { res.status(400).json({ error: "Invalid jobId" }); return; }
 
-  if (!(await assertJobAccess(tenantId, jobId))) {
+  if (!(await assertJobAccess(tenantId, userId, jobId))) {
     res.status(404).json({ error: "Job not found" });
     return;
   }
 
-  const { body } = req.body as { body?: string };
+  const { body, clientMessageId } = req.body as { body?: string; clientMessageId?: string };
   const trimmedBody = (body ?? "").trim();
   if (!trimmedBody) { res.status(400).json({ error: "body is required" }); return; }
   if (trimmedBody.length > 4000) { res.status(400).json({ error: "Message must be 4000 characters or fewer" }); return; }
+  if (typeof clientMessageId !== "string" || clientMessageId.length < 8 || clientMessageId.length > 100) {
+    res.status(400).json({ error: "clientMessageId is required" }); return;
+  }
 
-  const [msg] = await db
-    .insert(jobMessagesTable)
-    .values({ tenantId, jobId, senderId: userId, body: trimmedBody })
-    .returning();
-
-  // Mark the sender's own message as read immediately so it doesn't count as unread for them
-  await db
-    .insert(jobMessageReadsTable)
-    .values({ messageId: msg.id, userId })
-    .onConflictDoNothing();
+  const msg = await db.transaction(async (tx) => {
+    const [existing] = await tx.select().from(jobMessagesTable).where(and(
+      eq(jobMessagesTable.tenantId, tenantId),
+      eq(jobMessagesTable.senderId, userId),
+      eq(jobMessagesTable.clientMessageId, clientMessageId),
+    )).limit(1);
+    if (existing) return existing;
+    const [inserted] = await tx.insert(jobMessagesTable)
+      .values({ tenantId, jobId, senderId: userId, body: trimmedBody, clientMessageId })
+      .onConflictDoNothing()
+      .returning();
+    const created = inserted ?? (await tx.select().from(jobMessagesTable).where(and(
+      eq(jobMessagesTable.tenantId, tenantId), eq(jobMessagesTable.senderId, userId), eq(jobMessagesTable.clientMessageId, clientMessageId),
+    )).limit(1))[0];
+    if (!created) throw new Error("Unable to create message");
+    await tx.insert(jobMessageReadsTable).values({ messageId: created.id, userId }).onConflictDoNothing();
+    return created;
+  });
+  if (msg.jobId !== jobId) { res.status(409).json({ error: "clientMessageId is already used in another job thread" }); return; }
+  const [{ count: readCount }] = await db.select({ count: sql<number>`cast(count(*) as int)` }).from(jobMessageReadsTable)
+    .where(and(eq(jobMessageReadsTable.messageId, msg.id), ne(jobMessageReadsTable.userId, msg.senderId)));
 
   const [sender] = await db
     .select({ name: usersTable.name, role: usersTable.role })
@@ -225,6 +201,9 @@ router.post("/jobs/:jobId/messages", async (req, res): Promise<void> => {
     senderName: sender?.name ?? "Unknown",
     senderRole: sender?.role ?? "staff",
     createdAt: msg.createdAt.toISOString(),
+    isReadByCaller: true,
+    readCount: readCount ?? 0,
+    readByOthers: (readCount ?? 0) > 0,
   });
 });
 

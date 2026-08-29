@@ -50,5 +50,6 @@ export * from "./staffNotes";
 export * from "./staffSessions";
 export * from "./invoiceTemplates";
 export * from "./jobMessages";
+export * from "./staffMessages";
 export * from "./jobEquipmentUses";
 export * from "./jobRequests";

@@ -13,6 +13,11 @@ export interface JobMessage {
   senderId: number;
   senderName: string;
   senderRole: string;
+  /** @nullable */
+  clientMessageId: string | null;
   body: string;
   createdAt: string;
+  isReadByCaller: boolean;
+  readCount: number;
+  readByOthers: boolean;
 }

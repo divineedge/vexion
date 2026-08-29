@@ -2747,6 +2747,17 @@ export const ListJobMessagesParams = zod.object({
   "jobId": zod.coerce.number()
 })
 
+export const listJobMessagesQueryLimitDefault = 100;
+export const listJobMessagesQueryLimitMax = 100;
+
+
+
+
+export const ListJobMessagesQueryParams = zod.object({
+  "limit": zod.coerce.number().min(1).max(listJobMessagesQueryLimitMax).default(listJobMessagesQueryLimitDefault),
+  "beforeId": zod.coerce.number().min(1).optional().describe('Return messages with IDs lower than this cursor')
+})
+
 export const ListJobMessagesResponseItem = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
@@ -2754,8 +2765,12 @@ export const ListJobMessagesResponseItem = zod.object({
   "senderId": zod.number(),
   "senderName": zod.string(),
   "senderRole": zod.string(),
+  "clientMessageId": zod.string().nullable(),
   "body": zod.string(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "isReadByCaller": zod.boolean(),
+  "readCount": zod.number(),
+  "readByOthers": zod.boolean()
 })
 export const ListJobMessagesResponse = zod.array(ListJobMessagesResponseItem)
 
@@ -2767,8 +2782,16 @@ export const CreateJobMessageParams = zod.object({
   "jobId": zod.coerce.number()
 })
 
+export const createJobMessageBodyBodyMax = 4000;
+
+export const createJobMessageBodyClientMessageIdMin = 8;
+export const createJobMessageBodyClientMessageIdMax = 100;
+
+
+
 export const CreateJobMessageBody = zod.object({
-  "body": zod.string()
+  "body": zod.string().min(1).max(createJobMessageBodyBodyMax),
+  "clientMessageId": zod.string().min(createJobMessageBodyClientMessageIdMin).max(createJobMessageBodyClientMessageIdMax)
 })
 
 export const CreateJobMessageResponse = zod.object({
@@ -2778,8 +2801,12 @@ export const CreateJobMessageResponse = zod.object({
   "senderId": zod.number(),
   "senderName": zod.string(),
   "senderRole": zod.string(),
+  "clientMessageId": zod.string().nullable(),
   "body": zod.string(),
-  "createdAt": zod.string()
+  "createdAt": zod.string(),
+  "isReadByCaller": zod.boolean(),
+  "readCount": zod.number(),
+  "readByOthers": zod.boolean()
 })
 
 
@@ -2792,6 +2819,100 @@ export const GetJobMessageUnreadCountParams = zod.object({
 
 export const GetJobMessageUnreadCountResponse = zod.object({
   "count": zod.number()
+})
+
+
+/**
+ * @summary List general staff conversation summaries visible to the caller
+ */
+export const ListStaffMessageThreadsResponseItem = zod.object({
+  "threadUserId": zod.number(),
+  "threadUserName": zod.string(),
+  "threadUserRole": zod.string(),
+  "lastMessage": zod.string().nullable(),
+  "lastMessageAt": zod.string().nullable(),
+  "unreadCount": zod.number()
+})
+export const ListStaffMessageThreadsResponse = zod.array(ListStaffMessageThreadsResponseItem)
+
+
+/**
+ * @summary Get general, job, and total unread staff message counts
+ */
+export const GetStaffMessagesUnreadSummaryResponse = zod.object({
+  "general": zod.number(),
+  "job": zod.number(),
+  "total": zod.number()
+})
+
+
+/**
+ * @summary List a visible general staff thread and mark incoming messages read
+ */
+export const ListStaffMessagesParams = zod.object({
+  "threadUserId": zod.coerce.number()
+})
+
+export const listStaffMessagesQueryLimitDefault = 100;
+export const listStaffMessagesQueryLimitMax = 100;
+
+
+
+
+export const ListStaffMessagesQueryParams = zod.object({
+  "limit": zod.coerce.number().min(1).max(listStaffMessagesQueryLimitMax).default(listStaffMessagesQueryLimitDefault),
+  "beforeId": zod.coerce.number().min(1).optional().describe('Return messages with IDs lower than this cursor')
+})
+
+export const ListStaffMessagesResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "threadUserId": zod.number(),
+  "senderId": zod.number(),
+  "senderName": zod.string(),
+  "senderRole": zod.string(),
+  "clientMessageId": zod.string().nullable(),
+  "body": zod.string(),
+  "createdAt": zod.string(),
+  "isReadByCaller": zod.boolean(),
+  "readCount": zod.number(),
+  "readByOthers": zod.boolean()
+})
+export const ListStaffMessagesResponse = zod.array(ListStaffMessagesResponseItem)
+
+
+/**
+ * @summary Send a message to a visible general staff thread
+ */
+export const CreateStaffMessageParams = zod.object({
+  "threadUserId": zod.coerce.number()
+})
+
+export const createStaffMessageBodyBodyMax = 4000;
+
+export const createStaffMessageBodyClientMessageIdMin = 8;
+export const createStaffMessageBodyClientMessageIdMax = 100;
+
+
+
+export const CreateStaffMessageBody = zod.object({
+  "body": zod.string().min(1).max(createStaffMessageBodyBodyMax),
+  "clientMessageId": zod.string().min(createStaffMessageBodyClientMessageIdMin).max(createStaffMessageBodyClientMessageIdMax)
+})
+
+export const CreateStaffMessageResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "threadUserId": zod.number(),
+  "senderId": zod.number(),
+  "senderName": zod.string(),
+  "senderRole": zod.string(),
+  "clientMessageId": zod.string().nullable(),
+  "body": zod.string(),
+  "createdAt": zod.string(),
+  "isReadByCaller": zod.boolean(),
+  "readCount": zod.number(),
+  "readByOthers": zod.boolean()
 })
 
 

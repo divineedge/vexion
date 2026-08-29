@@ -12,7 +12,7 @@ import {
   Alert,
   TextInput,
 } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -24,10 +24,13 @@ import {
   getGetJobQueryOptions,
   type GetJobQueryResult,
   customFetch,
+  getGetJobMessageUnreadCountQueryKey,
+  useGetJobMessageUnreadCount,
 } from '@workspace/api-client-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useColors } from '@/hooks/useColors';
 import { useOffline } from '@/contexts/OfflineContext';
+import { messagePollInterval } from '@/utils/messages';
 
 type RecurringJob = {
   id: number;
@@ -558,6 +561,19 @@ export default function JobDetailScreen() {
 
   const [cachedJob, setCachedJob] = useState<unknown | null>(null);
   const [cachedApps, setCachedApps] = useState<ChemApp[] | null>(null);
+  const [screenFocused, setScreenFocused] = useState(false);
+  const { data: messageUnread, refetch: refetchMessageUnread } = useGetJobMessageUnreadCount(jobId, {
+    query: {
+      enabled: Number.isInteger(jobId),
+      queryKey: getGetJobMessageUnreadCountQueryKey(jobId),
+      refetchInterval: messagePollInterval(screenFocused, isOffline),
+    },
+  });
+  useFocusEffect(useCallback(() => {
+    setScreenFocused(true);
+    void refetchMessageUnread();
+    return () => setScreenFocused(false);
+  }, [refetchMessageUnread]));
 
   const cachedQueryJob = queryClient.getQueryData<GetJobQueryResult>(getGetJobQueryOptions(jobId).queryKey);
   const { data: job, isLoading: jobLoading, isError: jobError, refetch: refetchJob } = useGetJob(
@@ -773,6 +789,25 @@ export default function JobDetailScreen() {
             </Text>
           </View>
         </View>
+
+        <TouchableOpacity
+          style={[styles.messagesCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={() => router.push({ pathname: '/(app)/messages', params: { jobId: String(jobId), title: (displayJob as { title: string }).title } } as any)}
+          activeOpacity={0.8}
+          testID="job-messages-button"
+        >
+          <View style={styles.messagesCardLeft}>
+            <Ionicons name="chatbubbles-outline" size={21} color={colors.primary} />
+            <View>
+              <Text style={[styles.messagesCardTitle, { color: colors.foreground }]}>Staff Messages</Text>
+              <Text style={[styles.messagesCardHint, { color: colors.mutedForeground }]}>Open this job’s staff-only conversation</Text>
+            </View>
+          </View>
+          <View style={styles.messagesCardRight}>
+            {!!messageUnread?.count && <View style={styles.jobMessageBadge}><Text style={styles.jobMessageBadgeText}>{messageUnread.count}</Text></View>}
+            <Ionicons name="chevron-forward" size={18} color={colors.mutedForeground} />
+          </View>
+        </TouchableOpacity>
 
         {/* Recurring series banner */}
         {(displayJob as RecurringJob).recurrenceDescription || (displayJob as RecurringJob).recurrenceParentId ? (
@@ -1098,6 +1133,13 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
   },
+  messagesCard: { marginHorizontal: 16, marginBottom: 12, borderRadius: 12, padding: 14, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  messagesCardLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  messagesCardTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 14 },
+  messagesCardHint: { fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 2 },
+  messagesCardRight: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  jobMessageBadge: { minWidth: 20, height: 20, paddingHorizontal: 5, borderRadius: 10, backgroundColor: '#dc2626', alignItems: 'center', justifyContent: 'center' },
+  jobMessageBadgeText: { color: '#fff', fontFamily: 'Inter_600SemiBold', fontSize: 10 },
   jobHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',

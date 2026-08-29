@@ -9,8 +9,9 @@ import {
   ActivityIndicator,
   Platform,
   TextInput,
+  AppState,
 } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -22,11 +23,14 @@ import {
   useStopMasterClock,
   getGetRouteDayDetailQueryOptions,
   getGetJobQueryOptions,
+  getGetStaffMessagesUnreadSummaryQueryKey,
+  useGetStaffMessagesUnreadSummary,
 } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOffline } from '@/contexts/OfflineContext';
 import { JobTimeClockModal } from '@/components/JobTimeClockModal';
+import { messagePollInterval } from '@/utils/messages';
 import {
   addTenantDateDays,
   tenantSchedulePeriod,
@@ -196,6 +200,7 @@ export default function JobsScreen() {
   const [jobSearch, setJobSearch] = useState('');
   const [jobStatusFilter, setJobStatusFilter] = useState<'all' | 'scheduled' | 'completed'>('all');
   const [showJobClock, setShowJobClock] = useState(false);
+  const [screenFocused, setScreenFocused] = useState(false);
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>(
     params.scheduleMode === 'week' ? 'week' : 'day',
   );
@@ -205,6 +210,23 @@ export default function JobsScreen() {
   const { data: jobs, isLoading, isError, refetch, isFetching } = useListJobs(
     { startDate: period.startDate, endDate: period.endDate }
   );
+  const { data: messageUnread, refetch: refetchMessageUnread } = useGetStaffMessagesUnreadSummary({
+    query: {
+      queryKey: getGetStaffMessagesUnreadSummaryQueryKey(),
+      refetchInterval: messagePollInterval(screenFocused, isOffline),
+    },
+  });
+  useFocusEffect(useCallback(() => {
+    setScreenFocused(true);
+    void refetchMessageUnread();
+    return () => setScreenFocused(false);
+  }, [refetchMessageUnread]));
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active' && screenFocused) void refetchMessageUnread();
+    });
+    return () => subscription.remove();
+  }, [screenFocused, refetchMessageUnread]);
 
   // A failed request must never show cached jobs from a different calendar range.
   useEffect(() => {
@@ -445,6 +467,18 @@ export default function JobsScreen() {
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity
+            onPress={() => router.push('/(app)/messages' as any)}
+            style={styles.headerBtn}
+            testID="messages-nav-button"
+          >
+            <Ionicons name="chatbubbles-outline" size={22} color={colors.mutedForeground} />
+            {!!messageUnread?.total && (
+              <View style={styles.messageBadge}>
+                <Text style={styles.messageBadgeText}>{messageUnread.total > 99 ? '99+' : messageUnread.total}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={handleTimeTrackingPress}
             style={styles.headerBtn}
             testID="time-tracking-nav-button"
@@ -657,7 +691,10 @@ export default function JobsScreen() {
           refreshControl={
             <RefreshControl
               refreshing={isFetching && !isLoading}
-              onRefresh={refetch}
+              onRefresh={() => {
+                void refetch();
+                void refetchMessageUnread();
+              }}
               tintColor={colors.primary}
             />
           }
@@ -706,6 +743,8 @@ const styles = StyleSheet.create({
   },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   headerBtn: { padding: 6 },
+  messageBadge: { position: 'absolute', right: -2, top: -2, minWidth: 16, height: 16, paddingHorizontal: 3, borderRadius: 8, backgroundColor: '#dc2626', alignItems: 'center', justifyContent: 'center' },
+  messageBadgeText: { color: '#fff', fontSize: 9, fontFamily: 'Inter_600SemiBold' },
   clockBanner: {
     flexDirection: 'row',
     alignItems: 'center',

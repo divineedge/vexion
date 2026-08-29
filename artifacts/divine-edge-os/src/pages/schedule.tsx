@@ -37,6 +37,7 @@ import {
   useListSkipReasons, getListSkipReasonsQueryKey,
   useCompleteAndInvoiceJob, useUpdateInvoice,
   useListJobMessages, getListJobMessagesQueryKey,
+  listJobMessages,
   useCreateJobMessage,
   useGetJobMessagesUnreadSummary, getGetJobMessagesUnreadSummaryQueryKey,
   useListJobEquipmentUses, getListJobEquipmentUsesQueryKey,
@@ -44,6 +45,12 @@ import {
   useListEquipment, getListEquipmentQueryKey,
   useListJobRequests, getListJobRequestsQueryKey,
   useApproveJobRequest, useRejectJobRequest, useRequestJobRequestClarification,
+  useListStaffMessageThreads, getListStaffMessageThreadsQueryKey,
+  useListStaffMessages, getListStaffMessagesQueryKey,
+  listStaffMessages,
+  useCreateStaffMessage,
+  type JobMessage,
+  type StaffMessage,
 } from '@workspace/api-client-react';
 import { useMutation } from '@tanstack/react-query';
 import MediaGallery from '@/components/media/MediaGallery';
@@ -72,6 +79,7 @@ import {
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDebounce } from '@/hooks/use-debounce';
+import { hasEarlierMessagePage, mergeMessagePages, messageBeforeId } from '@/lib/messagePagination';
 import {
   startOfWeek, endOfWeek, startOfMonth, endOfMonth,
   eachDayOfInterval, format, isSameDay, addWeeks, subWeeks, addMonths, subMonths,
@@ -498,6 +506,27 @@ export default function SchedulePage() {
   // ── Job messages ─────────────────────────────────────────────────────────
   const [msgInput, setMsgInput] = useState('');
   const msgEndRef = React.useRef<HTMLDivElement>(null);
+  const [staffInboxOpen, setStaffInboxOpen] = useState(false);
+  const [staffThreadId, setStaffThreadId] = useState<number | null>(null);
+  const [staffMsgInput, setStaffMsgInput] = useState('');
+  const [staffOlderPages, setStaffOlderPages] = useState<StaffMessage[][]>([]);
+  const [staffNewestHistory, setStaffNewestHistory] = useState<StaffMessage[]>([]);
+  const [staffEarlierLoading, setStaffEarlierLoading] = useState(false);
+  const [staffEarlierError, setStaffEarlierError] = useState('');
+  const { data: staffThreads = [], isLoading: staffThreadsLoading } = useListStaffMessageThreads({
+    query: { enabled: canManageOffice && staffInboxOpen, queryKey: getListStaffMessageThreadsQueryKey(), refetchInterval: canManageOffice && staffInboxOpen ? 30000 : false },
+  });
+  const { data: staffThreadMessages = [], refetch: refetchStaffThread } = useListStaffMessages(staffThreadId ?? 0, {
+    limit: 100,
+  }, {
+    query: { enabled: canManageOffice && staffInboxOpen && staffThreadId != null, queryKey: getListStaffMessagesQueryKey(staffThreadId ?? 0, { limit: 100 }), refetchInterval: canManageOffice && staffInboxOpen && staffThreadId != null ? 30000 : false },
+  });
+  const createStaffMessage = useCreateStaffMessage();
+  const allStaffThreadMessages = React.useMemo(
+    () => mergeMessagePages(staffThreadMessages, [...staffOlderPages, staffNewestHistory]),
+    [staffThreadMessages, staffOlderPages, staffNewestHistory],
+  );
+  const canLoadEarlierStaff = hasEarlierMessagePage(staffThreadMessages, staffOlderPages);
 
   // Unread summary for job card badges — fetch once when schedule loads
   const { data: unreadSummaryRaw, refetch: refetchUnreadSummary } = useGetJobMessagesUnreadSummary({
@@ -512,9 +541,70 @@ export default function SchedulePage() {
   // Messages for the currently-open job drawer — poll every 15 s while open
   const { data: jobMessages = [], refetch: refetchMessages } = useListJobMessages(
     selectedJobId!,
-    { query: { enabled: selectedJobId != null, queryKey: getListJobMessagesQueryKey(selectedJobId ?? 0), refetchInterval: selectedJobId != null ? 15000 : false } },
+    { limit: 100 },
+    { query: { enabled: selectedJobId != null, queryKey: getListJobMessagesQueryKey(selectedJobId ?? 0, { limit: 100 }), refetchInterval: selectedJobId != null ? 30000 : false } },
   );
   const createJobMessage = useCreateJobMessage();
+  const [jobOlderPages, setJobOlderPages] = useState<JobMessage[][]>([]);
+  const [jobNewestHistory, setJobNewestHistory] = useState<JobMessage[]>([]);
+  const [jobEarlierLoading, setJobEarlierLoading] = useState(false);
+  const [jobEarlierError, setJobEarlierError] = useState('');
+  const allJobMessages = React.useMemo(
+    () => mergeMessagePages(jobMessages, [...jobOlderPages, jobNewestHistory]),
+    [jobMessages, jobOlderPages, jobNewestHistory],
+  );
+  const canLoadEarlierJob = hasEarlierMessagePage(jobMessages, jobOlderPages);
+
+  useEffect(() => {
+    setJobOlderPages([]);
+    setJobNewestHistory([]);
+    setJobEarlierError('');
+    setJobEarlierLoading(false);
+  }, [selectedJobId, user?.id, user?.tenantId]);
+  useEffect(() => {
+    setStaffOlderPages([]);
+    setStaffNewestHistory([]);
+    setStaffEarlierError('');
+    setStaffEarlierLoading(false);
+  }, [staffThreadId, staffInboxOpen, user?.id, user?.tenantId]);
+  useEffect(() => {
+    if (jobMessages.length) setJobNewestHistory(current => mergeMessagePages(jobMessages, [current]));
+  }, [jobMessages]);
+  useEffect(() => {
+    if (staffThreadMessages.length) setStaffNewestHistory(current => mergeMessagePages(staffThreadMessages, [current]));
+  }, [staffThreadMessages]);
+
+  async function loadEarlierJobMessages() {
+    const beforeId = messageBeforeId(allJobMessages);
+    if (!selectedJobId || !beforeId || jobEarlierLoading) return;
+    setJobEarlierLoading(true);
+    setJobEarlierError('');
+    try {
+      const page = await listJobMessages(selectedJobId, { limit: 100, beforeId });
+      setJobOlderPages(current => [...current, page]);
+      await qc.invalidateQueries({ queryKey: getGetJobMessagesUnreadSummaryQueryKey() });
+    } catch {
+      setJobEarlierError('Could not load earlier messages.');
+    } finally {
+      setJobEarlierLoading(false);
+    }
+  }
+
+  async function loadEarlierStaffMessages() {
+    const beforeId = messageBeforeId(allStaffThreadMessages);
+    if (staffThreadId == null || !beforeId || staffEarlierLoading) return;
+    setStaffEarlierLoading(true);
+    setStaffEarlierError('');
+    try {
+      const page = await listStaffMessages(staffThreadId, { limit: 100, beforeId });
+      setStaffOlderPages(current => [...current, page]);
+      await qc.invalidateQueries({ queryKey: getListStaffMessageThreadsQueryKey() });
+    } catch {
+      setStaffEarlierError('Could not load earlier messages.');
+    } finally {
+      setStaffEarlierLoading(false);
+    }
+  }
 
   // Auto-scroll to bottom when new messages arrive
   React.useEffect(() => {
@@ -577,7 +667,7 @@ export default function SchedulePage() {
     const body = msgInput.trim();
     if (!body || !selectedJobId || createJobMessage.isPending) return;
     createJobMessage.mutate(
-      { jobId: selectedJobId, data: { body } },
+      { jobId: selectedJobId, data: { body, clientMessageId: crypto.randomUUID() } },
       {
         onSuccess: () => {
           setMsgInput('');
@@ -588,6 +678,19 @@ export default function SchedulePage() {
         onError: () => toast.error('Failed to send message'),
       },
     );
+  }
+
+  function handleSendStaffMessage() {
+    const body = staffMsgInput.trim();
+    if (!body || staffThreadId == null || createStaffMessage.isPending) return;
+    createStaffMessage.mutate({ threadUserId: staffThreadId, data: { body, clientMessageId: crypto.randomUUID() } }, {
+      onSuccess: () => {
+        setStaffMsgInput('');
+        refetchStaffThread();
+        qc.invalidateQueries({ queryKey: getListStaffMessageThreadsQueryKey() });
+      },
+      onError: () => toast.error('Failed to send staff message'),
+    });
   }
 
   const { data: bizTags = [] } = useListTags({ query: { queryKey: getListTagsQueryKey() } });
@@ -797,6 +900,17 @@ export default function SchedulePage() {
           </p>
         </div>
         <div className="flex items-center gap-4">
+          {canManageOffice && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs px-3 gap-1.5"
+              onClick={() => setStaffInboxOpen(true)}
+              data-testid="button-open-staff-messages"
+            >
+              <MessageSquare className="w-3.5 h-3.5" /> Staff Messages
+            </Button>
+          )}
           {/* Job title / customer search */}
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
@@ -2208,19 +2322,27 @@ export default function SchedulePage() {
                     <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1.5">
                       <MessageSquare className="w-3.5 h-3.5" /> Staff Messages
                     </p>
-                    {jobMessages.length > 0 && (
-                      <Badge variant="secondary" className="h-4 px-1 text-[10px]" title={`${jobMessages.length} message${jobMessages.length !== 1 ? 's' : ''} in this thread`}>
-                        {jobMessages.length}
+                    {allJobMessages.length > 0 && (
+                      <Badge variant="secondary" className="h-4 px-1 text-[10px]" title={`${allJobMessages.length} message${allJobMessages.length !== 1 ? 's' : ''} loaded in this thread`}>
+                        {allJobMessages.length}
                       </Badge>
                     )}
                   </div>
 
                   {/* Thread */}
-                  {jobMessages.length === 0 ? (
+                  {allJobMessages.length === 0 ? (
                     <p className="text-xs text-muted-foreground italic" title="No messages yet — be the first to send one">No messages yet. Start the conversation.</p>
                   ) : (
                     <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                      {jobMessages.map((msg: any) => {
+                      {(canLoadEarlierJob || jobEarlierError) && (
+                        <div className="text-center space-y-1">
+                          <Button size="sm" variant="outline" disabled={jobEarlierLoading} onClick={() => void loadEarlierJobMessages()}>
+                            {jobEarlierLoading ? 'Loading…' : jobEarlierError ? 'Retry loading earlier messages' : 'Load earlier messages'}
+                          </Button>
+                          {jobEarlierError && <p className="text-xs text-destructive">{jobEarlierError}</p>}
+                        </div>
+                      )}
+                      {allJobMessages.map((msg: any) => {
                         const isOwn = msg.senderId === user?.id;
                         return (
                           <div key={msg.id} className={`flex flex-col gap-0.5 ${isOwn ? 'items-end' : 'items-start'}`}>
@@ -2236,6 +2358,7 @@ export default function SchedulePage() {
                             <div className={`rounded-lg px-3 py-2 text-sm max-w-[90%] whitespace-pre-wrap break-words ${isOwn ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'}`}>
                               {msg.body}
                             </div>
+                            {isOwn && <span className="text-[9px] text-muted-foreground">{msg.readByOthers ? 'Read' : 'Sent'}</span>}
                           </div>
                         );
                       })}
@@ -3733,6 +3856,82 @@ export default function SchedulePage() {
       </Dialog>
 
       {/* ── Waitlist sheet ─────────────────────────────────────────────────── */}
+      <Sheet open={staffInboxOpen} onOpenChange={setStaffInboxOpen}>
+        <SheetContent className="w-full sm:max-w-2xl">
+          <SheetHeader>
+            <SheetTitle>General Staff Messages</SheetTitle>
+            <SheetDescription>Private staff-member threads. Updates every 30 seconds while open.</SheetDescription>
+          </SheetHeader>
+          <div className="grid grid-cols-[220px_1fr] gap-3 mt-5 h-[calc(100vh-150px)]">
+            <div className="border-r pr-3 overflow-y-auto space-y-1">
+              {staffThreadsLoading ? (
+                <p className="text-sm text-muted-foreground" data-testid="status-staff-threads-loading">Loading conversations…</p>
+              ) : staffThreads.length === 0 ? (
+                <p className="text-sm text-muted-foreground" data-testid="status-staff-threads-empty">No staff conversations available.</p>
+              ) : staffThreads.map(thread => (
+                <button
+                  key={thread.threadUserId}
+                  onClick={() => { setStaffThreadId(thread.threadUserId); setStaffMsgInput(''); }}
+                  className={`w-full rounded-md p-2 text-left hover:bg-muted ${staffThreadId === thread.threadUserId ? 'bg-muted' : ''}`}
+                  data-testid={`button-staff-thread-${thread.threadUserId}`}
+                >
+                  <div className="flex justify-between gap-2">
+                    <span className="text-sm font-medium truncate">{thread.threadUserName}</span>
+                    {thread.unreadCount > 0 && <Badge className="h-5 px-1.5 text-[10px]">{thread.unreadCount}</Badge>}
+                  </div>
+                  <p className="text-[10px] capitalize text-muted-foreground">{thread.threadUserRole.replaceAll('_', ' ')}</p>
+                  <p className="text-xs text-muted-foreground truncate mt-1">{thread.lastMessage ?? 'No messages yet'}</p>
+                </button>
+              ))}
+            </div>
+            <div className="min-w-0 flex flex-col">
+              {staffThreadId == null ? (
+                <div className="flex-1 grid place-items-center text-sm text-muted-foreground" data-testid="status-select-staff-thread">Select a staff member to open their thread.</div>
+              ) : (
+                <>
+                  <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                    {allStaffThreadMessages.length === 0 && <p className="text-sm text-muted-foreground">No messages yet. Start the conversation.</p>}
+                    {(canLoadEarlierStaff || staffEarlierError) && (
+                      <div className="text-center space-y-1">
+                        <Button size="sm" variant="outline" disabled={staffEarlierLoading} onClick={() => void loadEarlierStaffMessages()}>
+                          {staffEarlierLoading ? 'Loading…' : staffEarlierError ? 'Retry loading earlier messages' : 'Load earlier messages'}
+                        </Button>
+                        {staffEarlierError && <p className="text-xs text-destructive">{staffEarlierError}</p>}
+                      </div>
+                    )}
+                    {allStaffThreadMessages.map(message => {
+                      const own = message.senderId === user?.id;
+                      return (
+                        <div key={message.id} className={`flex flex-col ${own ? 'items-end' : 'items-start'}`} data-testid={`staff-message-${message.id}`}>
+                          <span className="text-[10px] text-muted-foreground mb-1">{message.senderName} · {message.senderRole.replaceAll('_', ' ')} · {format(new Date(message.createdAt), 'MMM d h:mm a')}</span>
+                          <div className={`rounded-lg px-3 py-2 text-sm max-w-[90%] whitespace-pre-wrap break-words ${own ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>{message.body}</div>
+                          {own && <span className="text-[9px] text-muted-foreground mt-0.5">{message.readByOthers ? 'Read' : 'Sent'}</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex gap-2 items-end pt-3 border-t mt-3">
+                    <Textarea
+                      rows={2}
+                      maxLength={4000}
+                      value={staffMsgInput}
+                      onChange={event => setStaffMsgInput(event.target.value)}
+                      placeholder="Message this staff member…"
+                      className="resize-none"
+                      data-testid="input-staff-message"
+                      onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); handleSendStaffMessage(); } }}
+                    />
+                    <Button disabled={!staffMsgInput.trim() || createStaffMessage.isPending} onClick={handleSendStaffMessage} data-testid="button-send-staff-message">
+                      <Send className="w-4 h-4" /> {createStaffMessage.isPending ? 'Sending…' : 'Send'}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
       <Sheet open={waitlistOpen} onOpenChange={setWaitlistOpen}>
         <SheetContent side="right" className="w-full max-w-md flex flex-col gap-0 p-0">
           <SheetHeader className="px-6 pt-6 pb-4 border-b shrink-0">

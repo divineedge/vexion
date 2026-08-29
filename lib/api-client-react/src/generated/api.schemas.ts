@@ -1824,13 +1824,77 @@ export interface JobMessage {
   senderId: number;
   senderName: string;
   senderRole: string;
+  /** @nullable */
+  clientMessageId: string | null;
   body: string;
   createdAt: string;
+  isReadByCaller: boolean;
+  readCount: number;
+  readByOthers: boolean;
 }
 
 export interface JobMessageUnreadSummaryItem {
   jobId: number;
   count: number;
+}
+
+export interface JobMessageInput {
+  /**
+     * @minLength 1
+     * @maxLength 4000
+     */
+  body: string;
+  /**
+     * @minLength 8
+     * @maxLength 100
+     */
+  clientMessageId: string;
+}
+
+export interface StaffMessage {
+  id: number;
+  tenantId: number;
+  threadUserId: number;
+  senderId: number;
+  senderName: string;
+  senderRole: string;
+  /** @nullable */
+  clientMessageId: string | null;
+  body: string;
+  createdAt: string;
+  isReadByCaller: boolean;
+  readCount: number;
+  readByOthers: boolean;
+}
+
+export interface StaffMessageInput {
+  /**
+     * @minLength 1
+     * @maxLength 4000
+     */
+  body: string;
+  /**
+     * @minLength 8
+     * @maxLength 100
+     */
+  clientMessageId: string;
+}
+
+export interface StaffMessageThreadSummary {
+  threadUserId: number;
+  threadUserName: string;
+  threadUserRole: string;
+  /** @nullable */
+  lastMessage: string | null;
+  /** @nullable */
+  lastMessageAt: string | null;
+  unreadCount: number;
+}
+
+export interface StaffMessagesUnreadSummary {
+  general: number;
+  job: number;
+  total: number;
 }
 
 export interface JobPartInput {
@@ -5778,12 +5842,34 @@ export type CancelRecurringSeriesParams = {
 scope?: CancelSeriesScope;
 };
 
-export type CreateJobMessageBody = {
-  body: string;
+export type ListJobMessagesParams = {
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * Return messages with IDs lower than this cursor
+ * @minimum 1
+ */
+beforeId?: number;
 };
 
 export type GetJobMessageUnreadCount200 = {
   count: number;
+};
+
+export type ListStaffMessagesParams = {
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * Return messages with IDs lower than this cursor
+ * @minimum 1
+ */
+beforeId?: number;
 };
 
 export type ListInventoryItemsParams = {

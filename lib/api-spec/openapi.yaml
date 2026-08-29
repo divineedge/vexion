@@ -1553,6 +1553,21 @@ paths:
           required: true
           schema:
             type: integer
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 100
+        - name: beforeId
+          in: query
+          required: false
+          description: Return messages with IDs lower than this cursor
+          schema:
+            type: integer
+            minimum: 1
       responses:
         "200":
           description: Message list
@@ -1577,11 +1592,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [body]
-              properties:
-                body:
-                  type: string
+                $ref: "#/components/schemas/JobMessageInput"
       responses:
         "201":
           description: Message created
@@ -1612,6 +1623,94 @@ paths:
                 properties:
                   count:
                     type: integer
+
+  # GENERAL STAFF MESSAGES (staff-only thread per staff member)
+  /staff-messages:
+    get:
+      operationId: listStaffMessageThreads
+      tags: [staff-messages]
+      summary: List general staff conversation summaries visible to the caller
+      responses:
+        "200":
+          description: Conversation summaries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StaffMessageThreadSummary"
+
+  /staff-messages/unread-summary:
+    get:
+      operationId: getStaffMessagesUnreadSummary
+      tags: [staff-messages]
+      summary: Get general, job, and total unread staff message counts
+      responses:
+        "200":
+          description: Unread totals
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffMessagesUnreadSummary"
+
+  /staff-messages/{threadUserId}:
+    get:
+      operationId: listStaffMessages
+      tags: [staff-messages]
+      summary: List a visible general staff thread and mark incoming messages read
+      parameters:
+        - name: threadUserId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 100
+        - name: beforeId
+          in: query
+          required: false
+          description: Return messages with IDs lower than this cursor
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StaffMessage"
+    post:
+      operationId: createStaffMessage
+      tags: [staff-messages]
+      summary: Send a message to a visible general staff thread
+      parameters:
+        - name: threadUserId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StaffMessageInput"
+      responses:
+        "201":
+          description: Message created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffMessage"
 
   # CREWS
   /crews:
@@ -9853,7 +9952,7 @@ components:
 
     JobMessage:
       type: object
-      required: [id, tenantId, jobId, senderId, senderName, senderRole, body, createdAt]
+      required: [id, tenantId, jobId, senderId, senderName, senderRole, clientMessageId, body, createdAt, isReadByCaller, readCount, readByOthers]
       properties:
         id:
           type: integer
@@ -9867,10 +9966,15 @@ components:
           type: string
         senderRole:
           type: string
+        clientMessageId:
+          type: ["string", "null"]
         body:
           type: string
         createdAt:
           type: string
+        isReadByCaller: { type: boolean }
+        readCount: { type: integer }
+        readByOthers: { type: boolean }
 
     JobMessageUnreadSummaryItem:
       type: object
@@ -9880,6 +9984,68 @@ components:
           type: integer
         count:
           type: integer
+
+    JobMessageInput:
+      type: object
+      required: [body, clientMessageId]
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        clientMessageId:
+          type: string
+          minLength: 8
+          maxLength: 100
+
+    StaffMessage:
+      type: object
+      required: [id, tenantId, threadUserId, senderId, senderName, senderRole, clientMessageId, body, createdAt, isReadByCaller, readCount, readByOthers]
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        threadUserId: { type: integer }
+        senderId: { type: integer }
+        senderName: { type: string }
+        senderRole: { type: string }
+        clientMessageId: { type: ["string", "null"] }
+        body: { type: string }
+        createdAt: { type: string }
+        isReadByCaller: { type: boolean }
+        readCount: { type: integer }
+        readByOthers: { type: boolean }
+
+    StaffMessageInput:
+      type: object
+      required: [body, clientMessageId]
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        clientMessageId:
+          type: string
+          minLength: 8
+          maxLength: 100
+
+    StaffMessageThreadSummary:
+      type: object
+      required: [threadUserId, threadUserName, threadUserRole, lastMessage, lastMessageAt, unreadCount]
+      properties:
+        threadUserId: { type: integer }
+        threadUserName: { type: string }
+        threadUserRole: { type: string }
+        lastMessage: { type: ["string", "null"] }
+        lastMessageAt: { type: ["string", "null"] }
+        unreadCount: { type: integer }
+
+    StaffMessagesUnreadSummary:
+      type: object
+      required: [general, job, total]
+      properties:
+        general: { type: integer }
+        job: { type: integer }
+        total: { type: integer }
 
     JobPart:
       type: object

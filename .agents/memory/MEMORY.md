@@ -36,3 +36,4 @@
 - [Property map location](property-map-location.md) — Google-first geocoding; persisted pin always centers the map; never infer property boundaries from geocoder bounds
 - [Google Places availability](google-places-availability.md) — current Maps key cannot call Places REST or browser autocomplete; address entry must retain clearly labeled fallback providers
 - [Field schedule tenant dates](field-schedule-tenant-dates.md) — selected schedule days use YYYY-MM-DD tenant-calendar keys end-to-end, never device-local Date carriers
+- [Mobile message delivery](mobile-message-delivery.md) — offline staff messages use scoped persistent outboxes plus server idempotency; polling reads use stable indexed cursors

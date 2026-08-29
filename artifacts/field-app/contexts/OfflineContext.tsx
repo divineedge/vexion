@@ -3,7 +3,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '@/contexts/AuthContext';
 
 // Keys are namespaced by tenantId + userId so cached data never leaks across accounts on a shared device.
-function jobsKey(scope: string) { return `offline_${scope}_jobs`; }
+function jobsKey(scope: string, rangeKey?: string) {
+  return rangeKey ? `offline_${scope}_jobs_${encodeURIComponent(rangeKey)}` : `offline_${scope}_jobs`;
+}
 function jobKey(scope: string, jobId: number) { return `offline_${scope}_job_${jobId}`; }
 function appsKey(scope: string, jobId: number) { return `offline_${scope}_apps_${jobId}`; }
 
@@ -31,10 +33,10 @@ interface OfflineContextType {
   isOffline: boolean;
   /** Call with true when an API fetch fails, false when it succeeds */
   reportNetworkStatus: (failed: boolean) => void;
-  /** Persist the job list to AsyncStorage (scoped to current user) */
-  cacheJobs: (jobs: unknown[]) => Promise<void>;
-  /** Retrieve the cached job list (null if nothing cached yet) */
-  getCachedJobs: () => Promise<unknown[] | null>;
+  /** Persist a job list to AsyncStorage (scoped to current user and optional date range). */
+  cacheJobs: (jobs: unknown[], rangeKey?: string) => Promise<void>;
+  /** Retrieve a cached job list (optionally for a specific date range). */
+  getCachedJobs: (rangeKey?: string) => Promise<unknown[] | null>;
   /** Persist a single job to AsyncStorage */
   cacheJob: (jobId: number, job: unknown) => Promise<void>;
   /** Retrieve a cached single job */
@@ -80,19 +82,19 @@ export function OfflineProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const cacheJobs = useCallback(async (jobs: unknown[]) => {
+  const cacheJobs = useCallback(async (jobs: unknown[], rangeKey?: string) => {
     if (!scope) return;
     try {
-      await AsyncStorage.setItem(jobsKey(scope), JSON.stringify(jobs));
+      await AsyncStorage.setItem(jobsKey(scope, rangeKey), JSON.stringify(jobs));
     } catch {
       // Silently ignore storage errors
     }
   }, [scope]);
 
-  const getCachedJobs = useCallback(async (): Promise<unknown[] | null> => {
+  const getCachedJobs = useCallback(async (rangeKey?: string): Promise<unknown[] | null> => {
     if (!scope) return null;
     try {
-      const raw = await AsyncStorage.getItem(jobsKey(scope));
+      const raw = await AsyncStorage.getItem(jobsKey(scope, rangeKey));
       if (!raw) return null;
       return JSON.parse(raw) as unknown[];
     } catch {

@@ -8,8 +8,17 @@
 
 export type ListJobsParams = {
 status?: string;
+/**
+ * Filter by assignee for office/manager roles. Ignored for technicians, whose visibility is derived from authentication.
+ */
 assigneeId?: number;
+/**
+ * Inclusive ISO-8601 timestamp for the scheduled date range.
+ */
 startDate?: Date;
+/**
+ * Exclusive ISO-8601 timestamp for the scheduled date range. Use the next local-day boundary to include an entire day.
+ */
 endDate?: Date;
 customerId?: number;
 routeTemplateId?: number;

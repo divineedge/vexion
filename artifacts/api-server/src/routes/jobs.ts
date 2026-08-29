@@ -22,7 +22,7 @@ function normaliseSupplies(raw: unknown): { inventoryItemId: number; name: strin
   return out;
 }
 import crypto from "crypto";
-import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, customerAlertsTable, invoicesTable, tenantsTable, blueprintsTable, chemicalApplicationsTable, chemicalProductsTable, chemicalMixtureItemsTable, customerPlansTable, equipmentFuelLogsTable, routeTemplatesTable, skipReasonsTable, taskNotificationsTable, internalTasksTable, portalMessagesTable, servicesTable } from "@workspace/db";
+import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, crewMembersTable, customerAlertsTable, invoicesTable, tenantsTable, blueprintsTable, chemicalApplicationsTable, chemicalProductsTable, chemicalMixtureItemsTable, customerPlansTable, equipmentFuelLogsTable, routeTemplatesTable, skipReasonsTable, taskNotificationsTable, internalTasksTable, portalMessagesTable, servicesTable } from "@workspace/db";
 import { eq, and, or, sql, desc, asc, isNotNull, isNull, ne, inArray, min, gt } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { getCallerRole, isAdminRole } from "../lib/roles";
@@ -324,17 +324,47 @@ function formatJob(
 
 router.get("/jobs", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
+  const userId = getUserId(req);
   const { status, assigneeId, startDate, endDate, customerId, crewId, routeTemplateId, propertyId } = req.query as Record<string, string>;
 
+  const start = startDate ? new Date(startDate) : null;
+  const end = endDate ? new Date(endDate) : null;
+  if ((startDate && (!start || Number.isNaN(start.getTime()))) || (endDate && (!end || Number.isNaN(end.getTime())))) {
+    res.status(400).json({ error: "startDate and endDate must be valid ISO-8601 timestamps" });
+    return;
+  }
+  if (start && end && end <= start) {
+    res.status(400).json({ error: "endDate must be later than startDate" });
+    return;
+  }
+
   let where = eq(jobsTable.tenantId, tenantId) as ReturnType<typeof eq>;
+  const callerRole = await getCallerRole(tenantId, userId);
+  if (callerRole === "technician") {
+    // Technician visibility is derived solely from the authenticated user, never
+    // from an assigneeId supplied by the client. Crew assignment follows the
+    // established job-access convention used by time tracking.
+    const memberships = await db.select({ crewId: crewMembersTable.crewId }).from(crewMembersTable).where(and(
+      eq(crewMembersTable.tenantId, tenantId),
+      eq(crewMembersTable.userId, userId),
+    ));
+    const crewIds = memberships.map(member => member.crewId);
+    const visibility = crewIds.length
+      ? or(eq(jobsTable.assigneeId, userId), inArray(jobsTable.crewId, crewIds))
+      : eq(jobsTable.assigneeId, userId);
+    where = and(where, visibility) as typeof where;
+  } else if (assigneeId && /^\d+$/.test(assigneeId)) {
+    where = and(where, eq(jobsTable.assigneeId, parseInt(assigneeId, 10))) as typeof where;
+  }
   if (status) where = and(where, eq(jobsTable.status, status)) as typeof where;
-  if (assigneeId) where = and(where, eq(jobsTable.assigneeId, parseInt(assigneeId, 10))) as typeof where;
   if (crewId) where = and(where, eq(jobsTable.crewId, parseInt(crewId, 10))) as typeof where;
   if (customerId) where = and(where, eq(jobsTable.customerId, parseInt(customerId, 10))) as typeof where;
   if (propertyId) where = and(where, eq(jobsTable.propertyId, parseInt(propertyId, 10))) as typeof where;
   if (routeTemplateId) where = and(where, eq(jobsTable.routeTemplateId, parseInt(routeTemplateId, 10))) as typeof where;
-  if (startDate) where = and(where, sql`${jobsTable.scheduledAt} >= ${startDate}::timestamptz`) as typeof where;
-  if (endDate) where = and(where, sql`${jobsTable.scheduledAt} <= ${endDate}::timestamptz`) as typeof where;
+  if (start) where = and(where, sql`${jobsTable.scheduledAt} >= ${start.toISOString()}::timestamptz`) as typeof where;
+  // endDate is exclusive, allowing callers to query local calendar ranges without
+  // dropping jobs scheduled in the final millisecond of a day.
+  if (end) where = and(where, sql`${jobsTable.scheduledAt} < ${end.toISOString()}::timestamptz`) as typeof where;
 
   const rows = await db
     .select({

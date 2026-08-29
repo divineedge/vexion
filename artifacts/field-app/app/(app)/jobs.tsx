@@ -10,7 +10,7 @@ import {
   Platform,
   TextInput,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -25,6 +25,14 @@ import {
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOffline } from '@/contexts/OfflineContext';
+import {
+  addLocalDays,
+  dateFromLocalKey,
+  groupJobsByDay,
+  localDateKey,
+  schedulePeriod,
+  type ScheduleMode,
+} from '@/utils/schedule';
 
 type Job = {
   id: number;
@@ -176,14 +184,25 @@ export default function JobsScreen() {
   const insets = useSafeAreaInsets();
   const { user, signOut } = useAuth();
   const { isOffline, reportNetworkStatus, cacheJobs, getCachedJobs } = useOffline();
+  const params = useLocalSearchParams<{ scheduleMode?: string; scheduleDate?: string }>();
 
   const [cachedJobs, setCachedJobs] = useState<Job[] | null>(null);
   const [jobSearch, setJobSearch] = useState('');
   const [jobStatusFilter, setJobStatusFilter] = useState<'all' | 'scheduled' | 'completed'>('all');
+  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>(
+    params.scheduleMode === 'week' ? 'week' : 'day',
+  );
+  const [selectedDate, setSelectedDate] = useState<Date>(() => dateFromLocalKey(params.scheduleDate));
+  const period = useMemo(() => schedulePeriod(scheduleMode, selectedDate), [scheduleMode, selectedDate]);
 
   const { data: jobs, isLoading, isError, refetch, isFetching } = useListJobs(
-    user?.role === 'technician' ? { assigneeId: user.id } : undefined
+    { startDate: period.startDate, endDate: period.endDate }
   );
+
+  // A failed request must never show cached jobs from a different calendar range.
+  useEffect(() => {
+    setCachedJobs(null);
+  }, [period.rangeKey]);
 
   // Master clock (day clock banner) — from Task #42
   const { data: masterClock, refetch: refetchMasterClock } = useGetMasterClock();
@@ -217,19 +236,19 @@ export default function JobsScreen() {
   useEffect(() => {
     if (jobs) {
       reportNetworkStatus(false);
-      cacheJobs(jobs as unknown[]);
+      cacheJobs(jobs as unknown[], period.rangeKey);
     }
-  }, [jobs, reportNetworkStatus, cacheJobs]);
+  }, [jobs, reportNetworkStatus, cacheJobs, period.rangeKey]);
 
   // When the query errors, try to load from cache and mark offline
   useEffect(() => {
     if (isError) {
       reportNetworkStatus(true);
-      getCachedJobs().then((cached) => {
+      getCachedJobs(period.rangeKey).then((cached) => {
         if (cached) setCachedJobs(cached as Job[]);
       });
     }
-  }, [isError, reportNetworkStatus, getCachedJobs]);
+  }, [isError, reportNetworkStatus, getCachedJobs, period.rangeKey]);
 
   const displayJobs: Job[] = (isError ? cachedJobs : (jobs as Job[] | undefined)) ?? [];
 
@@ -238,7 +257,7 @@ export default function JobsScreen() {
     const seen = new Map<string, { id: number; date: string }>();
     for (const job of displayJobs) {
       if (job.routeTemplateId != null) {
-        const date = job.scheduledAt.slice(0, 10);
+        const date = localDateKey(new Date(job.scheduledAt));
         const key = `${job.routeTemplateId}::${date}`;
         if (!seen.has(key)) {
           seen.set(key, { id: job.routeTemplateId, date });
@@ -290,28 +309,35 @@ export default function JobsScreen() {
     return result;
   }, [displayJobs, jobSearch, jobStatusFilter]);
 
-  // Sort: route jobs for today sorted by sequenceOrder first, then everything else
-  const sortedJobs = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    const routeToday: Job[] = [];
-    const rest: Job[] = [];
-    for (const job of searchedJobs) {
-      const isToday = job.scheduledAt.slice(0, 10) === today;
-      if (isToday && routeStopMap.has(job.id)) {
-        routeToday.push(job);
-      } else {
-        rest.push(job);
-      }
-    }
-    routeToday.sort((a, b) => {
-      const aOrder = routeStopMap.get(a.id)?.sequenceOrder ?? 999;
-      const bOrder = routeStopMap.get(b.id)?.sequenceOrder ?? 999;
-      return aOrder - bOrder;
-    });
+  const groupedJobs = useMemo(() => {
     const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
-    rest.sort((a, b) => (PRIORITY_ORDER[a.priority ?? 'normal'] ?? 2) - (PRIORITY_ORDER[b.priority ?? 'normal'] ?? 2));
-    return [...routeToday, ...rest];
-  }, [displayJobs, routeStopMap]);
+    return groupJobsByDay(searchedJobs, period.days).map(group => ({
+      ...group,
+      jobs: [...group.jobs].sort((a, b) => {
+        const aStop = routeStopMap.get(a.id);
+        const bStop = routeStopMap.get(b.id);
+        if (!!aStop !== !!bStop) return aStop ? -1 : 1;
+        if (aStop && bStop && aStop.sequenceOrder !== bStop.sequenceOrder) {
+          return aStop.sequenceOrder - bStop.sequenceOrder;
+        }
+        const priority = (PRIORITY_ORDER[a.priority ?? 'normal'] ?? 2) - (PRIORITY_ORDER[b.priority ?? 'normal'] ?? 2);
+        return priority || new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+      }),
+    }));
+  }, [searchedJobs, period.days, routeStopMap]);
+  const sortedJobs = groupedJobs.flatMap(group => group.jobs);
+
+  const setSchedule = useCallback((mode: ScheduleMode, date: Date) => {
+    setScheduleMode(mode);
+    setSelectedDate(date);
+    router.setParams({ scheduleMode: mode, scheduleDate: localDateKey(date) });
+  }, []);
+  const movePeriod = useCallback((direction: -1 | 1) => {
+    setSchedule(scheduleMode, addLocalDays(selectedDate, direction * (scheduleMode === 'week' ? 7 : 1)));
+  }, [scheduleMode, selectedDate, setSchedule]);
+  const periodLabel = scheduleMode === 'day'
+    ? selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+    : `${period.days[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${period.days[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
 
   const handleJobPress = useCallback(async (id: number) => {
     await Haptics.selectionAsync();
@@ -426,6 +452,45 @@ export default function JobsScreen() {
         </View>
       </TouchableOpacity>
 
+      <View style={[styles.scheduleControls, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+        <View style={[styles.segmentedControl, { backgroundColor: colors.muted }]}>
+          {(['day', 'week'] as const).map(mode => (
+            <TouchableOpacity
+              key={mode}
+              testID={`schedule-mode-${mode}`}
+              onPress={() => setSchedule(mode, selectedDate)}
+              style={[styles.segment, scheduleMode === mode && { backgroundColor: colors.primary }]}
+            >
+              <Text style={[styles.segmentText, { color: scheduleMode === mode ? colors.primaryForeground : colors.mutedForeground }]}>
+                {mode === 'day' ? 'Day' : 'Week'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <View style={styles.periodNav}>
+          <TouchableOpacity testID="schedule-previous" onPress={() => movePeriod(-1)} style={styles.periodButton}>
+            <Ionicons name="chevron-back" size={20} color={colors.foreground} />
+          </TouchableOpacity>
+          <Text style={[styles.periodLabel, { color: colors.foreground }]} numberOfLines={1}>{periodLabel}</Text>
+          <TouchableOpacity testID="schedule-next" onPress={() => movePeriod(1)} style={styles.periodButton}>
+            <Ionicons name="chevron-forward" size={20} color={colors.foreground} />
+          </TouchableOpacity>
+          <TouchableOpacity testID="schedule-today" onPress={() => setSchedule(scheduleMode, new Date())} style={styles.todayButton}>
+            <Text style={[styles.todayText, { color: colors.primary }]}>Today</Text>
+          </TouchableOpacity>
+        </View>
+        {scheduleMode === 'week' && (
+          <View style={styles.weekSummary}>
+            {groupedJobs.map(group => (
+              <TouchableOpacity key={group.key} onPress={() => setSchedule('day', group.date)} style={styles.weekDay}>
+                <Text style={[styles.weekDayName, { color: colors.mutedForeground }]}>{group.date.toLocaleDateString('en-US', { weekday: 'narrow' })}</Text>
+                <Text style={[styles.weekDayCount, { color: group.jobs.length ? colors.primary : colors.mutedForeground }]}>{group.jobs.length}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
+
       {/* Search bar */}
       {!isLoading && !showEmptyError && (
         <View style={[styles.searchBar, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
@@ -481,22 +546,24 @@ export default function JobsScreen() {
         </View>
       ) : (
         <FlatList
-          data={sortedJobs}
-          keyExtractor={(item) => String(item.id)}
-          renderItem={({ item }) => (
-            <JobCard
-              job={item}
-              onPress={() => handleJobPress(item.id)}
-              colors={colors}
-              routeStopInfo={routeStopMap.get(item.id)}
-            />
+          data={scheduleMode === 'week'
+            ? groupedJobs.flatMap(group => [{ type: 'heading' as const, key: group.key, date: group.date, count: group.jobs.length }, ...group.jobs.map(job => ({ type: 'job' as const, job }))])
+            : sortedJobs.map(job => ({ type: 'job' as const, job }))}
+          keyExtractor={(item) => item.type === 'heading' ? `heading-${item.key}` : String(item.job.id)}
+          renderItem={({ item }) => item.type === 'heading' ? (
+            <View style={styles.dayHeading}>
+              <Text style={[styles.dayHeadingText, { color: colors.foreground }]}>{item.date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</Text>
+              <Text style={[styles.dayHeadingCount, { color: colors.mutedForeground }]}>{item.count} {item.count === 1 ? 'job' : 'jobs'}</Text>
+            </View>
+          ) : (
+            <JobCard job={item.job} onPress={() => handleJobPress(item.job.id)} colors={colors} routeStopInfo={routeStopMap.get(item.job.id)} />
           )}
           contentContainerStyle={[
             styles.list,
             { paddingBottom: bottomPad },
             sortedJobs.length === 0 && styles.listEmpty,
           ]}
-          scrollEnabled={sortedJobs.length > 0}
+          scrollEnabled={scheduleMode === 'week' || sortedJobs.length > 0}
           refreshControl={
             <RefreshControl
               refreshing={isFetching && !isLoading}
@@ -575,6 +642,69 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_500Medium',
     fontSize: 12,
   },
+  scheduleControls: {
+    borderBottomWidth: 1,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 8,
+    gap: 9,
+  },
+  segmentedControl: {
+    flexDirection: 'row',
+    alignSelf: 'flex-start',
+    borderRadius: 8,
+    padding: 2,
+  },
+  segment: {
+    minWidth: 66,
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  segmentText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 12,
+  },
+  periodNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  periodButton: {
+    paddingVertical: 4,
+    paddingRight: 8,
+  },
+  periodLabel: {
+    flex: 1,
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
+  },
+  todayButton: {
+    paddingVertical: 5,
+    paddingLeft: 10,
+  },
+  todayText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 13,
+  },
+  weekSummary: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  weekDay: {
+    alignItems: 'center',
+    minWidth: 30,
+    paddingVertical: 2,
+  },
+  weekDayName: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 11,
+    marginBottom: 2,
+  },
+  weekDayCount: {
+    fontFamily: 'Inter_700Bold',
+    fontSize: 13,
+  },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -615,6 +745,21 @@ const styles = StyleSheet.create({
   },
   list: { paddingHorizontal: 16, paddingTop: 12 },
   listEmpty: { flex: 1 },
+  dayHeading: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    paddingTop: 8,
+    paddingBottom: 7,
+  },
+  dayHeadingText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 15,
+  },
+  dayHeadingCount: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+  },
   card: {
     borderWidth: 1,
     borderRadius: 12,

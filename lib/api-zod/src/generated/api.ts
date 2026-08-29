@@ -1325,9 +1325,9 @@ export const RespondToQuoteResponse = zod.object({
  */
 export const ListJobsQueryParams = zod.object({
   "status": zod.coerce.string().optional(),
-  "assigneeId": zod.coerce.number().optional(),
-  "startDate": zod.date().optional(),
-  "endDate": zod.date().optional(),
+  "assigneeId": zod.coerce.number().optional().describe('Filter by assignee for office\/manager roles. Ignored for technicians, whose visibility is derived from authentication.'),
+  "startDate": zod.date().optional().describe('Inclusive ISO-8601 timestamp for the scheduled date range.'),
+  "endDate": zod.date().optional().describe('Exclusive ISO-8601 timestamp for the scheduled date range. Use the next local-day boundary to include an entire day.'),
   "customerId": zod.coerce.number().optional(),
   "routeTemplateId": zod.coerce.number().optional()
 })

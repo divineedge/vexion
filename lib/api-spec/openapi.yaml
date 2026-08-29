@@ -984,16 +984,19 @@ paths:
           in: query
           schema:
             type: integer
+          description: Filter by assignee for office/manager roles. Ignored for technicians, whose visibility is derived from authentication.
         - name: startDate
           in: query
           schema:
             type: string
-            format: date
+            format: date-time
+          description: Inclusive ISO-8601 timestamp for the scheduled date range.
         - name: endDate
           in: query
           schema:
             type: string
-            format: date
+            format: date-time
+          description: Exclusive ISO-8601 timestamp for the scheduled date range. Use the next local-day boundary to include an entire day.
         - name: customerId
           in: query
           schema:

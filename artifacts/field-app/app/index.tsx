@@ -24,6 +24,7 @@ export default function LoginScreen() {
   const colorScheme = useColorScheme();
   const { signIn } = useAuth();
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
   const loginMutation = useLogin();
@@ -37,7 +38,7 @@ export default function LoginScreen() {
     setError('');
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const result = await loginMutation.mutateAsync({ data: { email: normalizedEmail, password: '' } });
+      const result = await loginMutation.mutateAsync({ data: { email: normalizedEmail, password } });
       const userData = {
         id: result.user.id,
         email: result.user.email,
@@ -117,7 +118,7 @@ export default function LoginScreen() {
         >
           <Text style={[styles.cardTitle, { color: colors.foreground }]}>Sign in</Text>
           <Text style={[styles.cardSubtitle, { color: colors.mutedForeground }]}>
-            Enter your work email to continue
+            Enter your work email and password to continue
           </Text>
 
           <View style={styles.fieldGroup}>
@@ -151,6 +152,34 @@ export default function LoginScreen() {
             ) : null}
           </View>
 
+          <View style={styles.fieldGroup}>
+            <Text style={[styles.label, { color: colors.mutedForeground }]}>Password</Text>
+            <View
+              style={[
+                styles.inputWrap,
+                {
+                  borderColor: error ? colors.destructive : colors.border,
+                  backgroundColor: colors.muted,
+                },
+              ]}
+            >
+              <Ionicons name="lock-closed-outline" size={18} color={colors.mutedForeground} style={styles.inputIcon} />
+              <TextInput
+                style={[styles.input, { color: colors.foreground }]}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Your password"
+                placeholderTextColor={colors.mutedForeground}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+                onSubmitEditing={handleLogin}
+                returnKeyType="go"
+                testID="password-input"
+              />
+            </View>
+          </View>
+
           <TouchableOpacity
             style={[
               styles.button,
@@ -180,7 +209,7 @@ export default function LoginScreen() {
         ]}
       >
         <Text style={[styles.footerText, { color: colors.mutedForeground }]}>
-          For field technicians only
+          For field staff and administrators
         </Text>
       </View>
     </View>

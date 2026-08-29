@@ -38,6 +38,18 @@ export interface TenantSettingsUpdate {
   defaultGeofenceRadius?: number;
   defaultGeofenceUnit?: TenantSettingsUpdateDefaultGeofenceUnit;
   autoCreateGeofence?: boolean;
+  /**
+     * Default annual pause start. Both default off-season fields must be supplied together, or both null to clear.
+     * @nullable
+     * @pattern ^\d{2}-\d{2}$
+     */
+  defaultOffSeasonStart?: string | null;
+  /**
+     * Default annual pause end. Both default off-season fields must be supplied together, or both null to clear.
+     * @nullable
+     * @pattern ^\d{2}-\d{2}$
+     */
+  defaultOffSeasonEnd?: string | null;
   measurementZoneLabels?: string[];
   measurementZoneTypes?: TenantSettingsUpdateMeasurementZoneTypesItem[];
   preferredAreaUnit?: TenantSettingsUpdatePreferredAreaUnit;

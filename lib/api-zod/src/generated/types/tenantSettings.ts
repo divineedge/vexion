@@ -59,6 +59,18 @@ export interface TenantSettings {
   defaultGeofenceUnit?: TenantSettingsDefaultGeofenceUnit;
   /** Auto-create geofence when a property is added */
   autoCreateGeofence?: boolean;
+  /**
+     * Default annual pause start for new recurring jobs; paired with defaultOffSeasonEnd.
+     * @nullable
+     * @pattern ^\d{2}-\d{2}$
+     */
+  defaultOffSeasonStart?: string | null;
+  /**
+     * Default annual pause end for new recurring jobs; paired with defaultOffSeasonStart.
+     * @nullable
+     * @pattern ^\d{2}-\d{2}$
+     */
+  defaultOffSeasonEnd?: string | null;
   /** Deprecated: use measurementZoneTypes instead */
   measurementZoneLabels?: string[];
   /** Structured zone type definitions with name, color, and measurement mode */

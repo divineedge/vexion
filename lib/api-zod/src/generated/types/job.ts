@@ -73,6 +73,18 @@ export interface Job {
      */
   resumeAt?: string | null;
   recurrenceCount?: number;
+  /**
+     * Annual recurring-series pause start (MM-DD); always paired with offSeasonEnd.
+     * @nullable
+     * @pattern ^\d{2}-\d{2}$
+     */
+  offSeasonStart?: string | null;
+  /**
+     * Annual recurring-series pause end (MM-DD); always paired with offSeasonStart.
+     * @nullable
+     * @pattern ^\d{2}-\d{2}$
+     */
+  offSeasonEnd?: string | null;
   /** True when this completed non-recurring job is waiting to be swept into a weekly batch invoice */
   pendingWeeklyInvoice?: boolean;
   /**

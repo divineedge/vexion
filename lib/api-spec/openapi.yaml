@@ -2332,6 +2332,50 @@ paths:
                 $ref: "#/components/schemas/StopServiceFlag"
 
   # TIME TRACKING
+  /time-tracking/geofence-entry:
+    post:
+      operationId: createGeofenceEntry
+      tags: [timeTracking]
+      summary: Record an arrival inside a scheduled property's geofence without changing clocks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GeofenceEntryInput"
+      responses:
+        "201":
+          description: Geofence arrival recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeofenceEntry"
+        "200":
+          description: A recent arrival was reused by debounce
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeofenceEntry"
+        "422":
+          description: Coordinates are outside the property geofence
+  /time-tracking/geofence-entries:
+    get:
+      operationId: listGeofenceEntries
+      tags: [timeTracking]
+      summary: List geofence arrivals for the caller, or another user when caller is an administrator
+      parameters:
+        - name: userId
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Geofence arrival history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GeofenceEntry"
   /time-tracking/master-clock:
     get:
       operationId: getMasterClock
@@ -9397,6 +9441,14 @@ components:
           description: "Off-season pause: date the series will auto-resume"
         recurrenceCount:
           type: integer
+        offSeasonStart:
+          type: ["string", "null"]
+          pattern: '^\d{2}-\d{2}$'
+          description: "Annual recurring-series pause start (MM-DD); always paired with offSeasonEnd."
+        offSeasonEnd:
+          type: ["string", "null"]
+          pattern: '^\d{2}-\d{2}$'
+          description: "Annual recurring-series pause end (MM-DD); always paired with offSeasonStart."
         pendingWeeklyInvoice:
           type: boolean
           description: "True when this completed non-recurring job is waiting to be swept into a weekly batch invoice"
@@ -9623,6 +9675,14 @@ components:
           type: integer
         recurrenceRule:
           $ref: "#/components/schemas/RecurrenceRule"
+        offSeasonStart:
+          type: string
+          pattern: '^\d{2}-\d{2}$'
+          description: "Annual pause start. Must be supplied with offSeasonEnd."
+        offSeasonEnd:
+          type: string
+          pattern: '^\d{2}-\d{2}$'
+          description: "Annual pause end. Must be supplied with offSeasonStart."
         smsReminderEnabled:
           type: boolean
           description: "Enable SMS reminder for this job"
@@ -9655,6 +9715,14 @@ components:
           type: integer
         recurrenceRule:
           $ref: "#/components/schemas/RecurrenceRule"
+        offSeasonStart:
+          type: ["string", "null"]
+          pattern: '^\d{2}-\d{2}$'
+          description: "Annual pause start. Set both pause fields to null to clear the window."
+        offSeasonEnd:
+          type: ["string", "null"]
+          pattern: '^\d{2}-\d{2}$'
+          description: "Annual pause end. Set both pause fields to null to clear the window."
         editScope:
           type: string
           enum: [this, forward, all]
@@ -10611,6 +10679,8 @@ components:
           type: ["string", "null"]
         propertyAddress:
           type: ["string", "null"]
+        propertyId:
+          type: ["integer", "null"]
         status:
           type: string
         activeTimerId:
@@ -10678,6 +10748,32 @@ components:
           type: ["string", "null"]
         totalMinutes:
           type: integer
+
+    GeofenceEntry:
+      type: object
+      required: [id, tenantId, userId, propertyId, lat, lng, distanceMeters, enteredAt]
+      properties:
+        id: { type: integer }
+        tenantId: { type: integer }
+        userId: { type: integer }
+        propertyId: { type: integer }
+        jobId: { type: ["integer", "null"] }
+        visitId: { type: ["integer", "null"] }
+        lat: { type: number }
+        lng: { type: number }
+        distanceMeters: { type: number }
+        enteredAt: { type: string }
+        deduplicated: { type: boolean }
+
+    GeofenceEntryInput:
+      type: object
+      required: [propertyId, lat, lng]
+      properties:
+        propertyId: { type: integer }
+        jobId: { type: integer }
+        visitId: { type: integer }
+        lat: { type: number, minimum: -90, maximum: 90 }
+        lng: { type: number, minimum: -180, maximum: 180 }
 
     InventoryLocation:
       type: object
@@ -11163,6 +11259,14 @@ components:
         autoCreateGeofence:
           type: boolean
           description: "Auto-create geofence when a property is added"
+        defaultOffSeasonStart:
+          type: ["string", "null"]
+          pattern: '^\d{2}-\d{2}$'
+          description: "Default annual pause start for new recurring jobs; paired with defaultOffSeasonEnd."
+        defaultOffSeasonEnd:
+          type: ["string", "null"]
+          pattern: '^\d{2}-\d{2}$'
+          description: "Default annual pause end for new recurring jobs; paired with defaultOffSeasonStart."
         measurementZoneLabels:
           type: array
           items:
@@ -11652,6 +11756,14 @@ components:
           enum: [m, ft]
         autoCreateGeofence:
           type: boolean
+        defaultOffSeasonStart:
+          type: ["string", "null"]
+          pattern: '^\d{2}-\d{2}$'
+          description: "Default annual pause start. Both default off-season fields must be supplied together, or both null to clear."
+        defaultOffSeasonEnd:
+          type: ["string", "null"]
+          pattern: '^\d{2}-\d{2}$'
+          description: "Default annual pause end. Both default off-season fields must be supplied together, or both null to clear."
         measurementZoneLabels:
           type: array
           items:

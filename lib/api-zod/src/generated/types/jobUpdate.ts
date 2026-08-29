@@ -21,6 +21,18 @@ export interface JobUpdate {
   scheduledAt?: string;
   estimatedDuration?: number;
   recurrenceRule?: RecurrenceRule;
+  /**
+     * Annual pause start. Set both pause fields to null to clear the window.
+     * @nullable
+     * @pattern ^\d{2}-\d{2}$
+     */
+  offSeasonStart?: string | null;
+  /**
+     * Annual pause end. Set both pause fields to null to clear the window.
+     * @nullable
+     * @pattern ^\d{2}-\d{2}$
+     */
+  offSeasonEnd?: string | null;
   /** Scope of the edit for recurring jobs */
   editScope?: JobUpdateEditScope;
   /** Enable or disable SMS reminder for this job */

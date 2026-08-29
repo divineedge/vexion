@@ -1,9 +1,11 @@
-import { pgTable, text, serial, timestamp, integer, boolean, real } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, boolean, real, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { usersTable } from "./users";
 import { jobsTable } from "./jobs";
+import { propertiesTable } from "./properties";
+import { visitsTable } from "./visits";
 
 export const timeEntriesTable = pgTable("time_entries", {
   id: serial("id").primaryKey(),
@@ -50,9 +52,28 @@ export const subTimersTable = pgTable("sub_timers", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** An auditable arrival inside a property's geofence. Deliberately independent of clocks/timers. */
+export const geofenceEntriesTable = pgTable("geofence_entries", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
+  userId: integer("user_id").notNull().references(() => usersTable.id),
+  propertyId: integer("property_id").notNull().references(() => propertiesTable.id),
+  jobId: integer("job_id").references(() => jobsTable.id),
+  visitId: integer("visit_id").references(() => visitsTable.id),
+  lat: real("lat").notNull(),
+  lng: real("lng").notNull(),
+  distanceMeters: real("distance_meters").notNull(),
+  enteredAt: timestamp("entered_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("geofence_entries_tenant_user_entered_idx").on(table.tenantId, table.userId, table.enteredAt),
+  index("geofence_entries_tenant_property_entered_idx").on(table.tenantId, table.propertyId, table.enteredAt),
+]);
+
 export const insertTimeEntrySchema = createInsertSchema(timeEntriesTable).omit({ id: true, createdAt: true });
 export const insertSubTimerSchema = createInsertSchema(subTimersTable).omit({ id: true, createdAt: true });
+export const insertGeofenceEntrySchema = createInsertSchema(geofenceEntriesTable).omit({ id: true });
 export type InsertTimeEntry = z.infer<typeof insertTimeEntrySchema>;
 export type InsertSubTimer = z.infer<typeof insertSubTimerSchema>;
 export type TimeEntry = typeof timeEntriesTable.$inferSelect;
 export type SubTimer = typeof subTimersTable.$inferSelect;
+export type GeofenceEntry = typeof geofenceEntriesTable.$inferSelect;

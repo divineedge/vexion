@@ -31,6 +31,7 @@ export type NewJobForm = {
   recurrenceEndAfter: string;
   recurrenceEndDate: string;
   smsReminderEnabled: boolean;
+  offSeasonEnabled: boolean;
   offSeasonStart: string;
   offSeasonEnd: string;
 };
@@ -57,6 +58,7 @@ export const EMPTY_JOB: NewJobForm = {
   recurrenceEndAfter: '12',
   recurrenceEndDate: '',
   smsReminderEnabled: false,
+  offSeasonEnabled: false,
   offSeasonStart: '',
   offSeasonEnd: '',
 };
@@ -146,6 +148,9 @@ export interface JobFormFieldsProps {
   durationUnit: string;
   /** Show the "Make Recurring" section. Defaults to true. */
   showRecurrence?: boolean;
+  /** Tenant defaults used when an office enables this series' annual pause. */
+  defaultOffSeasonStart?: string | null;
+  defaultOffSeasonEnd?: string | null;
 }
 
 /**
@@ -153,7 +158,7 @@ export interface JobFormFieldsProps {
  * page's "New Job" sheet and any other entry point (e.g. Routes' "New Job" action) that needs
  * to create a job with the same details.
  */
-export function JobFormFields({ form, setForm, customers, properties, users, durationUnit, showRecurrence = true }: JobFormFieldsProps) {
+export function JobFormFields({ form, setForm, customers, properties, users, durationUnit, showRecurrence = true, defaultOffSeasonStart, defaultOffSeasonEnd }: JobFormFieldsProps) {
   return (
     <>
       <div className="space-y-1.5">
@@ -413,14 +418,30 @@ export function JobFormFields({ form, setForm, customers, properties, users, dur
               </div>
             )}
 
-            {/* Off-season window */}
-            <div className="pt-1">
+            {/* Off-season window belongs to recurring series only. */}
+            {form.recurring && <div className="pt-1">
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
                   <Snowflake className="w-3.5 h-3.5" /> Off-Season Pause
                 </label>
+                <button
+                  type="button"
+                  title={form.offSeasonEnabled ? 'Off-season pause is on — click to disable' : 'Enable annual off-season pause'}
+                  onClick={() => setForm(f => {
+                    const enabled = !f.offSeasonEnabled;
+                    return {
+                      ...f,
+                      offSeasonEnabled: enabled,
+                      offSeasonStart: enabled ? (f.offSeasonStart || defaultOffSeasonStart || '11-15') : '',
+                      offSeasonEnd: enabled ? (f.offSeasonEnd || defaultOffSeasonEnd || '03-14') : '',
+                    };
+                  })}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${form.offSeasonEnabled ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+                >
+                  <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${form.offSeasonEnabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                </button>
               </div>
-              <p className="text-[11px] text-muted-foreground mb-2">
+              {form.offSeasonEnabled && <><p className="text-[11px] text-muted-foreground mb-2">
                 Jobs falling in this window are skipped automatically and resume after it ends.
               </p>
               <div className="grid grid-cols-2 gap-2">
@@ -456,7 +477,8 @@ export function JobFormFields({ form, setForm, customers, properties, users, dur
                   ❄️ Series will pause {form.offSeasonStart} → {form.offSeasonEnd} each year
                 </p>
               )}
-            </div>
+              </>}
+            </div>}
           </div>
         </>
       )}

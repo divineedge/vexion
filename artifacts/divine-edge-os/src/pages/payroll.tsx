@@ -163,7 +163,7 @@ function JobRow({ job, highlightUserId }: { job: JobBreakdown; highlightUserId?:
           </TableCell>
           <TableCell className="text-right text-sm">{fmt(job.totalAmount)}</TableCell>
           <TableCell className="text-right">
-            <span className="text-sm text-destructive">−{fmt(job.materialCost)}</span>
+            <span className="text-sm text-destructive" title={`Customer sell-price material amount deducted: −${fmt(job.materialCost)}`}>−{fmt(job.materialCost)}</span>
           </TableCell>
           <TableCell className="text-right text-sm font-medium">{fmt(job.netLaborRevenue)}</TableCell>
           <TableCell className="text-right">{pctBadge(job.p4pPct, job.usingGlobalRate)}</TableCell>
@@ -178,7 +178,7 @@ function JobRow({ job, highlightUserId }: { job: JobBreakdown; highlightUserId?:
               {job.materialCost > 0 && (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Package className="w-3.5 h-3.5 shrink-0" />
-                  <span>Materials deducted before P4P calculation: <span className="font-semibold text-foreground">{fmt(job.materialCost)}</span></span>
+                  <span>Customer sell-price amount deducted before P4P: <span className="font-semibold text-foreground">{fmt(job.materialCost)}</span></span>
                 </div>
               )}
               {/* P4P formula */}
@@ -445,7 +445,7 @@ export default function PayrollPage() {
           <h1 className="text-3xl font-bold tracking-tight">P4P Payroll</h1>
           <p className="text-muted-foreground mt-1">
             {isTechnician
-              ? 'Your Pay-for-Performance earnings — labor revenue after material deductions.'
+              ? 'Your Pay-for-Performance earnings — labor revenue after customer sell-price material deductions.'
               : 'Run P4P payroll — review per-technician earnings before issuing bonuses.'}
           </p>
         </div>
@@ -521,8 +521,8 @@ export default function PayrollPage() {
                 <Package className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-xl font-bold" title={`Total materials cost stripped out: ${fmt(totalMaterials)}`}>{fmt(totalMaterials)}</p>
-                <p className="text-xs text-muted-foreground">Materials Stripped Out</p>
+                <p className="text-xl font-bold" title={`Total customer sell-price material amount deducted: ${fmt(totalMaterials)}`}>{fmt(totalMaterials)}</p>
+                <p className="text-xs text-muted-foreground">Customer Sell-Price Materials Deducted</p>
               </div>
             </CardContent>
           </Card>
@@ -567,7 +567,7 @@ export default function PayrollPage() {
           {[
             { label: 'P4P Earnings', value: myStats ? fmt(myStats.p4pEarnings) : '—', accent: 'text-emerald-700' },
             { label: 'Net Labor Revenue', value: myStats ? fmt(myStats.netLaborRevenue) : '—', accent: '' },
-            { label: 'Materials Deducted', value: myStats ? fmt(myStats.totalMaterialCost) : '—', accent: 'text-amber-600' },
+            { label: 'Customer Sell-Price Materials Deducted', value: myStats ? fmt(myStats.totalMaterialCost) : '—', accent: 'text-amber-600' },
             { label: 'Jobs Counted', value: myStats?.jobCount ?? '—', accent: '' },
             {
               label: dailyTaskHourlyRate > 0 ? 'Task Pay' : 'Daily Task Hours',
@@ -603,7 +603,7 @@ export default function PayrollPage() {
                   <TableHead>Technician</TableHead>
                   <TableHead className="text-right">Jobs</TableHead>
                   <TableHead className="text-right">Gross Revenue</TableHead>
-                  <TableHead className="text-right">Materials Out</TableHead>
+                  <TableHead className="text-right">Customer Sell-Price Materials</TableHead>
                   <TableHead className="text-right">Net Labor</TableHead>
                   <TableHead className="text-right">P4P Earnings</TableHead>
                   <TableHead className="text-right">
@@ -633,7 +633,7 @@ export default function PayrollPage() {
                         </TableCell>
                         <TableCell className="text-right" title={`${t.jobCount} job${t.jobCount !== 1 ? 's' : ''} completed`}>{t.jobCount}</TableCell>
                         <TableCell className="text-right" title={`Gross revenue: ${fmt(t.totalRevenue)}`}>{fmt(t.totalRevenue)}</TableCell>
-                        <TableCell className="text-right text-destructive" title={`Materials cost: −${fmt(t.totalMaterialCost)}`}>−{fmt(t.totalMaterialCost)}</TableCell>
+                        <TableCell className="text-right text-destructive" title={`Customer sell-price material amount deducted: −${fmt(t.totalMaterialCost)}`}>−{fmt(t.totalMaterialCost)}</TableCell>
                         <TableCell className="text-right font-medium" title={`Net labor revenue: ${fmt(t.netLaborRevenue)}`}>{fmt(t.netLaborRevenue)}</TableCell>
                         <TableCell className="text-right">
                           <span className={`font-bold ${t.p4pEarnings > 0 ? 'text-emerald-700' : 'text-muted-foreground'}`} title={`P4P earnings: ${fmt(t.p4pEarnings)}`}>
@@ -690,8 +690,8 @@ export default function PayrollPage() {
                 {myStats && <span className="text-muted-foreground font-normal ml-2">— {myStats.name}</span>}
               </CardTitle>
               <CardDescription>
-                Formula per job: (Total Revenue − Materials) × Service P4P% = Earnings.
-                Expand a row to see material deductions and multi-tech splits.
+                Formula per job: (Customer Total − Customer Sell-Price Materials) × Service P4P% = Earnings.
+                Material amounts are recorded sell-price snapshots, deducted once; expand a row for details and multi-tech splits.
               </CardDescription>
             </div>
             {!isTechnician && selectedTechId && (
@@ -716,7 +716,7 @@ export default function PayrollPage() {
                     <TableHead className="w-6" />
                     <TableHead>Job</TableHead>
                     <TableHead className="text-right">Revenue</TableHead>
-                    <TableHead className="text-right">−Materials</TableHead>
+                    <TableHead className="text-right">−Customer Sell-Price Materials</TableHead>
                     <TableHead className="text-right">Net Labor</TableHead>
                     <TableHead className="text-right">P4P Rate</TableHead>
                     <TableHead className="text-right">Earnings</TableHead>
@@ -734,7 +734,7 @@ export default function PayrollPage() {
                     <td className="px-4 py-3 text-right text-sm font-semibold" title={`Total gross revenue: ${fmt(displayJobs.reduce((s, j) => s + j.totalAmount, 0))}`}>
                       {fmt(displayJobs.reduce((s, j) => s + j.totalAmount, 0))}
                     </td>
-                    <td className="px-4 py-3 text-right text-sm font-semibold text-destructive" title={`Total materials cost: −${fmt(displayJobs.reduce((s, j) => s + j.materialCost, 0))}`}>
+                    <td className="px-4 py-3 text-right text-sm font-semibold text-destructive" title={`Total customer sell-price materials deducted: −${fmt(displayJobs.reduce((s, j) => s + j.materialCost, 0))}`}>
                       −{fmt(displayJobs.reduce((s, j) => s + j.materialCost, 0))}
                     </td>
                     <td className="px-4 py-3 text-right text-sm font-semibold" title={`Total net labor revenue: ${fmt(displayJobs.reduce((s, j) => s + j.netLaborRevenue, 0))}`}>

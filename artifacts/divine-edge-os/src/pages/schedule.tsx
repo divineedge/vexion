@@ -686,8 +686,7 @@ export default function SchedulePage() {
         recurrenceRule,
         smsReminderEnabled: newJob.smsReminderEnabled,
         tags: newJob.tags.length ? newJob.tags : undefined,
-        ...(newJob.offSeasonStart ? { offSeasonStart: newJob.offSeasonStart } : {}),
-        ...(newJob.offSeasonEnd ? { offSeasonEnd: newJob.offSeasonEnd } : {}),
+        ...(newJob.offSeasonEnabled ? { offSeasonStart: newJob.offSeasonStart, offSeasonEnd: newJob.offSeasonEnd } : {}),
       } as any,
     }, {
       onSuccess: () => {
@@ -1320,6 +1319,8 @@ export default function SchedulePage() {
               properties={customerProperties ?? []}
               users={users ?? []}
               durationUnit={durationUnit}
+              defaultOffSeasonStart={settings?.defaultOffSeasonStart}
+              defaultOffSeasonEnd={settings?.defaultOffSeasonEnd}
             />
 
             <Separator />

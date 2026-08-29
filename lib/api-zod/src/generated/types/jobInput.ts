@@ -23,6 +23,16 @@ export interface JobInput {
   estimatedDuration?: number;
   blueprintId?: number;
   recurrenceRule?: RecurrenceRule;
+  /**
+     * Annual pause start. Must be supplied with offSeasonEnd.
+     * @pattern ^\d{2}-\d{2}$
+     */
+  offSeasonStart?: string;
+  /**
+     * Annual pause end. Must be supplied with offSeasonStart.
+     * @pattern ^\d{2}-\d{2}$
+     */
+  offSeasonEnd?: string;
   /** Enable SMS reminder for this job */
   smsReminderEnabled?: boolean;
   /** Supplies the crew will need on site */

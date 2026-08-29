@@ -1,9 +1,9 @@
 /**
- * P4P Payroll Engine — Service-level percentage adjustments & material cost stripping.
+ * P4P Payroll Engine — Service-level percentage adjustments & customer sell-price material stripping.
  *
  * Formula:
- *   materialCost     = SUM(jobParts[].total)          ← marked-up sell price per part
- *   netLaborRevenue  = jobTotalAmount - materialCost
+ *   materialSellAmount = SUM(jobParts[].total)        ← customer sell-price snapshot per part
+ *   netLaborRevenue  = jobTotalAmount - materialSellAmount
  *   p4pPct           = blueprint.p4pPercentage ?? tenant.p4pMasterPercentage
  *   p4pPool          = MAX(0, netLaborRevenue) × p4pPct / 100
  *
@@ -21,6 +21,23 @@ import { startOfDay, endOfDay, startOfWeek, endOfWeek, subDays } from "date-fns"
 const router: IRouter = Router();
 
 // ── helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Calculate the P4P-eligible labor amount from the amount charged to the
+ * customer. `materialSellAmount` is the persisted sum of `job_parts[].total`,
+ * not the inventory item's acquisition cost and not a value to mark up again.
+ */
+export function calculateP4pAmounts(
+  jobTotalAmount: number,
+  materialSellAmount: number,
+  p4pPercentage: number,
+): { netLaborRevenue: number; p4pPool: number } {
+  const netLaborRevenue = Math.max(0, jobTotalAmount - materialSellAmount);
+  return {
+    netLaborRevenue,
+    p4pPool: netLaborRevenue * p4pPercentage / 100,
+  };
+}
 
 function getPeriodRange(period: string): { rangeStart: Date; rangeEnd: Date } {
   const now = new Date();
@@ -67,7 +84,8 @@ router.get("/p4p/jobs", async (req, res): Promise<void> => {
     .where(eq(tenantsTable.id, tenantId));
   const globalPct = tenant?.p4pMasterPercentage ?? 0;
 
-  // Completed jobs in range with JSONB material cost calculation
+  // Completed jobs in range. `total` is the customer sell-price snapshot
+  // recorded on each job part; do not join inventory pricing or apply markup.
   const jobRows = await db.execute(sql`
     SELECT
       j.id,
@@ -80,7 +98,7 @@ router.get("/p4p/jobs", async (req, res): Promise<void> => {
       COALESCE((
         SELECT SUM((part->>'total')::numeric)
         FROM jsonb_array_elements(COALESCE(j.job_parts, '[]'::jsonb)) AS part
-      ), 0) AS material_cost,
+      ), 0) AS material_sell_amount,
       b.p4p_percentage AS blueprint_p4p_pct,
       b.name AS blueprint_name,
       c.name AS customer_name
@@ -97,7 +115,7 @@ router.get("/p4p/jobs", async (req, res): Promise<void> => {
   type JobRow = {
     id: number; title: string; total_amount: string; blueprint_id: number | null;
     assignee_id: number | null; crew_id: number | null; completed_at: string;
-    material_cost: string; blueprint_p4p_pct: number | null; blueprint_name: string | null;
+    material_sell_amount: string; blueprint_p4p_pct: number | null; blueprint_name: string | null;
     customer_name: string | null;
   };
   const jobs = jobRows.rows as JobRow[];
@@ -143,10 +161,10 @@ router.get("/p4p/jobs", async (req, res): Promise<void> => {
   // Build result
   const result = jobs.map(j => {
     const totalAmount = Number(j.total_amount ?? 0);
-    const materialCost = Number(j.material_cost ?? 0);
-    const netLaborRevenue = Math.max(0, totalAmount - materialCost);
+    const materialCost = Number(j.material_sell_amount ?? 0);
     const p4pPct = j.blueprint_p4p_pct != null ? Number(j.blueprint_p4p_pct) : globalPct;
-    const p4pPool = Math.round((netLaborRevenue * p4pPct / 100) * 100) / 100;
+    const { netLaborRevenue, p4pPool: unroundedP4pPool } = calculateP4pAmounts(totalAmount, materialCost, p4pPct);
+    const p4pPool = Math.round(unroundedP4pPool * 100) / 100;
 
     const jobTimers = timerMap.get(Number(j.id)) ?? new Map<number, number>();
     const totalSeconds = Array.from(jobTimers.values()).reduce((s, v) => s + v, 0);
@@ -233,7 +251,7 @@ router.get("/p4p/summary", async (req, res): Promise<void> => {
       COALESCE((
         SELECT SUM((part->>'total')::numeric)
         FROM jsonb_array_elements(COALESCE(j.job_parts, '[]'::jsonb)) AS part
-      ), 0) AS material_cost,
+      ), 0) AS material_sell_amount,
       b.p4p_percentage AS blueprint_p4p_pct
     FROM jobs j
     LEFT JOIN blueprints b ON b.id = j.blueprint_id AND b.tenant_id = j.tenant_id
@@ -243,7 +261,7 @@ router.get("/p4p/summary", async (req, res): Promise<void> => {
       AND j.completed_at <= ${rangeEnd.toISOString()}::timestamptz
   `);
 
-  type SumJobRow = { id: number; total_amount: string; assignee_id: number | null; material_cost: string; blueprint_p4p_pct: number | null };
+  type SumJobRow = { id: number; total_amount: string; assignee_id: number | null; material_sell_amount: string; blueprint_p4p_pct: number | null };
   const jobs = jobRows.rows as SumJobRow[];
 
   if (jobs.length === 0) {
@@ -282,10 +300,9 @@ router.get("/p4p/summary", async (req, res): Promise<void> => {
 
   for (const j of jobs) {
     const totalAmount = Number(j.total_amount ?? 0);
-    const materialCost = Number(j.material_cost ?? 0);
-    const netLaborRevenue = Math.max(0, totalAmount - materialCost);
+    const materialCost = Number(j.material_sell_amount ?? 0);
     const p4pPct = j.blueprint_p4p_pct != null ? Number(j.blueprint_p4p_pct) : globalPct;
-    const p4pPool = netLaborRevenue * p4pPct / 100;
+    const { netLaborRevenue, p4pPool } = calculateP4pAmounts(totalAmount, materialCost, p4pPct);
 
     const jobTimers = timerMap.get(Number(j.id)) ?? new Map<number, number>();
     const totalSeconds = Array.from(jobTimers.values()).reduce((s, v) => s + v, 0);

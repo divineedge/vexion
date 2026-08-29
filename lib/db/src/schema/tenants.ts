@@ -36,6 +36,9 @@ export const tenantsTable = pgTable("tenants", {
   defaultGeofenceUnit: text("default_geofence_unit").notNull().default("m"),
   /** Whether to auto-create a geofence when a property is added */
   autoCreateGeofence: boolean("auto_create_geofence").notNull().default(false),
+  /** Default annual pause window for newly-created recurring jobs, in MM-DD format. */
+  defaultOffSeasonStart: text("default_off_season_start"),
+  defaultOffSeasonEnd: text("default_off_season_end"),
   /** @deprecated use measurementZoneTypes instead — kept for backward-compat migration */
   measurementZoneLabels: jsonb("measurement_zone_labels").default('["Front Lawn","Back Yard","Bed Areas","Side Yard","Common Area"]'),
   /**

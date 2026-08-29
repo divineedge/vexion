@@ -13,6 +13,13 @@ const objectStorageService = new ObjectStorageService();
 
 const router: IRouter = Router();
 
+/** Validate a month/day without attaching it to a tenant timezone. Year 2000 permits Feb 29. */
+function isValidMonthDay(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{2}-\d{2}$/.test(value)) return false;
+  const [month, day] = value.split("-").map(Number);
+  return month >= 1 && month <= 12 && day >= 1 && day <= new Date(2000, month, 0).getDate();
+}
+
 function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
   const cfJson = tenant.customFields as Record<string, unknown> | null;
   const rolePerms = tenant.rolePermissions as Record<string, Record<string, boolean>> | null;
@@ -60,6 +67,8 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     defaultGeofenceRadius: tenant.defaultGeofenceRadius ?? 100,
     defaultGeofenceUnit: (tenant.defaultGeofenceUnit ?? "m") as "m" | "ft",
     autoCreateGeofence: tenant.autoCreateGeofence ?? false,
+    defaultOffSeasonStart: tenant.defaultOffSeasonStart ?? null,
+    defaultOffSeasonEnd: tenant.defaultOffSeasonEnd ?? null,
     measurementZoneLabels: defaultZoneLabels,
     measurementZoneTypes,
     preferredAreaUnit: (tenant.preferredAreaUnit ?? "sqft") as "sqft" | "acres",
@@ -188,7 +197,7 @@ router.patch("/settings", async (req, res): Promise<void> => {
     durationUnit, autoInvoiceFrequency, nonRecurringInvoiceCadence, maxClockInHours, p4pMasterPercentage,
     rolePermissions, customerFields,
     equipmentRepairThresholdPct, equipmentResaleThresholdPct,
-    defaultGeofenceRadius, defaultGeofenceUnit, autoCreateGeofence,
+    defaultGeofenceRadius, defaultGeofenceUnit, autoCreateGeofence, defaultOffSeasonStart, defaultOffSeasonEnd,
     measurementZoneLabels, measurementZoneTypes, preferredAreaUnit,
     // Communications
     mainPhoneNumber, marketingPhoneNumber,
@@ -261,6 +270,19 @@ router.patch("/settings", async (req, res): Promise<void> => {
   if (defaultGeofenceRadius !== undefined) updates.defaultGeofenceRadius = parseInt(defaultGeofenceRadius, 10);
   if (defaultGeofenceUnit !== undefined) updates.defaultGeofenceUnit = defaultGeofenceUnit;
   if (autoCreateGeofence !== undefined) updates.autoCreateGeofence = autoCreateGeofence;
+  if (defaultOffSeasonStart !== undefined || defaultOffSeasonEnd !== undefined) {
+    // A pause window is meaningful only as a complete pair. Explicit null clears both.
+    if (defaultOffSeasonStart === null && defaultOffSeasonEnd === null) {
+      updates.defaultOffSeasonStart = null;
+      updates.defaultOffSeasonEnd = null;
+    } else if (isValidMonthDay(defaultOffSeasonStart) && isValidMonthDay(defaultOffSeasonEnd)) {
+      updates.defaultOffSeasonStart = defaultOffSeasonStart;
+      updates.defaultOffSeasonEnd = defaultOffSeasonEnd;
+    } else {
+      res.status(400).json({ error: "defaultOffSeasonStart and defaultOffSeasonEnd must be provided together as valid MM-DD dates" });
+      return;
+    }
+  }
   if (measurementZoneLabels !== undefined) updates.measurementZoneLabels = measurementZoneLabels;
   if (measurementZoneTypes !== undefined) {
     updates.measurementZoneTypes = measurementZoneTypes;

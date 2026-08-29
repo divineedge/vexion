@@ -17,6 +17,8 @@ export interface ScheduleItem {
   customerName?: string | null;
   /** @nullable */
   propertyAddress?: string | null;
+  /** @nullable */
+  propertyId?: number | null;
   status: string;
   /** @nullable */
   activeTimerId?: number | null;

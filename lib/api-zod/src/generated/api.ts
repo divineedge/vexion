@@ -1332,6 +1332,10 @@ export const ListJobsQueryParams = zod.object({
   "routeTemplateId": zod.coerce.number().optional()
 })
 
+export const listJobsResponseOffSeasonStartRegExp = new RegExp('^\\d{2}-\\d{2}$');
+export const listJobsResponseOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
+
+
 export const ListJobsResponseItem = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
@@ -1390,6 +1394,8 @@ export const ListJobsResponseItem = zod.object({
   "isRecurrencePaused": zod.boolean().optional(),
   "resumeAt": zod.string().nullish().describe('Off-season pause: date the series will auto-resume'),
   "recurrenceCount": zod.number().optional(),
+  "offSeasonStart": zod.string().regex(listJobsResponseOffSeasonStartRegExp).nullish().describe('Annual recurring-series pause start (MM-DD); always paired with offSeasonEnd.'),
+  "offSeasonEnd": zod.string().regex(listJobsResponseOffSeasonEndRegExp).nullish().describe('Annual recurring-series pause end (MM-DD); always paired with offSeasonStart.'),
   "pendingWeeklyInvoice": zod.boolean().optional().describe('True when this completed non-recurring job is waiting to be swept into a weekly batch invoice'),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "routeTemplateId": zod.number().nullish(),
@@ -1414,6 +1420,10 @@ export const ListJobsResponse = zod.array(ListJobsResponseItem)
 /**
  * @summary Create a new job
  */
+export const createJobBodyOffSeasonStartRegExp = new RegExp('^\\d{2}-\\d{2}$');
+export const createJobBodyOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
+
+
 export const CreateJobBody = zod.object({
   "title": zod.string(),
   "description": zod.string().optional(),
@@ -1437,6 +1447,8 @@ export const CreateJobBody = zod.object({
   "endAfter": zod.number().optional().describe('Used when endCondition is after'),
   "endDate": zod.string().optional().describe('ISO date string; used when endCondition is on_date')
 }).optional(),
+  "offSeasonStart": zod.string().regex(createJobBodyOffSeasonStartRegExp).optional().describe('Annual pause start. Must be supplied with offSeasonEnd.'),
+  "offSeasonEnd": zod.string().regex(createJobBodyOffSeasonEndRegExp).optional().describe('Annual pause end. Must be supplied with offSeasonStart.'),
   "smsReminderEnabled": zod.boolean().optional().describe('Enable SMS reminder for this job'),
   "suppliesNeeded": zod.array(zod.object({
   "inventoryItemId": zod.number(),
@@ -1445,6 +1457,10 @@ export const CreateJobBody = zod.object({
   "unit": zod.string()
 })).optional().describe('Supplies the crew will need on site')
 })
+
+export const createJobResponseOffSeasonStartRegExp = new RegExp('^\\d{2}-\\d{2}$');
+export const createJobResponseOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
+
 
 export const CreateJobResponse = zod.object({
   "id": zod.number(),
@@ -1504,6 +1520,8 @@ export const CreateJobResponse = zod.object({
   "isRecurrencePaused": zod.boolean().optional(),
   "resumeAt": zod.string().nullish().describe('Off-season pause: date the series will auto-resume'),
   "recurrenceCount": zod.number().optional(),
+  "offSeasonStart": zod.string().regex(createJobResponseOffSeasonStartRegExp).nullish().describe('Annual recurring-series pause start (MM-DD); always paired with offSeasonEnd.'),
+  "offSeasonEnd": zod.string().regex(createJobResponseOffSeasonEndRegExp).nullish().describe('Annual recurring-series pause end (MM-DD); always paired with offSeasonStart.'),
   "pendingWeeklyInvoice": zod.boolean().optional().describe('True when this completed non-recurring job is waiting to be swept into a weekly batch invoice'),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "routeTemplateId": zod.number().nullish(),
@@ -1530,6 +1548,10 @@ export const CreateJobResponse = zod.object({
 export const GetJobParams = zod.object({
   "id": zod.coerce.number()
 })
+
+export const getJobResponseOffSeasonStartRegExp = new RegExp('^\\d{2}-\\d{2}$');
+export const getJobResponseOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
+
 
 export const GetJobResponse = zod.object({
   "id": zod.number(),
@@ -1589,6 +1611,8 @@ export const GetJobResponse = zod.object({
   "isRecurrencePaused": zod.boolean().optional(),
   "resumeAt": zod.string().nullish().describe('Off-season pause: date the series will auto-resume'),
   "recurrenceCount": zod.number().optional(),
+  "offSeasonStart": zod.string().regex(getJobResponseOffSeasonStartRegExp).nullish().describe('Annual recurring-series pause start (MM-DD); always paired with offSeasonEnd.'),
+  "offSeasonEnd": zod.string().regex(getJobResponseOffSeasonEndRegExp).nullish().describe('Annual recurring-series pause end (MM-DD); always paired with offSeasonStart.'),
   "pendingWeeklyInvoice": zod.boolean().optional().describe('True when this completed non-recurring job is waiting to be swept into a weekly batch invoice'),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "routeTemplateId": zod.number().nullish(),
@@ -1616,6 +1640,10 @@ export const UpdateJobParams = zod.object({
   "id": zod.coerce.number()
 })
 
+export const updateJobBodyOffSeasonStartRegExp = new RegExp('^\\d{2}-\\d{2}$');
+export const updateJobBodyOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
+
+
 export const UpdateJobBody = zod.object({
   "title": zod.string().optional(),
   "description": zod.string().optional(),
@@ -1636,6 +1664,8 @@ export const UpdateJobBody = zod.object({
   "endAfter": zod.number().optional().describe('Used when endCondition is after'),
   "endDate": zod.string().optional().describe('ISO date string; used when endCondition is on_date')
 }).optional(),
+  "offSeasonStart": zod.string().regex(updateJobBodyOffSeasonStartRegExp).nullish().describe('Annual pause start. Set both pause fields to null to clear the window.'),
+  "offSeasonEnd": zod.string().regex(updateJobBodyOffSeasonEndRegExp).nullish().describe('Annual pause end. Set both pause fields to null to clear the window.'),
   "editScope": zod.enum(['this', 'forward', 'all']).optional().describe('Scope of the edit for recurring jobs'),
   "smsReminderEnabled": zod.boolean().optional().describe('Enable or disable SMS reminder for this job'),
   "holdFromBilling": zod.boolean().optional().describe('When true, exclude this job from the next automatic overnight billing run'),
@@ -1646,6 +1676,10 @@ export const UpdateJobBody = zod.object({
   "unit": zod.string()
 })).optional().describe('Supplies the crew will need on site')
 })
+
+export const updateJobResponseOffSeasonStartRegExp = new RegExp('^\\d{2}-\\d{2}$');
+export const updateJobResponseOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
+
 
 export const UpdateJobResponse = zod.object({
   "id": zod.number(),
@@ -1705,6 +1739,8 @@ export const UpdateJobResponse = zod.object({
   "isRecurrencePaused": zod.boolean().optional(),
   "resumeAt": zod.string().nullish().describe('Off-season pause: date the series will auto-resume'),
   "recurrenceCount": zod.number().optional(),
+  "offSeasonStart": zod.string().regex(updateJobResponseOffSeasonStartRegExp).nullish().describe('Annual recurring-series pause start (MM-DD); always paired with offSeasonEnd.'),
+  "offSeasonEnd": zod.string().regex(updateJobResponseOffSeasonEndRegExp).nullish().describe('Annual recurring-series pause end (MM-DD); always paired with offSeasonStart.'),
   "pendingWeeklyInvoice": zod.boolean().optional().describe('True when this completed non-recurring job is waiting to be swept into a weekly batch invoice'),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "routeTemplateId": zod.number().nullish(),
@@ -1779,6 +1815,10 @@ export const SkipNextOccurrenceBody = zod.object({
   "note": zod.string().optional().describe('Optional free-text note alongside the reason')
 })
 
+export const skipNextOccurrenceResponseOffSeasonStartRegExp = new RegExp('^\\d{2}-\\d{2}$');
+export const skipNextOccurrenceResponseOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
+
+
 export const SkipNextOccurrenceResponse = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
@@ -1837,6 +1877,8 @@ export const SkipNextOccurrenceResponse = zod.object({
   "isRecurrencePaused": zod.boolean().optional(),
   "resumeAt": zod.string().nullish().describe('Off-season pause: date the series will auto-resume'),
   "recurrenceCount": zod.number().optional(),
+  "offSeasonStart": zod.string().regex(skipNextOccurrenceResponseOffSeasonStartRegExp).nullish().describe('Annual recurring-series pause start (MM-DD); always paired with offSeasonEnd.'),
+  "offSeasonEnd": zod.string().regex(skipNextOccurrenceResponseOffSeasonEndRegExp).nullish().describe('Annual recurring-series pause end (MM-DD); always paired with offSeasonStart.'),
   "pendingWeeklyInvoice": zod.boolean().optional().describe('True when this completed non-recurring job is waiting to be swept into a weekly batch invoice'),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "routeTemplateId": zod.number().nullish(),
@@ -1868,6 +1910,10 @@ export const PauseRecurringSeriesBody = zod.object({
   "paused": zod.boolean(),
   "resumeAt": zod.string().nullish().describe('Off-season pause: ISO date the scheduler should auto-resume the series. Only meaningful when paused=true.')
 })
+
+export const pauseRecurringSeriesResponseOffSeasonStartRegExp = new RegExp('^\\d{2}-\\d{2}$');
+export const pauseRecurringSeriesResponseOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
+
 
 export const PauseRecurringSeriesResponse = zod.object({
   "id": zod.number(),
@@ -1927,6 +1973,8 @@ export const PauseRecurringSeriesResponse = zod.object({
   "isRecurrencePaused": zod.boolean().optional(),
   "resumeAt": zod.string().nullish().describe('Off-season pause: date the series will auto-resume'),
   "recurrenceCount": zod.number().optional(),
+  "offSeasonStart": zod.string().regex(pauseRecurringSeriesResponseOffSeasonStartRegExp).nullish().describe('Annual recurring-series pause start (MM-DD); always paired with offSeasonEnd.'),
+  "offSeasonEnd": zod.string().regex(pauseRecurringSeriesResponseOffSeasonEndRegExp).nullish().describe('Annual recurring-series pause end (MM-DD); always paired with offSeasonStart.'),
   "pendingWeeklyInvoice": zod.boolean().optional().describe('True when this completed non-recurring job is waiting to be swept into a weekly batch invoice'),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "routeTemplateId": zod.number().nullish(),
@@ -1967,6 +2015,10 @@ export const CancelRecurringSeriesResponse = zod.void()
 export const CompleteJobParams = zod.object({
   "id": zod.coerce.number()
 })
+
+export const completeJobResponseOffSeasonStartRegExp = new RegExp('^\\d{2}-\\d{2}$');
+export const completeJobResponseOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
+
 
 export const CompleteJobResponse = zod.object({
   "id": zod.number(),
@@ -2026,6 +2078,8 @@ export const CompleteJobResponse = zod.object({
   "isRecurrencePaused": zod.boolean().optional(),
   "resumeAt": zod.string().nullish().describe('Off-season pause: date the series will auto-resume'),
   "recurrenceCount": zod.number().optional(),
+  "offSeasonStart": zod.string().regex(completeJobResponseOffSeasonStartRegExp).nullish().describe('Annual recurring-series pause start (MM-DD); always paired with offSeasonEnd.'),
+  "offSeasonEnd": zod.string().regex(completeJobResponseOffSeasonEndRegExp).nullish().describe('Annual recurring-series pause end (MM-DD); always paired with offSeasonStart.'),
   "pendingWeeklyInvoice": zod.boolean().optional().describe('True when this completed non-recurring job is waiting to be swept into a weekly batch invoice'),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "routeTemplateId": zod.number().nullish(),
@@ -2112,6 +2166,10 @@ export const AddJobPartBody = zod.object({
   "quantity": zod.number()
 })
 
+export const addJobPartResponseOffSeasonStartRegExp = new RegExp('^\\d{2}-\\d{2}$');
+export const addJobPartResponseOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
+
+
 export const AddJobPartResponse = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
@@ -2170,6 +2228,8 @@ export const AddJobPartResponse = zod.object({
   "isRecurrencePaused": zod.boolean().optional(),
   "resumeAt": zod.string().nullish().describe('Off-season pause: date the series will auto-resume'),
   "recurrenceCount": zod.number().optional(),
+  "offSeasonStart": zod.string().regex(addJobPartResponseOffSeasonStartRegExp).nullish().describe('Annual recurring-series pause start (MM-DD); always paired with offSeasonEnd.'),
+  "offSeasonEnd": zod.string().regex(addJobPartResponseOffSeasonEndRegExp).nullish().describe('Annual recurring-series pause end (MM-DD); always paired with offSeasonStart.'),
   "pendingWeeklyInvoice": zod.boolean().optional().describe('True when this completed non-recurring job is waiting to be swept into a weekly batch invoice'),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "routeTemplateId": zod.number().nullish(),
@@ -2197,6 +2257,10 @@ export const RemoveJobPartParams = zod.object({
   "id": zod.coerce.number(),
   "inventoryItemId": zod.coerce.number()
 })
+
+export const removeJobPartResponseOffSeasonStartRegExp = new RegExp('^\\d{2}-\\d{2}$');
+export const removeJobPartResponseOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
+
 
 export const RemoveJobPartResponse = zod.object({
   "id": zod.number(),
@@ -2256,6 +2320,8 @@ export const RemoveJobPartResponse = zod.object({
   "isRecurrencePaused": zod.boolean().optional(),
   "resumeAt": zod.string().nullish().describe('Off-season pause: date the series will auto-resume'),
   "recurrenceCount": zod.number().optional(),
+  "offSeasonStart": zod.string().regex(removeJobPartResponseOffSeasonStartRegExp).nullish().describe('Annual recurring-series pause start (MM-DD); always paired with offSeasonEnd.'),
+  "offSeasonEnd": zod.string().regex(removeJobPartResponseOffSeasonEndRegExp).nullish().describe('Annual recurring-series pause end (MM-DD); always paired with offSeasonStart.'),
   "pendingWeeklyInvoice": zod.boolean().optional().describe('True when this completed non-recurring job is waiting to be swept into a weekly batch invoice'),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "routeTemplateId": zod.number().nullish(),
@@ -3592,6 +3658,63 @@ export const ResumeStopServiceFlagPlanResponse = zod.object({
 
 
 /**
+ * @summary Record an arrival inside a scheduled property's geofence without changing clocks
+ */
+export const createGeofenceEntryBodyLatMin = -90;
+export const createGeofenceEntryBodyLatMax = 90;
+
+export const createGeofenceEntryBodyLngMin = -180;
+export const createGeofenceEntryBodyLngMax = 180;
+
+
+
+export const CreateGeofenceEntryBody = zod.object({
+  "propertyId": zod.number(),
+  "jobId": zod.number().optional(),
+  "visitId": zod.number().optional(),
+  "lat": zod.number().min(createGeofenceEntryBodyLatMin).max(createGeofenceEntryBodyLatMax),
+  "lng": zod.number().min(createGeofenceEntryBodyLngMin).max(createGeofenceEntryBodyLngMax)
+})
+
+export const CreateGeofenceEntryResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "userId": zod.number(),
+  "propertyId": zod.number(),
+  "jobId": zod.number().nullish(),
+  "visitId": zod.number().nullish(),
+  "lat": zod.number(),
+  "lng": zod.number(),
+  "distanceMeters": zod.number(),
+  "enteredAt": zod.string(),
+  "deduplicated": zod.boolean().optional()
+})
+
+
+/**
+ * @summary List geofence arrivals for the caller, or another user when caller is an administrator
+ */
+export const ListGeofenceEntriesQueryParams = zod.object({
+  "userId": zod.coerce.number().optional()
+})
+
+export const ListGeofenceEntriesResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "userId": zod.number(),
+  "propertyId": zod.number(),
+  "jobId": zod.number().nullish(),
+  "visitId": zod.number().nullish(),
+  "lat": zod.number(),
+  "lng": zod.number(),
+  "distanceMeters": zod.number(),
+  "enteredAt": zod.string(),
+  "deduplicated": zod.boolean().optional()
+})
+export const ListGeofenceEntriesResponse = zod.array(ListGeofenceEntriesResponseItem)
+
+
+/**
  * @summary Get current master clock state for logged-in user
  */
 export const GetMasterClockResponse = zod.object({
@@ -3774,6 +3897,7 @@ export const GetTodayScheduleResponseItem = zod.object({
   "scheduledAt": zod.string().nullish(),
   "customerName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
+  "propertyId": zod.number().nullish(),
   "status": zod.string(),
   "activeTimerId": zod.number().nullish(),
   "activeTimerStartedAt": zod.string().nullish(),
@@ -4472,6 +4596,10 @@ export const CreateEmployeeHistoryEntryResponse = zod.object({
 /**
  * @summary Get tenant settings
  */
+export const getTenantSettingsResponseDefaultOffSeasonStartRegExp = new RegExp('^\\d{2}-\\d{2}$');
+export const getTenantSettingsResponseDefaultOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
+
+
 export const GetTenantSettingsResponse = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
@@ -4505,6 +4633,8 @@ export const GetTenantSettingsResponse = zod.object({
   "defaultGeofenceRadius": zod.number().optional().describe('Default geofence radius applied when auto-creating a geofence'),
   "defaultGeofenceUnit": zod.enum(['m', 'ft']).optional().describe('Unit for geofence radius'),
   "autoCreateGeofence": zod.boolean().optional().describe('Auto-create geofence when a property is added'),
+  "defaultOffSeasonStart": zod.string().regex(getTenantSettingsResponseDefaultOffSeasonStartRegExp).nullish().describe('Default annual pause start for new recurring jobs; paired with defaultOffSeasonEnd.'),
+  "defaultOffSeasonEnd": zod.string().regex(getTenantSettingsResponseDefaultOffSeasonEndRegExp).nullish().describe('Default annual pause end for new recurring jobs; paired with defaultOffSeasonStart.'),
   "measurementZoneLabels": zod.array(zod.string()).optional().describe('Deprecated: use measurementZoneTypes instead'),
   "measurementZoneTypes": zod.array(zod.object({
   "id": zod.string(),
@@ -4578,6 +4708,10 @@ export const GetTenantSettingsResponse = zod.object({
 /**
  * @summary Update tenant settings
  */
+export const updateTenantSettingsBodyDefaultOffSeasonStartRegExp = new RegExp('^\\d{2}-\\d{2}$');
+export const updateTenantSettingsBodyDefaultOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
+
+
 export const UpdateTenantSettingsBody = zod.object({
   "companyName": zod.string().optional(),
   "timezone": zod.string().optional(),
@@ -4607,6 +4741,8 @@ export const UpdateTenantSettingsBody = zod.object({
   "defaultGeofenceRadius": zod.number().optional(),
   "defaultGeofenceUnit": zod.enum(['m', 'ft']).optional(),
   "autoCreateGeofence": zod.boolean().optional(),
+  "defaultOffSeasonStart": zod.string().regex(updateTenantSettingsBodyDefaultOffSeasonStartRegExp).nullish().describe('Default annual pause start. Both default off-season fields must be supplied together, or both null to clear.'),
+  "defaultOffSeasonEnd": zod.string().regex(updateTenantSettingsBodyDefaultOffSeasonEndRegExp).nullish().describe('Default annual pause end. Both default off-season fields must be supplied together, or both null to clear.'),
   "measurementZoneLabels": zod.array(zod.string()).optional(),
   "measurementZoneTypes": zod.array(zod.object({
   "id": zod.string(),
@@ -4656,6 +4792,10 @@ export const UpdateTenantSettingsBody = zod.object({
   "defaultInvoiceTemplateId": zod.number().nullish().describe('FK to invoice_templates — template applied when creating new invoices')
 })
 
+export const updateTenantSettingsResponseDefaultOffSeasonStartRegExp = new RegExp('^\\d{2}-\\d{2}$');
+export const updateTenantSettingsResponseDefaultOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
+
+
 export const UpdateTenantSettingsResponse = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
@@ -4689,6 +4829,8 @@ export const UpdateTenantSettingsResponse = zod.object({
   "defaultGeofenceRadius": zod.number().optional().describe('Default geofence radius applied when auto-creating a geofence'),
   "defaultGeofenceUnit": zod.enum(['m', 'ft']).optional().describe('Unit for geofence radius'),
   "autoCreateGeofence": zod.boolean().optional().describe('Auto-create geofence when a property is added'),
+  "defaultOffSeasonStart": zod.string().regex(updateTenantSettingsResponseDefaultOffSeasonStartRegExp).nullish().describe('Default annual pause start for new recurring jobs; paired with defaultOffSeasonEnd.'),
+  "defaultOffSeasonEnd": zod.string().regex(updateTenantSettingsResponseDefaultOffSeasonEndRegExp).nullish().describe('Default annual pause end for new recurring jobs; paired with defaultOffSeasonStart.'),
   "measurementZoneLabels": zod.array(zod.string()).optional().describe('Deprecated: use measurementZoneTypes instead'),
   "measurementZoneTypes": zod.array(zod.object({
   "id": zod.string(),
@@ -6627,6 +6769,10 @@ export const DismissJobRescheduleRequestParams = zod.object({
   "id": zod.coerce.number()
 })
 
+export const dismissJobRescheduleRequestResponseOffSeasonStartRegExp = new RegExp('^\\d{2}-\\d{2}$');
+export const dismissJobRescheduleRequestResponseOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
+
+
 export const DismissJobRescheduleRequestResponse = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
@@ -6685,6 +6831,8 @@ export const DismissJobRescheduleRequestResponse = zod.object({
   "isRecurrencePaused": zod.boolean().optional(),
   "resumeAt": zod.string().nullish().describe('Off-season pause: date the series will auto-resume'),
   "recurrenceCount": zod.number().optional(),
+  "offSeasonStart": zod.string().regex(dismissJobRescheduleRequestResponseOffSeasonStartRegExp).nullish().describe('Annual recurring-series pause start (MM-DD); always paired with offSeasonEnd.'),
+  "offSeasonEnd": zod.string().regex(dismissJobRescheduleRequestResponseOffSeasonEndRegExp).nullish().describe('Annual recurring-series pause end (MM-DD); always paired with offSeasonStart.'),
   "pendingWeeklyInvoice": zod.boolean().optional().describe('True when this completed non-recurring job is waiting to be swept into a weekly batch invoice'),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "routeTemplateId": zod.number().nullish(),
@@ -6711,6 +6859,10 @@ export const DismissJobRescheduleRequestResponse = zod.object({
 export const ApproveJobCancellationParams = zod.object({
   "id": zod.coerce.number()
 })
+
+export const approveJobCancellationResponseOffSeasonStartRegExp = new RegExp('^\\d{2}-\\d{2}$');
+export const approveJobCancellationResponseOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
+
 
 export const ApproveJobCancellationResponse = zod.object({
   "id": zod.number(),
@@ -6770,6 +6922,8 @@ export const ApproveJobCancellationResponse = zod.object({
   "isRecurrencePaused": zod.boolean().optional(),
   "resumeAt": zod.string().nullish().describe('Off-season pause: date the series will auto-resume'),
   "recurrenceCount": zod.number().optional(),
+  "offSeasonStart": zod.string().regex(approveJobCancellationResponseOffSeasonStartRegExp).nullish().describe('Annual recurring-series pause start (MM-DD); always paired with offSeasonEnd.'),
+  "offSeasonEnd": zod.string().regex(approveJobCancellationResponseOffSeasonEndRegExp).nullish().describe('Annual recurring-series pause end (MM-DD); always paired with offSeasonStart.'),
   "pendingWeeklyInvoice": zod.boolean().optional().describe('True when this completed non-recurring job is waiting to be swept into a weekly batch invoice'),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "routeTemplateId": zod.number().nullish(),
@@ -6800,6 +6954,10 @@ export const DenyJobCancellationParams = zod.object({
 export const DenyJobCancellationBody = zod.object({
   "note": zod.string().optional()
 })
+
+export const denyJobCancellationResponseOffSeasonStartRegExp = new RegExp('^\\d{2}-\\d{2}$');
+export const denyJobCancellationResponseOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
+
 
 export const DenyJobCancellationResponse = zod.object({
   "id": zod.number(),
@@ -6859,6 +7017,8 @@ export const DenyJobCancellationResponse = zod.object({
   "isRecurrencePaused": zod.boolean().optional(),
   "resumeAt": zod.string().nullish().describe('Off-season pause: date the series will auto-resume'),
   "recurrenceCount": zod.number().optional(),
+  "offSeasonStart": zod.string().regex(denyJobCancellationResponseOffSeasonStartRegExp).nullish().describe('Annual recurring-series pause start (MM-DD); always paired with offSeasonEnd.'),
+  "offSeasonEnd": zod.string().regex(denyJobCancellationResponseOffSeasonEndRegExp).nullish().describe('Annual recurring-series pause end (MM-DD); always paired with offSeasonStart.'),
   "pendingWeeklyInvoice": zod.boolean().optional().describe('True when this completed non-recurring job is waiting to be swept into a weekly batch invoice'),
   "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
   "routeTemplateId": zod.number().nullish(),

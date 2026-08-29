@@ -124,6 +124,8 @@ import type {
   GenerateBlueprintAiZonesBody,
   GenerateBlueprintFromAiBody,
   GeocodeResult,
+  GeofenceEntry,
+  GeofenceEntryInput,
   GeofencePinUpdate,
   GetAddressSuggestionsParams,
   GetDevToolsEnvironment200,
@@ -181,6 +183,7 @@ import type {
   ListEstimatesParams,
   ListExpensesParams,
   ListFollowupQueueItemsParams,
+  ListGeofenceEntriesParams,
   ListInventoryItemsParams,
   ListInvoicesParams,
   ListJobsParams,
@@ -8463,6 +8466,161 @@ export const useResumeStopServiceFlagPlan = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getResumeStopServiceFlagPlanMutationOptions(options));
     }
+
+export const getCreateGeofenceEntryUrl = () => {
+
+
+
+
+  return `/api/time-tracking/geofence-entry`
+}
+
+/**
+ * @summary Record an arrival inside a scheduled property's geofence without changing clocks
+ */
+export const createGeofenceEntry = async (geofenceEntryInput: GeofenceEntryInput, options?: RequestInit): Promise<GeofenceEntry> => {
+
+  return customFetch<GeofenceEntry>(getCreateGeofenceEntryUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(geofenceEntryInput)
+  }
+);}
+
+
+
+
+
+export const getCreateGeofenceEntryMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createGeofenceEntry>>, TError,{data: BodyType<GeofenceEntryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createGeofenceEntry>>, TError,{data: BodyType<GeofenceEntryInput>}, TContext> => {
+
+const mutationKey = ['createGeofenceEntry'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createGeofenceEntry>>, {data: BodyType<GeofenceEntryInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createGeofenceEntry(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateGeofenceEntryMutationResult = NonNullable<Awaited<ReturnType<typeof createGeofenceEntry>>>
+    export type CreateGeofenceEntryMutationBody = BodyType<GeofenceEntryInput>
+    export type CreateGeofenceEntryMutationError = ErrorType<void>
+
+    /**
+ * @summary Record an arrival inside a scheduled property's geofence without changing clocks
+ */
+export const useCreateGeofenceEntry = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createGeofenceEntry>>, TError,{data: BodyType<GeofenceEntryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createGeofenceEntry>>,
+        TError,
+        {data: BodyType<GeofenceEntryInput>},
+        TContext
+      > => {
+      return useMutation(getCreateGeofenceEntryMutationOptions(options));
+    }
+
+export const getListGeofenceEntriesUrl = (params?: ListGeofenceEntriesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/time-tracking/geofence-entries?${stringifiedParams}` : `/api/time-tracking/geofence-entries`
+}
+
+/**
+ * @summary List geofence arrivals for the caller, or another user when caller is an administrator
+ */
+export const listGeofenceEntries = async (params?: ListGeofenceEntriesParams, options?: RequestInit): Promise<GeofenceEntry[]> => {
+
+  return customFetch<GeofenceEntry[]>(getListGeofenceEntriesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListGeofenceEntriesQueryKey = (params?: ListGeofenceEntriesParams,) => {
+    return [
+    `/api/time-tracking/geofence-entries`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListGeofenceEntriesQueryOptions = <TData = Awaited<ReturnType<typeof listGeofenceEntries>>, TError = ErrorType<unknown>>(params?: ListGeofenceEntriesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listGeofenceEntries>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListGeofenceEntriesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listGeofenceEntries>>> = ({ signal }) => listGeofenceEntries(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listGeofenceEntries>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListGeofenceEntriesQueryResult = NonNullable<Awaited<ReturnType<typeof listGeofenceEntries>>>
+export type ListGeofenceEntriesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List geofence arrivals for the caller, or another user when caller is an administrator
+ */
+
+export function useListGeofenceEntries<TData = Awaited<ReturnType<typeof listGeofenceEntries>>, TError = ErrorType<unknown>>(
+ params?: ListGeofenceEntriesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listGeofenceEntries>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListGeofenceEntriesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetMasterClockUrl = () => {
 

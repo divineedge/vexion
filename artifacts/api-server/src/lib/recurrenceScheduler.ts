@@ -24,6 +24,37 @@ import { isInOffSeason, firstDayAfterOffSeason } from "./offSeasonUtils";
 
 const LOOKAHEAD_DAYS = parseInt(process.env.RECURRENCE_LOOKAHEAD_DAYS ?? "60", 10);
 
+/** Series-level dates override the legacy service-level default for this recurrence only. */
+export function resolveRecurrenceOffSeason(
+  job: { offSeasonStart: string | null; offSeasonEnd: string | null },
+  service?: { offSeasonStart: string | null; offSeasonEnd: string | null } | null,
+) {
+  if (job.offSeasonStart && job.offSeasonEnd) {
+    return { offSeasonStart: job.offSeasonStart, offSeasonEnd: job.offSeasonEnd };
+  }
+  return {
+    offSeasonStart: service?.offSeasonStart ?? null,
+    offSeasonEnd: service?.offSeasonEnd ?? null,
+  };
+}
+
+/** Finds the next eligible slot and how many recurrence positions must be consumed. */
+export function nextEligibleRecurrence(
+  rule: RecurrenceRule,
+  rootScheduledAt: Date,
+  recurrenceCount: number,
+  offSeasonStart: string | null,
+  offSeasonEnd: string | null,
+) {
+  let skipCount = 0;
+  let nextDate = nthOccurrenceAfterRoot(rule, rootScheduledAt, recurrenceCount);
+  while (nextDate && offSeasonStart && offSeasonEnd && isInOffSeason(nextDate, offSeasonStart, offSeasonEnd)) {
+    skipCount++;
+    nextDate = nthOccurrenceAfterRoot(rule, rootScheduledAt, recurrenceCount + skipCount);
+  }
+  return { nextDate, skipCount };
+}
+
 /** Off-season pause: auto-resume any paused series root whose resumeAt date has arrived. */
 async function processAutoResume() {
   const now = new Date();
@@ -75,6 +106,9 @@ async function processRecurring() {
 
     const rule = root.recurrenceRule as unknown as RecurrenceRule;
     const service = root.serviceId ? serviceMap.get(root.serviceId) : null;
+    // A series-level window is an explicit override. Retain the legacy service
+    // window only for jobs that have not configured their own pause dates.
+    const { offSeasonStart, offSeasonEnd } = resolveRecurrenceOffSeason(root, service);
 
     // localCount tracks how many slots we've consumed for this root during this
     // scheduler run. It starts at the DB value and advances with each generated
@@ -89,14 +123,10 @@ async function processRecurring() {
       if (!nextDate) break; // series exhausted
 
       // Off-season: skip occurrences that fall inside the off-season window.
-      let skipCount = 0;
-      if (service?.offSeasonStart && service?.offSeasonEnd) {
-        while (nextDate && isInOffSeason(nextDate, service.offSeasonStart, service.offSeasonEnd)) {
-          skipCount++;
-          nextDate = nthOccurrenceAfterRoot(rule, root.scheduledAt, localCount + skipCount);
-        }
-        if (!nextDate) break; // series exhausted after skipping
-      }
+      const eligible = nextEligibleRecurrence(rule, root.scheduledAt, localCount, offSeasonStart, offSeasonEnd);
+      nextDate = eligible.nextDate;
+      const skipCount = eligible.skipCount;
+      if (!nextDate) break; // series exhausted after skipping
 
       // Stop filling once we're past the look-ahead window
       if (nextDate > lookahead) break;
@@ -181,12 +211,17 @@ export async function previewRecurrenceForTenant(tenantId: number) {
       eq(jobsTable.isRecurrencePaused, false),
       ne(jobsTable.status, "cancelled"),
     ));
+  const allServices = await db.select({
+    id: servicesTable.id, offSeasonStart: servicesTable.offSeasonStart, offSeasonEnd: servicesTable.offSeasonEnd,
+  }).from(servicesTable);
+  const serviceMap = new Map(allServices.map(service => [service.id, service]));
 
   return roots.flatMap(root => {
     if (!root.recurrenceRule) return [];
     const rule = root.recurrenceRule as unknown as RecurrenceRule;
     const currentCount = root.recurrenceCount ?? 0;
-    const nextDate = nthOccurrenceAfterRoot(rule, root.scheduledAt, currentCount);
+    const { offSeasonStart, offSeasonEnd } = resolveRecurrenceOffSeason(root, root.serviceId ? serviceMap.get(root.serviceId) : null);
+    const { nextDate } = nextEligibleRecurrence(rule, root.scheduledAt, currentCount, offSeasonStart, offSeasonEnd);
     if (!nextDate) return [];
     return [{
       rootJobId: root.id,
@@ -212,6 +247,10 @@ export async function runRecurrenceForTenantNow(tenantId: number) {
       eq(jobsTable.isRecurrencePaused, false),
       ne(jobsTable.status, "cancelled"),
     ));
+  const allServices = await db.select({
+    id: servicesTable.id, offSeasonStart: servicesTable.offSeasonStart, offSeasonEnd: servicesTable.offSeasonEnd,
+  }).from(servicesTable);
+  const serviceMap = new Map(allServices.map(service => [service.id, service]));
 
   const results: Array<{ rootJobId: number; title: string; generated: boolean; newJobId?: number }> = [];
 
@@ -219,14 +258,15 @@ export async function runRecurrenceForTenantNow(tenantId: number) {
     if (!root.recurrenceRule) continue;
     const rule = root.recurrenceRule as unknown as RecurrenceRule;
     const currentCount = root.recurrenceCount ?? 0;
-    const nextDate = nthOccurrenceAfterRoot(rule, root.scheduledAt, currentCount);
+    const { offSeasonStart, offSeasonEnd } = resolveRecurrenceOffSeason(root, root.serviceId ? serviceMap.get(root.serviceId) : null);
+    const { nextDate, skipCount } = nextEligibleRecurrence(rule, root.scheduledAt, currentCount, offSeasonStart, offSeasonEnd);
     if (!nextDate || nextDate > lookahead) { results.push({ rootJobId: root.id, title: root.title, generated: false }); continue; }
 
     let newJobId: number | undefined;
     try {
       await db.transaction(async tx => {
         const claimed = await tx.execute(sql`
-          UPDATE jobs SET recurrence_count = recurrence_count + 1
+          UPDATE jobs SET recurrence_count = recurrence_count + ${skipCount + 1}
           WHERE id = ${root.id} AND recurrence_count = ${currentCount}
         `);
         if ((claimed as unknown as { rowCount: number }).rowCount === 0) throw new Error("CAS_MISS");
@@ -249,7 +289,7 @@ export async function runRecurrenceForTenantNow(tenantId: number) {
           totalAmount: root.totalAmount,
           suppliesNeeded: (root as any).suppliesNeeded ?? [],
           recurrenceParentId: root.id,
-          recurrenceIndex: currentCount,
+          recurrenceIndex: currentCount + skipCount,
           smsReminderEnabled: root.smsReminderEnabled,
         }).returning({ id: jobsTable.id });
         newJobId = inserted.id;

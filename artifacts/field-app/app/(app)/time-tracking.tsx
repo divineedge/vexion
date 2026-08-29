@@ -20,6 +20,7 @@ import {
   useGetMasterClock, getGetMasterClockQueryKey,
   useStartMasterClock, useStopMasterClock,
   useStartSubTimer, useStopSubTimer, useAdjustSubTimer,
+  useCreateGeofenceEntry,
   useGetTodaySchedule, getGetTodayScheduleQueryKey,
   getListSubTimersQueryKey,
   getListTimeEntriesQueryKey,
@@ -37,6 +38,7 @@ type ScheduleItem = {
   scheduledAt: string | null;
   customerName: string | null;
   propertyAddress: string | null;
+  propertyId?: number | null;
   status: string;
   activeTimerId: number | null;
   activeTimerStartedAt: string | null;
@@ -300,11 +302,39 @@ export default function TimeTrackingScreen() {
   const startSub = useStartSubTimer();
   const stopSub = useStopSubTimer();
   const adjustSub = useAdjustSubTimer();
+  const createGeofenceEntry = useCreateGeofenceEntry();
 
   const [masterElapsed, setMasterElapsed] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [lateArrivalPrompt, setLateArrivalPrompt] = useState<LateArrivalPrompt | null>(null);
+  // Local throttle complements the server's durable five-minute debounce. It is deliberately
+  // unrelated to clock controls: merely arriving at a scheduled property records an event.
+  const recentlyReportedGeofences = useRef<Map<number, number>>(new Map());
+
+  useEffect(() => {
+    const reportScheduledArrivals = async () => {
+      const location = await getLocation();
+      if (!location) return;
+      const now = Date.now();
+      for (const item of (schedule as ScheduleItem[] | undefined) ?? []) {
+        if (item.propertyId == null || item.propertyGeofenceLat == null || item.propertyGeofenceLng == null || item.propertyGeofenceRadius == null) continue;
+        if (haversineMetres(location.lat, location.lng, item.propertyGeofenceLat, item.propertyGeofenceLng) > item.propertyGeofenceRadius) continue;
+        const lastReported = recentlyReportedGeofences.current.get(item.propertyId);
+        if (lastReported != null && now - lastReported < 5 * 60 * 1000) continue;
+        recentlyReportedGeofences.current.set(item.propertyId, now);
+        createGeofenceEntry.mutate({
+          data: {
+            propertyId: item.propertyId,
+            lat: location.lat,
+            lng: location.lng,
+            ...(item.kind === 'job' ? { jobId: item.id } : { visitId: item.id }),
+          },
+        });
+      }
+    };
+    void reportScheduledArrivals();
+  }, [schedule, createGeofenceEntry]);
 
   useEffect(() => {
     if (!masterClock?.isClockedIn || !masterClock?.clockedInAt) {

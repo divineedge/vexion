@@ -104,6 +104,8 @@ export default function SettingsPage() {
   const [nonRecurringInvoiceCadence, setNonRecurringInvoiceCadence] = useState<'immediate' | 'weekly'>('immediate');
   const [maxClockInHours, setMaxClockInHours] = useState('');
   const [dailyTaskHourlyRate, setDailyTaskHourlyRate] = useState('0');
+  const [defaultOffSeasonStart, setDefaultOffSeasonStart] = useState('11-15');
+  const [defaultOffSeasonEnd, setDefaultOffSeasonEnd] = useState('03-14');
   // Estimate & Invoice defaults
   const [estimateExpiryDays, setEstimateExpiryDays] = useState('30');
   const [invoiceDueDays, setInvoiceDueDays] = useState('30');
@@ -255,6 +257,8 @@ export default function SettingsPage() {
       setNonRecurringInvoiceCadence(((settings as any).nonRecurringInvoiceCadence as 'immediate' | 'weekly') ?? 'immediate');
       setMaxClockInHours((settings as any).maxClockInHours != null ? String((settings as any).maxClockInHours) : '');
       setDailyTaskHourlyRate(String(settings.dailyTaskHourlyRate ?? 0));
+      setDefaultOffSeasonStart((settings as any).defaultOffSeasonStart ?? '11-15');
+      setDefaultOffSeasonEnd((settings as any).defaultOffSeasonEnd ?? '03-14');
       setEstimateExpiryDays(String((settings as any).estimateExpiryDays ?? 30));
       setInvoiceDueDays(String((settings as any).invoiceDueDays ?? 30));
       setTaxEnabled((settings as any).taxEnabled ?? true);
@@ -497,7 +501,7 @@ export default function SettingsPage() {
 
   const saveOperational = () => {
     updateSettings.mutate(
-      { data: { durationUnit, autoInvoiceFrequency, nonRecurringInvoiceCadence, maxClockInHours: maxClockInHours ? parseFloat(maxClockInHours) : null, dailyTaskHourlyRate: parseFloat(dailyTaskHourlyRate) || 0 } as Parameters<typeof updateSettings.mutate>[0]['data'] },
+      { data: { durationUnit, autoInvoiceFrequency, nonRecurringInvoiceCadence, maxClockInHours: maxClockInHours ? parseFloat(maxClockInHours) : null, dailyTaskHourlyRate: parseFloat(dailyTaskHourlyRate) || 0, defaultOffSeasonStart: defaultOffSeasonStart || null, defaultOffSeasonEnd: defaultOffSeasonEnd || null } as Parameters<typeof updateSettings.mutate>[0]['data'] },
       {
         onSuccess: () => { toast.success('Operational settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
         onError: () => toast.error('Failed to save settings'),
@@ -2157,6 +2161,16 @@ export default function SettingsPage() {
                     onChange={e => setMaxClockInHours(e.target.value)}
                     placeholder="e.g. 12"
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Default Recurring Job Off-Season</label>
+                  <p className="text-xs text-muted-foreground">Pre-filled when creating a recurring job. Leave both blank to disable the default.</p>
+                  <div className="flex items-center gap-2">
+                    <Input value={defaultOffSeasonStart} onChange={e => setDefaultOffSeasonStart(e.target.value)} placeholder="11-15" maxLength={5} pattern="\d{2}-\d{2}" className="w-24 font-mono" title="Default off-season start in MM-DD format" />
+                    <span className="text-muted-foreground text-sm">to</span>
+                    <Input value={defaultOffSeasonEnd} onChange={e => setDefaultOffSeasonEnd(e.target.value)} placeholder="03-14" maxLength={5} pattern="\d{2}-\d{2}" className="w-24 font-mono" title="Default off-season end in MM-DD format" />
+                  </div>
                 </div>
               </div>
 

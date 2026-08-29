@@ -5,6 +5,7 @@
  */
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
+import { geofenceRadiusForDisplay, geofenceRadiusToMeters } from '@/lib/geofenceUnits';
 
 export interface MeasurementZone {
   id: string;
@@ -176,10 +177,31 @@ export default function PropertySatelliteMap({
   const [currentLng, setCurrentLng] = useState(lng ?? -80.1918);
   // localGeofenceRadius is in the display unit (ft or m); geofenceRadius prop is always meters
   const [localGeofenceRadius, setLocalGeofenceRadius] = useState(() =>
-    geofenceUnit === 'ft' ? Math.round(geofenceRadius / 0.3048) : geofenceRadius
+    geofenceRadiusForDisplay(geofenceRadius, geofenceUnit)
   );
   const [mapReady, setMapReady] = useState(false);
   const [editingZoneId, setEditingZoneId] = useState<string | null>(null);
+  const onPinChangeRef = useRef(onPinChange);
+  const onGeofenceChangeRef = useRef(onGeofenceChange);
+  const geofenceRadiusMRef = useRef(geofenceRadius);
+
+  // Leaflet event handlers are registered once when the map is initialized. Keep their
+  // dependencies current so a pin drag never calls an old callback or sends display feet
+  // to an API that always stores meters.
+  useEffect(() => {
+    onPinChangeRef.current = onPinChange;
+    onGeofenceChangeRef.current = onGeofenceChange;
+  }, [onPinChange, onGeofenceChange]);
+
+  useEffect(() => {
+    const displayRadius = geofenceRadiusForDisplay(geofenceRadius, geofenceUnit);
+    setLocalGeofenceRadius(displayRadius);
+    geofenceRadiusMRef.current = geofenceRadius;
+  }, [geofenceRadius, geofenceUnit]);
+
+  useEffect(() => {
+    geofenceRadiusMRef.current = geofenceRadiusToMeters(localGeofenceRadius, geofenceUnit);
+  }, [localGeofenceRadius, geofenceUnit]);
 
   // Sync zones from props when they change externally
   useEffect(() => {
@@ -270,7 +292,7 @@ export default function PropertySatelliteMap({
         .bindPopup(address ?? 'Property');
       markersRef.current.pin = pin;
 
-      if (!readonly && onPinChange) {
+      if (!readonly) {
         pin.on('drag', () => {
           const pos = pin.getLatLng();
           // Geofence is locked to the pin — follow it live while dragging.
@@ -281,8 +303,8 @@ export default function PropertySatelliteMap({
           setCurrentLat(pos.lat);
           setCurrentLng(pos.lng);
           markersRef.current.geofenceCircle?.setLatLng(pos);
-          onPinChange(pos.lat, pos.lng);
-          onGeofenceChange?.(pos.lat, pos.lng, localGeofenceRadius);
+          onPinChangeRef.current?.(pos.lat, pos.lng);
+          onGeofenceChangeRef.current?.(pos.lat, pos.lng, geofenceRadiusMRef.current);
         });
       }
 
@@ -312,6 +334,17 @@ export default function PropertySatelliteMap({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Keep Leaflet's circle aligned with the persisted geofence after a save, refetch, or
+  // tenant display-unit change. Its radius is always meters, independent of the editor.
+  useEffect(() => {
+    const circle = markersRef.current.geofenceCircle;
+    if (!mapReady || !circle) return;
+    circle.setLatLng([
+      geofenceLat ?? lat ?? 25.7617,
+      geofenceLng ?? lng ?? -80.1918,
+    ]).setRadius(geofenceRadius);
+  }, [mapReady, geofenceLat, geofenceLng, geofenceRadius, lat, lng]);
 
   // Draw stored zones (polygons or open polylines) whenever map is ready or zones change
   useEffect(() => {
@@ -517,9 +550,7 @@ export default function PropertySatelliteMap({
     const cLat = pos?.lat ?? currentLat;
     const cLng = pos?.lng ?? currentLng;
     // Always store/callback in meters regardless of display unit
-    const radiusM = geofenceUnit === 'ft'
-      ? Math.round(localGeofenceRadius * 0.3048)
-      : localGeofenceRadius;
+    const radiusM = geofenceRadiusToMeters(localGeofenceRadius, geofenceUnit);
     import('leaflet').then((_L) => {
       markersRef.current.geofenceCircle?.setLatLng([cLat, cLng]).setRadius(radiusM);
     });
@@ -593,22 +624,26 @@ export default function PropertySatelliteMap({
                     title="Zone type to assign when drawing a new zone — its mode (area or linear) determines how the zone is drawn"
                     className="text-sm border rounded px-2 py-1.5 bg-background flex-1"
                     value={selectedZoneTypeId}
-                    onChange={e => setSelectedZoneTypeId(e.target.value)}
+                    onChange={e => {
+                      // A native select does not emit change when its current option is
+                      // chosen again. This selector action lets users trace the already
+                      // selected type (including when it is the tenant's only type)
+                      // without reintroducing a separate draw-mode button.
+                      if (e.target.value !== '__trace_selected__') {
+                        setSelectedZoneTypeId(e.target.value);
+                      }
+                      setDrawingPoints([]);
+                      setDrawingMode(true);
+                    }}
                   >
+                    <option value="__trace_selected__">
+                      Trace {effectiveZoneTypes.find(z => z.id === selectedZoneTypeId)?.name ?? 'selected type'}
+                    </option>
                     {effectiveZoneTypes.map(zt => (
                       <option key={zt.id} value={zt.id}>{zt.name}{zt.mode === 'linear' ? ' (linear)' : ''}</option>
                     ))}
                   </select>
                 </div>
-                <button
-                  className="text-sm px-3 py-1.5 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition font-medium"
-                  title={drawMode === 'linear'
-                    ? 'Click points on the map to draw a new linear zone (e.g. fence line, edging, hedge)'
-                    : 'Click points on the map to draw a new service zone polygon'}
-                  onClick={() => { setDrawingMode(true); setDrawingPoints([]); }}
-                >
-                  {drawMode === 'linear' ? '＋ Draw Line' : '＋ Draw Zone'}
-                </button>
               </div>
               {zones.length > 0 && (
                 <button

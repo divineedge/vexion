@@ -1,10 +1,107 @@
 import { Router, type IRouter } from "express";
-import { db, timeEntriesTable, subTimersTable, usersTable, taskBundleCompletionsTable, taskBundlesTable, jobsTable, visitsTable, customersTable, propertiesTable } from "@workspace/db";
+import { db, timeEntriesTable, subTimersTable, geofenceEntriesTable, usersTable, taskBundleCompletionsTable, taskBundlesTable, jobsTable, visitsTable, customersTable, propertiesTable, crewMembersTable } from "@workspace/db";
 import { eq, and, sql, gte, lte, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { ADMIN_ROLES, getCallerRole } from "../lib/roles";
+import { GEOFENCE_ENTRY_DEBOUNCE_MS, hasExactlyOneWorkLink, haversineMeters, isAssignedToWork, isDuplicateGeofenceEntry, isInsideGeofence, isWithinScheduleDay } from "../lib/geofence";
 
 const router: IRouter = Router();
+
+router.post("/time-tracking/geofence-entry", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  const { propertyId, jobId, visitId, lat, lng } = req.body ?? {};
+  const parsedPropertyId = Number(propertyId);
+  const parsedLat = Number(lat);
+  const parsedLng = Number(lng);
+  if (!Number.isInteger(parsedPropertyId) || parsedPropertyId <= 0 || !Number.isFinite(parsedLat) || !Number.isFinite(parsedLng)
+    || parsedLat < -90 || parsedLat > 90 || parsedLng < -180 || parsedLng > 180) {
+    res.status(400).json({ error: "propertyId, lat, and lng must be valid coordinates" });
+    return;
+  }
+  const [property] = await db.select({
+    id: propertiesTable.id, geofenceLat: propertiesTable.geofenceLat, geofenceLng: propertiesTable.geofenceLng, geofenceRadius: propertiesTable.geofenceRadius,
+  }).from(propertiesTable).where(and(eq(propertiesTable.id, parsedPropertyId), eq(propertiesTable.tenantId, tenantId)));
+  if (!property) { res.status(404).json({ error: "Property not found" }); return; }
+  if (property.geofenceLat == null || property.geofenceLng == null || property.geofenceRadius == null || property.geofenceRadius <= 0) {
+    res.status(400).json({ error: "Property does not have a configured geofence" }); return;
+  }
+
+  const parsedJobId = jobId == null ? null : Number(jobId);
+  const parsedVisitId = visitId == null ? null : Number(visitId);
+  if ((parsedJobId != null && (!Number.isInteger(parsedJobId) || parsedJobId <= 0))
+    || (parsedVisitId != null && (!Number.isInteger(parsedVisitId) || parsedVisitId <= 0))) {
+    res.status(400).json({ error: "jobId and visitId must be valid integers" }); return;
+  }
+  if (!hasExactlyOneWorkLink(parsedJobId, parsedVisitId)) {
+    res.status(400).json({ error: "Provide exactly one of jobId or visitId" }); return;
+  }
+  const now = new Date();
+  if (parsedJobId != null) {
+    const [job] = await db.select({
+      propertyId: jobsTable.propertyId, assigneeId: jobsTable.assigneeId, crewId: jobsTable.crewId, scheduledAt: jobsTable.scheduledAt,
+    }).from(jobsTable)
+      .where(and(eq(jobsTable.id, parsedJobId), eq(jobsTable.tenantId, tenantId)));
+    if (!job || job.propertyId !== parsedPropertyId) { res.status(400).json({ error: "Job does not belong to this property" }); return; }
+    if (!isWithinScheduleDay(job.scheduledAt, now)) { res.status(403).json({ error: "Job is not scheduled for today" }); return; }
+    const [crewMembership] = job.crewId == null ? [] : await db.select({ id: crewMembersTable.id }).from(crewMembersTable).where(and(
+      eq(crewMembersTable.tenantId, tenantId), eq(crewMembersTable.crewId, job.crewId), eq(crewMembersTable.userId, userId),
+    )).limit(1);
+    if (!isAssignedToWork(job.assigneeId, !!crewMembership, userId)) { res.status(403).json({ error: "You are not assigned to this job" }); return; }
+  }
+  if (parsedVisitId != null) {
+    const [visit] = await db.select({
+      propertyId: visitsTable.propertyId, assigneeId: visitsTable.assigneeId, scheduledAt: visitsTable.scheduledAt,
+    }).from(visitsTable)
+      .where(and(eq(visitsTable.id, parsedVisitId), eq(visitsTable.tenantId, tenantId)));
+    if (!visit || visit.propertyId !== parsedPropertyId) { res.status(400).json({ error: "Visit does not belong to this property" }); return; }
+    if (!isWithinScheduleDay(visit.scheduledAt, now)) { res.status(403).json({ error: "Visit is not scheduled for today" }); return; }
+    if (!isAssignedToWork(visit.assigneeId, false, userId)) { res.status(403).json({ error: "You are not assigned to this visit" }); return; }
+  }
+
+  const distanceMeters = haversineMeters(parsedLat, parsedLng, property.geofenceLat, property.geofenceLng);
+  if (!isInsideGeofence(distanceMeters, property.geofenceRadius)) {
+    res.status(422).json({ error: "Coordinates are outside this property's geofence", distanceMeters, radiusMeters: property.geofenceRadius });
+    return;
+  }
+
+  const cutoff = new Date(Date.now() - GEOFENCE_ENTRY_DEBOUNCE_MS);
+  const result = await db.transaction(async tx => {
+    // Serialize reports for this tenant/user/property. A time-window cannot be expressed as a useful
+    // PostgreSQL unique index, so this advisory transaction lock prevents concurrent duplicate arrivals.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${tenantId}, ${userId * 1_000_000 + parsedPropertyId})`);
+    const [recent] = await tx.select().from(geofenceEntriesTable).where(and(
+      eq(geofenceEntriesTable.tenantId, tenantId), eq(geofenceEntriesTable.userId, userId),
+      eq(geofenceEntriesTable.propertyId, parsedPropertyId), gte(geofenceEntriesTable.enteredAt, cutoff),
+    )).orderBy(desc(geofenceEntriesTable.enteredAt)).limit(1);
+    if (isDuplicateGeofenceEntry(recent?.enteredAt ?? null, new Date())) return { entry: recent!, deduplicated: true };
+    const [entry] = await tx.insert(geofenceEntriesTable).values({
+      tenantId, userId, propertyId: parsedPropertyId, jobId: parsedJobId, visitId: parsedVisitId,
+      lat: parsedLat, lng: parsedLng, distanceMeters, enteredAt: new Date(),
+    }).returning();
+    return { entry, deduplicated: false };
+  });
+  res.status(result.deduplicated ? 200 : 201).json({ ...result.entry, enteredAt: result.entry.enteredAt.toISOString(), deduplicated: result.deduplicated });
+});
+
+router.get("/time-tracking/geofence-entries", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const callerId = getUserId(req);
+  const requestedUserId = typeof req.query.userId === "string" ? Number(req.query.userId) : undefined;
+  let targetUserId = callerId;
+  if (requestedUserId != null) {
+    if (!Number.isInteger(requestedUserId) || requestedUserId <= 0) { res.status(400).json({ error: "userId must be a valid integer" }); return; }
+    const role = await getCallerRole(tenantId, callerId);
+    if (!ADMIN_ROLES.has(role)) { res.status(403).json({ error: "Admin or office role required to view other users" }); return; }
+    const [user] = await db.select({ id: usersTable.id }).from(usersTable).where(and(eq(usersTable.id, requestedUserId), eq(usersTable.tenantId, tenantId)));
+    if (!user) { res.status(404).json({ error: "User not found" }); return; }
+    targetUserId = requestedUserId;
+  }
+  const rows = await db.select().from(geofenceEntriesTable).where(and(
+    eq(geofenceEntriesTable.tenantId, tenantId), eq(geofenceEntriesTable.userId, targetUserId),
+  )).orderBy(desc(geofenceEntriesTable.enteredAt)).limit(200);
+  res.json(rows.map(entry => ({ ...entry, enteredAt: entry.enteredAt.toISOString() })));
+});
 
 router.get("/time-tracking/master-clock", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
@@ -313,6 +410,7 @@ router.get("/time-tracking/today-schedule", async (req, res): Promise<void> => {
       scheduledAt: jobsTable.scheduledAt,
       customerName: customersTable.name,
       propertyAddress: propertiesTable.address,
+      propertyId: propertiesTable.id,
       propertyLat: propertiesTable.lat,
       propertyLng: propertiesTable.lng,
       propertyGeofenceLat: propertiesTable.geofenceLat,
@@ -342,6 +440,12 @@ router.get("/time-tracking/today-schedule", async (req, res): Promise<void> => {
       scheduledAt: visitsTable.scheduledAt,
       customerName: customersTable.name,
       propertyAddress: propertiesTable.address,
+      propertyId: propertiesTable.id,
+      propertyLat: propertiesTable.lat,
+      propertyLng: propertiesTable.lng,
+      propertyGeofenceLat: propertiesTable.geofenceLat,
+      propertyGeofenceLng: propertiesTable.geofenceLng,
+      propertyGeofenceRadius: propertiesTable.geofenceRadius,
     })
     .from(visitsTable)
     .leftJoin(customersTable, eq(visitsTable.customerId, customersTable.id))
@@ -364,6 +468,7 @@ router.get("/time-tracking/today-schedule", async (req, res): Promise<void> => {
       scheduledAt: j.scheduledAt.toISOString(),
       customerName: j.customerName ?? null,
       propertyAddress: j.propertyAddress ?? null,
+      propertyId: j.propertyId ?? null,
       status: j.status,
       activeTimerId: timer?.id ?? null,
       activeTimerStartedAt: timer?.startedAt.toISOString() ?? null,
@@ -391,10 +496,16 @@ router.get("/time-tracking/today-schedule", async (req, res): Promise<void> => {
       scheduledAt: v.scheduledAt?.toISOString() ?? null,
       customerName: v.customerName ?? null,
       propertyAddress: v.propertyAddress ?? null,
+      propertyId: v.propertyId ?? null,
       status: visitStatus,
       activeTimerId: timer?.id ?? null,
       activeTimerStartedAt: timer?.startedAt.toISOString() ?? null,
       elapsedSeconds: elapsed,
+      propertyLat: v.propertyLat ?? null,
+      propertyLng: v.propertyLng ?? null,
+      propertyGeofenceLat: v.propertyGeofenceLat ?? null,
+      propertyGeofenceLng: v.propertyGeofenceLng ?? null,
+      propertyGeofenceRadius: v.propertyGeofenceRadius ?? null,
     });
   }
 

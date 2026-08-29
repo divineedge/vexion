@@ -48,6 +48,7 @@ import MediaGallery from '@/components/media/MediaGallery';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { geofenceRadiusForDisplay, geofenceRadiusToMeters } from '@/lib/geofenceUnits';
 
 const PropertySatelliteMap = lazy(() => import('@/components/map/PropertySatelliteMap'));
 const QuickQuotePanel = lazy(() => import('@/components/property/QuickQuotePanel'));
@@ -171,10 +172,6 @@ export default function PropertyDetailPage() {
   const defaultGeofenceRadiusM = defaultGeofenceUnit === 'ft'
     ? Math.round(defaultGeofenceRadius * 0.3048)
     : defaultGeofenceRadius;
-  const geofenceRadiusForDisplay = (radiusMeters: number) =>
-    defaultGeofenceUnit === 'ft' ? Math.round(radiusMeters / 0.3048) : radiusMeters;
-  const geofenceRadiusToMeters = (radius: number) =>
-    defaultGeofenceUnit === 'ft' ? Math.round(radius * 0.3048) : radius;
 
   const { data: bizTags = [] } = useListTags({ query: { queryKey: getListTagsQueryKey() } });
   const [propTagInput, setPropTagInput] = useState('');
@@ -218,13 +215,16 @@ export default function PropertyDetailPage() {
         setGeoInput({
           lat: property.geofenceLat.toString(),
           lng: property.geofenceLng.toString(),
-          radius: geofenceRadiusForDisplay(property.geofenceRadius ?? defaultGeofenceRadiusM).toString(),
+          radius: geofenceRadiusForDisplay(property.geofenceRadius ?? defaultGeofenceRadiusM, defaultGeofenceUnit).toString(),
         });
       } else if (property.lat != null && property.lng != null) {
         setGeoInput({
           lat: property.lat.toString(),
           lng: property.lng.toString(),
-          radius: defaultGeofenceRadius.toString(),
+          // Defaults are configured in the tenant's display unit, but derive this
+          // from the meter value so initialization follows the same display contract
+          // as an existing persisted geofence.
+          radius: geofenceRadiusForDisplay(defaultGeofenceRadiusM, defaultGeofenceUnit).toString(),
         });
       }
     }
@@ -233,9 +233,12 @@ export default function PropertyDetailPage() {
   // Fill in default geofence radius from settings once they load (only when no existing geofence)
   React.useEffect(() => {
     if (defaultGeofenceRadius && !geoInput.lat) {
-      setGeoInput(g => ({ ...g, radius: String(defaultGeofenceRadius) }));
+      setGeoInput(g => ({
+        ...g,
+        radius: String(geofenceRadiusForDisplay(defaultGeofenceRadiusM, defaultGeofenceUnit)),
+      }));
     }
-  }, [defaultGeofenceRadius]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [defaultGeofenceRadius, defaultGeofenceRadiusM, defaultGeofenceUnit, geoInput.lat]);
 
   // Auto-geocode: when the property loads without stored coordinates, silently fetch them
   React.useEffect(() => {
@@ -339,7 +342,7 @@ export default function PropertyDetailPage() {
   const handleSaveGeofence = () => {
     const lat = parseFloat(geoInput.lat);
     const lng = parseFloat(geoInput.lng);
-    const radius = geofenceRadiusToMeters(parseFloat(geoInput.radius));
+    const radius = geofenceRadiusToMeters(parseFloat(geoInput.radius), defaultGeofenceUnit);
     if (isNaN(lat) || isNaN(lng)) { toast.error('Invalid coordinates'); return; }
     updateGeofence.mutate(
       { id, data: { lat, lng, radius } },
@@ -356,7 +359,7 @@ export default function PropertyDetailPage() {
       return;
     }
     const radiusDisplay = parseFloat(geoInput.radius) || defaultGeofenceRadius;
-    const radius = geofenceRadiusToMeters(radiusDisplay);
+    const radius = geofenceRadiusToMeters(radiusDisplay, defaultGeofenceUnit);
     setGeoInput(g => ({ ...g, lat: String(property.lat), lng: String(property.lng), radius: String(radiusDisplay) }));
     updateGeofence.mutate(
       { id, data: { lat: property.lat, lng: property.lng, radius } },

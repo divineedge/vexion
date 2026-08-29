@@ -1628,6 +1628,18 @@ export interface Job {
      */
   resumeAt?: string | null;
   recurrenceCount?: number;
+  /**
+     * Annual recurring-series pause start (MM-DD); always paired with offSeasonEnd.
+     * @nullable
+     * @pattern ^\d{2}-\d{2}$
+     */
+  offSeasonStart?: string | null;
+  /**
+     * Annual recurring-series pause end (MM-DD); always paired with offSeasonStart.
+     * @nullable
+     * @pattern ^\d{2}-\d{2}$
+     */
+  offSeasonEnd?: string | null;
   /** True when this completed non-recurring job is waiting to be swept into a weekly batch invoice */
   pendingWeeklyInvoice?: boolean;
   /**
@@ -1771,6 +1783,16 @@ export interface JobInput {
   estimatedDuration?: number;
   blueprintId?: number;
   recurrenceRule?: RecurrenceRule;
+  /**
+     * Annual pause start. Must be supplied with offSeasonEnd.
+     * @pattern ^\d{2}-\d{2}$
+     */
+  offSeasonStart?: string;
+  /**
+     * Annual pause end. Must be supplied with offSeasonStart.
+     * @pattern ^\d{2}-\d{2}$
+     */
+  offSeasonEnd?: string;
   /** Enable SMS reminder for this job */
   smsReminderEnabled?: boolean;
   /** Supplies the crew will need on site */
@@ -1820,6 +1842,18 @@ export interface JobUpdate {
   scheduledAt?: string;
   estimatedDuration?: number;
   recurrenceRule?: RecurrenceRule;
+  /**
+     * Annual pause start. Set both pause fields to null to clear the window.
+     * @nullable
+     * @pattern ^\d{2}-\d{2}$
+     */
+  offSeasonStart?: string | null;
+  /**
+     * Annual pause end. Set both pause fields to null to clear the window.
+     * @nullable
+     * @pattern ^\d{2}-\d{2}$
+     */
+  offSeasonEnd?: string | null;
   /** Scope of the edit for recurring jobs */
   editScope?: JobUpdateEditScope;
   /** Enable or disable SMS reminder for this job */
@@ -2493,6 +2527,8 @@ export interface ScheduleItem {
   customerName?: string | null;
   /** @nullable */
   propertyAddress?: string | null;
+  /** @nullable */
+  propertyId?: number | null;
   status: string;
   /** @nullable */
   activeTimerId?: number | null;
@@ -2547,6 +2583,38 @@ export interface TimeEntry {
   /** @nullable */
   clockedOutAt?: string | null;
   totalMinutes: number;
+}
+
+export interface GeofenceEntry {
+  id: number;
+  tenantId: number;
+  userId: number;
+  propertyId: number;
+  /** @nullable */
+  jobId?: number | null;
+  /** @nullable */
+  visitId?: number | null;
+  lat: number;
+  lng: number;
+  distanceMeters: number;
+  enteredAt: string;
+  deduplicated?: boolean;
+}
+
+export interface GeofenceEntryInput {
+  propertyId: number;
+  jobId?: number;
+  visitId?: number;
+  /**
+     * @minimum -90
+     * @maximum 90
+     */
+  lat: number;
+  /**
+     * @minimum -180
+     * @maximum 180
+     */
+  lng: number;
 }
 
 export type InventoryLocationType = typeof InventoryLocationType[keyof typeof InventoryLocationType];
@@ -3070,6 +3138,18 @@ export interface TenantSettings {
   defaultGeofenceUnit?: TenantSettingsDefaultGeofenceUnit;
   /** Auto-create geofence when a property is added */
   autoCreateGeofence?: boolean;
+  /**
+     * Default annual pause start for new recurring jobs; paired with defaultOffSeasonEnd.
+     * @nullable
+     * @pattern ^\d{2}-\d{2}$
+     */
+  defaultOffSeasonStart?: string | null;
+  /**
+     * Default annual pause end for new recurring jobs; paired with defaultOffSeasonStart.
+     * @nullable
+     * @pattern ^\d{2}-\d{2}$
+     */
+  defaultOffSeasonEnd?: string | null;
   /** Deprecated: use measurementZoneTypes instead */
   measurementZoneLabels?: string[];
   /** Structured zone type definitions with name, color, and measurement mode */
@@ -3451,6 +3531,18 @@ export interface TenantSettingsUpdate {
   defaultGeofenceRadius?: number;
   defaultGeofenceUnit?: TenantSettingsUpdateDefaultGeofenceUnit;
   autoCreateGeofence?: boolean;
+  /**
+     * Default annual pause start. Both default off-season fields must be supplied together, or both null to clear.
+     * @nullable
+     * @pattern ^\d{2}-\d{2}$
+     */
+  defaultOffSeasonStart?: string | null;
+  /**
+     * Default annual pause end. Both default off-season fields must be supplied together, or both null to clear.
+     * @nullable
+     * @pattern ^\d{2}-\d{2}$
+     */
+  defaultOffSeasonEnd?: string | null;
   measurementZoneLabels?: string[];
   measurementZoneTypes?: TenantSettingsUpdateMeasurementZoneTypesItem[];
   preferredAreaUnit?: TenantSettingsUpdatePreferredAreaUnit;
@@ -5567,6 +5659,10 @@ rating?: number;
 
 export type ListStopServiceFlagsParams = {
 status?: string;
+};
+
+export type ListGeofenceEntriesParams = {
+userId?: number;
 };
 
 export type ListTimeEntriesParams = {

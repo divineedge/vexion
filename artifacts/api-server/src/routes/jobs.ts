@@ -51,6 +51,19 @@ import {
 
 const router: IRouter = Router();
 
+function isValidMonthDay(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{2}-\d{2}$/.test(value)) return false;
+  const [month, day] = value.split("-").map(Number);
+  return month >= 1 && month <= 12 && day >= 1 && day <= new Date(2000, month, 0).getDate();
+}
+
+function resolveOffSeasonWindow(start: unknown, end: unknown): { offSeasonStart: string; offSeasonEnd: string } | null | undefined {
+  if (start === undefined && end === undefined) return undefined;
+  if ((start === null || start === "") && (end === null || end === "")) return null;
+  if (isValidMonthDay(start) && isValidMonthDay(end)) return { offSeasonStart: start, offSeasonEnd: end };
+  throw new Error("offSeasonStart and offSeasonEnd must be provided together as valid MM-DD dates");
+}
+
 // ---------------------------------------------------------------------------
 // Bulk import / export
 // ---------------------------------------------------------------------------
@@ -440,6 +453,13 @@ router.post("/jobs", async (req, res): Promise<void> => {
     res.status(400).json({ error: "title and scheduledAt are required" });
     return;
   }
+  let offSeasonWindow: ReturnType<typeof resolveOffSeasonWindow>;
+  try {
+    offSeasonWindow = resolveOffSeasonWindow(offSeasonStart, offSeasonEnd);
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "Invalid off-season window" });
+    return;
+  }
 
   const [job] = await db.insert(jobsTable).values({
     tenantId,
@@ -457,8 +477,7 @@ router.post("/jobs", async (req, res): Promise<void> => {
     recurrenceRule: recurrenceRule ?? null,
     smsReminderEnabled: smsReminderEnabled === true || smsReminderEnabled === "true",
     suppliesNeeded: normaliseSupplies(suppliesNeeded),
-    ...(offSeasonStart && { offSeasonStart: String(offSeasonStart) }),
-    ...(offSeasonEnd && { offSeasonEnd: String(offSeasonEnd) }),
+    ...(offSeasonWindow && { ...offSeasonWindow }),
   }).returning();
 
   await db.insert(activityLogTable).values({ tenantId, userId, type: "job_created", message: `Job "${title}" created`, entityId: job.id });
@@ -563,11 +582,18 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const { title, description, status, priority, assigneeId, crewId, scheduledAt, estimatedDuration, recurrenceRule, editScope, smsReminderEnabled, holdFromBilling, planId, tags, suppliesNeeded } = req.body;
+  const { title, description, status, priority, assigneeId, crewId, scheduledAt, estimatedDuration, recurrenceRule, editScope, smsReminderEnabled, holdFromBilling, planId, tags, suppliesNeeded, offSeasonStart, offSeasonEnd } = req.body;
 
   // Fetch current job to check if it's a recurring instance
   const [currentJob] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
   if (!currentJob) { res.status(404).json({ error: "Not found" }); return; }
+  let offSeasonWindow: ReturnType<typeof resolveOffSeasonWindow>;
+  try {
+    offSeasonWindow = resolveOffSeasonWindow(offSeasonStart, offSeasonEnd);
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "Invalid off-season window" });
+    return;
+  }
 
   // Validate planId if provided: must exist in tenant and belong to the same customer as the job
   let resolvedPlanId: number | null | undefined = undefined; // undefined = not changing
@@ -619,8 +645,8 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
     ...(holdFromBilling !== undefined && { holdFromBilling: holdFromBilling === true || holdFromBilling === "true" }),
     ...(resolvedPlanId !== undefined && { planId: resolvedPlanId }),
     ...(tags !== undefined && { tags }),
-    ...(req.body.offSeasonStart !== undefined && { offSeasonStart: req.body.offSeasonStart || null }),
-    ...(req.body.offSeasonEnd !== undefined && { offSeasonEnd: req.body.offSeasonEnd || null }),
+    ...(offSeasonWindow === null && { offSeasonStart: null, offSeasonEnd: null }),
+    ...(offSeasonWindow && { ...offSeasonWindow }),
   };
 
   // Handle "forward" or "all" scope: update the root series template

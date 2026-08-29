@@ -292,6 +292,7 @@ export default function RoutesDashboardPage() {
         assigneeId: newJob.assigneeId ? parseInt(newJob.assigneeId, 10) : undefined,
         recurrenceRule,
         smsReminderEnabled: newJob.smsReminderEnabled,
+        ...(newJob.offSeasonEnabled ? { offSeasonStart: newJob.offSeasonStart, offSeasonEnd: newJob.offSeasonEnd } : {}),
       },
     }, {
       onSuccess: (job) => {
@@ -826,6 +827,8 @@ export default function RoutesDashboardPage() {
               properties={customerProperties ?? []}
               users={users ?? []}
               durationUnit={durationUnit}
+              defaultOffSeasonStart={settings?.defaultOffSeasonStart}
+              defaultOffSeasonEnd={settings?.defaultOffSeasonEnd}
             />
 
             <Separator />

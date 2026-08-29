@@ -144,6 +144,7 @@ import type {
   GetRouteDayDetailParams,
   GetRoutesDashboardParams,
   GetSalesTaxReportParams,
+  GetTodayScheduleParams,
   HealthStatus,
   ImportBankTransactionInput,
   IntegrationDetail,
@@ -9662,20 +9663,27 @@ export const useAdjustSubTimer = <TError = ErrorType<unknown>,
       return useMutation(getAdjustSubTimerMutationOptions(options));
     }
 
-export const getGetTodayScheduleUrl = () => {
+export const getGetTodayScheduleUrl = (params?: GetTodayScheduleParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/time-tracking/today-schedule`
+  return stringifiedParams.length > 0 ? `/api/time-tracking/today-schedule?${stringifiedParams}` : `/api/time-tracking/today-schedule`
 }
 
 /**
- * @summary Get today's schedule (jobs + visits) for the current user with active timer state
+ * @summary Get a selected tenant-timezone calendar day's schedule (jobs + visits) with active timer state
  */
-export const getTodaySchedule = async ( options?: RequestInit): Promise<ScheduleItem[]> => {
+export const getTodaySchedule = async (params?: GetTodayScheduleParams, options?: RequestInit): Promise<ScheduleItem[]> => {
 
-  return customFetch<ScheduleItem[]>(getGetTodayScheduleUrl(),
+  return customFetch<ScheduleItem[]>(getGetTodayScheduleUrl(params),
   {
     ...options,
     method: 'GET'
@@ -9688,23 +9696,23 @@ export const getTodaySchedule = async ( options?: RequestInit): Promise<Schedule
 
 
 
-export const getGetTodayScheduleQueryKey = () => {
+export const getGetTodayScheduleQueryKey = (params?: GetTodayScheduleParams,) => {
     return [
-    `/api/time-tracking/today-schedule`
+    `/api/time-tracking/today-schedule`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetTodayScheduleQueryOptions = <TData = Awaited<ReturnType<typeof getTodaySchedule>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTodaySchedule>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetTodayScheduleQueryOptions = <TData = Awaited<ReturnType<typeof getTodaySchedule>>, TError = ErrorType<unknown>>(params?: GetTodayScheduleParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTodaySchedule>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetTodayScheduleQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetTodayScheduleQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTodaySchedule>>> = ({ signal }) => getTodaySchedule({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTodaySchedule>>> = ({ signal }) => getTodaySchedule(params, { signal, ...requestOptions });
 
 
 
@@ -9718,15 +9726,15 @@ export type GetTodayScheduleQueryError = ErrorType<unknown>
 
 
 /**
- * @summary Get today's schedule (jobs + visits) for the current user with active timer state
+ * @summary Get a selected tenant-timezone calendar day's schedule (jobs + visits) with active timer state
  */
 
 export function useGetTodaySchedule<TData = Awaited<ReturnType<typeof getTodaySchedule>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTodaySchedule>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: GetTodayScheduleParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTodaySchedule>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetTodayScheduleQueryOptions(options)
+  const queryOptions = getGetTodayScheduleQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

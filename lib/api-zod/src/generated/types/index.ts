@@ -232,6 +232,7 @@ export * from './getRepairLogSummaryParams';
 export * from './getRouteDayDetailParams';
 export * from './getRoutesDashboardParams';
 export * from './getSalesTaxReportParams';
+export * from './getTodayScheduleParams';
 export * from './healthStatus';
 export * from './importBankTransactionInput';
 export * from './integrationDetail';

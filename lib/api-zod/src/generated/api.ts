@@ -413,6 +413,7 @@ export const LoginResponse = zod.object({
   "name": zod.string(),
   "role": zod.enum(['super_admin', 'company_owner', 'office_manager', 'department_manager', 'crew_manager', 'technician']),
   "tenantId": zod.number(),
+  "timezone": zod.string().optional().describe('Tenant IANA timezone used for schedule calendar dates'),
   "planTier": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
   "isActive": zod.boolean().optional(),
@@ -440,6 +441,7 @@ export const GetMeResponse = zod.object({
   "name": zod.string(),
   "role": zod.enum(['super_admin', 'company_owner', 'office_manager', 'department_manager', 'crew_manager', 'technician']),
   "tenantId": zod.number(),
+  "timezone": zod.string().optional().describe('Tenant IANA timezone used for schedule calendar dates'),
   "planTier": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
   "isActive": zod.boolean().optional(),
@@ -4196,8 +4198,12 @@ export const AdjustSubTimerResponse = zod.object({
 
 
 /**
- * @summary Get today's schedule (jobs + visits) for the current user with active timer state
+ * @summary Get a selected tenant-timezone calendar day's schedule (jobs + visits) with active timer state
  */
+export const GetTodayScheduleQueryParams = zod.object({
+  "date": zod.date().optional().describe('Calendar day interpreted in the tenant\'s configured IANA timezone; defaults to today in that timezone')
+})
+
 export const GetTodayScheduleResponseItem = zod.object({
   "kind": zod.enum(['job', 'visit']),
   "id": zod.number(),
@@ -4214,7 +4220,9 @@ export const GetTodayScheduleResponseItem = zod.object({
   "propertyLng": zod.number().nullish(),
   "propertyGeofenceLat": zod.number().nullish(),
   "propertyGeofenceLng": zod.number().nullish(),
-  "propertyGeofenceRadius": zod.number().nullish()
+  "propertyGeofenceRadius": zod.number().nullish(),
+  "routeTemplateId": zod.number().nullish(),
+  "sequenceOrder": zod.number().nullish()
 })
 export const GetTodayScheduleResponse = zod.array(GetTodayScheduleResponseItem)
 
@@ -5232,6 +5240,7 @@ export const ListUsersResponseItem = zod.object({
   "name": zod.string(),
   "role": zod.enum(['super_admin', 'company_owner', 'office_manager', 'department_manager', 'crew_manager', 'technician']),
   "tenantId": zod.number(),
+  "timezone": zod.string().optional().describe('Tenant IANA timezone used for schedule calendar dates'),
   "planTier": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
   "isActive": zod.boolean().optional(),
@@ -5261,6 +5270,7 @@ export const CreateUserResponse = zod.object({
   "name": zod.string(),
   "role": zod.enum(['super_admin', 'company_owner', 'office_manager', 'department_manager', 'crew_manager', 'technician']),
   "tenantId": zod.number(),
+  "timezone": zod.string().optional().describe('Tenant IANA timezone used for schedule calendar dates'),
   "planTier": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
   "isActive": zod.boolean().optional(),
@@ -5293,6 +5303,7 @@ export const UpdateUserResponse = zod.object({
   "name": zod.string(),
   "role": zod.enum(['super_admin', 'company_owner', 'office_manager', 'department_manager', 'crew_manager', 'technician']),
   "tenantId": zod.number(),
+  "timezone": zod.string().optional().describe('Tenant IANA timezone used for schedule calendar dates'),
   "planTier": zod.string().nullish(),
   "avatarUrl": zod.string().nullish(),
   "isActive": zod.boolean().optional(),

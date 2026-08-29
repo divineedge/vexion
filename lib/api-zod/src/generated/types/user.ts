@@ -13,6 +13,8 @@ export interface User {
   name: string;
   role: UserRole;
   tenantId: number;
+  /** Tenant IANA timezone used for schedule calendar dates */
+  timezone?: string;
   /** @nullable */
   planTier?: string | null;
   /** @nullable */

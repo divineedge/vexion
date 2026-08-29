@@ -78,7 +78,7 @@ export default function TimeTrackingPage() {
   const today = new Date().toISOString().split('T')[0];
 
   const { data: masterClock } = useGetMasterClock({ query: { queryKey: getGetMasterClockQueryKey() } });
-  const { data: schedule, isLoading: scheduleLoading } = useGetTodaySchedule({
+  const { data: schedule, isLoading: scheduleLoading } = useGetTodaySchedule(undefined, {
     query: { queryKey: getGetTodayScheduleQueryKey(), refetchInterval: 10000 },
   });
   const { data: todayEntries } = useListTimeEntries(

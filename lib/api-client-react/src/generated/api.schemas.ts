@@ -919,6 +919,8 @@ export interface User {
   name: string;
   role: UserRole;
   tenantId: number;
+  /** Tenant IANA timezone used for schedule calendar dates */
+  timezone?: string;
   /** @nullable */
   planTier?: string | null;
   /** @nullable */
@@ -2632,6 +2634,10 @@ export interface ScheduleItem {
   propertyGeofenceLng?: number | null;
   /** @nullable */
   propertyGeofenceRadius?: number | null;
+  /** @nullable */
+  routeTemplateId?: number | null;
+  /** @nullable */
+  sequenceOrder?: number | null;
 }
 
 export type SubTimerInputType = typeof SubTimerInputType[keyof typeof SubTimerInputType];
@@ -5806,6 +5812,13 @@ status?: string;
 
 export type ListGeofenceEntriesParams = {
 userId?: number;
+};
+
+export type GetTodayScheduleParams = {
+/**
+ * Calendar day interpreted in the tenant's configured IANA timezone; defaults to today in that timezone
+ */
+date?: string;
 };
 
 export type ListTimeEntriesParams = {

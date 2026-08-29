@@ -2,13 +2,14 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setDefaultHeaders, setAuthTokenGetter } from '@workspace/api-client-react';
 
-interface AuthUser {
+export interface AuthUser {
   id: number;
   email: string;
   name: string;
   role: string;
   tenantId: number;
   avatarUrl: string | null;
+  timezone?: string;
 }
 
 interface AuthContextType {
@@ -45,6 +46,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const storedSessionToken = await AsyncStorage.getItem(SESSION_TOKEN_KEY);
         if (storedToken && storedUser) {
           const parsedUser: AuthUser = JSON.parse(storedUser);
+          parsedUser.timezone ??= 'UTC';
           setToken(storedToken);
           setUser(parsedUser);
           applyHeaders(parsedUser);

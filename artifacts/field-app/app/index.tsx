@@ -17,6 +17,7 @@ import * as Haptics from 'expo-haptics';
 import { useLogin } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
+import { mapLoginUser } from '@/utils/authUser';
 
 export default function LoginScreen() {
   const colors = useColors();
@@ -39,14 +40,10 @@ export default function LoginScreen() {
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       const result = await loginMutation.mutateAsync({ data: { email: normalizedEmail, password } });
-      const userData = {
-        id: result.user.id,
-        email: result.user.email,
-        name: result.user.name ?? '',
-        role: result.user.role ?? '',
-        tenantId: result.user.tenantId,
-        avatarUrl: result.user.avatarUrl ?? null,
-      };
+      const userData = mapLoginUser({
+        ...result.user,
+        timezone: result.user.timezone ?? 'UTC',
+      });
       await signIn(result.sessionToken, userData, result.sessionToken ?? undefined);
       router.replace('/(app)/jobs');
     } catch (err: unknown) {

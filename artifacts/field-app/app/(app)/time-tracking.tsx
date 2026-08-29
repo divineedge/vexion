@@ -14,7 +14,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import * as Location from 'expo-location';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useGetMasterClock, getGetMasterClockQueryKey,
@@ -28,6 +27,7 @@ import {
 } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
+import { formatElapsed, getClockLocation, haversineMetres } from '@/utils/timeTracking';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -59,44 +59,6 @@ type LateArrivalPrompt = {
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-/** Request foreground location permission and return the current GPS fix, or null if unavailable. */
-async function getLocation(): Promise<{ lat: number; lng: number } | null> {
-  try {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') return null;
-    const pos = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.High,
-    });
-    return { lat: pos.coords.latitude, lng: pos.coords.longitude };
-  } catch {
-    return null; // Don't block clock-in if GPS is unavailable
-  }
-}
-
-/** Haversine distance in metres between two GPS points. */
-function haversineMetres(
-  lat1: number, lng1: number,
-  lat2: number, lng2: number,
-): number {
-  const R = 6371000;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-    Math.cos((lat2 * Math.PI) / 180) *
-    Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function formatElapsed(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
 
 function formatTime(iso: string | null): string {
   if (!iso) return '—';
@@ -293,7 +255,7 @@ export default function TimeTrackingScreen() {
   const { data: masterClock, refetch: refetchClock } = useGetMasterClock({
     query: { queryKey: getGetMasterClockQueryKey() },
   });
-  const { data: schedule, isLoading, refetch: refetchSchedule } = useGetTodaySchedule({
+  const { data: schedule, isLoading, refetch: refetchSchedule } = useGetTodaySchedule(undefined, {
     query: { queryKey: getGetTodayScheduleQueryKey(), refetchInterval: 15000 },
   });
 
@@ -314,7 +276,7 @@ export default function TimeTrackingScreen() {
 
   useEffect(() => {
     const reportScheduledArrivals = async () => {
-      const location = await getLocation();
+      const location = await getClockLocation();
       if (!location) return;
       const now = Date.now();
       for (const item of (schedule as ScheduleItem[] | undefined) ?? []) {
@@ -357,7 +319,7 @@ export default function TimeTrackingScreen() {
 
   const handleMasterToggle = useCallback(async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const loc = await getLocation();
+    const loc = await getClockLocation();
     const locData = loc ? { lat: loc.lat, lng: loc.lng } : undefined;
     if (masterClock?.isClockedIn) {
       stopMaster.mutate({ data: locData }, { onSuccess: invalidateAll });
@@ -370,7 +332,7 @@ export default function TimeTrackingScreen() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const busyKey = `${item.kind}-${item.id}`;
     setBusyId(busyKey);
-    const loc = await getLocation();
+    const loc = await getClockLocation();
 
     // Check geofence distance — inform the employee if they're outside the boundary
     if (loc && item.propertyGeofenceLat != null && item.propertyGeofenceLng != null && item.propertyGeofenceRadius != null) {
@@ -404,7 +366,7 @@ export default function TimeTrackingScreen() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const busyKey = `${item.kind}-${item.id}`;
     setBusyId(busyKey);
-    const loc = await getLocation();
+    const loc = await getClockLocation();
 
     stopSub.mutate(
       { id: item.activeTimerId, data: loc ? { lat: loc.lat, lng: loc.lng } : undefined },

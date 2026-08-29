@@ -1,15 +1,65 @@
 import { Router, type IRouter } from "express";
-import { db, timeEntriesTable, subTimersTable, geofenceEntriesTable, usersTable, taskBundleCompletionsTable, taskBundlesTable, jobsTable, visitsTable, customersTable, propertiesTable, crewMembersTable } from "@workspace/db";
+import { db, timeEntriesTable, subTimersTable, geofenceEntriesTable, usersTable, taskBundleCompletionsTable, taskBundlesTable, jobsTable, visitsTable, customersTable, propertiesTable, crewMembersTable, tenantsTable } from "@workspace/db";
 import { eq, and, sql, gte, lte, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { ADMIN_ROLES, getCallerRole } from "../lib/roles";
 import { GEOFENCE_ENTRY_DEBOUNCE_MS, hasExactlyOneWorkLink, haversineMeters, isAssignedToWork, isDuplicateGeofenceEntry, isInsideGeofence, isWithinScheduleDay } from "../lib/geofence";
+import { requireVerifiedStaff, verifiedStaffIdentity } from "../lib/verifiedStaff";
 
 const router: IRouter = Router();
 
-router.post("/time-tracking/geofence-entry", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
-  const userId = getUserId(req);
+export function localDayBounds(value: unknown): { start: Date; end: Date } | null {
+  if (value == null || value === "") {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return { start, end };
+  }
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  const valid = new Date(Date.UTC(year, month - 1, day));
+  if (valid.getUTCFullYear() !== year || valid.getUTCMonth() !== month - 1 || valid.getUTCDate() !== day) return null;
+  const start = new Date(year, month - 1, day);
+  if (start.getFullYear() !== year || start.getMonth() !== month - 1 || start.getDate() !== day) return null;
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { start, end };
+}
+
+export function zonedDayBounds(value: unknown, timeZone: string): { start: Date; end: Date } | null {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  try { new Intl.DateTimeFormat("en-US", { timeZone }); } catch { return null; }
+  const [year, month, day] = value.split("-").map(Number);
+  const valid = new Date(Date.UTC(year, month - 1, day));
+  if (valid.getUTCFullYear() !== year || valid.getUTCMonth() !== month - 1 || valid.getUTCDate() !== day) return null;
+  const midnight = (y: number, m: number, d: number) => {
+    const guess = Date.UTC(y, m - 1, d);
+    const offset = (instant: number) => {
+      const parts = new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).formatToParts(new Date(instant));
+      const values = Object.fromEntries(parts.filter(p => p.type !== "literal").map(p => [p.type, Number(p.value)]));
+      return Date.UTC(values.year, values.month - 1, values.day, values.hour, values.minute, values.second) - instant;
+    };
+    let instant = guess - offset(guess);
+    instant = guess - offset(instant);
+    return new Date(instant);
+  };
+  const start = midnight(year, month, day);
+  const check = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(start);
+  if (!check.includes(String(year))) return null;
+  const next = new Date(Date.UTC(year, month - 1, day + 1));
+  return { start, end: midnight(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate()) };
+}
+
+function zonedTodayKey(timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.filter(p => p.type !== "literal").map(p => [p.type, p.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+router.post("/time-tracking/geofence-entry", requireVerifiedStaff, async (req, res): Promise<void> => {
+  const { tenantId, userId } = verifiedStaffIdentity(res);
   const { propertyId, jobId, visitId, lat, lng } = req.body ?? {};
   const parsedPropertyId = Number(propertyId);
   const parsedLat = Number(lat);
@@ -37,13 +87,16 @@ router.post("/time-tracking/geofence-entry", async (req, res): Promise<void> => 
     res.status(400).json({ error: "Provide exactly one of jobId or visitId" }); return;
   }
   const now = new Date();
+  const [tenant] = await db.select({ timezone: tenantsTable.timezone }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
+  const geofenceBounds = zonedDayBounds(zonedTodayKey(tenant?.timezone ?? "UTC"), tenant?.timezone ?? "UTC");
+  if (!geofenceBounds) { res.status(500).json({ error: "Tenant timezone is invalid" }); return; }
   if (parsedJobId != null) {
     const [job] = await db.select({
       propertyId: jobsTable.propertyId, assigneeId: jobsTable.assigneeId, crewId: jobsTable.crewId, scheduledAt: jobsTable.scheduledAt,
     }).from(jobsTable)
       .where(and(eq(jobsTable.id, parsedJobId), eq(jobsTable.tenantId, tenantId)));
     if (!job || job.propertyId !== parsedPropertyId) { res.status(400).json({ error: "Job does not belong to this property" }); return; }
-    if (!isWithinScheduleDay(job.scheduledAt, now)) { res.status(403).json({ error: "Job is not scheduled for today" }); return; }
+    if (job.scheduledAt < geofenceBounds.start || job.scheduledAt >= geofenceBounds.end) { res.status(403).json({ error: "Job is not scheduled for today" }); return; }
     const [crewMembership] = job.crewId == null ? [] : await db.select({ id: crewMembersTable.id }).from(crewMembersTable).where(and(
       eq(crewMembersTable.tenantId, tenantId), eq(crewMembersTable.crewId, job.crewId), eq(crewMembersTable.userId, userId),
     )).limit(1);
@@ -55,7 +108,7 @@ router.post("/time-tracking/geofence-entry", async (req, res): Promise<void> => 
     }).from(visitsTable)
       .where(and(eq(visitsTable.id, parsedVisitId), eq(visitsTable.tenantId, tenantId)));
     if (!visit || visit.propertyId !== parsedPropertyId) { res.status(400).json({ error: "Visit does not belong to this property" }); return; }
-    if (!isWithinScheduleDay(visit.scheduledAt, now)) { res.status(403).json({ error: "Visit is not scheduled for today" }); return; }
+    if (!visit.scheduledAt || visit.scheduledAt < geofenceBounds.start || visit.scheduledAt >= geofenceBounds.end) { res.status(403).json({ error: "Visit is not scheduled for today" }); return; }
     if (!isAssignedToWork(visit.assigneeId, false, userId)) { res.status(403).json({ error: "You are not assigned to this visit" }); return; }
   }
 
@@ -84,9 +137,8 @@ router.post("/time-tracking/geofence-entry", async (req, res): Promise<void> => 
   res.status(result.deduplicated ? 200 : 201).json({ ...result.entry, enteredAt: result.entry.enteredAt.toISOString(), deduplicated: result.deduplicated });
 });
 
-router.get("/time-tracking/geofence-entries", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
-  const callerId = getUserId(req);
+router.get("/time-tracking/geofence-entries", requireVerifiedStaff, async (req, res): Promise<void> => {
+  const { tenantId, userId: callerId } = verifiedStaffIdentity(res);
   const requestedUserId = typeof req.query.userId === "string" ? Number(req.query.userId) : undefined;
   let targetUserId = callerId;
   if (requestedUserId != null) {
@@ -103,9 +155,8 @@ router.get("/time-tracking/geofence-entries", async (req, res): Promise<void> =>
   res.json(rows.map(entry => ({ ...entry, enteredAt: entry.enteredAt.toISOString() })));
 });
 
-router.get("/time-tracking/master-clock", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
-  const userId = getUserId(req);
+router.get("/time-tracking/master-clock", requireVerifiedStaff, async (_req, res): Promise<void> => {
+  const { tenantId, userId } = verifiedStaffIdentity(res);
 
   const [active] = await db.select().from(timeEntriesTable).where(and(
     eq(timeEntriesTable.userId, userId),
@@ -134,53 +185,40 @@ router.get("/time-tracking/master-clock", async (req, res): Promise<void> => {
   });
 });
 
-router.post("/time-tracking/master-clock/start", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
-  const userId = getUserId(req);
+router.post("/time-tracking/master-clock/start", requireVerifiedStaff, async (req, res): Promise<void> => {
+  const { tenantId, userId } = verifiedStaffIdentity(res);
   const { lat, lng } = req.body ?? {};
 
-  const [entry] = await db.insert(timeEntriesTable).values({
-    tenantId,
-    userId,
-    clockedInAt: new Date(),
-    isMasterClock: true,
-    clockInLat: lat != null ? Number(lat) : null,
-    clockInLng: lng != null ? Number(lng) : null,
-  }).returning();
+  const entry = await db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${tenantId}, ${userId})`);
+    const [active] = await tx.select().from(timeEntriesTable).where(and(eq(timeEntriesTable.userId, userId), eq(timeEntriesTable.tenantId, tenantId), eq(timeEntriesTable.isMasterClock, true), sql`clocked_out_at IS NULL`)).for("update");
+    if (active) return active;
+    const [created] = await tx.insert(timeEntriesTable).values({ tenantId, userId, clockedInAt: new Date(), isMasterClock: true, clockInLat: lat != null ? Number(lat) : null, clockInLng: lng != null ? Number(lng) : null }).returning();
+    return created;
+  });
 
   res.json({ userId, isClockedIn: true, clockedInAt: entry.clockedInAt.toISOString(), totalMinutesToday: 0, entryId: entry.id });
 });
 
-router.post("/time-tracking/master-clock/stop", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
-  const userId = getUserId(req);
+router.post("/time-tracking/master-clock/stop", requireVerifiedStaff, async (req, res): Promise<void> => {
+  const { tenantId, userId } = verifiedStaffIdentity(res);
   const { lat, lng } = req.body ?? {};
 
-  const [active] = await db.select().from(timeEntriesTable).where(and(
-    eq(timeEntriesTable.userId, userId),
-    eq(timeEntriesTable.tenantId, tenantId),
-    eq(timeEntriesTable.isMasterClock, true),
-    sql`clocked_out_at IS NULL`
-  ));
+  const stopped = await db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${tenantId}, ${userId})`);
+    const [active] = await tx.select().from(timeEntriesTable).where(and(eq(timeEntriesTable.userId, userId), eq(timeEntriesTable.tenantId, tenantId), eq(timeEntriesTable.isMasterClock, true), sql`clocked_out_at IS NULL`)).for("update");
+    if (!active) return null;
+    const now = new Date(); const totalMinutes = Math.floor((now.getTime() - active.clockedInAt.getTime()) / 60000);
+    await tx.update(timeEntriesTable).set({ clockedOutAt: now, totalMinutes, clockOutLat: lat != null ? Number(lat) : null, clockOutLng: lng != null ? Number(lng) : null }).where(eq(timeEntriesTable.id, active.id));
+    return totalMinutes;
+  });
+  if (stopped == null) { res.status(400).json({ error: "Not clocked in" }); return; }
 
-  if (!active) { res.status(400).json({ error: "Not clocked in" }); return; }
-
-  const now = new Date();
-  const totalMinutes = Math.floor((now.getTime() - active.clockedInAt.getTime()) / 60000);
-
-  await db.update(timeEntriesTable).set({
-    clockedOutAt: now,
-    totalMinutes,
-    clockOutLat: lat != null ? Number(lat) : null,
-    clockOutLng: lng != null ? Number(lng) : null,
-  }).where(eq(timeEntriesTable.id, active.id));
-
-  res.json({ userId, isClockedIn: false, clockedInAt: null, totalMinutesToday: totalMinutes, entryId: null });
+  res.json({ userId, isClockedIn: false, clockedInAt: null, totalMinutesToday: stopped, entryId: null });
 });
 
-router.get("/time-tracking/sub-timers", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
-  const userId = getUserId(req);
+router.get("/time-tracking/sub-timers", requireVerifiedStaff, async (_req, res): Promise<void> => {
+  const { tenantId, userId } = verifiedStaffIdentity(res);
 
   const timers = await db.select().from(subTimersTable).where(and(
     eq(subTimersTable.userId, userId),
@@ -196,9 +234,8 @@ router.get("/time-tracking/sub-timers", async (req, res): Promise<void> => {
   })));
 });
 
-router.post("/time-tracking/sub-timers", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
-  const userId = getUserId(req);
+router.post("/time-tracking/sub-timers", requireVerifiedStaff, async (req, res): Promise<void> => {
+  const { tenantId, userId } = verifiedStaffIdentity(res);
   const { label, type, jobId, lat, lng } = req.body;
 
   if (!label || !type) { res.status(400).json({ error: "label and type required" }); return; }
@@ -206,13 +243,26 @@ router.post("/time-tracking/sub-timers", async (req, res): Promise<void> => {
   // Detect late arrival: compare now vs job's scheduledAt (5-min grace period)
   let isLateArrival = false;
   let lateByMinutes: number | null = null;
-  if (jobId) {
-    const jobIdNum = parseInt(jobId, 10);
+  const jobIdNum = jobId == null ? null : Number(jobId);
+  if (jobIdNum != null && (!Number.isInteger(jobIdNum) || jobIdNum <= 0)) {
+    res.status(400).json({ error: "jobId must be a valid integer" });
+    return;
+  }
+  if (jobIdNum != null) {
     const [job] = await db
-      .select({ scheduledAt: jobsTable.scheduledAt })
+      .select({ scheduledAt: jobsTable.scheduledAt, assigneeId: jobsTable.assigneeId, crewId: jobsTable.crewId })
       .from(jobsTable)
       .where(and(eq(jobsTable.id, jobIdNum), eq(jobsTable.tenantId, tenantId)));
-    if (job?.scheduledAt) {
+    if (!job) { res.status(404).json({ error: "Job not found" }); return; }
+    const role = await getCallerRole(tenantId, userId);
+    const [crewMembership] = job.crewId == null ? [] : await db.select({ id: crewMembersTable.id }).from(crewMembersTable).where(and(
+      eq(crewMembersTable.tenantId, tenantId), eq(crewMembersTable.crewId, job.crewId), eq(crewMembersTable.userId, userId),
+    )).limit(1);
+    if (!ADMIN_ROLES.has(role) && !isAssignedToWork(job.assigneeId, !!crewMembership, userId)) {
+      res.status(403).json({ error: "You are not assigned to this job" });
+      return;
+    }
+    if (job.scheduledAt) {
       const diffMin = Math.floor((Date.now() - job.scheduledAt.getTime()) / 60000);
       if (diffMin > 5) {
         isLateArrival = true;
@@ -223,6 +273,7 @@ router.post("/time-tracking/sub-timers", async (req, res): Promise<void> => {
 
   // Atomically stop any active timers and start the new one
   const timer = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${tenantId}, ${userId})`);
     const activeTimers = await tx
       .select()
       .from(subTimersTable)
@@ -246,7 +297,7 @@ router.post("/time-tracking/sub-timers", async (req, res): Promise<void> => {
       userId,
       label,
       type,
-      jobId: jobId ? parseInt(jobId, 10) : null,
+      jobId: jobIdNum,
       startLat: lat != null ? Number(lat) : null,
       startLng: lng != null ? Number(lng) : null,
       isLateArrival,
@@ -267,13 +318,15 @@ router.post("/time-tracking/sub-timers", async (req, res): Promise<void> => {
   });
 });
 
-router.post("/time-tracking/sub-timers/:id/stop", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
+router.post("/time-tracking/sub-timers/:id/stop", requireVerifiedStaff, async (req, res): Promise<void> => {
+  const { tenantId, userId } = verifiedStaffIdentity(res);
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
   const { lat, lng } = req.body ?? {};
 
-  const [timer] = await db.select().from(subTimersTable).where(and(eq(subTimersTable.id, id), eq(subTimersTable.tenantId, tenantId)));
+  const [timer] = await db.select().from(subTimersTable).where(and(
+    eq(subTimersTable.id, id), eq(subTimersTable.tenantId, tenantId), eq(subTimersTable.userId, userId),
+  ));
   if (!timer) { res.status(404).json({ error: "Not found" }); return; }
 
   const now = new Date();
@@ -285,13 +338,19 @@ router.post("/time-tracking/sub-timers/:id/stop", async (req, res): Promise<void
     isActive: false,
     endLat: lat != null ? Number(lat) : null,
     endLng: lng != null ? Number(lng) : null,
-  }).where(eq(subTimersTable.id, id)).returning();
+  }).where(and(
+    eq(subTimersTable.id, id), eq(subTimersTable.tenantId, tenantId),
+    eq(subTimersTable.userId, userId), eq(subTimersTable.isActive, true),
+  )).returning();
+  if (!updated) { res.status(409).json({ error: "Timer is already stopped" }); return; }
 
   // When a late-arrival job timer is stopped, fetch the job's scheduledAt so the
   // field app can show the confirmation/adjustment dialog.
   let jobScheduledAt: string | null = null;
   if (updated.isLateArrival && updated.jobId) {
-    const [job] = await db.select({ scheduledAt: jobsTable.scheduledAt }).from(jobsTable).where(eq(jobsTable.id, updated.jobId));
+    const [job] = await db.select({ scheduledAt: jobsTable.scheduledAt }).from(jobsTable).where(and(
+      eq(jobsTable.id, updated.jobId), eq(jobsTable.tenantId, tenantId),
+    ));
     jobScheduledAt = job?.scheduledAt?.toISOString() ?? null;
   }
 
@@ -306,9 +365,8 @@ router.post("/time-tracking/sub-timers/:id/stop", async (req, res): Promise<void
   });
 });
 
-router.patch("/time-tracking/sub-timers/:id/adjust", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
-  const userId = getUserId(req);
+router.patch("/time-tracking/sub-timers/:id/adjust", requireVerifiedStaff, async (req, res): Promise<void> => {
+  const { tenantId, userId } = verifiedStaffIdentity(res);
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
   const { adjustedStartedAt, adjustedStoppedAt } = req.body ?? {};
@@ -320,9 +378,21 @@ router.patch("/time-tracking/sub-timers/:id/adjust", async (req, res): Promise<v
   ));
   if (!timer) { res.status(404).json({ error: "Not found" }); return; }
 
+  const parseIso = (value: unknown): Date | null => {
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T/.test(value)) return null;
+    const date = new Date(value); return Number.isNaN(date.getTime()) ? null : date;
+  };
+  const adjustedStart = adjustedStartedAt == null ? null : parseIso(adjustedStartedAt);
+  const adjustedEnd = adjustedStoppedAt == null ? null : parseIso(adjustedStoppedAt);
+  if ((adjustedStartedAt != null && !adjustedStart) || (adjustedStoppedAt != null && !adjustedEnd)) { res.status(400).json({ error: "Adjustment times must be valid ISO dates" }); return; }
+  const effectiveStart = adjustedStart ?? timer.adjustedStartedAt ?? timer.startedAt;
+  const effectiveEnd = adjustedEnd ?? timer.adjustedStoppedAt ?? timer.stoppedAt;
+  const now = new Date();
+  if ((effectiveEnd && effectiveEnd < effectiveStart) || effectiveStart > now || (effectiveEnd && effectiveEnd > now)) { res.status(400).json({ error: "Adjustment times must not be future or end before start" }); return; }
+  if (effectiveStart.toISOString().slice(0, 10) !== (effectiveEnd ?? effectiveStart).toISOString().slice(0, 10)) { res.status(400).json({ error: "Adjustments must remain within one work day" }); return; }
   const updates: Partial<typeof subTimersTable.$inferInsert> = {};
-  if (adjustedStartedAt) updates.adjustedStartedAt = new Date(adjustedStartedAt);
-  if (adjustedStoppedAt) updates.adjustedStoppedAt = new Date(adjustedStoppedAt);
+  if (adjustedStart) updates.adjustedStartedAt = adjustedStart;
+  if (adjustedEnd) updates.adjustedStoppedAt = adjustedEnd;
 
   if (Object.keys(updates).length === 0) {
     res.status(400).json({ error: "No adjustment values provided" });
@@ -341,9 +411,8 @@ router.patch("/time-tracking/sub-timers/:id/adjust", async (req, res): Promise<v
   });
 });
 
-router.get("/time-tracking/entries", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
-  const userId = getUserId(req);
+router.get("/time-tracking/entries", requireVerifiedStaff, async (req, res): Promise<void> => {
+  const { tenantId, userId } = verifiedStaffIdentity(res);
   const { date } = req.query as Record<string, string>;
 
   let where = and(eq(timeEntriesTable.tenantId, tenantId), eq(timeEntriesTable.userId, userId)) as ReturnType<typeof and>;
@@ -375,14 +444,15 @@ router.get("/time-tracking/entries", async (req, res): Promise<void> => {
  * Returns today's jobs + visits for the calling user, sorted by scheduledAt,
  * with an activeTimerId field indicating whether there's an active sub-timer.
  */
-router.get("/time-tracking/today-schedule", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
-  const userId = getUserId(req);
+router.get("/time-tracking/today-schedule", requireVerifiedStaff, async (req, res): Promise<void> => {
+  const { tenantId, userId } = verifiedStaffIdentity(res);
   const role = await getCallerRole(tenantId, userId);
   const isAdmin = ADMIN_ROLES.has(role);
 
-  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-  const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+  const [tenant] = await db.select({ timezone: tenantsTable.timezone }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
+  const timezone = tenant?.timezone ?? "UTC";
+  const bounds = zonedDayBounds(req.query.date ?? zonedTodayKey(timezone), timezone);
+  if (!bounds) { res.status(400).json({ error: "date must be a valid YYYY-MM-DD local date" }); return; }
 
   // Fetch active sub-timers for the user
   const activeTimers = await db
@@ -397,9 +467,17 @@ router.get("/time-tracking/today-schedule", async (req, res): Promise<void> => {
   // Fetch today's jobs
   const jobWhere = and(
     eq(jobsTable.tenantId, tenantId),
-    gte(jobsTable.scheduledAt, todayStart),
-    lte(jobsTable.scheduledAt, todayEnd),
-    ...(isAdmin ? [] : [eq(jobsTable.assigneeId, userId)]),
+    gte(jobsTable.scheduledAt, bounds.start),
+    sql`${jobsTable.scheduledAt} < ${bounds.end}`,
+    ...(isAdmin ? [] : [sql`(
+      ${jobsTable.assigneeId} = ${userId}
+      OR EXISTS (
+        SELECT 1 FROM ${crewMembersTable}
+        WHERE ${crewMembersTable.tenantId} = ${tenantId}
+          AND ${crewMembersTable.crewId} = ${jobsTable.crewId}
+          AND ${crewMembersTable.userId} = ${userId}
+      )
+    )`]),
   )!;
 
   const jobRows = await db
@@ -416,18 +494,25 @@ router.get("/time-tracking/today-schedule", async (req, res): Promise<void> => {
       propertyGeofenceLat: propertiesTable.geofenceLat,
       propertyGeofenceLng: propertiesTable.geofenceLng,
       propertyGeofenceRadius: propertiesTable.geofenceRadius,
+      routeTemplateId: jobsTable.routeTemplateId,
+      sequenceOrder: jobsTable.sequenceOrder,
     })
     .from(jobsTable)
     .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
     .leftJoin(propertiesTable, eq(jobsTable.propertyId, propertiesTable.id))
     .where(jobWhere)
-    .orderBy(jobsTable.scheduledAt);
+    .orderBy(
+      sql`CASE WHEN ${jobsTable.sequenceOrder} IS NULL THEN 1 ELSE 0 END`,
+      jobsTable.routeTemplateId,
+      jobsTable.sequenceOrder,
+      jobsTable.scheduledAt,
+    );
 
   // Fetch today's visits
   const visitWhere = and(
     eq(visitsTable.tenantId, tenantId),
-    gte(visitsTable.scheduledAt, todayStart),
-    lte(visitsTable.scheduledAt, todayEnd),
+    gte(visitsTable.scheduledAt, bounds.start),
+    sql`${visitsTable.scheduledAt} < ${bounds.end}`,
     ...(isAdmin ? [] : [eq(visitsTable.assigneeId, userId)]),
   )!;
 
@@ -478,6 +563,8 @@ router.get("/time-tracking/today-schedule", async (req, res): Promise<void> => {
       propertyGeofenceLat: j.propertyGeofenceLat ?? null,
       propertyGeofenceLng: j.propertyGeofenceLng ?? null,
       propertyGeofenceRadius: j.propertyGeofenceRadius ?? null,
+      routeTemplateId: j.routeTemplateId ?? null,
+      sequenceOrder: j.sequenceOrder ?? null,
     });
   }
 
@@ -509,8 +596,17 @@ router.get("/time-tracking/today-schedule", async (req, res): Promise<void> => {
     });
   }
 
-  // Sort merged list by scheduledAt (nulls last)
+  // Preserve explicit job route order. Unrouted work and visits then follow scheduled time.
   scheduleItems.sort((a: any, b: any) => {
+    const aRouted = a.kind === "job" && a.sequenceOrder != null;
+    const bRouted = b.kind === "job" && b.sequenceOrder != null;
+    if (aRouted !== bRouted) return aRouted ? -1 : 1;
+    if (aRouted && bRouted) {
+      const route = (a.routeTemplateId ?? 0) - (b.routeTemplateId ?? 0);
+      if (route) return route;
+      const sequence = a.sequenceOrder - b.sequenceOrder;
+      if (sequence) return sequence;
+    }
     if (!a.scheduledAt) return 1;
     if (!b.scheduledAt) return -1;
     return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();

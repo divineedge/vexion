@@ -35,4 +35,8 @@ export interface ScheduleItem {
   propertyGeofenceLng?: number | null;
   /** @nullable */
   propertyGeofenceRadius?: number | null;
+  /** @nullable */
+  routeTemplateId?: number | null;
+  /** @nullable */
+  sequenceOrder?: number | null;
 }

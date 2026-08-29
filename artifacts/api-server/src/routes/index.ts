@@ -54,6 +54,7 @@ import staffNotesRouter from "./staffNotes";
 import invoiceTemplatesRouter from "./invoiceTemplates";
 import jobMessagesRouter from "./jobMessages";
 import jobEquipmentUsesRouter from "./jobEquipmentUses";
+import jobRequestsRouter from "./jobRequests";
 
 const router: IRouter = Router();
 
@@ -65,6 +66,7 @@ router.use(dashboardRouter);
 router.use(customersRouter);
 router.use(propertiesRouter);
 router.use(jobsRouter);
+router.use(jobRequestsRouter);
 router.use(crewsRouter);
 router.use(inventoryRouter);
 router.use(inventoryLocationsRouter);

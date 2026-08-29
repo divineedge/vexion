@@ -3,6 +3,8 @@ import { db, estimatesTable, visitsTable, jobsTable, customersTable, propertiesT
 import { eq, and, sql, desc } from "drizzle-orm";
 import { getStripeClient, getStripePublishableKey, ensureStripeCustomer } from "../lib/stripe";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
+import { getCallerRole } from "../lib/roles";
+import { requireVerifiedStaff } from "../lib/verifiedStaff";
 import { sendReviewRequest } from "../lib/reviewService";
 import { sendEmail, buildEstimateResponseNotificationHtml, type EmailProviderConfig } from "../lib/emailProvider";
 import { logger } from "../lib/logger";
@@ -467,7 +469,7 @@ router.post("/estimates", async (req, res): Promise<void> => {
 // ── GET ONE ───────────────────────────────────────────────────────────────────
 router.get("/estimates/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(String(req.params.id), 10);
 
   const [row] = await db
     .select({
@@ -946,9 +948,12 @@ router.post("/estimates/:id/resend", async (req, res): Promise<void> => {
 });
 
 // ── CONVERT TO JOB ────────────────────────────────────────────────────────────
-router.post("/estimates/:id/convert", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
-  const id = parseInt(req.params.id, 10);
+router.post("/estimates/:id/convert", requireVerifiedStaff, async (req, res): Promise<void> => {
+  const tenantId = res.locals.staffTenantId as number;
+  if (!["company_owner", "office_manager", "department_manager", "crew_manager"].includes(await getCallerRole(tenantId, res.locals.staffUserId as number))) {
+    res.status(403).json({ error: "Manager role required to convert estimates to jobs" }); return;
+  }
+  const id = parseInt(String(req.params.id), 10);
 
   const {
     scheduledAt,

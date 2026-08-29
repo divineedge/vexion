@@ -5,6 +5,63 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+export interface JobRequestInput {
+  customerId?: number | null;
+  propertyId?: number | null;
+  serviceId?: number | null;
+  requestedStartDate: string;
+  requestedEndDate?: string | null;
+  notes?: string | null;
+  /** @minLength 1 */
+  idempotencyKey: string;
+}
+
+export interface JobRequestReviewInput {
+  /** @minLength 1 */
+  adminResponse: string;
+  /** @minLength 1 */
+  idempotencyKey: string;
+}
+
+export interface JobRequestApprovalInput {
+  scheduledAt?: string;
+  adminResponse?: string;
+}
+
+export type JobRequestStatus = typeof JobRequestStatus[keyof typeof JobRequestStatus];
+
+
+export const JobRequestStatus = {
+  pending: 'pending',
+  clarification_requested: 'clarification_requested',
+  approved: 'approved',
+  rejected: 'rejected',
+} as const;
+
+export interface JobRequest {
+  id: number;
+  requesterId: number;
+  status: JobRequestStatus;
+  customerId?: number | null;
+  propertyId?: number | null;
+  serviceId?: number | null;
+  requestedStartDate: string;
+  requestedEndDate?: string | null;
+  notes?: string | null;
+  adminResponse?: string | null;
+  reviewedById?: number | null;
+  reviewedAt?: string | null;
+  approvedJobId?: number | null;
+  idempotencyKey: string;
+  createdAt: string;
+  updatedAt: string;
+  requesterName?: string | null;
+  customerName?: string | null;
+  propertyAddress?: string | null;
+  serviceName?: string | null;
+  reviewerName?: string | null;
+}
+
 export interface EstimateLineItem {
   id: string;
   /** @nullable */
@@ -5590,6 +5647,16 @@ export interface TaskNotification {
   isRead: boolean;
   createdAt: string;
 }
+
+export type AmendJobRequestBody = {
+  notes?: string;
+  /** @minLength 1 */
+  idempotencyKey: string;
+};
+
+export type ListServicesParams = {
+activeOnly?: boolean;
+};
 
 export type CreateTaskFromQuoCallBody = {
   title?: string;

@@ -9,6 +9,260 @@ import * as zod from 'zod';
 
 
 /**
+ * @summary List job requests visible to the authenticated staff member
+ */
+export const ListJobRequestsResponseItem = zod.object({
+  "id": zod.number(),
+  "requesterId": zod.number(),
+  "status": zod.enum(['pending', 'clarification_requested', 'approved', 'rejected']),
+  "customerId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "serviceId": zod.number().nullish(),
+  "requestedStartDate": zod.coerce.date(),
+  "requestedEndDate": zod.coerce.date().nullish(),
+  "notes": zod.string().nullish(),
+  "adminResponse": zod.string().nullish(),
+  "reviewedById": zod.number().nullish(),
+  "reviewedAt": zod.coerce.date().nullish(),
+  "approvedJobId": zod.number().nullish(),
+  "idempotencyKey": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "requesterName": zod.string().nullish(),
+  "customerName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "serviceName": zod.string().nullish(),
+  "reviewerName": zod.string().nullish()
+})
+export const ListJobRequestsResponse = zod.array(ListJobRequestsResponseItem)
+
+
+/**
+ * @summary Submit a job request for manager review
+ */
+
+
+
+export const CreateJobRequestBody = zod.object({
+  "customerId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "serviceId": zod.number().nullish(),
+  "requestedStartDate": zod.coerce.date(),
+  "requestedEndDate": zod.coerce.date().nullish(),
+  "notes": zod.string().nullish(),
+  "idempotencyKey": zod.string().min(1)
+})
+
+export const CreateJobRequestResponse = zod.object({
+  "id": zod.number(),
+  "requesterId": zod.number(),
+  "status": zod.enum(['pending', 'clarification_requested', 'approved', 'rejected']),
+  "customerId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "serviceId": zod.number().nullish(),
+  "requestedStartDate": zod.coerce.date(),
+  "requestedEndDate": zod.coerce.date().nullish(),
+  "notes": zod.string().nullish(),
+  "adminResponse": zod.string().nullish(),
+  "reviewedById": zod.number().nullish(),
+  "reviewedAt": zod.coerce.date().nullish(),
+  "approvedJobId": zod.number().nullish(),
+  "idempotencyKey": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "requesterName": zod.string().nullish(),
+  "customerName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "serviceName": zod.string().nullish(),
+  "reviewerName": zod.string().nullish()
+})
+
+
+/**
+ * @summary Approve a job request and create its scheduled job
+ */
+export const ApproveJobRequestParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ApproveJobRequestBody = zod.object({
+  "scheduledAt": zod.coerce.date().optional(),
+  "adminResponse": zod.string().optional()
+})
+
+export const ApproveJobRequestResponse = zod.object({
+  "id": zod.number(),
+  "requesterId": zod.number(),
+  "status": zod.enum(['pending', 'clarification_requested', 'approved', 'rejected']),
+  "customerId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "serviceId": zod.number().nullish(),
+  "requestedStartDate": zod.coerce.date(),
+  "requestedEndDate": zod.coerce.date().nullish(),
+  "notes": zod.string().nullish(),
+  "adminResponse": zod.string().nullish(),
+  "reviewedById": zod.number().nullish(),
+  "reviewedAt": zod.coerce.date().nullish(),
+  "approvedJobId": zod.number().nullish(),
+  "idempotencyKey": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "requesterName": zod.string().nullish(),
+  "customerName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "serviceName": zod.string().nullish(),
+  "reviewerName": zod.string().nullish()
+})
+
+
+/**
+ * @summary Reject a job request
+ */
+export const RejectJobRequestParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+
+
+
+export const RejectJobRequestBody = zod.object({
+  "adminResponse": zod.string().min(1),
+  "idempotencyKey": zod.string().min(1)
+})
+
+export const RejectJobRequestResponse = zod.object({
+  "id": zod.number(),
+  "requesterId": zod.number(),
+  "status": zod.enum(['pending', 'clarification_requested', 'approved', 'rejected']),
+  "customerId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "serviceId": zod.number().nullish(),
+  "requestedStartDate": zod.coerce.date(),
+  "requestedEndDate": zod.coerce.date().nullish(),
+  "notes": zod.string().nullish(),
+  "adminResponse": zod.string().nullish(),
+  "reviewedById": zod.number().nullish(),
+  "reviewedAt": zod.coerce.date().nullish(),
+  "approvedJobId": zod.number().nullish(),
+  "idempotencyKey": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "requesterName": zod.string().nullish(),
+  "customerName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "serviceName": zod.string().nullish(),
+  "reviewerName": zod.string().nullish()
+})
+
+
+/**
+ * @summary Request clarification for a job request
+ */
+export const RequestJobRequestClarificationParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+
+
+
+export const RequestJobRequestClarificationBody = zod.object({
+  "adminResponse": zod.string().min(1),
+  "idempotencyKey": zod.string().min(1)
+})
+
+export const RequestJobRequestClarificationResponse = zod.object({
+  "id": zod.number(),
+  "requesterId": zod.number(),
+  "status": zod.enum(['pending', 'clarification_requested', 'approved', 'rejected']),
+  "customerId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "serviceId": zod.number().nullish(),
+  "requestedStartDate": zod.coerce.date(),
+  "requestedEndDate": zod.coerce.date().nullish(),
+  "notes": zod.string().nullish(),
+  "adminResponse": zod.string().nullish(),
+  "reviewedById": zod.number().nullish(),
+  "reviewedAt": zod.coerce.date().nullish(),
+  "approvedJobId": zod.number().nullish(),
+  "idempotencyKey": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "requesterName": zod.string().nullish(),
+  "customerName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "serviceName": zod.string().nullish(),
+  "reviewerName": zod.string().nullish()
+})
+
+
+/**
+ * @summary Amend a clarification-requested job request
+ */
+export const AmendJobRequestParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+
+
+export const AmendJobRequestBody = zod.object({
+  "notes": zod.string().optional(),
+  "idempotencyKey": zod.string().min(1)
+})
+
+export const AmendJobRequestResponse = zod.object({
+  "id": zod.number(),
+  "requesterId": zod.number(),
+  "status": zod.enum(['pending', 'clarification_requested', 'approved', 'rejected']),
+  "customerId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "serviceId": zod.number().nullish(),
+  "requestedStartDate": zod.coerce.date(),
+  "requestedEndDate": zod.coerce.date().nullish(),
+  "notes": zod.string().nullish(),
+  "adminResponse": zod.string().nullish(),
+  "reviewedById": zod.number().nullish(),
+  "reviewedAt": zod.coerce.date().nullish(),
+  "approvedJobId": zod.number().nullish(),
+  "idempotencyKey": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "requesterName": zod.string().nullish(),
+  "customerName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "serviceName": zod.string().nullish(),
+  "reviewerName": zod.string().nullish()
+})
+
+
+/**
+ * @summary List tenant services
+ */
+export const ListServicesQueryParams = zod.object({
+  "activeOnly": zod.coerce.boolean().optional()
+})
+
+export const ListServicesResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "category": zod.string().nullish(),
+  "basePrice": zod.number(),
+  "isActive": zod.boolean(),
+  "fieldRequirements": zod.object({
+  "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
+  "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
+}),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+export const ListServicesResponse = zod.array(ListServicesResponseItem)
+
+
+/**
  * @summary Get conversation thread for a customer
  */
 export const ListCustomerMessagesParams = zod.object({

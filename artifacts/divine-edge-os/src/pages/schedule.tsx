@@ -42,6 +42,8 @@ import {
   useListJobEquipmentUses, getListJobEquipmentUsesQueryKey,
   useCreateJobEquipmentUse, useDeleteJobEquipmentUse,
   useListEquipment, getListEquipmentQueryKey,
+  useListJobRequests, getListJobRequestsQueryKey,
+  useApproveJobRequest, useRejectJobRequest, useRequestJobRequestClarification,
 } from '@workspace/api-client-react';
 import { useMutation } from '@tanstack/react-query';
 import MediaGallery from '@/components/media/MediaGallery';
@@ -372,6 +374,26 @@ export default function SchedulePage() {
 
   const updateJob = useUpdateJob();
   const createJob = useCreateJob();
+  const canReviewJobRequests = canManageJobs || canManageOffice;
+  const { data: jobRequests = [] } = useListJobRequests({
+    query: { enabled: canReviewJobRequests, queryKey: getListJobRequestsQueryKey() },
+  });
+  const approveJobRequest = useApproveJobRequest();
+  const rejectJobRequest = useRejectJobRequest();
+  const requestJobRequestClarification = useRequestJobRequestClarification();
+  const refreshJobRequests = () => {
+    qc.invalidateQueries({ queryKey: getListJobRequestsQueryKey() });
+    qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+  };
+  const respondToJobRequest = (id: number, action: 'reject' | 'clarify') => {
+    const adminResponse = window.prompt(action === 'reject' ? 'Reason for declining this request:' : 'What information is needed?')?.trim();
+    if (!adminResponse) return;
+    const mutation = action === 'reject' ? rejectJobRequest : requestJobRequestClarification;
+    mutation.mutate({ id, data: { adminResponse, idempotencyKey: `${action}-${id}-${Date.now()}` } }, {
+      onSuccess: () => { refreshJobRequests(); toast.success(action === 'reject' ? 'Job request declined' : 'Clarification requested'); },
+      onError: () => toast.error('Could not update job request'),
+    });
+  };
 
   const { data: chemApps, refetch: refetchChemApps } = useListJobChemicalApplications(selectedJobId!, {
     query: { enabled: selectedJobId != null, queryKey: getListJobChemicalApplicationsQueryKey(selectedJobId ?? 0) },
@@ -947,6 +969,35 @@ export default function SchedulePage() {
           )}
         </div>
       </div>
+      {canReviewJobRequests && jobRequests.filter(request => request.status === 'pending' || request.status === 'clarification_requested').length > 0 && (
+        <Card className="shrink-0 border-amber-200 bg-amber-50/40">
+          <div className="p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <ClipboardList className="w-4 h-4 text-amber-700" />
+              <h2 className="font-semibold text-sm">Pending job requests</h2>
+            </div>
+            {jobRequests.filter(request => request.status === 'pending' || request.status === 'clarification_requested').map(request => (
+              <div key={request.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-background p-3">
+                <div className="text-sm">
+                  <span className="font-medium">{request.requesterName ?? 'Staff member'}</span>
+                  <span className="text-muted-foreground"> requested {request.serviceName ?? 'a job'} · {request.customerName ?? 'No customer'}{request.propertyAddress ? ` · ${request.propertyAddress}` : ''}</span>
+                  <div className="text-xs text-muted-foreground mt-1">{format(new Date(request.requestedStartDate), 'PPp')}{request.notes ? ` — ${request.notes}` : ''}</div>
+                  {request.adminResponse && <div className="text-xs mt-1">Previous response: {request.adminResponse}</div>}
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => {
+                    const scheduledAt = window.prompt('Final scheduled date/time (ISO format):', request.requestedStartDate);
+                    if (!scheduledAt) return;
+                    approveJobRequest.mutate({ id: request.id, data: { scheduledAt } }, { onSuccess: () => { refreshJobRequests(); toast.success('Job request approved and scheduled'); }, onError: () => toast.error('Could not approve job request') });
+                  }} disabled={approveJobRequest.isPending}>Approve</Button>
+                  <Button size="sm" variant="outline" onClick={() => respondToJobRequest(request.id, 'clarify')}>Clarify</Button>
+                  <Button size="sm" variant="destructive" onClick={() => respondToJobRequest(request.id, 'reject')}>Decline</Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Job count summary (shown when any filter is active and not in series view) */}
       {view !== 'series' && (jobSearch || propertyFilter || routeFilter !== 'all' || priorityFilter !== 'all' || statusFilter !== 'all' || holdFilter || myJobsFilter || unassignedFilter || crewFilter !== 'all' || overdueFilter || noRouteFilter) && (

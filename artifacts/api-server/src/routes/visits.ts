@@ -1,7 +1,9 @@
 import { Router, type IRouter } from "express";
 import { db, visitsTable, estimatesTable, jobsTable, customersTable, propertiesTable, usersTable } from "@workspace/db";
 import { eq, and, sql, desc } from "drizzle-orm";
-import { getTenantId } from "../lib/tenantHelper";
+import { getTenantId, getUserId } from "../lib/tenantHelper";
+import { getCallerRole } from "../lib/roles";
+import { requireVerifiedStaff } from "../lib/verifiedStaff";
 
 const router: IRouter = Router();
 
@@ -99,7 +101,7 @@ router.post("/visits", async (req, res): Promise<void> => {
 // ── GET ONE ───────────────────────────────────────────────────────────────────
 router.get("/visits/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(String(req.params.id), 10);
 
   const [row] = await db
     .select({
@@ -197,9 +199,12 @@ router.post("/visits/:id/convert-to-estimate", async (req, res): Promise<void> =
 });
 
 // ── CONVERT TO JOB ────────────────────────────────────────────────────────────
-router.post("/visits/:id/convert-to-job", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
-  const id = parseInt(req.params.id, 10);
+router.post("/visits/:id/convert-to-job", requireVerifiedStaff, async (req, res): Promise<void> => {
+  const tenantId = res.locals.staffTenantId as number;
+  if (!["company_owner", "office_manager", "department_manager", "crew_manager"].includes(await getCallerRole(tenantId, res.locals.staffUserId as number))) {
+    res.status(403).json({ error: "Manager role required to convert visits to jobs" }); return;
+  }
+  const id = parseInt(String(req.params.id), 10);
 
   const [visit] = await db.select().from(visitsTable).where(and(eq(visitsTable.id, id), eq(visitsTable.tenantId, tenantId)));
   if (!visit) { res.status(404).json({ error: "Not found" }); return; }

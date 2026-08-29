@@ -381,6 +381,14 @@ export default function JobsScreen() {
     await Haptics.selectionAsync();
     router.push('/(app)/recurring');
   }, []);
+  const handleJobRequestPress = useCallback(async () => {
+    await Haptics.selectionAsync();
+    router.push('/(app)/job-request');
+  }, []);
+  const handleMyRequestsPress = useCallback(async () => {
+    await Haptics.selectionAsync();
+    router.push('/(app)/my-requests');
+  }, []);
 
   const bottomPad = insets.bottom + (Platform.OS === 'web' ? 34 : 0) + 16;
 
@@ -413,6 +421,16 @@ export default function JobsScreen() {
             testID="time-tracking-nav-button"
           >
             <Ionicons name="timer-outline" size={22} color={colors.mutedForeground} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleJobRequestPress}
+            style={styles.headerBtn}
+            testID="job-request-nav-button"
+          >
+            <Ionicons name="add-circle-outline" size={22} color={colors.mutedForeground} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleMyRequestsPress} style={styles.headerBtn} testID="my-job-requests-nav-button">
+            <Ionicons name="clipboard-outline" size={22} color={colors.mutedForeground} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleRecurringPress}

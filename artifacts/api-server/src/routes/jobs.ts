@@ -26,6 +26,7 @@ import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLog
 import { eq, and, or, sql, desc, asc, isNotNull, isNull, ne, inArray, min, gt } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { getCallerRole, isAdminRole } from "../lib/roles";
+import { requireVerifiedStaff } from "../lib/verifiedStaff";
 import { resendReminderForJob } from "../lib/reminderScheduler";
 import { nthOccurrenceAfterRoot, describeRule, type RecurrenceRule } from "../lib/recurrenceEngine";
 import { enqueueInvoiceEmail } from "../lib/billingScheduler";
@@ -260,12 +261,22 @@ router.get("/jobs/export", async (req, res): Promise<void> => {
   await handleExportRequest(req, res, getTenantId(req), jobsImportExportConfig);
 });
 
-router.post("/jobs/import/preview", importUpload.single("file"), async (req, res): Promise<void> => {
-  await handleImportPreview(req, res, getTenantId(req), jobsImportExportConfig);
+router.post("/jobs/import/preview", requireVerifiedStaff, importUpload.single("file"), async (req, res): Promise<void> => {
+  const tenantId = res.locals.staffTenantId as number, userId = res.locals.staffUserId as number;
+  if (!["company_owner", "office_manager", "department_manager", "crew_manager"].includes(await getCallerRole(tenantId, userId))) {
+    res.status(403).json({ error: "Manager role required to import jobs" });
+    return;
+  }
+  await handleImportPreview(req, res, tenantId, jobsImportExportConfig);
 });
 
-router.post("/jobs/import/commit", importUpload.single("file"), async (req, res): Promise<void> => {
-  await handleImportCommit(req, res, getTenantId(req), jobsImportExportConfig);
+router.post("/jobs/import/commit", requireVerifiedStaff, importUpload.single("file"), async (req, res): Promise<void> => {
+  const tenantId = res.locals.staffTenantId as number, userId = res.locals.staffUserId as number;
+  if (!["company_owner", "office_manager", "department_manager", "crew_manager"].includes(await getCallerRole(tenantId, userId))) {
+    res.status(403).json({ error: "Manager role required to import jobs" });
+    return;
+  }
+  await handleImportCommit(req, res, tenantId, jobsImportExportConfig);
 });
 
 function formatJob(
@@ -494,9 +505,16 @@ router.get("/jobs/series", async (req, res): Promise<void> => {
   res.json(series);
 });
 
-router.post("/jobs", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
-  const userId = getUserId(req);
+router.post("/jobs", requireVerifiedStaff, async (req, res): Promise<void> => {
+  const tenantId = res.locals.staffTenantId as number;
+  const userId = res.locals.staffUserId as number;
+  // Field staff submit a reviewable job request instead of creating schedule entries
+  // directly. This keeps unapproved work off dispatch boards and calendars.
+  const callerRole = await getCallerRole(tenantId, userId);
+  if (!["company_owner", "office_manager", "department_manager", "crew_manager"].includes(callerRole)) {
+    res.status(403).json({ error: "Manager role required to create jobs directly" });
+    return;
+  }
   const { title, description, status, priority, customerId, propertyId, assigneeId, crewId, scheduledAt, estimatedDuration, blueprintId, recurrenceRule, smsReminderEnabled, suppliesNeeded, offSeasonStart, offSeasonEnd } = req.body;
 
   if (!title || !scheduledAt) {

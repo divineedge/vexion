@@ -36,6 +36,8 @@ export default function AppLayout() {
       }}
     >
       <Stack.Screen name="jobs" options={{ title: 'My Jobs', headerShown: true }} />
+      <Stack.Screen name="job-request" options={{ title: 'Request a Job', headerShown: true }} />
+      <Stack.Screen name="my-requests" options={{ title: 'My Requests', headerShown: true }} />
       <Stack.Screen name="pre-trip" options={{ title: 'Pre-trip Check', headerShown: true }} />
       <Stack.Screen name="job/[id]" options={{ title: 'Job Detail', headerShown: true }} />
       <Stack.Screen name="log/[jobId]" options={{ title: 'Log Application', headerShown: true }} />

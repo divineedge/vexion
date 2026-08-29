@@ -63,6 +63,147 @@ tags:
     description: Recurring billing templates and automation
 
 paths:
+  # STAFF JOB REQUESTS
+  /job-requests:
+    get:
+      operationId: listJobRequests
+      tags: [jobs]
+      summary: List job requests visible to the authenticated staff member
+      responses:
+        "200":
+          description: Job request list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/JobRequest" }
+    post:
+      operationId: createJobRequest
+      tags: [jobs]
+      summary: Submit a job request for manager review
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/JobRequestInput" }
+      responses:
+        "201":
+          description: Job request created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobRequest" }
+        "200":
+          description: Existing idempotent job request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobRequest" }
+  /job-requests/{id}/approve:
+    post:
+      operationId: approveJobRequest
+      tags: [jobs]
+      summary: Approve a job request and create its scheduled job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/JobRequestApprovalInput" }
+      responses:
+        "200":
+          description: Approved job request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobRequest" }
+  /job-requests/{id}/reject:
+    post:
+      operationId: rejectJobRequest
+      tags: [jobs]
+      summary: Reject a job request
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/JobRequestReviewInput" }
+      responses:
+        "200":
+          description: Rejected job request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobRequest" }
+  /job-requests/{id}/request-clarification:
+    post:
+      operationId: requestJobRequestClarification
+      tags: [jobs]
+      summary: Request clarification for a job request
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/JobRequestReviewInput" }
+      responses:
+        "200":
+          description: Job request needing clarification
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobRequest" }
+  /job-requests/{id}/amend:
+    post:
+      operationId: amendJobRequest
+      tags: [jobs]
+      summary: Amend a clarification-requested job request
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idempotencyKey]
+              properties:
+                notes: { type: string }
+                idempotencyKey: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: Amended job request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobRequest" }
+
+  /services:
+    get:
+      operationId: listServices
+      tags: [jobs]
+      summary: List tenant services
+      parameters:
+        - name: activeOnly
+          in: query
+          schema: { type: boolean }
+      responses:
+        "200":
+          description: Service list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Service" }
+
   # COMMUNICATIONS
   /communications/customers/{customerId}:
     get:
@@ -7669,6 +7810,53 @@ paths:
 
 components:
   schemas:
+    JobRequestInput:
+      type: object
+      required: [requestedStartDate, idempotencyKey]
+      properties:
+        customerId: { type: integer, nullable: true }
+        propertyId: { type: integer, nullable: true }
+        serviceId: { type: integer, nullable: true }
+        requestedStartDate: { type: string, format: date-time }
+        requestedEndDate: { type: string, format: date-time, nullable: true }
+        notes: { type: string, nullable: true }
+        idempotencyKey: { type: string, minLength: 1 }
+    JobRequestReviewInput:
+      type: object
+      required: [adminResponse, idempotencyKey]
+      properties:
+        adminResponse: { type: string, minLength: 1 }
+        idempotencyKey: { type: string, minLength: 1 }
+    JobRequestApprovalInput:
+      type: object
+      properties:
+        scheduledAt: { type: string, format: date-time }
+        adminResponse: { type: string }
+    JobRequest:
+      type: object
+      required: [id, requesterId, status, requestedStartDate, idempotencyKey, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        requesterId: { type: integer }
+        status: { type: string, enum: [pending, clarification_requested, approved, rejected] }
+        customerId: { type: integer, nullable: true }
+        propertyId: { type: integer, nullable: true }
+        serviceId: { type: integer, nullable: true }
+        requestedStartDate: { type: string, format: date-time }
+        requestedEndDate: { type: string, format: date-time, nullable: true }
+        notes: { type: string, nullable: true }
+        adminResponse: { type: string, nullable: true }
+        reviewedById: { type: integer, nullable: true }
+        reviewedAt: { type: string, format: date-time, nullable: true }
+        approvedJobId: { type: integer, nullable: true }
+        idempotencyKey: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        requesterName: { type: string, nullable: true }
+        customerName: { type: string, nullable: true }
+        propertyAddress: { type: string, nullable: true }
+        serviceName: { type: string, nullable: true }
+        reviewerName: { type: string, nullable: true }
 
     EstimateLineItem:
       type: object

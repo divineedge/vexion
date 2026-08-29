@@ -8879,7 +8879,7 @@ components:
 
     AddressSuggestion:
       type: object
-      required: [address, lat, lng, label, distanceMiles]
+      required: [address, lat, lng, label, distanceMiles, source]
       properties:
         address:
           type: string
@@ -8897,9 +8897,12 @@ components:
           type: string
         distanceMiles:
           type: ["number", "null"]
+        source:
+          type: string
+          enum: [business, google, photon, nominatim]
     AddressSuggestionResponse:
       type: object
-      required: [items, radiusApplied]
+      required: [items, radiusApplied, center]
       properties:
         items:
           type: array
@@ -8909,6 +8912,15 @@ components:
         radiusApplied:
           type: boolean
           description: False when the tenant business address is missing or cannot be geocoded
+        center:
+          type: ["object", "null"]
+          description: Tenant physical-business location used for bias and service-area filtering
+          required: [lat, lng]
+          properties:
+            lat:
+              type: number
+            lng:
+              type: number
 
     CustomerListResponse:
       type: object
@@ -11186,6 +11198,29 @@ components:
           type: ["string", "null"]
         businessAddress:
           type: ["string", "null"]
+        businessCity:
+          type: ["string", "null"]
+        businessState:
+          type: ["string", "null"]
+        businessZip:
+          type: ["string", "null"]
+        businessLat:
+          type: ["number", "null"]
+        businessLng:
+          type: ["number", "null"]
+        businessMailingSameAsPhysical:
+          type: boolean
+        businessMailingAddress:
+          type: ["string", "null"]
+        businessMailingCity:
+          type: ["string", "null"]
+        businessMailingState:
+          type: ["string", "null"]
+        businessMailingZip:
+          type: ["string", "null"]
+        businessContactAddress:
+          type: ["string", "null"]
+          description: Mailing address formatted for customer-facing documents; falls back to physical address
         businessLicenseNumber:
           type: ["string", "null"]
         businessTagline:
@@ -11646,7 +11681,27 @@ components:
         businessWebsite:
           type: string
         businessAddress:
-          type: string
+          type: ["string", "null"]
+        businessCity:
+          type: ["string", "null"]
+        businessState:
+          type: ["string", "null"]
+        businessZip:
+          type: ["string", "null"]
+        businessLat:
+          type: ["number", "null"]
+        businessLng:
+          type: ["number", "null"]
+        businessMailingSameAsPhysical:
+          type: boolean
+        businessMailingAddress:
+          type: ["string", "null"]
+        businessMailingCity:
+          type: ["string", "null"]
+        businessMailingState:
+          type: ["string", "null"]
+        businessMailingZip:
+          type: ["string", "null"]
         businessLicenseNumber:
           type: string
         businessTagline:

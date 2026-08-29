@@ -6,10 +6,16 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { AddressSuggestion } from './addressSuggestion';
+import type { AddressSuggestionResponseCenter } from './addressSuggestionResponseCenter';
 
 export interface AddressSuggestionResponse {
   /** @maxItems 10 */
   items: AddressSuggestion[];
   /** False when the tenant business address is missing or cannot be geocoded */
   radiusApplied: boolean;
+  /**
+     * Tenant physical-business location used for bias and service-area filtering
+     * @nullable
+     */
+  center: AddressSuggestionResponseCenter;
 }

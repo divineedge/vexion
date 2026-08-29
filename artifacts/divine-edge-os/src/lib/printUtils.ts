@@ -18,7 +18,7 @@ function brandingHeader(settings: Record<string, unknown>, apiBase: string): str
   if (settings?.businessPhone) items.push(`📞 ${settings.businessPhone}`);
   if (settings?.businessEmail) items.push(`✉ ${settings.businessEmail}`);
   if (settings?.businessWebsite) items.push(`🌐 ${settings.businessWebsite}`);
-  if (settings?.businessAddress) items.push(`📍 ${settings.businessAddress}`);
+  if (settings?.businessContactAddress || settings?.businessAddress) items.push(`📍 ${settings.businessContactAddress ?? settings.businessAddress}`);
   return `
     <div style="text-align:center;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid #e5e7eb;">
       ${logoTag(settings?.logoUrl as string, settings?.tenantId as number, apiBase)}

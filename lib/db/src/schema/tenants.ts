@@ -80,7 +80,18 @@ export const tenantsTable = pgTable("tenants", {
   businessPhone: text("business_phone"),
   businessEmail: text("business_email"),
   businessWebsite: text("business_website"),
+  /** Physical office street address. Kept in businessAddress for backwards-compatible document rendering. */
   businessAddress: text("business_address"),
+  businessCity: text("business_city"),
+  businessState: text("business_state"),
+  businessZip: text("business_zip"),
+  businessLat: real("business_lat"),
+  businessLng: real("business_lng"),
+  businessMailingSameAsPhysical: boolean("business_mailing_same_as_physical").notNull().default(true),
+  businessMailingAddress: text("business_mailing_address"),
+  businessMailingCity: text("business_mailing_city"),
+  businessMailingState: text("business_mailing_state"),
+  businessMailingZip: text("business_mailing_zip"),
   businessLicenseNumber: text("business_license_number"),
   businessTagline: text("business_tagline"),
   /** Shown at the bottom of every estimate/invoice, e.g. "Payment due within 30 days." */

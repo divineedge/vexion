@@ -34,3 +34,4 @@
 - [Budget calculator financial model](budget-calculator-model.md) — divisions+company-total design, man-hours-not-crew-hours rate calc, P4P max()-not-additive, material markup overhead allocation
 - [MeasurementZone/ZoneType multi-location schema](measurement-zone-multi-location.md) — zone data model duplicated across ~7 files (spec/db/api/3 frontend); quote-public.tsx has an unrelated separate model
 - [Property map location](property-map-location.md) — Google-first geocoding; persisted pin always centers the map; never infer property boundaries from geocoder bounds
+- [Google Places availability](google-places-availability.md) — current Maps key cannot call Places REST or browser autocomplete; address entry must retain clearly labeled fallback providers

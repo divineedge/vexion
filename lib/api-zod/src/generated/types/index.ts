@@ -12,6 +12,8 @@ export * from './addCrewMemberInput';
 export * from './addMediaInput';
 export * from './addressSuggestion';
 export * from './addressSuggestionResponse';
+export * from './addressSuggestionResponseCenter';
+export * from './addressSuggestionSource';
 export * from './agingBucket';
 export * from './agingInvoiceEntry';
 export * from './agingInvoicesReport';

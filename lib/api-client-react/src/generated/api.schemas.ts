@@ -1161,6 +1161,16 @@ export interface CustomerUpdate {
   archivedAt?: string | null;
 }
 
+export type AddressSuggestionSource = typeof AddressSuggestionSource[keyof typeof AddressSuggestionSource];
+
+
+export const AddressSuggestionSource = {
+  business: 'business',
+  google: 'google',
+  photon: 'photon',
+  nominatim: 'nominatim',
+} as const;
+
 export interface AddressSuggestion {
   address: string;
   /** @nullable */
@@ -1174,13 +1184,28 @@ export interface AddressSuggestion {
   label: string;
   /** @nullable */
   distanceMiles: number | null;
+  source: AddressSuggestionSource;
 }
+
+/**
+ * Tenant physical-business location used for bias and service-area filtering
+ * @nullable
+ */
+export type AddressSuggestionResponseCenter = {
+  lat: number;
+  lng: number;
+} | null;
 
 export interface AddressSuggestionResponse {
   /** @maxItems 10 */
   items: AddressSuggestion[];
   /** False when the tenant business address is missing or cannot be geocoded */
   radiusApplied: boolean;
+  /**
+     * Tenant physical-business location used for bias and service-area filtering
+     * @nullable
+     */
+  center: AddressSuggestionResponseCenter;
 }
 
 export interface CustomerListResponse {
@@ -3060,6 +3085,30 @@ export interface TenantSettings {
   /** @nullable */
   businessAddress?: string | null;
   /** @nullable */
+  businessCity?: string | null;
+  /** @nullable */
+  businessState?: string | null;
+  /** @nullable */
+  businessZip?: string | null;
+  /** @nullable */
+  businessLat?: number | null;
+  /** @nullable */
+  businessLng?: number | null;
+  businessMailingSameAsPhysical?: boolean;
+  /** @nullable */
+  businessMailingAddress?: string | null;
+  /** @nullable */
+  businessMailingCity?: string | null;
+  /** @nullable */
+  businessMailingState?: string | null;
+  /** @nullable */
+  businessMailingZip?: string | null;
+  /**
+     * Mailing address formatted for customer-facing documents; falls back to physical address
+     * @nullable
+     */
+  businessContactAddress?: string | null;
+  /** @nullable */
   businessLicenseNumber?: string | null;
   /** @nullable */
   businessTagline?: string | null;
@@ -3408,7 +3457,27 @@ export interface TenantSettingsUpdate {
   businessPhone?: string;
   businessEmail?: string;
   businessWebsite?: string;
-  businessAddress?: string;
+  /** @nullable */
+  businessAddress?: string | null;
+  /** @nullable */
+  businessCity?: string | null;
+  /** @nullable */
+  businessState?: string | null;
+  /** @nullable */
+  businessZip?: string | null;
+  /** @nullable */
+  businessLat?: number | null;
+  /** @nullable */
+  businessLng?: number | null;
+  businessMailingSameAsPhysical?: boolean;
+  /** @nullable */
+  businessMailingAddress?: string | null;
+  /** @nullable */
+  businessMailingCity?: string | null;
+  /** @nullable */
+  businessMailingState?: string | null;
+  /** @nullable */
+  businessMailingZip?: string | null;
   businessLicenseNumber?: string;
   businessTagline?: string;
   invoiceFooterText?: string;

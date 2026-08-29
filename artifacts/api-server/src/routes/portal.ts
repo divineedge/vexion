@@ -899,7 +899,13 @@ router.get("/portal/invoices/:id/pdf", requirePortalAuth, async (req: any, res):
 
   // Company contact info (right-aligned)
   const contactLines: string[] = [];
-  if (tenant?.businessAddress) contactLines.push(tenant.businessAddress);
+  const physicalAddress = [tenant?.businessAddress, tenant?.businessCity, tenant?.businessState, tenant?.businessZip]
+    .filter(Boolean).join(", ") || null;
+  const contactAddress = tenant?.businessMailingSameAsPhysical
+    ? physicalAddress
+    : [tenant?.businessMailingAddress, tenant?.businessMailingCity, tenant?.businessMailingState, tenant?.businessMailingZip]
+        .filter(Boolean).join(", ") || physicalAddress;
+  if (contactAddress) contactLines.push(contactAddress);
   if (tenant?.businessPhone) contactLines.push(tenant.businessPhone);
   if (tenant?.businessEmail) contactLines.push(tenant.businessEmail);
   if (contactLines.length > 0) {

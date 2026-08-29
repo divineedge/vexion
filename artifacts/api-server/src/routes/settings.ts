@@ -27,6 +27,12 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
       : defaultZoneLabels.map((name, i) => ({ id: String(i + 1), name, color: DEFAULT_ZONE_COLORS[i % DEFAULT_ZONE_COLORS.length], mode: 'area' as const }));
   const phonePlatformConfig = (tenant.phonePlatformConfig as Record<string, string>) ?? {};
   const emailProviderConfig = (tenant.emailProviderConfig as Record<string, string>) ?? {};
+  const physicalAddress = [tenant.businessAddress, tenant.businessCity, tenant.businessState, tenant.businessZip]
+    .filter(Boolean).join(", ") || null;
+  const businessContactAddress = tenant.businessMailingSameAsPhysical
+    ? physicalAddress
+    : [tenant.businessMailingAddress, tenant.businessMailingCity, tenant.businessMailingState, tenant.businessMailingZip]
+        .filter(Boolean).join(", ") || physicalAddress;
   return {
     id: tenant.id,
     tenantId: tenant.id,
@@ -88,6 +94,17 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     businessEmail: tenant.businessEmail ?? null,
     businessWebsite: tenant.businessWebsite ?? null,
     businessAddress: tenant.businessAddress ?? null,
+    businessCity: tenant.businessCity ?? null,
+    businessState: tenant.businessState ?? null,
+    businessZip: tenant.businessZip ?? null,
+    businessLat: tenant.businessLat ?? null,
+    businessLng: tenant.businessLng ?? null,
+    businessMailingSameAsPhysical: tenant.businessMailingSameAsPhysical ?? true,
+    businessMailingAddress: tenant.businessMailingAddress ?? null,
+    businessMailingCity: tenant.businessMailingCity ?? null,
+    businessMailingState: tenant.businessMailingState ?? null,
+    businessMailingZip: tenant.businessMailingZip ?? null,
+    businessContactAddress,
     businessLicenseNumber: tenant.businessLicenseNumber ?? null,
     businessTagline: tenant.businessTagline ?? null,
     invoiceFooterText: tenant.invoiceFooterText ?? null,
@@ -179,6 +196,9 @@ router.patch("/settings", async (req, res): Promise<void> => {
     emailProvider, emailProviderConfig,
     // Business Profile
     logoUrl, businessPhone, businessEmail, businessWebsite, businessAddress,
+    businessCity, businessState, businessZip, businessLat, businessLng,
+    businessMailingSameAsPhysical, businessMailingAddress, businessMailingCity,
+    businessMailingState, businessMailingZip,
     businessLicenseNumber, businessTagline, invoiceFooterText,
     // Payment Reminders & Stop-Service
     paymentRemindersEnabled, paymentReminderSchedule, paymentReminderChannels,
@@ -311,6 +331,16 @@ router.patch("/settings", async (req, res): Promise<void> => {
   if (businessEmail !== undefined) updates.businessEmail = businessEmail || null;
   if (businessWebsite !== undefined) updates.businessWebsite = businessWebsite || null;
   if (businessAddress !== undefined) updates.businessAddress = businessAddress || null;
+  if (businessCity !== undefined) updates.businessCity = businessCity || null;
+  if (businessState !== undefined) updates.businessState = businessState || null;
+  if (businessZip !== undefined) updates.businessZip = businessZip || null;
+  if (businessLat !== undefined) updates.businessLat = businessLat === null ? null : Number(businessLat);
+  if (businessLng !== undefined) updates.businessLng = businessLng === null ? null : Number(businessLng);
+  if (businessMailingSameAsPhysical !== undefined) updates.businessMailingSameAsPhysical = Boolean(businessMailingSameAsPhysical);
+  if (businessMailingAddress !== undefined) updates.businessMailingAddress = businessMailingAddress || null;
+  if (businessMailingCity !== undefined) updates.businessMailingCity = businessMailingCity || null;
+  if (businessMailingState !== undefined) updates.businessMailingState = businessMailingState || null;
+  if (businessMailingZip !== undefined) updates.businessMailingZip = businessMailingZip || null;
   if (businessLicenseNumber !== undefined) updates.businessLicenseNumber = businessLicenseNumber || null;
   if (businessTagline !== undefined) updates.businessTagline = businessTagline || null;
   if (invoiceFooterText !== undefined) updates.invoiceFooterText = invoiceFooterText || null;

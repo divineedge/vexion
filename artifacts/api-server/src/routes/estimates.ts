@@ -1099,6 +1099,12 @@ router.get("/public/estimates/:token", async (req, res): Promise<void> => {
 
   const stripeEnabled = !!(tenant?.stripeEnabled && getStripeClient());
   const depositAmount = calcDepositAmount(row.estimate.paymentRequirement, row.estimate.depositValue, row.estimate.total ?? 0);
+  const physicalAddress = [tenant?.businessAddress, tenant?.businessCity, tenant?.businessState, tenant?.businessZip]
+    .filter(Boolean).join(", ") || null;
+  const contactAddress = tenant?.businessMailingSameAsPhysical
+    ? physicalAddress
+    : [tenant?.businessMailingAddress, tenant?.businessMailingCity, tenant?.businessMailingState, tenant?.businessMailingZip]
+        .filter(Boolean).join(", ") || physicalAddress;
 
   res.json({
     ...formatEstimate(row.estimate, { customerName: row.customerName, propertyAddress: row.propertyAddress }),
@@ -1116,7 +1122,7 @@ router.get("/public/estimates/:token", async (req, res): Promise<void> => {
       phone: tenant?.businessPhone ?? null,
       email: tenant?.businessEmail ?? null,
       website: tenant?.businessWebsite ?? null,
-      address: tenant?.businessAddress ?? null,
+      address: contactAddress,
     },
   });
 });

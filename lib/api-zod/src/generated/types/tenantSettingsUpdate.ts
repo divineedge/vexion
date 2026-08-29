@@ -44,7 +44,27 @@ export interface TenantSettingsUpdate {
   businessPhone?: string;
   businessEmail?: string;
   businessWebsite?: string;
-  businessAddress?: string;
+  /** @nullable */
+  businessAddress?: string | null;
+  /** @nullable */
+  businessCity?: string | null;
+  /** @nullable */
+  businessState?: string | null;
+  /** @nullable */
+  businessZip?: string | null;
+  /** @nullable */
+  businessLat?: number | null;
+  /** @nullable */
+  businessLng?: number | null;
+  businessMailingSameAsPhysical?: boolean;
+  /** @nullable */
+  businessMailingAddress?: string | null;
+  /** @nullable */
+  businessMailingCity?: string | null;
+  /** @nullable */
+  businessMailingState?: string | null;
+  /** @nullable */
+  businessMailingZip?: string | null;
   businessLicenseNumber?: string;
   businessTagline?: string;
   invoiceFooterText?: string;

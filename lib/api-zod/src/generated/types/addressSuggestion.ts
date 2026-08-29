@@ -5,6 +5,7 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { AddressSuggestionSource } from './addressSuggestionSource';
 
 export interface AddressSuggestion {
   address: string;
@@ -19,4 +20,5 @@ export interface AddressSuggestion {
   label: string;
   /** @nullable */
   distanceMiles: number | null;
+  source: AddressSuggestionSource;
 }

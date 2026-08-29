@@ -74,6 +74,30 @@ export interface TenantSettings {
   /** @nullable */
   businessAddress?: string | null;
   /** @nullable */
+  businessCity?: string | null;
+  /** @nullable */
+  businessState?: string | null;
+  /** @nullable */
+  businessZip?: string | null;
+  /** @nullable */
+  businessLat?: number | null;
+  /** @nullable */
+  businessLng?: number | null;
+  businessMailingSameAsPhysical?: boolean;
+  /** @nullable */
+  businessMailingAddress?: string | null;
+  /** @nullable */
+  businessMailingCity?: string | null;
+  /** @nullable */
+  businessMailingState?: string | null;
+  /** @nullable */
+  businessMailingZip?: string | null;
+  /**
+     * Mailing address formatted for customer-facing documents; falls back to physical address
+     * @nullable
+     */
+  businessContactAddress?: string | null;
+  /** @nullable */
   businessLicenseNumber?: string | null;
   /** @nullable */
   businessTagline?: string | null;

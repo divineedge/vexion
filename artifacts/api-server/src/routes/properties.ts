@@ -1,8 +1,9 @@
-import { Router, type IRouter } from "express";
-import { db, propertiesTable, customersTable, propertyOwnershipHistoryTable, activityLogTable, jobsTable, estimatesTable, tenantsTable } from "@workspace/db";
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
+import { db, propertiesTable, customersTable, propertyOwnershipHistoryTable, activityLogTable, jobsTable, estimatesTable, tenantsTable, usersTable } from "@workspace/db";
 import { eq, and, ilike, sql, desc, isNull } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
+import { resolveStaffSession } from "./auth";
 import {
   importUpload,
   handleExportRequest,
@@ -16,6 +17,29 @@ import {
 } from "../lib/importExport";
 
 const router: IRouter = Router();
+
+async function requireVerifiedStaff(req: Request, res: Response, next: NextFunction): Promise<void> {
+  if (req.headers["x-portal-token"]) {
+    res.status(403).json({ error: "This endpoint is not available to portal users" });
+    return;
+  }
+  const session = await resolveStaffSession(req);
+  if (!session) {
+    res.status(401).json({ error: "Valid staff session required" });
+    return;
+  }
+  const [user] = await db.select({ id: usersTable.id }).from(usersTable).where(and(
+    eq(usersTable.id, session.userId),
+    eq(usersTable.tenantId, session.tenantId),
+    eq(usersTable.isActive, true),
+  )).limit(1);
+  if (!user) {
+    res.status(401).json({ error: "Staff account is inactive or not found" });
+    return;
+  }
+  res.locals["staffTenantId"] = session.tenantId;
+  next();
+}
 
 // ---------------------------------------------------------------------------
 // Bulk import / export
@@ -224,6 +248,7 @@ type AddressSuggestion = {
   lng: number;
   label: string;
   distanceMiles: number | null;
+  source: "business" | "google" | "photon" | "nominatim";
 };
 
 const businessCenterCache = new Map<number, { address: string; center: GeocodeResult | null; expiresAt: number }>();
@@ -238,10 +263,27 @@ function distanceMiles(a: GeocodeResult, b: GeocodeResult): number {
 }
 
 async function getBusinessCenter(tenantId: number): Promise<GeocodeResult | null> {
-  const [tenant] = await db.select({ businessAddress: tenantsTable.businessAddress })
+  const [tenant] = await db.select({
+    businessAddress: tenantsTable.businessAddress,
+    businessCity: tenantsTable.businessCity,
+    businessState: tenantsTable.businessState,
+    businessZip: tenantsTable.businessZip,
+    businessLat: tenantsTable.businessLat,
+    businessLng: tenantsTable.businessLng,
+  })
     .from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
-  const address = tenant?.businessAddress?.trim() ?? "";
+  const address = [
+    tenant?.businessAddress,
+    tenant?.businessCity,
+    tenant?.businessState,
+    tenant?.businessZip,
+  ].filter(Boolean).join(", ").trim();
   if (!address) return null;
+  if (tenant?.businessLat != null && tenant.businessLng != null) {
+    const center = { lat: tenant.businessLat, lng: tenant.businessLng };
+    businessCenterCache.set(tenantId, { address, center, expiresAt: Date.now() + BUSINESS_CENTER_CACHE_MS });
+    return center;
+  }
   const cached = businessCenterCache.get(tenantId);
   if (cached && cached.address === address && cached.expiresAt > Date.now()) return cached.center;
   const center = await geocodeAddress(address);
@@ -262,7 +304,7 @@ function photonSuggestion(feature: { properties?: Record<string, unknown>; geome
   const state = typeof p.state === "string" ? p.state : null;
   const zip = typeof p.postcode === "string" ? p.postcode : null;
   const label = [address, city, state, zip].filter(Boolean).join(", ");
-  return { address, city, state, zip, lat, lng, label, distanceMiles: null };
+  return { address, city, state, zip, lat, lng, label, distanceMiles: null, source: "photon" };
 }
 
 function nominatimSuggestion(result: {
@@ -290,12 +332,13 @@ function nominatimSuggestion(result: {
     lng,
     label: result.display_name ?? [address, city, state, zip].filter(Boolean).join(", "),
     distanceMiles: null,
+    source: "nominatim",
   };
 }
 
 // Auth is applied to this router by the API server's authenticated route mount.
-router.get("/address-suggestions", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
+router.get("/address-suggestions", requireVerifiedStaff, async (req, res): Promise<void> => {
+  const tenantId = res.locals["staffTenantId"] as number;
   const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
   if (q.length < 2) {
     res.status(400).json({ error: "q must be at least 2 characters" });
@@ -318,37 +361,66 @@ router.get("/address-suggestions", async (req, res): Promise<void> => {
       lng: center.lng,
       label: businessAddress,
       distanceMiles: 0,
+      source: "business",
     });
   }
 
+  let hasUsableGoogleResults = false;
   if (googleKey) {
     try {
+      // Google's legacy autocomplete API caps location-radius bias at 50 km.
+      // The old 200-mile strict-bound request was invalid/overly restrictive and
+      // caused valid local predictions to disappear. Bias locally here, then
+      // enforce the product's 200-mile service-area rule after coordinates resolve.
       const locationBias = center
-        ? `&location=${center.lat},${center.lng}&radius=${Math.round(200 * 1609.344)}&strictbounds=true`
+        ? `&location=${center.lat},${center.lng}&radius=50000`
         : "";
       const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(q)}&components=country:us&types=address${locationBias}&key=${encodeURIComponent(googleKey)}`;
-      const payload = await (await fetch(url)).json() as { status?: string; predictions?: Array<{ description?: string }> };
+      const payload = await (await fetch(url)).json() as {
+        status?: string;
+        predictions?: Array<{ description?: string; place_id?: string }>;
+      };
       if (payload.status === "OK") {
-        for (const prediction of (payload.predictions ?? []).slice(0, 5)) {
-          if (!prediction.description) continue;
-          const geo = await geocodeAddress(prediction.description);
-          if (!geo) continue;
-          const parts = prediction.description.split(",").map(part => part.trim());
+        for (const prediction of (payload.predictions ?? []).slice(0, 8)) {
+          if (!prediction.description || !prediction.place_id) continue;
+          const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(prediction.place_id)}&fields=address_component,formatted_address,geometry&key=${encodeURIComponent(googleKey)}`;
+          const detailsPayload = await (await fetch(detailsUrl)).json() as {
+            status?: string;
+            result?: {
+              formatted_address?: string;
+              address_components?: Array<{ long_name: string; short_name: string; types: string[] }>;
+              geometry?: { location?: { lat?: number; lng?: number } };
+            };
+          };
+          const result = detailsPayload.result;
+          const lat = result?.geometry?.location?.lat;
+          const lng = result?.geometry?.location?.lng;
+          if (detailsPayload.status !== "OK" || !result || typeof lat !== "number" || typeof lng !== "number") continue;
+          const comps = result.address_components ?? [];
+          const get = (type: string) => comps.find(component => component.types.includes(type))?.long_name ?? "";
+          const getShort = (type: string) => comps.find(component => component.types.includes(type))?.short_name ?? "";
+          const street = [get("street_number"), get("route")].filter(Boolean).join(" ");
+          if (!street) continue;
           suggestions.push({
-            address: parts[0] || prediction.description,
-            city: parts[1] ?? null,
-            state: parts[2]?.split(" ")[0] ?? null,
-            zip: parts[2]?.match(/\b\d{5}(?:-\d{4})?\b/)?.[0] ?? null,
-            lat: geo.lat, lng: geo.lng, label: prediction.description, distanceMiles: null,
+            address: street,
+            city: get("locality") || get("postal_town") || get("sublocality_level_1") || null,
+            state: getShort("administrative_area_level_1") || null,
+            zip: get("postal_code") || null,
+            lat,
+            lng,
+            label: result.formatted_address ?? prediction.description,
+            distanceMiles: null,
+            source: "google",
           });
         }
+        hasUsableGoogleResults = suggestions.some(item => item.source === "google");
       }
     } catch {
       // Photon below remains available if Google autocomplete is unavailable.
     }
   }
 
-  try {
+  if (!hasUsableGoogleResults) try {
     const photonBias = center ? `&lat=${center.lat}&lon=${center.lng}` : "";
     const photonUrl = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=20&lang=en${photonBias}`;
     const payload = await (await fetch(photonUrl, { headers: { "User-Agent": "DivineEdgeOS/1.0" } })).json() as { features?: Array<{ properties?: Record<string, unknown>; geometry?: { coordinates?: unknown[] } }> };
@@ -357,7 +429,7 @@ router.get("/address-suggestions", async (req, res): Promise<void> => {
     // Return usable Google results rather than silently discarding them.
   }
 
-  try {
+  if (!hasUsableGoogleResults) try {
     const viewbox = center
       ? (() => {
           const latDelta = 200 / 69;
@@ -382,9 +454,14 @@ router.get("/address-suggestions", async (req, res): Promise<void> => {
     unique.set(`${normalized.address}|${normalized.city ?? ""}|${normalized.state ?? ""}|${normalized.zip ?? ""}`.toLowerCase(), normalized);
   }
   const items = [...unique.values()]
-    .sort((a, b) => (a.distanceMiles ?? Number.MAX_SAFE_INTEGER) - (b.distanceMiles ?? Number.MAX_SAFE_INTEGER))
+    .sort((a, b) => {
+      const sourcePriority = { business: 0, google: 1, photon: 2, nominatim: 3 };
+      const sourceDifference = sourcePriority[a.source] - sourcePriority[b.source];
+      if (sourceDifference !== 0) return sourceDifference;
+      return (a.distanceMiles ?? Number.MAX_SAFE_INTEGER) - (b.distanceMiles ?? Number.MAX_SAFE_INTEGER);
+    })
     .slice(0, 10);
-  res.json({ items, radiusApplied: center !== null });
+  res.json({ items, radiusApplied: center !== null, center });
 });
 
 function isAutomaticSuggestedBoundary(zone: unknown): boolean {

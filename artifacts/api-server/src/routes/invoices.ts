@@ -815,6 +815,12 @@ router.get("/public/invoices/:token", async (req, res): Promise<void> => {
   if (!row) { res.status(404).json({ error: "Invoice not found" }); return; }
 
   const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, row.invoice.tenantId));
+  const physicalAddress = [tenant?.businessAddress, tenant?.businessCity, tenant?.businessState, tenant?.businessZip]
+    .filter(Boolean).join(", ") || null;
+  const contactAddress = tenant?.businessMailingSameAsPhysical
+    ? physicalAddress
+    : [tenant?.businessMailingAddress, tenant?.businessMailingCity, tenant?.businessMailingState, tenant?.businessMailingZip]
+        .filter(Boolean).join(", ") || physicalAddress;
 
   res.json({
     ...formatInvoice(row.invoice, row.customerName),
@@ -826,7 +832,7 @@ router.get("/public/invoices/:token", async (req, res): Promise<void> => {
       phone: tenant?.businessPhone ?? null,
       email: tenant?.businessEmail ?? null,
       website: tenant?.businessWebsite ?? null,
-      address: tenant?.businessAddress ?? null,
+      address: contactAddress,
       invoiceFooterText: tenant?.invoiceFooterText ?? null,
     },
   });

@@ -49,6 +49,7 @@ import { BUILT_IN_CUSTOMER_FIELDS, CORE_FIELD_KEYS, getActiveCustomerFields, typ
 import IntegrationsGrid from '@/components/settings/IntegrationsGrid';
 import DevToolsPanel from '@/components/settings/DevToolsPanel';
 import RoutingSettings from '@/components/settings/RoutingSettings';
+import { AddressAutocomplete, type AddressSuggestion } from '@/components/shared/AddressAutocomplete';
 
 export default function SettingsPage() {
   const { isSuperAdmin, isOwner, user } = useAuth();
@@ -197,6 +198,16 @@ export default function SettingsPage() {
   const [businessEmail, setBusinessEmail] = useState('');
   const [businessWebsite, setBusinessWebsite] = useState('');
   const [businessAddress, setBusinessAddress] = useState('');
+  const [businessCity, setBusinessCity] = useState('');
+  const [businessState, setBusinessState] = useState('');
+  const [businessZip, setBusinessZip] = useState('');
+  const [businessLat, setBusinessLat] = useState<number | null>(null);
+  const [businessLng, setBusinessLng] = useState<number | null>(null);
+  const [businessMailingSameAsPhysical, setBusinessMailingSameAsPhysical] = useState(true);
+  const [businessMailingAddress, setBusinessMailingAddress] = useState('');
+  const [businessMailingCity, setBusinessMailingCity] = useState('');
+  const [businessMailingState, setBusinessMailingState] = useState('');
+  const [businessMailingZip, setBusinessMailingZip] = useState('');
   const [businessLicenseNumber, setBusinessLicenseNumber] = useState('');
   const [businessTagline, setBusinessTagline] = useState('');
   const [invoiceFooterText, setInvoiceFooterText] = useState('');
@@ -275,6 +286,16 @@ export default function SettingsPage() {
       setBusinessEmail((settings as any).businessEmail ?? '');
       setBusinessWebsite((settings as any).businessWebsite ?? '');
       setBusinessAddress((settings as any).businessAddress ?? '');
+      setBusinessCity((settings as any).businessCity ?? '');
+      setBusinessState((settings as any).businessState ?? '');
+      setBusinessZip((settings as any).businessZip ?? '');
+      setBusinessLat((settings as any).businessLat ?? null);
+      setBusinessLng((settings as any).businessLng ?? null);
+      setBusinessMailingSameAsPhysical((settings as any).businessMailingSameAsPhysical ?? true);
+      setBusinessMailingAddress((settings as any).businessMailingAddress ?? '');
+      setBusinessMailingCity((settings as any).businessMailingCity ?? '');
+      setBusinessMailingState((settings as any).businessMailingState ?? '');
+      setBusinessMailingZip((settings as any).businessMailingZip ?? '');
       setBusinessLicenseNumber((settings as any).businessLicenseNumber ?? '');
       setBusinessTagline((settings as any).businessTagline ?? '');
       setInvoiceFooterText((settings as any).invoiceFooterText ?? '');
@@ -357,9 +378,56 @@ export default function SettingsPage() {
     }
   };
 
+  const selectBusinessPhysicalAddress = (item: AddressSuggestion) => {
+    const city = item.city ?? '';
+    const state = item.state ?? '';
+    const zip = item.zip ?? '';
+    setBusinessAddress(item.address);
+    setBusinessCity(city);
+    setBusinessState(state);
+    setBusinessZip(zip);
+    setBusinessLat(item.lat);
+    setBusinessLng(item.lng);
+    if (businessMailingSameAsPhysical) {
+      setBusinessMailingAddress(item.address);
+      setBusinessMailingCity(city);
+      setBusinessMailingState(state);
+      setBusinessMailingZip(zip);
+    }
+  };
+
+  const selectBusinessMailingAddress = (item: AddressSuggestion) => {
+    setBusinessMailingAddress(item.address);
+    setBusinessMailingCity(item.city ?? '');
+    setBusinessMailingState(item.state ?? '');
+    setBusinessMailingZip(item.zip ?? '');
+  };
+
   const saveBranding = () => {
+    const mailingAddress = businessMailingSameAsPhysical ? businessAddress : businessMailingAddress;
+    const mailingCity = businessMailingSameAsPhysical ? businessCity : businessMailingCity;
+    const mailingState = businessMailingSameAsPhysical ? businessState : businessMailingState;
+    const mailingZip = businessMailingSameAsPhysical ? businessZip : businessMailingZip;
     updateSettings.mutate(
-      { data: { businessPhone: businessPhone || undefined, businessEmail: businessEmail || undefined, businessWebsite: businessWebsite || undefined, businessAddress: businessAddress || undefined, businessLicenseNumber: businessLicenseNumber || undefined, businessTagline: businessTagline || undefined, invoiceFooterText: invoiceFooterText || undefined } as Parameters<typeof updateSettings.mutate>[0]['data'] },
+      { data: {
+        businessPhone: businessPhone || null,
+        businessEmail: businessEmail || null,
+        businessWebsite: businessWebsite || null,
+        businessAddress: businessAddress || null,
+        businessCity: businessCity || null,
+        businessState: businessState || null,
+        businessZip: businessZip || null,
+        businessLat,
+        businessLng,
+        businessMailingSameAsPhysical,
+        businessMailingAddress: mailingAddress || null,
+        businessMailingCity: mailingCity || null,
+        businessMailingState: mailingState || null,
+        businessMailingZip: mailingZip || null,
+        businessLicenseNumber: businessLicenseNumber || undefined,
+        businessTagline: businessTagline || undefined,
+        invoiceFooterText: invoiceFooterText || undefined,
+      } as Parameters<typeof updateSettings.mutate>[0]['data'] },
       {
         onSuccess: () => { toast.success('Branding saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
         onError: () => toast.error('Failed to save branding'),
@@ -2271,15 +2339,96 @@ export default function SettingsPage() {
                   />
                 </div>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="bp-address">Business Address</Label>
-                <Input
-                  id="bp-address"
-                  title="Business address shown on invoices and estimates"
-                  placeholder="123 Main St, City, State 00000"
-                  value={businessAddress}
-                  onChange={e => setBusinessAddress(e.target.value)}
-                />
+              <div className="space-y-4 rounded-lg border p-4">
+                <div>
+                  <Label htmlFor="bp-address">Physical Business Address</Label>
+                  <p className="mb-2 text-xs text-muted-foreground">Used to prioritize nearby customer and property addresses.</p>
+                  <AddressAutocomplete
+                    id="bp-address"
+                    title="Physical business street address"
+                    placeholder="Start typing a street address"
+                    value={businessAddress}
+                    onChange={value => {
+                      setBusinessAddress(value);
+                      setBusinessLat(null);
+                      setBusinessLng(null);
+                      if (businessMailingSameAsPhysical) setBusinessMailingAddress(value);
+                    }}
+                    onSelect={selectBusinessPhysicalAddress}
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="bp-city">City</Label>
+                    <Input id="bp-city" value={businessCity} onChange={e => {
+                      setBusinessCity(e.target.value);
+                      if (businessMailingSameAsPhysical) setBusinessMailingCity(e.target.value);
+                    }} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="bp-state">State</Label>
+                    <Input id="bp-state" value={businessState} maxLength={2} onChange={e => {
+                      setBusinessState(e.target.value.toUpperCase());
+                      if (businessMailingSameAsPhysical) setBusinessMailingState(e.target.value.toUpperCase());
+                    }} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="bp-zip">ZIP</Label>
+                    <Input id="bp-zip" value={businessZip} onChange={e => {
+                      setBusinessZip(e.target.value);
+                      if (businessMailingSameAsPhysical) setBusinessMailingZip(e.target.value);
+                    }} />
+                  </div>
+                </div>
+                {businessLat !== null && businessLng !== null && (
+                  <p className="text-xs text-emerald-700">Local address center confirmed.</p>
+                )}
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="bp-mailing-same"
+                    checked={businessMailingSameAsPhysical}
+                    onCheckedChange={checked => {
+                      const same = checked === true;
+                      setBusinessMailingSameAsPhysical(same);
+                      if (same) {
+                        setBusinessMailingAddress(businessAddress);
+                        setBusinessMailingCity(businessCity);
+                        setBusinessMailingState(businessState);
+                        setBusinessMailingZip(businessZip);
+                      }
+                    }}
+                  />
+                  <Label htmlFor="bp-mailing-same" className="font-normal">Mailing address is the same as the physical address</Label>
+                </div>
+                {!businessMailingSameAsPhysical && (
+                  <div className="space-y-3 border-t pt-4">
+                    <div>
+                      <Label htmlFor="bp-mailing-address">Mailing Address</Label>
+                      <AddressAutocomplete
+                        id="bp-mailing-address"
+                        title="Business mailing street address"
+                        placeholder="Start typing a mailing address"
+                        value={businessMailingAddress}
+                        onChange={setBusinessMailingAddress}
+                        onSelect={selectBusinessMailingAddress}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="bp-mailing-city">City</Label>
+                        <Input id="bp-mailing-city" value={businessMailingCity} onChange={e => setBusinessMailingCity(e.target.value)} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="bp-mailing-state">State</Label>
+                        <Input id="bp-mailing-state" value={businessMailingState} maxLength={2} onChange={e => setBusinessMailingState(e.target.value.toUpperCase())} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="bp-mailing-zip">ZIP</Label>
+                        <Input id="bp-mailing-zip" value={businessMailingZip} onChange={e => setBusinessMailingZip(e.target.value)} />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="bp-tagline">Tagline</Label>

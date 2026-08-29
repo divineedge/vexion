@@ -1398,7 +1398,7 @@ export default function EstimatesPage() {
               </SheetHeader>
 
               {/* Business branding */}
-              {settings && (settings.companyName || settings.logoUrl || settings.businessTagline || settings.businessPhone || settings.businessEmail || settings.businessWebsite || settings.businessAddress) && (
+              {settings && (settings.companyName || settings.logoUrl || settings.businessTagline || settings.businessPhone || settings.businessEmail || settings.businessWebsite || settings.businessContactAddress || settings.businessAddress) && (
                 <div className="mb-4 p-3 rounded-lg bg-muted/40 border border-border/60 text-center space-y-2">
                   {settings.logoUrl && (
                     <img
@@ -1414,7 +1414,7 @@ export default function EstimatesPage() {
                     {settings.businessPhone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{settings.businessPhone}</span>}
                     {settings.businessEmail && <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{settings.businessEmail}</span>}
                     {settings.businessWebsite && <span className="flex items-center gap-1"><Globe className="w-3 h-3" />{settings.businessWebsite}</span>}
-                    {settings.businessAddress && <span className="flex items-center gap-1"><Building2 className="w-3 h-3" />{settings.businessAddress}</span>}
+                    {(settings.businessContactAddress || settings.businessAddress) && <span className="flex items-center gap-1"><Building2 className="w-3 h-3" />{settings.businessContactAddress ?? settings.businessAddress}</span>}
                   </div>
                 </div>
               )}

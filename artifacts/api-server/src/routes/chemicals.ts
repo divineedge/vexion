@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request, type Response, type NextFunction } 
 import { db, chemicalProductsTable, chemicalMixturesTable, chemicalMixtureItemsTable, chemicalApplicationsTable, jobsTable, propertiesTable, tenantsTable, usersTable } from "@workspace/db";
 import { eq, and, gte, lte, desc, inArray } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
-import { normalizeChemicalRecordRequirements, validateChemicalRecordRequirements, validateSuppliedChemicalApplicationFields } from "../lib/chemicalRequirements";
+import { normalizeChemicalRecordRequirements, parseStrictChemicalAppliedAt, validateChemicalRecordRequirements, validateSuppliedChemicalApplicationFields } from "../lib/chemicalRequirements";
 
 const router: IRouter = Router();
 
@@ -366,10 +366,20 @@ router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> =
   const parsedVolume = Number(volumeApplied);
   const hasMixture = mixtureId !== undefined && mixtureId !== null && mixtureId !== "";
   const hasProduct = productId !== undefined && productId !== null && productId !== "";
-  const parsedAppliedAt = typeof appliedAt === "string" && appliedAt.trim() ? new Date(appliedAt) : null;
+  const parsedMixtureId = hasMixture && /^\d+$/.test(String(mixtureId)) ? Number(mixtureId) : NaN;
+  const parsedProductId = hasProduct && /^\d+$/.test(String(productId)) ? Number(productId) : NaN;
+  const parsedAppliedAt = parseStrictChemicalAppliedAt(appliedAt);
 
   if (!Number.isFinite(parsedVolume) || parsedVolume <= 0) {
     res.status(400).json({ error: "Volume applied must be a positive number", fields: { volumeApplied: "Enter a positive amount" } });
+    return;
+  }
+  if (hasMixture && (!Number.isInteger(parsedMixtureId) || parsedMixtureId <= 0)) {
+    res.status(400).json({ error: "Mixture must be a positive integer", fields: { productOrMixture: "Select a valid mixture" } });
+    return;
+  }
+  if (hasProduct && (!Number.isInteger(parsedProductId) || parsedProductId <= 0)) {
+    res.status(400).json({ error: "Product must be a positive integer", fields: { productOrMixture: "Select a valid product" } });
     return;
   }
   if (!hasMixture && !hasProduct || hasMixture && hasProduct) {
@@ -428,7 +438,7 @@ router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> =
 
   if (mixtureId) {
     const [mixture] = await db.select().from(chemicalMixturesTable)
-      .where(and(eq(chemicalMixturesTable.id, mixtureId), eq(chemicalMixturesTable.tenantId, tenantId)));
+      .where(and(eq(chemicalMixturesTable.id, parsedMixtureId), eq(chemicalMixturesTable.tenantId, tenantId)));
     if (!mixture) { res.status(404).json({ error: "Mixture not found" }); return; }
     mixtureName = mixture.name;
 
@@ -439,7 +449,7 @@ router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> =
         eq(chemicalMixtureItemsTable.productId, chemicalProductsTable.id),
         eq(chemicalProductsTable.tenantId, tenantId),
       ))
-      .where(eq(chemicalMixtureItemsTable.mixtureId, mixtureId));
+      .where(eq(chemicalMixtureItemsTable.mixtureId, parsedMixtureId));
 
     breakdown = items.map(({ item, product }) => {
       const amountApplied = item.ratioAmount * parsedVolume; // ratio per unit × total units
@@ -457,7 +467,7 @@ router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> =
     });
   } else if (productId) {
     const [product] = await db.select().from(chemicalProductsTable)
-      .where(and(eq(chemicalProductsTable.id, productId), eq(chemicalProductsTable.tenantId, tenantId)));
+      .where(and(eq(chemicalProductsTable.id, parsedProductId), eq(chemicalProductsTable.tenantId, tenantId)));
     if (!product) { res.status(404).json({ error: "Product not found" }); return; }
     productName = product.name;
 
@@ -480,8 +490,8 @@ router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> =
     applicatorId: userId,
     applicatorName: typeof resolvedApplicatorName === "string" ? resolvedApplicatorName.trim() : null,
     applicatorLicenseNumber: typeof applicatorLicenseNumber === "string" ? applicatorLicenseNumber.trim() : null,
-    mixtureId: mixtureId ? parseInt(mixtureId, 10) : null,
-    productId: productId ? parseInt(productId, 10) : null,
+    mixtureId: hasMixture ? parsedMixtureId : null,
+    productId: hasProduct ? parsedProductId : null,
     mixtureName,
     productName,
     volumeApplied: parsedVolume,

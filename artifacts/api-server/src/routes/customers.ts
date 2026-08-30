@@ -701,15 +701,29 @@ router.delete("/customers/:id", async (req, res): Promise<void> => {
     db.select({ invoiceCount: sql<number>`count(*)::int` }).from(invoicesTable)
       .where(and(eq(invoicesTable.tenantId, tenantId), eq(invoicesTable.customerId, id))),
   ]);
-  if (propertyCount > 0 || jobCount > 0 || invoiceCount > 0) {
-    res.status(409).json({ error: "Cannot permanently delete customer because related properties, jobs, or invoices still exist." });
+  if (jobCount > 0 || invoiceCount > 0) {
+    res.status(409).json({ error: "Cannot permanently delete customer because related jobs or invoices still exist. Delete those first, then try again." });
     return;
   }
   try {
-    await db.delete(customersTable).where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)));
+    await db.transaction(async (tx) => {
+      if (propertyCount > 0) {
+        const propertyIds = await tx.select({ id: propertiesTable.id })
+          .from(propertiesTable)
+          .where(and(eq(propertiesTable.tenantId, tenantId), eq(propertiesTable.customerId, id)));
+        if (propertyIds.length > 0) {
+          await tx.delete(propertiesTable)
+            .where(and(
+              eq(propertiesTable.tenantId, tenantId),
+              inArray(propertiesTable.id, propertyIds.map((property) => property.id)),
+            ));
+        }
+      }
+      await tx.delete(customersTable).where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)));
+    });
   } catch (error: unknown) {
     if ((error as { code?: string }).code === "23503") {
-      res.status(409).json({ error: "Cannot permanently delete customer because related records still exist." });
+      res.status(409).json({ error: "Cannot permanently delete this customer because its properties still have related jobs, estimates, or other records. Remove those records first, then try again." });
       return;
     }
     throw error;

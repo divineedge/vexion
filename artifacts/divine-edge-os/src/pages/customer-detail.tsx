@@ -32,6 +32,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
@@ -232,6 +233,7 @@ export default function CustomerDetailPage() {
   const [editing, setEditing] = useState(false);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletePropertiesConfirmed, setDeletePropertiesConfirmed] = useState(false);
   const [recordActionBusy, setRecordActionBusy] = useState(false);
   const [form, setForm] = useState<FormData>({});
   const [tagInput, setTagInput] = useState('');
@@ -1983,11 +1985,24 @@ export default function CustomerDetailPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Permanently delete customer?</DialogTitle>
-            <DialogDescription>This permanently deletes {customer.name} and may remove associated records. This cannot be undone.</DialogDescription>
+            <DialogDescription>
+              This permanently deletes {customer.name} and all {properties?.length ?? 0} {properties?.length === 1 ? 'property' : 'properties'} on this customer. This cannot be undone.
+            </DialogDescription>
           </DialogHeader>
+          <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+            <Checkbox
+              id="confirm-delete-customer-properties"
+              checked={deletePropertiesConfirmed}
+              onCheckedChange={(checked) => setDeletePropertiesConfirmed(checked === true)}
+              disabled={recordActionBusy}
+            />
+            <label htmlFor="confirm-delete-customer-properties" className="cursor-pointer text-sm leading-5">
+              I understand that this will permanently delete the customer and their properties.
+            </label>
+          </div>
           <DialogFooter>
             <Button variant="outline" disabled={recordActionBusy} onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-            <Button variant="destructive" disabled={recordActionBusy} onClick={handleDeleteCustomer}>{recordActionBusy ? 'Deleting…' : 'Permanently Delete'}</Button>
+            <Button variant="destructive" disabled={recordActionBusy || !deletePropertiesConfirmed} onClick={handleDeleteCustomer}>{recordActionBusy ? 'Deleting…' : 'Permanently Delete'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

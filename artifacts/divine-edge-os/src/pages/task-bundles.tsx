@@ -6,7 +6,7 @@ import {
   useCreateTaskBundleItem, useUpdateTaskBundleItem, useDeleteTaskBundleItem,
   useStartTaskBundle, useCompleteTaskBundleCompletion,
   useListTaskBundleCompletions, getListTaskBundleCompletionsQueryKey,
-  useListShrinkageReports, getListShrinkageReportsQueryKey,
+  getListShrinkageReportsQueryKey,
   useListUsers, getListUsersQueryKey,
   useListCrews, getListCrewsQueryKey,
   useListEquipment, getListEquipmentQueryKey,
@@ -30,7 +30,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { TASK_ROLE_BUCKETS, roleBucketLabel } from '@/lib/taskConstants';
 import {
   ClipboardList, Plus, Trash2, Edit, PlayCircle, CheckCircle2, XCircle, Eye,
-  Timer, ListChecks, History, PackageSearch, User as UserIcon, Users as UsersIcon, Search,
+  Timer, ListChecks, History, User as UserIcon, Users as UsersIcon, Search,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, formatDistanceStrict } from 'date-fns';
@@ -50,11 +50,6 @@ const FREQ_LABELS: Record<string, string> = { daily: 'Daily', weekly: 'Weekly', 
 
 function itemTypeLabel(type: string) {
   return ITEM_TYPES.find(t => t.value === type)?.label ?? type;
-}
-
-function fmt$(v: number | null | undefined) {
-  if (v == null) return '—';
-  return `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function needsEquipment(type: string) {
@@ -648,60 +643,6 @@ function CompletionLogTab() {
   );
 }
 
-// ─── Shrinkage Report Tab ─────────────────────────────────────────────────────────
-
-function ShrinkageReportTab() {
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const params = { ...(dateFrom ? { dateFrom } : {}), ...(dateTo ? { dateTo } : {}) };
-  const { data: ledger, isLoading } = useListShrinkageReports(params, { query: { queryKey: getListShrinkageReportsQueryKey(params) } });
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex gap-3">
-          <div className="space-y-1"><label className="text-xs font-medium">From</label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} /></div>
-          <div className="space-y-1"><label className="text-xs font-medium">To</label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} /></div>
-        </div>
-        <div className="rounded-lg border px-4 py-2 text-right">
-          <p className="text-xs text-muted-foreground">Cumulative Loss</p>
-          <p className="text-lg font-bold text-destructive">{fmt$(ledger?.totalLoss ?? 0)}</p>
-        </div>
-      </div>
-      <div className="rounded-lg border overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Item</TableHead>
-              <TableHead>SKU</TableHead>
-              <TableHead className="text-right">Expected</TableHead>
-              <TableHead className="text-right">Actual</TableHead>
-              <TableHead className="text-right">Variance</TableHead>
-              <TableHead className="text-right">Loss</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading && <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">Loading…</TableCell></TableRow>}
-            {!isLoading && (ledger?.lines.length ?? 0) === 0 && <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No shrinkage recorded in this range.</TableCell></TableRow>}
-            {ledger?.lines.map(line => (
-              <TableRow key={line.id}>
-                <TableCell className="text-xs">{format(new Date(line.createdAt), 'MMM d, yyyy')}</TableCell>
-                <TableCell className="font-medium">{line.itemName}</TableCell>
-                <TableCell className="text-xs text-muted-foreground">{line.sku}</TableCell>
-                <TableCell className="text-right">{line.expectedStock}</TableCell>
-                <TableCell className="text-right">{line.actualCount}</TableCell>
-                <TableCell className={`text-right font-mono ${line.variance < 0 ? 'text-destructive' : 'text-emerald-600'}`}>{line.variance > 0 ? '+' : ''}{line.variance}</TableCell>
-                <TableCell className="text-right font-mono">{fmt$(line.totalLoss)}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-    </div>
-  );
-}
-
 // ─── Main Page ────────────────────────────────────────────────────────────────────
 
 export default function TaskBundlesPage() {
@@ -720,12 +661,10 @@ export default function TaskBundlesPage() {
           <TabsTrigger value="my-tasks" className="gap-1.5"><PlayCircle className="w-3.5 h-3.5" /> My Tasks</TabsTrigger>
           {isAdmin && <TabsTrigger value="bundles" className="gap-1.5"><ListChecks className="w-3.5 h-3.5" /> Bundles</TabsTrigger>}
           {isAdmin && <TabsTrigger value="log" className="gap-1.5"><History className="w-3.5 h-3.5" /> Completion Log</TabsTrigger>}
-          {isAdmin && <TabsTrigger value="shrinkage" className="gap-1.5"><PackageSearch className="w-3.5 h-3.5" /> Shrinkage Report</TabsTrigger>}
         </TabsList>
         <TabsContent value="my-tasks" className="mt-4"><MyTasksTab /></TabsContent>
         {isAdmin && <TabsContent value="bundles" className="mt-4"><BundlesTab /></TabsContent>}
         {isAdmin && <TabsContent value="log" className="mt-4"><CompletionLogTab /></TabsContent>}
-        {isAdmin && <TabsContent value="shrinkage" className="mt-4"><ShrinkageReportTab /></TabsContent>}
       </Tabs>
     </div>
   );

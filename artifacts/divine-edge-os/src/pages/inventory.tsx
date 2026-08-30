@@ -34,9 +34,11 @@ import {
   Search, Plus, AlertTriangle, Package, DollarSign, Edit, Trash2,
   TrendingUp, ArrowRight, Eye, EyeOff, PlusCircle, MinusCircle,
   Warehouse, Truck, ArrowLeftRight, MapPin, Building2,
+  PackageSearch,
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDebounce } from '@/hooks/use-debounce';
+import { ShrinkageReport } from '@/components/inventory/ShrinkageReport';
 
 function ItemLocationSection({ inventoryItemId }: { inventoryItemId: number }) {
   const { data: locationStock } = useGetInventoryItemByLocation(inventoryItemId, {
@@ -204,8 +206,9 @@ const EMPTY_FORM: ItemForm = {
 
 export default function InventoryPage() {
   const [, setLocation] = useLocation();
-  const { user, isTechnician } = useAuth();
+  const { user, isTechnician, isOwner, isManager, isDepartmentManager, isCrewManager, canManageOffice } = useAuth();
   const canManage = !isTechnician;
+  const isAdmin = isOwner || isManager || isDepartmentManager || isCrewManager || canManageOffice;
   const qc = useQueryClient();
 
   const [search, setSearch] = useState('');
@@ -216,7 +219,7 @@ export default function InventoryPage() {
   const [sellPreview, setSellPreview] = useState<number | null>(null);
 
   // Locations
-  const [activeTab, setActiveTab] = useState<'all' | 'by-location' | 'by-location-overview'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'by-location' | 'by-location-overview' | 'shrinkage'>('all');
   const [selectedLocationId, setSelectedLocationId] = useState<number | 'all'>('all');
   const [locDialogOpen, setLocDialogOpen] = useState(false);
   const [locForm, setLocForm] = useState({ name: '', description: '', type: 'warehouse' as 'warehouse' | 'trailer' | 'other' });
@@ -558,6 +561,15 @@ export default function InventoryPage() {
             {loc.name}
           </button>
         ))}
+        {isAdmin && (
+          <button
+            title="Review inventory count variances and shrinkage loss"
+            onClick={() => { setActiveTab('shrinkage'); setSelectedLocationId('all'); }}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors flex items-center gap-1.5 ${activeTab === 'shrinkage' ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-muted border-border'}`}
+          >
+            <PackageSearch className="w-3 h-3" /> Shrinkage
+          </button>
+        )}
         {canManage && (
           <Button
             variant="ghost"
@@ -572,7 +584,7 @@ export default function InventoryPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {activeTab !== 'shrinkage' && <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardContent className="p-6 flex items-center justify-between">
             <div>
@@ -606,7 +618,9 @@ export default function InventoryPage() {
             </div>
           </CardContent>
         </Card>
-      </div>
+      </div>}
+
+      {activeTab === 'shrinkage' && isAdmin && <ShrinkageReport />}
 
       {/* By-Location Overview — all locations at once */}
       {activeTab === 'by-location-overview' && (

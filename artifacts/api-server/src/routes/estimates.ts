@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, estimatesTable, visitsTable, jobsTable, customersTable, propertiesTable, usersTable, tenantsTable, blueprintsTable, communicationsLogTable, estimateTemplatesTable, invoicesTable } from "@workspace/db";
-import { eq, and, sql, desc } from "drizzle-orm";
+import { eq, and, sql, desc, isNull } from "drizzle-orm";
 import { getStripeClient, getStripePublishableKey, ensureStripeCustomer } from "../lib/stripe";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { getCallerRole } from "../lib/roles";
@@ -303,6 +303,7 @@ function formatEstimate(
     sentAt: e.sentAt?.toISOString() ?? null,
     approvedAt: e.approvedAt?.toISOString() ?? null,
     declinedAt: e.declinedAt?.toISOString() ?? null,
+    archivedAt: e.archivedAt?.toISOString() ?? null,
     depositPaidAt: e.depositPaidAt?.toISOString() ?? null,
     createdAt: e.createdAt.toISOString(),
     updatedAt: e.updatedAt.toISOString(),
@@ -354,9 +355,11 @@ function validatePaymentTerms(
 // ── LIST ──────────────────────────────────────────────────────────────────────
 router.get("/estimates", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { status, assigneeId, customerId, startDate, endDate } = req.query as Record<string, string>;
+  const { status, assigneeId, customerId, startDate, endDate, includeArchived } = req.query as Record<string, string>;
 
-  let where = eq(estimatesTable.tenantId, tenantId) as ReturnType<typeof eq>;
+  let where = includeArchived === "true"
+    ? eq(estimatesTable.tenantId, tenantId)
+    : and(eq(estimatesTable.tenantId, tenantId), isNull(estimatesTable.archivedAt));
   if (status) where = and(where, eq(estimatesTable.status, status)) as typeof where;
   if (assigneeId) where = and(where, eq(estimatesTable.assigneeId, parseInt(assigneeId, 10))) as typeof where;
   if (customerId) where = and(where, eq(estimatesTable.customerId, parseInt(customerId, 10))) as typeof where;
@@ -391,7 +394,7 @@ router.get("/estimates/pipeline", async (req, res): Promise<void> => {
   const rows = await db
     .select({ status: estimatesTable.status, total: estimatesTable.total, lineItems: estimatesTable.lineItems })
     .from(estimatesTable)
-    .where(eq(estimatesTable.tenantId, tenantId));
+    .where(and(eq(estimatesTable.tenantId, tenantId), isNull(estimatesTable.archivedAt)));
 
   let pipelineValue = 0;
   let upsellRevenue = 0;

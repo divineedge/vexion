@@ -9,4 +9,8 @@
 export type ListInvoicesParams = {
 status?: string;
 customerId?: number;
+/**
+ * Include archived invoices; omitted or false returns active invoices only.
+ */
+includeArchived?: boolean;
 };

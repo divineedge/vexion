@@ -186,6 +186,9 @@ export interface Estimate {
      * @nullable
      */
   depositPaymentIntentId?: string | null;
+  isArchived?: boolean;
+  /** @nullable */
+  archivedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -261,6 +264,8 @@ export interface Invoice {
      * @nullable
      */
   paymentRemindersSent?: number[] | null;
+  /** @nullable */
+  archivedAt?: string | null;
   createdAt: string;
 }
 
@@ -1737,6 +1742,8 @@ export interface Job {
   smsReminderEnabled?: boolean;
   /** When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed. */
   holdFromBilling?: boolean;
+  /** @nullable */
+  archivedAt?: string | null;
   /** Tag names applied to this job */
   tags?: string[];
   /**
@@ -5937,6 +5944,10 @@ startDate?: string;
  */
 endDate?: string;
 customerId?: number;
+/**
+ * Include archived jobs; omitted or false returns active jobs only.
+ */
+includeArchived?: boolean;
 routeTemplateId?: number;
 };
 
@@ -6010,6 +6021,10 @@ availableForBlueprint?: boolean;
 export type ListInvoicesParams = {
 status?: string;
 customerId?: number;
+/**
+ * Include archived invoices; omitted or false returns active invoices only.
+ */
+includeArchived?: boolean;
 };
 
 export type ListReviewRequestsParams = {
@@ -6188,6 +6203,10 @@ assigneeId?: number;
 customerId?: number;
 startDate?: string;
 endDate?: string;
+/**
+ * Include archived estimates; omitted or false returns active estimates only.
+ */
+includeArchived?: boolean;
 };
 
 export type ResendEstimate200 = {
@@ -6348,3 +6367,4 @@ blueprintId?: number;
 export type GetRepairLogSummaryParams = {
 propertyId: number;
 };
+

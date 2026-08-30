@@ -1142,6 +1142,11 @@ paths:
           in: query
           schema:
             type: integer
+        - name: includeArchived
+          in: query
+          schema:
+            type: boolean
+          description: Include archived jobs; omitted or false returns active jobs only.
         - name: routeTemplateId
           in: query
           schema:
@@ -2324,6 +2329,11 @@ paths:
           in: query
           schema:
             type: integer
+        - name: includeArchived
+          in: query
+          schema:
+            type: boolean
+          description: Include archived invoices; omitted or false returns active invoices only.
       responses:
         "200":
           description: List of invoices
@@ -5667,6 +5677,11 @@ paths:
           in: query
           schema:
             type: string
+        - name: includeArchived
+          in: query
+          schema:
+            type: boolean
+          description: Include archived estimates; omitted or false returns active estimates only.
       responses:
         "200":
           description: List of estimates
@@ -8227,6 +8242,11 @@ components:
         depositPaymentIntentId:
           type: ["string", "null"]
           description: "Stripe PaymentIntent ID for the deposit charge"
+        isArchived:
+          type: boolean
+        archivedAt:
+          type: ["string", "null"]
+          format: date-time
         createdAt:
           type: string
         updatedAt:
@@ -9961,6 +9981,9 @@ components:
         holdFromBilling:
           type: boolean
           description: "When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed."
+        archivedAt:
+          type: ["string", "null"]
+          format: date-time
         tags:
           type: array
           items:
@@ -10745,6 +10768,9 @@ components:
           items:
             type: integer
           description: "Offset days for which a payment reminder has already been sent"
+        archivedAt:
+          type: ["string", "null"]
+          format: date-time
         createdAt:
           type: string
 

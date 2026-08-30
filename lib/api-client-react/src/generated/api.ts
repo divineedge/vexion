@@ -29577,3 +29577,4 @@ export const useDeleteRepairLog = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getDeleteRepairLogMutationOptions(options));
     }
+

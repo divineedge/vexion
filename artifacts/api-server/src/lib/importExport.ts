@@ -251,13 +251,24 @@ export async function parseUploadedSpreadsheet(
       );
     });
     const [headers, ...rows] = all;
-    return { headers: headers ?? [], rows };
+    return { headers: makeUniqueHeaders(headers ?? []), rows };
   }
 
   const text = buffer.toString("utf-8");
   const all = parseCsv(text);
   const [headers, ...rows] = all;
-  return { headers: headers ?? [], rows };
+  return { headers: makeUniqueHeaders(headers ?? []), rows };
+}
+
+/** Keeps every uploaded column selectable even when the source has blank or duplicate headers. */
+function makeUniqueHeaders(headers: string[]): string[] {
+  const counts = new Map<string, number>();
+  return headers.map((raw, index) => {
+    const base = raw.trim() || `Column ${index + 1}`;
+    const count = (counts.get(base) ?? 0) + 1;
+    counts.set(base, count);
+    return count === 1 ? base : `${base} (${count})`;
+  });
 }
 
 function normalizeHeader(s: string): string {
@@ -395,7 +406,11 @@ export async function handleImportCommit(
     const raw: ParsedRow = {};
     for (const field of config.fields) {
       const header = mapping[field.key];
-      const idx = header != null ? headerIndex.get(header) : undefined;
+      const idx = typeof header === "string" && header.startsWith("__column_")
+        ? Number.parseInt(header.slice("__column_".length), 10)
+        : header != null
+          ? headerIndex.get(header)
+          : undefined;
       raw[field.key] = idx !== undefined ? (rawRow[idx] ?? "").trim() : "";
     }
 

@@ -585,7 +585,12 @@ export default function CustomerDetailPage() {
       });
       qc.invalidateQueries({ queryKey: getGetCustomerQueryKey(id) });
       qc.invalidateQueries({ queryKey: ['customers'] });
-      toast.success(archived ? 'Customer archived' : 'Customer restored');
+      qc.invalidateQueries({ queryKey: getListEstimatesQueryKey({ customerId: id }) });
+      qc.invalidateQueries({ queryKey: getListInvoicesQueryKey({ customerId: id }) });
+      qc.invalidateQueries({ queryKey: ['jobs'] });
+      toast.success(archived
+        ? 'Customer, estimates, invoices, and jobs archived'
+        : 'Customer and related records restored');
       setArchiveDialogOpen(false);
       setLocation('/customers');
     } catch (error) {
@@ -1971,8 +1976,8 @@ export default function CustomerDetailPage() {
             <DialogTitle>{(customer as any).archivedAt ? 'Restore customer?' : 'Archive customer?'}</DialogTitle>
             <DialogDescription>
               {(customer as any).archivedAt
-                ? `Restore ${customer.name} and make the customer active again?`
-                : `Archive ${customer.name}? Their history will be retained, but they will no longer appear in active customer workflows.`}
+                ? `Restore ${customer.name}? Estimates, invoices, and jobs archived with this customer will also return to active lists.`
+                : `Archive ${customer.name}? Their estimates, invoices, and jobs will also be archived. All history will be retained.`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

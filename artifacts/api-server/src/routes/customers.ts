@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, customersTable, propertiesTable, jobsTable, invoicesTable, activityLogTable, propertyOwnershipHistoryTable, customerOtpSessionsTable, stopServiceFlagsTable, communicationsLogTable, tenantsTable } from "@workspace/db";
+import { db, customersTable, propertiesTable, jobsTable, invoicesTable, estimatesTable, activityLogTable, propertyOwnershipHistoryTable, customerOtpSessionsTable, stopServiceFlagsTable, communicationsLogTable, tenantsTable } from "@workspace/db";
 import { eq, and, ilike, sql, desc, isNull, ne, inArray } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { syncCustomerToMailchimp } from "../lib/mailchimpSync";
@@ -672,13 +672,72 @@ router.patch("/customers/:id", async (req, res): Promise<void> => {
       res.status(400).json({ error: "archivedAt must be an ISO timestamp string or null" });
       return;
     }
-    updates.archivedAt = archivedAt === null ? null : new Date(archivedAt);
   }
 
-  const [updated] = await db.update(customersTable)
-    .set(updates)
-    .where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)))
-    .returning();
+  const [updated] = await db.transaction(async (tx) => {
+    if (archivedAt !== undefined) {
+      const isArchiving = archivedAt !== null;
+      const archiveStateChanged = isArchiving !== (existing.archivedAt !== null);
+
+      if (archiveStateChanged && isArchiving) {
+        const cascadeArchivedAt = new Date(archivedAt);
+        updates.archivedAt = cascadeArchivedAt;
+        await Promise.all([
+          tx.update(estimatesTable)
+            .set({ isArchived: true, archivedAt: cascadeArchivedAt })
+            .where(and(
+              eq(estimatesTable.tenantId, tenantId),
+              eq(estimatesTable.customerId, id),
+              isNull(estimatesTable.archivedAt),
+            )),
+          tx.update(invoicesTable)
+            .set({ archivedAt: cascadeArchivedAt })
+            .where(and(
+              eq(invoicesTable.tenantId, tenantId),
+              eq(invoicesTable.customerId, id),
+              isNull(invoicesTable.archivedAt),
+            )),
+          tx.update(jobsTable)
+            .set({ archivedAt: cascadeArchivedAt })
+            .where(and(
+              eq(jobsTable.tenantId, tenantId),
+              eq(jobsTable.customerId, id),
+              isNull(jobsTable.archivedAt),
+            )),
+        ]);
+      } else if (archiveStateChanged && existing.archivedAt) {
+        updates.archivedAt = null;
+        await Promise.all([
+          tx.update(estimatesTable)
+            .set({ isArchived: false, archivedAt: null })
+            .where(and(
+              eq(estimatesTable.tenantId, tenantId),
+              eq(estimatesTable.customerId, id),
+              eq(estimatesTable.archivedAt, existing.archivedAt),
+            )),
+          tx.update(invoicesTable)
+            .set({ archivedAt: null })
+            .where(and(
+              eq(invoicesTable.tenantId, tenantId),
+              eq(invoicesTable.customerId, id),
+              eq(invoicesTable.archivedAt, existing.archivedAt),
+            )),
+          tx.update(jobsTable)
+            .set({ archivedAt: null })
+            .where(and(
+              eq(jobsTable.tenantId, tenantId),
+              eq(jobsTable.customerId, id),
+              eq(jobsTable.archivedAt, existing.archivedAt),
+            )),
+        ]);
+      }
+    }
+
+    return tx.update(customersTable)
+      .set(updates)
+      .where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)))
+      .returning();
+  });
 
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
   if (tags !== undefined) void syncCustomerToMailchimp(tenantId, updated);

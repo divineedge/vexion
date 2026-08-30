@@ -149,6 +149,8 @@ export const jobsTable = pgTable("jobs", {
   rescheduleRequestStatus: text("reschedule_request_status"),
   /** Optional reply message staff send when responding to a reschedule request. */
   rescheduleRequestReply: text("reschedule_request_reply"),
+  /** Soft archive timestamp. Customer archive cascades use the same timestamp as the customer. */
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

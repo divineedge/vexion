@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, real, jsonb, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, jsonb, numeric, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -70,6 +70,9 @@ export const estimatesTable = pgTable("estimates", {
   /** Exact dollar amount charged when depositPaidAt was set. Used to validate
    *  that the final approved total matches what was collected; immutable once set. */
   depositChargedAmount: real("deposit_charged_amount"),
+  /** Soft archive state. Customer archive cascades use the same timestamp as the customer. */
+  isArchived: boolean("is_archived").notNull().default(false),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, invoicesTable, customersTable, jobsTable, activityLogTable, tenantsTable, integrationSyncLogsTable, customerPlansTable, stopServiceFlagsTable, invoiceTemplatesTable, propertiesTable } from "@workspace/db";
-import { eq, and, sql, inArray, ne } from "drizzle-orm";
+import { eq, and, sql, inArray, ne, isNull } from "drizzle-orm";
 import crypto from "crypto";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
@@ -167,6 +167,7 @@ function formatInvoice(i: typeof invoicesTable.$inferSelect, customerName?: stri
     invoiceDate: i.invoiceDate ?? null,
     dueDate: i.dueDate?.toISOString() ?? null,
     paidAt: i.paidAt?.toISOString() ?? null,
+    archivedAt: i.archivedAt?.toISOString() ?? null,
     stripePaymentUrl: i.stripePaymentUrl ?? null,
     publicToken: i.publicToken ?? null,
     createdAt: i.createdAt.toISOString(),
@@ -211,9 +212,11 @@ router.get("/invoices/financials-summary", async (req, res): Promise<void> => {
 
 router.get("/invoices", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { status, customerId } = req.query as Record<string, string>;
+  const { status, customerId, includeArchived } = req.query as Record<string, string>;
 
-  let where = eq(invoicesTable.tenantId, tenantId) as ReturnType<typeof eq>;
+  let where = includeArchived === "true"
+    ? eq(invoicesTable.tenantId, tenantId)
+    : and(eq(invoicesTable.tenantId, tenantId), isNull(invoicesTable.archivedAt));
   if (status) where = and(where, eq(invoicesTable.status, status)) as typeof where;
   if (customerId) where = and(where, eq(invoicesTable.customerId, parseInt(customerId, 10))) as typeof where;
 

@@ -12,4 +12,8 @@ assigneeId?: number;
 customerId?: number;
 startDate?: string;
 endDate?: string;
+/**
+ * Include archived estimates; omitted or false returns active estimates only.
+ */
+includeArchived?: boolean;
 };

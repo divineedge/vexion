@@ -38,6 +38,7 @@ interface ImportExportControlsProps {
 }
 
 type WizardStep = 'upload' | 'mapping' | 'result';
+const columnKey = (index: number) => `__column_${index}`;
 
 export function ImportExportControls({ entity, entityLabel, exportQuery = {}, onImportComplete }: ImportExportControlsProps) {
   const [exporting, setExporting] = useState(false);
@@ -86,7 +87,12 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
       {
         onSuccess: (data) => {
           setPreview(data);
-          setMapping(data.suggestedMapping);
+          setMapping(Object.fromEntries(
+            Object.entries(data.suggestedMapping).map(([fieldKey, header]) => {
+              const index = header == null ? -1 : data.headers.indexOf(header);
+              return [fieldKey, index >= 0 ? columnKey(index) : null];
+            }),
+          ));
           setStep('mapping');
         },
         onError: () => toast.error('Could not read that file. Make sure it is a CSV or XLSX file.'),
@@ -214,8 +220,10 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="__none__">Don't import</SelectItem>
-                              {preview.headers.map((h) => (
-                                <SelectItem key={h} value={h}>{h}</SelectItem>
+                               {preview.headers.map((h, index) => (
+                                 <SelectItem key={columnKey(index)} value={columnKey(index)}>
+                                   {h || `Column ${index + 1}`}
+                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>

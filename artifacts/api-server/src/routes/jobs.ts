@@ -318,6 +318,7 @@ function formatJob(
     jobParts: (j.jobParts as unknown[]) ?? [],
     scheduledAt: j.scheduledAt.toISOString(),
     completedAt: j.completedAt?.toISOString() ?? null,
+    archivedAt: j.archivedAt?.toISOString() ?? null,
     createdAt: j.createdAt.toISOString(),
     customerName: extras?.customerName ?? null,
     customerPhone: extras?.customerPhone ?? null,
@@ -364,7 +365,7 @@ function formatJob(
 router.get("/jobs", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
-  const { status, assigneeId, startDate, endDate, customerId, crewId, routeTemplateId, propertyId } = req.query as Record<string, string>;
+  const { status, assigneeId, startDate, endDate, customerId, crewId, routeTemplateId, propertyId, includeArchived } = req.query as Record<string, string>;
 
   const start = startDate ? new Date(startDate) : null;
   const end = endDate ? new Date(endDate) : null;
@@ -377,7 +378,9 @@ router.get("/jobs", async (req, res): Promise<void> => {
     return;
   }
 
-  let where = eq(jobsTable.tenantId, tenantId) as ReturnType<typeof eq>;
+  let where = includeArchived === "true"
+    ? eq(jobsTable.tenantId, tenantId)
+    : and(eq(jobsTable.tenantId, tenantId), isNull(jobsTable.archivedAt));
   const callerRole = await getCallerRole(tenantId, userId);
   if (callerRole === "technician") {
     // Technician visibility is derived solely from the authenticated user, never

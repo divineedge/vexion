@@ -80,6 +80,9 @@ export interface Estimate {
      * @nullable
      */
   depositPaymentIntentId?: string | null;
+  isArchived?: boolean;
+  /** @nullable */
+  archivedAt?: Date | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -117,6 +117,8 @@ export interface Job {
   smsReminderEnabled?: boolean;
   /** When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed. */
   holdFromBilling?: boolean;
+  /** @nullable */
+  archivedAt?: Date | null;
   /** Tag names applied to this job */
   tags?: string[];
   /**

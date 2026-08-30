@@ -66,6 +66,8 @@ export const invoicesTable = pgTable("invoices", {
   lateFeeAmount: real("late_fee_amount"),
   /** Grace-period days before the late fee applies */
   lateFeeDaysGrace: integer("late_fee_days_grace"),
+  /** Soft archive timestamp. Customer archive cascades use the same timestamp as the customer. */
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 }, (table) => [

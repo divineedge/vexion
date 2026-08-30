@@ -41,5 +41,7 @@ export interface Invoice {
      * @nullable
      */
   paymentRemindersSent?: number[] | null;
+  /** @nullable */
+  archivedAt?: Date | null;
   createdAt: string;
 }

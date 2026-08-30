@@ -1585,6 +1585,7 @@ export const ListJobsQueryParams = zod.object({
   "startDate": zod.date().optional().describe('Inclusive ISO-8601 timestamp for the scheduled date range.'),
   "endDate": zod.date().optional().describe('Exclusive ISO-8601 timestamp for the scheduled date range. Use the next local-day boundary to include an entire day.'),
   "customerId": zod.coerce.number().optional(),
+  "includeArchived": zod.coerce.boolean().optional().describe('Include archived jobs; omitted or false returns active jobs only.'),
   "routeTemplateId": zod.coerce.number().optional()
 })
 
@@ -1667,6 +1668,7 @@ export const ListJobsResponseItem = zod.object({
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
+  "archivedAt": zod.coerce.date().nullish(),
   "tags": zod.array(zod.string()).optional().describe('Tag names applied to this job'),
   "skipReasonId": zod.number().nullish().describe('FK to skip_reasons — set when this occurrence was skipped with a reason'),
   "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
@@ -1799,6 +1801,7 @@ export const CreateJobResponse = zod.object({
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
+  "archivedAt": zod.coerce.date().nullish(),
   "tags": zod.array(zod.string()).optional().describe('Tag names applied to this job'),
   "skipReasonId": zod.number().nullish().describe('FK to skip_reasons — set when this occurrence was skipped with a reason'),
   "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
@@ -1896,6 +1899,7 @@ export const GetJobResponse = zod.object({
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
+  "archivedAt": zod.coerce.date().nullish(),
   "tags": zod.array(zod.string()).optional().describe('Tag names applied to this job'),
   "skipReasonId": zod.number().nullish().describe('FK to skip_reasons — set when this occurrence was skipped with a reason'),
   "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
@@ -2030,6 +2034,7 @@ export const UpdateJobResponse = zod.object({
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
+  "archivedAt": zod.coerce.date().nullish(),
   "tags": zod.array(zod.string()).optional().describe('Tag names applied to this job'),
   "skipReasonId": zod.number().nullish().describe('FK to skip_reasons — set when this occurrence was skipped with a reason'),
   "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
@@ -2174,6 +2179,7 @@ export const SkipNextOccurrenceResponse = zod.object({
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
+  "archivedAt": zod.coerce.date().nullish(),
   "tags": zod.array(zod.string()).optional().describe('Tag names applied to this job'),
   "skipReasonId": zod.number().nullish().describe('FK to skip_reasons — set when this occurrence was skipped with a reason'),
   "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
@@ -2276,6 +2282,7 @@ export const PauseRecurringSeriesResponse = zod.object({
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
+  "archivedAt": zod.coerce.date().nullish(),
   "tags": zod.array(zod.string()).optional().describe('Tag names applied to this job'),
   "skipReasonId": zod.number().nullish().describe('FK to skip_reasons — set when this occurrence was skipped with a reason'),
   "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
@@ -2387,6 +2394,7 @@ export const CompleteJobResponse = zod.object({
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
+  "archivedAt": zod.coerce.date().nullish(),
   "tags": zod.array(zod.string()).optional().describe('Tag names applied to this job'),
   "skipReasonId": zod.number().nullish().describe('FK to skip_reasons — set when this occurrence was skipped with a reason'),
   "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
@@ -2431,6 +2439,7 @@ export const CompleteAndInvoiceJobResponse = zod.object({
   "lobStatus": zod.string().nullish(),
   "publicToken": zod.string().nullish(),
   "paymentRemindersSent": zod.array(zod.number()).nullish().describe('Offset days for which a payment reminder has already been sent'),
+  "archivedAt": zod.coerce.date().nullish(),
   "createdAt": zod.string()
 })
 
@@ -2543,6 +2552,7 @@ export const AddJobPartResponse = zod.object({
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
+  "archivedAt": zod.coerce.date().nullish(),
   "tags": zod.array(zod.string()).optional().describe('Tag names applied to this job'),
   "skipReasonId": zod.number().nullish().describe('FK to skip_reasons — set when this occurrence was skipped with a reason'),
   "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
@@ -2641,6 +2651,7 @@ export const RemoveJobPartResponse = zod.object({
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
+  "archivedAt": zod.coerce.date().nullish(),
   "tags": zod.array(zod.string()).optional().describe('Tag names applied to this job'),
   "skipReasonId": zod.number().nullish().describe('FK to skip_reasons — set when this occurrence was skipped with a reason'),
   "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
@@ -3685,7 +3696,8 @@ export const UpdateBlueprintSuggestedPartsResponse = zod.array(UpdateBlueprintSu
  */
 export const ListInvoicesQueryParams = zod.object({
   "status": zod.coerce.string().optional(),
-  "customerId": zod.coerce.number().optional()
+  "customerId": zod.coerce.number().optional(),
+  "includeArchived": zod.coerce.boolean().optional().describe('Include archived invoices; omitted or false returns active invoices only.')
 })
 
 export const ListInvoicesResponseItem = zod.object({
@@ -3714,6 +3726,7 @@ export const ListInvoicesResponseItem = zod.object({
   "lobStatus": zod.string().nullish(),
   "publicToken": zod.string().nullish(),
   "paymentRemindersSent": zod.array(zod.number()).nullish().describe('Offset days for which a payment reminder has already been sent'),
+  "archivedAt": zod.coerce.date().nullish(),
   "createdAt": zod.string()
 })
 export const ListInvoicesResponse = zod.array(ListInvoicesResponseItem)
@@ -3760,6 +3773,7 @@ export const CreateInvoiceResponse = zod.object({
   "lobStatus": zod.string().nullish(),
   "publicToken": zod.string().nullish(),
   "paymentRemindersSent": zod.array(zod.number()).nullish().describe('Offset days for which a payment reminder has already been sent'),
+  "archivedAt": zod.coerce.date().nullish(),
   "createdAt": zod.string()
 })
 
@@ -3797,6 +3811,7 @@ export const GetInvoiceResponse = zod.object({
   "lobStatus": zod.string().nullish(),
   "publicToken": zod.string().nullish(),
   "paymentRemindersSent": zod.array(zod.number()).nullish().describe('Offset days for which a payment reminder has already been sent'),
+  "archivedAt": zod.coerce.date().nullish(),
   "createdAt": zod.string()
 })
 
@@ -3840,6 +3855,7 @@ export const UpdateInvoiceResponse = zod.object({
   "lobStatus": zod.string().nullish(),
   "publicToken": zod.string().nullish(),
   "paymentRemindersSent": zod.array(zod.number()).nullish().describe('Offset days for which a payment reminder has already been sent'),
+  "archivedAt": zod.coerce.date().nullish(),
   "createdAt": zod.string()
 })
 
@@ -3877,6 +3893,7 @@ export const CreateInvoiceFromJobResponse = zod.object({
   "lobStatus": zod.string().nullish(),
   "publicToken": zod.string().nullish(),
   "paymentRemindersSent": zod.array(zod.number()).nullish().describe('Offset days for which a payment reminder has already been sent'),
+  "archivedAt": zod.coerce.date().nullish(),
   "createdAt": zod.string()
 })
 
@@ -7473,6 +7490,7 @@ export const DismissJobRescheduleRequestResponse = zod.object({
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
+  "archivedAt": zod.coerce.date().nullish(),
   "tags": zod.array(zod.string()).optional().describe('Tag names applied to this job'),
   "skipReasonId": zod.number().nullish().describe('FK to skip_reasons — set when this occurrence was skipped with a reason'),
   "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
@@ -7570,6 +7588,7 @@ export const ApproveJobCancellationResponse = zod.object({
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
+  "archivedAt": zod.coerce.date().nullish(),
   "tags": zod.array(zod.string()).optional().describe('Tag names applied to this job'),
   "skipReasonId": zod.number().nullish().describe('FK to skip_reasons — set when this occurrence was skipped with a reason'),
   "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
@@ -7671,6 +7690,7 @@ export const DenyJobCancellationResponse = zod.object({
   "originalScheduledDate": zod.string().nullish(),
   "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
   "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
+  "archivedAt": zod.coerce.date().nullish(),
   "tags": zod.array(zod.string()).optional().describe('Tag names applied to this job'),
   "skipReasonId": zod.number().nullish().describe('FK to skip_reasons — set when this occurrence was skipped with a reason'),
   "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
@@ -8646,7 +8666,8 @@ export const ListEstimatesQueryParams = zod.object({
   "assigneeId": zod.coerce.number().optional(),
   "customerId": zod.coerce.number().optional(),
   "startDate": zod.coerce.string().optional(),
-  "endDate": zod.coerce.string().optional()
+  "endDate": zod.coerce.string().optional(),
+  "includeArchived": zod.coerce.boolean().optional().describe('Include archived estimates; omitted or false returns active estimates only.')
 })
 
 export const ListEstimatesResponseItem = zod.object({
@@ -8698,6 +8719,8 @@ export const ListEstimatesResponseItem = zod.object({
   "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
   "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),
   "depositPaymentIntentId": zod.string().nullish().describe('Stripe PaymentIntent ID for the deposit charge'),
+  "isArchived": zod.boolean().optional(),
+  "archivedAt": zod.coerce.date().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -8789,6 +8812,8 @@ export const CreateEstimateResponse = zod.object({
   "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
   "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),
   "depositPaymentIntentId": zod.string().nullish().describe('Stripe PaymentIntent ID for the deposit charge'),
+  "isArchived": zod.boolean().optional(),
+  "archivedAt": zod.coerce.date().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -8859,6 +8884,8 @@ export const GetEstimateResponse = zod.object({
   "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
   "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),
   "depositPaymentIntentId": zod.string().nullish().describe('Stripe PaymentIntent ID for the deposit charge'),
+  "isArchived": zod.boolean().optional(),
+  "archivedAt": zod.coerce.date().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -8952,6 +8979,8 @@ export const UpdateEstimateResponse = zod.object({
   "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
   "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),
   "depositPaymentIntentId": zod.string().nullish().describe('Stripe PaymentIntent ID for the deposit charge'),
+  "isArchived": zod.boolean().optional(),
+  "archivedAt": zod.coerce.date().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -9023,6 +9052,8 @@ export const SendEstimateResponse = zod.object({
   "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
   "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),
   "depositPaymentIntentId": zod.string().nullish().describe('Stripe PaymentIntent ID for the deposit charge'),
+  "isArchived": zod.boolean().optional(),
+  "archivedAt": zod.coerce.date().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -9087,6 +9118,7 @@ export const GetPublicInvoiceResponse = zod.object({
   "lobStatus": zod.string().nullish(),
   "publicToken": zod.string().nullish(),
   "paymentRemindersSent": zod.array(zod.number()).nullish().describe('Offset days for which a payment reminder has already been sent'),
+  "archivedAt": zod.coerce.date().nullish(),
   "createdAt": zod.string()
 }).and(zod.object({
   "businessProfile": zod.object({
@@ -9158,6 +9190,8 @@ export const GetPublicEstimateResponse = zod.object({
   "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
   "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),
   "depositPaymentIntentId": zod.string().nullish().describe('Stripe PaymentIntent ID for the deposit charge'),
+  "isArchived": zod.boolean().optional(),
+  "archivedAt": zod.coerce.date().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 }).and(zod.object({
@@ -9263,6 +9297,8 @@ export const RespondToEstimateResponse = zod.object({
   "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
   "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),
   "depositPaymentIntentId": zod.string().nullish().describe('Stripe PaymentIntent ID for the deposit charge'),
+  "isArchived": zod.boolean().optional(),
+  "archivedAt": zod.coerce.date().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -11188,6 +11224,7 @@ export const PrintMailInvoiceResponse = zod.object({
   "lobStatus": zod.string().nullish(),
   "publicToken": zod.string().nullish(),
   "paymentRemindersSent": zod.array(zod.number()).nullish().describe('Offset days for which a payment reminder has already been sent'),
+  "archivedAt": zod.coerce.date().nullish(),
   "createdAt": zod.string()
 })
 
@@ -12581,3 +12618,5 @@ export const DeleteRepairLogParams = zod.object({
 })
 
 export const DeleteRepairLogResponse = zod.void()
+
+

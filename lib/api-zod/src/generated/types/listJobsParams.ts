@@ -21,5 +21,9 @@ startDate?: Date;
  */
 endDate?: Date;
 customerId?: number;
+/**
+ * Include archived jobs; omitted or false returns active jobs only.
+ */
+includeArchived?: boolean;
 routeTemplateId?: number;
 };

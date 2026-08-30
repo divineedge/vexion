@@ -23,6 +23,9 @@ import {
   useStopMasterClock,
   getGetRouteDayDetailQueryOptions,
   getGetJobQueryOptions,
+  getGetVisitQueryOptions,
+  getListVisitsQueryOptions,
+  getListVisitsQueryKey,
   getGetStaffMessagesUnreadSummaryQueryKey,
   useGetStaffMessagesUnreadSummary,
 } from '@workspace/api-client-react';
@@ -52,6 +55,16 @@ type Job = {
   recurrenceParentId?: number | null;
   routeTemplateId?: number | null;
   sequenceOrder?: number | null;
+};
+
+type Visit = {
+  id: number;
+  purpose: string;
+  visitMode: string;
+  scheduledAt?: string | null;
+  completedAt?: string | null;
+  propertyAddress?: string | null;
+  customerName?: string | null;
 };
 
 type RouteStopInfo = {
@@ -187,6 +200,60 @@ function JobCard({
   );
 }
 
+function VisitCard({
+  visit,
+  onPress,
+  onPressIn,
+  colors,
+}: {
+  visit: Visit;
+  onPress: () => void;
+  onPressIn: () => void;
+  colors: ReturnType<typeof useColors>;
+}) {
+  const completed = Boolean(visit.completedAt);
+  const status = completed ? colors.statusCompleted : colors.statusScheduled;
+  return (
+    <TouchableOpacity
+      style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
+      onPress={onPress}
+      onPressIn={onPressIn}
+      activeOpacity={0.8}
+      testID={`visit-card-${visit.id}`}
+    >
+      <View style={styles.cardMain}>
+        <View style={styles.cardLeft}>
+          <View style={[styles.statusDot, { backgroundColor: status }]} />
+          <View style={styles.cardBody}>
+            <View style={styles.visitTitleRow}>
+              <Text style={[styles.jobTitle, { color: colors.foreground }]} numberOfLines={1}>{visit.purpose}</Text>
+              <View style={[styles.visitBadge, { backgroundColor: colors.primary + '16' }]}>
+                <Text style={[styles.visitBadgeText, { color: colors.primary }]}>VISIT</Text>
+              </View>
+            </View>
+            {visit.propertyAddress ? (
+              <View style={styles.metaRow}>
+                <Ionicons name="location-outline" size={13} color={colors.mutedForeground} />
+                <Text style={[styles.metaText, { color: colors.mutedForeground }]} numberOfLines={1}>{visit.propertyAddress}</Text>
+              </View>
+            ) : null}
+            {visit.scheduledAt ? (
+              <View style={styles.metaRow}>
+                <Ionicons name="calendar-outline" size={13} color={colors.mutedForeground} />
+                <Text style={[styles.metaText, { color: colors.mutedForeground }]}>{formatDate(visit.scheduledAt)}</Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+        <View style={styles.cardRight}>
+          <Text style={[styles.statusText, { color: status }]}>{completed ? 'Completed' : 'Scheduled'}</Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.mutedForeground} />
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 export default function JobsScreen() {
   const colors = useColors();
   const queryClient = useQueryClient();
@@ -210,6 +277,12 @@ export default function JobsScreen() {
   const { data: jobs, isLoading, isError, refetch, isFetching } = useListJobs(
     { startDate: period.startDate, endDate: period.endDate }
   );
+  const visitResults = useQueries({
+    queries: period.dayKeys.map(date => getListVisitsQueryOptions(
+      { date },
+      { query: { queryKey: getListVisitsQueryKey({ date }), enabled: !isOffline } },
+    )),
+  });
   const { data: messageUnread, refetch: refetchMessageUnread } = useGetStaffMessagesUnreadSummary({
     query: {
       queryKey: getGetStaffMessagesUnreadSummaryQueryKey(),
@@ -280,6 +353,13 @@ export default function JobsScreen() {
   }, [isError, reportNetworkStatus, getCachedJobs, period.rangeKey]);
 
   const displayJobs: Job[] = (isError ? cachedJobs : (jobs as Job[] | undefined)) ?? [];
+  const displayVisits = useMemo(() => {
+    const byId = new Map<number, Visit>();
+    for (const result of visitResults) {
+      for (const visit of (result.data as Visit[] | undefined) ?? []) byId.set(visit.id, visit);
+    }
+    return Array.from(byId.values());
+  }, [visitResults]);
   const selectedDayJobs = useMemo(
     () => displayJobs.filter(job => tenantDateKey(new Date(job.scheduledAt), tenantTimezone) === selectedDateKey),
     [displayJobs, selectedDateKey, tenantTimezone],
@@ -341,6 +421,20 @@ export default function JobsScreen() {
     }
     return result;
   }, [displayJobs, jobSearch, jobStatusFilter]);
+  const searchedVisits = useMemo(() => {
+    let result = displayVisits;
+    if (jobSearch.trim()) {
+      const query = jobSearch.toLowerCase();
+      result = result.filter(visit =>
+        visit.purpose.toLowerCase().includes(query) ||
+        (visit.customerName ?? '').toLowerCase().includes(query) ||
+        (visit.propertyAddress ?? '').toLowerCase().includes(query),
+      );
+    }
+    if (jobStatusFilter === 'scheduled') result = result.filter(visit => !visit.completedAt);
+    if (jobStatusFilter === 'completed') result = result.filter(visit => Boolean(visit.completedAt));
+    return result;
+  }, [displayVisits, jobSearch, jobStatusFilter]);
 
   const groupedJobs = useMemo(() => {
     const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
@@ -365,6 +459,13 @@ export default function JobsScreen() {
     }));
   }, [searchedJobs, period.dayKeys, routeStopMap, tenantTimezone]);
   const sortedJobs = groupedJobs.flatMap(group => group.jobs);
+  const groupedVisits = useMemo(() => period.dayKeys.map(key => ({
+    key,
+    visits: searchedVisits
+      .filter(visit => visit.scheduledAt && tenantDateKey(new Date(visit.scheduledAt), tenantTimezone) === key)
+      .sort((a, b) => new Date(a.scheduledAt ?? 0).getTime() - new Date(b.scheduledAt ?? 0).getTime()),
+  })), [period.dayKeys, searchedVisits, tenantTimezone]);
+  const selectedVisits = groupedVisits.find(group => group.key === selectedDateKey)?.visits ?? [];
   const selectedDayClockJobs = useMemo(() => [...selectedDayJobs].sort((a, b) => {
     const aStop = routeStopMap.get(a.id);
     const bStop = routeStopMap.get(b.id);
@@ -398,12 +499,22 @@ export default function JobsScreen() {
   const prefetchJobDetail = useCallback((id: number) => {
     void queryClient.prefetchQuery(getGetJobQueryOptions(id));
   }, [queryClient]);
+  const prefetchVisitDetail = useCallback((id: number) => {
+    void queryClient.prefetchQuery(getGetVisitQueryOptions(id));
+  }, [queryClient]);
 
   const handleJobPress = useCallback(async (id: number) => {
     await Haptics.selectionAsync();
     router.push({
       pathname: '/(app)/job/[id]',
         params: { id: String(id), scheduleMode, scheduleDate: selectedDateKey },
+    });
+  }, [scheduleMode, selectedDateKey]);
+  const handleVisitPress = useCallback(async (id: number) => {
+    await Haptics.selectionAsync();
+    router.push({
+      pathname: '/(app)/visit/[id]',
+      params: { id: String(id), scheduleMode, scheduleDate: selectedDateKey },
     });
   }, [scheduleMode, selectedDateKey]);
 
@@ -605,10 +716,12 @@ export default function JobsScreen() {
         </View>
         {scheduleMode === 'week' && (
           <View style={styles.weekSummary}>
-            {groupedJobs.map(group => (
+            {groupedJobs.map((group, index) => (
               <TouchableOpacity key={group.key} onPress={() => setSchedule('day', group.key)} style={styles.weekDay}>
                 <Text style={[styles.weekDayName, { color: colors.mutedForeground }]}>{formatCalendarDateKey(group.key, 'weekdayNarrow')}</Text>
-                <Text style={[styles.weekDayCount, { color: group.jobs.length ? colors.primary : colors.mutedForeground }]}>{group.jobs.length}</Text>
+                <Text style={[styles.weekDayCount, { color: (group.jobs.length + (groupedVisits[index]?.visits.length ?? 0)) ? colors.primary : colors.mutedForeground }]}>
+                  {group.jobs.length + (groupedVisits[index]?.visits.length ?? 0)}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -671,29 +784,39 @@ export default function JobsScreen() {
       ) : (
         <FlatList
           data={scheduleMode === 'week'
-            ? groupedJobs.flatMap(group => [{ type: 'heading' as const, key: group.key, count: group.jobs.length }, ...group.jobs.map(job => ({ type: 'job' as const, job }))])
-            : sortedJobs.map(job => ({ type: 'job' as const, job }))}
-          keyExtractor={(item) => item.type === 'heading' ? `heading-${item.key}` : String(item.job.id)}
+            ? groupedJobs.flatMap((group, index) => [
+                { type: 'heading' as const, key: group.key, count: group.jobs.length + (groupedVisits[index]?.visits.length ?? 0) },
+                ...group.jobs.map(job => ({ type: 'job' as const, job })),
+                ...(groupedVisits[index]?.visits ?? []).map(visit => ({ type: 'visit' as const, visit })),
+              ])
+            : [
+                ...sortedJobs.map(job => ({ type: 'job' as const, job })),
+                ...selectedVisits.map(visit => ({ type: 'visit' as const, visit })),
+              ]}
+          keyExtractor={(item) => item.type === 'heading' ? `heading-${item.key}` : item.type === 'job' ? `job-${item.job.id}` : `visit-${item.visit.id}`}
           renderItem={({ item }) => item.type === 'heading' ? (
             <View style={styles.dayHeading}>
               <Text style={[styles.dayHeadingText, { color: colors.foreground }]}>{formatCalendarDateKey(item.key, 'full')}</Text>
-              <Text style={[styles.dayHeadingCount, { color: colors.mutedForeground }]}>{item.count} {item.count === 1 ? 'job' : 'jobs'}</Text>
+              <Text style={[styles.dayHeadingCount, { color: colors.mutedForeground }]}>{item.count} item{item.count === 1 ? '' : 's'}</Text>
             </View>
-          ) : (
+          ) : item.type === 'job' ? (
             <JobCard job={item.job} onPress={() => handleJobPress(item.job.id)} onPressIn={() => prefetchJobDetail(item.job.id)} colors={colors} routeStopInfo={routeStopMap.get(item.job.id)} />
+          ) : (
+            <VisitCard visit={item.visit} onPress={() => handleVisitPress(item.visit.id)} onPressIn={() => prefetchVisitDetail(item.visit.id)} colors={colors} />
           )}
           contentContainerStyle={[
             styles.list,
             { paddingBottom: bottomPad },
-            sortedJobs.length === 0 && styles.listEmpty,
+            sortedJobs.length === 0 && selectedVisits.length === 0 && styles.listEmpty,
           ]}
-          scrollEnabled={scheduleMode === 'week' || sortedJobs.length > 0}
+          scrollEnabled={scheduleMode === 'week' || sortedJobs.length > 0 || selectedVisits.length > 0}
           refreshControl={
             <RefreshControl
               refreshing={isFetching && !isLoading}
               onRefresh={() => {
                 void refetch();
                 void refetchMessageUnread();
+                visitResults.forEach(result => { void result.refetch(); });
               }}
               tintColor={colors.primary}
             />
@@ -701,9 +824,9 @@ export default function JobsScreen() {
           ListEmptyComponent={
             <View style={styles.emptyWrap}>
               <Ionicons name="briefcase-outline" size={52} color={colors.mutedForeground} />
-              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No jobs assigned</Text>
+              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No jobs or visits assigned</Text>
               <Text style={[styles.emptyBody, { color: colors.mutedForeground }]}>
-                Check back when jobs have been scheduled
+                Check back when work has been scheduled
               </Text>
             </View>
           }
@@ -745,6 +868,9 @@ const styles = StyleSheet.create({
   headerBtn: { padding: 6 },
   messageBadge: { position: 'absolute', right: -2, top: -2, minWidth: 16, height: 16, paddingHorizontal: 3, borderRadius: 8, backgroundColor: '#dc2626', alignItems: 'center', justifyContent: 'center' },
   messageBadgeText: { color: '#fff', fontSize: 9, fontFamily: 'Inter_600SemiBold' },
+  visitTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  visitBadge: { borderRadius: 5, paddingHorizontal: 5, paddingVertical: 2 },
+  visitBadgeText: { fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 0.5 },
   clockBanner: {
     flexDirection: 'row',
     alignItems: 'center',

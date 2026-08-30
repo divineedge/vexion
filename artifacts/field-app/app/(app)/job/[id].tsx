@@ -26,11 +26,16 @@ import {
   customFetch,
   getGetJobMessageUnreadCountQueryKey,
   useGetJobMessageUnreadCount,
+  useListJobMedia,
+  useAddJobMedia,
+  useDeleteJobMedia,
+  getListJobMediaQueryKey,
 } from '@workspace/api-client-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useColors } from '@/hooks/useColors';
 import { useOffline } from '@/contexts/OfflineContext';
 import { messagePollInterval } from '@/utils/messages';
+import { MediaAttachments } from '@/components/MediaAttachments';
 
 type RecurringJob = {
   id: number;
@@ -580,6 +585,12 @@ export default function JobDetailScreen() {
     jobId,
     { query: { queryKey: getGetJobQueryOptions(jobId).queryKey, placeholderData: cachedQueryJob } },
   );
+  const { data: jobMedia = [], isLoading: jobMediaLoading, refetch: refetchJobMedia } = useListJobMedia(
+    jobId,
+    { query: { queryKey: getListJobMediaQueryKey(jobId), enabled: Number.isInteger(jobId) && !isOffline } },
+  );
+  const addJobMedia = useAddJobMedia();
+  const deleteJobMedia = useDeleteJobMedia();
 
   // Query-cache data and persisted offline data are both valid shells while
   // the network query refreshes.
@@ -1001,6 +1012,16 @@ export default function JobDetailScreen() {
         {!isOffline && (
           <JobNotesSection jobId={jobId} job={displayJob as any} colors={colors} />
         )}
+
+        <MediaAttachments
+          media={jobMedia}
+          isLoading={jobMediaLoading}
+          isOffline={isOffline}
+          onAdd={data => addJobMedia.mutateAsync({ id: jobId, data })}
+          onDelete={mediaId => deleteJobMedia.mutateAsync({ id: jobId, mediaId })}
+          onRefresh={() => { void refetchJobMedia(); }}
+          uploadScope="job_media"
+        />
 
         {/* Applications section */}
         {requiresChemicalApplication && <View style={styles.section}>

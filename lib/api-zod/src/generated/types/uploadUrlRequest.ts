@@ -5,6 +5,7 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { UploadUrlRequestScope } from './uploadUrlRequestScope';
 
 export interface UploadUrlRequest {
   /** @minLength 1 */
@@ -13,4 +14,6 @@ export interface UploadUrlRequest {
   size: number;
   /** @minLength 1 */
   contentType: string;
+  /** Optional lifecycle scope for field media orphan cleanup */
+  scope?: UploadUrlRequestScope;
 }

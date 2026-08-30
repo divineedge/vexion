@@ -12,26 +12,98 @@ import {
   ObjectNotFoundError,
   ObjectStorageService,
 } from '../lib/objectStorage';
-import { db, mediaAttachmentsTable, customerOtpSessionsTable, tenantsTable } from '@workspace/db';
+import { db, mediaAttachmentsTable, customerOtpSessionsTable, tenantsTable, jobsTable, visitsTable, crewMembersTable } from '@workspace/db';
 import { eq, and, isNotNull, gt } from 'drizzle-orm';
 import { createHash } from 'crypto';
+import { requireVerifiedStaff, verifiedStaffIdentity } from '../lib/verifiedStaff';
+import { resolveStaffSession } from './auth';
+import { getCallerRole } from '../lib/roles';
 
 const router: IRouter = Router();
 export const objectStorageService = new ObjectStorageService();
 
-function hasAuthenticatedSession(req: Request): boolean {
-  // Use header-based auth (x-user-id) consistent with the rest of the API
-  const userId = req.headers['x-user-id'];
-  const val = Array.isArray(userId) ? userId[0] : userId;
-  const id = parseInt(val ?? '', 10);
-  return !isNaN(id) && id > 0;
+type StaffUploadIntent = {
+  tenantId: number;
+  userId: number;
+  expiresAt: number;
+};
+
+const staffUploadIntents = new Map<string, StaffUploadIntent>();
+const STAFF_UPLOAD_INTENT_TTL_MS = 15 * 60 * 1000;
+
+function purgeExpiredStaffUploadIntents(now = Date.now()): void {
+  for (const [objectPath, intent] of staffUploadIntents) {
+    if (intent.expiresAt <= now) staffUploadIntents.delete(objectPath);
+  }
 }
 
-function getRequestTenantId(req: Request): number | null {
-  const xTenantId = req.headers['x-tenant-id'];
-  const val = Array.isArray(xTenantId) ? xTenantId[0] : xTenantId;
-  const id = parseInt(val ?? '', 10);
-  return !isNaN(id) && id > 0 ? id : null;
+function scheduleUnclaimedUploadCleanup(objectPath: string, expiresAt: number): void {
+  const timer = setTimeout(() => {
+    const intent = staffUploadIntents.get(objectPath);
+    if (!intent || intent.expiresAt !== expiresAt) return;
+    staffUploadIntents.delete(objectPath);
+    void objectStorageService.deleteObjectEntity(objectPath).catch(() => undefined);
+  }, Math.max(1, expiresAt - Date.now() + 1_000));
+  timer.unref?.();
+}
+
+async function resolveObjectReadPrincipal(req: Request): Promise<{ tenantId: number; userId?: number } | null> {
+  const staff = await resolveStaffSession(req);
+  if (staff) return staff;
+  const authHeader = req.headers.authorization ?? '';
+  const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!bearer) return null;
+  const tokenHash = createHash('sha256').update(bearer).digest('hex');
+  const [session] = await db.select({ tenantId: customerOtpSessionsTable.tenantId })
+    .from(customerOtpSessionsTable)
+    .where(and(
+      eq(customerOtpSessionsTable.sessionToken, tokenHash),
+      isNotNull(customerOtpSessionsTable.sessionToken),
+      gt(customerOtpSessionsTable.expiresAt, new Date()),
+    )).limit(1);
+  return session ?? null;
+}
+
+async function staffCanReadAttachment(
+  tenantId: number,
+  userId: number,
+  attachment: { entityType: string; entityId: number },
+): Promise<boolean> {
+  if (await getCallerRole(tenantId, userId) !== 'technician') return true;
+  if (attachment.entityType === 'visit') {
+    const [visit] = await db.select({ id: visitsTable.id }).from(visitsTable).where(and(
+      eq(visitsTable.id, attachment.entityId),
+      eq(visitsTable.tenantId, tenantId),
+      eq(visitsTable.assigneeId, userId),
+    )).limit(1);
+    return Boolean(visit);
+  }
+  if (attachment.entityType === 'job') {
+    const [job] = await db.select({ assigneeId: jobsTable.assigneeId, crewId: jobsTable.crewId })
+      .from(jobsTable).where(and(eq(jobsTable.id, attachment.entityId), eq(jobsTable.tenantId, tenantId))).limit(1);
+    if (!job) return false;
+    if (job.assigneeId === userId) return true;
+    if (job.crewId == null) return false;
+    const [member] = await db.select({ id: crewMembersTable.id }).from(crewMembersTable).where(and(
+      eq(crewMembersTable.tenantId, tenantId),
+      eq(crewMembersTable.crewId, job.crewId),
+      eq(crewMembersTable.userId, userId),
+    )).limit(1);
+    return Boolean(member);
+  }
+  return true;
+}
+
+export function consumeStaffUploadIntent(
+  objectPath: string,
+  tenantId: number,
+  userId: number,
+): boolean {
+  purgeExpiredStaffUploadIntents();
+  const intent = staffUploadIntents.get(objectPath);
+  if (!intent || intent.tenantId !== tenantId || intent.userId !== userId) return false;
+  staffUploadIntents.delete(objectPath);
+  return true;
 }
 
 /**
@@ -44,18 +116,9 @@ function getRequestTenantId(req: Request): number | null {
  */
 router.post(
   '/storage/uploads/request-url',
+  requireVerifiedStaff,
   async (req: Request, res: Response) => {
-    if (!hasAuthenticatedSession(req)) {
-      res.status(401).json({ error: 'Unauthorized' });
-
-      return;
-    }
-
-    const tenantId = getRequestTenantId(req);
-    if (!tenantId) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
-    }
+    const { tenantId, userId } = verifiedStaffIdentity(res);
 
     const parsed = RequestUploadUrlBody.safeParse(req.body);
     if (!parsed.success) {
@@ -64,11 +127,21 @@ router.post(
     }
 
     try {
-      const { name, size, contentType } = parsed.data;
+      const { name, size, contentType, scope } = parsed.data;
 
       const uploadURL = await objectStorageService.getObjectEntityUploadURL();
       const objectPath =
         objectStorageService.normalizeObjectEntityPath(uploadURL);
+      purgeExpiredStaffUploadIntents();
+      if (scope === 'job_media' || scope === 'visit_media') {
+        const intent = {
+          tenantId,
+          userId,
+          expiresAt: Date.now() + STAFF_UPLOAD_INTENT_TTL_MS,
+        };
+        staffUploadIntents.set(objectPath, intent);
+        scheduleUnclaimedUploadCleanup(objectPath, intent.expiresAt);
+      }
 
       // Stamp ownership at mint time, while the requester is still the only
       // party who could possibly know this freshly-minted objectPath. This is
@@ -159,57 +232,25 @@ router.get('/storage/read-url', async (req: Request, res: Response) => {
     return;
   }
 
-  // Resolve tenant from staff headers or non-expired portal Bearer token
-  let resolvedTenantId: number | null = null;
-
-  const xTenantId = req.headers['x-tenant-id'];
-  const xUserId   = req.headers['x-user-id'];
-  const tenantVal = Array.isArray(xTenantId) ? xTenantId[0] : xTenantId;
-  const userVal   = Array.isArray(xUserId)   ? xUserId[0]   : xUserId;
-  const parsedTenantId = parseInt(tenantVal ?? '', 10);
-  const parsedUserId   = parseInt(userVal   ?? '', 10);
-
-  if (!isNaN(parsedTenantId) && parsedTenantId > 0 && !isNaN(parsedUserId) && parsedUserId > 0) {
-    resolvedTenantId = parsedTenantId;
-  } else {
-    const authHeader = req.headers['authorization'] ?? '';
-    const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-    if (bearer) {
-      const tokenHash = createHash('sha256').update(bearer).digest('hex');
-      const [session] = await db
-        .select({ tenantId: customerOtpSessionsTable.tenantId })
-        .from(customerOtpSessionsTable)
-        .where(
-          and(
-            eq(customerOtpSessionsTable.sessionToken, tokenHash),
-            isNotNull(customerOtpSessionsTable.sessionToken),
-            // Enforce session expiry — consistent with requirePortalAuth
-            gt(customerOtpSessionsTable.expiresAt, new Date()),
-          ),
-        )
-        .limit(1);
-      if (session) resolvedTenantId = session.tenantId;
-    }
-  }
-
-  if (!resolvedTenantId) {
+  const principal = await resolveObjectReadPrincipal(req);
+  if (!principal) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
 
   // Verify tenant ownership
   const [attachment] = await db
-    .select({ id: mediaAttachmentsTable.id })
+    .select({ id: mediaAttachmentsTable.id, entityType: mediaAttachmentsTable.entityType, entityId: mediaAttachmentsTable.entityId })
     .from(mediaAttachmentsTable)
     .where(
       and(
         eq(mediaAttachmentsTable.fileKey, objectPath),
-        eq(mediaAttachmentsTable.tenantId, resolvedTenantId),
+        eq(mediaAttachmentsTable.tenantId, principal.tenantId),
       ),
     )
     .limit(1);
 
-  if (!attachment) {
+  if (!attachment || (principal.userId && !(await staffCanReadAttachment(principal.tenantId, principal.userId, attachment)))) {
     res.status(403).json({ error: 'Forbidden' });
     return;
   }
@@ -236,42 +277,8 @@ router.get('/storage/objects/*path', async (req: Request, res: Response) => {
     const wildcardPath = Array.isArray(raw) ? raw.join('/') : raw;
     const objectPath = `/objects/${wildcardPath}`;
 
-    // ── Tenant resolution ──────────────────────────────────────────────────
-    // Staff access: x-user-id + x-tenant-id headers (same pattern as all API routes)
-    // Portal access: Authorization: Bearer <portal-session-token> header
-    let resolvedTenantId: number | null = null;
-
-    const xTenantId = req.headers['x-tenant-id'];
-    const xUserId   = req.headers['x-user-id'];
-    const tenantVal = Array.isArray(xTenantId) ? xTenantId[0] : xTenantId;
-    const userVal   = Array.isArray(xUserId)   ? xUserId[0]   : xUserId;
-    const parsedTenantId = parseInt(tenantVal ?? '', 10);
-    const parsedUserId   = parseInt(userVal   ?? '', 10);
-
-    if (!isNaN(parsedTenantId) && parsedTenantId > 0 && !isNaN(parsedUserId) && parsedUserId > 0) {
-      resolvedTenantId = parsedTenantId;
-    } else {
-      // Try portal Bearer token (same expiry check as requirePortalAuth)
-      const authHeader = req.headers['authorization'] ?? '';
-      const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-      if (bearer) {
-        const tokenHash = createHash('sha256').update(bearer).digest('hex');
-        const [session] = await db
-          .select({ tenantId: customerOtpSessionsTable.tenantId })
-          .from(customerOtpSessionsTable)
-          .where(
-            and(
-              eq(customerOtpSessionsTable.sessionToken, tokenHash),
-              isNotNull(customerOtpSessionsTable.sessionToken),
-              gt(customerOtpSessionsTable.expiresAt, new Date()),
-            ),
-          )
-          .limit(1);
-        if (session) resolvedTenantId = session.tenantId;
-      }
-    }
-
-    if (!resolvedTenantId) {
+    const principal = await resolveObjectReadPrincipal(req);
+    if (!principal) {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
@@ -279,17 +286,17 @@ router.get('/storage/objects/*path', async (req: Request, res: Response) => {
     // ── Tenant ownership check ─────────────────────────────────────────────
     // Verify a media attachment with this fileKey exists for the resolved tenant.
     const [attachment] = await db
-      .select({ id: mediaAttachmentsTable.id })
+      .select({ id: mediaAttachmentsTable.id, entityType: mediaAttachmentsTable.entityType, entityId: mediaAttachmentsTable.entityId })
       .from(mediaAttachmentsTable)
       .where(
         and(
           eq(mediaAttachmentsTable.fileKey, objectPath),
-          eq(mediaAttachmentsTable.tenantId, resolvedTenantId),
+          eq(mediaAttachmentsTable.tenantId, principal.tenantId),
         ),
       )
       .limit(1);
 
-    if (!attachment) {
+    if (!attachment || (principal.userId && !(await staffCanReadAttachment(principal.tenantId, principal.userId, attachment)))) {
       res.status(403).json({ error: 'Forbidden' });
       return;
     }

@@ -5099,6 +5099,17 @@ export interface SendReminderInput {
   channel?: SendReminderInputChannel;
 }
 
+/**
+ * Optional lifecycle scope for field media orphan cleanup
+ */
+export type UploadUrlRequestScope = typeof UploadUrlRequestScope[keyof typeof UploadUrlRequestScope];
+
+
+export const UploadUrlRequestScope = {
+  job_media: 'job_media',
+  visit_media: 'visit_media',
+} as const;
+
 export interface UploadUrlRequest {
   /** @minLength 1 */
   name: string;
@@ -5106,6 +5117,8 @@ export interface UploadUrlRequest {
   size: number;
   /** @minLength 1 */
   contentType: string;
+  /** Optional lifecycle scope for field media orphan cleanup */
+  scope?: UploadUrlRequestScope;
 }
 
 export interface UploadUrlResponse {
@@ -5132,6 +5145,16 @@ export interface MediaAttachment {
      * @nullable
      */
   source?: string | null;
+  /**
+     * Short-lived URL for displaying or playing protected media
+     * @nullable
+     */
+  signedUrl?: string | null;
+  /**
+     * Whether a video was transcoded to 720p H.264
+     * @nullable
+     */
+  videoCompressed?: boolean | null;
   createdAt: string;
 }
 

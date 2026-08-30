@@ -18854,6 +18854,228 @@ export const useDeleteJobMedia = <TError = ErrorType<unknown>,
       return useMutation(getDeleteJobMediaMutationOptions(options));
     }
 
+export const getListVisitMediaUrl = (id: number,) => {
+
+
+
+
+  return `/api/visits/${id}/media`
+}
+
+/**
+ * @summary List media attachments for a visit
+ */
+export const listVisitMedia = async (id: number, options?: RequestInit): Promise<MediaAttachment[]> => {
+
+  return customFetch<MediaAttachment[]>(getListVisitMediaUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListVisitMediaQueryKey = (id: number,) => {
+    return [
+    `/api/visits/${id}/media`
+    ] as const;
+    }
+
+
+export const getListVisitMediaQueryOptions = <TData = Awaited<ReturnType<typeof listVisitMedia>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVisitMedia>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListVisitMediaQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listVisitMedia>>> = ({ signal }) => listVisitMedia(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listVisitMedia>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListVisitMediaQueryResult = NonNullable<Awaited<ReturnType<typeof listVisitMedia>>>
+export type ListVisitMediaQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List media attachments for a visit
+ */
+
+export function useListVisitMedia<TData = Awaited<ReturnType<typeof listVisitMedia>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVisitMedia>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListVisitMediaQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getAddVisitMediaUrl = (id: number,) => {
+
+
+
+
+  return `/api/visits/${id}/media`
+}
+
+/**
+ * @summary Add a media attachment to a visit
+ */
+export const addVisitMedia = async (id: number,
+    addMediaInput: AddMediaInput, options?: RequestInit): Promise<MediaAttachment> => {
+
+  return customFetch<MediaAttachment>(getAddVisitMediaUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(addMediaInput)
+  }
+);}
+
+
+
+
+
+export const getAddVisitMediaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addVisitMedia>>, TError,{id: number;data: BodyType<AddMediaInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof addVisitMedia>>, TError,{id: number;data: BodyType<AddMediaInput>}, TContext> => {
+
+const mutationKey = ['addVisitMedia'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addVisitMedia>>, {id: number;data: BodyType<AddMediaInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  addVisitMedia(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AddVisitMediaMutationResult = NonNullable<Awaited<ReturnType<typeof addVisitMedia>>>
+    export type AddVisitMediaMutationBody = BodyType<AddMediaInput>
+    export type AddVisitMediaMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Add a media attachment to a visit
+ */
+export const useAddVisitMedia = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addVisitMedia>>, TError,{id: number;data: BodyType<AddMediaInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof addVisitMedia>>,
+        TError,
+        {id: number;data: BodyType<AddMediaInput>},
+        TContext
+      > => {
+      return useMutation(getAddVisitMediaMutationOptions(options));
+    }
+
+export const getDeleteVisitMediaUrl = (id: number,
+    mediaId: number,) => {
+
+
+
+
+  return `/api/visits/${id}/media/${mediaId}`
+}
+
+/**
+ * @summary Delete a media attachment from a visit
+ */
+export const deleteVisitMedia = async (id: number,
+    mediaId: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteVisitMediaUrl(id,mediaId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteVisitMediaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVisitMedia>>, TError,{id: number;mediaId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteVisitMedia>>, TError,{id: number;mediaId: number}, TContext> => {
+
+const mutationKey = ['deleteVisitMedia'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteVisitMedia>>, {id: number;mediaId: number}> = (props) => {
+          const {id,mediaId} = props ?? {};
+
+          return  deleteVisitMedia(id,mediaId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteVisitMediaMutationResult = NonNullable<Awaited<ReturnType<typeof deleteVisitMedia>>>
+
+    export type DeleteVisitMediaMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a media attachment from a visit
+ */
+export const useDeleteVisitMedia = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVisitMedia>>, TError,{id: number;mediaId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteVisitMedia>>,
+        TError,
+        {id: number;mediaId: number},
+        TContext
+      > => {
+      return useMutation(getDeleteVisitMediaMutationOptions(options));
+    }
+
 export const getListEquipmentMaintenanceMediaUrl = (id: number,) => {
 
 
@@ -29355,4 +29577,3 @@ export const useDeleteRepairLog = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getDeleteRepairLogMutationOptions(options));
     }
-

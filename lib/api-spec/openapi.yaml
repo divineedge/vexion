@@ -5257,6 +5257,70 @@ paths:
         '204':
           description: Deleted
 
+  /visits/{id}/media:
+    get:
+      tags: [visits]
+      operationId: listVisitMedia
+      summary: List media attachments for a visit
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of media attachments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MediaAttachment'
+    post:
+      tags: [visits]
+      operationId: addVisitMedia
+      summary: Add a media attachment to a visit
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddMediaInput'
+      responses:
+        '201':
+          description: Media attachment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaAttachment'
+
+  /visits/{id}/media/{mediaId}:
+    delete:
+      tags: [visits]
+      operationId: deleteVisitMedia
+      summary: Delete a media attachment from a visit
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: mediaId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Deleted
+
   /equipment/maintenance/{id}/media:
     get:
       tags: [equipment]
@@ -14058,6 +14122,10 @@ components:
         contentType:
           type: string
           minLength: 1
+        scope:
+          type: string
+          enum: [job_media, visit_media]
+          description: Optional lifecycle scope for field media orphan cleanup
 
     UploadUrlResponse:
       type: object
@@ -14097,6 +14165,12 @@ components:
         source:
           type: ["string", "null"]
           description: "'staff' for staff-uploaded media, 'customer' for customer portal uploads"
+        signedUrl:
+          type: ["string", "null"]
+          description: Short-lived URL for displaying or playing protected media
+        videoCompressed:
+          type: ["boolean", "null"]
+          description: Whether a video was transcoded to 720p H.264
         createdAt:
           type: string
 

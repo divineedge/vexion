@@ -1,9 +1,12 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
-import { mediaAttachmentsTable, propertiesTable, jobsTable, customersTable, equipmentMaintenanceTable } from "@workspace/db";
+import { mediaAttachmentsTable, propertiesTable, jobsTable, customersTable, equipmentMaintenanceTable, visitsTable, crewMembersTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { getCallerRole } from "../lib/roles";
+import { requireVerifiedStaff, verifiedStaffIdentity } from "../lib/verifiedStaff";
+import { consumeStaffUploadIntent } from "./storage";
 import { tmpdir } from "os";
 import { join } from "path";
 import { randomUUID } from "crypto";
@@ -91,6 +94,57 @@ async function withSignedUrls(
 }
 
 const router: IRouter = Router();
+
+const MAX_MEDIA_SIZE_BYTES = 10 * 1024 * 1024;
+
+async function canAccessAssignedEntity(
+  tenantId: number,
+  userId: number,
+  entityType: "job" | "visit",
+  entityId: number,
+): Promise<boolean> {
+  const role = await getCallerRole(tenantId, userId);
+  if (role !== "technician") return true;
+
+  if (entityType === "job") {
+    const [job] = await db.select({ assigneeId: jobsTable.assigneeId, crewId: jobsTable.crewId })
+      .from(jobsTable)
+      .where(and(eq(jobsTable.id, entityId), eq(jobsTable.tenantId, tenantId)))
+      .limit(1);
+    if (!job) return false;
+    if (job.assigneeId === userId) return true;
+    if (job.crewId == null) return false;
+    const [membership] = await db.select({ id: crewMembersTable.id })
+      .from(crewMembersTable)
+      .where(and(
+        eq(crewMembersTable.tenantId, tenantId),
+        eq(crewMembersTable.crewId, job.crewId),
+        eq(crewMembersTable.userId, userId),
+      ))
+      .limit(1);
+    return Boolean(membership);
+  }
+
+  const [visit] = await db.select({ assigneeId: visitsTable.assigneeId })
+    .from(visitsTable)
+    .where(and(eq(visitsTable.id, entityId), eq(visitsTable.tenantId, tenantId)))
+    .limit(1);
+  return visit?.assigneeId === userId;
+}
+
+async function cleanupUploadedObject(fileKey: string | undefined): Promise<void> {
+  if (!fileKey?.startsWith("/objects/")) return;
+  try {
+    await objectStorageService.deleteObjectEntity(fileKey);
+  } catch {
+    // Cleanup is best effort. The attachment row is never created when this
+    // fails, so a later storage sweep can identify the unreferenced object.
+  }
+}
+
+function isSupportedMedia(mimeType: string, allowPdf = false): boolean {
+  return mimeType.startsWith("image/") || mimeType.startsWith("video/") || (allowPdf && mimeType === "application/pdf");
+}
 
 // ── Property Media ────────────────────────────────────────────────────────────
 
@@ -218,15 +272,18 @@ router.patch("/properties/:id/profile-photo", async (req: Request, res: Response
 
 // ── Job Media ─────────────────────────────────────────────────────────────────
 
-router.get("/jobs/:id/media", async (req: Request, res: Response): Promise<void> => {
-  const tenantId = getTenantId(req);
+router.get("/jobs/:id/media", requireVerifiedStaff, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, userId } = verifiedStaffIdentity(res);
   const jobId = Number(req.params.id);
 
   const [job] = await db.select({ id: jobsTable.id })
     .from(jobsTable)
     .where(and(eq(jobsTable.id, jobId), eq(jobsTable.tenantId, tenantId)))
     .limit(1);
-  if (!job) { res.status(404).json({ error: "Job not found" }); return; }
+  if (!job || !(await canAccessAssignedEntity(tenantId, userId, "job", jobId))) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
 
   const media = await db.select().from(mediaAttachmentsTable)
     .where(and(
@@ -239,74 +296,207 @@ router.get("/jobs/:id/media", async (req: Request, res: Response): Promise<void>
   res.json(await withSignedUrls(media));
 });
 
-router.post("/jobs/:id/media", async (req: Request, res: Response): Promise<void> => {
-  const tenantId = getTenantId(req);
-  const userId = getUserId(req);
+router.post("/jobs/:id/media", requireVerifiedStaff, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, userId } = verifiedStaffIdentity(res);
   const jobId = Number(req.params.id);
 
   const [job] = await db.select({ id: jobsTable.id })
     .from(jobsTable)
     .where(and(eq(jobsTable.id, jobId), eq(jobsTable.tenantId, tenantId)))
     .limit(1);
-  if (!job) { res.status(404).json({ error: "Job not found" }); return; }
+  if (!job || !(await canAccessAssignedEntity(tenantId, userId, "job", jobId))) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
 
   const { fileKey, fileUrl, mimeType, sizeBytes, caption } = req.body as {
     fileKey?: string; fileUrl?: string; mimeType?: string;
     sizeBytes?: number; caption?: string;
   };
-  if (!fileKey || !fileUrl || !mimeType || !sizeBytes) {
+  if (!fileKey || !fileUrl) {
     res.status(400).json({ error: "fileKey, fileUrl, mimeType, sizeBytes are required" });
     return;
   }
 
-  const isImage = mimeType.startsWith("image/");
-  const isVideo = mimeType.startsWith("video/");
-  if (!isImage && !isVideo) {
-    res.status(400).json({ error: "Only images and videos are allowed" });
+  if (!consumeStaffUploadIntent(fileKey, tenantId, userId)) {
+    res.status(400).json({ error: "Upload is missing, expired, or belongs to another staff member" });
+    return;
+  }
+  if (!mimeType || !sizeBytes || fileKey !== fileUrl || !isSupportedMedia(mimeType) || Number(sizeBytes) > MAX_MEDIA_SIZE_BYTES) {
+    await cleanupUploadedObject(fileKey);
+    res.status(400).json({ error: "Only images and videos up to 10 MB are allowed" });
     return;
   }
 
-  let finalSizeBytes = Number(sizeBytes);
-  let videoCompressed: boolean | null = null;
+  try {
+    const validated = await objectStorageService.validateUploadedMedia(fileKey, MAX_MEDIA_SIZE_BYTES);
+    const validatedMimeType = validated.contentType;
+    const isVideo = validatedMimeType.startsWith("video/");
+    let finalSizeBytes = validated.sizeBytes;
+    let videoCompressed: boolean | null = null;
+    if (isVideo) {
+      const result = await compressVideo(fileKey);
+      videoCompressed = result.compressed;
+      if (result.compressed) finalSizeBytes = result.sizeBytes;
+    }
 
-  if (isVideo) {
-    const result = await compressVideo(fileKey);
-    videoCompressed = result.compressed;
-    if (result.compressed) finalSizeBytes = result.sizeBytes;
+    const [attachment] = await db.insert(mediaAttachmentsTable).values({
+      tenantId,
+      entityType: "job",
+      entityId: jobId,
+      fileKey,
+      fileUrl,
+      mimeType: (isVideo && videoCompressed) ? "video/mp4" : validatedMimeType,
+      sizeBytes: finalSizeBytes,
+      caption: caption?.trim() || null,
+      isCover: false,
+      videoCompressed,
+      createdBy: userId,
+      source: "staff",
+    }).returning();
+    res.status(201).json(attachment);
+  } catch (error) {
+    await cleanupUploadedObject(fileKey);
+    req.log.error({ err: error, jobId }, "Failed to save job media; uploaded object cleaned up");
+    res.status(500).json({ error: "Failed to save media attachment" });
   }
-
-  const [attachment] = await db.insert(mediaAttachmentsTable).values({
-    tenantId,
-    entityType: "job",
-    entityId: jobId,
-    fileKey,
-    fileUrl,
-    mimeType: (isVideo && videoCompressed) ? "video/mp4" : mimeType,
-    sizeBytes: finalSizeBytes,
-    caption: caption ?? null,
-    isCover: false,
-    videoCompressed,
-    createdBy: userId,
-  }).returning();
-
-  res.status(201).json(attachment);
 });
 
-router.delete("/jobs/:id/media/:mediaId", async (req: Request, res: Response): Promise<void> => {
-  const tenantId = getTenantId(req);
+router.delete("/jobs/:id/media/:mediaId", requireVerifiedStaff, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, userId } = verifiedStaffIdentity(res);
   const jobId = Number(req.params.id);
   const mediaId = Number(req.params.mediaId);
 
-  const [deleted] = await db.delete(mediaAttachmentsTable)
-    .where(and(
-      eq(mediaAttachmentsTable.id, mediaId),
-      eq(mediaAttachmentsTable.tenantId, tenantId),
-      eq(mediaAttachmentsTable.entityType, "job"),
-      eq(mediaAttachmentsTable.entityId, jobId),
-    ))
-    .returning();
+  if (!(await canAccessAssignedEntity(tenantId, userId, "job", jobId))) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  const [attachment] = await db.select().from(mediaAttachmentsTable).where(and(
+    eq(mediaAttachmentsTable.id, mediaId),
+    eq(mediaAttachmentsTable.tenantId, tenantId),
+    eq(mediaAttachmentsTable.entityType, "job"),
+    eq(mediaAttachmentsTable.entityId, jobId),
+  )).limit(1);
 
-  if (!deleted) { res.status(404).json({ error: "Not found" }); return; }
+  if (!attachment) { res.status(404).json({ error: "Not found" }); return; }
+  try {
+    await objectStorageService.deleteObjectEntity(attachment.fileKey);
+    await db.delete(mediaAttachmentsTable).where(eq(mediaAttachmentsTable.id, attachment.id));
+  } catch (error) {
+    req.log.error({ err: error, mediaId }, "Failed to delete job media object");
+    res.status(502).json({ error: "Unable to delete media attachment" });
+    return;
+  }
+  res.status(204).end();
+});
+
+// ── Visit Media ──────────────────────────────────────────────────────────────
+
+router.get("/visits/:id/media", requireVerifiedStaff, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, userId } = verifiedStaffIdentity(res);
+  const visitId = Number(req.params.id);
+  const [visit] = await db.select({ id: visitsTable.id })
+    .from(visitsTable)
+    .where(and(eq(visitsTable.id, visitId), eq(visitsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!visit || !(await canAccessAssignedEntity(tenantId, userId, "visit", visitId))) {
+    res.status(404).json({ error: "Visit not found" });
+    return;
+  }
+  const media = await db.select().from(mediaAttachmentsTable)
+    .where(and(
+      eq(mediaAttachmentsTable.tenantId, tenantId),
+      eq(mediaAttachmentsTable.entityType, "visit"),
+      eq(mediaAttachmentsTable.entityId, visitId),
+    ))
+    .orderBy(mediaAttachmentsTable.createdAt);
+  res.json(await withSignedUrls(media));
+});
+
+router.post("/visits/:id/media", requireVerifiedStaff, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, userId } = verifiedStaffIdentity(res);
+  const visitId = Number(req.params.id);
+  const [visit] = await db.select({ id: visitsTable.id })
+    .from(visitsTable)
+    .where(and(eq(visitsTable.id, visitId), eq(visitsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!visit || !(await canAccessAssignedEntity(tenantId, userId, "visit", visitId))) {
+    res.status(404).json({ error: "Visit not found" });
+    return;
+  }
+
+  const { fileKey, fileUrl, mimeType, sizeBytes, caption } = req.body as {
+    fileKey?: string; fileUrl?: string; mimeType?: string; sizeBytes?: number; caption?: string;
+  };
+  if (!fileKey || !fileUrl) {
+    res.status(400).json({ error: "fileKey, fileUrl, mimeType, sizeBytes are required" });
+    return;
+  }
+  if (!consumeStaffUploadIntent(fileKey, tenantId, userId)) {
+    res.status(400).json({ error: "Upload is missing, expired, or belongs to another staff member" });
+    return;
+  }
+  if (!mimeType || !sizeBytes || fileKey !== fileUrl || !isSupportedMedia(mimeType) || Number(sizeBytes) > MAX_MEDIA_SIZE_BYTES) {
+    await cleanupUploadedObject(fileKey);
+    res.status(400).json({ error: "Only images and videos up to 10 MB are allowed" });
+    return;
+  }
+
+  try {
+    const validated = await objectStorageService.validateUploadedMedia(fileKey, MAX_MEDIA_SIZE_BYTES);
+    const validatedMimeType = validated.contentType;
+    let finalSizeBytes = validated.sizeBytes;
+    let videoCompressed: boolean | null = null;
+    if (validatedMimeType.startsWith("video/")) {
+      const result = await compressVideo(fileKey);
+      videoCompressed = result.compressed;
+      if (result.compressed) finalSizeBytes = result.sizeBytes;
+    }
+    const [attachment] = await db.insert(mediaAttachmentsTable).values({
+      tenantId,
+      entityType: "visit",
+      entityId: visitId,
+      fileKey,
+      fileUrl,
+      mimeType: videoCompressed ? "video/mp4" : validatedMimeType,
+      sizeBytes: finalSizeBytes,
+      caption: caption?.trim() || null,
+      isCover: false,
+      videoCompressed,
+      createdBy: userId,
+      source: "staff",
+    }).returning();
+    res.status(201).json(attachment);
+  } catch (error) {
+    await cleanupUploadedObject(fileKey);
+    req.log.error({ err: error, visitId }, "Failed to save visit media; uploaded object cleaned up");
+    res.status(500).json({ error: "Failed to save media attachment" });
+  }
+});
+
+router.delete("/visits/:id/media/:mediaId", requireVerifiedStaff, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, userId } = verifiedStaffIdentity(res);
+  const visitId = Number(req.params.id);
+  const mediaId = Number(req.params.mediaId);
+  if (!(await canAccessAssignedEntity(tenantId, userId, "visit", visitId))) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  const [attachment] = await db.select().from(mediaAttachmentsTable).where(and(
+    eq(mediaAttachmentsTable.id, mediaId),
+    eq(mediaAttachmentsTable.tenantId, tenantId),
+    eq(mediaAttachmentsTable.entityType, "visit"),
+    eq(mediaAttachmentsTable.entityId, visitId),
+  )).limit(1);
+  if (!attachment) { res.status(404).json({ error: "Not found" }); return; }
+  try {
+    await objectStorageService.deleteObjectEntity(attachment.fileKey);
+    await db.delete(mediaAttachmentsTable).where(eq(mediaAttachmentsTable.id, attachment.id));
+  } catch (error) {
+    req.log.error({ err: error, mediaId }, "Failed to delete visit media object");
+    res.status(502).json({ error: "Unable to delete media attachment" });
+    return;
+  }
   res.status(204).end();
 });
 

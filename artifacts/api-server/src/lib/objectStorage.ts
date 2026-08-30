@@ -159,6 +159,60 @@ export class ObjectStorageService {
     return objectFile;
   }
 
+  /**
+   * Remove an uploaded private object. Missing objects are treated as already
+   * cleaned up so callers can safely use this during failed attachment flows.
+   */
+  async deleteObjectEntity(objectPath: string): Promise<void> {
+    try {
+      const objectFile = await this.getObjectEntityFile(objectPath);
+      await objectFile.delete({ ignoreNotFound: true });
+    } catch (error) {
+      if (error instanceof ObjectNotFoundError) return;
+      throw error;
+    }
+  }
+
+  async validateUploadedMedia(
+    objectPath: string,
+    maxSizeBytes: number,
+  ): Promise<{ sizeBytes: number; contentType: string }> {
+    const objectFile = await this.getObjectEntityFile(objectPath);
+    const [metadata] = await objectFile.getMetadata();
+    const sizeBytes = Number(metadata.size ?? 0);
+    const contentType = String(metadata.contentType ?? '').toLowerCase();
+    if (!Number.isFinite(sizeBytes) || sizeBytes <= 0 || sizeBytes > maxSizeBytes) {
+      throw new Error('Uploaded media exceeds the file size limit');
+    }
+    if (!contentType.startsWith('image/') && !contentType.startsWith('video/')) {
+      throw new Error('Uploaded object is not image or video media');
+    }
+
+    const chunks: Buffer[] = [];
+    await new Promise<void>((resolve, reject) => {
+      objectFile.createReadStream({ start: 0, end: 31 })
+        .on('data', chunk => chunks.push(Buffer.from(chunk)))
+        .on('error', reject)
+        .on('end', resolve);
+    });
+    const bytes = Buffer.concat(chunks);
+    const ascii = bytes.toString('ascii');
+    const isImage =
+      bytes.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])) ||
+      bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) ||
+      ascii.startsWith('GIF8') ||
+      (ascii.startsWith('RIFF') && ascii.slice(8, 12) === 'WEBP') ||
+      ascii.slice(4, 12).includes('ftyphei') ||
+      ascii.slice(4, 12).includes('ftypmif');
+    const isVideo =
+      ascii.slice(4, 8) === 'ftyp' ||
+      bytes.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
+    if ((contentType.startsWith('image/') && !isImage) || (contentType.startsWith('video/') && !isVideo)) {
+      throw new Error('Uploaded object content does not match its media type');
+    }
+    return { sizeBytes, contentType };
+  }
+
   normalizeObjectEntityPath(rawPath: string): string {
     if (!rawPath.startsWith('https://storage.googleapis.com/')) {
       return rawPath;

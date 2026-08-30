@@ -8021,7 +8021,8 @@ export const ResumeCustomerServiceResponse = zod.object({
 export const RequestUploadUrlBody = zod.object({
   "name": zod.string().min(1),
   "size": zod.number().min(1),
-  "contentType": zod.string().min(1)
+  "contentType": zod.string().min(1),
+  "scope": zod.enum(['job_media', 'visit_media']).optional().describe('Optional lifecycle scope for field media orphan cleanup')
 })
 
 export const RequestUploadUrlResponse = zod.object({
@@ -8060,6 +8061,8 @@ export const ListPropertyMediaResponseItem = zod.object({
   "isCover": zod.boolean(),
   "createdBy": zod.number().nullish(),
   "source": zod.string().nullish().describe('\'staff\' for staff-uploaded media, \'customer\' for customer portal uploads'),
+  "signedUrl": zod.string().nullish().describe('Short-lived URL for displaying or playing protected media'),
+  "videoCompressed": zod.boolean().nullish().describe('Whether a video was transcoded to 720p H.264'),
   "createdAt": zod.string()
 })
 export const ListPropertyMediaResponse = zod.array(ListPropertyMediaResponseItem)
@@ -8094,6 +8097,8 @@ export const AddPropertyMediaResponse = zod.object({
   "isCover": zod.boolean(),
   "createdBy": zod.number().nullish(),
   "source": zod.string().nullish().describe('\'staff\' for staff-uploaded media, \'customer\' for customer portal uploads'),
+  "signedUrl": zod.string().nullish().describe('Short-lived URL for displaying or playing protected media'),
+  "videoCompressed": zod.boolean().nullish().describe('Whether a video was transcoded to 720p H.264'),
   "createdAt": zod.string()
 })
 
@@ -8145,6 +8150,8 @@ export const ListJobMediaResponseItem = zod.object({
   "isCover": zod.boolean(),
   "createdBy": zod.number().nullish(),
   "source": zod.string().nullish().describe('\'staff\' for staff-uploaded media, \'customer\' for customer portal uploads'),
+  "signedUrl": zod.string().nullish().describe('Short-lived URL for displaying or playing protected media'),
+  "videoCompressed": zod.boolean().nullish().describe('Whether a video was transcoded to 720p H.264'),
   "createdAt": zod.string()
 })
 export const ListJobMediaResponse = zod.array(ListJobMediaResponseItem)
@@ -8179,6 +8186,8 @@ export const AddJobMediaResponse = zod.object({
   "isCover": zod.boolean(),
   "createdBy": zod.number().nullish(),
   "source": zod.string().nullish().describe('\'staff\' for staff-uploaded media, \'customer\' for customer portal uploads'),
+  "signedUrl": zod.string().nullish().describe('Short-lived URL for displaying or playing protected media'),
+  "videoCompressed": zod.boolean().nullish().describe('Whether a video was transcoded to 720p H.264'),
   "createdAt": zod.string()
 })
 
@@ -8192,6 +8201,79 @@ export const DeleteJobMediaParams = zod.object({
 })
 
 export const DeleteJobMediaResponse = zod.void()
+
+
+/**
+ * @summary List media attachments for a visit
+ */
+export const ListVisitMediaParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListVisitMediaResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "entityType": zod.string(),
+  "entityId": zod.number(),
+  "fileKey": zod.string(),
+  "fileUrl": zod.string(),
+  "mimeType": zod.string(),
+  "sizeBytes": zod.number(),
+  "caption": zod.string().nullish(),
+  "isCover": zod.boolean(),
+  "createdBy": zod.number().nullish(),
+  "source": zod.string().nullish().describe('\'staff\' for staff-uploaded media, \'customer\' for customer portal uploads'),
+  "signedUrl": zod.string().nullish().describe('Short-lived URL for displaying or playing protected media'),
+  "videoCompressed": zod.boolean().nullish().describe('Whether a video was transcoded to 720p H.264'),
+  "createdAt": zod.string()
+})
+export const ListVisitMediaResponse = zod.array(ListVisitMediaResponseItem)
+
+
+/**
+ * @summary Add a media attachment to a visit
+ */
+export const AddVisitMediaParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AddVisitMediaBody = zod.object({
+  "fileKey": zod.string(),
+  "fileUrl": zod.string(),
+  "mimeType": zod.string(),
+  "sizeBytes": zod.number(),
+  "caption": zod.string().optional(),
+  "isCover": zod.boolean().optional()
+})
+
+export const AddVisitMediaResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "entityType": zod.string(),
+  "entityId": zod.number(),
+  "fileKey": zod.string(),
+  "fileUrl": zod.string(),
+  "mimeType": zod.string(),
+  "sizeBytes": zod.number(),
+  "caption": zod.string().nullish(),
+  "isCover": zod.boolean(),
+  "createdBy": zod.number().nullish(),
+  "source": zod.string().nullish().describe('\'staff\' for staff-uploaded media, \'customer\' for customer portal uploads'),
+  "signedUrl": zod.string().nullish().describe('Short-lived URL for displaying or playing protected media'),
+  "videoCompressed": zod.boolean().nullish().describe('Whether a video was transcoded to 720p H.264'),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Delete a media attachment from a visit
+ */
+export const DeleteVisitMediaParams = zod.object({
+  "id": zod.coerce.number(),
+  "mediaId": zod.coerce.number()
+})
+
+export const DeleteVisitMediaResponse = zod.void()
 
 
 /**
@@ -8214,6 +8296,8 @@ export const ListEquipmentMaintenanceMediaResponseItem = zod.object({
   "isCover": zod.boolean(),
   "createdBy": zod.number().nullish(),
   "source": zod.string().nullish().describe('\'staff\' for staff-uploaded media, \'customer\' for customer portal uploads'),
+  "signedUrl": zod.string().nullish().describe('Short-lived URL for displaying or playing protected media'),
+  "videoCompressed": zod.boolean().nullish().describe('Whether a video was transcoded to 720p H.264'),
   "createdAt": zod.string()
 })
 export const ListEquipmentMaintenanceMediaResponse = zod.array(ListEquipmentMaintenanceMediaResponseItem)
@@ -8248,6 +8332,8 @@ export const AddEquipmentMaintenanceMediaResponse = zod.object({
   "isCover": zod.boolean(),
   "createdBy": zod.number().nullish(),
   "source": zod.string().nullish().describe('\'staff\' for staff-uploaded media, \'customer\' for customer portal uploads'),
+  "signedUrl": zod.string().nullish().describe('Short-lived URL for displaying or playing protected media'),
+  "videoCompressed": zod.boolean().nullish().describe('Whether a video was transcoded to 720p H.264'),
   "createdAt": zod.string()
 })
 
@@ -8299,6 +8385,8 @@ export const PortalListPropertyMediaResponseItem = zod.object({
   "isCover": zod.boolean(),
   "createdBy": zod.number().nullish(),
   "source": zod.string().nullish().describe('\'staff\' for staff-uploaded media, \'customer\' for customer portal uploads'),
+  "signedUrl": zod.string().nullish().describe('Short-lived URL for displaying or playing protected media'),
+  "videoCompressed": zod.boolean().nullish().describe('Whether a video was transcoded to 720p H.264'),
   "createdAt": zod.string()
 })
 export const PortalListPropertyMediaResponse = zod.array(PortalListPropertyMediaResponseItem)
@@ -8332,6 +8420,8 @@ export const PortalAddPropertyMediaResponse = zod.object({
   "isCover": zod.boolean(),
   "createdBy": zod.number().nullish(),
   "source": zod.string().nullish().describe('\'staff\' for staff-uploaded media, \'customer\' for customer portal uploads'),
+  "signedUrl": zod.string().nullish().describe('Short-lived URL for displaying or playing protected media'),
+  "videoCompressed": zod.boolean().nullish().describe('Whether a video was transcoded to 720p H.264'),
   "createdAt": zod.string()
 })
 
@@ -8538,7 +8628,8 @@ export const DismissPlanCancelRequestResponse = zod.object({
 export const PortalRequestUploadUrlBody = zod.object({
   "name": zod.string().min(1),
   "size": zod.number().min(1),
-  "contentType": zod.string().min(1)
+  "contentType": zod.string().min(1),
+  "scope": zod.enum(['job_media', 'visit_media']).optional().describe('Optional lifecycle scope for field media orphan cleanup')
 })
 
 export const PortalRequestUploadUrlResponse = zod.object({

@@ -39,12 +39,18 @@ function formatVisit(
 }
 
 // ── LIST ──────────────────────────────────────────────────────────────────────
-router.get("/visits", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
+router.get("/visits", requireVerifiedStaff, async (req, res): Promise<void> => {
+  const tenantId = res.locals.staffTenantId as number;
+  const userId = res.locals.staffUserId as number;
   const { date, assigneeId, customerId } = req.query as Record<string, string>;
 
   let where = eq(visitsTable.tenantId, tenantId) as ReturnType<typeof eq>;
-  if (assigneeId) where = and(where, eq(visitsTable.assigneeId, parseInt(assigneeId, 10))) as typeof where;
+  const callerRole = await getCallerRole(tenantId, userId);
+  if (callerRole === "technician") {
+    where = and(where, eq(visitsTable.assigneeId, userId)) as typeof where;
+  } else if (assigneeId) {
+    where = and(where, eq(visitsTable.assigneeId, parseInt(assigneeId, 10))) as typeof where;
+  }
   if (customerId) where = and(where, eq(visitsTable.customerId, parseInt(customerId, 10))) as typeof where;
   if (date) {
     const start = new Date(date);

@@ -571,6 +571,7 @@ export * from './updateTaskInput';
 export * from './updateVisitInput';
 export * from './updateVisitInputVisitMode';
 export * from './uploadUrlRequest';
+export * from './uploadUrlRequestScope';
 export * from './uploadUrlResponse';
 export * from './user';
 export * from './userInput';

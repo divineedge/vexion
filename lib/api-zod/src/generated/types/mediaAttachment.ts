@@ -25,5 +25,15 @@ export interface MediaAttachment {
      * @nullable
      */
   source?: string | null;
+  /**
+     * Short-lived URL for displaying or playing protected media
+     * @nullable
+     */
+  signedUrl?: string | null;
+  /**
+     * Whether a video was transcoded to 720p H.264
+     * @nullable
+     */
+  videoCompressed?: boolean | null;
   createdAt: string;
 }

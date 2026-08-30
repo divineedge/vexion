@@ -1,59 +1,167 @@
 import React from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { useGetVisit } from '@workspace/api-client-react';
-import { useAuth } from '@/contexts/AuthContext';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  useAddVisitMedia,
+  useDeleteVisitMedia,
+  useGetVisit,
+  useListVisitMedia,
+  getGetVisitQueryKey,
+  getListVisitMediaQueryKey,
+} from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
+import { useOffline } from '@/contexts/OfflineContext';
+import { MediaAttachments } from '@/components/MediaAttachments';
 
-function parseId(value: string | string[] | undefined) {
-  const id = typeof value === 'string' && /^[1-9]\d*$/.test(value) ? Number(value) : NaN;
-  return Number.isSafeInteger(id) ? id : null;
+function formatVisitMode(mode: string): string {
+  if (mode === 'drop_by') return 'Drop-by';
+  if (mode === 'drive_by') return 'Drive-by';
+  return 'Scheduled';
 }
 
 export default function VisitDetailScreen() {
   const colors = useColors();
-  const { user } = useAuth();
-  const { id: rawId } = useLocalSearchParams<{ id?: string }>();
-  const id = parseId(rawId);
-  // Include the authenticated identity in the cache key: never render a
-  // previous staff member's cached detail while authorization is rechecked.
-  const visitQuery = useGetVisit(id ?? 0, {
-    query: { enabled: !!user && id !== null, queryKey: ['field-visit', user?.tenantId, user?.id, id] },
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const visitId = Number(id);
+  const { isOffline } = useOffline();
+  const {
+    data: visit,
+    isLoading,
+    isError,
+    isFetching,
+    refetch: refetchVisit,
+  } = useGetVisit(visitId, {
+    query: { queryKey: getGetVisitQueryKey(visitId), enabled: Number.isInteger(visitId) && !isOffline },
   });
+  const {
+    data: media = [],
+    isLoading: mediaLoading,
+    refetch: refetchMedia,
+  } = useListVisitMedia(visitId, {
+    query: { queryKey: getListVisitMediaQueryKey(visitId), enabled: Number.isInteger(visitId) && !isOffline },
+  });
+  const addMedia = useAddVisitMedia();
+  const deleteMedia = useDeleteVisitMedia();
 
-  if (id === null) return <State text="This visit link is invalid." colors={colors} />;
-  if (visitQuery.isLoading) return <State loading text="Loading visit…" colors={colors} />;
-  if (visitQuery.isError) return <State text="This visit is unavailable or you no longer have access." colors={colors} />;
-  if (!visitQuery.data) return <State text="Visit not found." colors={colors} />;
+  const refresh = () => {
+    void refetchVisit();
+    void refetchMedia();
+  };
 
-  const visit = visitQuery.data;
-  return (
-    <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.content}>
-      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Text style={[styles.title, { color: colors.foreground }]}>{visit.purpose}</Text>
-        <Detail label="Scheduled" value={visit.scheduledAt ? new Date(visit.scheduledAt).toLocaleString() : 'Not scheduled'} colors={colors} />
-        <Detail label="Address" value={visit.propertyAddress || 'No property address'} colors={colors} />
-        <Detail label="Customer" value={visit.customerName || 'Not assigned'} colors={colors} />
-        <Detail label="Assigned to" value={visit.assigneeName || 'Unassigned'} colors={colors} />
-        <Detail label="Mode" value={visit.visitMode.replaceAll('_', ' ')} colors={colors} />
-        {visit.notes ? <Detail label="Notes" value={visit.notes} colors={colors} /> : null}
+  if (isLoading) {
+    return (
+      <View style={[styles.centered, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[styles.helperText, { color: colors.mutedForeground }]}>Loading visit…</Text>
       </View>
+    );
+  }
+
+  if (isError || !visit) {
+    return (
+      <View style={[styles.centered, { backgroundColor: colors.background }]}>
+        <Ionicons name="alert-circle-outline" size={42} color={colors.destructive} />
+        <Text style={[styles.errorTitle, { color: colors.foreground }]}>Visit unavailable</Text>
+        <Text style={[styles.helperText, { color: colors.mutedForeground }]}>
+          This visit may no longer be assigned to you.
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView
+      style={{ backgroundColor: colors.background }}
+      contentContainerStyle={styles.content}
+      refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refresh} tintColor={colors.primary} />}
+    >
+      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={styles.titleRow}>
+          <Text style={[styles.title, { color: colors.foreground }]}>{visit.purpose}</Text>
+          <View style={[styles.modeBadge, { backgroundColor: colors.primary + '18' }]}>
+            <Text style={[styles.modeText, { color: colors.primary }]}>{formatVisitMode(visit.visitMode)}</Text>
+          </View>
+        </View>
+        {visit.propertyAddress ? (
+          <View style={styles.infoRow}>
+            <Ionicons name="location-outline" size={16} color={colors.mutedForeground} />
+            <Text style={[styles.infoText, { color: colors.mutedForeground }]}>{visit.propertyAddress}</Text>
+          </View>
+        ) : null}
+        {visit.customerName ? (
+          <View style={styles.infoRow}>
+            <Ionicons name="person-outline" size={16} color={colors.mutedForeground} />
+            <Text style={[styles.infoText, { color: colors.mutedForeground }]}>{visit.customerName}</Text>
+          </View>
+        ) : null}
+        {visit.scheduledAt ? (
+          <View style={styles.infoRow}>
+            <Ionicons name="calendar-outline" size={16} color={colors.mutedForeground} />
+            <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
+              {new Date(visit.scheduledAt).toLocaleString('en-US', {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+              })}
+            </Text>
+          </View>
+        ) : null}
+        {visit.completedAt ? (
+          <View style={[styles.completeBanner, { backgroundColor: colors.statusCompleted + '18' }]}>
+            <Ionicons name="checkmark-circle-outline" size={17} color={colors.statusCompleted} />
+            <Text style={[styles.completeText, { color: colors.statusCompleted }]}>Visit completed</Text>
+          </View>
+        ) : null}
+      </View>
+
+      {visit.notes ? (
+        <View style={styles.notesSection}>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Visit Notes</Text>
+          <View style={[styles.notesCard, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+            <Text style={[styles.notesText, { color: colors.foreground }]}>{visit.notes}</Text>
+          </View>
+        </View>
+      ) : null}
+
+      <MediaAttachments
+        media={media}
+        isLoading={mediaLoading}
+        isOffline={isOffline}
+        onAdd={data => addMedia.mutateAsync({ id: visitId, data })}
+        onDelete={mediaId => deleteMedia.mutateAsync({ id: visitId, mediaId })}
+        onRefresh={() => { void refetchMedia(); }}
+        uploadScope="visit_media"
+      />
     </ScrollView>
   );
 }
 
-function Detail({ label, value, colors }: { label: string; value: string; colors: ReturnType<typeof useColors> }) {
-  return <View style={styles.row}><Text style={[styles.label, { color: colors.mutedForeground }]}>{label}</Text><Text style={[styles.value, { color: colors.foreground }]}>{value}</Text></View>;
-}
-function State({ text, loading, colors }: { text: string; loading?: boolean; colors: ReturnType<typeof useColors> }) {
-  return <View style={[styles.state, { backgroundColor: colors.background }]}>{loading ? <ActivityIndicator color={colors.primary} /> : null}<Text style={{ color: colors.mutedForeground }}>{text}</Text></View>;
-}
 const styles = StyleSheet.create({
-  content: { padding: 16 },
-  card: { borderWidth: 1, borderRadius: 12, padding: 16, gap: 14 },
-  title: { fontFamily: 'Inter_600SemiBold', fontSize: 20 },
-  row: { gap: 3 },
-  label: { fontFamily: 'Inter_500Medium', fontSize: 12 },
-  value: { fontFamily: 'Inter_400Regular', fontSize: 15, textTransform: 'capitalize' },
-  state: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 24 },
+  content: { paddingTop: 16, paddingBottom: 48 },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28, gap: 10 },
+  helperText: { fontFamily: 'Inter_400Regular', fontSize: 14, textAlign: 'center' },
+  errorTitle: { fontFamily: 'Inter_700Bold', fontSize: 18 },
+  card: { marginHorizontal: 16, marginBottom: 20, borderWidth: 1, borderRadius: 12, padding: 16 },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 12 },
+  title: { flex: 1, fontFamily: 'Inter_700Bold', fontSize: 19, lineHeight: 25 },
+  modeBadge: { borderRadius: 7, paddingHorizontal: 9, paddingVertical: 5 },
+  modeText: { fontFamily: 'Inter_600SemiBold', fontSize: 11 },
+  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 7 },
+  infoText: { flex: 1, fontFamily: 'Inter_400Regular', fontSize: 14 },
+  completeBanner: { marginTop: 8, borderRadius: 8, padding: 9, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  completeText: { fontFamily: 'Inter_600SemiBold', fontSize: 13 },
+  notesSection: { paddingHorizontal: 16, marginBottom: 20 },
+  sectionTitle: { fontFamily: 'Inter_700Bold', fontSize: 17, marginBottom: 10 },
+  notesCard: { borderWidth: 1, borderRadius: 10, padding: 13 },
+  notesText: { fontFamily: 'Inter_400Regular', fontSize: 14, lineHeight: 20 },
 });

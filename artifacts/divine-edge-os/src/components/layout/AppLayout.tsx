@@ -11,7 +11,7 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { Breadcrumb } from './Breadcrumb';
 import { NotificationBell } from '@/components/tasks/NotificationBell';
 import { QuickAddBar } from './QuickAddBar';
-import { useListTasks, getListTasksQueryKey, useListFollowupQueueItems, getListFollowupQueueItemsQueryKey, useListStopServiceFlags, getListStopServiceFlagsQueryKey, useListEstimates } from '@workspace/api-client-react';
+import { useListTasks, getListTasksQueryKey, useListFollowupQueueItems, getListFollowupQueueItemsQueryKey, useListStopServiceFlags, getListStopServiceFlagsQueryKey, useListEstimates, useGetStaffMessagesUnreadSummary, getGetStaffMessagesUnreadSummaryQueryKey } from '@workspace/api-client-react';
 import { useQuery } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
 
@@ -113,6 +113,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   });
   const openCallbackCount = Array.isArray(openCallbacksData) ? openCallbacksData.length : 0;
 
+  const { data: staffMessageUnread } = useGetStaffMessagesUnreadSummary({
+    query: {
+      enabled: isAuthenticated,
+      queryKey: getGetStaffMessagesUnreadSummaryQueryKey(),
+      refetchInterval: 30000,
+    },
+  });
+
   const badgeCounts: Record<string, number> = {
     '/tasks': myOpenTaskCount,
     '/followup-queue': openFollowups.length,
@@ -120,6 +128,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     ...(sentEstimates.length > 0 ? { '/estimates': sentEstimates.length } : {}),
     ...(openCallbackCount > 0 ? { '/callbacks': openCallbackCount } : {}),
     ...((inventorySummary?.lowStockCount ?? 0) > 0 ? { '/inventory': inventorySummary!.lowStockCount } : {}),
+    ...((staffMessageUnread?.general ?? 0) > 0 ? { '/staff-messages': staffMessageUnread!.general } : {}),
   };
 
   useEffect(() => {

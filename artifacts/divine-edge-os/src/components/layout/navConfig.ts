@@ -6,6 +6,7 @@ import {
   Megaphone, FlaskConical,
   Settings, FileText, Footprints, BarChart3, Star, Repeat, ListTodo, Calculator,
   Map, ClipboardList, PhoneMissed, PhoneIncoming, Inbox, Layers,
+  MessageSquare,
   LucideIcon,
 } from 'lucide-react';
 
@@ -33,6 +34,7 @@ export const techNavItems: NavItem[] = [
   { name: 'Tasks',        href: '/tasks',        icon: ListTodo },
   { name: 'Callbacks',    href: '/callbacks',    icon: PhoneCall },
   { name: 'Daily Tasks',  href: '/daily-tasks',  icon: ClipboardList },
+  { name: 'Messages',     href: '/staff-messages', icon: MessageSquare },
 ];
 
 /**
@@ -121,6 +123,7 @@ export const adminNavSections: NavSection[] = [
       { name: 'Calls',           href: '/calls',         icon: PhoneIncoming },
       { name: 'Follow-Up Queue', href: '/followup-queue', icon: PhoneMissed },
       { name: 'Portal Inbox',    href: '/portal-inbox',  icon: Inbox },
+      { name: 'Staff Messages', href: '/staff-messages', icon: MessageSquare },
     ],
   },
 ];

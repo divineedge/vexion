@@ -11,6 +11,7 @@ import { and, desc, eq, inArray, ne, notExists, sql, lt } from "drizzle-orm";
 import { requireVerifiedStaff, verifiedStaffIdentity } from "../lib/verifiedStaff";
 import { ADMIN_ROLES, getCallerRole } from "../lib/roles";
 import { visibleJobMessageIds } from "../lib/jobMessageAccess";
+import { sendStaffPush } from "../lib/pushNotifications";
 
 const router: IRouter = Router();
 const LEGACY_MANAGEMENT_ROLES = new Set(["owner", "admin", "manager", "admin_office"]);
@@ -162,20 +163,36 @@ router.post("/staff-messages/:threadUserId", async (req, res): Promise<void> => 
 
   const [sender] = await db.select({ name: usersTable.name, role: usersTable.role }).from(usersTable)
     .where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId))).limit(1);
-  const message = await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const [existing] = await tx.select().from(staffMessagesTable).where(and(
       eq(staffMessagesTable.tenantId, tenantId), eq(staffMessagesTable.senderId, userId), eq(staffMessagesTable.clientMessageId, clientMessageId),
     )).limit(1);
-    if (existing) return existing;
+    if (existing) return { message: existing, inserted: false };
     const [inserted] = await tx.insert(staffMessagesTable).values({ tenantId, threadUserId, senderId: userId, body, clientMessageId }).onConflictDoNothing().returning();
     const created = inserted ?? (await tx.select().from(staffMessagesTable).where(and(
       eq(staffMessagesTable.tenantId, tenantId), eq(staffMessagesTable.senderId, userId), eq(staffMessagesTable.clientMessageId, clientMessageId),
     )).limit(1))[0];
     if (!created) throw new Error("Unable to create message");
     await tx.insert(staffMessageReadsTable).values({ messageId: created.id, userId }).onConflictDoNothing();
-    return created;
+    return { message: created, inserted: Boolean(inserted) };
   });
+  const { message } = result;
   if (message.threadUserId !== threadUserId) { res.status(409).json({ error: "clientMessageId is already used in another staff thread" }); return; }
+  if (result.inserted) {
+    const senderIsManagement = await canManageAllThreads(tenantId, userId);
+    // Staff-owned threads are private to their owner; an owner writing a thread
+    // notifies management users, while management writing notifies the owner.
+    const recipientIds = senderIsManagement
+      ? [threadUserId]
+      : (await Promise.all((await db.select({ id: usersTable.id }).from(usersTable).where(and(
+        eq(usersTable.tenantId, tenantId), eq(usersTable.isActive, true),
+      ))).map(async u => (await canManageAllThreads(tenantId, u.id)) ? u.id : null))).filter((id): id is number => id !== null);
+    void sendStaffPush({
+      tenantId, recipientUserIds: recipientIds.filter(id => id !== userId),
+      eventKey: `staff-message:${message.id}`, title: sender?.name ?? "New message",
+      body: message.body, data: { type: "staff_message", route: "messages", threadUserId },
+    });
+  }
   const [{ count: readCount }] = await db.select({ count: sql<number>`cast(count(*) as int)` }).from(staffMessageReadsTable)
     .where(and(eq(staffMessageReadsTable.messageId, message.id), ne(staffMessageReadsTable.userId, message.senderId)));
   res.status(201).json({

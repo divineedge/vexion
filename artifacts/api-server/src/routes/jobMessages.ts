@@ -6,10 +6,11 @@
  * reach them regardless of URL knowledge.
  */
 import { Router, type IRouter } from "express";
-import { db, jobMessagesTable, jobMessageReadsTable, usersTable } from "@workspace/db";
+import { db, crewMembersTable, crewsTable, jobMessagesTable, jobMessageReadsTable, jobsTable, usersTable } from "@workspace/db";
 import { eq, and, ne, notExists, sql, inArray, desc, lt } from "drizzle-orm";
 import { requireVerifiedStaff, verifiedStaffIdentity } from "../lib/verifiedStaff";
 import { canAccessJobMessages, visibleJobMessageIds } from "../lib/jobMessageAccess";
+import { sendStaffPush } from "../lib/pushNotifications";
 
 const router: IRouter = Router();
 
@@ -168,13 +169,13 @@ router.post("/jobs/:jobId/messages", async (req, res): Promise<void> => {
     res.status(400).json({ error: "clientMessageId is required" }); return;
   }
 
-  const msg = await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const [existing] = await tx.select().from(jobMessagesTable).where(and(
       eq(jobMessagesTable.tenantId, tenantId),
       eq(jobMessagesTable.senderId, userId),
       eq(jobMessagesTable.clientMessageId, clientMessageId),
     )).limit(1);
-    if (existing) return existing;
+    if (existing) return { message: existing, inserted: false };
     const [inserted] = await tx.insert(jobMessagesTable)
       .values({ tenantId, jobId, senderId: userId, body: trimmedBody, clientMessageId })
       .onConflictDoNothing()
@@ -184,8 +185,9 @@ router.post("/jobs/:jobId/messages", async (req, res): Promise<void> => {
     )).limit(1))[0];
     if (!created) throw new Error("Unable to create message");
     await tx.insert(jobMessageReadsTable).values({ messageId: created.id, userId }).onConflictDoNothing();
-    return created;
+    return { message: created, inserted: Boolean(inserted) };
   });
+  const { message: msg } = result;
   if (msg.jobId !== jobId) { res.status(409).json({ error: "clientMessageId is already used in another job thread" }); return; }
   const [{ count: readCount }] = await db.select({ count: sql<number>`cast(count(*) as int)` }).from(jobMessageReadsTable)
     .where(and(eq(jobMessageReadsTable.messageId, msg.id), ne(jobMessageReadsTable.userId, msg.senderId)));
@@ -195,6 +197,28 @@ router.post("/jobs/:jobId/messages", async (req, res): Promise<void> => {
     .from(usersTable)
     .where(eq(usersTable.id, userId))
     .limit(1);
+  if (result.inserted) {
+    const [job] = await db.select({ assigneeId: jobsTable.assigneeId, crewId: jobsTable.crewId, title: jobsTable.title })
+      .from(jobsTable).where(and(eq(jobsTable.id, jobId), eq(jobsTable.tenantId, tenantId))).limit(1);
+    const recipientIds = new Set<number>();
+    if (job?.assigneeId) recipientIds.add(job.assigneeId);
+    if (job?.crewId) {
+      const [crew] = await db.select({ managerId: crewsTable.managerId }).from(crewsTable)
+        .where(and(eq(crewsTable.id, job.crewId), eq(crewsTable.tenantId, tenantId))).limit(1);
+      if (crew?.managerId) recipientIds.add(crew.managerId);
+      const members = await db.select({ userId: crewMembersTable.userId }).from(crewMembersTable)
+        .where(and(eq(crewMembersTable.tenantId, tenantId), eq(crewMembersTable.crewId, job.crewId)));
+      members.forEach(member => recipientIds.add(member.userId));
+    }
+    const active = recipientIds.size ? await db.select({ id: usersTable.id }).from(usersTable).where(and(
+      eq(usersTable.tenantId, tenantId), eq(usersTable.isActive, true), inArray(usersTable.id, [...recipientIds]),
+    )) : [];
+    void sendStaffPush({
+      tenantId, recipientUserIds: active.map(user => user.id).filter(id => id !== userId),
+      eventKey: `job-message:${msg.id}`, title: sender?.name ?? "New job message", body: msg.body,
+      data: { type: "job_message", route: "messages", jobId, title: job?.title },
+    });
+  }
 
   res.status(201).json({
     ...msg,

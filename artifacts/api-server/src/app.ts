@@ -13,6 +13,7 @@ import { startClockOutScheduler } from "./lib/clockOutScheduler";
 import { startBroadcastScheduler } from "./lib/broadcastScheduler";
 import { startCardExpiryReminderScheduler } from "./lib/cardExpiryReminderScheduler";
 import { startSupplyShortageScheduler } from "./lib/supplyShortageScheduler";
+import { startExpoPushReceiptPolling, startStaffPushRecoveryPolling } from "./lib/pushNotifications";
 
 const app: Express = express();
 
@@ -79,5 +80,7 @@ startCardExpiryReminderScheduler();
 
 // Start supply shortage early-warning scheduler
 startSupplyShortageScheduler();
+startExpoPushReceiptPolling();
+startStaffPushRecoveryPolling();
 
 export default app;

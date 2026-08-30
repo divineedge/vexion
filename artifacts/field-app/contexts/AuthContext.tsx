@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { setDefaultHeaders, setAuthTokenGetter } from '@workspace/api-client-react';
+import { disableStaffNotificationDevice, setDefaultHeaders, setAuthTokenGetter } from '@workspace/api-client-react';
 
 export interface AuthUser {
   id: number;
@@ -79,6 +79,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    // This happens before credentials are cleared so the authenticated API can
+    // detach this device. Registration failures intentionally do not block sign-out.
+    if (user) {
+      const notificationKey = `field_app_notification_device:${user.tenantId}:${user.id}`;
+      try {
+        const expoPushToken = await AsyncStorage.getItem(notificationKey);
+        if (expoPushToken) {
+          await disableStaffNotificationDevice({ expoPushToken });
+          await AsyncStorage.removeItem(notificationKey);
+        }
+      } catch {
+        // Non-fatal: a future signed-in lifecycle will retry the stored token.
+      }
+    }
     await AsyncStorage.removeItem(TOKEN_KEY);
     await AsyncStorage.removeItem(USER_KEY);
     await AsyncStorage.removeItem(SESSION_TOKEN_KEY);
@@ -86,7 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setDefaultHeaders({});
     setAuthTokenGetter(null);
-  }, []);
+  }, [user]);
 
   return (
     <AuthContext.Provider value={{ user, token, isLoading, signIn, signOut }}>

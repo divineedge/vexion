@@ -41,6 +41,8 @@ export default function AppLayout() {
       <Stack.Screen name="my-requests" options={{ title: 'My Requests', headerShown: true }} />
       <Stack.Screen name="pre-trip" options={{ title: 'Pre-trip Check', headerShown: true }} />
       <Stack.Screen name="job/[id]" options={{ title: 'Job Detail', headerShown: true }} />
+      <Stack.Screen name="visit/[id]" options={{ title: 'Visit Detail', headerShown: true }} />
+      <Stack.Screen name="task/[id]" options={{ title: 'Task Detail', headerShown: true }} />
       <Stack.Screen name="log/[jobId]" options={{ title: 'Log Application', headerShown: true }} />
       <Stack.Screen name="equipment" options={{ title: 'Equipment', headerShown: true }} />
       <Stack.Screen name="equipment/[id]" options={{ title: 'Equipment', headerShown: true }} />

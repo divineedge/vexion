@@ -7,6 +7,7 @@ import { eq, and, desc, or, inArray, isNull } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { ADMIN_ROLES, getCallerRole, getSingleAdmin } from "../lib/roles";
 import { validateTaskAssignment, roleBucketMatches } from "../lib/taskRouting";
+import { sendStaffPush } from "../lib/pushNotifications";
 
 const router: IRouter = Router();
 
@@ -77,15 +78,20 @@ async function notify(tenantId: number, recipientUserId: number, taskId: number,
 /** Notifies the specific assignee, or every user matching a role bucket, when a task is (re)assigned. */
 async function notifyAssignment(tenantId: number, task: Task, actorName: string) {
   const message = `${actorName} assigned you a task: "${task.title}"`;
+  const recipients: number[] = [];
   if (task.assignedToUserId) {
     await notify(tenantId, task.assignedToUserId, task.id, "assigned", message);
-    return;
-  }
-  if (task.assignedToRole) {
+    recipients.push(task.assignedToUserId);
+  } else if (task.assignedToRole) {
     const candidates = await db.select({ id: usersTable.id, role: usersTable.role }).from(usersTable).where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.isActive, true)));
     const matches = candidates.filter(c => roleBucketMatches(task.assignedToRole as string, c.role));
     await Promise.all(matches.map(m => notify(tenantId, m.id, task.id, "assigned", message)));
+    recipients.push(...matches.map(match => match.id));
   }
+  if (recipients.length) void sendStaffPush({
+    tenantId, recipientUserIds: recipients, eventKey: `task-assignment:${task.id}:${task.updatedAt.getTime()}`,
+    title: "Task assigned", body: message, data: { type: "task_assignment", taskId: task.id },
+  });
 }
 
 // ─── Tasks CRUD ─────────────────────────────────────────────────────────────

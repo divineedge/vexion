@@ -4,8 +4,23 @@ import { eq, and, sql, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { getCallerRole } from "../lib/roles";
 import { requireVerifiedStaff } from "../lib/verifiedStaff";
+import { resolveJobAssignmentRecipientIds, resolveVisitAssignmentRecipientIds, sendStaffPush } from "../lib/pushNotifications";
+import { canAccessVisit } from "../lib/visitAccess";
 
 const router: IRouter = Router();
+
+function notifyVisitAssignment(
+  tenantId: number, visit: { id: number; purpose: string; assigneeId: number | null },
+  eventKey: string, actorUserId?: number,
+): void {
+  void resolveVisitAssignmentRecipientIds(tenantId, visit.assigneeId)
+    .then(recipientUserIds => sendStaffPush({
+      tenantId, recipientUserIds: actorUserId ? recipientUserIds.filter(id => id !== actorUserId) : recipientUserIds,
+      eventKey, title: "Visit assigned", body: `You have been assigned: ${visit.purpose}`,
+      data: { type: "visit_assignment", visitId: visit.id },
+    }))
+    .catch(() => undefined);
+}
 
 function formatVisit(
   v: typeof visitsTable.$inferSelect,
@@ -64,6 +79,7 @@ router.get("/visits", async (req, res): Promise<void> => {
 // ── CREATE ────────────────────────────────────────────────────────────────────
 router.post("/visits", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
+  const userId = getUserId(req);
   const { customerId, propertyId, assigneeId, visitMode, purpose, notes, scheduledAt, smsReminderEnabled } = req.body;
 
   if (!purpose) {
@@ -94,14 +110,19 @@ router.post("/visits", async (req, res): Promise<void> => {
     scheduledAt: new Date(scheduledAt),
     smsReminderEnabled: smsReminderEnabled === true || smsReminderEnabled === "true",
   }).returning();
+  notifyVisitAssignment(tenantId, visit, `visit-assignment:${visit.id}:create`, userId);
 
   res.status(201).json(formatVisit(visit));
 });
 
 // ── GET ONE ───────────────────────────────────────────────────────────────────
-router.get("/visits/:id", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
+router.get("/visits/:id", requireVerifiedStaff, async (req, res): Promise<void> => {
+  const tenantId = res.locals.staffTenantId as number;
+  const userId = res.locals.staffUserId as number;
   const id = parseInt(String(req.params.id), 10);
+  if (!Number.isInteger(id) || !(await canAccessVisit(tenantId, userId, id))) {
+    res.status(404).json({ error: "Not found" }); return;
+  }
 
   const [row] = await db
     .select({
@@ -123,8 +144,11 @@ router.get("/visits/:id", async (req, res): Promise<void> => {
 // ── UPDATE ────────────────────────────────────────────────────────────────────
 router.patch("/visits/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
+  const userId = getUserId(req);
   const id = parseInt(req.params.id, 10);
   const { assigneeId, visitMode, purpose, notes, scheduledAt, smsReminderEnabled } = req.body;
+  const [current] = await db.select({ assigneeId: visitsTable.assigneeId }).from(visitsTable)
+    .where(and(eq(visitsTable.id, id), eq(visitsTable.tenantId, tenantId))).limit(1);
 
   const updateData: Partial<typeof visitsTable.$inferInsert> = {};
   if (assigneeId !== undefined) updateData.assigneeId = assigneeId ? parseInt(assigneeId, 10) : null;
@@ -140,6 +164,14 @@ router.patch("/visits/:id", async (req, res): Promise<void> => {
     .returning();
 
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  if (assigneeId !== undefined && current?.assigneeId !== updated.assigneeId) {
+    notifyVisitAssignment(
+      tenantId,
+      updated,
+      `visit-assignment:${updated.id}:update:${updated.updatedAt.getTime()}`,
+      userId,
+    );
+  }
   res.json(formatVisit(updated));
 });
 
@@ -225,6 +257,16 @@ router.post("/visits/:id/convert-to-job", requireVerifiedStaff, async (req, res)
   await db.update(visitsTable)
     .set({ convertedToJobId: job.id })
     .where(eq(visitsTable.id, id));
+  if (job.assigneeId) {
+    void resolveJobAssignmentRecipientIds(tenantId, job.assigneeId, null).then(recipientUserIds => sendStaffPush({
+      tenantId,
+      recipientUserIds: recipientUserIds.filter(userId => userId !== res.locals.staffUserId as number),
+      eventKey: `job-assignment:${job.id}:visit-conversion`,
+      title: "Job assigned",
+      body: `You have been assigned: ${job.title}`,
+      data: { type: "job_assignment", jobId: job.id },
+    }));
+  }
 
   res.status(201).json({ jobId: job.id });
 });

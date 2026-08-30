@@ -34,6 +34,8 @@ import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
 import { sendSms, type SmsProviderConfig } from "../lib/smsProvider";
 import { checkRainBeforeWindow } from "../lib/weatherCheck";
 import { chemicalCompletionError, normalizeFieldRequirements } from "../lib/serviceFieldRequirements";
+import { resolveJobAssignmentRecipientIds, sendStaffPush } from "../lib/pushNotifications";
+import { canAccessJobMessages } from "../lib/jobMessageAccess";
 import {
   importUpload,
   handleExportRequest,
@@ -52,6 +54,32 @@ import {
 } from "../lib/importExport";
 
 const router: IRouter = Router();
+
+function assignmentChanged(
+  previous: { assigneeId: number | null; crewId: number | null },
+  next: { assigneeId: number | null; crewId: number | null },
+): boolean {
+  return previous.assigneeId !== next.assigneeId || previous.crewId !== next.crewId;
+}
+
+function notifyJobAssignment(
+  tenantId: number, job: { id: number; title: string; assigneeId: number | null; crewId: number | null },
+  eventKey: string, actorUserId?: number, previous?: { assigneeId: number | null; crewId: number | null },
+): void {
+  void Promise.all([
+    resolveJobAssignmentRecipientIds(tenantId, job.assigneeId, job.crewId),
+    previous ? resolveJobAssignmentRecipientIds(tenantId, previous.assigneeId, previous.crewId) : Promise.resolve([]),
+  ])
+    .then(([recipientUserIds, previousRecipientIds]) => sendStaffPush({
+      // Reassignment alerts are for people newly added by this assignment, not
+      // crew members who were already assigned before the edit.
+      recipientUserIds: recipientUserIds.filter(id => !previousRecipientIds.includes(id) && id !== actorUserId),
+      tenantId,
+      eventKey, title: "Job assigned", body: `You have been assigned: ${job.title}`,
+      data: { type: "job_assignment", jobId: job.id },
+    }))
+    .catch(err => logger.error({ err, tenantId, jobId: job.id }, "Failed to resolve job assignment push recipients"));
+}
 
 /** Returns the completion blocker, if this job's tenant service requires an application. */
 async function chemicalCompletionBlocker(tenantId: number, jobId: number): Promise<string | null> {
@@ -549,6 +577,9 @@ router.post("/jobs", requireVerifiedStaff, async (req, res): Promise<void> => {
   }).returning();
 
   await db.insert(activityLogTable).values({ tenantId, userId, type: "job_created", message: `Job "${title}" created`, entityId: job.id });
+  if (job.assigneeId || job.crewId) {
+    notifyJobAssignment(tenantId, job, `job-assignment:${job.id}:create`, userId);
+  }
 
   res.status(201).json(formatJob(job));
 });
@@ -625,10 +656,14 @@ router.get("/jobs/pending-requests", async (req, res): Promise<void> => {
   })));
 });
 
-router.get("/jobs/:id", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
+router.get("/jobs/:id", requireVerifiedStaff, async (req, res): Promise<void> => {
+  const tenantId = res.locals.staffTenantId as number;
+  const userId = res.locals.staffUserId as number;
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
+  if (!Number.isInteger(id) || !(await canAccessJobMessages(tenantId, userId, id))) {
+    res.status(404).json({ error: "Not found" }); return;
+  }
 
   const [row] = await db
     .select({ job: jobsTable, customerName: customersTable.name, customerPhone: customersTable.phone, customerNotes: customersTable.notes, assigneeName: usersTable.name, propertyAddress: propertiesTable.address, propertyNotes: propertiesTable.notes, crewName: crewsTable.name, planName: customerPlansTable.templateName, routeName: routeTemplatesTable.name, serviceName: servicesTable.name, fieldRequirements: servicesTable.fieldRequirements })
@@ -731,6 +766,11 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
     ...(offSeasonWindow === null && { offSeasonStart: null, offSeasonEnd: null }),
     ...(offSeasonWindow && { ...offSeasonWindow }),
   };
+  const nextAssignment = {
+    assigneeId: assigneeId !== undefined ? (assigneeId ? parseInt(assigneeId, 10) : null) : currentJob.assigneeId,
+    crewId: crewId !== undefined ? (crewId ? parseInt(crewId, 10) : null) : currentJob.crewId,
+  };
+  const didChangeAssignment = assignmentChanged(currentJob, nextAssignment);
 
   // Handle "forward" or "all" scope: update the root series template
   if (editScope === "all" || editScope === "forward") {
@@ -772,6 +812,17 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
 
     const [updated] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
     if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+    if (didChangeAssignment) {
+      // A scope edit changes one dispatch decision; send one recipient-deduplicated
+      // event rather than one noisy event per generated recurrence instance.
+      notifyJobAssignment(
+        tenantId,
+        updated,
+        `job-assignment:${currentJob.recurrenceParentId ?? id}:${editScope}:${updated.updatedAt.getTime()}`,
+        getUserId(req),
+        currentJob,
+      );
+    }
     res.json(formatJob(updated));
     return;
   }
@@ -787,6 +838,15 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
     .returning();
 
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  if (didChangeAssignment) {
+    notifyJobAssignment(
+      tenantId,
+      updated,
+      `job-assignment:${updated.id}:update:${updated.updatedAt.getTime()}`,
+      getUserId(req),
+      currentJob,
+    );
+  }
 
   // When planId is changed on a series root, propagate to all existing scheduled children
   // so the series is consistently linked — future generated instances already inherit via recurrenceScheduler.

@@ -16,6 +16,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { setBaseUrl } from '@workspace/api-client-react';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { OfflineProvider } from '@/contexts/OfflineContext';
+import { NotificationLifecycle } from '@/components/NotificationLifecycle';
 
 // Set the API base URL so Expo (outside the proxy) can reach the API server.
 if (process.env.EXPO_PUBLIC_DOMAIN) {
@@ -59,6 +60,7 @@ export default function RootLayout() {
             <KeyboardProvider>
               <AuthProvider>
                 <OfflineProvider>
+                  <NotificationLifecycle />
                   <RootLayoutNav />
                 </OfflineProvider>
               </AuthProvider>

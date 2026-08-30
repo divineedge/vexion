@@ -7,6 +7,90 @@ import { useMutation, useQuery, type UseMutationOptions, type UseMutationResult,
 import { customFetch, type ErrorType, type BodyType } from "./custom-fetch";
 
 // ---------------------------------------------------------------------------
+// Staff notification devices
+// ---------------------------------------------------------------------------
+
+export interface StaffNotificationDeviceBody {
+  expoPushToken: string;
+  platform: "ios" | "android";
+}
+
+export interface DisableStaffNotificationDeviceBody {
+  expoPushToken: string;
+}
+
+/** The server may return the created device record; consumers do not need it. */
+export type StaffNotificationDeviceResult = unknown;
+
+export const registerStaffNotificationDevice = async (
+  data: StaffNotificationDeviceBody,
+  options?: RequestInit,
+): Promise<StaffNotificationDeviceResult> =>
+  customFetch<StaffNotificationDeviceResult>("/api/staff-notification-devices", {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(data),
+  });
+
+export const disableStaffNotificationDevice = async (
+  data: DisableStaffNotificationDeviceBody,
+  options?: RequestInit,
+): Promise<StaffNotificationDeviceResult> =>
+  customFetch<StaffNotificationDeviceResult>("/api/staff-notification-devices/disable", {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(data),
+  });
+
+export const useRegisterStaffNotificationDevice = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof registerStaffNotificationDevice>>,
+    TError,
+    { data: BodyType<StaffNotificationDeviceBody> },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof registerStaffNotificationDevice>>,
+  TError,
+  { data: BodyType<StaffNotificationDeviceBody> },
+  TContext
+> => {
+  const { mutation: mutationOptions } = options ?? {};
+  return useMutation({
+    mutationFn: ({ data }) => registerStaffNotificationDevice(data),
+    ...mutationOptions,
+  });
+};
+
+export const useDisableStaffNotificationDevice = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof disableStaffNotificationDevice>>,
+    TError,
+    { data: BodyType<DisableStaffNotificationDeviceBody> },
+    TContext
+  >;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof disableStaffNotificationDevice>>,
+  TError,
+  { data: BodyType<DisableStaffNotificationDeviceBody> },
+  TContext
+> => {
+  const { mutation: mutationOptions } = options ?? {};
+  return useMutation({
+    mutationFn: ({ data }) => disableStaffNotificationDevice(data),
+    ...mutationOptions,
+  });
+};
+
+// ---------------------------------------------------------------------------
 // Property transfer
 // ---------------------------------------------------------------------------
 

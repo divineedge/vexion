@@ -11673,6 +11673,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CustomerFieldConfig"
+        chemicalRecordRequirements:
+          $ref: "#/components/schemas/ChemicalRecordRequirements"
         equipmentRepairThresholdPct:
           type: number
           description: "Sell recommendation triggers when total repair cost exceeds this % of purchase price"
@@ -12175,6 +12177,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CustomerFieldConfig"
+        chemicalRecordRequirements:
+          $ref: "#/components/schemas/ChemicalRecordRequirements"
         equipmentRepairThresholdPct:
           type: number
         equipmentResaleThresholdPct:
@@ -12296,6 +12300,41 @@ components:
         defaultInvoiceTemplateId:
           type: ["integer", "null"]
           description: "FK to invoice_templates — template applied when creating new invoices"
+
+    ChemicalRecordRequirements:
+      type: object
+      required:
+        - treatedArea
+        - treatedZoneName
+        - targetPest
+        - applicationMethod
+        - windSpeed
+        - windDirection
+        - temperature
+        - applicatorName
+        - applicatorLicenseNumber
+        - notes
+      properties:
+        treatedArea:
+          type: boolean
+        treatedZoneName:
+          type: boolean
+        targetPest:
+          type: boolean
+        applicationMethod:
+          type: boolean
+        windSpeed:
+          type: boolean
+        windDirection:
+          type: boolean
+        temperature:
+          type: boolean
+        applicatorName:
+          type: boolean
+        applicatorLicenseNumber:
+          type: boolean
+        notes:
+          type: boolean
 
     CustomerFieldConfig:
       type: object
@@ -12762,7 +12801,11 @@ components:
 
     ChemicalApplicationInput:
       type: object
-      required: [volumeApplied]
+      description: "New applications require exactly one of mixtureId or productId."
+      required: [volumeApplied, volumeUnit, appliedAt]
+      oneOf:
+        - required: [mixtureId]
+        - required: [productId]
       properties:
         mixtureId:
           type: integer
@@ -12793,6 +12836,7 @@ components:
           type: number
         appliedAt:
           type: string
+          format: date-time
         applicatorName:
           type: string
         applicatorLicenseNumber:

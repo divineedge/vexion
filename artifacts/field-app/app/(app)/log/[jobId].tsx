@@ -22,12 +22,14 @@ import {
   useCreateJobChemicalApplication,
   useGetJob,
   useGetProperty,
+  useGetTenantSettings,
   getGetPropertyQueryKey,
   type ChemicalApplicationInput,
   type MeasurementZone,
 } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
+import { normalizeChemicalRecordRequirements } from '@/utils/chemicalRequirements';
 
 type ChemMixture = { id: number; name: string; items?: unknown[] };
 type ChemProduct = { id: number; name: string; unit?: string };
@@ -56,6 +58,11 @@ type ChemApp = {
 const VOLUME_UNITS = ['gal', 'oz', 'L', 'mL'];
 const APPLICATION_METHODS = ['Spray', 'Granular', 'Injection', 'Fog', 'Broadcast', 'Drench'];
 const WIND_DIRECTIONS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW', 'Calm'];
+
+function localDateTimeValue(date = new Date()): string {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 // ─── Picker Modal ────────────────────────────────────────────────────────────
 
@@ -344,11 +351,14 @@ export default function LogApplicationScreen() {
   const [treatedArea, setTreatedArea] = useState('');
   const [areaUnit, setAreaUnit] = useState('sqft');
   const [selectedZone, setSelectedZone] = useState<MeasurementZone | null>(null);
+  const [treatedZoneName, setTreatedZoneName] = useState('');
   const [targetPest, setTargetPest] = useState('');
   const [applicationMethod, setApplicationMethod] = useState('');
   const [windSpeed, setWindSpeed] = useState('');
   const [windDirection, setWindDirection] = useState('');
   const [temperature, setTemperature] = useState('');
+  const [appliedAt, setAppliedAt] = useState(() => localDateTimeValue());
+  const [applicatorName, setApplicatorName] = useState('');
   const [licenseNumber, setLicenseNumber] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -390,6 +400,8 @@ export default function LogApplicationScreen() {
 
   const { data: mixtures, isLoading: mixturesLoading } = useListChemicalMixtures();
   const { data: products, isLoading: productsLoading } = useListChemicalProducts();
+  const { data: tenantSettings } = useGetTenantSettings();
+  const chemicalRequirements = normalizeChemicalRecordRequirements(tenantSettings?.chemicalRecordRequirements);
   const createMutation = useCreateJobChemicalApplication();
 
   const validate = useCallback((): boolean => {
@@ -399,9 +411,36 @@ export default function LogApplicationScreen() {
     }
     if (mode === 'mixture' && !selectedMixture) e.mixture = 'Select a mixture';
     if (mode === 'product' && !selectedProduct) e.product = 'Select a product';
+    if (!appliedAt || Number.isNaN(new Date(appliedAt).getTime())) e.appliedAt = 'Enter a valid application date and time';
+    if (treatedArea && (!Number.isFinite(Number(treatedArea)) || Number(treatedArea) <= 0)) {
+      e.treatedArea = 'Treated area must be a positive number';
+    } else if (chemicalRequirements.treatedArea && !treatedArea) {
+      e.treatedArea = 'Treated area is required';
+    }
+    if (chemicalRequirements.treatedZoneName && !treatedZoneName.trim()) e.treatedZoneName = 'Treated zone or location is required';
+    if (chemicalRequirements.targetPest && !targetPest.trim()) e.targetPest = 'Target pest or weed is required';
+    if (chemicalRequirements.applicationMethod && !applicationMethod) e.applicationMethod = 'Application method is required';
+    if (windSpeed && (!Number.isFinite(Number(windSpeed)) || Number(windSpeed) < 0)) {
+      e.windSpeed = 'Wind speed must be zero or greater';
+    } else if (chemicalRequirements.windSpeed && !windSpeed) {
+      e.windSpeed = 'Wind speed is required';
+    }
+    if (chemicalRequirements.windDirection && !windDirection) e.windDirection = 'Wind direction is required';
+    if (temperature && !Number.isFinite(Number(temperature))) {
+      e.temperature = 'Enter a valid temperature';
+    } else if (chemicalRequirements.temperature && !temperature) {
+      e.temperature = 'Temperature is required';
+    }
+    if (chemicalRequirements.applicatorName && !applicatorName.trim()) e.applicatorName = 'Applicator name is required';
+    if (chemicalRequirements.applicatorLicenseNumber && !licenseNumber.trim()) e.applicatorLicenseNumber = 'Applicator license number is required';
+    if (chemicalRequirements.notes && !notes.trim()) e.notes = 'Notes are required';
     setErrors(e);
     return Object.keys(e).length === 0;
-  }, [volumeApplied, mode, selectedMixture, selectedProduct]);
+  }, [
+    volumeApplied, mode, selectedMixture, selectedProduct, appliedAt, treatedArea,
+    treatedZoneName, targetPest, applicationMethod, windSpeed, windDirection,
+    temperature, applicatorName, licenseNumber, notes, chemicalRequirements,
+  ]);
 
   const handleSubmit = useCallback(async () => {
     if (!validate()) {
@@ -414,6 +453,7 @@ export default function LogApplicationScreen() {
       const body: ChemicalApplicationInput = {
         volumeApplied: Number(volumeApplied),
         volumeUnit,
+        appliedAt: new Date(appliedAt).toISOString(),
       };
       if (mode === 'mixture' && selectedMixture) body.mixtureId = selectedMixture.id;
       if (mode === 'product' && selectedProduct) body.productId = selectedProduct.id;
@@ -421,12 +461,13 @@ export default function LogApplicationScreen() {
         body.treatedArea = Number(treatedArea);
         body.areaUnit = areaUnit;
       }
-      if (selectedZone) body.treatedZoneName = selectedZone.label;
+      if (treatedZoneName.trim()) body.treatedZoneName = treatedZoneName.trim();
       if (targetPest.trim()) body.targetPest = targetPest.trim();
       if (applicationMethod) body.applicationMethod = applicationMethod;
       if (windSpeed && !isNaN(Number(windSpeed))) body.windSpeed = Number(windSpeed);
       if (windDirection) body.windDirection = windDirection;
       if (temperature && !isNaN(Number(temperature))) body.temperature = Number(temperature);
+      if (applicatorName.trim()) body.applicatorName = applicatorName.trim();
       if (licenseNumber.trim()) body.applicatorLicenseNumber = licenseNumber.trim();
       if (notes.trim()) body.notes = notes.trim();
 
@@ -437,13 +478,14 @@ export default function LogApplicationScreen() {
 
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setResult(created as ChemApp);
-    } catch (err) {
+    } catch (err: any) {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('Error', 'Failed to log application. Please try again.');
+      if (err?.data?.fields && typeof err.data.fields === 'object') setErrors(err.data.fields);
+      Alert.alert('Error', err?.data?.error ?? 'Failed to log application. Please try again.');
     }
-  }, [validate, volumeApplied, volumeUnit, treatedArea, areaUnit, mode, selectedMixture, selectedProduct,
-      targetPest, applicationMethod, windSpeed, windDirection, temperature, licenseNumber, notes,
-      numJobId, createMutation, selectedZone]);
+  }, [validate, volumeApplied, volumeUnit, appliedAt, treatedArea, areaUnit, mode, selectedMixture, selectedProduct,
+      treatedZoneName, targetPest, applicationMethod, windSpeed, windDirection, temperature, applicatorName,
+      licenseNumber, notes, numJobId, createMutation]);
 
   const handleDone = useCallback(() => {
     router.back();
@@ -552,8 +594,21 @@ export default function LogApplicationScreen() {
             )}
           </Field>
 
+          <Field label="Applied At (YYYY-MM-DDTHH:MM)" required colors={colors}>
+            <StyledInput
+              value={appliedAt}
+              onChangeText={setAppliedAt}
+              placeholder="2026-08-29T14:30"
+              colors={colors}
+              error={!!errors.appliedAt}
+            />
+            {errors.appliedAt && (
+              <Text style={[styles.errMsg, { color: colors.destructive }]}>{errors.appliedAt}</Text>
+            )}
+          </Field>
+
           {/* Treated Area */}
-          <Field label="Treated Area" colors={colors}>
+          <Field label="Treated Area" required={chemicalRequirements.treatedArea} colors={colors}>
             {/* Zone picker — only shown when the property has named measurement zones */}
             {measurementZones.length > 0 && (
               <View style={areaStyles.zonePicker}>
@@ -566,7 +621,7 @@ export default function LogApplicationScreen() {
                 {selectedZone && (
                   <TouchableOpacity
                     style={[areaStyles.clearZone, { backgroundColor: colors.muted, borderColor: colors.border }]}
-                    onPress={() => setSelectedZone(null)}
+                    onPress={() => { setSelectedZone(null); setTreatedZoneName(''); }}
                     activeOpacity={0.7}
                   >
                     <Ionicons name="close" size={15} color={colors.mutedForeground} />
@@ -598,6 +653,7 @@ export default function LogApplicationScreen() {
                   placeholder="e.g. 5000"
                   keyboardType="decimal-pad"
                   colors={colors}
+                  error={!!errors.treatedArea}
                 />
               </View>
               <View style={{ flex: 1 }}>
@@ -609,6 +665,9 @@ export default function LogApplicationScreen() {
                 />
               </View>
             </View>
+            {errors.treatedArea && (
+              <Text style={[styles.errMsg, { color: colors.destructive }]}>{errors.treatedArea}</Text>
+            )}
             {liveRates && (
               <View style={[areaStyles.rateRow, { backgroundColor: colors.muted, borderColor: colors.border }]}>
                 <View style={areaStyles.ratePill}>
@@ -628,24 +687,47 @@ export default function LogApplicationScreen() {
             )}
           </Field>
 
+          <Field label="Treated Zone / Location" required={chemicalRequirements.treatedZoneName} colors={colors}>
+            <StyledInput
+              value={treatedZoneName}
+              onChangeText={value => {
+                setTreatedZoneName(value);
+                if (selectedZone && value !== selectedZone.label) setSelectedZone(null);
+              }}
+              placeholder="e.g. Front lawn"
+              colors={colors}
+              error={!!errors.treatedZoneName}
+            />
+            {errors.treatedZoneName && (
+              <Text style={[styles.errMsg, { color: colors.destructive }]}>{errors.treatedZoneName}</Text>
+            )}
+          </Field>
+
           {/* Target Pest */}
-          <Field label="Target Pest" colors={colors}>
+          <Field label="Target Pest" required={chemicalRequirements.targetPest} colors={colors}>
             <StyledInput
               value={targetPest}
               onChangeText={setTargetPest}
               placeholder="e.g. Grubs, Crabgrass, Ants…"
               colors={colors}
+              error={!!errors.targetPest}
             />
+            {errors.targetPest && (
+              <Text style={[styles.errMsg, { color: colors.destructive }]}>{errors.targetPest}</Text>
+            )}
           </Field>
 
           {/* Application Method */}
-          <Field label="Application Method" colors={colors}>
+          <Field label="Application Method" required={chemicalRequirements.applicationMethod} colors={colors}>
             <SelectButton
               value={applicationMethod}
               placeholder="Select method…"
               onPress={() => setShowMethodPicker(true)}
               colors={colors}
             />
+            {errors.applicationMethod && (
+              <Text style={[styles.errMsg, { color: colors.destructive }]}>{errors.applicationMethod}</Text>
+            )}
           </Field>
 
           {/* Environmental Conditions */}
@@ -657,36 +739,47 @@ export default function LogApplicationScreen() {
 
           <View style={styles.splitRow}>
             <View style={{ flex: 1 }}>
-              <Field label="Wind Speed (mph)" colors={colors}>
+              <Field label="Wind Speed (mph)" required={chemicalRequirements.windSpeed} colors={colors}>
                 <StyledInput
                   value={windSpeed}
                   onChangeText={setWindSpeed}
                   placeholder="0"
                   keyboardType="decimal-pad"
                   colors={colors}
+                  error={!!errors.windSpeed}
                 />
+                {errors.windSpeed && (
+                  <Text style={[styles.errMsg, { color: colors.destructive }]}>{errors.windSpeed}</Text>
+                )}
               </Field>
             </View>
             <View style={{ flex: 1 }}>
-              <Field label="Wind Direction" colors={colors}>
+              <Field label="Wind Direction" required={chemicalRequirements.windDirection} colors={colors}>
                 <SelectButton
                   value={windDirection}
                   placeholder="N/A"
                   onPress={() => setShowWindDirPicker(true)}
                   colors={colors}
                 />
+                {errors.windDirection && (
+                  <Text style={[styles.errMsg, { color: colors.destructive }]}>{errors.windDirection}</Text>
+                )}
               </Field>
             </View>
           </View>
 
-          <Field label="Temperature (°F)" colors={colors}>
+          <Field label="Temperature (°F)" required={chemicalRequirements.temperature} colors={colors}>
             <StyledInput
               value={temperature}
               onChangeText={setTemperature}
               placeholder="72"
               keyboardType="decimal-pad"
               colors={colors}
+              error={!!errors.temperature}
             />
+            {errors.temperature && (
+              <Text style={[styles.errMsg, { color: colors.destructive }]}>{errors.temperature}</Text>
+            )}
           </Field>
 
           {/* Applicator Info */}
@@ -696,23 +789,44 @@ export default function LogApplicationScreen() {
             </Text>
           </View>
 
-          <Field label="License Number" colors={colors}>
+          <Field label="Applicator Name" required={chemicalRequirements.applicatorName} colors={colors}>
+            <StyledInput
+              value={applicatorName}
+              onChangeText={setApplicatorName}
+              placeholder="Name of applicator"
+              colors={colors}
+              error={!!errors.applicatorName}
+            />
+            {errors.applicatorName && (
+              <Text style={[styles.errMsg, { color: colors.destructive }]}>{errors.applicatorName}</Text>
+            )}
+          </Field>
+
+          <Field label="License Number" required={chemicalRequirements.applicatorLicenseNumber} colors={colors}>
             <StyledInput
               value={licenseNumber}
               onChangeText={setLicenseNumber}
               placeholder="State pesticide license #"
               colors={colors}
+              error={!!errors.applicatorLicenseNumber}
             />
+            {errors.applicatorLicenseNumber && (
+              <Text style={[styles.errMsg, { color: colors.destructive }]}>{errors.applicatorLicenseNumber}</Text>
+            )}
           </Field>
 
-          <Field label="Notes" colors={colors}>
+          <Field label="Notes" required={chemicalRequirements.notes} colors={colors}>
             <StyledInput
               value={notes}
               onChangeText={setNotes}
               placeholder="Any additional notes…"
               multiline
               colors={colors}
+              error={!!errors.notes}
             />
+            {errors.notes && (
+              <Text style={[styles.errMsg, { color: colors.destructive }]}>{errors.notes}</Text>
+            )}
           </Field>
         </View>
       </KeyboardAwareScrollViewCompat>
@@ -805,6 +919,7 @@ export default function LogApplicationScreen() {
         onSelect={(item) => {
           const zone = (item as unknown as { _zone: MeasurementZone })._zone;
           setSelectedZone(zone);
+          setTreatedZoneName(zone.label);
           setTreatedArea(String(Math.round(zone.areaSqft)));
           setAreaUnit('sqft');
         }}

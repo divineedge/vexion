@@ -80,6 +80,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useDebounce } from '@/hooks/use-debounce';
 import { hasEarlierMessagePage, mergeMessagePages, messageBeforeId } from '@/lib/messagePagination';
+import { normalizeChemicalRecordRequirements, type ChemicalRequirementKey } from '@/lib/chemicalRequirements';
 import {
   startOfWeek, endOfWeek, startOfMonth, endOfMonth,
   eachDayOfInterval, format, isSameDay, addWeeks, subWeeks, addMonths, subMonths,
@@ -144,6 +145,25 @@ const PRIORITY_COLORS: Record<string, string> = {
   normal: 'bg-blue-50 text-blue-700 border-transparent',
   high:   'bg-orange-100 text-orange-700 border-transparent',
   urgent: 'bg-red-100 text-red-700 border-transparent',
+};
+
+const EMPTY_CHEMICAL_FORM = {
+  mixtureId: '',
+  productId: '',
+  volumeApplied: '',
+  volumeUnit: 'gal',
+  treatedArea: '',
+  areaUnit: 'sqft',
+  treatedZoneName: '',
+  targetPest: '',
+  applicationMethod: '',
+  windSpeed: '',
+  windDirection: '',
+  temperature: '',
+  appliedAt: '',
+  applicatorName: '',
+  applicatorLicenseNumber: '',
+  notes: '',
 };
 
 function JobDescriptionEditor({ jobId, initialDescription, canEdit }: { jobId: number; initialDescription: string; canEdit: boolean }) {
@@ -279,12 +299,8 @@ export default function SchedulePage() {
   const [addingSupply, setAddingSupply] = useState(false);
   const [supplyQtys, setSupplyQtys] = useState<Record<number, string>>({});
   const [chemFormOpen, setChemFormOpen] = useState(false);
-  const [chemForm, setChemForm] = useState({
-    mixtureId: '', productId: '', volumeApplied: '', volumeUnit: 'gal',
-    targetPest: '', applicationMethod: '', windSpeed: '', windDirection: '',
-    temperature: '', applicatorLicenseNumber: '', notes: '', appliedAt: '',
-    treatedArea: '', areaUnit: 'sqft',
-  });
+  const [chemForm, setChemForm] = useState({ ...EMPTY_CHEMICAL_FORM });
+  const [chemFormErrors, setChemFormErrors] = useState<Record<string, string>>({});
 
 
   // Sub-timer (clock in/out on job)
@@ -356,6 +372,47 @@ export default function SchedulePage() {
 
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
   const durationUnit = settings?.durationUnit ?? 'minutes';
+  const chemicalRequirements = normalizeChemicalRecordRequirements(settings?.chemicalRecordRequirements);
+  const chemicalFieldIsRequired = (key: ChemicalRequirementKey) => chemicalRequirements[key];
+
+  const validateChemicalForm = (): boolean => {
+    const errors: Record<string, string> = {};
+    const selectedMixture = chemForm.mixtureId && chemForm.mixtureId !== 'none';
+    if ((!selectedMixture && !chemForm.productId) || (selectedMixture && chemForm.productId)) {
+      errors.productOrMixture = 'Select one product or tank mixture';
+    }
+    const volume = Number(chemForm.volumeApplied);
+    if (!Number.isFinite(volume) || volume <= 0) errors.volumeApplied = 'Enter a positive amount';
+    if (!chemForm.volumeUnit.trim()) errors.volumeUnit = 'Select an amount unit';
+    if (!chemForm.appliedAt || Number.isNaN(new Date(chemForm.appliedAt).getTime())) errors.appliedAt = 'Enter a valid application date and time';
+
+    if (chemForm.treatedArea && (!Number.isFinite(Number(chemForm.treatedArea)) || Number(chemForm.treatedArea) <= 0)) {
+      errors.treatedArea = 'Treated area must be a positive number';
+    } else if (chemicalRequirements.treatedArea && !chemForm.treatedArea) {
+      errors.treatedArea = 'Treated area is required';
+    }
+    if (chemicalRequirements.treatedZoneName && !chemForm.treatedZoneName.trim()) errors.treatedZoneName = 'Treated zone or location is required';
+    if (chemicalRequirements.targetPest && !chemForm.targetPest.trim()) errors.targetPest = 'Target pest or weed is required';
+    if (chemicalRequirements.applicationMethod && !chemForm.applicationMethod) errors.applicationMethod = 'Application method is required';
+    if (chemForm.windSpeed && (!Number.isFinite(Number(chemForm.windSpeed)) || Number(chemForm.windSpeed) < 0)) {
+      errors.windSpeed = 'Wind speed must be zero or greater';
+    } else if (chemicalRequirements.windSpeed && !chemForm.windSpeed) {
+      errors.windSpeed = 'Wind speed is required';
+    }
+    if (chemicalRequirements.windDirection && !chemForm.windDirection) errors.windDirection = 'Wind direction is required';
+    if (chemForm.temperature && !Number.isFinite(Number(chemForm.temperature))) {
+      errors.temperature = 'Enter a valid temperature';
+    } else if (chemicalRequirements.temperature && !chemForm.temperature) {
+      errors.temperature = 'Temperature is required';
+    }
+    if (chemicalRequirements.applicatorName && !chemForm.applicatorName.trim()) errors.applicatorName = 'Applicator name is required';
+    if (chemicalRequirements.applicatorLicenseNumber && !chemForm.applicatorLicenseNumber.trim()) errors.applicatorLicenseNumber = 'Applicator license number is required';
+    if (chemicalRequirements.notes && !chemForm.notes.trim()) errors.notes = 'Notes are required';
+
+    setChemFormErrors(errors);
+    if (Object.keys(errors).length > 0) toast.error('Complete all required chemical information');
+    return Object.keys(errors).length === 0;
+  };
 
   // Sync the create-job form's duration unit to the tenant default.
   // Use a ref so we only auto-apply the setting once per open session and never
@@ -2803,7 +2860,13 @@ export default function SchedulePage() {
                       // Auto-fill applicator license from current user's profile
                       const currentUser = (users ?? []).find((u: any) => u.id === user?.id);
                       const license = (currentUser as any)?.applicatorLicense ?? '';
-                      setChemForm(f => ({ ...f, appliedAt: localDT, applicatorLicenseNumber: license || f.applicatorLicenseNumber }));
+                      setChemForm(f => ({
+                        ...f,
+                        appliedAt: localDT,
+                        applicatorName: currentUser?.name ?? user?.name ?? f.applicatorName,
+                        applicatorLicenseNumber: license || f.applicatorLicenseNumber,
+                      }));
+                      setChemFormErrors({});
                       setChemFormOpen(true);
                     }} title="Log a chemical application for this job">
                       <Plus className="w-3 h-3" /> Log Application
@@ -3092,7 +3155,7 @@ export default function SchedulePage() {
       </Sheet>
 
       {/* Chemical Application Log Sheet */}
-      <Sheet open={chemFormOpen} onOpenChange={open => { if (!open) { setChemFormOpen(false); setChemForm({ mixtureId: '', productId: '', volumeApplied: '', volumeUnit: 'gal', targetPest: '', applicationMethod: '', windSpeed: '', windDirection: '', temperature: '', applicatorLicenseNumber: '', notes: '', appliedAt: '', treatedArea: '', areaUnit: 'sqft' }); } }}>
+      <Sheet open={chemFormOpen} onOpenChange={open => { if (!open) { setChemFormOpen(false); setChemForm({ ...EMPTY_CHEMICAL_FORM }); setChemFormErrors({}); } }}>
         <SheetContent className="w-full sm:max-w-md overflow-y-auto">
           <SheetHeader className="pb-4">
             <SheetTitle>Log Chemical Application</SheetTitle>
@@ -3109,7 +3172,7 @@ export default function SchedulePage() {
             {/* Mixture or Product */}
             {(chemMixtures?.length ?? 0) > 0 && (
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Tank Mix (Mixture)</label>
+                <label className="text-sm font-medium">Tank Mix (Mixture) <span className="text-destructive">*</span></label>
                 <Select value={chemForm.mixtureId} onValueChange={v => setChemForm(f => ({ ...f, mixtureId: v, productId: '' }))}>
                   <SelectTrigger title="Select a pre-mixed tank mixture"><SelectValue placeholder="Select mixture…" /></SelectTrigger>
                   <SelectContent>
@@ -3123,7 +3186,7 @@ export default function SchedulePage() {
             )}
             {!chemForm.mixtureId || chemForm.mixtureId === 'none' ? (
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Raw Product</label>
+                <label className="text-sm font-medium">Raw Product <span className="text-destructive">*</span></label>
                 <Select value={chemForm.productId} onValueChange={v => setChemForm(f => ({ ...f, productId: v, mixtureId: '' }))}>
                   <SelectTrigger title="Select a raw chemical product"><SelectValue placeholder="Select product…" /></SelectTrigger>
                   <SelectContent>
@@ -3134,14 +3197,16 @@ export default function SchedulePage() {
                 </Select>
               </div>
             ) : null}
+            {chemFormErrors.productOrMixture && <p className="text-xs text-destructive">{chemFormErrors.productOrMixture}</p>}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Volume Applied <span className="text-destructive">*</span></label>
                 <Input type="number" min={0} step={0.01} title="Total volume of product applied" placeholder="e.g. 2.5" value={chemForm.volumeApplied} onChange={e => setChemForm(f => ({ ...f, volumeApplied: e.target.value }))} />
+                {chemFormErrors.volumeApplied && <p className="text-xs text-destructive">{chemFormErrors.volumeApplied}</p>}
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Unit</label>
+                <label className="text-sm font-medium">Unit <span className="text-destructive">*</span></label>
                 <Select value={chemForm.volumeUnit} onValueChange={v => setChemForm(f => ({ ...f, volumeUnit: v }))}>
                   <SelectTrigger title="Select volume unit"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -3152,21 +3217,24 @@ export default function SchedulePage() {
                     <SelectItem value="l">Liters</SelectItem>
                   </SelectContent>
                 </Select>
+                {chemFormErrors.volumeUnit && <p className="text-xs text-destructive">{chemFormErrors.volumeUnit}</p>}
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Applied At</label>
+              <label className="text-sm font-medium">Applied At <span className="text-destructive">*</span></label>
               <Input type="datetime-local" title="Date and time the chemical was applied" value={chemForm.appliedAt} onChange={e => setChemForm(f => ({ ...f, appliedAt: e.target.value }))} />
+              {chemFormErrors.appliedAt && <p className="text-xs text-destructive">{chemFormErrors.appliedAt}</p>}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Treated Area</label>
+                <label className="text-sm font-medium">Treated Area {chemicalFieldIsRequired('treatedArea') && <span className="text-destructive">*</span>}</label>
                 <Input type="number" min={0} step={1} title="Total area treated by this application" placeholder="e.g. 5000" value={chemForm.treatedArea} onChange={e => setChemForm(f => ({ ...f, treatedArea: e.target.value }))} />
+                {chemFormErrors.treatedArea && <p className="text-xs text-destructive">{chemFormErrors.treatedArea}</p>}
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Area Unit</label>
+                <label className="text-sm font-medium">Area Unit {chemicalFieldIsRequired('treatedArea') && <span className="text-destructive">*</span>}</label>
                 <Select value={chemForm.areaUnit} onValueChange={v => setChemForm(f => ({ ...f, areaUnit: v }))}>
                   <SelectTrigger title="Select area measurement unit"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -3178,13 +3246,20 @@ export default function SchedulePage() {
               </div>
             </div>
 
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Treated Zone / Location {chemicalFieldIsRequired('treatedZoneName') && <span className="text-destructive">*</span>}</label>
+              <Input title="Named property zone or treatment location" placeholder="e.g. Front lawn" value={chemForm.treatedZoneName} onChange={e => setChemForm(f => ({ ...f, treatedZoneName: e.target.value }))} />
+              {chemFormErrors.treatedZoneName && <p className="text-xs text-destructive">{chemFormErrors.treatedZoneName}</p>}
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Target Pest</label>
+                <label className="text-sm font-medium">Target Pest {chemicalFieldIsRequired('targetPest') && <span className="text-destructive">*</span>}</label>
                 <Input title="Target pest or weed being treated" placeholder="e.g. Broadleaf weeds" value={chemForm.targetPest} onChange={e => setChemForm(f => ({ ...f, targetPest: e.target.value }))} />
+                {chemFormErrors.targetPest && <p className="text-xs text-destructive">{chemFormErrors.targetPest}</p>}
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Method</label>
+                <label className="text-sm font-medium">Method {chemicalFieldIsRequired('applicationMethod') && <span className="text-destructive">*</span>}</label>
                 <Select value={chemForm.applicationMethod} onValueChange={v => setChemForm(f => ({ ...f, applicationMethod: v }))}>
                   <SelectTrigger title="Select the application method"><SelectValue placeholder="Select…" /></SelectTrigger>
                   <SelectContent>
@@ -3196,16 +3271,18 @@ export default function SchedulePage() {
                     <SelectItem value="fumigation">Fumigation</SelectItem>
                   </SelectContent>
                 </Select>
+                {chemFormErrors.applicationMethod && <p className="text-xs text-destructive">{chemFormErrors.applicationMethod}</p>}
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Wind (mph)</label>
+                <label className="text-sm font-medium">Wind (mph) {chemicalFieldIsRequired('windSpeed') && <span className="text-destructive">*</span>}</label>
                 <Input type="number" min={0} step={0.5} title="Wind speed at time of application (mph)" placeholder="5" value={chemForm.windSpeed} onChange={e => setChemForm(f => ({ ...f, windSpeed: e.target.value }))} />
+                {chemFormErrors.windSpeed && <p className="text-xs text-destructive">{chemFormErrors.windSpeed}</p>}
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Direction</label>
+                <label className="text-sm font-medium">Direction {chemicalFieldIsRequired('windDirection') && <span className="text-destructive">*</span>}</label>
                 <Select value={chemForm.windDirection} onValueChange={v => setChemForm(f => ({ ...f, windDirection: v }))}>
                   <SelectTrigger title="Wind direction at time of application"><SelectValue placeholder="—" /></SelectTrigger>
                   <SelectContent>
@@ -3214,21 +3291,31 @@ export default function SchedulePage() {
                     ))}
                   </SelectContent>
                 </Select>
+                {chemFormErrors.windDirection && <p className="text-xs text-destructive">{chemFormErrors.windDirection}</p>}
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Temp (°F)</label>
+                <label className="text-sm font-medium">Temp (°F) {chemicalFieldIsRequired('temperature') && <span className="text-destructive">*</span>}</label>
                 <Input type="number" title="Temperature at time of application (°F)" placeholder="72" value={chemForm.temperature} onChange={e => setChemForm(f => ({ ...f, temperature: e.target.value }))} />
+                {chemFormErrors.temperature && <p className="text-xs text-destructive">{chemFormErrors.temperature}</p>}
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Applicator License #</label>
-              <Input title="Applicator's pesticide license number" placeholder="License number" value={chemForm.applicatorLicenseNumber} onChange={e => setChemForm(f => ({ ...f, applicatorLicenseNumber: e.target.value }))} />
+              <label className="text-sm font-medium">Applicator Name {chemicalFieldIsRequired('applicatorName') && <span className="text-destructive">*</span>}</label>
+              <Input title="Name of the person applying the chemical" placeholder="Applicator name" value={chemForm.applicatorName} onChange={e => setChemForm(f => ({ ...f, applicatorName: e.target.value }))} />
+              {chemFormErrors.applicatorName && <p className="text-xs text-destructive">{chemFormErrors.applicatorName}</p>}
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Notes</label>
+              <label className="text-sm font-medium">Applicator License # {chemicalFieldIsRequired('applicatorLicenseNumber') && <span className="text-destructive">*</span>}</label>
+              <Input title="Applicator's pesticide license number" placeholder="License number" value={chemForm.applicatorLicenseNumber} onChange={e => setChemForm(f => ({ ...f, applicatorLicenseNumber: e.target.value }))} />
+              {chemFormErrors.applicatorLicenseNumber && <p className="text-xs text-destructive">{chemFormErrors.applicatorLicenseNumber}</p>}
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Notes {chemicalFieldIsRequired('notes') && <span className="text-destructive">*</span>}</label>
               <Textarea title="Additional notes about this application (weather, conditions, observations, etc.)" placeholder="Additional notes…" rows={2} value={chemForm.notes} onChange={e => setChemForm(f => ({ ...f, notes: e.target.value }))} />
+              {chemFormErrors.notes && <p className="text-xs text-destructive">{chemFormErrors.notes}</p>}
             </div>
 
             <Separator />
@@ -3236,10 +3323,7 @@ export default function SchedulePage() {
               <Button variant="outline" onClick={() => setChemFormOpen(false)}>Cancel</Button>
               <Button
                 onClick={() => {
-                  if (!chemForm.volumeApplied || (!chemForm.mixtureId && !chemForm.productId) || chemForm.mixtureId === 'none' && !chemForm.productId) {
-                    toast.error('Volume and a mixture or product are required');
-                    return;
-                  }
+                  if (!validateChemicalForm()) return;
                   createChemApp.mutate({
                     id: selectedJobId!,
                     data: {
@@ -3252,20 +3336,26 @@ export default function SchedulePage() {
                       windSpeed: chemForm.windSpeed ? parseFloat(chemForm.windSpeed) : undefined,
                       windDirection: chemForm.windDirection || undefined,
                       temperature: chemForm.temperature ? parseFloat(chemForm.temperature) : undefined,
-                      appliedAt: chemForm.appliedAt ? new Date(chemForm.appliedAt).toISOString() : undefined,
+                      appliedAt: new Date(chemForm.appliedAt).toISOString(),
+                      applicatorName: chemForm.applicatorName.trim() || undefined,
                       applicatorLicenseNumber: chemForm.applicatorLicenseNumber || undefined,
                       notes: chemForm.notes || undefined,
                       treatedArea: chemForm.treatedArea ? parseFloat(chemForm.treatedArea) : undefined,
                       areaUnit: chemForm.areaUnit || undefined,
+                      treatedZoneName: chemForm.treatedZoneName.trim() || undefined,
                     },
                   }, {
                     onSuccess: () => {
                       toast.success('Application logged');
                       setChemFormOpen(false);
-                      setChemForm({ mixtureId: '', productId: '', volumeApplied: '', volumeUnit: 'gal', targetPest: '', applicationMethod: '', windSpeed: '', windDirection: '', temperature: '', applicatorLicenseNumber: '', notes: '', appliedAt: '', treatedArea: '', areaUnit: 'sqft' });
+                      setChemForm({ ...EMPTY_CHEMICAL_FORM });
+                      setChemFormErrors({});
                       qc.invalidateQueries({ queryKey: getListJobChemicalApplicationsQueryKey(selectedJobId!) });
                     },
-                    onError: () => toast.error('Failed to log application'),
+                    onError: (error: any) => {
+                      if (error?.data?.fields && typeof error.data.fields === 'object') setChemFormErrors(error.data.fields);
+                      toast.error(error?.data?.error ?? 'Failed to log application');
+                    },
                   });
                 }}
                 title="Save this chemical application log entry"

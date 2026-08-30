@@ -8,6 +8,7 @@ import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { buildGoogleAuthorizeUrl, exchangeGoogleCode } from "../lib/gmailProvider";
+import { normalizeChemicalRecordRequirements, parseChemicalRecordRequirements } from "../lib/chemicalRequirements";
 
 const objectStorageService = new ObjectStorageService();
 
@@ -61,6 +62,7 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     rolePermissions: rolePerms ?? {},
     planTier: tenant.planTier as "starter" | "professional" | "enterprise",
     customerFields: (cfJson?.customerFields as unknown[]) ?? [],
+    chemicalRecordRequirements: normalizeChemicalRecordRequirements(tenant.chemicalRecordRequirements),
     equipmentRepairThresholdPct: tenant.equipmentRepairThresholdPct ?? 50,
     equipmentResaleThresholdPct: tenant.equipmentResaleThresholdPct ?? 20,
     // Geofence & measurement defaults
@@ -195,7 +197,7 @@ router.patch("/settings", async (req, res): Promise<void> => {
     stripeEnabled, quickbooksEnabled, taxRate,
     defaultMarkupPct, showCostPriceToTech,
     durationUnit, autoInvoiceFrequency, nonRecurringInvoiceCadence, maxClockInHours, p4pMasterPercentage,
-    rolePermissions, customerFields,
+    rolePermissions, customerFields, chemicalRecordRequirements,
     equipmentRepairThresholdPct, equipmentResaleThresholdPct,
     defaultGeofenceRadius, defaultGeofenceUnit, autoCreateGeofence, defaultOffSeasonStart, defaultOffSeasonEnd,
     measurementZoneLabels, measurementZoneTypes, preferredAreaUnit,
@@ -266,6 +268,24 @@ router.patch("/settings", async (req, res): Promise<void> => {
     const [existing] = await db.select({ customFields: tenantsTable.customFields }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
     const prev = (existing?.customFields as Record<string, unknown>) ?? {};
     updates.customFields = { ...prev, customerFields };
+  }
+  if (chemicalRecordRequirements !== undefined) {
+    if (!(await isAdminRole(tenantId, getUserId(req)))) {
+      res.status(403).json({ error: "Restricted to owner/office roles" });
+      return;
+    }
+    const parsedRequirements = parseChemicalRecordRequirements(chemicalRecordRequirements);
+    if (!parsedRequirements) {
+      res.status(400).json({ error: "Invalid chemicalRecordRequirements" });
+      return;
+    }
+    // Use raw SQL for this newly-added jsonb column. Drizzle can silently omit
+    // newly-added jsonb columns from set() until its generated metadata is rebuilt.
+    await db.execute(sql`
+      UPDATE tenants
+      SET chemical_record_requirements = ${JSON.stringify(parsedRequirements)}::jsonb
+      WHERE id = ${tenantId}
+    `);
   }
   if (defaultGeofenceRadius !== undefined) updates.defaultGeofenceRadius = parseInt(defaultGeofenceRadius, 10);
   if (defaultGeofenceUnit !== undefined) updates.defaultGeofenceUnit = defaultGeofenceUnit;

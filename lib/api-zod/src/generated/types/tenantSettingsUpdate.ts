@@ -5,6 +5,7 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { ChemicalRecordRequirements } from './chemicalRecordRequirements';
 import type { CustomerFieldConfig } from './customerFieldConfig';
 import type { PaymentReminderRule } from './paymentReminderRule';
 import type { TenantSettingsUpdateAutoInvoiceFrequency } from './tenantSettingsUpdateAutoInvoiceFrequency';
@@ -33,6 +34,7 @@ export interface TenantSettingsUpdate {
   maxClockInHours?: number | null;
   rolePermissions?: TenantSettingsUpdateRolePermissions;
   customerFields?: CustomerFieldConfig[];
+  chemicalRecordRequirements?: ChemicalRecordRequirements;
   equipmentRepairThresholdPct?: number;
   equipmentResaleThresholdPct?: number;
   defaultGeofenceRadius?: number;

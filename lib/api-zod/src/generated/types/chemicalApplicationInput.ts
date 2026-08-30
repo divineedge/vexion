@@ -6,11 +6,14 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface ChemicalApplicationInput {
+/**
+ * New applications require exactly one of mixtureId or productId.
+ */
+export type ChemicalApplicationInput = (unknown & {
   mixtureId?: number;
   productId?: number;
   volumeApplied: number;
-  volumeUnit?: string;
+  volumeUnit: string;
   /** Area treated by this application (technician-entered). Used for rate calculation in place of the property's stored size. */
   treatedArea?: number;
   /** Unit for treatedArea: sqft or acres */
@@ -22,8 +25,28 @@ export interface ChemicalApplicationInput {
   windSpeed?: number;
   windDirection?: string;
   temperature?: number;
-  appliedAt?: string;
+  appliedAt: Date;
   applicatorName?: string;
   applicatorLicenseNumber?: string;
   notes?: string;
-}
+}) | (unknown & {
+  mixtureId?: number;
+  productId?: number;
+  volumeApplied: number;
+  volumeUnit: string;
+  /** Area treated by this application (technician-entered). Used for rate calculation in place of the property's stored size. */
+  treatedArea?: number;
+  /** Unit for treatedArea: sqft or acres */
+  areaUnit?: string;
+  /** Optional name of the blueprint/measurement zone the technician selected (e.g. 'Front Lawn') */
+  treatedZoneName?: string;
+  targetPest?: string;
+  applicationMethod?: string;
+  windSpeed?: number;
+  windDirection?: string;
+  temperature?: number;
+  appliedAt: Date;
+  applicatorName?: string;
+  applicatorLicenseNumber?: string;
+  notes?: string;
+});

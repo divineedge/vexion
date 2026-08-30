@@ -86,6 +86,7 @@ export * from './chemicalMixtureItemInput';
 export * from './chemicalProduct';
 export * from './chemicalProductInput';
 export * from './chemicalProductInputSignalWord';
+export * from './chemicalRecordRequirements';
 export * from './clockLocationInput';
 export * from './communicationsLogEntry';
 export * from './communicationsLogEntryChannel';

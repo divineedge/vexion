@@ -1,7 +1,8 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, chemicalProductsTable, chemicalMixturesTable, chemicalMixtureItemsTable, chemicalApplicationsTable, jobsTable, propertiesTable, usersTable } from "@workspace/db";
+import { db, chemicalProductsTable, chemicalMixturesTable, chemicalMixtureItemsTable, chemicalApplicationsTable, jobsTable, propertiesTable, tenantsTable, usersTable } from "@workspace/db";
 import { eq, and, gte, lte, desc, inArray } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
+import { normalizeChemicalRecordRequirements, validateChemicalRecordRequirements, validateSuppliedChemicalApplicationFields } from "../lib/chemicalRequirements";
 
 const router: IRouter = Router();
 
@@ -362,16 +363,52 @@ router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> =
     appliedAt, applicatorName, applicatorLicenseNumber, notes,
   } = req.body;
 
-  if (!volumeApplied || (!mixtureId && !productId)) {
-    res.status(400).json({ error: "volumeApplied and either mixtureId or productId are required" });
+  const parsedVolume = Number(volumeApplied);
+  const hasMixture = mixtureId !== undefined && mixtureId !== null && mixtureId !== "";
+  const hasProduct = productId !== undefined && productId !== null && productId !== "";
+  const parsedAppliedAt = typeof appliedAt === "string" && appliedAt.trim() ? new Date(appliedAt) : null;
+
+  if (!Number.isFinite(parsedVolume) || parsedVolume <= 0) {
+    res.status(400).json({ error: "Volume applied must be a positive number", fields: { volumeApplied: "Enter a positive amount" } });
+    return;
+  }
+  if (!hasMixture && !hasProduct || hasMixture && hasProduct) {
+    res.status(400).json({ error: "Select exactly one mixture or product", fields: { productOrMixture: "Select exactly one mixture or product" } });
+    return;
+  }
+  if (typeof volumeUnit !== "string" || !volumeUnit.trim()) {
+    res.status(400).json({ error: "Volume unit is required", fields: { volumeUnit: "Select a volume unit" } });
+    return;
+  }
+  if (!parsedAppliedAt || Number.isNaN(parsedAppliedAt.getTime())) {
+    res.status(400).json({ error: "Applied date and time are required", fields: { appliedAt: "Enter a valid application date and time" } });
+    return;
+  }
+  const suppliedFieldErrors = validateSuppliedChemicalApplicationFields(req.body);
+  if (Object.keys(suppliedFieldErrors).length > 0) {
+    res.status(400).json({ error: "Correct the invalid chemical record fields", fields: suppliedFieldErrors });
     return;
   }
 
   // Determine applicator name
   let resolvedApplicatorName = applicatorName ?? null;
   if (!resolvedApplicatorName) {
-    const [u] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
+    const [u] = await db.select({ name: usersTable.name }).from(usersTable).where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId)));
     resolvedApplicatorName = u?.name ?? null;
+  }
+
+  const [tenant] = await db
+    .select({ chemicalRecordRequirements: tenantsTable.chemicalRecordRequirements })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId));
+  const requirements = normalizeChemicalRecordRequirements(tenant?.chemicalRecordRequirements);
+  const requirementErrors = validateChemicalRecordRequirements(
+    { ...req.body, applicatorName: resolvedApplicatorName },
+    requirements,
+  );
+  if (Object.keys(requirementErrors).length > 0) {
+    res.status(400).json({ error: "Complete all required chemical record fields", fields: requirementErrors });
+    return;
   }
 
   // Compute area in sqft for rate calculation.
@@ -405,7 +442,7 @@ router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> =
       .where(eq(chemicalMixtureItemsTable.mixtureId, mixtureId));
 
     breakdown = items.map(({ item, product }) => {
-      const amountApplied = (item.ratioAmount / 1) * volumeApplied; // ratio per unit × total units
+      const amountApplied = item.ratioAmount * parsedVolume; // ratio per unit × total units
       const rates = computeRates(amountApplied, propertySizeSqft);
       return {
         productId: item.productId,
@@ -424,13 +461,13 @@ router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> =
     if (!product) { res.status(404).json({ error: "Product not found" }); return; }
     productName = product.name;
 
-    const rates = computeRates(volumeApplied, propertySizeSqft);
+    const rates = computeRates(parsedVolume, propertySizeSqft);
     breakdown = [{
       productId: product.id,
       productName: product.name,
       activeIngredients: product.activeIngredients ?? null,
       epaRegNumber: product.epaRegNumber ?? null,
-      amountApplied: volumeApplied,
+      amountApplied: parsedVolume,
       unit: volumeUnit ?? "gal",
       ratePerAcre: rates.ratePerAcre,
       ratePer1000Sqft: rates.ratePer1000Sqft,
@@ -441,25 +478,25 @@ router.post("/jobs/:id/chemical-applications", async (req, res): Promise<void> =
     tenantId,
     jobId,
     applicatorId: userId,
-    applicatorName: resolvedApplicatorName,
-    applicatorLicenseNumber: applicatorLicenseNumber ?? null,
+    applicatorName: typeof resolvedApplicatorName === "string" ? resolvedApplicatorName.trim() : null,
+    applicatorLicenseNumber: typeof applicatorLicenseNumber === "string" ? applicatorLicenseNumber.trim() : null,
     mixtureId: mixtureId ? parseInt(mixtureId, 10) : null,
     productId: productId ? parseInt(productId, 10) : null,
     mixtureName,
     productName,
-    volumeApplied: parseFloat(volumeApplied),
-    volumeUnit: volumeUnit ?? "gal",
+    volumeApplied: parsedVolume,
+    volumeUnit: volumeUnit.trim(),
     treatedArea: treatedArea ? parseFloat(treatedArea) : null,
-    areaUnit: treatedArea ? (areaUnit ?? "sqft") : null,
-    treatedZoneName: treatedZoneName ?? null,
-    targetPest: targetPest ?? null,
-    applicationMethod: applicationMethod ?? null,
+    areaUnit: treatedArea ? (typeof areaUnit === "string" ? areaUnit.trim() : "sqft") : null,
+    treatedZoneName: typeof treatedZoneName === "string" ? treatedZoneName.trim() : null,
+    targetPest: typeof targetPest === "string" ? targetPest.trim() : null,
+    applicationMethod: typeof applicationMethod === "string" ? applicationMethod.trim() : null,
     windSpeed: windSpeed ? parseFloat(windSpeed) : null,
-    windDirection: windDirection ?? null,
+    windDirection: typeof windDirection === "string" ? windDirection.trim() : null,
     temperature: temperature ? parseFloat(temperature) : null,
-    appliedAt: appliedAt ? new Date(appliedAt) : new Date(),
+    appliedAt: parsedAppliedAt,
     breakdown,
-    notes: notes ?? null,
+    notes: typeof notes === "string" ? notes.trim() : null,
   }).returning();
 
   res.status(201).json({

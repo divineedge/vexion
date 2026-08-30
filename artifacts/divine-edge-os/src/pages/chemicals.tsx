@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   useListChemicalApplications, useListUsers, getListChemicalApplicationsQueryKey,
   useListChemicalProducts, getListChemicalProductsQueryKey,
   useCreateChemicalProduct, useUpdateChemicalProduct, useDeleteChemicalProduct,
   useListChemicalMixtures, getListChemicalMixturesQueryKey,
   useCreateChemicalMixture, useUpdateChemicalMixture, useDeleteChemicalMixture,
+  useGetTenantSettings, getGetTenantSettingsQueryKey, useUpdateTenantSettings,
 } from '@workspace/api-client-react';
 import type { ChemicalProduct, ChemicalMixture, ChemicalMixtureItem } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -18,13 +19,48 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { FlaskConical, Download, Filter, ChevronDown, ChevronRight, Plus, Pencil, Trash2, X } from 'lucide-react';
+import { FlaskConical, Download, Filter, ChevronDown, ChevronRight, Plus, Pencil, Trash2, X, ShieldCheck, Save } from 'lucide-react';
+import {
+  CHEMICAL_REQUIREMENT_GROUPS,
+  normalizeChemicalRecordRequirements,
+  type ChemicalRequirementKey,
+} from '@/lib/chemicalRequirements';
 
 export default function ChemicalsPage() {
-  const { isAuthenticated } = useAuth();
+  const { canManageOffice } = useAuth();
   const qc = useQueryClient();
+
+  const { data: tenantSettings, isLoading: requirementsLoading } = useGetTenantSettings({
+    query: { queryKey: getGetTenantSettingsQueryKey() },
+  });
+  const updateTenantSettings = useUpdateTenantSettings();
+  const [chemicalRequirements, setChemicalRequirements] = useState(() => normalizeChemicalRecordRequirements(null));
+
+  useEffect(() => {
+    if (tenantSettings) {
+      setChemicalRequirements(normalizeChemicalRecordRequirements(tenantSettings.chemicalRecordRequirements));
+    }
+  }, [tenantSettings]);
+
+  const toggleChemicalRequirement = (key: ChemicalRequirementKey) => {
+    setChemicalRequirements(current => ({ ...current, [key]: !current[key] }));
+  };
+
+  const saveChemicalRequirements = () => {
+    updateTenantSettings.mutate(
+      { data: { chemicalRecordRequirements: chemicalRequirements } },
+      {
+        onSuccess: () => {
+          qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() });
+          toast.success('Chemical record requirements saved');
+        },
+        onError: () => toast.error('Could not save chemical record requirements'),
+      },
+    );
+  };
 
   // ── Application records state ───────────────────────────────────────────────
   const [startDate, setStartDate] = useState('');
@@ -192,6 +228,7 @@ export default function ChemicalsPage() {
           <TabsTrigger value="applications">Applications</TabsTrigger>
           <TabsTrigger value="products">Products</TabsTrigger>
           <TabsTrigger value="mixtures">Tank Mixtures</TabsTrigger>
+          {canManageOffice && <TabsTrigger value="required-information">Required Information</TabsTrigger>}
         </TabsList>
 
         {/* ── Applications tab ─────────────────────────────────────────────── */}
@@ -298,9 +335,9 @@ export default function ChemicalsPage() {
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                               {app.targetPest && <div><p className="text-xs text-muted-foreground">Target Pest</p><p className="font-medium">{app.targetPest}</p></div>}
                               {app.propertyAddress && <div><p className="text-xs text-muted-foreground">Property</p><p className="font-medium">{app.propertyAddress}</p></div>}
-                              {(app as any).temperatureF != null && <div><p className="text-xs text-muted-foreground">Temperature</p><p className="font-medium">{(app as any).temperatureF}°F</p></div>}
-                              {(app as any).windSpeedMph != null && <div><p className="text-xs text-muted-foreground">Wind Speed</p><p className="font-medium">{(app as any).windSpeedMph} mph</p></div>}
-                              {(app as any).applicatorLicense && <div><p className="text-xs text-muted-foreground">License #</p><p className="font-medium">{(app as any).applicatorLicense}</p></div>}
+                              {app.temperature != null && <div><p className="text-xs text-muted-foreground">Temperature</p><p className="font-medium">{app.temperature}°F</p></div>}
+                              {app.windSpeed != null && <div><p className="text-xs text-muted-foreground">Wind Speed</p><p className="font-medium">{app.windSpeed} mph</p></div>}
+                              {app.applicatorLicenseNumber && <div><p className="text-xs text-muted-foreground">License #</p><p className="font-medium">{app.applicatorLicenseNumber}</p></div>}
                             </div>
 
                             {breakdown.length > 0 && (
@@ -618,6 +655,86 @@ export default function ChemicalsPage() {
             </SheetContent>
           </Sheet>
         </TabsContent>
+
+        {canManageOffice && (
+          <TabsContent value="required-information" className="space-y-4 focus-visible:outline-none">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ShieldCheck className="h-5 w-5 text-emerald-600" />
+                  Required Chemical Record Information
+                </CardTitle>
+                <CardDescription>
+                  Choose what staff must complete before a new chemical application can be saved. These changes do not affect existing records.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 p-4">
+                  <p className="text-sm font-semibold text-emerald-900">Always required</p>
+                  <p className="mt-1 text-xs text-emerald-800">
+                    Product or tank mixture, amount applied, amount unit, and application date/time are the minimum information for every new record.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {['Product or mixture', 'Amount applied', 'Amount unit', 'Application date/time'].map(label => (
+                      <Badge key={label} variant="outline" className="border-emerald-300 bg-white text-emerald-800">
+                        {label}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+
+                {requirementsLoading ? (
+                  <p className="py-6 text-center text-sm text-muted-foreground">Loading requirements…</p>
+                ) : (
+                  <div className="space-y-5">
+                    {CHEMICAL_REQUIREMENT_GROUPS.map(group => (
+                      <section key={group.title} className="space-y-2">
+                        <div>
+                          <h3 className="text-sm font-semibold">{group.title}</h3>
+                          <p className="text-xs text-muted-foreground">{group.description}</p>
+                        </div>
+                        <div className="divide-y rounded-lg border">
+                          {group.fields.map(field => (
+                            <div key={field.key} className="flex items-center justify-between gap-5 px-4 py-3">
+                              <div className="min-w-0">
+                                <label htmlFor={`chemical-requirement-${field.key}`} className="text-sm font-medium">
+                                  {field.label}
+                                </label>
+                                <p className="text-xs text-muted-foreground">{field.description}</p>
+                              </div>
+                              <div className="flex shrink-0 items-center gap-2">
+                                <span className="text-xs font-medium text-muted-foreground">
+                                  {chemicalRequirements[field.key] ? 'Required' : 'Optional'}
+                                </span>
+                                <Switch
+                                  id={`chemical-requirement-${field.key}`}
+                                  checked={chemicalRequirements[field.key]}
+                                  onCheckedChange={() => toggleChemicalRequirement(field.key)}
+                                  aria-label={`Make ${field.label.toLowerCase()} required`}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex justify-end border-t pt-4">
+                  <Button
+                    onClick={saveChemicalRequirements}
+                    disabled={requirementsLoading || updateTenantSettings.isPending}
+                    className="gap-2"
+                  >
+                    <Save className="h-4 w-4" />
+                    {updateTenantSettings.isPending ? 'Saving…' : 'Save Required Information'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

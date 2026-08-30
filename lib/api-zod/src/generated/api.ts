@@ -5065,6 +5065,18 @@ export const GetTenantSettingsResponse = zod.object({
   "required": zod.boolean(),
   "isBuiltIn": zod.boolean()
 })).optional(),
+  "chemicalRecordRequirements": zod.object({
+  "treatedArea": zod.boolean(),
+  "treatedZoneName": zod.boolean(),
+  "targetPest": zod.boolean(),
+  "applicationMethod": zod.boolean(),
+  "windSpeed": zod.boolean(),
+  "windDirection": zod.boolean(),
+  "temperature": zod.boolean(),
+  "applicatorName": zod.boolean(),
+  "applicatorLicenseNumber": zod.boolean(),
+  "notes": zod.boolean()
+}).optional(),
   "equipmentRepairThresholdPct": zod.number().optional().describe('Sell recommendation triggers when total repair cost exceeds this % of purchase price'),
   "equipmentResaleThresholdPct": zod.number().optional().describe('Sell recommendation triggers when estimated resale value falls below this % of purchase price'),
   "defaultGeofenceRadius": zod.number().optional().describe('Default geofence radius applied when auto-creating a geofence'),
@@ -5173,6 +5185,18 @@ export const UpdateTenantSettingsBody = zod.object({
   "required": zod.boolean(),
   "isBuiltIn": zod.boolean()
 })).optional(),
+  "chemicalRecordRequirements": zod.object({
+  "treatedArea": zod.boolean(),
+  "treatedZoneName": zod.boolean(),
+  "targetPest": zod.boolean(),
+  "applicationMethod": zod.boolean(),
+  "windSpeed": zod.boolean(),
+  "windDirection": zod.boolean(),
+  "temperature": zod.boolean(),
+  "applicatorName": zod.boolean(),
+  "applicatorLicenseNumber": zod.boolean(),
+  "notes": zod.boolean()
+}).optional(),
   "equipmentRepairThresholdPct": zod.number().optional(),
   "equipmentResaleThresholdPct": zod.number().optional(),
   "defaultGeofenceRadius": zod.number().optional(),
@@ -5261,6 +5285,18 @@ export const UpdateTenantSettingsResponse = zod.object({
   "required": zod.boolean(),
   "isBuiltIn": zod.boolean()
 })).optional(),
+  "chemicalRecordRequirements": zod.object({
+  "treatedArea": zod.boolean(),
+  "treatedZoneName": zod.boolean(),
+  "targetPest": zod.boolean(),
+  "applicationMethod": zod.boolean(),
+  "windSpeed": zod.boolean(),
+  "windDirection": zod.boolean(),
+  "temperature": zod.boolean(),
+  "applicatorName": zod.boolean(),
+  "applicatorLicenseNumber": zod.boolean(),
+  "notes": zod.boolean()
+}).optional(),
   "equipmentRepairThresholdPct": zod.number().optional().describe('Sell recommendation triggers when total repair cost exceeds this % of purchase price'),
   "equipmentResaleThresholdPct": zod.number().optional().describe('Sell recommendation triggers when estimated resale value falls below this % of purchase price'),
   "defaultGeofenceRadius": zod.number().optional().describe('Default geofence radius applied when auto-creating a geofence'),
@@ -5753,11 +5789,11 @@ export const CreateJobChemicalApplicationParams = zod.object({
   "id": zod.coerce.number()
 })
 
-export const CreateJobChemicalApplicationBody = zod.object({
+export const CreateJobChemicalApplicationBody = zod.union([zod.unknown(),zod.unknown()]).and(zod.object({
   "mixtureId": zod.number().optional(),
   "productId": zod.number().optional(),
   "volumeApplied": zod.number(),
-  "volumeUnit": zod.string().optional(),
+  "volumeUnit": zod.string(),
   "treatedArea": zod.number().optional().describe('Area treated by this application (technician-entered). Used for rate calculation in place of the property\'s stored size.'),
   "areaUnit": zod.string().optional().describe('Unit for treatedArea: sqft or acres'),
   "treatedZoneName": zod.string().optional().describe('Optional name of the blueprint\/measurement zone the technician selected (e.g. \'Front Lawn\')'),
@@ -5766,11 +5802,11 @@ export const CreateJobChemicalApplicationBody = zod.object({
   "windSpeed": zod.number().optional(),
   "windDirection": zod.string().optional(),
   "temperature": zod.number().optional(),
-  "appliedAt": zod.string().optional(),
+  "appliedAt": zod.coerce.date(),
   "applicatorName": zod.string().optional(),
   "applicatorLicenseNumber": zod.string().optional(),
   "notes": zod.string().optional()
-})
+})).describe('New applications require exactly one of mixtureId or productId.')
 
 export const CreateJobChemicalApplicationResponse = zod.object({
   "id": zod.number(),

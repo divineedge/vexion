@@ -3216,6 +3216,19 @@ export interface CustomerFieldConfig {
   isBuiltIn: boolean;
 }
 
+export interface ChemicalRecordRequirements {
+  treatedArea: boolean;
+  treatedZoneName: boolean;
+  targetPest: boolean;
+  applicationMethod: boolean;
+  windSpeed: boolean;
+  windDirection: boolean;
+  temperature: boolean;
+  applicatorName: boolean;
+  applicatorLicenseNumber: boolean;
+  notes: boolean;
+}
+
 export type PaymentReminderRuleChannelsItem = typeof PaymentReminderRuleChannelsItem[keyof typeof PaymentReminderRuleChannelsItem];
 
 
@@ -3285,6 +3298,7 @@ export interface TenantSettings {
   rolePermissions?: TenantSettingsRolePermissions;
   planTier?: TenantSettingsPlanTier;
   customerFields?: CustomerFieldConfig[];
+  chemicalRecordRequirements?: ChemicalRecordRequirements;
   /** Sell recommendation triggers when total repair cost exceeds this % of purchase price */
   equipmentRepairThresholdPct?: number;
   /** Sell recommendation triggers when estimated resale value falls below this % of purchase price */
@@ -3683,6 +3697,7 @@ export interface TenantSettingsUpdate {
   maxClockInHours?: number | null;
   rolePermissions?: TenantSettingsUpdateRolePermissions;
   customerFields?: CustomerFieldConfig[];
+  chemicalRecordRequirements?: ChemicalRecordRequirements;
   equipmentRepairThresholdPct?: number;
   equipmentResaleThresholdPct?: number;
   defaultGeofenceRadius?: number;
@@ -4113,11 +4128,14 @@ export interface ChemicalApplication {
   updatedAt: string;
 }
 
-export interface ChemicalApplicationInput {
+/**
+ * New applications require exactly one of mixtureId or productId.
+ */
+export type ChemicalApplicationInput = (unknown & {
   mixtureId?: number;
   productId?: number;
   volumeApplied: number;
-  volumeUnit?: string;
+  volumeUnit: string;
   /** Area treated by this application (technician-entered). Used for rate calculation in place of the property's stored size. */
   treatedArea?: number;
   /** Unit for treatedArea: sqft or acres */
@@ -4129,11 +4147,31 @@ export interface ChemicalApplicationInput {
   windSpeed?: number;
   windDirection?: string;
   temperature?: number;
-  appliedAt?: string;
+  appliedAt: string;
   applicatorName?: string;
   applicatorLicenseNumber?: string;
   notes?: string;
-}
+}) | (unknown & {
+  mixtureId?: number;
+  productId?: number;
+  volumeApplied: number;
+  volumeUnit: string;
+  /** Area treated by this application (technician-entered). Used for rate calculation in place of the property's stored size. */
+  treatedArea?: number;
+  /** Unit for treatedArea: sqft or acres */
+  areaUnit?: string;
+  /** Optional name of the blueprint/measurement zone the technician selected (e.g. 'Front Lawn') */
+  treatedZoneName?: string;
+  targetPest?: string;
+  applicationMethod?: string;
+  windSpeed?: number;
+  windDirection?: string;
+  temperature?: number;
+  appliedAt: string;
+  applicatorName?: string;
+  applicatorLicenseNumber?: string;
+  notes?: string;
+});
 
 export interface Equipment {
   id: number;

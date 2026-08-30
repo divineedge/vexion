@@ -5,6 +5,7 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { ChemicalRecordRequirements } from './chemicalRecordRequirements';
 import type { CustomerFieldConfig } from './customerFieldConfig';
 import type { FollowupTriggerConfig } from './followupTriggerConfig';
 import type { PaymentReminderRule } from './paymentReminderRule';
@@ -49,6 +50,7 @@ export interface TenantSettings {
   rolePermissions?: TenantSettingsRolePermissions;
   planTier?: TenantSettingsPlanTier;
   customerFields?: CustomerFieldConfig[];
+  chemicalRecordRequirements?: ChemicalRecordRequirements;
   /** Sell recommendation triggers when total repair cost exceeds this % of purchase price */
   equipmentRepairThresholdPct?: number;
   /** Sell recommendation triggers when estimated resale value falls below this % of purchase price */

@@ -25,11 +25,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MessageSquare, Send, Users, RefreshCw, Inbox } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { hasEarlierMessagePage, mergeMessagePages, messageBeforeId } from '@/lib/messagePagination';
+import { StaffAudiencePicker } from '@/components/StaffAudiencePicker';
 
 const PAGE_SIZE = 100;
 const audienceKey = (type: string, id: number | null | undefined) => `${type}:${id ?? 'all'}`;
@@ -154,7 +154,13 @@ export default function StaffMessagesPage() {
     }
   }, [conversationId, draft, legacyThreadId, newAudience, refreshSummaries, selected, sending, threadsQuery]);
 
-  const groupedAudiences = ['company', 'crew', 'technicians', 'division', 'admins', 'staff'] as const;
+  const selectedAudience = newAudience
+    ?? (selected
+      ? audiences.find(item =>
+        item.audienceType === selected.audienceType
+        && (item.audienceId ?? null) === (selected.audienceId ?? null),
+      ) ?? null
+      : null);
 
   return (
     <div className="h-[calc(100vh-8rem)] min-h-[560px] flex flex-col gap-5 animate-in fade-in duration-500">
@@ -176,25 +182,17 @@ export default function StaffMessagesPage() {
         <div className="grid grid-cols-[280px_minmax(0,1fr)] h-full">
           <aside className="border-r bg-muted/10 min-h-0 flex flex-col">
             <div className="p-3 border-b space-y-3">
-              <Select onValueChange={chooseAudience}>
-                <SelectTrigger data-testid="select-staff-message-audience"><SelectValue placeholder="Message a team or person…" /></SelectTrigger>
-                <SelectContent>
-                  {groupedAudiences.map(type => {
-                    const options = audiences.filter(item => item.audienceType === type);
-                    if (!options.length) return null;
-                    return (
-                      <SelectGroup key={type}>
-                        <SelectLabel>{type === 'staff' ? 'Staff people' : type === 'division' ? 'Service divisions' : 'Teams'}</SelectLabel>
-                        {options.map(item => (
-                          <SelectItem key={audienceKey(item.audienceType, item.audienceId)} value={audienceKey(item.audienceType, item.audienceId)} disabled={!item.canSend}>
-                            {item.label} ({item.memberCount})
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">To</label>
+                <StaffAudiencePicker
+                  audiences={audiences}
+                  selected={selectedAudience}
+                  onSelect={audience => chooseAudience(audienceKey(audience.audienceType, audience.audienceId))}
+                  isLoading={audiencesQuery.isLoading}
+                  isError={audiencesQuery.isError}
+                />
+                <p className="text-[11px] text-muted-foreground">Choose one active staff member or a team.</p>
+              </div>
               <div className="flex items-center justify-between">
                 <div><h2 className="font-semibold text-sm">Conversations</h2><p className="text-xs text-muted-foreground">Updates every 30 seconds</p></div>
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => void threadsQuery.refetch()}>
@@ -223,11 +221,11 @@ export default function StaffMessagesPage() {
           <section className="min-w-0 min-h-0 flex flex-col">
             {!selected && !newAudience ? (
               <div className="flex-1 grid place-items-center text-center text-muted-foreground p-8">
-                <div><MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-25" /><p className="font-medium text-foreground">Choose who to message</p><p className="text-sm mt-1">Select a conversation or start one with a team.</p></div>
+                <div><MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-25" /><p className="font-medium text-foreground">Choose who to message</p><p className="text-sm mt-1">Use the To selector for one person or a team, or open an existing conversation.</p></div>
               </div>
             ) : (
               <>
-                <CardHeader className="border-b py-4 px-5"><CardTitle className="text-base">{selectedTitle}</CardTitle><p className="text-xs text-muted-foreground">Staff-only conversation</p></CardHeader>
+                <CardHeader className="border-b py-4 px-5"><CardTitle className="text-base">To: {selectedTitle}</CardTitle><p className="text-xs text-muted-foreground">{selectedAudience?.audienceType === 'staff' ? 'Direct staff conversation' : 'Staff team conversation'}</p></CardHeader>
                 <CardContent className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
                   {(canLoadEarlier || earlierError) && <div className="text-center"><Button size="sm" variant="outline" disabled={earlierLoading} onClick={() => void loadEarlier()}>{earlierLoading ? 'Loading…' : earlierError ? 'Retry loading earlier messages' : 'Load earlier messages'}</Button>{earlierError && <p className="text-xs text-destructive">{earlierError}</p>}</div>}
                   {!newAudience && activeQuery.isLoading ? <div className="space-y-3"><Skeleton className="h-12 w-2/3" /><Skeleton className="h-12 w-1/2 ml-auto" /></div>
@@ -238,7 +236,7 @@ export default function StaffMessagesPage() {
                           return <div key={message.id} className={`flex flex-col ${own ? 'items-end' : 'items-start'}`}><span className="text-[10px] text-muted-foreground mb-1">{message.senderName} · {message.senderRole.replaceAll('_', ' ')} · {format(new Date(message.createdAt), 'MMM d, yyyy h:mm a')}</span><div className={`rounded-xl px-3.5 py-2.5 text-sm max-w-[78%] whitespace-pre-wrap ${own ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>{message.body}</div>{own && <span className="text-[10px] text-muted-foreground mt-1">{message.readByOthers ? 'Read' : 'Sent'}</span>}</div>;
                         })}
                 </CardContent>
-                <div className="border-t p-4"><div className="flex items-end gap-3"><Textarea rows={2} maxLength={4000} value={draft} onChange={event => setDraft(event.target.value)} placeholder={`Message ${selectedTitle}…`} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send(); } }} /><Button disabled={!draft.trim() || sending} onClick={() => void send()}><Send className="w-4 h-4 mr-2" />{sending ? 'Sending…' : 'Send'}</Button></div></div>
+                <div className="border-t p-4"><div className="flex items-end gap-3"><Textarea rows={2} maxLength={4000} value={draft} onChange={event => setDraft(event.target.value)} placeholder={`Message ${selectedTitle}…`} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send(); } }} /><Button disabled={!draft.trim() || sending || (!selected && !newAudience)} onClick={() => void send()}><Send className="w-4 h-4 mr-2" />{sending ? 'Sending…' : 'Send'}</Button></div></div>
               </>
             )}
           </section>

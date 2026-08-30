@@ -4,6 +4,7 @@ import {
   AppState,
   FlatList,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   RefreshControl,
   ScrollView,
@@ -74,6 +75,8 @@ export default function MessagesScreen() {
   const [earlierLoading, setEarlierLoading] = useState(false);
   const [earlierError, setEarlierError] = useState('');
   const [selectedAudience, setSelectedAudience] = useState<StaffMessageAudience | null>(null);
+  const [recipientPickerOpen, setRecipientPickerOpen] = useState(false);
+  const [recipientSearch, setRecipientSearch] = useState('');
   const listRef = useRef<FlatList>(null);
   const flushingRef = useRef(false);
 
@@ -113,18 +116,21 @@ export default function MessagesScreen() {
     },
   });
   const activeQuery = isJob ? job : selectedConversationId ? group : general;
+  const hasGeneralTarget = isJob || !!selectedAudience;
   const context = isJob
     ? { kind: 'job' as const, jobId: jobId! }
     : { kind: 'audience' as const, audienceType: selectedAudience?.audienceType ?? 'none', audienceId: selectedAudience?.audienceId ?? null };
-  const outboxKey = user ? messageOutboxKey(user.tenantId, user.id, context) : '';
+  const outboxKey = user && hasGeneralTarget ? messageOutboxKey(user.tenantId, user.id, context) : '';
   const serverMessages = (activeQuery.data ?? []) as ServerMessage[];
   const loadedServerMessages = mergeMessagePages(serverMessages, [...olderPages, newestHistory]);
   const messages = mergeMessagesByClientId(loadedServerMessages, outbox);
   const canLoadEarlier = hasEarlierMessagePage(serverMessages, olderPages);
   const sending = outbox.some(item => item.status === 'sending');
-  const hasGeneralTarget = isJob || !!selectedAudience;
 
-  const refresh = useCallback(() => { void activeQuery.refetch(); }, [activeQuery.refetch]);
+  const refresh = useCallback(() => {
+    if (!hasGeneralTarget) return;
+    void activeQuery.refetch();
+  }, [activeQuery.refetch, hasGeneralTarget]);
   const loadEarlier = useCallback(async () => {
     const beforeId = messageBeforeId(loadedServerMessages);
     if (!beforeId || earlierLoading) return;
@@ -179,11 +185,6 @@ export default function MessagesScreen() {
       flushingRef.current = false;
     }
   }, [outboxKey, user, isOffline, isJob, jobId, selectedConversationId, selectedLegacyThreadId, selectedAudience, activeQuery.refetch, threadsQuery.refetch, reportNetworkStatus]);
-  useEffect(() => {
-    if (isJob || selectedAudience || !audiencesQuery.data?.length) return;
-    const self = audiencesQuery.data.find(item => item.audienceType === 'staff' && item.audienceId === user?.id);
-    setSelectedAudience(self ?? audiencesQuery.data.find(item => item.canSend) ?? null);
-  }, [audiencesQuery.data, isJob, selectedAudience, user?.id]);
   useEffect(() => {
     let active = true;
     setOutbox([]);
@@ -243,32 +244,37 @@ export default function MessagesScreen() {
       <View style={[styles.context, { borderBottomColor: colors.border, backgroundColor: colors.card }]}>
         <Ionicons name={isJob ? 'briefcase-outline' : 'people-outline'} size={18} color={colors.primary} />
         <View>
-          <Text style={[styles.contextTitle, { color: colors.foreground }]}>{isJob ? (params.title || 'Job Messages') : (selectedAudience?.label ?? 'Staff Messages')}</Text>
-          <Text style={[styles.contextHint, { color: colors.mutedForeground }]}>Staff only · refreshes about every 45 seconds</Text>
+          <Text style={[styles.contextTitle, { color: colors.foreground }]}>{isJob ? (params.title || 'Job Messages') : `To: ${selectedAudience?.label ?? 'Choose recipient'}`}</Text>
+          <Text style={[styles.contextHint, { color: colors.mutedForeground }]}>{isJob ? 'Job staff conversation' : selectedAudience?.audienceType === 'staff' ? 'Direct staff conversation' : 'Staff team conversation'} · refreshes about every 45 seconds</Text>
         </View>
       </View>
       {!isJob && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.audiences} style={[styles.audienceBar, { borderBottomColor: colors.border }]}>
-          {(audiencesQuery.data ?? []).map(audience => {
-            const active = selectedAudience?.audienceType === audience.audienceType && selectedAudience.audienceId === audience.audienceId;
-            return (
-              <TouchableOpacity
-                key={`${audience.audienceType}:${audience.audienceId ?? 'all'}`}
-                disabled={!audience.canSend}
-                onPress={() => setSelectedAudience(audience)}
-                style={[styles.audienceChip, { borderColor: active ? colors.primary : colors.border, backgroundColor: active ? colors.primary : colors.card, opacity: audience.canSend ? 1 : 0.45 }]}
-              >
-                <Text style={{ color: active ? colors.primaryForeground : colors.foreground, fontSize: 12 }}>{audience.label}</Text>
-                <Text style={{ color: active ? colors.primaryForeground : colors.mutedForeground, fontSize: 10 }}>{audience.memberCount}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+        <View style={[styles.recipientBar, { borderBottomColor: colors.border, backgroundColor: colors.card }]}>
+          <Text style={[styles.recipientLabel, { color: colors.mutedForeground }]}>TO</Text>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Choose a message recipient"
+            onPress={() => setRecipientPickerOpen(true)}
+            style={[styles.recipientButton, { borderColor: colors.border, backgroundColor: colors.background }]}
+          >
+            <Ionicons name={selectedAudience?.audienceType === 'staff' ? 'person-outline' : 'people-outline'} size={17} color={colors.primary} />
+            <Text style={[styles.recipientValue, { color: selectedAudience ? colors.foreground : colors.mutedForeground }]} numberOfLines={1}>
+              {audiencesQuery.isLoading ? 'Loading recipients…' : selectedAudience?.label ?? 'Choose a person or team'}
+            </Text>
+            <Ionicons name="chevron-down" size={17} color={colors.mutedForeground} />
+          </TouchableOpacity>
+        </View>
       )}
       {isOffline && (
         <View style={styles.offline}><Ionicons name="cloud-offline-outline" size={15} color="#fef3c7" /><Text style={styles.offlineText}>Offline · messages will be queued on this device</Text></View>
       )}
-      {activeQuery.isLoading ? (
+      {!hasGeneralTarget ? (
+        <View style={styles.center}>
+          <Ionicons name="person-add-outline" size={44} color={colors.mutedForeground} />
+          <Text style={{ color: colors.foreground }}>Choose who to message</Text>
+          <Text style={{ color: colors.mutedForeground, textAlign: 'center' }}>Select one person or a team using the To control above.</Text>
+        </View>
+      ) : activeQuery.isLoading ? (
         <View style={styles.center}><ActivityIndicator color={colors.primary} /><Text style={{ color: colors.mutedForeground }}>Loading messages…</Text></View>
       ) : activeQuery.isError ? (
         <View style={styles.center}>
@@ -325,7 +331,7 @@ export default function MessagesScreen() {
             value={draft}
             onChangeText={text => { setDraft(text); if (sendError) setSendError(''); }}
             editable={!sending && hasGeneralTarget}
-            placeholder={isOffline ? 'Message will be queued…' : 'Message staff…'}
+            placeholder={!hasGeneralTarget ? 'Choose who to message first…' : isOffline ? 'Message will be queued…' : `Message ${selectedAudience?.label ?? 'staff'}…`}
             placeholderTextColor={colors.mutedForeground}
             multiline
             maxLength={4000}
@@ -336,6 +342,85 @@ export default function MessagesScreen() {
           </TouchableOpacity>
         </View>
       </View>
+      {!isJob && (
+        <Modal visible={recipientPickerOpen} transparent animationType="slide" onRequestClose={() => setRecipientPickerOpen(false)}>
+          <View style={styles.modalBackdrop}>
+            <View style={[styles.recipientSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.modalHeader}>
+                <View>
+                  <Text style={[styles.modalTitle, { color: colors.foreground }]}>Choose recipient</Text>
+                  <Text style={[styles.modalHint, { color: colors.mutedForeground }]}>Select one active person or a team</Text>
+                </View>
+                <TouchableOpacity accessibilityLabel="Close recipient picker" onPress={() => setRecipientPickerOpen(false)} style={styles.closeButton}>
+                  <Ionicons name="close" size={24} color={colors.foreground} />
+                </TouchableOpacity>
+              </View>
+              <View style={[styles.searchBox, { borderColor: colors.border, backgroundColor: colors.background }]}>
+                <Ionicons name="search-outline" size={18} color={colors.mutedForeground} />
+                <TextInput
+                  value={recipientSearch}
+                  onChangeText={setRecipientSearch}
+                  placeholder="Search people and teams"
+                  placeholderTextColor={colors.mutedForeground}
+                  style={[styles.searchInput, { color: colors.foreground }]}
+                  autoCapitalize="none"
+                />
+              </View>
+              {audiencesQuery.isError ? (
+                <View style={styles.pickerEmpty}>
+                  <Text style={{ color: colors.foreground }}>Couldn’t load recipients</Text>
+                  <TouchableOpacity onPress={() => void audiencesQuery.refetch()}><Text style={{ color: colors.primary }}>Try again</Text></TouchableOpacity>
+                </View>
+              ) : audiencesQuery.isLoading ? (
+                <View style={styles.pickerEmpty}><ActivityIndicator color={colors.primary} /></View>
+              ) : (
+                <ScrollView style={styles.recipientList} keyboardShouldPersistTaps="handled">
+                  {(['staff', 'groups'] as const).map(section => {
+                    const query = recipientSearch.trim().toLowerCase();
+                    const options = (audiencesQuery.data ?? []).filter(audience =>
+                      (section === 'staff' ? audience.audienceType === 'staff' : audience.audienceType !== 'staff')
+                      && (!query || `${audience.label} ${audience.description}`.toLowerCase().includes(query)),
+                    );
+                    if (!options.length) return null;
+                    return (
+                      <View key={section} style={styles.recipientSection}>
+                        <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>{section === 'staff' ? 'INDIVIDUALS' : 'TEAMS AND GROUPS'}</Text>
+                        {options.map(audience => {
+                          const active = selectedAudience?.audienceType === audience.audienceType && selectedAudience.audienceId === audience.audienceId;
+                          return (
+                            <TouchableOpacity
+                              key={`${audience.audienceType}:${audience.audienceId ?? 'all'}`}
+                              disabled={!audience.canSend}
+                              onPress={() => {
+                                setSelectedAudience(audience);
+                                setRecipientSearch('');
+                                setRecipientPickerOpen(false);
+                              }}
+                              style={[styles.recipientOption, { borderBottomColor: colors.border, opacity: audience.canSend ? 1 : 0.45 }]}
+                            >
+                              <Ionicons name={audience.audienceType === 'staff' ? 'person-circle-outline' : 'people-circle-outline'} size={28} color={colors.primary} />
+                              <View style={styles.optionCopy}>
+                                <Text style={[styles.optionTitle, { color: colors.foreground }]}>{audience.label}</Text>
+                                <Text style={[styles.optionDescription, { color: colors.mutedForeground }]} numberOfLines={1}>
+                                  {audience.description}{audience.audienceType === 'staff' ? '' : ` · ${audience.memberCount} members`}
+                                </Text>
+                              </View>
+                              {active && <Ionicons name="checkmark-circle" size={22} color={colors.primary} />}
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    );
+                  })}
+                  {(audiencesQuery.data ?? []).length === 0 && (
+                    <View style={styles.pickerEmpty}><Text style={{ color: colors.mutedForeground }}>No active staff or teams found.</Text></View>
+                  )}
+                </ScrollView>
+              )}
+            </View>
+          </View>
+        </Modal>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -345,9 +430,10 @@ const styles = StyleSheet.create({
   context: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderBottomWidth: 1 },
   contextTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 14 },
   contextHint: { fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 2 },
-  audienceBar: { maxHeight: 58, borderBottomWidth: 1 },
-  audiences: { gap: 8, paddingHorizontal: 10, paddingVertical: 8 },
-  audienceChip: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7 },
+  recipientBar: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: 1 },
+  recipientLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 11, letterSpacing: 0.8 },
+  recipientButton: { flex: 1, minHeight: 42, borderWidth: 1, borderRadius: 10, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  recipientValue: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 14 },
   offline: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, backgroundColor: '#92400e', padding: 7 },
   offlineText: { color: '#fef3c7', fontSize: 12 },
   list: { padding: 14, gap: 12 },
@@ -366,4 +452,20 @@ const styles = StyleSheet.create({
   error: { color: '#dc2626', fontSize: 12 },
   deliveryRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   earlier: { alignItems: 'center', gap: 6, marginBottom: 8 },
+  modalBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
+  recipientSheet: { maxHeight: '82%', minHeight: '58%', borderWidth: 1, borderBottomWidth: 0, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingTop: 18, paddingHorizontal: 16, paddingBottom: 24 },
+  modalHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 },
+  modalTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 20 },
+  modalHint: { fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 3 },
+  closeButton: { padding: 4 },
+  searchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, borderWidth: 1, borderRadius: 10, paddingHorizontal: 11, marginBottom: 10 },
+  searchInput: { flex: 1, fontFamily: 'Inter_400Regular', fontSize: 14, paddingVertical: 9 },
+  recipientList: { flex: 1 },
+  recipientSection: { marginBottom: 14 },
+  sectionLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 0.8, paddingHorizontal: 4, paddingVertical: 8 },
+  recipientOption: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: 4, paddingVertical: 9 },
+  optionCopy: { flex: 1 },
+  optionTitle: { fontFamily: 'Inter_500Medium', fontSize: 14 },
+  optionDescription: { fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 2 },
+  pickerEmpty: { minHeight: 160, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 24 },
 });

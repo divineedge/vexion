@@ -3949,8 +3949,23 @@ export default function SchedulePage() {
       <Sheet open={staffInboxOpen} onOpenChange={setStaffInboxOpen}>
         <SheetContent className="w-full sm:max-w-2xl">
           <SheetHeader>
-            <SheetTitle>General Staff Messages</SheetTitle>
-            <SheetDescription>Private staff-member threads. Updates every 30 seconds while open.</SheetDescription>
+            <div className="flex items-start justify-between gap-4 pr-8">
+              <div>
+                <SheetTitle>General Staff Messages</SheetTitle>
+                <SheetDescription>Reply to existing private threads here, or start a message to any person or team.</SheetDescription>
+              </div>
+              <Button
+                size="sm"
+                className="shrink-0 gap-2"
+                onClick={() => {
+                  setStaffInboxOpen(false);
+                  setLocation('/staff-messages');
+                }}
+                data-testid="button-new-staff-message"
+              >
+                <Plus className="w-4 h-4" /> New message
+              </Button>
+            </div>
           </SheetHeader>
           <div className="grid grid-cols-[220px_1fr] gap-3 mt-5 h-[calc(100vh-150px)]">
             <div className="border-r pr-3 overflow-y-auto space-y-1">

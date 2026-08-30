@@ -11,6 +11,12 @@ export interface StaffMessageThreadSummary {
   threadUserName: string;
   threadUserRole: string;
   /** @nullable */
+  conversationId?: number | null;
+  audienceType?: string;
+  /** @nullable */
+  audienceId?: number | null;
+  isSharedAudience?: boolean;
+  /** @nullable */
   lastMessage: string | null;
   /** @nullable */
   lastMessageAt: string | null;

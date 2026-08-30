@@ -12,6 +12,8 @@ export const divisionsTable = pgTable("divisions", {
   id: serial("id").primaryKey(),
   tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
   name: text("name").notNull(),
+  /** Optional service category for staff audience selection (e.g. lawn care, pest control, irrigation). */
+  category: text("category"),
   /** Depot / start-stop location for route sequencing */
   depotLabel: text("depot_label"),
   depotLat: real("depot_lat"),

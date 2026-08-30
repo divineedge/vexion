@@ -1640,6 +1640,40 @@ paths:
                 items:
                   $ref: "#/components/schemas/StaffMessageThreadSummary"
 
+  /staff-messages/audiences:
+    get:
+      operationId: listStaffMessageAudiences
+      tags: [staff-messages]
+      summary: List staff messaging audiences available to the caller
+      responses:
+        "200":
+          description: Audience choices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StaffMessageAudience"
+
+  /staff-messages/audience:
+    post:
+      operationId: sendStaffMessageToAudience
+      tags: [staff-messages]
+      summary: Send a staff message to an audience, creating its conversation when needed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StaffAudienceMessageInput"
+      responses:
+        "201":
+          description: Message created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffMessage"
+
   /staff-messages/unread-summary:
     get:
       operationId: getStaffMessagesUnreadSummary
@@ -1652,6 +1686,65 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StaffMessagesUnreadSummary"
+
+  /staff-messages/conversations/{conversationId}:
+    get:
+      operationId: listStaffConversationMessages
+      tags: [staff-messages]
+      summary: List a visible audience conversation and mark incoming messages read
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 100
+        - name: beforeId
+          in: query
+          required: false
+          description: Return messages with IDs lower than this cursor
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StaffMessage"
+    post:
+      operationId: createStaffConversationMessage
+      tags: [staff-messages]
+      summary: Send a message to an existing audience conversation
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StaffMessageInput"
+      responses:
+        "201":
+          description: Message created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffMessage"
 
   /staff-messages/{threadUserId}:
     get:
@@ -10005,6 +10098,7 @@ components:
         id: { type: integer }
         tenantId: { type: integer }
         threadUserId: { type: integer }
+        conversationId: { type: ["integer", "null"] }
         senderId: { type: integer }
         senderName: { type: string }
         senderRole: { type: string }
@@ -10014,6 +10108,32 @@ components:
         isReadByCaller: { type: boolean }
         readCount: { type: integer }
         readByOthers: { type: boolean }
+
+    StaffMessageAudience:
+      type: object
+      required: [audienceType, audienceId, label, description, memberCount, canSend]
+      properties:
+        audienceType:
+          type: string
+          enum: [company, crew, technicians, division, admins, staff]
+        audienceId:
+          type: ["integer", "null"]
+        label: { type: string }
+        description: { type: string }
+        memberCount: { type: integer }
+        canSend: { type: boolean }
+
+    StaffAudienceMessageInput:
+      allOf:
+        - $ref: "#/components/schemas/StaffMessageInput"
+        - type: object
+          required: [audienceType]
+          properties:
+            audienceType:
+              type: string
+              enum: [company, crew, technicians, division, admins, staff]
+            audienceId:
+              type: ["integer", "null"]
 
     StaffMessageInput:
       type: object
@@ -10035,6 +10155,10 @@ components:
         threadUserId: { type: integer }
         threadUserName: { type: string }
         threadUserRole: { type: string }
+        conversationId: { type: ["integer", "null"] }
+        audienceType: { type: string }
+        audienceId: { type: ["integer", "null"] }
+        isSharedAudience: { type: boolean }
         lastMessage: { type: ["string", "null"] }
         lastMessageAt: { type: ["string", "null"] }
         unreadCount: { type: integer }
@@ -11873,6 +11997,8 @@ components:
           type: integer
         name:
           type: string
+        category:
+          type: ["string", "null"]
         depotLabel:
           type: ["string", "null"]
         depotLat:
@@ -11898,6 +12024,8 @@ components:
       type: object
       properties:
         name:
+          type: string
+        category:
           type: string
         depotLabel:
           type: string

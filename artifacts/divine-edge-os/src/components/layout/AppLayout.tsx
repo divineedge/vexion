@@ -128,7 +128,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     ...(sentEstimates.length > 0 ? { '/estimates': sentEstimates.length } : {}),
     ...(openCallbackCount > 0 ? { '/callbacks': openCallbackCount } : {}),
     ...((inventorySummary?.lowStockCount ?? 0) > 0 ? { '/inventory': inventorySummary!.lowStockCount } : {}),
-    ...((staffMessageUnread?.general ?? 0) > 0 ? { '/staff-messages': staffMessageUnread!.general } : {}),
+    ...((staffMessageUnread?.total ?? 0) > 0 ? { '/staff-messages': staffMessageUnread!.total } : {}),
   };
 
   useEffect(() => {

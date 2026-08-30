@@ -25,6 +25,8 @@ describe('persistent message outbox', () => {
     await enqueueOutbox(a, 'scoped', storage);
     expect((await loadOutbox(a, storage))[0].body).toBe('scoped');
     expect(await loadOutbox(b, storage)).toEqual([]);
+    expect(messageOutboxKey(1, 2, { kind: 'audience', audienceType: 'company', audienceId: null }))
+      .toContain('audience_company_all');
   });
 
   it('uses the stable id on sequential retry, removes successes, and retains failures', async () => {

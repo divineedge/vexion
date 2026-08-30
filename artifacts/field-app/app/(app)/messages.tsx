@@ -6,6 +6,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -16,15 +17,25 @@ import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import {
   getListJobMessagesQueryKey,
+  getListStaffConversationMessagesQueryKey,
+  getListStaffMessageAudiencesQueryKey,
+  getListStaffMessageThreadsQueryKey,
   getListStaffMessagesQueryKey,
   getGetJobMessagesUnreadSummaryQueryKey,
   getGetStaffMessagesUnreadSummaryQueryKey,
   listJobMessages,
   listStaffMessages,
+  listStaffConversationMessages,
   createJobMessage,
   createStaffMessage,
+  createStaffConversationMessage,
+  sendStaffMessageToAudience,
   useListJobMessages,
+  useListStaffConversationMessages,
+  useListStaffMessageAudiences,
+  useListStaffMessageThreads,
   useListStaffMessages,
+  type StaffMessageAudience,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
@@ -62,16 +73,36 @@ export default function MessagesScreen() {
   const [newestHistory, setNewestHistory] = useState<ServerMessage[]>([]);
   const [earlierLoading, setEarlierLoading] = useState(false);
   const [earlierError, setEarlierError] = useState('');
+  const [selectedAudience, setSelectedAudience] = useState<StaffMessageAudience | null>(null);
   const listRef = useRef<FlatList>(null);
   const flushingRef = useRef(false);
 
   const generalParams = { limit: 100 };
   const jobParams = { limit: 100 };
-  const general = useListStaffMessages(user?.id ?? 0, generalParams, {
+  const threadsQuery = useListStaffMessageThreads({
+    query: { enabled: !!user && !isJob, queryKey: getListStaffMessageThreadsQueryKey(), refetchInterval: !isJob ? messagePollInterval(focused, isOffline) : false },
+  });
+  const audiencesQuery = useListStaffMessageAudiences({
+    query: { enabled: !!user && !isJob, queryKey: getListStaffMessageAudiencesQueryKey(), staleTime: 30000 },
+  });
+  const matchingThreads = selectedAudience
+    ? (threadsQuery.data ?? []).filter(thread => thread.audienceType === selectedAudience.audienceType && (thread.audienceId ?? null) === selectedAudience.audienceId)
+    : [];
+  const selectedThread = matchingThreads.find(thread => thread.isSharedAudience) ?? matchingThreads[0] ?? null;
+  const selectedConversationId = selectedThread?.conversationId ?? null;
+  const selectedLegacyThreadId = selectedThread && !selectedConversationId ? selectedThread.threadUserId : null;
+  const general = useListStaffMessages(selectedLegacyThreadId ?? 0, generalParams, {
     query: {
-      enabled: !!user && !isJob,
-      queryKey: getListStaffMessagesQueryKey(user?.id ?? 0, generalParams),
-      refetchInterval: !isJob ? messagePollInterval(focused, isOffline) : false,
+      enabled: !!user && !isJob && selectedLegacyThreadId != null,
+      queryKey: getListStaffMessagesQueryKey(selectedLegacyThreadId ?? 0, generalParams),
+      refetchInterval: !isJob && selectedLegacyThreadId != null ? messagePollInterval(focused, isOffline) : false,
+    },
+  });
+  const group = useListStaffConversationMessages(selectedConversationId ?? 0, generalParams, {
+    query: {
+      enabled: !!user && !isJob && selectedConversationId != null,
+      queryKey: getListStaffConversationMessagesQueryKey(selectedConversationId ?? 0, generalParams),
+      refetchInterval: !isJob && selectedConversationId != null ? messagePollInterval(focused, isOffline) : false,
     },
   });
   const job = useListJobMessages(jobId ?? 0, jobParams, {
@@ -81,14 +112,17 @@ export default function MessagesScreen() {
       refetchInterval: isJob ? messagePollInterval(focused, isOffline) : false,
     },
   });
-  const activeQuery = isJob ? job : general;
-  const context = isJob ? { kind: 'job' as const, jobId: jobId! } : { kind: 'general' as const, threadUserId: user?.id ?? 0 };
+  const activeQuery = isJob ? job : selectedConversationId ? group : general;
+  const context = isJob
+    ? { kind: 'job' as const, jobId: jobId! }
+    : { kind: 'audience' as const, audienceType: selectedAudience?.audienceType ?? 'none', audienceId: selectedAudience?.audienceId ?? null };
   const outboxKey = user ? messageOutboxKey(user.tenantId, user.id, context) : '';
   const serverMessages = (activeQuery.data ?? []) as ServerMessage[];
   const loadedServerMessages = mergeMessagePages(serverMessages, [...olderPages, newestHistory]);
   const messages = mergeMessagesByClientId(loadedServerMessages, outbox);
   const canLoadEarlier = hasEarlierMessagePage(serverMessages, olderPages);
   const sending = outbox.some(item => item.status === 'sending');
+  const hasGeneralTarget = isJob || !!selectedAudience;
 
   const refresh = useCallback(() => { void activeQuery.refetch(); }, [activeQuery.refetch]);
   const loadEarlier = useCallback(async () => {
@@ -99,7 +133,9 @@ export default function MessagesScreen() {
     try {
       const page = (isJob
         ? await listJobMessages(jobId!, { limit: 100, beforeId })
-        : await listStaffMessages(user!.id, { limit: 100, beforeId })) as ServerMessage[];
+        : selectedConversationId
+          ? await listStaffConversationMessages(selectedConversationId, { limit: 100, beforeId })
+          : await listStaffMessages(selectedLegacyThreadId!, { limit: 100, beforeId })) as ServerMessage[];
       setOlderPages(current => [...current, page]);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: getGetJobMessagesUnreadSummaryQueryKey() }),
@@ -110,7 +146,7 @@ export default function MessagesScreen() {
     } finally {
       setEarlierLoading(false);
     }
-  }, [loadedServerMessages, earlierLoading, isJob, jobId, user, queryClient]);
+  }, [loadedServerMessages, earlierLoading, isJob, jobId, selectedConversationId, selectedLegacyThreadId, queryClient]);
   const flush = useCallback(async (force = false) => {
     if (!outboxKey || !user || (isOffline && !force) || flushingRef.current) return;
     flushingRef.current = true;
@@ -118,14 +154,22 @@ export default function MessagesScreen() {
       const remaining = await flushOutbox(outboxKey, async item => {
         setOutbox(current => current.map(entry => entry.clientMessageId === item.clientMessageId ? { ...entry, status: 'sending' } : entry));
         if (isJob) await createJobMessage(jobId!, { body: item.body, clientMessageId: item.clientMessageId });
-        else await createStaffMessage(user.id, { body: item.body, clientMessageId: item.clientMessageId });
+        else if (selectedConversationId) await createStaffConversationMessage(selectedConversationId, { body: item.body, clientMessageId: item.clientMessageId });
+        else if (selectedLegacyThreadId) await createStaffMessage(selectedLegacyThreadId, { body: item.body, clientMessageId: item.clientMessageId });
+        else if (selectedAudience) await sendStaffMessageToAudience({
+          audienceType: selectedAudience.audienceType,
+          audienceId: selectedAudience.audienceId,
+          body: item.body,
+          clientMessageId: item.clientMessageId,
+        });
+        else throw new Error('Choose a staff audience');
       });
       if (remaining.some(item => item.status === 'failed')) {
         setOutbox(remaining);
         reportNetworkStatus(true);
       } else {
         reportNetworkStatus(false);
-        await activeQuery.refetch();
+        await Promise.all([activeQuery.refetch(), threadsQuery.refetch()]);
         setOutbox(remaining);
       }
     } catch {
@@ -134,7 +178,12 @@ export default function MessagesScreen() {
     } finally {
       flushingRef.current = false;
     }
-  }, [outboxKey, user, isOffline, isJob, jobId, activeQuery.refetch, reportNetworkStatus]);
+  }, [outboxKey, user, isOffline, isJob, jobId, selectedConversationId, selectedLegacyThreadId, selectedAudience, activeQuery.refetch, threadsQuery.refetch, reportNetworkStatus]);
+  useEffect(() => {
+    if (isJob || selectedAudience || !audiencesQuery.data?.length) return;
+    const self = audiencesQuery.data.find(item => item.audienceType === 'staff' && item.audienceId === user?.id);
+    setSelectedAudience(self ?? audiencesQuery.data.find(item => item.canSend) ?? null);
+  }, [audiencesQuery.data, isJob, selectedAudience, user?.id]);
   useEffect(() => {
     let active = true;
     setOutbox([]);
@@ -180,24 +229,42 @@ export default function MessagesScreen() {
 
   const send = useCallback(() => {
     const body = draft.trim();
-    if (!body || sending || !user || !outboxKey) return;
+    if (!body || sending || !user || !outboxKey || !hasGeneralTarget) return;
     setSendError('');
     void enqueueOutbox(outboxKey, body).then(item => {
       setDraft('');
       setOutbox(current => [...current, item]);
       if (!isOffline) void flush();
     }).catch(() => setSendError('Could not save this message. Your draft was kept.'));
-  }, [draft, sending, user, outboxKey, isOffline, flush]);
+  }, [draft, sending, user, outboxKey, isOffline, flush, hasGeneralTarget]);
 
   return (
     <KeyboardAvoidingView style={[styles.container, { backgroundColor: colors.background }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={[styles.context, { borderBottomColor: colors.border, backgroundColor: colors.card }]}>
         <Ionicons name={isJob ? 'briefcase-outline' : 'people-outline'} size={18} color={colors.primary} />
         <View>
-          <Text style={[styles.contextTitle, { color: colors.foreground }]}>{isJob ? (params.title || 'Job Messages') : 'General Staff Messages'}</Text>
+          <Text style={[styles.contextTitle, { color: colors.foreground }]}>{isJob ? (params.title || 'Job Messages') : (selectedAudience?.label ?? 'Staff Messages')}</Text>
           <Text style={[styles.contextHint, { color: colors.mutedForeground }]}>Staff only · refreshes about every 45 seconds</Text>
         </View>
       </View>
+      {!isJob && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.audiences} style={[styles.audienceBar, { borderBottomColor: colors.border }]}>
+          {(audiencesQuery.data ?? []).map(audience => {
+            const active = selectedAudience?.audienceType === audience.audienceType && selectedAudience.audienceId === audience.audienceId;
+            return (
+              <TouchableOpacity
+                key={`${audience.audienceType}:${audience.audienceId ?? 'all'}`}
+                disabled={!audience.canSend}
+                onPress={() => setSelectedAudience(audience)}
+                style={[styles.audienceChip, { borderColor: active ? colors.primary : colors.border, backgroundColor: active ? colors.primary : colors.card, opacity: audience.canSend ? 1 : 0.45 }]}
+              >
+                <Text style={{ color: active ? colors.primaryForeground : colors.foreground, fontSize: 12 }}>{audience.label}</Text>
+                <Text style={{ color: active ? colors.primaryForeground : colors.mutedForeground, fontSize: 10 }}>{audience.memberCount}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
       {isOffline && (
         <View style={styles.offline}><Ionicons name="cloud-offline-outline" size={15} color="#fef3c7" /><Text style={styles.offlineText}>Offline · messages will be queued on this device</Text></View>
       )}
@@ -257,14 +324,14 @@ export default function MessagesScreen() {
           <TextInput
             value={draft}
             onChangeText={text => { setDraft(text); if (sendError) setSendError(''); }}
-            editable={!sending}
+            editable={!sending && hasGeneralTarget}
             placeholder={isOffline ? 'Message will be queued…' : 'Message staff…'}
             placeholderTextColor={colors.mutedForeground}
             multiline
             maxLength={4000}
             style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
           />
-          <TouchableOpacity disabled={!draft.trim() || sending} onPress={send} style={[styles.send, { backgroundColor: !draft.trim() ? colors.mutedForeground : colors.primary }]}>
+          <TouchableOpacity disabled={!draft.trim() || sending || !hasGeneralTarget} onPress={send} style={[styles.send, { backgroundColor: !draft.trim() || !hasGeneralTarget ? colors.mutedForeground : colors.primary }]}>
             {sending ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name={sendError ? 'refresh' : 'send'} size={19} color="#fff" />}
           </TouchableOpacity>
         </View>
@@ -278,6 +345,9 @@ const styles = StyleSheet.create({
   context: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderBottomWidth: 1 },
   contextTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 14 },
   contextHint: { fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 2 },
+  audienceBar: { maxHeight: 58, borderBottomWidth: 1 },
+  audiences: { gap: 8, paddingHorizontal: 10, paddingVertical: 8 },
+  audienceChip: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7 },
   offline: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, backgroundColor: '#92400e', padding: 7 },
   offlineText: { color: '#fef3c7', fontSize: 12 },
   list: { padding: 14, gap: 12 },

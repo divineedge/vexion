@@ -11,6 +11,8 @@ export interface Division {
   tenantId: number;
   name: string;
   /** @nullable */
+  category?: string | null;
+  /** @nullable */
   depotLabel?: string | null;
   /** @nullable */
   depotLat?: number | null;

@@ -6,10 +6,12 @@ import {
   crewMembersTable,
   crewsTable,
   db,
+  divisionsTable,
   jobMessageReadsTable,
   jobMessagesTable,
   jobsTable,
   staffMessageReadsTable,
+  staffMessageConversationsTable,
   staffMessagesTable,
   staffSessionsTable,
   tenantsTable,
@@ -43,6 +45,7 @@ describe.skipIf(!RUN)("general and job staff messages — DB-backed authorizatio
   let crewJob: number;
   let hiddenJob: number;
   let paginationJob: number;
+  let divisionId: number;
 
   const auth = (userId: number) => ({ "x-staff-session": tokens.get(userId)! });
   async function createUser(tenantId: number, role: string, label: string) {
@@ -76,6 +79,14 @@ describe.skipIf(!RUN)("general and job staff messages — DB-backed authorizatio
     const [crew] = await db.insert(crewsTable).values({ tenantId: tenantA, name: "Crew A" }).returning({ id: crewsTable.id });
     crewId = crew.id;
     await db.insert(crewMembersTable).values({ tenantId: tenantA, crewId, userId: techA });
+    const [division] = await db.insert(divisionsTable).values({
+      tenantId: tenantA,
+      name: "Irrigation",
+      category: "irrigation",
+      crewIds: [crewId],
+      technicianIds: [techA2],
+    }).returning({ id: divisionsTable.id });
+    divisionId = division.id;
     const jobs = await db.insert(jobsTable).values([
       { tenantId: tenantA, title: "Direct", scheduledAt: new Date(), assigneeId: techA },
       { tenantId: tenantA, title: "Crew", scheduledAt: new Date(), crewId },
@@ -89,10 +100,12 @@ describe.skipIf(!RUN)("general and job staff messages — DB-backed authorizatio
     const tenantIds = [tenantA, tenantB].filter(Boolean);
     await db.delete(staffMessageReadsTable).where(inArray(staffMessageReadsTable.userId, [techA, techA2, managerA, managerB].filter(Boolean)));
     await db.delete(staffMessagesTable).where(inArray(staffMessagesTable.tenantId, tenantIds));
+    await db.delete(staffMessageConversationsTable).where(inArray(staffMessageConversationsTable.tenantId, tenantIds));
     await db.delete(jobMessageReadsTable).where(inArray(jobMessageReadsTable.userId, [techA, techA2, managerA, managerB].filter(Boolean)));
     await db.delete(jobMessagesTable).where(inArray(jobMessagesTable.tenantId, tenantIds));
     await db.delete(crewMembersTable).where(inArray(crewMembersTable.tenantId, tenantIds));
     await db.delete(jobsTable).where(inArray(jobsTable.tenantId, tenantIds));
+    if (divisionId) await db.delete(divisionsTable).where(eq(divisionsTable.id, divisionId));
     if (crewId) await db.delete(crewsTable).where(eq(crewsTable.id, crewId));
     await db.delete(staffSessionsTable).where(inArray(staffSessionsTable.tenantId, tenantIds));
     await db.delete(usersTable).where(inArray(usersTable.tenantId, tenantIds));
@@ -134,6 +147,79 @@ describe.skipIf(!RUN)("general and job staff messages — DB-backed authorizatio
     expect(mobilePoll.body.at(-1)).toMatchObject({ senderId: managerA, senderName: "Manager A", body: "Dispatch is on it" });
     expect(mobilePoll.body.find((message: { id: number }) => message.id === sent.body.id)).toMatchObject({ isReadByCaller: true, readByOthers: true, readCount: 1 });
     expect((await request(app).get("/api/staff-messages/unread-summary").set(auth(techA))).body.general).toBe(0);
+  });
+
+  it("delivers group audiences only to their resolved tenant members", async () => {
+    const companyDenied = await request(app).post("/api/staff-messages/audience").set(auth(techA)).send({
+      audienceType: "company", body: "Everyone", clientMessageId: "company-denied-0001",
+    });
+    expect(companyDenied.status).toBe(404);
+
+    const crewMessage = await request(app).post("/api/staff-messages/audience").set(auth(managerA)).send({
+      audienceType: "crew", audienceId: crewId, body: "Crew update", clientMessageId: "crew-message-0001",
+    });
+    expect(crewMessage.status).toBe(201);
+    const crewConversationId = crewMessage.body.conversationId;
+    expect((await request(app).get("/api/staff-messages/unread-summary").set(auth(techA))).body.general).toBeGreaterThan(0);
+    expect((await request(app).get(`/api/staff-messages/conversations/${crewConversationId}`).set(auth(techA))).status).toBe(200);
+    expect((await request(app).get(`/api/staff-messages/conversations/${crewConversationId}`).set(auth(techA2))).status).toBe(404);
+    expect((await request(app).post(`/api/staff-messages/conversations/${crewConversationId}`).set(auth(techA2)).send({
+      body: "Unauthorized reply", clientMessageId: "crew-outsider-0001",
+    })).status).toBe(404);
+    const scopedCrewMessage = await request(app).post("/api/staff-messages/audience").set(auth(techA2)).send({
+      audienceType: "crew", audienceId: crewId, body: "Question for Crew A", clientMessageId: "crew-outsider-0002",
+    });
+    expect(scopedCrewMessage.status).toBe(201);
+    expect(scopedCrewMessage.body.conversationId).not.toBe(crewConversationId);
+    expect((await request(app).get(`/api/staff-messages/conversations/${scopedCrewMessage.body.conversationId}`).set(auth(techA2))).status).toBe(200);
+    const scopedReply = await request(app).post(`/api/staff-messages/conversations/${scopedCrewMessage.body.conversationId}`).set(auth(techA)).send({
+      body: "Crew A response", clientMessageId: "crew-scoped-reply-0001",
+    });
+    expect(scopedReply.status).toBe(201);
+    expect(scopedReply.body.conversationId).toBe(scopedCrewMessage.body.conversationId);
+    const outsiderThreadsBeforeRead = await request(app).get("/api/staff-messages").set(auth(techA2));
+    expect(outsiderThreadsBeforeRead.body.find(
+      (thread: { conversationId: number; unreadCount: number }) => thread.conversationId === scopedCrewMessage.body.conversationId,
+    )?.unreadCount).toBe(1);
+    const scopedMessages = await request(app).get(`/api/staff-messages/conversations/${scopedCrewMessage.body.conversationId}`).set(auth(techA2));
+    expect(scopedMessages.body.some((message: { body: string }) => message.body === "Crew A response")).toBe(true);
+    const outsiderThreadsAfterRead = await request(app).get("/api/staff-messages").set(auth(techA2));
+    expect(outsiderThreadsAfterRead.body.find(
+      (thread: { conversationId: number; unreadCount: number }) => thread.conversationId === scopedCrewMessage.body.conversationId,
+    )?.unreadCount).toBe(0);
+    const canonicalCrewMessages = await request(app).get(`/api/staff-messages/conversations/${crewConversationId}`).set(auth(techA));
+    expect(canonicalCrewMessages.body.some((message: { body: string }) => message.body === "Question for Crew A")).toBe(false);
+    expect(canonicalCrewMessages.body.some((message: { body: string }) => message.body === "Crew A response")).toBe(false);
+
+    const directThread = await request(app).get(`/api/staff-messages/${managerA}`).set(auth(managerA));
+    expect(directThread.body.some((message: { id: number }) => message.id === crewMessage.body.id)).toBe(false);
+
+    await db.update(staffMessageConversationsTable).set({ createdBy: techA })
+      .where(eq(staffMessageConversationsTable.id, crewConversationId));
+    await db.delete(crewMembersTable).where(and(
+      eq(crewMembersTable.tenantId, tenantA),
+      eq(crewMembersTable.crewId, crewId),
+      eq(crewMembersTable.userId, techA),
+    ));
+    expect((await request(app).get(`/api/staff-messages/conversations/${crewConversationId}`).set(auth(techA))).status).toBe(404);
+    expect((await request(app).post(`/api/staff-messages/conversations/${crewConversationId}`).set(auth(techA)).send({
+      body: "Former member reply", clientMessageId: "crew-former-member-0001",
+    })).status).toBe(404);
+    await db.insert(crewMembersTable).values({ tenantId: tenantA, crewId, userId: techA });
+
+    const divisionMessage = await request(app).post("/api/staff-messages/audience").set(auth(managerA)).send({
+      audienceType: "division", audienceId: divisionId, body: "Division update", clientMessageId: "division-message-0001",
+    });
+    expect(divisionMessage.status).toBe(201);
+    expect((await request(app).get(`/api/staff-messages/conversations/${divisionMessage.body.conversationId}`).set(auth(techA))).status).toBe(200);
+    expect((await request(app).get(`/api/staff-messages/conversations/${divisionMessage.body.conversationId}`).set(auth(techA2))).status).toBe(200);
+
+    const companyMessage = await request(app).post("/api/staff-messages/audience").set(auth(managerA)).send({
+      audienceType: "company", body: "Company update", clientMessageId: "company-message-0001",
+    });
+    expect(companyMessage.status).toBe(201);
+    expect((await request(app).get(`/api/staff-messages/conversations/${companyMessage.body.conversationId}`).set(auth(techA2))).status).toBe(200);
+    expect((await request(app).get(`/api/staff-messages/conversations/${companyMessage.body.conversationId}`).set(auth(managerB))).status).toBe(404);
   });
 
   it("idempotently retries general sends and rejects reuse in another thread", async () => {

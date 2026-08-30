@@ -31,7 +31,7 @@ const FREQUENCY_LABEL: Record<string, string> = {
 
 const DAY_LABEL = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const EMPTY_DIVISION = { name: '', depotLabel: '', depotLat: '', depotLng: '', shiftHoursPerDay: '8', crewIds: [] as number[], technicianIds: [] as number[] };
+const EMPTY_DIVISION = { name: '', category: '', depotLabel: '', depotLat: '', depotLng: '', shiftHoursPerDay: '8', crewIds: [] as number[], technicianIds: [] as number[] };
 const EMPTY_ROUTE_TEMPLATE = { divisionId: '', name: '', frequency: 'weekly', dayOfWeek: '1', exceptionFeeOverride: '' };
 
 export default function RoutingSettings() {
@@ -70,7 +70,7 @@ export default function RoutingSettings() {
   const openCreateDivision = () => { setDivForm(EMPTY_DIVISION); setSelectedDivId(null); setDivSheet('create'); };
   const openEditDivision = (d: NonNullable<typeof divisions>[number]) => {
     setDivForm({
-      name: d.name, depotLabel: d.depotLabel ?? '', depotLat: d.depotLat != null ? String(d.depotLat) : '',
+      name: d.name, category: d.category ?? '', depotLabel: d.depotLabel ?? '', depotLat: d.depotLat != null ? String(d.depotLat) : '',
       depotLng: d.depotLng != null ? String(d.depotLng) : '', shiftHoursPerDay: String(d.shiftHoursPerDay),
       crewIds: d.crewIds ?? [], technicianIds: d.technicianIds ?? [],
     });
@@ -82,6 +82,7 @@ export default function RoutingSettings() {
     if (!divForm.name) { toast.error('Division name is required'); return; }
     const payload = {
       name: divForm.name,
+      category: divForm.category || undefined,
       depotLabel: divForm.depotLabel || undefined,
       depotLat: divForm.depotLat ? Number(divForm.depotLat) : undefined,
       depotLng: divForm.depotLng ? Number(divForm.depotLng) : undefined,
@@ -285,6 +286,11 @@ export default function RoutingSettings() {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Division Name <span className="text-destructive">*</span></label>
               <Input title="Name for this service division or territory" placeholder="e.g. North Territory" value={divForm.name} onChange={e => setDivForm(f => ({ ...f, name: e.target.value }))} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Service Category</label>
+              <Input title="Category shown when staff choose a messaging audience" placeholder="e.g. Lawn care, pest control, irrigation" value={divForm.category} onChange={e => setDivForm(f => ({ ...f, category: e.target.value }))} />
+              <p className="text-xs text-muted-foreground">The selected crews and technicians become this division’s messaging audience.</p>
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Depot Label</label>

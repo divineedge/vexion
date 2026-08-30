@@ -2829,11 +2829,64 @@ export const ListStaffMessageThreadsResponseItem = zod.object({
   "threadUserId": zod.number(),
   "threadUserName": zod.string(),
   "threadUserRole": zod.string(),
+  "conversationId": zod.number().nullish(),
+  "audienceType": zod.string().optional(),
+  "audienceId": zod.number().nullish(),
+  "isSharedAudience": zod.boolean().optional(),
   "lastMessage": zod.string().nullable(),
   "lastMessageAt": zod.string().nullable(),
   "unreadCount": zod.number()
 })
 export const ListStaffMessageThreadsResponse = zod.array(ListStaffMessageThreadsResponseItem)
+
+
+/**
+ * @summary List staff messaging audiences available to the caller
+ */
+export const ListStaffMessageAudiencesResponseItem = zod.object({
+  "audienceType": zod.enum(['company', 'crew', 'technicians', 'division', 'admins', 'staff']),
+  "audienceId": zod.number().nullable(),
+  "label": zod.string(),
+  "description": zod.string(),
+  "memberCount": zod.number(),
+  "canSend": zod.boolean()
+})
+export const ListStaffMessageAudiencesResponse = zod.array(ListStaffMessageAudiencesResponseItem)
+
+
+/**
+ * @summary Send a staff message to an audience, creating its conversation when needed
+ */
+export const sendStaffMessageToAudienceBodyOneBodyMax = 4000;
+
+export const sendStaffMessageToAudienceBodyOneClientMessageIdMin = 8;
+export const sendStaffMessageToAudienceBodyOneClientMessageIdMax = 100;
+
+
+
+export const SendStaffMessageToAudienceBody = zod.object({
+  "body": zod.string().min(1).max(sendStaffMessageToAudienceBodyOneBodyMax),
+  "clientMessageId": zod.string().min(sendStaffMessageToAudienceBodyOneClientMessageIdMin).max(sendStaffMessageToAudienceBodyOneClientMessageIdMax)
+}).and(zod.object({
+  "audienceType": zod.enum(['company', 'crew', 'technicians', 'division', 'admins', 'staff']),
+  "audienceId": zod.number().nullish()
+}))
+
+export const SendStaffMessageToAudienceResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "threadUserId": zod.number(),
+  "conversationId": zod.number().nullish(),
+  "senderId": zod.number(),
+  "senderName": zod.string(),
+  "senderRole": zod.string(),
+  "clientMessageId": zod.string().nullable(),
+  "body": zod.string(),
+  "createdAt": zod.string(),
+  "isReadByCaller": zod.boolean(),
+  "readCount": zod.number(),
+  "readByOthers": zod.boolean()
+})
 
 
 /**
@@ -2843,6 +2896,78 @@ export const GetStaffMessagesUnreadSummaryResponse = zod.object({
   "general": zod.number(),
   "job": zod.number(),
   "total": zod.number()
+})
+
+
+/**
+ * @summary List a visible audience conversation and mark incoming messages read
+ */
+export const ListStaffConversationMessagesParams = zod.object({
+  "conversationId": zod.coerce.number()
+})
+
+export const listStaffConversationMessagesQueryLimitDefault = 100;
+export const listStaffConversationMessagesQueryLimitMax = 100;
+
+
+
+
+export const ListStaffConversationMessagesQueryParams = zod.object({
+  "limit": zod.coerce.number().min(1).max(listStaffConversationMessagesQueryLimitMax).default(listStaffConversationMessagesQueryLimitDefault),
+  "beforeId": zod.coerce.number().min(1).optional().describe('Return messages with IDs lower than this cursor')
+})
+
+export const ListStaffConversationMessagesResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "threadUserId": zod.number(),
+  "conversationId": zod.number().nullish(),
+  "senderId": zod.number(),
+  "senderName": zod.string(),
+  "senderRole": zod.string(),
+  "clientMessageId": zod.string().nullable(),
+  "body": zod.string(),
+  "createdAt": zod.string(),
+  "isReadByCaller": zod.boolean(),
+  "readCount": zod.number(),
+  "readByOthers": zod.boolean()
+})
+export const ListStaffConversationMessagesResponse = zod.array(ListStaffConversationMessagesResponseItem)
+
+
+/**
+ * @summary Send a message to an existing audience conversation
+ */
+export const CreateStaffConversationMessageParams = zod.object({
+  "conversationId": zod.coerce.number()
+})
+
+export const createStaffConversationMessageBodyBodyMax = 4000;
+
+export const createStaffConversationMessageBodyClientMessageIdMin = 8;
+export const createStaffConversationMessageBodyClientMessageIdMax = 100;
+
+
+
+export const CreateStaffConversationMessageBody = zod.object({
+  "body": zod.string().min(1).max(createStaffConversationMessageBodyBodyMax),
+  "clientMessageId": zod.string().min(createStaffConversationMessageBodyClientMessageIdMin).max(createStaffConversationMessageBodyClientMessageIdMax)
+})
+
+export const CreateStaffConversationMessageResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "threadUserId": zod.number(),
+  "conversationId": zod.number().nullish(),
+  "senderId": zod.number(),
+  "senderName": zod.string(),
+  "senderRole": zod.string(),
+  "clientMessageId": zod.string().nullable(),
+  "body": zod.string(),
+  "createdAt": zod.string(),
+  "isReadByCaller": zod.boolean(),
+  "readCount": zod.number(),
+  "readByOthers": zod.boolean()
 })
 
 
@@ -2868,6 +2993,7 @@ export const ListStaffMessagesResponseItem = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
   "threadUserId": zod.number(),
+  "conversationId": zod.number().nullish(),
   "senderId": zod.number(),
   "senderName": zod.string(),
   "senderRole": zod.string(),
@@ -2904,6 +3030,7 @@ export const CreateStaffMessageResponse = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
   "threadUserId": zod.number(),
+  "conversationId": zod.number().nullish(),
   "senderId": zod.number(),
   "senderName": zod.string(),
   "senderRole": zod.string(),
@@ -11650,6 +11777,7 @@ export const ListDivisionsResponseItem = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
+  "category": zod.string().nullish(),
   "depotLabel": zod.string().nullish(),
   "depotLat": zod.number().nullish(),
   "depotLng": zod.number().nullish(),
@@ -11667,6 +11795,7 @@ export const ListDivisionsResponse = zod.array(ListDivisionsResponseItem)
  */
 export const CreateDivisionBody = zod.object({
   "name": zod.string().optional(),
+  "category": zod.string().optional(),
   "depotLabel": zod.string().optional(),
   "depotLat": zod.number().optional(),
   "depotLng": zod.number().optional(),
@@ -11680,6 +11809,7 @@ export const CreateDivisionResponse = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
+  "category": zod.string().nullish(),
   "depotLabel": zod.string().nullish(),
   "depotLat": zod.number().nullish(),
   "depotLng": zod.number().nullish(),
@@ -11702,6 +11832,7 @@ export const GetDivisionResponse = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
+  "category": zod.string().nullish(),
   "depotLabel": zod.string().nullish(),
   "depotLat": zod.number().nullish(),
   "depotLng": zod.number().nullish(),
@@ -11722,6 +11853,7 @@ export const UpdateDivisionParams = zod.object({
 
 export const UpdateDivisionBody = zod.object({
   "name": zod.string().optional(),
+  "category": zod.string().optional(),
   "depotLabel": zod.string().optional(),
   "depotLat": zod.number().optional(),
   "depotLng": zod.number().optional(),
@@ -11735,6 +11867,7 @@ export const UpdateDivisionResponse = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
+  "category": zod.string().nullish(),
   "depotLabel": zod.string().nullish(),
   "depotLat": zod.number().nullish(),
   "depotLng": zod.number().nullish(),
@@ -12357,5 +12490,3 @@ export const DeleteRepairLogParams = zod.object({
 })
 
 export const DeleteRepairLogResponse = zod.void()
-
-

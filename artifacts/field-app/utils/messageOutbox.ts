@@ -1,7 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type OutboxStatus = 'queued' | 'sending' | 'failed';
-export type MessageContext = { kind: 'general'; threadUserId: number } | { kind: 'job'; jobId: number };
+export type MessageContext =
+  | { kind: 'general'; threadUserId: number }
+  | { kind: 'audience'; audienceType: string; audienceId: number | null }
+  | { kind: 'job'; jobId: number };
 export type OutboxMessage = {
   clientMessageId: string;
   body: string;
@@ -18,7 +21,11 @@ export interface OutboxStorage {
 }
 
 export function messageOutboxKey(tenantId: number, userId: number, context: MessageContext): string {
-  const suffix = context.kind === 'job' ? `job_${context.jobId}` : `general_${context.threadUserId}`;
+  const suffix = context.kind === 'job'
+    ? `job_${context.jobId}`
+    : context.kind === 'audience'
+      ? `audience_${context.audienceType}_${context.audienceId ?? 'all'}`
+      : `general_${context.threadUserId}`;
   return `staff_message_outbox_t${tenantId}_u${userId}_${suffix}`;
 }
 

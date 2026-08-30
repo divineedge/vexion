@@ -8,6 +8,7 @@
 
 export interface DivisionInput {
   name?: string;
+  category?: string;
   depotLabel?: string;
   depotLat?: number;
   depotLng?: number;

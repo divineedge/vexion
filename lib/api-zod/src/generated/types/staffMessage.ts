@@ -10,6 +10,8 @@ export interface StaffMessage {
   id: number;
   tenantId: number;
   threadUserId: number;
+  /** @nullable */
+  conversationId?: number | null;
   senderId: number;
   senderName: string;
   senderRole: string;

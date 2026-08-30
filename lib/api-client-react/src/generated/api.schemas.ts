@@ -1855,6 +1855,8 @@ export interface StaffMessage {
   id: number;
   tenantId: number;
   threadUserId: number;
+  /** @nullable */
+  conversationId?: number | null;
   senderId: number;
   senderName: string;
   senderRole: string;
@@ -1866,6 +1868,40 @@ export interface StaffMessage {
   readCount: number;
   readByOthers: boolean;
 }
+
+export type StaffMessageAudienceAudienceType = typeof StaffMessageAudienceAudienceType[keyof typeof StaffMessageAudienceAudienceType];
+
+
+export const StaffMessageAudienceAudienceType = {
+  company: 'company',
+  crew: 'crew',
+  technicians: 'technicians',
+  division: 'division',
+  admins: 'admins',
+  staff: 'staff',
+} as const;
+
+export interface StaffMessageAudience {
+  audienceType: StaffMessageAudienceAudienceType;
+  /** @nullable */
+  audienceId: number | null;
+  label: string;
+  description: string;
+  memberCount: number;
+  canSend: boolean;
+}
+
+export type StaffAudienceMessageInputAudienceType = typeof StaffAudienceMessageInputAudienceType[keyof typeof StaffAudienceMessageInputAudienceType];
+
+
+export const StaffAudienceMessageInputAudienceType = {
+  company: 'company',
+  crew: 'crew',
+  technicians: 'technicians',
+  division: 'division',
+  admins: 'admins',
+  staff: 'staff',
+} as const;
 
 export interface StaffMessageInput {
   /**
@@ -1880,10 +1916,22 @@ export interface StaffMessageInput {
   clientMessageId: string;
 }
 
+export type StaffAudienceMessageInput = StaffMessageInput & ({
+  audienceType: StaffAudienceMessageInputAudienceType;
+  /** @nullable */
+  audienceId?: number | null;
+});
+
 export interface StaffMessageThreadSummary {
   threadUserId: number;
   threadUserName: string;
   threadUserRole: string;
+  /** @nullable */
+  conversationId?: number | null;
+  audienceType?: string;
+  /** @nullable */
+  audienceId?: number | null;
+  isSharedAudience?: boolean;
   /** @nullable */
   lastMessage: string | null;
   /** @nullable */
@@ -3444,6 +3492,8 @@ export interface Division {
   tenantId: number;
   name: string;
   /** @nullable */
+  category?: string | null;
+  /** @nullable */
   depotLabel?: string | null;
   /** @nullable */
   depotLat?: number | null;
@@ -3458,6 +3508,7 @@ export interface Division {
 
 export interface DivisionInput {
   name?: string;
+  category?: string;
   depotLabel?: string;
   depotLat?: number;
   depotLng?: number;
@@ -5897,6 +5948,19 @@ export type GetJobMessageUnreadCount200 = {
   count: number;
 };
 
+export type ListStaffConversationMessagesParams = {
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * Return messages with IDs lower than this cursor
+ * @minimum 1
+ */
+beforeId?: number;
+};
+
 export type ListStaffMessagesParams = {
 /**
  * @minimum 1
@@ -6261,4 +6325,3 @@ blueprintId?: number;
 export type GetRepairLogSummaryParams = {
 propertyId: number;
 };
-

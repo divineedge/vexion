@@ -28,6 +28,7 @@ function formatDivision(d: typeof divisionsTable.$inferSelect) {
     id: d.id,
     tenantId: d.tenantId,
     name: d.name,
+    category: d.category ?? null,
     depotLabel: d.depotLabel ?? null,
     depotLat: d.depotLat ?? null,
     depotLng: d.depotLng ?? null,
@@ -72,12 +73,13 @@ router.get("/divisions/:id", async (req, res): Promise<void> => {
 router.post("/divisions", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
-  const { name, depotLabel, depotLat, depotLng, shiftHoursPerDay, crewIds, technicianIds } = req.body;
+  const { name, category, depotLabel, depotLat, depotLng, shiftHoursPerDay, crewIds, technicianIds } = req.body;
   if (!name) { res.status(400).json({ error: "name is required" }); return; }
 
   const [division] = await db.insert(divisionsTable).values({
     tenantId,
     name,
+    category: typeof category === "string" && category.trim() ? category.trim() : null,
     depotLabel: depotLabel ?? null,
     depotLat: depotLat != null ? Number(depotLat) : null,
     depotLng: depotLng != null ? Number(depotLng) : null,
@@ -94,10 +96,11 @@ router.post("/divisions", async (req, res): Promise<void> => {
 router.patch("/divisions/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(req.params.id, 10);
-  const { name, depotLabel, depotLat, depotLng, shiftHoursPerDay, crewIds, technicianIds, isArchived } = req.body;
+  const { name, category, depotLabel, depotLat, depotLng, shiftHoursPerDay, crewIds, technicianIds, isArchived } = req.body;
 
   const updates: Partial<typeof divisionsTable.$inferInsert> = {};
   if (name !== undefined) updates.name = name;
+  if (category !== undefined) updates.category = typeof category === "string" && category.trim() ? category.trim() : null;
   if (depotLabel !== undefined) updates.depotLabel = depotLabel || null;
   if (depotLat !== undefined) updates.depotLat = depotLat != null ? Number(depotLat) : null;
   if (depotLng !== undefined) updates.depotLng = depotLng != null ? Number(depotLng) : null;

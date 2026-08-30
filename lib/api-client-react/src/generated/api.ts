@@ -203,6 +203,7 @@ import type {
   ListRouteTemplatesParams,
   ListServicesParams,
   ListShrinkageReportsParams,
+  ListStaffConversationMessagesParams,
   ListStaffMessagesParams,
   ListStopServiceFlagsParams,
   ListTaskBundleCompletionsParams,
@@ -307,7 +308,9 @@ import type {
   SimulationRunInput,
   SkipNextOccurrenceBody,
   SkipReason,
+  StaffAudienceMessageInput,
   StaffMessage,
+  StaffMessageAudience,
   StaffMessageInput,
   StaffMessageThreadSummary,
   StaffMessagesUnreadSummary,
@@ -5901,6 +5904,154 @@ export function useListStaffMessageThreads<TData = Awaited<ReturnType<typeof lis
 
 
 
+export const getListStaffMessageAudiencesUrl = () => {
+
+
+
+
+  return `/api/staff-messages/audiences`
+}
+
+/**
+ * @summary List staff messaging audiences available to the caller
+ */
+export const listStaffMessageAudiences = async ( options?: RequestInit): Promise<StaffMessageAudience[]> => {
+
+  return customFetch<StaffMessageAudience[]>(getListStaffMessageAudiencesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListStaffMessageAudiencesQueryKey = () => {
+    return [
+    `/api/staff-messages/audiences`
+    ] as const;
+    }
+
+
+export const getListStaffMessageAudiencesQueryOptions = <TData = Awaited<ReturnType<typeof listStaffMessageAudiences>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listStaffMessageAudiences>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListStaffMessageAudiencesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listStaffMessageAudiences>>> = ({ signal }) => listStaffMessageAudiences({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listStaffMessageAudiences>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListStaffMessageAudiencesQueryResult = NonNullable<Awaited<ReturnType<typeof listStaffMessageAudiences>>>
+export type ListStaffMessageAudiencesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List staff messaging audiences available to the caller
+ */
+
+export function useListStaffMessageAudiences<TData = Awaited<ReturnType<typeof listStaffMessageAudiences>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listStaffMessageAudiences>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListStaffMessageAudiencesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSendStaffMessageToAudienceUrl = () => {
+
+
+
+
+  return `/api/staff-messages/audience`
+}
+
+/**
+ * @summary Send a staff message to an audience, creating its conversation when needed
+ */
+export const sendStaffMessageToAudience = async (staffAudienceMessageInput: StaffAudienceMessageInput, options?: RequestInit): Promise<StaffMessage> => {
+
+  return customFetch<StaffMessage>(getSendStaffMessageToAudienceUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(staffAudienceMessageInput)
+  }
+);}
+
+
+
+
+
+export const getSendStaffMessageToAudienceMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendStaffMessageToAudience>>, TError,{data: BodyType<StaffAudienceMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendStaffMessageToAudience>>, TError,{data: BodyType<StaffAudienceMessageInput>}, TContext> => {
+
+const mutationKey = ['sendStaffMessageToAudience'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendStaffMessageToAudience>>, {data: BodyType<StaffAudienceMessageInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  sendStaffMessageToAudience(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendStaffMessageToAudienceMutationResult = NonNullable<Awaited<ReturnType<typeof sendStaffMessageToAudience>>>
+    export type SendStaffMessageToAudienceMutationBody = BodyType<StaffAudienceMessageInput>
+    export type SendStaffMessageToAudienceMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Send a staff message to an audience, creating its conversation when needed
+ */
+export const useSendStaffMessageToAudience = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendStaffMessageToAudience>>, TError,{data: BodyType<StaffAudienceMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendStaffMessageToAudience>>,
+        TError,
+        {data: BodyType<StaffAudienceMessageInput>},
+        TContext
+      > => {
+      return useMutation(getSendStaffMessageToAudienceMutationOptions(options));
+    }
+
 export const getGetStaffMessagesUnreadSummaryUrl = () => {
 
 
@@ -5977,6 +6128,167 @@ export function useGetStaffMessagesUnreadSummary<TData = Awaited<ReturnType<type
 
 
 
+
+export const getListStaffConversationMessagesUrl = (conversationId: number,
+    params?: ListStaffConversationMessagesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/staff-messages/conversations/${conversationId}?${stringifiedParams}` : `/api/staff-messages/conversations/${conversationId}`
+}
+
+/**
+ * @summary List a visible audience conversation and mark incoming messages read
+ */
+export const listStaffConversationMessages = async (conversationId: number,
+    params?: ListStaffConversationMessagesParams, options?: RequestInit): Promise<StaffMessage[]> => {
+
+  return customFetch<StaffMessage[]>(getListStaffConversationMessagesUrl(conversationId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListStaffConversationMessagesQueryKey = (conversationId: number,
+    params?: ListStaffConversationMessagesParams,) => {
+    return [
+    `/api/staff-messages/conversations/${conversationId}`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListStaffConversationMessagesQueryOptions = <TData = Awaited<ReturnType<typeof listStaffConversationMessages>>, TError = ErrorType<unknown>>(conversationId: number,
+    params?: ListStaffConversationMessagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listStaffConversationMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListStaffConversationMessagesQueryKey(conversationId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listStaffConversationMessages>>> = ({ signal }) => listStaffConversationMessages(conversationId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: conversationId !== null && conversationId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listStaffConversationMessages>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListStaffConversationMessagesQueryResult = NonNullable<Awaited<ReturnType<typeof listStaffConversationMessages>>>
+export type ListStaffConversationMessagesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List a visible audience conversation and mark incoming messages read
+ */
+
+export function useListStaffConversationMessages<TData = Awaited<ReturnType<typeof listStaffConversationMessages>>, TError = ErrorType<unknown>>(
+ conversationId: number,
+    params?: ListStaffConversationMessagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listStaffConversationMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListStaffConversationMessagesQueryOptions(conversationId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateStaffConversationMessageUrl = (conversationId: number,) => {
+
+
+
+
+  return `/api/staff-messages/conversations/${conversationId}`
+}
+
+/**
+ * @summary Send a message to an existing audience conversation
+ */
+export const createStaffConversationMessage = async (conversationId: number,
+    staffMessageInput: StaffMessageInput, options?: RequestInit): Promise<StaffMessage> => {
+
+  return customFetch<StaffMessage>(getCreateStaffConversationMessageUrl(conversationId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(staffMessageInput)
+  }
+);}
+
+
+
+
+
+export const getCreateStaffConversationMessageMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createStaffConversationMessage>>, TError,{conversationId: number;data: BodyType<StaffMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createStaffConversationMessage>>, TError,{conversationId: number;data: BodyType<StaffMessageInput>}, TContext> => {
+
+const mutationKey = ['createStaffConversationMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createStaffConversationMessage>>, {conversationId: number;data: BodyType<StaffMessageInput>}> = (props) => {
+          const {conversationId,data} = props ?? {};
+
+          return  createStaffConversationMessage(conversationId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateStaffConversationMessageMutationResult = NonNullable<Awaited<ReturnType<typeof createStaffConversationMessage>>>
+    export type CreateStaffConversationMessageMutationBody = BodyType<StaffMessageInput>
+    export type CreateStaffConversationMessageMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Send a message to an existing audience conversation
+ */
+export const useCreateStaffConversationMessage = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createStaffConversationMessage>>, TError,{conversationId: number;data: BodyType<StaffMessageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createStaffConversationMessage>>,
+        TError,
+        {conversationId: number;data: BodyType<StaffMessageInput>},
+        TContext
+      > => {
+      return useMutation(getCreateStaffConversationMessageMutationOptions(options));
+    }
 
 export const getListStaffMessagesUrl = (threadUserId: number,
     params?: ListStaffMessagesParams,) => {

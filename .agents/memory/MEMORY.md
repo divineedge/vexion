@@ -39,3 +39,4 @@
 - [Mobile message delivery](mobile-message-delivery.md) — offline staff messages use scoped persistent outboxes plus server idempotency; polling reads use stable indexed cursors
 - [Mobile push delivery](mobile-push-delivery.md) — claim each device/event once, persist Expo ticket IDs, and retire invalid tokens from delayed receipts
 - [CSV import column identity](csv-import-column-identity.md) — map uploaded columns by position, not header text; duplicate and blank headers must remain independently selectable
+- [Customer archive serialization](customer-archive-serialization.md) — lock the customer row before cascade state decisions so concurrent archive requests share one restore timestamp

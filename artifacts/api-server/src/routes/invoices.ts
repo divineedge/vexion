@@ -191,15 +191,33 @@ function generateInvoiceToken(): string {
 router.get("/invoices/financials-summary", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
 
-  const [paid] = await db.select({ total: sql<number>`COALESCE(sum(total),0)::float` }).from(invoicesTable).where(and(eq(invoicesTable.tenantId, tenantId), eq(invoicesTable.status, "paid")));
-  const [outstanding] = await db.select({ total: sql<number>`COALESCE(sum(total),0)::float` }).from(invoicesTable).where(and(eq(invoicesTable.tenantId, tenantId), sql`status IN ('draft','sent')`));
-  const [overdue] = await db.select({ total: sql<number>`COALESCE(sum(total),0)::float` }).from(invoicesTable).where(and(eq(invoicesTable.tenantId, tenantId), eq(invoicesTable.status, "overdue")));
+  const activeInvoiceWhere = (statusCondition: ReturnType<typeof eq> | ReturnType<typeof sql>) => and(
+    eq(invoicesTable.tenantId, tenantId),
+    isNull(invoicesTable.archivedAt),
+    isNull(customersTable.archivedAt),
+    statusCondition,
+  );
+  const activeInvoiceJoin = and(
+    eq(invoicesTable.customerId, customersTable.id),
+    eq(invoicesTable.tenantId, customersTable.tenantId),
+  );
+
+  const [paid] = await db.select({ total: sql<number>`COALESCE(sum(total),0)::float` }).from(invoicesTable).innerJoin(customersTable, activeInvoiceJoin).where(activeInvoiceWhere(eq(invoicesTable.status, "paid")));
+  const [outstanding] = await db.select({ total: sql<number>`COALESCE(sum(total),0)::float` }).from(invoicesTable).innerJoin(customersTable, activeInvoiceJoin).where(activeInvoiceWhere(sql`${invoicesTable.status} IN ('draft','sent')`));
+  const [overdue] = await db.select({ total: sql<number>`COALESCE(sum(total),0)::float` }).from(invoicesTable).innerJoin(customersTable, activeInvoiceJoin).where(activeInvoiceWhere(eq(invoicesTable.status, "overdue")));
 
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const [paidMonth] = await db.select({ total: sql<number>`COALESCE(sum(total),0)::float` }).from(invoicesTable).where(and(eq(invoicesTable.tenantId, tenantId), eq(invoicesTable.status, "paid"), sql`paid_at >= ${startOfMonth}`));
+  const [paidMonth] = await db.select({ total: sql<number>`COALESCE(sum(total),0)::float` }).from(invoicesTable).innerJoin(customersTable, activeInvoiceJoin).where(and(
+    activeInvoiceWhere(eq(invoicesTable.status, "paid")),
+    sql`${invoicesTable.paidAt} >= ${startOfMonth}`,
+  ));
 
-  const [avg] = await db.select({ avg: sql<number>`COALESCE(avg(total),0)::float` }).from(invoicesTable).where(eq(invoicesTable.tenantId, tenantId));
+  const [avg] = await db.select({ avg: sql<number>`COALESCE(avg(total),0)::float` }).from(invoicesTable).innerJoin(customersTable, activeInvoiceJoin).where(and(
+    eq(invoicesTable.tenantId, tenantId),
+    isNull(invoicesTable.archivedAt),
+    isNull(customersTable.archivedAt),
+  ));
 
   res.json({
     totalRevenue: paid?.total ?? 0,
@@ -635,13 +653,23 @@ router.post("/invoices/:id/send-reminder", async (req, res): Promise<void> => {
   const [row] = await db
     .select({ invoice: invoicesTable, customer: customersTable, tenant: tenantsTable })
     .from(invoicesTable)
-    .leftJoin(customersTable, eq(invoicesTable.customerId, customersTable.id))
-    .leftJoin(tenantsTable, eq(invoicesTable.tenantId, tenantsTable.id))
+    .leftJoin(customersTable, and(
+      eq(invoicesTable.customerId, customersTable.id),
+      eq(invoicesTable.tenantId, customersTable.tenantId),
+    ))
+    .leftJoin(tenantsTable, and(
+      eq(invoicesTable.tenantId, tenantsTable.id),
+      eq(tenantsTable.id, tenantId),
+    ))
     .where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId)));
 
   if (!row?.invoice) { res.status(404).json({ error: "Invoice not found" }); return; }
   if (!row.customer) { res.status(400).json({ error: "Customer not found for this invoice" }); return; }
   if (!row.tenant) { res.status(400).json({ error: "Tenant not found" }); return; }
+  if (row.invoice.archivedAt || row.customer.archivedAt) {
+    res.status(409).json({ error: "Archived invoices and customers cannot receive reminders" });
+    return;
+  }
 
   if (row.invoice.status === "paid") {
     res.status(400).json({ error: "Invoice is already paid — no reminder needed" });

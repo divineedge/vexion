@@ -3,7 +3,7 @@ import {
   db, customersTable, campaignCustomersTable, jobsTable, tenantsTable,
   broadcastsTable, broadcastRecipientsTable, communicationsLogTable,
 } from "@workspace/db";
-import { eq, and, or, ilike, inArray, sql, desc } from "drizzle-orm";
+import { eq, and, or, ilike, inArray, sql, desc, isNull } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { sendSms, type SmsProviderConfig } from "../lib/smsProvider";
@@ -26,7 +26,10 @@ export interface BroadcastFilter {
 
 /** Resolves a segment filter into the matching customer rows for this tenant, excluding customers who have opted out of the requested channel. */
 export async function resolveRecipients(tenantId: number, channel: "sms" | "email", filter: BroadcastFilter) {
-  const conditions = [eq(customersTable.tenantId, tenantId)];
+  const conditions = [
+    eq(customersTable.tenantId, tenantId),
+    isNull(customersTable.archivedAt),
+  ];
 
   if (!filter.allCustomers) {
     if (filter.tag) conditions.push(sql`${filter.tag} = ANY(${customersTable.tags})`);
@@ -44,7 +47,11 @@ export async function resolveRecipients(tenantId: number, channel: "sms" | "emai
     }
 
     if (filter.lastServiceBefore || filter.lastServiceAfter) {
-      const jobConditions = [eq(jobsTable.tenantId, tenantId), eq(jobsTable.status, "completed")];
+      const jobConditions = [
+        eq(jobsTable.tenantId, tenantId),
+        eq(jobsTable.status, "completed"),
+        isNull(jobsTable.archivedAt),
+      ];
       if (filter.lastServiceBefore) jobConditions.push(sql`${jobsTable.completedAt} <= ${filter.lastServiceBefore}::timestamptz`);
       if (filter.lastServiceAfter) jobConditions.push(sql`${jobsTable.completedAt} >= ${filter.lastServiceAfter}::timestamptz`);
       const matchingCustomerIds = await db

@@ -73,6 +73,10 @@ router.post("/communications/send", async (req, res): Promise<void> => {
 
   if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
   if (!tenant) { res.status(404).json({ error: "Tenant not found" }); return; }
+  if (customer.archivedAt) {
+    res.status(409).json({ error: "Archived customers cannot receive messages" });
+    return;
+  }
 
   if (channel === "sms" && customer.smsOptOut) {
     res.status(422).json({ error: "Customer has opted out of SMS" });
@@ -522,6 +526,10 @@ router.post("/jobs/:id/send-reminder", async (req, res): Promise<void> => {
 
   if (!row?.job) { res.status(404).json({ error: "Job not found" }); return; }
   if (!row.customer) { res.status(422).json({ error: "Job has no customer" }); return; }
+  if (row.job.archivedAt || row.customer.archivedAt) {
+    res.status(409).json({ error: "Archived jobs and customers cannot receive reminders" });
+    return;
+  }
   if (!tenant) { res.status(404).json({ error: "Tenant not found" }); return; }
 
   const { job, customer, propertyAddress } = row;

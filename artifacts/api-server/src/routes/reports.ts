@@ -87,13 +87,15 @@ router.get("/reports/job-profitability", async (req, res): Promise<void> => {
         c.name AS customer_name
       FROM jobs j
       LEFT JOIN blueprints b ON b.id = j.blueprint_id AND b.tenant_id = j.tenant_id
-      LEFT JOIN invoices i ON i.job_id = j.id AND i.tenant_id = j.tenant_id
+       LEFT JOIN invoices i ON i.job_id = j.id AND i.tenant_id = j.tenant_id AND i.archived_at IS NULL
       LEFT JOIN crews cr ON cr.id = j.crew_id AND cr.tenant_id = j.tenant_id
       LEFT JOIN users u ON u.id = j.assignee_id AND u.tenant_id = j.tenant_id
       LEFT JOIN properties p ON p.id = j.property_id AND p.tenant_id = j.tenant_id
       LEFT JOIN customers c ON c.id = j.customer_id AND c.tenant_id = j.tenant_id
       WHERE j.tenant_id = ${tenantId}
         AND j.status = 'completed'
+         AND j.archived_at IS NULL
+         AND c.archived_at IS NULL
         AND j.completed_at >= ${startDate.toISOString()}::timestamptz
         AND j.completed_at <= ${endDate.toISOString()}::timestamptz
         ${crewId != null ? sql`AND j.crew_id = ${crewId}` : sql``}
@@ -113,8 +115,11 @@ router.get("/reports/job-profitability", async (req, res): Promise<void> => {
     // split evenly across jobs that have no linked fuel (see module doc).
     const fuelByJobRows = (await db.execute(sql`
       SELECT job_id, COALESCE(SUM(cost), 0)::float AS total
-      FROM equipment_fuel_logs
-      WHERE tenant_id = ${tenantId}
+       FROM equipment_fuel_logs f
+       LEFT JOIN jobs j ON j.id = f.job_id AND j.tenant_id = f.tenant_id
+       LEFT JOIN customers c ON c.id = j.customer_id AND c.tenant_id = j.tenant_id
+       WHERE f.tenant_id = ${tenantId}
+         AND (f.job_id IS NULL OR (j.archived_at IS NULL AND c.archived_at IS NULL))
         AND date >= ${startDate.toISOString().slice(0, 10)}
         AND date <= ${endDate.toISOString().slice(0, 10)}
       GROUP BY job_id
@@ -209,10 +214,13 @@ router.get("/reports/employee-revenue", async (req, res): Promise<void> => {
         i.total AS invoice_total
       FROM jobs j
       LEFT JOIN blueprints b ON b.id = j.blueprint_id AND b.tenant_id = j.tenant_id
-      LEFT JOIN invoices i ON i.job_id = j.id AND i.tenant_id = j.tenant_id
+       LEFT JOIN invoices i ON i.job_id = j.id AND i.tenant_id = j.tenant_id AND i.archived_at IS NULL
       LEFT JOIN users u ON u.id = j.assignee_id AND u.tenant_id = j.tenant_id
+       LEFT JOIN customers c ON c.id = j.customer_id AND c.tenant_id = j.tenant_id
       WHERE j.tenant_id = ${tenantId}
         AND j.status = 'completed'
+         AND j.archived_at IS NULL
+         AND c.archived_at IS NULL
         AND j.assignee_id IS NOT NULL
         AND j.completed_at >= ${startDate.toISOString()}::timestamptz
         AND j.completed_at <= ${endDate.toISOString()}::timestamptz
@@ -278,10 +286,14 @@ router.get("/reports/pl-statement", async (req, res): Promise<void> => {
         COALESCE((SELECT SUM((part->>'total')::numeric) FROM jsonb_array_elements(COALESCE(j.job_parts, '[]'::jsonb)) AS part), 0) AS parts_cost,
         b.p4p_percentage AS blueprint_p4p_pct
       FROM invoices i
-      LEFT JOIN jobs j ON j.id = i.job_id AND j.tenant_id = i.tenant_id
+       LEFT JOIN jobs j ON j.id = i.job_id AND j.tenant_id = i.tenant_id
       LEFT JOIN blueprints b ON b.id = j.blueprint_id AND b.tenant_id = j.tenant_id
+       INNER JOIN customers c ON c.id = i.customer_id AND c.tenant_id = i.tenant_id
       WHERE i.tenant_id = ${tenantId}
         AND i.status = 'paid'
+         AND i.archived_at IS NULL
+         AND c.archived_at IS NULL
+         AND (i.job_id IS NULL OR j.archived_at IS NULL)
         AND i.paid_at >= ${startDate.toISOString()}::timestamptz
         AND i.paid_at <= ${endDate.toISOString()}::timestamptz
     `);
@@ -301,8 +313,12 @@ router.get("/reports/pl-statement", async (req, res): Promise<void> => {
     }
 
     const fuelAggRows = (await db.execute(sql`
-      SELECT COALESCE(SUM(cost), 0)::float AS total FROM equipment_fuel_logs
-      WHERE tenant_id = ${tenantId} AND date >= ${startDate.toISOString().slice(0, 10)} AND date <= ${endDate.toISOString().slice(0, 10)}
+       SELECT COALESCE(SUM(f.cost), 0)::float AS total FROM equipment_fuel_logs f
+       LEFT JOIN jobs j ON j.id = f.job_id AND j.tenant_id = f.tenant_id
+       LEFT JOIN customers c ON c.id = j.customer_id AND c.tenant_id = j.tenant_id
+       WHERE f.tenant_id = ${tenantId}
+         AND (f.job_id IS NULL OR (j.archived_at IS NULL AND c.archived_at IS NULL))
+         AND f.date >= ${startDate.toISOString().slice(0, 10)} AND f.date <= ${endDate.toISOString().slice(0, 10)}
     `)).rows as { total: number }[];
     const fuelCost = fuelAggRows[0] ? Number(fuelAggRows[0].total) : 0;
 
@@ -356,6 +372,8 @@ router.get("/reports/aging-invoices", async (req, res): Promise<void> => {
       LEFT JOIN customers c ON c.id = i.customer_id AND c.tenant_id = i.tenant_id
       WHERE i.tenant_id = ${tenantId}
         AND i.status IN ('sent', 'overdue')
+         AND i.archived_at IS NULL
+         AND c.archived_at IS NULL
       ORDER BY i.due_date ASC NULLS LAST
     `);
 
@@ -418,13 +436,16 @@ router.get("/reports/sales-tax", async (req, res): Promise<void> => {
         to_char(date_trunc('month', paid_at), 'YYYY-MM') AS month,
         COALESCE(SUM(subtotal), 0)::float AS taxable_revenue,
         COALESCE(SUM(tax), 0)::float AS tax_collected
-      FROM invoices
-      WHERE tenant_id = ${tenantId}
-        AND status = 'paid'
-        AND paid_at >= ${startDate.toISOString()}::timestamptz
-        AND paid_at <= ${endDate.toISOString()}::timestamptz
-      GROUP BY date_trunc('month', paid_at)
-      ORDER BY date_trunc('month', paid_at) ASC
+       FROM invoices i
+       INNER JOIN customers c ON c.id = i.customer_id AND c.tenant_id = i.tenant_id
+       WHERE i.tenant_id = ${tenantId}
+         AND i.status = 'paid'
+         AND i.archived_at IS NULL
+         AND c.archived_at IS NULL
+         AND i.paid_at >= ${startDate.toISOString()}::timestamptz
+         AND i.paid_at <= ${endDate.toISOString()}::timestamptz
+       GROUP BY date_trunc('month', i.paid_at)
+       ORDER BY date_trunc('month', i.paid_at) ASC
     `);
 
     type Row = { month: string; taxable_revenue: number; tax_collected: number };
@@ -476,8 +497,11 @@ router.get("/reports/inventory-sales", async (req, res): Promise<void> => {
       FROM jobs j
       LEFT JOIN users u ON u.id = j.assignee_id AND u.tenant_id = j.tenant_id
       LEFT JOIN crews cr ON cr.id = j.crew_id AND cr.tenant_id = j.tenant_id
+       LEFT JOIN customers c ON c.id = j.customer_id AND c.tenant_id = j.tenant_id
       WHERE j.tenant_id = ${tenantId}
         AND j.status = 'completed'
+         AND j.archived_at IS NULL
+         AND c.archived_at IS NULL
         AND j.completed_at >= ${startDate.toISOString()}::timestamptz
         AND j.completed_at <= ${endDate.toISOString()}::timestamptz
         AND j.job_parts IS NOT NULL
@@ -709,11 +733,14 @@ router.get("/reports/revenue-per-hour", async (req, res): Promise<void> => {
       SELECT
         COALESCE(SUM(total_amount), 0) AS revenue,
         COALESCE(SUM(estimated_duration), 0) AS minutes
-      FROM jobs
-      WHERE tenant_id = ${tenantId}
-        AND status = 'completed'
-        AND completed_at >= ${startDate}
-        AND completed_at <= ${endDate}
+       FROM jobs j
+       LEFT JOIN customers c ON c.id = j.customer_id AND c.tenant_id = j.tenant_id
+       WHERE j.tenant_id = ${tenantId}
+         AND j.status = 'completed'
+         AND j.archived_at IS NULL
+         AND c.archived_at IS NULL
+         AND j.completed_at >= ${startDate}
+         AND j.completed_at <= ${endDate}
     `),
     db.execute(sql`
       SELECT
@@ -723,8 +750,11 @@ router.get("/reports/revenue-per-hour", async (req, res): Promise<void> => {
         COALESCE(SUM(j.estimated_duration), 0) AS minutes
       FROM jobs j
       LEFT JOIN services s ON j.service_id = s.id
+       LEFT JOIN customers c ON c.id = j.customer_id AND c.tenant_id = j.tenant_id
       WHERE j.tenant_id = ${tenantId}
         AND j.status = 'completed'
+         AND j.archived_at IS NULL
+         AND c.archived_at IS NULL
         AND j.completed_at >= ${startDate}
         AND j.completed_at <= ${endDate}
       GROUP BY j.service_id, s.name
@@ -738,8 +768,11 @@ router.get("/reports/revenue-per-hour", async (req, res): Promise<void> => {
         COALESCE(SUM(j.estimated_duration), 0) AS minutes
       FROM jobs j
       LEFT JOIN crews c ON j.crew_id = c.id
+       LEFT JOIN customers cust ON cust.id = j.customer_id AND cust.tenant_id = j.tenant_id
       WHERE j.tenant_id = ${tenantId}
         AND j.status = 'completed'
+         AND j.archived_at IS NULL
+         AND cust.archived_at IS NULL
         AND j.completed_at >= ${startDate}
         AND j.completed_at <= ${endDate}
       GROUP BY j.crew_id, c.name
@@ -747,17 +780,20 @@ router.get("/reports/revenue-per-hour", async (req, res): Promise<void> => {
     `),
     db.execute(sql`
       SELECT
-        j.user_id AS dim_id,
+        j.assignee_id AS dim_id,
         COALESCE(u.name, 'Unassigned') AS dim_name,
         COALESCE(SUM(j.total_amount), 0) AS revenue,
         COALESCE(SUM(j.estimated_duration), 0) AS minutes
       FROM jobs j
-      LEFT JOIN users u ON j.user_id = u.id
+      LEFT JOIN users u ON j.assignee_id = u.id AND u.tenant_id = j.tenant_id
+       LEFT JOIN customers c ON c.id = j.customer_id AND c.tenant_id = j.tenant_id
       WHERE j.tenant_id = ${tenantId}
         AND j.status = 'completed'
+         AND j.archived_at IS NULL
+         AND c.archived_at IS NULL
         AND j.completed_at >= ${startDate}
         AND j.completed_at <= ${endDate}
-      GROUP BY j.user_id, u.name
+      GROUP BY j.assignee_id, u.name
       ORDER BY revenue DESC
     `),
   ]);

@@ -8,6 +8,7 @@ import { getStripeClient } from "../lib/stripe";
 import { sendSms, type SmsProviderConfig } from "../lib/smsProvider";
 import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
 import { logger } from "../lib/logger";
+import { invalidateTenantReportCache } from "../lib/reportsCache";
 import { geocodeAddress } from "./properties";
 import {
   importUpload,
@@ -676,8 +677,18 @@ router.patch("/customers/:id", async (req, res): Promise<void> => {
 
   const [updated] = await db.transaction(async (tx) => {
     if (archivedAt !== undefined) {
+      const lockedRows = await tx.execute(sql`
+        SELECT archived_at
+        FROM customers
+        WHERE id = ${id} AND tenant_id = ${tenantId}
+        FOR UPDATE
+      `);
+      const lockedCustomer = lockedRows.rows[0] as { archived_at: Date | null } | undefined;
+      const currentArchivedAt = lockedCustomer?.archived_at
+        ? new Date(lockedCustomer.archived_at)
+        : null;
       const isArchiving = archivedAt !== null;
-      const archiveStateChanged = isArchiving !== (existing.archivedAt !== null);
+      const archiveStateChanged = isArchiving !== (currentArchivedAt !== null);
 
       if (archiveStateChanged && isArchiving) {
         const cascadeArchivedAt = new Date(archivedAt);
@@ -705,7 +716,7 @@ router.patch("/customers/:id", async (req, res): Promise<void> => {
               isNull(jobsTable.archivedAt),
             )),
         ]);
-      } else if (archiveStateChanged && existing.archivedAt) {
+      } else if (archiveStateChanged && currentArchivedAt) {
         updates.archivedAt = null;
         await Promise.all([
           tx.update(estimatesTable)
@@ -713,24 +724,31 @@ router.patch("/customers/:id", async (req, res): Promise<void> => {
             .where(and(
               eq(estimatesTable.tenantId, tenantId),
               eq(estimatesTable.customerId, id),
-              eq(estimatesTable.archivedAt, existing.archivedAt),
+              eq(estimatesTable.archivedAt, currentArchivedAt),
             )),
           tx.update(invoicesTable)
             .set({ archivedAt: null })
             .where(and(
               eq(invoicesTable.tenantId, tenantId),
               eq(invoicesTable.customerId, id),
-              eq(invoicesTable.archivedAt, existing.archivedAt),
+              eq(invoicesTable.archivedAt, currentArchivedAt),
             )),
           tx.update(jobsTable)
             .set({ archivedAt: null })
             .where(and(
               eq(jobsTable.tenantId, tenantId),
               eq(jobsTable.customerId, id),
-              eq(jobsTable.archivedAt, existing.archivedAt),
+              eq(jobsTable.archivedAt, currentArchivedAt),
             )),
         ]);
       }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return tx.select()
+        .from(customersTable)
+        .where(and(eq(customersTable.id, id), eq(customersTable.tenantId, tenantId)))
+        .limit(1);
     }
 
     return tx.update(customersTable)
@@ -740,6 +758,7 @@ router.patch("/customers/:id", async (req, res): Promise<void> => {
   });
 
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  if (archivedAt !== undefined) invalidateTenantReportCache(tenantId);
   if (tags !== undefined) void syncCustomerToMailchimp(tenantId, updated);
 
   const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(propertiesTable)
@@ -1017,6 +1036,10 @@ router.post("/customers/:id/send-expiry-reminder", async (req, res): Promise<voi
     db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId)),
   ]);
   if (!customer) { res.status(404).json({ error: "Not found" }); return; }
+  if (customer.archivedAt) {
+    res.status(409).json({ error: "Archived customers cannot receive reminders" });
+    return;
+  }
   if (!customer.stripeDefaultPaymentMethodId) {
     res.status(400).json({ error: "Customer has no saved card" }); return;
   }

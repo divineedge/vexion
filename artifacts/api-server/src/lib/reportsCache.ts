@@ -14,6 +14,13 @@ interface CacheEntry<T> {
 
 const cache = new Map<string, CacheEntry<unknown>>();
 
+export function invalidateTenantReportCache(tenantId: number): void {
+  const prefix = `${tenantId}:`;
+  for (const key of cache.keys()) {
+    if (key.startsWith(prefix)) cache.delete(key);
+  }
+}
+
 function buildKey(tenantId: number, reportKey: string, params: Record<string, unknown>): string {
   return `${tenantId}:${reportKey}:${JSON.stringify(params, Object.keys(params).sort())}`;
 }

@@ -2482,7 +2482,11 @@ router.post("/jobs/:id/resend-reminder", async (req, res): Promise<void> => {
   const [job] = await db
     .select({ id: jobsTable.id })
     .from(jobsTable)
-    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
+    .where(and(
+      eq(jobsTable.id, id),
+      eq(jobsTable.tenantId, tenantId),
+      isNull(jobsTable.archivedAt),
+    ))
     .limit(1);
   if (!job) {
     res.status(404).json({ error: "Job not found" });

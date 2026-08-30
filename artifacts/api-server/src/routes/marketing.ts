@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, marketingCampaignsTable, campaignCustomersTable, customersTable, invoicesTable } from "@workspace/db";
-import { eq, and, sum, count, desc, sql } from "drizzle-orm";
+import { eq, and, sum, count, desc, isNull, sql } from "drizzle-orm";
 import { getTenantId } from "../lib/tenantHelper";
 import { syncCustomerToMailchimp } from "../lib/mailchimpSync";
 
@@ -23,7 +23,14 @@ router.get("/marketing/campaigns", async (req, res): Promise<void> => {
       customerCount: count().mapWith(Number),
     })
     .from(campaignCustomersTable)
-    .where(eq(campaignCustomersTable.tenantId, tenantId))
+    .innerJoin(customersTable, and(
+      eq(campaignCustomersTable.customerId, customersTable.id),
+      eq(customersTable.tenantId, tenantId),
+    ))
+    .where(and(
+      eq(campaignCustomersTable.tenantId, tenantId),
+      isNull(customersTable.archivedAt),
+    ))
     .groupBy(campaignCustomersTable.campaignId);
 
   // Revenue from campaign customers (paid invoices only)
@@ -32,9 +39,11 @@ router.get("/marketing/campaigns", async (req, res): Promise<void> => {
       cc.campaign_id,
       SUM(i.total) AS revenue
     FROM campaign_customers cc
-    JOIN invoices i ON i.customer_id = cc.customer_id
+    JOIN customers c ON c.id = cc.customer_id AND c.tenant_id = cc.tenant_id
+    JOIN invoices i ON i.customer_id = cc.customer_id AND i.tenant_id = cc.tenant_id
     WHERE cc.tenant_id = ${tenantId}
-      AND i.tenant_id = ${tenantId}
+      AND c.archived_at IS NULL
+      AND i.archived_at IS NULL
       AND i.status = 'paid'
     GROUP BY cc.campaign_id
   `);
@@ -163,9 +172,13 @@ router.get("/marketing/campaigns/:id/customers-revenue", async (req, res): Promi
       COALESCE(SUM(CASE WHEN i.status = 'paid' AND i.paid_at >= ${sinceDate} THEN i.total ELSE 0 END), 0) AS period_revenue,
       COUNT(CASE WHEN i.status = 'paid' AND i.paid_at >= ${sinceDate} THEN 1 END)::int AS invoice_count
     FROM campaign_customers cc
-    LEFT JOIN customers c ON cc.customer_id = c.id
-    LEFT JOIN invoices i ON i.customer_id = cc.customer_id AND i.tenant_id = ${tenantId}
-    WHERE cc.campaign_id = ${campaignId} AND cc.tenant_id = ${tenantId}
+     INNER JOIN customers c ON cc.customer_id = c.id AND c.tenant_id = cc.tenant_id
+     LEFT JOIN invoices i ON i.customer_id = cc.customer_id
+       AND i.tenant_id = ${tenantId}
+       AND i.archived_at IS NULL
+     WHERE cc.campaign_id = ${campaignId}
+       AND cc.tenant_id = ${tenantId}
+       AND c.archived_at IS NULL
     GROUP BY cc.id, cc.campaign_id, cc.customer_id, cc.acquired_at, c.name, c.email
     ORDER BY period_revenue DESC, c.name
   `);
@@ -205,7 +218,11 @@ router.post("/marketing/campaigns/:id/customers", async (req, res): Promise<void
   const [customerCheck] = await db
     .select({ id: customersTable.id })
     .from(customersTable)
-    .where(and(eq(customersTable.id, parseInt(customerId, 10)), eq(customersTable.tenantId, tenantId)));
+    .where(and(
+      eq(customersTable.id, parseInt(customerId, 10)),
+      eq(customersTable.tenantId, tenantId),
+      isNull(customersTable.archivedAt),
+    ));
   if (!customerCheck) { res.status(404).json({ error: "Customer not found" }); return; }
 
   // Idempotent — ignore if already linked
@@ -255,11 +272,16 @@ router.get("/marketing/roas", async (req, res): Promise<void> => {
       mc.budget::numeric AS budget,
       mc.start_date,
       mc.end_date,
-      COUNT(DISTINCT cc.customer_id) AS customer_count,
+       COUNT(DISTINCT c.id) AS customer_count,
       COALESCE(SUM(i.total) FILTER (WHERE i.status = 'paid'), 0) AS revenue
     FROM marketing_campaigns mc
     LEFT JOIN campaign_customers cc ON cc.campaign_id = mc.id AND cc.tenant_id = mc.tenant_id
-    LEFT JOIN invoices i ON i.customer_id = cc.customer_id AND i.tenant_id = mc.tenant_id
+     LEFT JOIN customers c ON c.id = cc.customer_id
+       AND c.tenant_id = mc.tenant_id
+       AND c.archived_at IS NULL
+     LEFT JOIN invoices i ON i.customer_id = c.id
+       AND i.tenant_id = mc.tenant_id
+       AND i.archived_at IS NULL
     WHERE mc.tenant_id = ${tenantId}
     GROUP BY mc.id
     ORDER BY

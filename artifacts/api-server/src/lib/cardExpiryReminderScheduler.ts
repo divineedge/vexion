@@ -28,6 +28,7 @@ async function processAllExpiring() {
     .where(
       and(
         isNotNull(customersTable.cardExpiresAt),
+        isNull(customersTable.archivedAt),
         sql`${customersTable.cardExpiresAt} <= ${cutoffDate}`,
         or(
           isNull(customersTable.cardExpiryReminderSentAt),

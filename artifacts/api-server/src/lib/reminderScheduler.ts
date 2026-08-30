@@ -9,7 +9,7 @@
  */
 
 import { db, jobsTable, customersTable, propertiesTable, tenantsTable, communicationsLogTable } from "@workspace/db";
-import { eq, and, or, inArray } from "drizzle-orm";
+import { eq, and, or, inArray, isNull } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { logger } from "./logger";
 import { sendSms, type SmsProviderConfig } from "./smsProvider";
@@ -67,13 +67,18 @@ async function processReminders() {
       tenant: tenantsTable,
     })
     .from(jobsTable)
-    .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
+    .leftJoin(customersTable, and(
+      eq(jobsTable.customerId, customersTable.id),
+      eq(jobsTable.tenantId, customersTable.tenantId),
+    ))
     .leftJoin(propertiesTable, eq(jobsTable.propertyId, propertiesTable.id))
     .leftJoin(tenantsTable, eq(jobsTable.tenantId, tenantsTable.id))
     .where(
       and(
         // Only actionable job statuses — never remind for cancelled/on-hold
         inArray(jobsTable.status, ["scheduled", "in_progress"]),
+        isNull(jobsTable.archivedAt),
+        isNull(customersTable.archivedAt),
         or(
           sql`${jobsTable.scheduledAt} BETWEEN ${window7dStart.toISOString()}::timestamptz AND ${window7dEnd.toISOString()}::timestamptz`,
           sql`${jobsTable.scheduledAt} BETWEEN ${window24hStart.toISOString()}::timestamptz AND ${window24hEnd.toISOString()}::timestamptz`,
@@ -241,10 +246,15 @@ export async function previewWeeklyReminders(tenantId: number) {
   const jobs = await db
     .select({ job: jobsTable, customerName: customersTable.name, customerEmail: customersTable.email, customerPhone: customersTable.phone, smsOptOut: customersTable.smsOptOut, emailOptOut: customersTable.emailOptOut })
     .from(jobsTable)
-    .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
+    .leftJoin(customersTable, and(
+      eq(jobsTable.customerId, customersTable.id),
+      eq(jobsTable.tenantId, customersTable.tenantId),
+    ))
     .where(and(
       eq(jobsTable.tenantId, tenantId),
       inArray(jobsTable.status, ["scheduled", "in_progress"]),
+      isNull(jobsTable.archivedAt),
+      isNull(customersTable.archivedAt),
       sql`${jobsTable.scheduledAt} BETWEEN ${now.toISOString()}::timestamptz AND ${weekOut.toISOString()}::timestamptz`,
     ));
 
@@ -275,10 +285,18 @@ export async function runWeeklyRemindersNow(tenantId: number) {
     const [row] = await db
       .select({ job: jobsTable, customer: customersTable, propertyAddress: propertiesTable.address, tenant: tenantsTable })
       .from(jobsTable)
-      .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
+      .leftJoin(customersTable, and(
+        eq(jobsTable.customerId, customersTable.id),
+        eq(jobsTable.tenantId, customersTable.tenantId),
+      ))
       .leftJoin(propertiesTable, eq(jobsTable.propertyId, propertiesTable.id))
       .leftJoin(tenantsTable, eq(jobsTable.tenantId, tenantsTable.id))
-      .where(and(eq(jobsTable.id, target.jobId), eq(jobsTable.tenantId, tenantId)));
+      .where(and(
+        eq(jobsTable.id, target.jobId),
+        eq(jobsTable.tenantId, tenantId),
+        isNull(jobsTable.archivedAt),
+        isNull(customersTable.archivedAt),
+      ));
 
     if (!row?.customer || !row.tenant) { results.push({ jobId: target.jobId, jobTitle: target.jobTitle, sent: false }); continue; }
 
@@ -312,7 +330,7 @@ export async function resendReminderForJob(
       ${sql.raw(`'{${field}}'`)},
       'false'
     )
-    WHERE id = ${jobId} AND tenant_id = ${tenantId}
+    WHERE id = ${jobId} AND tenant_id = ${tenantId} AND archived_at IS NULL
   `);
 
   // Step 2: Atomically claim the slot.
@@ -330,10 +348,18 @@ export async function resendReminderForJob(
       tenant: tenantsTable,
     })
     .from(jobsTable)
-    .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
+    .leftJoin(customersTable, and(
+      eq(jobsTable.customerId, customersTable.id),
+      eq(jobsTable.tenantId, customersTable.tenantId),
+    ))
     .leftJoin(propertiesTable, eq(jobsTable.propertyId, propertiesTable.id))
     .leftJoin(tenantsTable, eq(jobsTable.tenantId, tenantsTable.id))
-    .where(and(eq(jobsTable.id, jobId), eq(jobsTable.tenantId, tenantId)));
+    .where(and(
+      eq(jobsTable.id, jobId),
+      eq(jobsTable.tenantId, tenantId),
+      isNull(jobsTable.archivedAt),
+      isNull(customersTable.archivedAt),
+    ));
 
   if (!row?.customer || !row.tenant) {
     return { sent: false, channels: [], failures: ["job, customer, or tenant not found"] };

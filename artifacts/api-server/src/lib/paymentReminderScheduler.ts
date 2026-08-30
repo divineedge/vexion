@@ -47,10 +47,15 @@ export async function processTenant(tenant: typeof tenantsTable.$inferSelect) {
   const unpaidInvoices = await db
     .select({ invoice: invoicesTable, customer: customersTable })
     .from(invoicesTable)
-    .leftJoin(customersTable, eq(invoicesTable.customerId, customersTable.id))
+    .leftJoin(customersTable, and(
+      eq(invoicesTable.customerId, customersTable.id),
+      eq(invoicesTable.tenantId, customersTable.tenantId),
+    ))
     .where(and(
       eq(invoicesTable.tenantId, tenant.id),
       ne(invoicesTable.status, "paid"),
+      isNull(invoicesTable.archivedAt),
+      isNull(customersTable.archivedAt),
       sql`${invoicesTable.dueDate} IS NOT NULL`,
     ));
 

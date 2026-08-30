@@ -316,8 +316,8 @@ export default function SchedulePage() {
 
   const assigneeId = isTechnician && user ? user.id : undefined;
 
-  const start = view === 'week' ? startOfWeek(currentDate) : startOfMonth(currentDate);
-  const end   = view === 'week' ? endOfWeek(currentDate)   : endOfMonth(currentDate);
+  const start = view === 'week' ? startOfWeek(currentDate, { weekStartsOn: 1 }) : startOfMonth(currentDate);
+  const end   = view === 'week' ? endOfWeek(currentDate, { weekStartsOn: 1 })   : endOfMonth(currentDate);
 
   const routeTemplateIdParam = routeFilter !== 'all' ? parseInt(routeFilter, 10) : undefined;
 
@@ -888,7 +888,7 @@ export default function SchedulePage() {
       </Dialog>
 
       {/* Header */}
-      <div className="flex items-center justify-between shrink-0">
+      <div className="flex flex-col gap-3 shrink-0">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Schedule</h1>
           <p className="text-muted-foreground mt-1">
@@ -899,7 +899,7 @@ export default function SchedulePage() {
               : 'Manage field assignments and dispatches.'}
           </p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-2 w-full rounded-lg border bg-muted/20 p-2">
           {canManageOffice && (
             <Button
               variant="outline"
@@ -1012,7 +1012,7 @@ export default function SchedulePage() {
           <Button
             variant={waitlistOpen ? 'default' : 'outline'}
             size="sm"
-            className="h-8 text-xs px-3 gap-1.5"
+            className="h-8 text-xs px-3 gap-1.5 order-first shrink-0"
             onClick={() => setWaitlistOpen(v => !v)}
             title="View and manage the job waitlist"
           >
@@ -1058,16 +1058,16 @@ export default function SchedulePage() {
               Clear filters
             </Button>
           )}
-          <div className="flex items-center rounded-md border p-1 bg-muted/50">
-            <Button variant={view === 'week' ? 'secondary' : 'ghost'} size="sm" title="Weekly calendar view" onClick={() => setView('week')} className="h-7 text-xs px-3">Week</Button>
-            <Button variant={view === 'month' ? 'secondary' : 'ghost'} size="sm" title="Monthly calendar view" onClick={() => setView('month')} className="h-7 text-xs px-3">Month</Button>
-            <Button variant={view === 'series' ? 'secondary' : 'ghost'} size="sm" title="Recurring visit series view" onClick={() => setView('series')} className="h-7 text-xs px-3 gap-1"><RefreshCw className="w-3 h-3" />Series</Button>
+          <div className="flex items-center rounded-md border p-1 bg-background shadow-sm order-first shrink-0" role="group" aria-label="Calendar view">
+            <Button variant={view === 'week' ? 'secondary' : 'ghost'} size="sm" title="Weekly calendar view" aria-label="Show weekly schedule" onClick={() => setView('week')} className="h-8 text-xs px-3 font-medium">Week</Button>
+            <Button variant={view === 'month' ? 'secondary' : 'ghost'} size="sm" title="Monthly calendar view" aria-label="Show monthly schedule" onClick={() => setView('month')} className="h-8 text-xs px-3 font-medium">Month</Button>
+            <Button variant={view === 'series' ? 'secondary' : 'ghost'} size="sm" title="Recurring visit series view" aria-label="Show recurring series" onClick={() => setView('series')} className="h-8 text-xs px-3 gap-1 font-medium"><RefreshCw className="w-3 h-3" />Series</Button>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 order-first shrink-0 ml-auto">
             <Button variant="outline" size="sm" className="h-8 text-xs px-3" title="Jump to today" onClick={() => setCurrentDate(new Date())}>Today</Button>
             <Button variant="outline" size="icon" title={`Previous ${view === 'week' ? 'week' : 'month'}`} onClick={prevRange}><ChevronLeft className="w-4 h-4" /></Button>
-            <div className="min-w-[140px] text-center font-medium">
-              {view === 'week' ? `${format(start, 'MMM d')} – ${format(end, 'MMM d, yyyy')}` : format(currentDate, 'MMMM yyyy')}
+            <div className="min-w-[190px] text-center font-medium text-sm" aria-live="polite">
+              {view === 'week' ? `${format(start, 'MMM d')} – ${format(end, 'MMM d, yyyy')}` : view === 'month' ? format(currentDate, 'MMMM yyyy') : 'Recurring series'}
             </div>
             <Button variant="outline" size="icon" title={`Next ${view === 'week' ? 'week' : 'month'}`} onClick={nextRange}><ChevronRight className="w-4 h-4" /></Button>
           </div>

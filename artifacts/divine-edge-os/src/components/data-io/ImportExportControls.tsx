@@ -123,8 +123,8 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
     || isFieldMapped('name')
     || (isFieldMapped('firstName') && isFieldMapped('lastName'));
   const mappedStandardRequiredCount = requiredFields.filter((field) => isFieldMapped(field.key)).length;
-  const requiredRequirementCount = requiredFields.length + (usesFlexibleCustomerName ? 1 : 0);
-  const mappedRequiredCount = mappedStandardRequiredCount + (usesFlexibleCustomerName && customerNameMapped ? 1 : 0);
+  const requiredRequirementCount = requiredFields.length;
+  const mappedRequiredCount = mappedStandardRequiredCount;
   const allRequiredMapped = mappedRequiredCount === requiredRequirementCount;
 
   return (
@@ -258,10 +258,10 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
                     data-testid="status-customer-name-mapping"
                   >
                     <div className="font-semibold">
-                      {customerNameMapped ? "Customer name columns are ready" : "Choose how customer names are stored"}
+                      {customerNameMapped ? "Customer name columns are ready" : "Customer names are optional for historical imports"}
                     </div>
                     <div className="mt-1 text-muted-foreground">
-                      Map either <span className="font-medium text-foreground">Name</span> for a single combined column, or map both <span className="font-medium text-foreground">First Name</span> and <span className="font-medium text-foreground">Last Name</span>. Separate names will be joined automatically.
+                      Map <span className="font-medium text-foreground">Name</span>, or map both <span className="font-medium text-foreground">First Name</span> and <span className="font-medium text-foreground">Last Name</span>. Separate names will be joined automatically. If no name is available, the company name or an “Imported Customer” label will be used.
                     </div>
                   </div>
                 )}
@@ -455,9 +455,7 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
                     {!allRequiredMapped && (
                       <span className="text-sm font-medium text-destructive flex items-center gap-2">
                         <AlertTriangle className="w-4.5 h-4.5" />
-                        {usesFlexibleCustomerName && !customerNameMapped
-                          ? "Map Name, or both First Name and Last Name"
-                          : "Map all required fields"}
+                        Map all required fields
                       </span>
                     )}
                     <Button

@@ -40,5 +40,6 @@
 - [Mobile push delivery](mobile-push-delivery.md) — claim each device/event once, persist Expo ticket IDs, and retire invalid tokens from delayed receipts
 - [CSV import column identity](csv-import-column-identity.md) — map by position; auto-map exact fields before fuzzy matches and never suggest one source column twice
 - [Customer archive serialization](customer-archive-serialization.md) — lock the customer row before cascade state decisions so concurrent archive requests share one restore timestamp
+- [Historical customer imports](historical-customer-imports.md) — imported legacy customers may omit current required contact/name data; preserve rows with safe blanks and fallback labels
 - [Lifecycle view selectors](lifecycle-view-selectors.md) — active/archive switches must label current states explicitly; destination-labeled toggles make correct data look broken
 - [Clock adjustment invariants](clock-adjustment-invariants.md) — preserve recorded events, audit effective-time changes, and enforce work-day bounds in tenant time

@@ -62,8 +62,8 @@ const customersImportExportConfig: ImportExportEntityConfig = {
     { key: "name", header: "Name", hint: "Use this when first and last name are together in one column" },
     { key: "firstName", header: "First Name", hint: "Use with Last Name when names are in separate columns" },
     { key: "lastName", header: "Last Name", hint: "Use with First Name when names are in separate columns" },
-    { key: "email", header: "Email", required: true, hint: "Used to match existing customers" },
-    { key: "phone", header: "Phone", required: true },
+    { key: "email", header: "Email", hint: "Optional for historical customers; used to match existing customers when present" },
+    { key: "phone", header: "Phone", hint: "Optional for historical customers" },
     { key: "secondaryPhone", header: "Secondary Phone" },
     { key: "company", header: "Company" },
     { key: "customerType", header: "Customer Type" },
@@ -143,21 +143,23 @@ const customersImportExportConfig: ImportExportEntityConfig = {
       createdAt: c.createdAt.toISOString(),
     }));
   },
-  parseRow: async (tenantId, raw) => {
+  parseRow: async (tenantId, raw, rowNumber) => {
     const errors: string[] = [];
     const combinedName = optionalString(raw.name);
     const firstName = optionalString(raw.firstName);
     const lastName = optionalString(raw.lastName);
-    const name = combinedName ?? [firstName, lastName].filter(Boolean).join(" ");
-    if (!name) errors.push("Name is required (map Name, or map both First Name and Last Name)");
-    const email = requireString(raw.email, "Email", errors);
-    const phone = requireString(raw.phone, "Phone", errors);
-    if (errors.length > 0 || !name || !email || !phone) return { ok: false, errors };
+    const company = optionalString(raw.company);
+    const name = (combinedName
+      ?? [firstName, lastName].filter(Boolean).join(" "))
+      || company
+      || `Imported Customer (row ${rowNumber})`;
+    const email = optionalString(raw.email);
+    const phone = optionalString(raw.phone);
 
     const tags = raw.tags ? raw.tags.split(/[;,]/).map((t) => t.trim()).filter(Boolean) : [];
     const referralSource = optionalString(raw.referralSource) ?? null;
     const referringCustomerEmail = optionalString(raw.referringCustomerEmail);
-    if (referringCustomerEmail?.toLowerCase() === email.toLowerCase()) {
+    if (email && referringCustomerEmail?.toLowerCase() === email.toLowerCase()) {
       errors.push("A customer cannot refer themselves");
     }
     let referringCustomerId: number | null = null;
@@ -179,10 +181,10 @@ const customersImportExportConfig: ImportExportEntityConfig = {
       ok: true,
       values: {
         name,
-        email: email.toLowerCase(),
-        phone,
+        email: email?.toLowerCase() ?? "",
+        phone: phone ?? "",
         secondaryPhone: optionalString(raw.secondaryPhone) ?? null,
-        company: optionalString(raw.company) ?? null,
+        company: company ?? null,
         customerType: optionalString(raw.customerType) ?? null,
         referralSource,
         referringCustomerId,
@@ -202,10 +204,12 @@ const customersImportExportConfig: ImportExportEntityConfig = {
     };
   },
   findExisting: async (tenantId, values) => {
+    const email = optionalString(String(values.email ?? ""));
+    if (!email) return null;
     const [existing] = await db
       .select({ id: customersTable.id })
       .from(customersTable)
-      .where(and(eq(customersTable.tenantId, tenantId), sql`lower(${customersTable.email}) = lower(${values.email as string})`))
+      .where(and(eq(customersTable.tenantId, tenantId), sql`lower(${customersTable.email}) = lower(${email})`))
       .limit(1);
     return existing?.id ?? null;
   },

@@ -59,7 +59,9 @@ async function requireAdmin(req: import("express").Request, res: import("express
 const customersImportExportConfig: ImportExportEntityConfig = {
   entityKey: "customers",
   fields: [
-    { key: "name", header: "Name", required: true },
+    { key: "name", header: "Name", hint: "Use this when first and last name are together in one column" },
+    { key: "firstName", header: "First Name", hint: "Use with Last Name when names are in separate columns" },
+    { key: "lastName", header: "Last Name", hint: "Use with First Name when names are in separate columns" },
     { key: "email", header: "Email", required: true, hint: "Used to match existing customers" },
     { key: "phone", header: "Phone", required: true },
     { key: "secondaryPhone", header: "Secondary Phone" },
@@ -143,7 +145,11 @@ const customersImportExportConfig: ImportExportEntityConfig = {
   },
   parseRow: async (tenantId, raw) => {
     const errors: string[] = [];
-    const name = requireString(raw.name, "Name", errors);
+    const combinedName = optionalString(raw.name);
+    const firstName = optionalString(raw.firstName);
+    const lastName = optionalString(raw.lastName);
+    const name = combinedName ?? [firstName, lastName].filter(Boolean).join(" ");
+    if (!name) errors.push("Name is required (map Name, or map both First Name and Last Name)");
     const email = requireString(raw.email, "Email", errors);
     const phone = requireString(raw.phone, "Phone", errors);
     if (errors.length > 0 || !name || !email || !phone) return { ok: false, errors };

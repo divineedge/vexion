@@ -281,16 +281,33 @@ export function suggestMapping(
 ): Record<string, string | null> {
   const normalizedUploaded = uploadedHeaders.map(normalizeHeader);
   const mapping: Record<string, string | null> = {};
+  const usedHeaderIndexes = new Set<number>();
+
+  // Reserve exact matches first so broad field names such as "Name" cannot
+  // claim a more specific column such as "First Name" before its exact field.
   for (const field of fields) {
     const targets = [field.key, field.header].map(normalizeHeader);
-    let matchIdx = normalizedUploaded.findIndex((h) => targets.includes(h));
-    if (matchIdx === -1) {
-      matchIdx = normalizedUploaded.findIndex(
-        (h) => h.length > 0 && targets.some((t) => h.includes(t) || t.includes(h)),
-      );
-    }
+    const matchIdx = normalizedUploaded.findIndex(
+      (header, index) => !usedHeaderIndexes.has(index) && targets.includes(header),
+    );
+    if (matchIdx >= 0) usedHeaderIndexes.add(matchIdx);
     mapping[field.key] = matchIdx >= 0 ? uploadedHeaders[matchIdx] : null;
   }
+
+  for (const field of fields) {
+    if (mapping[field.key] !== null) continue;
+    const targets = [field.key, field.header].map(normalizeHeader);
+    const matchIdx = normalizedUploaded.findIndex(
+      (header, index) => !usedHeaderIndexes.has(index)
+        && header.length > 0
+        && targets.some((target) => header.includes(target) || target.includes(header)),
+    );
+    if (matchIdx >= 0) {
+      usedHeaderIndexes.add(matchIdx);
+      mapping[field.key] = uploadedHeaders[matchIdx];
+    }
+  }
+
   return mapping;
 }
 

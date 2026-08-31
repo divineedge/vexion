@@ -8,4 +8,8 @@
 
 export type ListTimeEntriesParams = {
 date?: Date;
+/**
+ * Admin-only target user; defaults to the current user
+ */
+userId?: number;
 };

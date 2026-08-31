@@ -340,6 +340,8 @@ import type {
   TenantSettings,
   TenantSettingsUpdate,
   TimeEntry,
+  TimeEntryAdjustInput,
+  TimeEntryAdjustment,
   UpdateBroadcastInput,
   UpdateCustomerPlanInput,
   UpdateEstimateInput,
@@ -10752,6 +10754,155 @@ export function useListTimeEntries<TData = Awaited<ReturnType<typeof listTimeEnt
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListTimeEntriesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getAdjustTimeEntryUrl = (id: number,) => {
+
+
+
+
+  return `/api/time-tracking/entries/${id}/adjust`
+}
+
+/**
+ * @summary Adjust a completed master-clock entry while preserving recorded timestamps
+ */
+export const adjustTimeEntry = async (id: number,
+    timeEntryAdjustInput: TimeEntryAdjustInput, options?: RequestInit): Promise<TimeEntry> => {
+
+  return customFetch<TimeEntry>(getAdjustTimeEntryUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(timeEntryAdjustInput)
+  }
+);}
+
+
+
+
+
+export const getAdjustTimeEntryMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adjustTimeEntry>>, TError,{id: number;data: BodyType<TimeEntryAdjustInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof adjustTimeEntry>>, TError,{id: number;data: BodyType<TimeEntryAdjustInput>}, TContext> => {
+
+const mutationKey = ['adjustTimeEntry'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof adjustTimeEntry>>, {id: number;data: BodyType<TimeEntryAdjustInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  adjustTimeEntry(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AdjustTimeEntryMutationResult = NonNullable<Awaited<ReturnType<typeof adjustTimeEntry>>>
+    export type AdjustTimeEntryMutationBody = BodyType<TimeEntryAdjustInput>
+    export type AdjustTimeEntryMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Adjust a completed master-clock entry while preserving recorded timestamps
+ */
+export const useAdjustTimeEntry = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof adjustTimeEntry>>, TError,{id: number;data: BodyType<TimeEntryAdjustInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof adjustTimeEntry>>,
+        TError,
+        {id: number;data: BodyType<TimeEntryAdjustInput>},
+        TContext
+      > => {
+      return useMutation(getAdjustTimeEntryMutationOptions(options));
+    }
+
+export const getListTimeEntryAdjustmentsUrl = (id: number,) => {
+
+
+
+
+  return `/api/time-tracking/entries/${id}/adjustments`
+}
+
+/**
+ * @summary List immutable adjustment history for a master-clock entry
+ */
+export const listTimeEntryAdjustments = async (id: number, options?: RequestInit): Promise<TimeEntryAdjustment[]> => {
+
+  return customFetch<TimeEntryAdjustment[]>(getListTimeEntryAdjustmentsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListTimeEntryAdjustmentsQueryKey = (id: number,) => {
+    return [
+    `/api/time-tracking/entries/${id}/adjustments`
+    ] as const;
+    }
+
+
+export const getListTimeEntryAdjustmentsQueryOptions = <TData = Awaited<ReturnType<typeof listTimeEntryAdjustments>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTimeEntryAdjustments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListTimeEntryAdjustmentsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listTimeEntryAdjustments>>> = ({ signal }) => listTimeEntryAdjustments(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listTimeEntryAdjustments>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListTimeEntryAdjustmentsQueryResult = NonNullable<Awaited<ReturnType<typeof listTimeEntryAdjustments>>>
+export type ListTimeEntryAdjustmentsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List immutable adjustment history for a master-clock entry
+ */
+
+export function useListTimeEntryAdjustments<TData = Awaited<ReturnType<typeof listTimeEntryAdjustments>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTimeEntryAdjustments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListTimeEntryAdjustmentsQueryOptions(id,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

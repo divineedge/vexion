@@ -13,6 +13,10 @@ export const timeEntriesTable = pgTable("time_entries", {
   userId: integer("user_id").notNull().references(() => usersTable.id),
   clockedInAt: timestamp("clocked_in_at", { withTimezone: true }).notNull(),
   clockedOutAt: timestamp("clocked_out_at", { withTimezone: true }),
+  /** Staff correction used for payroll/reporting. Raw clockedInAt remains immutable. */
+  adjustedClockedInAt: timestamp("adjusted_clocked_in_at", { withTimezone: true }),
+  /** Staff correction used for payroll/reporting. Raw clockedOutAt remains immutable. */
+  adjustedClockedOutAt: timestamp("adjusted_clocked_out_at", { withTimezone: true }),
   totalMinutes: integer("total_minutes").notNull().default(0),
   isMasterClock: boolean("is_master_clock").notNull().default(true),
   /** GPS coordinates captured at clock-in */
@@ -23,6 +27,21 @@ export const timeEntriesTable = pgTable("time_entries", {
   clockOutLng: real("clock_out_lng"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const timeEntryAdjustmentsTable = pgTable("time_entry_adjustments", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
+  timeEntryId: integer("time_entry_id").notNull().references(() => timeEntriesTable.id),
+  actorUserId: integer("actor_user_id").notNull().references(() => usersTable.id),
+  reason: text("reason").notNull(),
+  previousClockedInAt: timestamp("previous_clocked_in_at", { withTimezone: true }).notNull(),
+  previousClockedOutAt: timestamp("previous_clocked_out_at", { withTimezone: true }).notNull(),
+  adjustedClockedInAt: timestamp("adjusted_clocked_in_at", { withTimezone: true }).notNull(),
+  adjustedClockedOutAt: timestamp("adjusted_clocked_out_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("time_entry_adjustments_tenant_entry_created_idx").on(table.tenantId, table.timeEntryId, table.createdAt),
+]);
 
 export const subTimersTable = pgTable("sub_timers", {
   id: serial("id").primaryKey(),
@@ -75,5 +94,6 @@ export const insertGeofenceEntrySchema = createInsertSchema(geofenceEntriesTable
 export type InsertTimeEntry = z.infer<typeof insertTimeEntrySchema>;
 export type InsertSubTimer = z.infer<typeof insertSubTimerSchema>;
 export type TimeEntry = typeof timeEntriesTable.$inferSelect;
+export type TimeEntryAdjustment = typeof timeEntryAdjustmentsTable.$inferSelect;
 export type SubTimer = typeof subTimersTable.$inferSelect;
 export type GeofenceEntry = typeof geofenceEntriesTable.$inferSelect;

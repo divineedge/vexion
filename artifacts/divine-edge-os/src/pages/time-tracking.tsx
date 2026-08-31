@@ -8,6 +8,7 @@ import {
   useGetTodaySchedule, getGetTodayScheduleQueryKey,
   useUpdateJob,
   useUpdateVisit,
+  useListUsers, getListUsersQueryKey,
   customFetch,
   SubTimer,
 } from '@workspace/api-client-react';
@@ -23,6 +24,11 @@ import {
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface DailyTaskEntry {
   completionId: number;
@@ -74,16 +80,19 @@ function LiveTimer({ startedAt }: { startedAt: string }) {
 }
 
 export default function TimeTrackingPage() {
+  const { canManageOffice, user } = useAuth();
   const queryClient = useQueryClient();
   const today = new Date().toISOString().split('T')[0];
+  const [selectedUserId, setSelectedUserId] = useState<number | undefined>(user?.id);
+  const { data: staffUsers = [] } = useListUsers({ query: { queryKey: getListUsersQueryKey(), enabled: canManageOffice } });
 
   const { data: masterClock } = useGetMasterClock({ query: { queryKey: getGetMasterClockQueryKey() } });
   const { data: schedule, isLoading: scheduleLoading } = useGetTodaySchedule(undefined, {
     query: { queryKey: getGetTodayScheduleQueryKey(), refetchInterval: 10000 },
   });
   const { data: todayEntries } = useListTimeEntries(
-    { date: today },
-    { query: { queryKey: getListTimeEntriesQueryKey({ date: today }) } }
+    { date: today, ...(canManageOffice && selectedUserId ? { userId: selectedUserId } : {}) },
+    { query: { queryKey: getListTimeEntriesQueryKey({ date: today, ...(canManageOffice && selectedUserId ? { userId: selectedUserId } : {}) }) } }
   );
   const { data: subTimers } = useListSubTimers({
     query: { queryKey: getListSubTimersQueryKey(), refetchInterval: 15000 },
@@ -110,6 +119,48 @@ export default function TimeTrackingPage() {
   const [lateItemIds, setLateItemIds] = useState<Map<string, number>>(new Map()); // key=`${kind}-${id}`, val=lateByMinutes
 
   const [liveMasterSeconds, setLiveMasterSeconds] = useState(0);
+  const [adjustingEntry, setAdjustingEntry] = useState<any | null>(null);
+  const [adjustmentStart, setAdjustmentStart] = useState('');
+  const [adjustmentEnd, setAdjustmentEnd] = useState('');
+  const [adjustmentReason, setAdjustmentReason] = useState('');
+  const [savingAdjustment, setSavingAdjustment] = useState(false);
+
+  const openAdjustment = (entry: any) => {
+    const toLocalInput = (value: string) => {
+      const date = new Date(value);
+      const offset = date.getTimezoneOffset() * 60000;
+      return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+    };
+    setAdjustingEntry(entry);
+    setAdjustmentStart(toLocalInput(entry.effectiveClockedInAt ?? entry.clockedInAt));
+    setAdjustmentEnd(toLocalInput(entry.effectiveClockedOutAt ?? entry.clockedOutAt));
+    setAdjustmentReason('');
+  };
+
+  const saveAdjustment = async () => {
+    if (!adjustingEntry || !adjustmentReason.trim()) return;
+    setSavingAdjustment(true);
+    try {
+      await customFetch(`/api/time-tracking/entries/${adjustingEntry.id}/adjust`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          adjustedClockedInAt: new Date(adjustmentStart).toISOString(),
+          adjustedClockedOutAt: new Date(adjustmentEnd).toISOString(),
+          reason: adjustmentReason.trim(),
+        }),
+      });
+      await queryClient.invalidateQueries({ queryKey: getListTimeEntriesQueryKey({ date: today, ...(canManageOffice && selectedUserId ? { userId: selectedUserId } : {}) }) });
+      await queryClient.invalidateQueries({ queryKey: getGetMasterClockQueryKey() });
+      await queryClient.invalidateQueries({ queryKey: ['/api/time-tracking/clock-in-hours/summary'] });
+      setAdjustingEntry(null);
+      toast.success('Clocked time adjusted and audit history recorded.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not adjust clocked time.');
+    } finally {
+      setSavingAdjustment(false);
+    }
+  };
 
   useEffect(() => {
     if (masterClock?.isClockedIn && masterClock.clockedInAt) {
@@ -407,7 +458,17 @@ export default function TimeTrackingPage() {
       {/* ── Today's Entries ───────────────────────────────────────────────────── */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg"><History className="w-5 h-5" /> Today's Entries</CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle className="flex items-center gap-2 text-lg"><History className="w-5 h-5" /> Today's Entries</CardTitle>
+            {canManageOffice && (
+              <Select value={String(selectedUserId ?? user?.id ?? '')} onValueChange={value => setSelectedUserId(Number(value))}>
+                <SelectTrigger className="w-[220px]"><SelectValue placeholder="Select staff member" /></SelectTrigger>
+                <SelectContent>
+                  {staffUsers.map(staff => <SelectItem key={staff.id} value={String(staff.id)}>{staff.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
@@ -416,25 +477,64 @@ export default function TimeTrackingPage() {
                 <TableHead>In</TableHead>
                 <TableHead>Out</TableHead>
                 <TableHead className="text-right">Duration</TableHead>
+                {canManageOffice && <TableHead className="text-right">Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {todayEntries?.map((entry) => (
+              {todayEntries?.map((entry: any) => (
                 <TableRow key={entry.id}>
-                  <TableCell>{new Date(entry.clockedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</TableCell>
-                  <TableCell>{entry.clockedOutAt ? new Date(entry.clockedOutAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : <span className="text-primary animate-pulse text-xs font-medium">ACTIVE</span>}</TableCell>
+                  <TableCell>
+                    {entry.adjustedClockedInAt && <span className="line-through text-muted-foreground mr-2">{formatTime(entry.clockedInAt)}</span>}
+                    <span className={entry.adjustedClockedInAt ? 'font-medium text-blue-600' : ''}>{formatTime(entry.effectiveClockedInAt ?? entry.clockedInAt)}</span>
+                  </TableCell>
+                  <TableCell>
+                    {entry.clockedOutAt ? <>
+                      {entry.adjustedClockedOutAt && <span className="line-through text-muted-foreground mr-2">{formatTime(entry.clockedOutAt)}</span>}
+                      <span className={entry.adjustedClockedOutAt ? 'font-medium text-blue-600' : ''}>{formatTime(entry.effectiveClockedOutAt ?? entry.clockedOutAt)}</span>
+                    </> : <span className="text-primary animate-pulse text-xs font-medium">ACTIVE</span>}
+                  </TableCell>
                   <TableCell className="text-right font-medium">{formatDuration(entry.totalMinutes)}</TableCell>
+                  {canManageOffice && <TableCell className="text-right">
+                    <Button size="sm" variant="outline" disabled={!entry.clockedOutAt} onClick={() => openAdjustment(entry)}>Adjust</Button>
+                  </TableCell>}
                 </TableRow>
               ))}
               {(!todayEntries || todayEntries.length === 0) && (
                 <TableRow>
-                  <TableCell colSpan={3} className="text-center py-6 text-muted-foreground text-sm">No entries today.</TableCell>
+                  <TableCell colSpan={canManageOffice ? 4 : 3} className="text-center py-6 text-muted-foreground text-sm">No entries today.</TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+
+      <Dialog open={!!adjustingEntry} onOpenChange={(open) => !open && setAdjustingEntry(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Adjust completed clock entry</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">The recorded timestamps remain unchanged. Payroll and reports will use the adjusted values.</p>
+          {adjustingEntry && (
+            <div className="rounded-md border bg-muted/40 p-3 text-sm">
+              <div className="font-medium mb-1">Recorded time (unchanged)</div>
+              <div>{formatTime(adjustingEntry.clockedInAt)} – {formatTime(adjustingEntry.clockedOutAt)}</div>
+              {(adjustingEntry.adjustedClockedInAt || adjustingEntry.adjustedClockedOutAt) && (
+                <div className="text-muted-foreground mt-1">Current effective time: {formatTime(adjustingEntry.effectiveClockedInAt)} – {formatTime(adjustingEntry.effectiveClockedOutAt)}</div>
+              )}
+            </div>
+          )}
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-2"><Label htmlFor="adjust-start">Adjusted clock-in</Label><Input id="adjust-start" type="datetime-local" value={adjustmentStart} onChange={e => setAdjustmentStart(e.target.value)} /></div>
+            <div className="grid gap-2"><Label htmlFor="adjust-end">Adjusted clock-out</Label><Input id="adjust-end" type="datetime-local" value={adjustmentEnd} onChange={e => setAdjustmentEnd(e.target.value)} /></div>
+            <div className="grid gap-2"><Label htmlFor="adjust-reason">Reason (required)</Label><Textarea id="adjust-reason" value={adjustmentReason} onChange={e => setAdjustmentReason(e.target.value)} placeholder="Explain why this correction is needed" /></div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAdjustingEntry(null)}>Cancel</Button>
+            <Button onClick={saveAdjustment} disabled={savingAdjustment || !adjustmentStart || !adjustmentEnd || !adjustmentReason.trim()}>{savingAdjustment ? 'Saving…' : 'Save adjustment'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Sub-timer Log ────────────────────────────────────────────────────── */}
       {subTimers && subTimers.length > 0 && (

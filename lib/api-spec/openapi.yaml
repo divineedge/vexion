@@ -2975,6 +2975,11 @@ paths:
           schema:
             type: string
             format: date
+        - name: userId
+          in: query
+          description: Admin-only target user; defaults to the current user
+          schema:
+            type: integer
       responses:
         "200":
           description: Time entries
@@ -2984,6 +2989,50 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/TimeEntry"
+
+  /time-tracking/entries/{id}/adjust:
+    patch:
+      operationId: adjustTimeEntry
+      tags: [timeTracking]
+      summary: Adjust a completed master-clock entry while preserving recorded timestamps
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TimeEntryAdjustInput"
+      responses:
+        "200":
+          description: Adjusted time entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimeEntry"
+
+  /time-tracking/entries/{id}/adjustments:
+    get:
+      operationId: listTimeEntryAdjustments
+      tags: [timeTracking]
+      summary: List immutable adjustment history for a master-clock entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Adjustment history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TimeEntryAdjustment"
 
   # BLUEPRINTS
   /blueprints:
@@ -11536,7 +11585,7 @@ components:
 
     TimeEntry:
       type: object
-      required: [id, userId, clockedInAt, totalMinutes]
+      required: [id, userId, clockedInAt, effectiveClockedInAt, totalMinutes]
       properties:
         id:
           type: integer
@@ -11548,8 +11597,43 @@ components:
           type: string
         clockedOutAt:
           type: ["string", "null"]
+        adjustedClockedInAt:
+          type: ["string", "null"]
+        adjustedClockedOutAt:
+          type: ["string", "null"]
+        effectiveClockedInAt:
+          type: string
+        effectiveClockedOutAt:
+          type: ["string", "null"]
         totalMinutes:
           type: integer
+
+    TimeEntryAdjustInput:
+      type: object
+      required: [adjustedClockedInAt, adjustedClockedOutAt, reason]
+      properties:
+        adjustedClockedInAt:
+          type: string
+        adjustedClockedOutAt:
+          type: string
+        reason:
+          type: string
+          minLength: 1
+
+    TimeEntryAdjustment:
+      type: object
+      required: [id, timeEntryId, actorUserId, reason, previousClockedInAt, previousClockedOutAt, adjustedClockedInAt, adjustedClockedOutAt, createdAt]
+      properties:
+        id: { type: integer }
+        timeEntryId: { type: integer }
+        actorUserId: { type: integer }
+        actorName: { type: ["string", "null"] }
+        reason: { type: string }
+        previousClockedInAt: { type: string }
+        previousClockedOutAt: { type: string }
+        adjustedClockedInAt: { type: string }
+        adjustedClockedOutAt: { type: string }
+        createdAt: { type: string }
 
     GeofenceEntry:
       type: object

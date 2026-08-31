@@ -12,7 +12,7 @@
 
 import { Router, type IRouter } from "express";
 import { db, timeEntriesTable, subTimersTable, usersTable, crewsTable } from "@workspace/db";
-import { eq, and, gte, lte, sql, sum } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { getTenantId } from "../lib/tenantHelper";
 import { getCallbackRatioStats } from "../lib/callbackRatio";
 import { startOfDay, endOfDay, startOfWeek, endOfWeek, subDays } from "date-fns";
@@ -63,14 +63,18 @@ router.get("/efficiency", async (req, res): Promise<void> => {
   const clockRows = await db
     .select({
       userId: timeEntriesTable.userId,
-      totalClockMinutes: sum(timeEntriesTable.totalMinutes).mapWith(Number),
+      totalClockMinutes: sql<number>`COALESCE(SUM(GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (
+        COALESCE(${timeEntriesTable.adjustedClockedOutAt}, ${timeEntriesTable.clockedOutAt})
+        - COALESCE(${timeEntriesTable.adjustedClockedInAt}, ${timeEntriesTable.clockedInAt})
+      )) / 60))), 0)::int`,
     })
     .from(timeEntriesTable)
     .where(and(
       eq(timeEntriesTable.tenantId, tenantId),
       eq(timeEntriesTable.isMasterClock, true),
-      gte(timeEntriesTable.clockedInAt, rangeStart),
-      lte(timeEntriesTable.clockedInAt, rangeEnd),
+      sql`COALESCE(${timeEntriesTable.adjustedClockedInAt}, ${timeEntriesTable.clockedInAt}) >= ${rangeStart}`,
+      sql`COALESCE(${timeEntriesTable.adjustedClockedInAt}, ${timeEntriesTable.clockedInAt}) <= ${rangeEnd}`,
+      sql`${timeEntriesTable.clockedOutAt} IS NOT NULL`,
     ))
     .groupBy(timeEntriesTable.userId);
 
@@ -397,13 +401,17 @@ router.get("/efficiency/trend", async (req, res): Promise<void> => {
 
   const dailyClock = await db.execute(sql`
     SELECT
-      DATE(clocked_in_at AT TIME ZONE 'UTC') AS day,
-      SUM(total_minutes) AS clock_minutes
+      DATE(COALESCE(adjusted_clocked_in_at, clocked_in_at) AT TIME ZONE 'UTC') AS day,
+      SUM(GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (
+        COALESCE(adjusted_clocked_out_at, clocked_out_at)
+        - COALESCE(adjusted_clocked_in_at, clocked_in_at)
+      )) / 60))) AS clock_minutes
     FROM time_entries
     WHERE tenant_id = ${tenantId}
       AND is_master_clock = true
       ${userId ? sql`AND user_id = ${parseInt(userId, 10)}` : sql``}
-      AND clocked_in_at >= ${since.toISOString()}::timestamptz
+      AND clocked_out_at IS NOT NULL
+      AND COALESCE(adjusted_clocked_in_at, clocked_in_at) >= ${since.toISOString()}::timestamptz
     GROUP BY day
     ORDER BY day
   `);

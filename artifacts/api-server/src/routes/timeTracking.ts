@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, timeEntriesTable, subTimersTable, geofenceEntriesTable, usersTable, taskBundleCompletionsTable, taskBundlesTable, jobsTable, visitsTable, customersTable, propertiesTable, crewMembersTable, tenantsTable } from "@workspace/db";
+import { db, timeEntriesTable, timeEntryAdjustmentsTable, subTimersTable, geofenceEntriesTable, usersTable, taskBundleCompletionsTable, taskBundlesTable, jobsTable, visitsTable, customersTable, propertiesTable, crewMembersTable, tenantsTable } from "@workspace/db";
 import { eq, and, sql, gte, lte, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { ADMIN_ROLES, getCallerRole } from "../lib/roles";
@@ -7,6 +7,16 @@ import { GEOFENCE_ENTRY_DEBOUNCE_MS, hasExactlyOneWorkLink, haversineMeters, isA
 import { requireVerifiedStaff, verifiedStaffIdentity } from "../lib/verifiedStaff";
 
 const router: IRouter = Router();
+
+const effectiveClockInSql = sql`COALESCE(${timeEntriesTable.adjustedClockedInAt}, ${timeEntriesTable.clockedInAt})`;
+const effectiveClockOutSql = sql`COALESCE(${timeEntriesTable.adjustedClockedOutAt}, ${timeEntriesTable.clockedOutAt})`;
+const effectiveMinutesSql = sql<number>`GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (${effectiveClockOutSql} - ${effectiveClockInSql})) / 60))::int`;
+
+function parseRequiredIso(value: unknown): Date | null {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T/.test(value)) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
 
 export function localDayBounds(value: unknown): { start: Date; end: Date } | null {
   if (value == null || value === "") {
@@ -55,6 +65,12 @@ export function zonedDayBounds(value: unknown, timeZone: string): { start: Date;
 function zonedTodayKey(timeZone: string): string {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
   const values = Object.fromEntries(parts.filter(p => p.type !== "literal").map(p => [p.type, p.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function zonedDateKey(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+  const values = Object.fromEntries(parts.filter(part => part.type !== "literal").map(part => [part.type, part.value]));
   return `${values.year}-${values.month}-${values.day}`;
 }
 
@@ -167,13 +183,13 @@ router.get("/time-tracking/master-clock", requireVerifiedStaff, async (_req, res
 
   const today = new Date(); today.setHours(0,0,0,0);
   const [todayTotal] = await db
-    .select({ total: sql<number>`COALESCE(sum(total_minutes),0)::int` })
+    .select({ total: sql<number>`COALESCE(sum(CASE WHEN ${timeEntriesTable.clockedOutAt} IS NULL THEN 0 ELSE ${effectiveMinutesSql} END),0)::int` })
     .from(timeEntriesTable)
     .where(and(
       eq(timeEntriesTable.userId, userId),
       eq(timeEntriesTable.tenantId, tenantId),
       eq(timeEntriesTable.isMasterClock, true),
-      sql`clocked_in_at >= ${today}`
+      sql`${effectiveClockInSql} >= ${today}`
     ));
 
   res.json({
@@ -412,14 +428,24 @@ router.patch("/time-tracking/sub-timers/:id/adjust", requireVerifiedStaff, async
 });
 
 router.get("/time-tracking/entries", requireVerifiedStaff, async (req, res): Promise<void> => {
-  const { tenantId, userId } = verifiedStaffIdentity(res);
-  const { date } = req.query as Record<string, string>;
+  const { tenantId, userId: callerId } = verifiedStaffIdentity(res);
+  const { date, userId: requestedUserId } = req.query as Record<string, string>;
+  let userId = callerId;
+  if (requestedUserId) {
+    const parsedUserId = Number(requestedUserId);
+    const role = await getCallerRole(tenantId, callerId);
+    if (!Number.isInteger(parsedUserId) || parsedUserId <= 0) { res.status(400).json({ error: "userId must be a valid integer" }); return; }
+    if (!ADMIN_ROLES.has(role)) { res.status(403).json({ error: "Admin or office role required" }); return; }
+    const [target] = await db.select({ id: usersTable.id }).from(usersTable).where(and(eq(usersTable.id, parsedUserId), eq(usersTable.tenantId, tenantId)));
+    if (!target) { res.status(404).json({ error: "User not found" }); return; }
+    userId = parsedUserId;
+  }
 
   let where = and(eq(timeEntriesTable.tenantId, tenantId), eq(timeEntriesTable.userId, userId)) as ReturnType<typeof and>;
   if (date) {
     const d = new Date(date);
     const next = new Date(d); next.setDate(d.getDate() + 1);
-    where = and(where, sql`clocked_in_at >= ${d} AND clocked_in_at < ${next}`) as typeof where;
+    where = and(where, sql`${effectiveClockInSql} >= ${d} AND ${effectiveClockInSql} < ${next}`) as typeof where;
   }
 
   const rows = await db
@@ -427,7 +453,7 @@ router.get("/time-tracking/entries", requireVerifiedStaff, async (req, res): Pro
     .from(timeEntriesTable)
     .leftJoin(usersTable, eq(timeEntriesTable.userId, usersTable.id))
     .where(where)
-    .orderBy(sql`${timeEntriesTable.clockedInAt} DESC`);
+    .orderBy(sql`${effectiveClockInSql} DESC`);
 
   res.json(rows.map(r => ({
     id: r.entry.id,
@@ -435,7 +461,88 @@ router.get("/time-tracking/entries", requireVerifiedStaff, async (req, res): Pro
     userName: r.userName ?? null,
     clockedInAt: r.entry.clockedInAt.toISOString(),
     clockedOutAt: r.entry.clockedOutAt?.toISOString() ?? null,
-    totalMinutes: r.entry.totalMinutes,
+    adjustedClockedInAt: r.entry.adjustedClockedInAt?.toISOString() ?? null,
+    adjustedClockedOutAt: r.entry.adjustedClockedOutAt?.toISOString() ?? null,
+    effectiveClockedInAt: (r.entry.adjustedClockedInAt ?? r.entry.clockedInAt).toISOString(),
+    effectiveClockedOutAt: (r.entry.adjustedClockedOutAt ?? r.entry.clockedOutAt)?.toISOString() ?? null,
+    totalMinutes: r.entry.clockedOutAt
+      ? Math.max(0, Math.floor(((r.entry.adjustedClockedOutAt ?? r.entry.clockedOutAt).getTime() - (r.entry.adjustedClockedInAt ?? r.entry.clockedInAt).getTime()) / 60000))
+      : r.entry.totalMinutes,
+  })));
+});
+
+router.patch("/time-tracking/entries/:id/adjust", requireVerifiedStaff, async (req, res): Promise<void> => {
+  const { tenantId, userId: actorUserId } = verifiedStaffIdentity(res);
+  const role = await getCallerRole(tenantId, actorUserId);
+  if (!ADMIN_ROLES.has(role)) { res.status(403).json({ error: "Admin or office role required" }); return; }
+  const id = Number(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
+  const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+  const adjustedClockedInAt = parseRequiredIso(req.body?.adjustedClockedInAt);
+  const adjustedClockedOutAt = parseRequiredIso(req.body?.adjustedClockedOutAt);
+  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid time entry id" }); return; }
+  if (!reason) { res.status(400).json({ error: "Adjustment reason is required" }); return; }
+  if (!adjustedClockedInAt || !adjustedClockedOutAt) { res.status(400).json({ error: "Both adjustment times must be valid ISO dates" }); return; }
+  const now = new Date();
+  if (adjustedClockedInAt > now || adjustedClockedOutAt > now || adjustedClockedOutAt <= adjustedClockedInAt) {
+    res.status(400).json({ error: "Adjustment times must not be future and clock-out must be after clock-in" }); return;
+  }
+  const [tenant] = await db.select({ timezone: tenantsTable.timezone }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
+  const timezone = tenant?.timezone ?? "UTC";
+  try { new Intl.DateTimeFormat("en-US", { timeZone: timezone }); } catch {
+    res.status(500).json({ error: "Tenant timezone is invalid" }); return;
+  }
+  if (zonedDateKey(adjustedClockedInAt, timezone) !== zonedDateKey(adjustedClockedOutAt, timezone)) {
+    res.status(400).json({ error: "Adjustments must remain within one work day" }); return;
+  }
+
+  const result = await db.transaction(async tx => {
+    const [entry] = await tx.select().from(timeEntriesTable).where(and(
+      eq(timeEntriesTable.id, id), eq(timeEntriesTable.tenantId, tenantId), eq(timeEntriesTable.isMasterClock, true),
+    )).for("update");
+    if (!entry) return { status: 404 as const };
+    if (!entry.clockedOutAt) return { status: 409 as const };
+    const previousClockedInAt = entry.adjustedClockedInAt ?? entry.clockedInAt;
+    const previousClockedOutAt = entry.adjustedClockedOutAt ?? entry.clockedOutAt;
+    await tx.insert(timeEntryAdjustmentsTable).values({
+      tenantId, timeEntryId: id, actorUserId, reason, previousClockedInAt, previousClockedOutAt,
+      adjustedClockedInAt, adjustedClockedOutAt,
+    });
+    const totalMinutes = Math.floor((adjustedClockedOutAt.getTime() - adjustedClockedInAt.getTime()) / 60000);
+    const [updated] = await tx.update(timeEntriesTable).set({ adjustedClockedInAt, adjustedClockedOutAt, totalMinutes })
+      .where(and(eq(timeEntriesTable.id, id), eq(timeEntriesTable.tenantId, tenantId))).returning();
+    return { status: 200 as const, updated, totalMinutes };
+  });
+  if (result.status === 404) { res.status(404).json({ error: "Time entry not found" }); return; }
+  if (result.status === 409) { res.status(409).json({ error: "Active time entries cannot be adjusted" }); return; }
+  res.json({
+    id: result.updated.id, userId: result.updated.userId,
+    clockedInAt: result.updated.clockedInAt.toISOString(), clockedOutAt: result.updated.clockedOutAt?.toISOString() ?? null,
+    adjustedClockedInAt: result.updated.adjustedClockedInAt?.toISOString() ?? null,
+    adjustedClockedOutAt: result.updated.adjustedClockedOutAt?.toISOString() ?? null,
+    effectiveClockedInAt: result.updated.adjustedClockedInAt!.toISOString(),
+    effectiveClockedOutAt: result.updated.adjustedClockedOutAt!.toISOString(),
+    totalMinutes: result.totalMinutes,
+  });
+});
+
+router.get("/time-tracking/entries/:id/adjustments", requireVerifiedStaff, async (req, res): Promise<void> => {
+  const { tenantId, userId } = verifiedStaffIdentity(res);
+  const role = await getCallerRole(tenantId, userId);
+  if (!ADMIN_ROLES.has(role)) { res.status(403).json({ error: "Admin or office role required" }); return; }
+  const id = Number(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
+  const rows = await db.select({
+    adjustment: timeEntryAdjustmentsTable, actorName: usersTable.name,
+  }).from(timeEntryAdjustmentsTable)
+    .leftJoin(usersTable, and(eq(usersTable.id, timeEntryAdjustmentsTable.actorUserId), eq(usersTable.tenantId, tenantId)))
+    .where(and(eq(timeEntryAdjustmentsTable.timeEntryId, id), eq(timeEntryAdjustmentsTable.tenantId, tenantId)))
+    .orderBy(desc(timeEntryAdjustmentsTable.createdAt));
+  res.json(rows.map(({ adjustment, actorName }) => ({
+    ...adjustment, actorName,
+    previousClockedInAt: adjustment.previousClockedInAt.toISOString(),
+    previousClockedOutAt: adjustment.previousClockedOutAt.toISOString(),
+    adjustedClockedInAt: adjustment.adjustedClockedInAt.toISOString(),
+    adjustedClockedOutAt: adjustment.adjustedClockedOutAt.toISOString(),
+    createdAt: adjustment.createdAt.toISOString(),
   })));
 });
 
@@ -728,9 +835,8 @@ router.get("/time-tracking/daily-task-hours/summary", async (req, res): Promise<
  * Returns per-user clock-in (master-clock) hour totals for a date range.
  * Admin-only endpoint.
  */
-router.get("/time-tracking/clock-in-hours/summary", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
-  const callerId = getUserId(req);
+router.get("/time-tracking/clock-in-hours/summary", requireVerifiedStaff, async (req, res): Promise<void> => {
+  const { tenantId, userId: callerId } = verifiedStaffIdentity(res);
   const role = await getCallerRole(tenantId, callerId);
   if (!ADMIN_ROLES.has(role)) {
     res.status(403).json({ error: "Admin or office role required" });
@@ -747,17 +853,17 @@ router.get("/time-tracking/clock-in-hours/summary", async (req, res): Promise<vo
   if (dateFrom) {
     const from = new Date(dateFrom);
     from.setHours(0, 0, 0, 0);
-    conditions.push(gte(timeEntriesTable.clockedInAt, from));
+    conditions.push(sql`${effectiveClockInSql} >= ${from}`);
   }
   if (dateTo) {
     const to = new Date(`${dateTo}T23:59:59.999Z`);
-    conditions.push(lte(timeEntriesTable.clockedInAt, to));
+    conditions.push(sql`${effectiveClockInSql} <= ${to}`);
   }
 
   const rows = await db
     .select({
       userId: timeEntriesTable.userId,
-      totalMinutes: sql<number>`COALESCE(sum(total_minutes),0)::int`,
+      totalMinutes: sql<number>`COALESCE(sum(${effectiveMinutesSql}),0)::int`,
     })
     .from(timeEntriesTable)
     .where(and(...conditions))

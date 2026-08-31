@@ -14,5 +14,12 @@ export interface TimeEntry {
   clockedInAt: string;
   /** @nullable */
   clockedOutAt?: string | null;
+  /** @nullable */
+  adjustedClockedInAt?: string | null;
+  /** @nullable */
+  adjustedClockedOutAt?: string | null;
+  effectiveClockedInAt: string;
+  /** @nullable */
+  effectiveClockedOutAt?: string | null;
   totalMinutes: number;
 }

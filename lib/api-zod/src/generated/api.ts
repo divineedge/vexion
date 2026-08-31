@@ -4674,7 +4674,8 @@ export const GetTodayScheduleResponse = zod.array(GetTodayScheduleResponseItem)
  * @summary List time entries for the current user
  */
 export const ListTimeEntriesQueryParams = zod.object({
-  "date": zod.date().optional()
+  "date": zod.date().optional(),
+  "userId": zod.coerce.number().optional().describe('Admin-only target user; defaults to the current user')
 })
 
 export const ListTimeEntriesResponseItem = zod.object({
@@ -4683,9 +4684,65 @@ export const ListTimeEntriesResponseItem = zod.object({
   "userName": zod.string().nullish(),
   "clockedInAt": zod.string(),
   "clockedOutAt": zod.string().nullish(),
+  "adjustedClockedInAt": zod.string().nullish(),
+  "adjustedClockedOutAt": zod.string().nullish(),
+  "effectiveClockedInAt": zod.string(),
+  "effectiveClockedOutAt": zod.string().nullish(),
   "totalMinutes": zod.number()
 })
 export const ListTimeEntriesResponse = zod.array(ListTimeEntriesResponseItem)
+
+
+/**
+ * @summary Adjust a completed master-clock entry while preserving recorded timestamps
+ */
+export const AdjustTimeEntryParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+
+
+export const AdjustTimeEntryBody = zod.object({
+  "adjustedClockedInAt": zod.string(),
+  "adjustedClockedOutAt": zod.string(),
+  "reason": zod.string().min(1)
+})
+
+export const AdjustTimeEntryResponse = zod.object({
+  "id": zod.number(),
+  "userId": zod.number(),
+  "userName": zod.string().nullish(),
+  "clockedInAt": zod.string(),
+  "clockedOutAt": zod.string().nullish(),
+  "adjustedClockedInAt": zod.string().nullish(),
+  "adjustedClockedOutAt": zod.string().nullish(),
+  "effectiveClockedInAt": zod.string(),
+  "effectiveClockedOutAt": zod.string().nullish(),
+  "totalMinutes": zod.number()
+})
+
+
+/**
+ * @summary List immutable adjustment history for a master-clock entry
+ */
+export const ListTimeEntryAdjustmentsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListTimeEntryAdjustmentsResponseItem = zod.object({
+  "id": zod.number(),
+  "timeEntryId": zod.number(),
+  "actorUserId": zod.number(),
+  "actorName": zod.string().nullish(),
+  "reason": zod.string(),
+  "previousClockedInAt": zod.string(),
+  "previousClockedOutAt": zod.string(),
+  "adjustedClockedInAt": zod.string(),
+  "adjustedClockedOutAt": zod.string(),
+  "createdAt": zod.string()
+})
+export const ListTimeEntryAdjustmentsResponse = zod.array(ListTimeEntryAdjustmentsResponseItem)
 
 
 /**

@@ -2854,7 +2854,35 @@ export interface TimeEntry {
   clockedInAt: string;
   /** @nullable */
   clockedOutAt?: string | null;
+  /** @nullable */
+  adjustedClockedInAt?: string | null;
+  /** @nullable */
+  adjustedClockedOutAt?: string | null;
+  effectiveClockedInAt: string;
+  /** @nullable */
+  effectiveClockedOutAt?: string | null;
   totalMinutes: number;
+}
+
+export interface TimeEntryAdjustInput {
+  adjustedClockedInAt: string;
+  adjustedClockedOutAt: string;
+  /** @minLength 1 */
+  reason: string;
+}
+
+export interface TimeEntryAdjustment {
+  id: number;
+  timeEntryId: number;
+  actorUserId: number;
+  /** @nullable */
+  actorName?: string | null;
+  reason: string;
+  previousClockedInAt: string;
+  previousClockedOutAt: string;
+  adjustedClockedInAt: string;
+  adjustedClockedOutAt: string;
+  createdAt: string;
 }
 
 export interface GeofenceEntry {
@@ -6117,6 +6145,10 @@ date?: string;
 
 export type ListTimeEntriesParams = {
 date?: string;
+/**
+ * Admin-only target user; defaults to the current user
+ */
+userId?: number;
 };
 
 export type ListBlueprintsParams = {

@@ -130,6 +130,15 @@ export default function Invoices() {
                         Due {formatDate(invoice.dueDate)}
                       </p>
                     </div>
+                    {invoice.paidAt && (
+                      <p className="text-xs text-green-700 mt-2">
+                        Paid {formatDate(invoice.paidAt)}
+                        {invoice.paymentMethod ? ` by ${String(invoice.paymentMethod).replace('_', ' ')}` : ''}
+                        {invoice.paymentCardBrand ? ` · ${invoice.paymentCardBrand}` : ''}
+                        {invoice.paymentCardLast4 ? ` ending ${invoice.paymentCardLast4}` : ''}
+                        {invoice.paymentReference ? ` · Ref ${invoice.paymentReference}` : ''}
+                      </p>
+                    )}
                   </div>
                   {getStatusBadge(invoice.status)}
                 </div>

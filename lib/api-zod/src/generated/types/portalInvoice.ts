@@ -19,6 +19,14 @@ export interface PortalInvoice {
   dueDate?: string | null;
   /** @nullable */
   paidAt?: string | null;
+  /** @nullable */
+  paymentMethod?: string | null;
+  /** @nullable */
+  paymentReference?: string | null;
+  /** @nullable */
+  paymentCardBrand?: string | null;
+  /** @nullable */
+  paymentCardLast4?: string | null;
   lineItems?: JobLineItem[];
   jobParts?: JobPart[];
   createdAt: string;

@@ -3,7 +3,7 @@ import { db, invoicesTable, customersTable, jobsTable, activityLogTable, tenants
 import { eq, and, sql, inArray, ne, isNull } from "drizzle-orm";
 import crypto from "crypto";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
-import { isAdminRole } from "../lib/roles";
+import { isAdminRole, isOwnerRole } from "../lib/roles";
 import { decryptSecretConfig } from "../lib/secretsCrypto";
 import { sendLobLetter, type LobConfig } from "../lib/lobProvider";
 import { sendReviewRequest } from "../lib/reviewService";
@@ -54,6 +54,10 @@ const invoicesImportExportConfig: ImportExportEntityConfig = {
     { key: "total", header: "Total" },
     { key: "dueDate", header: "Due Date" },
     { key: "paidAt", header: "Paid At" },
+    { key: "paymentMethod", header: "Payment Method" },
+    { key: "paymentReference", header: "Payment Reference" },
+    { key: "paymentCardBrand", header: "Card Brand" },
+    { key: "paymentCardLast4", header: "Card Last 4" },
     { key: "notes", header: "Notes" },
     { key: "createdAt", header: "Created At" },
   ],
@@ -80,6 +84,10 @@ const invoicesImportExportConfig: ImportExportEntityConfig = {
       total: r.invoice.total,
       dueDate: r.invoice.dueDate?.toISOString() ?? "",
       paidAt: r.invoice.paidAt?.toISOString() ?? "",
+      paymentMethod: r.invoice.paymentMethod ?? "",
+      paymentReference: r.invoice.paymentReference ?? "",
+      paymentCardBrand: r.invoice.paymentCardBrand ?? "",
+      paymentCardLast4: r.invoice.paymentCardLast4 ?? "",
       notes: r.invoice.notes ?? "",
       createdAt: r.invoice.createdAt.toISOString(),
     }));
@@ -448,11 +456,20 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
   const id = parseInt(rawId, 10);
 
   const { status, notes, dueDate, lineItems } = req.body;
+  if (status && !(await isAdminRole(tenantId, userId))) {
+    res.status(403).json({ error: "Restricted to owner/admin/office roles" });
+    return;
+  }
   const updates: Partial<typeof invoicesTable.$inferInsert> = {};
   if (status) updates.status = status;
   if (notes !== undefined) updates.notes = notes;
   if (dueDate !== undefined) updates.dueDate = dueDate ? new Date(dueDate) : null;
-  if (status === "paid") { updates.paidAt = new Date(); }
+  // Payment records must go through the dedicated atomic endpoint so a method
+  // is always captured and duplicate paid attempts cannot overwrite history.
+  if (status === "paid") {
+    res.status(400).json({ error: "Use the mark-paid action with a payment method to record an invoice payment" });
+    return;
+  }
   // Full line-item replacement — recalculate subtotal and total, preserve existing tax rate
   if (lineItems !== undefined && Array.isArray(lineItems)) {
     const items = lineItems as { description: string; quantity: number; unitPrice: number; total?: number }[];
@@ -642,6 +659,161 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
   }
 
   res.json(formatInvoice(updated));
+});
+
+const INVOICE_PAYMENT_METHODS = ["cash", "check", "card", "ach", "bank_transfer", "other"] as const;
+
+function validatePaymentSnapshot(body: Record<string, unknown>) {
+  const paymentMethod = typeof body.paymentMethod === "string" ? body.paymentMethod.trim() : "";
+  if (!(INVOICE_PAYMENT_METHODS as readonly string[]).includes(paymentMethod)) {
+    return { error: `paymentMethod must be one of: ${INVOICE_PAYMENT_METHODS.join(", ")}` };
+  }
+
+  const paymentReference = body.paymentReference == null ? null : String(body.paymentReference).trim();
+  if (paymentReference && paymentReference.length > 200) {
+    return { error: "paymentReference must be 200 characters or fewer" };
+  }
+
+  const paymentCardBrand = body.paymentCardBrand == null ? null : String(body.paymentCardBrand).trim();
+  const paymentCardLast4 = body.paymentCardLast4 == null ? null : String(body.paymentCardLast4).trim();
+  if (paymentMethod !== "card" && (paymentCardBrand || paymentCardLast4)) {
+    return { error: "Card brand and last four digits can only be provided for card payments" };
+  }
+  if (paymentCardLast4 && !/^\d{4}$/.test(paymentCardLast4)) {
+    return { error: "paymentCardLast4 must contain exactly four digits" };
+  }
+  if (paymentCardBrand && paymentCardBrand.length > 50) {
+    return { error: "paymentCardBrand must be 50 characters or fewer" };
+  }
+
+  return { paymentMethod, paymentReference, paymentCardBrand, paymentCardLast4 };
+}
+
+// ── PAYMENT / LIFECYCLE ──────────────────────────────────────────────────────
+router.post("/invoices/:id/mark-paid", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  if (!(await isAdminRole(tenantId, userId))) {
+    res.status(403).json({ error: "Restricted to owner/admin/office roles" });
+    return;
+  }
+
+  const id = parseInt(String(req.params.id), 10);
+  const snapshot = validatePaymentSnapshot(req.body ?? {});
+  if ("error" in snapshot) { res.status(400).json(snapshot); return; }
+
+  const [updated] = await db.update(invoicesTable)
+    .set({
+      status: "paid",
+      paidAt: new Date(),
+      paymentMethod: snapshot.paymentMethod,
+      paymentReference: snapshot.paymentReference,
+      paymentCardBrand: snapshot.paymentCardBrand,
+      paymentCardLast4: snapshot.paymentCardLast4,
+    })
+    .where(and(
+      eq(invoicesTable.id, id),
+      eq(invoicesTable.tenantId, tenantId),
+      ne(invoicesTable.status, "paid"),
+    ))
+    .returning();
+
+  if (!updated) {
+    const [existing] = await db.select({ id: invoicesTable.id, status: invoicesTable.status })
+      .from(invoicesTable)
+      .where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId)));
+    if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+    if (existing.status === "paid") {
+      res.status(409).json({ error: "Invoice is already paid; payment history cannot be overwritten" });
+      return;
+    }
+    res.status(409).json({ error: "Invoice could not be marked paid; please try again" });
+    return;
+  }
+
+  await db.insert(activityLogTable).values({
+    tenantId,
+    userId,
+    type: "payment_received",
+    message: `Invoice ${updated.invoiceNumber} marked as paid (${snapshot.paymentMethod})`,
+    entityId: id,
+  });
+  syncInvoicePaymentToQBO(tenantId, id).catch(err => logger.error({ err, invoiceId: id }, "QB sync fire-and-forget error"));
+
+  const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  if (tenant?.reviewRequestOnInvoicePaid) {
+    const [customer] = await db.select().from(customersTable).where(and(eq(customersTable.id, updated.customerId), eq(customersTable.tenantId, tenantId)));
+    if (customer) {
+      sendReviewRequest({ tenant, customer, invoiceId: id })
+        .catch(err => logger.error({ err, invoiceId: id }, "Failed to send review request on invoice paid"));
+    }
+  }
+
+  res.json(formatInvoice(updated));
+});
+
+router.post("/invoices/:id/archive", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  if (!(await isAdminRole(tenantId, userId))) {
+    res.status(403).json({ error: "Restricted to owner/admin/office roles" });
+    return;
+  }
+  const id = parseInt(String(req.params.id), 10);
+  const [updated] = await db.update(invoicesTable)
+    .set({ archivedAt: new Date() })
+    .where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId)))
+    .returning();
+  if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  res.json(formatInvoice(updated));
+});
+
+router.post("/invoices/:id/restore", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  if (!(await isAdminRole(tenantId, userId))) {
+    res.status(403).json({ error: "Restricted to owner/admin/office roles" });
+    return;
+  }
+  const id = parseInt(String(req.params.id), 10);
+  const [updated] = await db.update(invoicesTable)
+    .set({ archivedAt: null })
+    .where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId)))
+    .returning();
+  if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  res.json(formatInvoice(updated));
+});
+
+router.delete("/invoices/:id", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  if (!(await isOwnerRole(tenantId, userId))) {
+    res.status(403).json({ error: "Permanent deletion is restricted to the company owner" });
+    return;
+  }
+  if (req.body?.confirm !== true) {
+    res.status(400).json({ error: "Explicit confirmation is required to permanently delete an invoice" });
+    return;
+  }
+  const id = parseInt(String(req.params.id), 10);
+  const [invoice] = await db.select({
+    id: invoicesTable.id,
+    status: invoicesTable.status,
+    jobId: invoicesTable.jobId,
+    planId: invoicesTable.planId,
+    generatedFromTemplateId: invoicesTable.generatedFromTemplateId,
+  }).from(invoicesTable).where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId)));
+  if (!invoice) { res.status(404).json({ error: "Not found" }); return; }
+  if (invoice.status === "paid") {
+    res.status(409).json({ error: "Paid invoices must be archived so financial history is preserved" });
+    return;
+  }
+  if (invoice.jobId || invoice.planId || invoice.generatedFromTemplateId) {
+    res.status(409).json({ error: "This invoice is linked to a job or recurring billing history and must be archived" });
+    return;
+  }
+  await db.delete(invoicesTable).where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId)));
+  res.sendStatus(204);
 });
 
 // POST /invoices/:id/send-reminder — on-demand payment reminder for one invoice

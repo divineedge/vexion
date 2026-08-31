@@ -815,6 +815,7 @@ router.get("/portal/invoices", requirePortalAuth, async (req: any, res): Promise
       and(
         eq(invoicesTable.customerId, portalCustomerId),
         eq(invoicesTable.tenantId, portalTenantId),
+        isNull(invoicesTable.archivedAt),
       ),
     )
     .orderBy(desc(invoicesTable.createdAt));
@@ -837,6 +838,7 @@ router.get("/portal/invoices/:id", requirePortalAuth, async (req: any, res): Pro
         eq(invoicesTable.id, invoiceId),
         eq(invoicesTable.customerId, portalCustomerId),
         eq(invoicesTable.tenantId, portalTenantId),
+        isNull(invoicesTable.archivedAt),
       ),
     )
     .limit(1);
@@ -1840,7 +1842,12 @@ router.post("/portal/stripe-webhook", async (req: any, res): Promise<void> => {
       try {
         await db
           .update(invoicesTable)
-          .set({ status: "paid", paidAt: new Date() })
+          .set({
+            status: "paid",
+            paidAt: new Date(),
+            paymentMethod: "card",
+            paymentReference: typeof session.payment_intent === "string" ? session.payment_intent : null,
+          })
           .where(
             and(
               eq(invoicesTable.id, invoiceId),
@@ -2711,6 +2718,10 @@ function formatPortalInvoice(inv: typeof invoicesTable.$inferSelect) {
     total: inv.total,
     dueDate: inv.dueDate?.toISOString() ?? null,
     paidAt: inv.paidAt?.toISOString() ?? null,
+    paymentMethod: inv.paymentMethod ?? null,
+    paymentReference: inv.paymentReference ?? null,
+    paymentCardBrand: inv.paymentCardBrand ?? null,
+    paymentCardLast4: inv.paymentCardLast4 ?? null,
     lineItems: (inv.lineItems as unknown[]) ?? [],
     jobParts: [],
     createdAt: inv.createdAt.toISOString(),

@@ -3,7 +3,7 @@ import { db, estimatesTable, visitsTable, jobsTable, customersTable, propertiesT
 import { eq, and, sql, desc, isNull } from "drizzle-orm";
 import { getStripeClient, getStripePublishableKey, ensureStripeCustomer } from "../lib/stripe";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
-import { getCallerRole } from "../lib/roles";
+import { getCallerRole, isAdminRole, isOwnerRole } from "../lib/roles";
 import { requireVerifiedStaff } from "../lib/verifiedStaff";
 import { sendReviewRequest } from "../lib/reviewService";
 import { sendEmail, buildEstimateResponseNotificationHtml, type EmailProviderConfig } from "../lib/emailProvider";
@@ -496,8 +496,13 @@ router.get("/estimates/:id", async (req, res): Promise<void> => {
 // ── UPDATE ────────────────────────────────────────────────────────────────────
 router.patch("/estimates/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
+  const userId = getUserId(req);
   const id = parseInt(req.params.id, 10);
   const { customerId, propertyId, assigneeId, visitMode, scheduledAt, expiresAt, notes, lineItems, status, estimatedDurationMin, suppliesNeeded, paymentRequirement, depositValue } = req.body;
+  if (status && !(await isAdminRole(tenantId, userId))) {
+    res.status(403).json({ error: "Restricted to owner/admin/office roles" });
+    return;
+  }
 
   // Always fetch the current record upfront — needed for status-transition
   // validation, deposit-paid guard, and payment-term validation on partial updates.
@@ -581,10 +586,73 @@ router.patch("/estimates/:id", async (req, res): Promise<void> => {
   res.json(formatEstimate(updated));
 });
 
-// ── DELETE ────────────────────────────────────────────────────────────────────
+// ── LIFECYCLE ──────────────────────────────────────────────────────────────────
+router.post("/estimates/:id/archive", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  if (!(await isAdminRole(tenantId, userId))) {
+    res.status(403).json({ error: "Restricted to owner/admin/office roles" });
+    return;
+  }
+  const id = parseInt(String(req.params.id), 10);
+  const [updated] = await db.update(estimatesTable)
+    .set({ isArchived: true, archivedAt: new Date() })
+    .where(and(eq(estimatesTable.id, id), eq(estimatesTable.tenantId, tenantId)))
+    .returning();
+  if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  res.json(formatEstimate(updated));
+});
+
+router.post("/estimates/:id/restore", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  if (!(await isAdminRole(tenantId, userId))) {
+    res.status(403).json({ error: "Restricted to owner/admin/office roles" });
+    return;
+  }
+  const id = parseInt(String(req.params.id), 10);
+  const [updated] = await db.update(estimatesTable)
+    .set({ isArchived: false, archivedAt: null })
+    .where(and(eq(estimatesTable.id, id), eq(estimatesTable.tenantId, tenantId)))
+    .returning();
+  if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  res.json(formatEstimate(updated));
+});
+
+// Permanent deletion is intentionally stricter than archiving. The explicit
+// body confirmation also prevents accidental deletes from generic clients.
 router.delete("/estimates/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  if (!(await isOwnerRole(tenantId, userId))) {
+    res.status(403).json({ error: "Permanent deletion is restricted to the company owner" });
+    return;
+  }
+  if (req.body?.confirm !== true) {
+    res.status(400).json({ error: "Explicit confirmation is required to permanently delete an estimate" });
+    return;
+  }
   const id = parseInt(req.params.id, 10);
+  const [estimate] = await db.select({
+    id: estimatesTable.id,
+    status: estimatesTable.status,
+    convertedToJobId: estimatesTable.convertedToJobId,
+    depositPaidAt: estimatesTable.depositPaidAt,
+    blueprintId: estimatesTable.blueprintId,
+  }).from(estimatesTable).where(and(eq(estimatesTable.id, id), eq(estimatesTable.tenantId, tenantId)));
+  if (!estimate) { res.status(404).json({ error: "Not found" }); return; }
+  if (estimate.convertedToJobId) {
+    res.status(409).json({ error: "Converted estimates must be archived so job history is preserved" });
+    return;
+  }
+  if (estimate.status === "approved") {
+    res.status(409).json({ error: "Approved estimates must be archived so approval history is preserved" });
+    return;
+  }
+  if (estimate.depositPaidAt) {
+    res.status(409).json({ error: "Estimates with collected deposits must be archived so payment history is preserved" });
+    return;
+  }
   await db.delete(estimatesTable).where(and(eq(estimatesTable.id, id), eq(estimatesTable.tenantId, tenantId)));
   res.sendStatus(204);
 });

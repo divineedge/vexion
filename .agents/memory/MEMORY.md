@@ -40,3 +40,4 @@
 - [Mobile push delivery](mobile-push-delivery.md) — claim each device/event once, persist Expo ticket IDs, and retire invalid tokens from delayed receipts
 - [CSV import column identity](csv-import-column-identity.md) — map uploaded columns by position, not header text; duplicate and blank headers must remain independently selectable
 - [Customer archive serialization](customer-archive-serialization.md) — lock the customer row before cascade state decisions so concurrent archive requests share one restore timestamp
+- [Lifecycle view selectors](lifecycle-view-selectors.md) — active/archive switches must label current states explicitly; destination-labeled toggles make correct data look broken

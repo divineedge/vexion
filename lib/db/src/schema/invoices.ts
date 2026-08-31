@@ -20,6 +20,14 @@ export const invoicesTable = pgTable("invoices", {
   total: real("total").notNull().default(0),
   dueDate: timestamp("due_date", { withTimezone: true }),
   paidAt: timestamp("paid_at", { withTimezone: true }),
+  /** Snapshot of how an offline/manual payment was received. */
+  paymentMethod: text("payment_method"),
+  /** Optional non-sensitive payment reference, such as a check number. */
+  paymentReference: text("payment_reference"),
+  /** Card brand only; never store a full card number. */
+  paymentCardBrand: text("payment_card_brand"),
+  /** Last four digits only; never store a full card number. */
+  paymentCardLast4: text("payment_card_last4"),
   notes: text("notes"),
   lineItems: jsonb("line_items").default("[]"),
   stripePaymentUrl: text("stripe_payment_url"),

@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { InvoiceLineItem } from './invoiceLineItem';
+import type { InvoicePaymentMethod } from './invoicePaymentMethod';
 import type { InvoiceStatus } from './invoiceStatus';
 
 export interface Invoice {
@@ -25,6 +26,14 @@ export interface Invoice {
   dueDate?: string | null;
   /** @nullable */
   paidAt?: string | null;
+  /** @nullable */
+  paymentMethod?: InvoicePaymentMethod;
+  /** @nullable */
+  paymentReference?: string | null;
+  /** @nullable */
+  paymentCardBrand?: string | null;
+  /** @nullable */
+  paymentCardLast4?: string | null;
   /** @nullable */
   notes?: string | null;
   lineItems?: InvoiceLineItem[];

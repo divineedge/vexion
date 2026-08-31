@@ -2426,6 +2426,10 @@ export const CompleteAndInvoiceJobResponse = zod.object({
   "total": zod.number(),
   "dueDate": zod.string().nullish(),
   "paidAt": zod.string().nullish(),
+  "paymentMethod": zod.union([zod.literal('cash'),zod.literal('check'),zod.literal('card'),zod.literal('ach'),zod.literal('bank_transfer'),zod.literal('other'),zod.literal(null)]).nullish(),
+  "paymentReference": zod.string().nullish(),
+  "paymentCardBrand": zod.string().nullish(),
+  "paymentCardLast4": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
   "id": zod.number(),
@@ -3713,6 +3717,10 @@ export const ListInvoicesResponseItem = zod.object({
   "total": zod.number(),
   "dueDate": zod.string().nullish(),
   "paidAt": zod.string().nullish(),
+  "paymentMethod": zod.union([zod.literal('cash'),zod.literal('check'),zod.literal('card'),zod.literal('ach'),zod.literal('bank_transfer'),zod.literal('other'),zod.literal(null)]).nullish(),
+  "paymentReference": zod.string().nullish(),
+  "paymentCardBrand": zod.string().nullish(),
+  "paymentCardLast4": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
   "id": zod.number(),
@@ -3760,6 +3768,10 @@ export const CreateInvoiceResponse = zod.object({
   "total": zod.number(),
   "dueDate": zod.string().nullish(),
   "paidAt": zod.string().nullish(),
+  "paymentMethod": zod.union([zod.literal('cash'),zod.literal('check'),zod.literal('card'),zod.literal('ach'),zod.literal('bank_transfer'),zod.literal('other'),zod.literal(null)]).nullish(),
+  "paymentReference": zod.string().nullish(),
+  "paymentCardBrand": zod.string().nullish(),
+  "paymentCardLast4": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
   "id": zod.number(),
@@ -3798,6 +3810,10 @@ export const GetInvoiceResponse = zod.object({
   "total": zod.number(),
   "dueDate": zod.string().nullish(),
   "paidAt": zod.string().nullish(),
+  "paymentMethod": zod.union([zod.literal('cash'),zod.literal('check'),zod.literal('card'),zod.literal('ach'),zod.literal('bank_transfer'),zod.literal('other'),zod.literal(null)]).nullish(),
+  "paymentReference": zod.string().nullish(),
+  "paymentCardBrand": zod.string().nullish(),
+  "paymentCardLast4": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
   "id": zod.number(),
@@ -3842,6 +3858,164 @@ export const UpdateInvoiceResponse = zod.object({
   "total": zod.number(),
   "dueDate": zod.string().nullish(),
   "paidAt": zod.string().nullish(),
+  "paymentMethod": zod.union([zod.literal('cash'),zod.literal('check'),zod.literal('card'),zod.literal('ach'),zod.literal('bank_transfer'),zod.literal('other'),zod.literal(null)]).nullish(),
+  "paymentReference": zod.string().nullish(),
+  "paymentCardBrand": zod.string().nullish(),
+  "paymentCardLast4": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.number(),
+  "description": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional(),
+  "stripePaymentUrl": zod.string().nullish(),
+  "lobLetterId": zod.string().nullish(),
+  "lobStatus": zod.string().nullish(),
+  "publicToken": zod.string().nullish(),
+  "paymentRemindersSent": zod.array(zod.number()).nullish().describe('Offset days for which a payment reminder has already been sent'),
+  "archivedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Permanently delete an invoice when no financial history must be preserved
+ */
+export const DeleteInvoiceParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteInvoiceBody = zod.object({
+  "confirm": zod.boolean()
+})
+
+export const DeleteInvoiceResponse = zod.void()
+
+
+/**
+ * @summary Mark an invoice paid with a payment method
+ */
+export const MarkInvoicePaidParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const markInvoicePaidBodyPaymentReferenceMax = 200;
+
+export const markInvoicePaidBodyPaymentCardBrandMax = 50;
+
+export const markInvoicePaidBodyPaymentCardLast4RegExp = new RegExp('^\\d{4}$');
+
+
+export const MarkInvoicePaidBody = zod.object({
+  "paymentMethod": zod.enum(['cash', 'check', 'card', 'ach', 'bank_transfer', 'other']),
+  "paymentReference": zod.string().max(markInvoicePaidBodyPaymentReferenceMax).nullish().describe('Optional non-sensitive reference such as a check number'),
+  "paymentCardBrand": zod.string().max(markInvoicePaidBodyPaymentCardBrandMax).nullish(),
+  "paymentCardLast4": zod.string().regex(markInvoicePaidBodyPaymentCardLast4RegExp).nullish()
+})
+
+export const MarkInvoicePaidResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "invoiceNumber": zod.string(),
+  "customerId": zod.number(),
+  "customerName": zod.string().nullish(),
+  "jobId": zod.number().nullish(),
+  "status": zod.enum(['draft', 'sent', 'paid', 'overdue', 'cancelled']),
+  "subtotal": zod.number(),
+  "tax": zod.number(),
+  "total": zod.number(),
+  "dueDate": zod.string().nullish(),
+  "paidAt": zod.string().nullish(),
+  "paymentMethod": zod.union([zod.literal('cash'),zod.literal('check'),zod.literal('card'),zod.literal('ach'),zod.literal('bank_transfer'),zod.literal('other'),zod.literal(null)]).nullish(),
+  "paymentReference": zod.string().nullish(),
+  "paymentCardBrand": zod.string().nullish(),
+  "paymentCardLast4": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.number(),
+  "description": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional(),
+  "stripePaymentUrl": zod.string().nullish(),
+  "lobLetterId": zod.string().nullish(),
+  "lobStatus": zod.string().nullish(),
+  "publicToken": zod.string().nullish(),
+  "paymentRemindersSent": zod.array(zod.number()).nullish().describe('Offset days for which a payment reminder has already been sent'),
+  "archivedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Archive an invoice
+ */
+export const ArchiveInvoiceParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ArchiveInvoiceResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "invoiceNumber": zod.string(),
+  "customerId": zod.number(),
+  "customerName": zod.string().nullish(),
+  "jobId": zod.number().nullish(),
+  "status": zod.enum(['draft', 'sent', 'paid', 'overdue', 'cancelled']),
+  "subtotal": zod.number(),
+  "tax": zod.number(),
+  "total": zod.number(),
+  "dueDate": zod.string().nullish(),
+  "paidAt": zod.string().nullish(),
+  "paymentMethod": zod.union([zod.literal('cash'),zod.literal('check'),zod.literal('card'),zod.literal('ach'),zod.literal('bank_transfer'),zod.literal('other'),zod.literal(null)]).nullish(),
+  "paymentReference": zod.string().nullish(),
+  "paymentCardBrand": zod.string().nullish(),
+  "paymentCardLast4": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.number(),
+  "description": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional(),
+  "stripePaymentUrl": zod.string().nullish(),
+  "lobLetterId": zod.string().nullish(),
+  "lobStatus": zod.string().nullish(),
+  "publicToken": zod.string().nullish(),
+  "paymentRemindersSent": zod.array(zod.number()).nullish().describe('Offset days for which a payment reminder has already been sent'),
+  "archivedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Restore an archived invoice
+ */
+export const RestoreInvoiceParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RestoreInvoiceResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "invoiceNumber": zod.string(),
+  "customerId": zod.number(),
+  "customerName": zod.string().nullish(),
+  "jobId": zod.number().nullish(),
+  "status": zod.enum(['draft', 'sent', 'paid', 'overdue', 'cancelled']),
+  "subtotal": zod.number(),
+  "tax": zod.number(),
+  "total": zod.number(),
+  "dueDate": zod.string().nullish(),
+  "paidAt": zod.string().nullish(),
+  "paymentMethod": zod.union([zod.literal('cash'),zod.literal('check'),zod.literal('card'),zod.literal('ach'),zod.literal('bank_transfer'),zod.literal('other'),zod.literal(null)]).nullish(),
+  "paymentReference": zod.string().nullish(),
+  "paymentCardBrand": zod.string().nullish(),
+  "paymentCardLast4": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
   "id": zod.number(),
@@ -3880,6 +4054,10 @@ export const CreateInvoiceFromJobResponse = zod.object({
   "total": zod.number(),
   "dueDate": zod.string().nullish(),
   "paidAt": zod.string().nullish(),
+  "paymentMethod": zod.union([zod.literal('cash'),zod.literal('check'),zod.literal('card'),zod.literal('ach'),zod.literal('bank_transfer'),zod.literal('other'),zod.literal(null)]).nullish(),
+  "paymentReference": zod.string().nullish(),
+  "paymentCardBrand": zod.string().nullish(),
+  "paymentCardLast4": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
   "id": zod.number(),
@@ -7327,6 +7505,10 @@ export const PortalGetSummaryResponse = zod.object({
   "total": zod.number(),
   "dueDate": zod.string().nullish(),
   "paidAt": zod.string().nullish(),
+  "paymentMethod": zod.string().nullish(),
+  "paymentReference": zod.string().nullish(),
+  "paymentCardBrand": zod.string().nullish(),
+  "paymentCardLast4": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
   "id": zod.number(),
   "name": zod.string(),
@@ -7714,6 +7896,10 @@ export const PortalListInvoicesResponseItem = zod.object({
   "total": zod.number(),
   "dueDate": zod.string().nullish(),
   "paidAt": zod.string().nullish(),
+  "paymentMethod": zod.string().nullish(),
+  "paymentReference": zod.string().nullish(),
+  "paymentCardBrand": zod.string().nullish(),
+  "paymentCardLast4": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
   "id": zod.number(),
   "name": zod.string(),
@@ -7750,6 +7936,10 @@ export const PortalGetInvoiceResponse = zod.object({
   "total": zod.number(),
   "dueDate": zod.string().nullish(),
   "paidAt": zod.string().nullish(),
+  "paymentMethod": zod.string().nullish(),
+  "paymentReference": zod.string().nullish(),
+  "paymentCardBrand": zod.string().nullish(),
+  "paymentCardLast4": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
   "id": zod.number(),
   "name": zod.string(),
@@ -8993,7 +9183,137 @@ export const DeleteEstimateParams = zod.object({
   "id": zod.coerce.number()
 })
 
+export const DeleteEstimateBody = zod.object({
+  "confirm": zod.boolean()
+})
+
 export const DeleteEstimateResponse = zod.void()
+
+
+/**
+ * @summary Archive an estimate
+ */
+export const ArchiveEstimateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ArchiveEstimateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "blueprintId": zod.number().nullish(),
+  "assigneeId": zod.number().nullish(),
+  "status": zod.enum(['draft', 'sent', 'approved', 'declined', 'expired']),
+  "visitMode": zod.enum(['scheduled', 'drop_by', 'drive_by']),
+  "scheduledAt": zod.string().nullish(),
+  "expiresAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "description": zod.string(),
+  "qty": zod.number(),
+  "unitPrice": zod.number(),
+  "markup": zod.number(),
+  "discount": zod.number(),
+  "isOptional": zod.boolean(),
+  "optionalPitchLine": zod.string().nullish(),
+  "acceptedByCustomer": zod.boolean()
+})).optional(),
+  "subtotal": zod.number(),
+  "tax": zod.number(),
+  "total": zod.number(),
+  "approvalToken": zod.string().nullish(),
+  "sentAt": zod.string().nullish(),
+  "approvedAt": zod.string().nullish(),
+  "declinedAt": zod.string().nullish(),
+  "declineReason": zod.string().nullish(),
+  "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site'),
+  "convertedToJobId": zod.number().nullish(),
+  "templateId": zod.number().nullish(),
+  "templateName": zod.string().nullish(),
+  "customerName": zod.string().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "paymentRequirement": zod.enum(['none', 'full', 'deposit_pct', 'deposit_fixed']).optional().describe('Payment required on acceptance: none=no payment, full=full total, deposit_pct=% of total, deposit_fixed=fixed $'),
+  "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
+  "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),
+  "depositPaymentIntentId": zod.string().nullish().describe('Stripe PaymentIntent ID for the deposit charge'),
+  "isArchived": zod.boolean().optional(),
+  "archivedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Restore an archived estimate
+ */
+export const RestoreEstimateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RestoreEstimateResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "customerId": zod.number().nullish(),
+  "propertyId": zod.number().nullish(),
+  "blueprintId": zod.number().nullish(),
+  "assigneeId": zod.number().nullish(),
+  "status": zod.enum(['draft', 'sent', 'approved', 'declined', 'expired']),
+  "visitMode": zod.enum(['scheduled', 'drop_by', 'drive_by']),
+  "scheduledAt": zod.string().nullish(),
+  "expiresAt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.string(),
+  "serviceId": zod.number().nullish(),
+  "description": zod.string(),
+  "qty": zod.number(),
+  "unitPrice": zod.number(),
+  "markup": zod.number(),
+  "discount": zod.number(),
+  "isOptional": zod.boolean(),
+  "optionalPitchLine": zod.string().nullish(),
+  "acceptedByCustomer": zod.boolean()
+})).optional(),
+  "subtotal": zod.number(),
+  "tax": zod.number(),
+  "total": zod.number(),
+  "approvalToken": zod.string().nullish(),
+  "sentAt": zod.string().nullish(),
+  "approvedAt": zod.string().nullish(),
+  "declinedAt": zod.string().nullish(),
+  "declineReason": zod.string().nullish(),
+  "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site'),
+  "convertedToJobId": zod.number().nullish(),
+  "templateId": zod.number().nullish(),
+  "templateName": zod.string().nullish(),
+  "customerName": zod.string().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "paymentRequirement": zod.enum(['none', 'full', 'deposit_pct', 'deposit_fixed']).optional().describe('Payment required on acceptance: none=no payment, full=full total, deposit_pct=% of total, deposit_fixed=fixed $'),
+  "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
+  "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),
+  "depositPaymentIntentId": zod.string().nullish().describe('Stripe PaymentIntent ID for the deposit charge'),
+  "isArchived": zod.boolean().optional(),
+  "archivedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
 
 
 /**
@@ -9105,6 +9425,10 @@ export const GetPublicInvoiceResponse = zod.object({
   "total": zod.number(),
   "dueDate": zod.string().nullish(),
   "paidAt": zod.string().nullish(),
+  "paymentMethod": zod.union([zod.literal('cash'),zod.literal('check'),zod.literal('card'),zod.literal('ach'),zod.literal('bank_transfer'),zod.literal('other'),zod.literal(null)]).nullish(),
+  "paymentReference": zod.string().nullish(),
+  "paymentCardBrand": zod.string().nullish(),
+  "paymentCardLast4": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
   "id": zod.number(),
@@ -11211,6 +11535,10 @@ export const PrintMailInvoiceResponse = zod.object({
   "total": zod.number(),
   "dueDate": zod.string().nullish(),
   "paidAt": zod.string().nullish(),
+  "paymentMethod": zod.union([zod.literal('cash'),zod.literal('check'),zod.literal('card'),zod.literal('ach'),zod.literal('bank_transfer'),zod.literal('other'),zod.literal(null)]).nullish(),
+  "paymentReference": zod.string().nullish(),
+  "paymentCardBrand": zod.string().nullish(),
+  "paymentCardLast4": zod.string().nullish(),
   "notes": zod.string().nullish(),
   "lineItems": zod.array(zod.object({
   "id": zod.number(),

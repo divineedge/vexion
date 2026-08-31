@@ -105,9 +105,17 @@ export default function InvoiceDetail() {
           <div className="flex items-center gap-3 mt-2">
             {getStatusBadge(invoice.status)}
             {invoice.paidAt && (
-              <span className="text-sm text-muted-foreground">
-                Paid {formatDate(invoice.paidAt)}
-              </span>
+              <div className="text-sm text-muted-foreground">
+                <span>Paid {formatDate(invoice.paidAt)}</span>
+                {invoice.paymentMethod && (
+                  <span className="capitalize">
+                    {' '}· {String(invoice.paymentMethod).replace('_', ' ')}
+                    {invoice.paymentCardBrand ? ` · ${invoice.paymentCardBrand}` : ''}
+                    {invoice.paymentCardLast4 ? ` ending ${invoice.paymentCardLast4}` : ''}
+                    {invoice.paymentReference ? ` · Ref ${invoice.paymentReference}` : ''}
+                  </span>
+                )}
+              </div>
             )}
           </div>
         </div>

@@ -5,6 +5,10 @@ import {
   useGetInvoice, getGetInvoiceQueryKey,
   useGetFinancialsSummary, getGetFinancialsSummaryQueryKey,
   useUpdateInvoice,
+  useMarkInvoicePaid,
+  useArchiveInvoice,
+  useRestoreInvoice,
+  useDeleteInvoice,
   useGetJob, getGetJobQueryKey,
   useListRecurringTemplates, getListRecurringTemplatesQueryKey,
   useCreateRecurringTemplate,
@@ -624,12 +628,16 @@ function PreviewBillingDialog({ templateId, templateName, onClose, onGenerate, i
 
 // ── Edit Invoice Sheet ──────────────────────────────────────────────────────────
 
-function EditInvoiceSheet({ invoiceId, onClose, autoOpenSend }: { invoiceId: number | null; onClose: () => void; autoOpenSend?: boolean }) {
+function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { invoiceId: number | null; onClose: () => void; onRestored?: () => void; autoOpenSend?: boolean }) {
   const qc = useQueryClient();
   const { data: invoice, isLoading } = useGetInvoice(invoiceId ?? 0, {
     query: { queryKey: getGetInvoiceQueryKey(invoiceId ?? 0), enabled: invoiceId != null },
   });
   const updateInvoice = useUpdateInvoice();
+  const markPaid = useMarkInvoicePaid();
+  const archiveInvoice = useArchiveInvoice();
+  const restoreInvoice = useRestoreInvoice();
+  const deleteInvoice = useDeleteInvoice();
   const updateJob = useUpdateJob();
   const sendReminder = useSendInvoiceReminder();
   const printMail = usePrintMailInvoice();
@@ -644,6 +652,12 @@ function EditInvoiceSheet({ invoiceId, onClose, autoOpenSend }: { invoiceId: num
   const [notes, setNotes] = useState('');
   const [editingDueDate, setEditingDueDate] = useState(false);
   const [dueDate, setDueDate] = useState('');
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState('');
+  const [paymentReference, setPaymentReference] = useState('');
+  const [paymentCardBrand, setPaymentCardBrand] = useState('');
+  const [paymentCardLast4, setPaymentCardLast4] = useState('');
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   useEffect(() => {
     if (invoice) {
@@ -720,6 +734,8 @@ function EditInvoiceSheet({ invoiceId, onClose, autoOpenSend }: { invoiceId: num
 
   const subtotal = lineItems.reduce((s, li) => s + li.total, 0);
   const canSend = user?.role !== 'technician';
+  const canManageLifecycle = ['company_owner', 'office_manager', 'department_manager'].includes(user?.role ?? '');
+  const canPermanentlyDelete = user?.role === 'company_owner';
   const [showSendDialog, setShowSendDialog] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
 
@@ -736,6 +752,41 @@ function EditInvoiceSheet({ invoiceId, onClose, autoOpenSend }: { invoiceId: num
     sent: [{ label: 'Mark Paid', variant: 'default' }, { label: 'Mark Draft', variant: 'outline' }],
     overdue: [{ label: 'Mark Paid', variant: 'default' }],
     paid: [{ label: 'Mark Sent', variant: 'outline' }],
+  };
+
+  const handleMarkPaid = () => {
+    if (!invoiceId || !paymentMethod) return;
+    markPaid.mutate({
+      id: invoiceId,
+      data: {
+        paymentMethod: paymentMethod as 'cash' | 'check' | 'card' | 'ach' | 'bank_transfer' | 'other',
+        paymentReference: paymentReference.trim() || null,
+        paymentCardBrand: paymentMethod === 'card' ? paymentCardBrand.trim() || null : null,
+        paymentCardLast4: paymentMethod === 'card' ? paymentCardLast4.trim() || null : null,
+      },
+    }, {
+      onSuccess: () => {
+        toast.success('Invoice marked paid');
+        setPaymentDialogOpen(false);
+        setPaymentMethod(''); setPaymentReference(''); setPaymentCardBrand(''); setPaymentCardLast4('');
+        invalidateInvoice();
+      },
+      onError: (err: any) => toast.error(err?.response?.data?.error ?? err?.message ?? 'Failed to record payment'),
+    });
+  };
+
+  const runLifecycle = (action: 'archive' | 'restore') => {
+    if (!invoiceId) return;
+    const mutation = action === 'archive' ? archiveInvoice : restoreInvoice;
+    mutation.mutate({ id: invoiceId }, {
+      onSuccess: () => {
+        toast.success(action === 'archive' ? 'Invoice archived' : 'Invoice restored');
+        invalidateInvoice();
+        if (action === 'restore') onRestored?.();
+        onClose();
+      },
+      onError: (err: any) => toast.error(err?.response?.data?.error ?? err?.message ?? `Failed to ${action} invoice`),
+    });
   };
 
   return (
@@ -760,24 +811,48 @@ function EditInvoiceSheet({ invoiceId, onClose, autoOpenSend }: { invoiceId: num
               <Badge className={`${STATUS_COLORS[(invoice as any).status] ?? ''} border text-xs px-2 py-0.5 capitalize`}>
                 {(invoice as any).status}
               </Badge>
-              {(STATUS_ACTIONS[(invoice as any).status] ?? []).map(action => (
+              {canManageLifecycle && (STATUS_ACTIONS[(invoice as any).status] ?? []).map(action => (
                 <Button
                   key={action.label}
                   size="sm"
                   variant={action.variant}
-                  onClick={() => handleStatusChange(action.label === 'Mark Sent' ? 'sent' : action.label === 'Mark Paid' ? 'paid' : 'draft')}
-                  disabled={updateInvoice.isPending}
+                  onClick={() => action.label === 'Mark Paid' ? setPaymentDialogOpen(true) : handleStatusChange(action.label === 'Mark Sent' ? 'sent' : 'draft')}
+                  disabled={updateInvoice.isPending || markPaid.isPending}
                 >
                   {action.label}
                 </Button>
               ))}
-              {(invoice as any).status !== 'paid' && (invoice as any).status !== 'cancelled' && (
+              {canManageLifecycle && (invoice as any).status !== 'paid' && (invoice as any).status !== 'cancelled' && (
                 <Button size="sm" variant="outline" className="text-destructive border-destructive/50 hover:bg-destructive/5"
                   onClick={() => handleStatusChange('cancelled')} disabled={updateInvoice.isPending}>
                   Cancel
                 </Button>
               )}
+              {canManageLifecycle && (
+                (invoice as any).archivedAt ? (
+                  <Button size="sm" variant="outline" onClick={() => runLifecycle('restore')} disabled={restoreInvoice.isPending}>Restore</Button>
+                ) : (
+                  <Button size="sm" variant="outline" onClick={() => runLifecycle('archive')} disabled={archiveInvoice.isPending}>Archive</Button>
+                )
+              )}
+              {canPermanentlyDelete && (
+                <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setDeleteDialogOpen(true)}>
+                  <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
+                </Button>
+              )}
             </div>
+
+            {(invoice as any).paidAt && (
+              <div className="rounded-lg border bg-emerald-50/60 p-3 text-sm">
+                <p className="font-medium text-emerald-900">Paid {format(new Date((invoice as any).paidAt), 'MMM d, yyyy h:mm a')}</p>
+                <p className="text-emerald-800 capitalize">
+                  {String((invoice as any).paymentMethod ?? 'payment').replace('_', ' ')}
+                  {(invoice as any).paymentCardBrand ? ` · ${(invoice as any).paymentCardBrand}` : ''}
+                  {(invoice as any).paymentCardLast4 ? ` ending ${(invoice as any).paymentCardLast4}` : ''}
+                  {(invoice as any).paymentReference ? ` · Ref ${(invoice as any).paymentReference}` : ''}
+                </p>
+              </div>
+            )}
 
             {/* Quick actions */}
             {canSend && (
@@ -965,6 +1040,55 @@ function EditInvoiceSheet({ invoiceId, onClose, autoOpenSend }: { invoiceId: num
           </div>
         )}
       </SheetContent>
+      <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Record invoice payment</DialogTitle>
+            <DialogDescription>Choose how the payment was received. Do not enter full card or bank details.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Payment method</label>
+              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                <SelectTrigger><SelectValue placeholder="Select method" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Cash</SelectItem><SelectItem value="check">Check</SelectItem>
+                  <SelectItem value="card">Card</SelectItem><SelectItem value="ach">ACH</SelectItem>
+                  <SelectItem value="bank_transfer">Bank transfer</SelectItem><SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Reference (optional)</label>
+              <Input value={paymentReference} maxLength={200} onChange={e => setPaymentReference(e.target.value)} placeholder="Check number or receipt reference" />
+            </div>
+            {paymentMethod === 'card' && (
+              <div className="grid grid-cols-2 gap-3">
+                <Input value={paymentCardBrand} maxLength={50} onChange={e => setPaymentCardBrand(e.target.value)} placeholder="Card brand" />
+                <Input value={paymentCardLast4} inputMode="numeric" maxLength={4} onChange={e => setPaymentCardLast4(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="Last 4 digits" />
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPaymentDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleMarkPaid} disabled={!paymentMethod || markPaid.isPending || (paymentMethod === 'card' && !!paymentCardLast4 && paymentCardLast4.length !== 4)}>
+              {markPaid.isPending ? 'Recording…' : 'Record payment'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Permanently delete invoice?</DialogTitle><DialogDescription>This cannot be undone. Paid or linked invoices will be blocked and should be archived instead.</DialogDescription></DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+            <Button variant="destructive" disabled={deleteInvoice.isPending} onClick={() => invoiceId && deleteInvoice.mutate({ id: invoiceId, data: { confirm: true } }, {
+              onSuccess: () => { toast.success('Invoice deleted'); setDeleteDialogOpen(false); invalidateInvoice(); onClose(); },
+              onError: (err: any) => toast.error(err?.response?.data?.error ?? err?.message ?? 'Invoice cannot be deleted'),
+            })}>{deleteInvoice.isPending ? 'Deleting…' : 'Permanently delete'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Sheet>
   );
 }
@@ -980,6 +1104,7 @@ export default function FinancialsPage() {
   const [tab, setTab] = useState('invoices');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [showArchivedInvoices, setShowArchivedInvoices] = useState(false);
   const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
   const [editInvoiceId, setEditInvoiceId] = useState<number | null>(null);
   const [autoOpenSendForId, setAutoOpenSendForId] = useState<number | null>(null);
@@ -991,7 +1116,11 @@ export default function FinancialsPage() {
   const [cancelFilter, setCancelFilter] = useState<'all' | 'pending' | 'approved'>('all');
 
   // Queries
-  const { data: invoices, isLoading: invoicesLoading } = useListInvoices({}, { query: { queryKey: getListInvoicesQueryKey() } });
+  // Keep one canonical cache containing both lifecycle states; the table below
+  // selects active vs archived rows locally so archive/restore cannot expose a
+  // stale list from a different query key.
+  const invoiceParams = { includeArchived: true };
+  const { data: invoices, isLoading: invoicesLoading } = useListInvoices(invoiceParams, { query: { queryKey: getListInvoicesQueryKey(invoiceParams) } });
   const { data: summary } = useGetFinancialsSummary({ query: { queryKey: getGetFinancialsSummaryQueryKey() } });
   const { data: templates } = useListRecurringTemplates({ query: { queryKey: getListRecurringTemplatesQueryKey() } });
   const { data: automationStatus } = useGetBillingAutomationStatus({ query: { queryKey: getGetBillingAutomationStatusQueryKey() } });
@@ -1038,6 +1167,7 @@ export default function FinancialsPage() {
   };
 
   const filteredInvoices = (invoices ?? []).filter(inv => {
+    if (showArchivedInvoices ? !(inv as any).archivedAt : !!(inv as any).archivedAt) return false;
     if (statusFilter !== 'all' && inv.status !== statusFilter) return false;
     if (search) {
       const q = search.toLowerCase();
@@ -1062,6 +1192,10 @@ export default function FinancialsPage() {
           <p className="text-muted-foreground mt-1">Invoicing, payments, and revenue tracking.</p>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex rounded-md border p-0.5" aria-label="Invoice lifecycle view">
+            <Button size="sm" variant={!showArchivedInvoices ? 'default' : 'ghost'} onClick={() => setShowArchivedInvoices(false)}>Active Invoices</Button>
+            <Button size="sm" variant={showArchivedInvoices ? 'default' : 'ghost'} onClick={() => setShowArchivedInvoices(true)}>Archived History</Button>
+          </div>
           <ImportExportControls
             entity="invoices"
             entityLabel="Invoices"
@@ -1379,6 +1513,7 @@ export default function FinancialsPage() {
       <EditInvoiceSheet
         invoiceId={editInvoiceId ?? autoOpenSendForId}
         onClose={() => { setEditInvoiceId(null); setAutoOpenSendForId(null); }}
+        onRestored={() => setShowArchivedInvoices(false)}
         autoOpenSend={autoOpenSendForId != null && editInvoiceId == null}
       />
 

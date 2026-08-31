@@ -2402,6 +2402,87 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Invoice"
+    delete:
+      operationId: deleteInvoice
+      tags: [invoices]
+      summary: Permanently delete an invoice when no financial history must be preserved
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DestructiveDeleteInput"
+      responses:
+        "204":
+          description: Deleted
+        "409":
+          description: Deletion blocked because history must be preserved
+
+  /invoices/{id}/mark-paid:
+    post:
+      operationId: markInvoicePaid
+      tags: [invoices]
+      summary: Mark an invoice paid with a payment method
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarkInvoicePaidInput"
+      responses:
+        "200":
+          description: Paid invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+        "409":
+          description: Invoice is already paid
+
+  /invoices/{id}/archive:
+    post:
+      operationId: archiveInvoice
+      tags: [invoices]
+      summary: Archive an invoice
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Archived invoice
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Invoice" }
+
+  /invoices/{id}/restore:
+    post:
+      operationId: restoreInvoice
+      tags: [invoices]
+      summary: Restore an archived invoice
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Restored invoice
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Invoice" }
 
   /invoices/from-job/{jobId}:
     post:
@@ -5775,9 +5856,51 @@ paths:
           required: true
           schema:
             type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DestructiveDeleteInput"
       responses:
         "204":
           description: Deleted
+
+  /estimates/{id}/archive:
+    post:
+      operationId: archiveEstimate
+      tags: [estimates]
+      summary: Archive an estimate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Archived estimate
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Estimate" }
+
+  /estimates/{id}/restore:
+    post:
+      operationId: restoreEstimate
+      tags: [estimates]
+      summary: Restore an archived estimate
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Restored estimate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Estimate"
 
   /estimates/{id}/send:
     post:
@@ -8408,6 +8531,32 @@ components:
           type: number
           description: "Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)"
 
+    MarkInvoicePaidInput:
+      type: object
+      required: [paymentMethod]
+      properties:
+        paymentMethod:
+          type: string
+          enum: [cash, check, card, ach, bank_transfer, other]
+        paymentReference:
+          type: ["string", "null"]
+          maxLength: 200
+          description: Optional non-sensitive reference such as a check number
+        paymentCardBrand:
+          type: ["string", "null"]
+          maxLength: 50
+        paymentCardLast4:
+          type: ["string", "null"]
+          pattern: '^\d{4}$'
+
+    DestructiveDeleteInput:
+      type: object
+      required: [confirm]
+      properties:
+        confirm:
+          type: boolean
+          const: true
+
     EstimateRespondInput:
       type: object
       required: [action]
@@ -10748,6 +10897,15 @@ components:
         dueDate:
           type: ["string", "null"]
         paidAt:
+          type: ["string", "null"]
+        paymentMethod:
+          type: ["string", "null"]
+          enum: [cash, check, card, ach, bank_transfer, other, null]
+        paymentReference:
+          type: ["string", "null"]
+        paymentCardBrand:
+          type: ["string", "null"]
+        paymentCardLast4:
           type: ["string", "null"]
         notes:
           type: ["string", "null"]
@@ -13800,6 +13958,14 @@ components:
         dueDate:
           type: ["string", "null"]
         paidAt:
+          type: ["string", "null"]
+        paymentMethod:
+          type: ["string", "null"]
+        paymentReference:
+          type: ["string", "null"]
+        paymentCardBrand:
+          type: ["string", "null"]
+        paymentCardLast4:
           type: ["string", "null"]
         lineItems:
           type: array

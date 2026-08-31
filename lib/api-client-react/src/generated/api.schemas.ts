@@ -223,6 +223,21 @@ export const InvoiceStatus = {
   cancelled: 'cancelled',
 } as const;
 
+/**
+ * @nullable
+ */
+export type InvoicePaymentMethod = typeof InvoicePaymentMethod[keyof typeof InvoicePaymentMethod] | null;
+
+
+export const InvoicePaymentMethod = {
+  cash: 'cash',
+  check: 'check',
+  card: 'card',
+  ach: 'ach',
+  bank_transfer: 'bank_transfer',
+  other: 'other',
+} as const;
+
 export interface InvoiceLineItem {
   id: number;
   description: string;
@@ -248,6 +263,14 @@ export interface Invoice {
   dueDate?: string | null;
   /** @nullable */
   paidAt?: string | null;
+  /** @nullable */
+  paymentMethod?: InvoicePaymentMethod;
+  /** @nullable */
+  paymentReference?: string | null;
+  /** @nullable */
+  paymentCardBrand?: string | null;
+  /** @nullable */
+  paymentCardLast4?: string | null;
   /** @nullable */
   notes?: string | null;
   lineItems?: InvoiceLineItem[];
@@ -392,6 +415,43 @@ export interface UpdateEstimateInput {
   /** Percentage (deposit_pct) or fixed dollar amount (deposit_fixed) */
   depositValue?: number;
 }
+
+export type MarkInvoicePaidInputPaymentMethod = typeof MarkInvoicePaidInputPaymentMethod[keyof typeof MarkInvoicePaidInputPaymentMethod];
+
+
+export const MarkInvoicePaidInputPaymentMethod = {
+  cash: 'cash',
+  check: 'check',
+  card: 'card',
+  ach: 'ach',
+  bank_transfer: 'bank_transfer',
+  other: 'other',
+} as const;
+
+export interface MarkInvoicePaidInput {
+  paymentMethod: MarkInvoicePaidInputPaymentMethod;
+  /**
+     * Optional non-sensitive reference such as a check number
+     * @maxLength 200
+     * @nullable
+     */
+  paymentReference?: string | null;
+  /**
+     * @maxLength 50
+     * @nullable
+     */
+  paymentCardBrand?: string | null;
+  /**
+     * @nullable
+     * @pattern ^\d{4}$
+     */
+  paymentCardLast4?: string | null;
+}
+
+export const DestructiveDeleteInputValue = {
+  confirm: true,
+} as const;
+export type DestructiveDeleteInput = typeof DestructiveDeleteInputValue;
 
 export type EstimateRespondInputAction = typeof EstimateRespondInputAction[keyof typeof EstimateRespondInputAction];
 
@@ -4776,6 +4836,14 @@ export interface PortalInvoice {
   dueDate?: string | null;
   /** @nullable */
   paidAt?: string | null;
+  /** @nullable */
+  paymentMethod?: string | null;
+  /** @nullable */
+  paymentReference?: string | null;
+  /** @nullable */
+  paymentCardBrand?: string | null;
+  /** @nullable */
+  paymentCardLast4?: string | null;
   lineItems?: JobLineItem[];
   jobParts?: JobPart[];
   createdAt: string;

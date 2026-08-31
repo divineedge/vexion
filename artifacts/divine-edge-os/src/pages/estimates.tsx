@@ -19,6 +19,8 @@ import {
   useCreateEstimate,
   useUpdateEstimate,
   useDeleteEstimate,
+  useArchiveEstimate,
+  useRestoreEstimate,
   useSendEstimate,
   useResendEstimate,
   useConvertEstimateToJob,
@@ -282,7 +284,7 @@ function EstimatePreviewDialog({ estimate, settings, open, onClose }: {
 }
 
 export default function EstimatesPage() {
-  const { canManageOffice } = useAuth();
+  const { canManageOffice, user } = useAuth();
   const qc = useQueryClient();
   const search = useSearch();
   const [, setLocation] = useLocation();
@@ -293,6 +295,7 @@ export default function EstimatesPage() {
   const [estimateDateTo, setEstimateDateTo] = useState('');
   const [estimateSort, setEstimateSort] = useState<'newest' | 'oldest' | 'customer' | 'expiring' | 'value_desc' | 'value_asc'>('newest');
   const [estimateSearch, setEstimateSearch] = useState('');
+  const [showArchivedEstimates, setShowArchivedEstimates] = useState(false);
   const [assigneeFilter, setAssigneeFilter] = useState<number | ''>('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -367,10 +370,11 @@ export default function EstimatesPage() {
   const debouncedCreateSupplySearch = useDebounce(createSupplySearch, 300);
   const [createSupplyQtys, setCreateSupplyQtys] = useState<Record<number, string>>({});
 
-  const listParams = { ...(statusFilter ? { status: statusFilter } : {}), ...(assigneeFilter ? { assigneeId: assigneeFilter } : {}) };
+  const listParams = { ...(statusFilter ? { status: statusFilter } : {}), ...(assigneeFilter ? { assigneeId: assigneeFilter } : {}), ...(showArchivedEstimates ? { includeArchived: true } : {}) };
   const { data: estimates, isLoading } = useListEstimates(listParams, {
     query: { queryKey: getListEstimatesQueryKey(listParams) },
   });
+  const lifecycleEstimates = (estimates ?? []).filter(e => showArchivedEstimates ? !!e.archivedAt : !e.archivedAt);
   const { data: pipeline } = useGetEstimatePipeline({ query: { queryKey: getGetEstimatePipelineQueryKey() } });
   const { data: selectedEstimate } = useGetEstimate(selectedId!, {
     query: { enabled: selectedId != null, queryKey: getGetEstimateQueryKey(selectedId!) },
@@ -434,6 +438,8 @@ export default function EstimatesPage() {
   const createEstimate = useCreateEstimate();
   const updateEstimate = useUpdateEstimate();
   const deleteEstimate = useDeleteEstimate();
+  const archiveEstimate = useArchiveEstimate();
+  const restoreEstimate = useRestoreEstimate();
   const sendEstimate = useSendEstimate();
   const resendEstimate = useResendEstimate();
   const convertToJob = useConvertEstimateToJob();
@@ -661,9 +667,23 @@ export default function EstimatesPage() {
   }
 
   function handleDelete(id: number) {
-    deleteEstimate.mutate({ id }, {
+    deleteEstimate.mutate({ id, data: { confirm: true } }, {
       onSuccess: () => { toast.success('Deleted'); invalidate(); setDeleteDialogId(null); if (selectedId === id) setSelectedId(null); },
-      onError: () => toast.error('Failed to delete'),
+      onError: (err: any) => toast.error(err?.response?.data?.error ?? err?.message ?? 'Estimate cannot be deleted'),
+    });
+  }
+
+  function handleEstimateLifecycle(action: 'archive' | 'restore') {
+    if (!selectedEstimate) return;
+    const mutation = action === 'archive' ? archiveEstimate : restoreEstimate;
+    mutation.mutate({ id: selectedEstimate.id }, {
+      onSuccess: () => {
+        toast.success(action === 'archive' ? 'Estimate archived' : 'Estimate restored');
+        invalidate();
+        if (action === 'restore') setShowArchivedEstimates(false);
+        setSelectedId(null);
+      },
+      onError: (err: any) => toast.error(err?.response?.data?.error ?? err?.message ?? `Failed to ${action} estimate`),
     });
   }
 
@@ -680,6 +700,10 @@ export default function EstimatesPage() {
           <p className="text-muted-foreground mt-1">Manage price proposals and convert them to jobs.{Array.isArray(estimates) && (estimates as any[]).length > 0 ? ` · ${(estimates as any[]).length} total` : ''}</p>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex rounded-md border p-0.5" aria-label="Estimate lifecycle view">
+            <Button size="sm" variant={!showArchivedEstimates ? 'default' : 'ghost'} onClick={() => setShowArchivedEstimates(false)}>Active Estimates</Button>
+            <Button size="sm" variant={showArchivedEstimates ? 'default' : 'ghost'} onClick={() => setShowArchivedEstimates(true)}>Archived History</Button>
+          </div>
           <ImportExportControls
             entity="estimates"
             entityLabel="Estimates"
@@ -845,7 +869,7 @@ export default function EstimatesPage() {
         <CardContent className="p-0">
           {isLoading ? (
             <div className="py-12 text-center text-muted-foreground">Loading estimates...</div>
-          ) : !estimates?.length ? (
+          ) : !lifecycleEstimates.length ? (
             <div className="py-12 text-center text-muted-foreground">
               <FileText className="w-10 h-10 mx-auto mb-3 opacity-30" />
               <p>No estimates yet.</p>
@@ -854,10 +878,10 @@ export default function EstimatesPage() {
           ) : (
             <div className="divide-y">
               {(estimateSearch.trim() || visitModeFilter || estimateDateFrom || estimateDateTo || !!statusFilter || !!assigneeFilter) && (() => {
-                const n = (estimates ?? []).filter(e => !estimateSearch.trim() || `#${e.id}`.includes(estimateSearch) || (e.customerName ?? '').toLowerCase().includes(estimateSearch.toLowerCase()) || (e.propertyAddress ?? '').toLowerCase().includes(estimateSearch.toLowerCase())).filter(e => !visitModeFilter || e.visitMode === visitModeFilter).filter(e => !estimateDateFrom || (e.createdAt ?? '') >= estimateDateFrom).filter(e => !estimateDateTo || (e.createdAt ?? '') <= estimateDateTo + 'T23:59:59').filter(e => !statusFilter || e.status === statusFilter).filter(e => !assigneeFilter || (e as any).assigneeId === assigneeFilter).length;
-                return <div key="est-count" className="px-5 py-2 text-xs text-muted-foreground bg-muted/20" title={`${n} of ${(estimates ?? []).length} estimates match the active filters`}>Showing {n} of {(estimates ?? []).length} estimate{(estimates ?? []).length !== 1 ? 's' : ''}</div>;
+                const n = lifecycleEstimates.filter(e => !estimateSearch.trim() || `#${e.id}`.includes(estimateSearch) || (e.customerName ?? '').toLowerCase().includes(estimateSearch.toLowerCase()) || (e.propertyAddress ?? '').toLowerCase().includes(estimateSearch.toLowerCase())).filter(e => !visitModeFilter || e.visitMode === visitModeFilter).filter(e => !estimateDateFrom || (e.createdAt ?? '') >= estimateDateFrom).filter(e => !estimateDateTo || (e.createdAt ?? '') <= estimateDateTo + 'T23:59:59').filter(e => !statusFilter || e.status === statusFilter).filter(e => !assigneeFilter || (e as any).assigneeId === assigneeFilter).length;
+                return <div key="est-count" className="px-5 py-2 text-xs text-muted-foreground bg-muted/20" title={`${n} of ${lifecycleEstimates.length} estimates match the active filters`}>Showing {n} of {lifecycleEstimates.length} estimate{lifecycleEstimates.length !== 1 ? 's' : ''}</div>;
               })()}
-              {(estimates ?? [])
+              {lifecycleEstimates
                 .filter(e => !estimateSearch.trim() || `#${e.id}`.includes(estimateSearch) || (e.customerName ?? '').toLowerCase().includes(estimateSearch.toLowerCase()) || (e.propertyAddress ?? '').toLowerCase().includes(estimateSearch.toLowerCase()))
                 .filter(e => !visitModeFilter || e.visitMode === visitModeFilter)
                 .filter(e => !estimateDateFrom || (e.createdAt ?? '') >= estimateDateFrom)
@@ -1534,9 +1558,16 @@ export default function EstimatesPage() {
                     </Button>
                   )}
                   {canManageOffice && (
-                    <Button size="sm" variant="ghost" className="gap-2 text-destructive ml-auto" title="Permanently delete this estimate" onClick={() => setDeleteDialogId(selectedEstimate.id)}>
-                      <Trash2 className="w-3.5 h-3.5" /> Delete
-                    </Button>
+                    <>
+                      <Button size="sm" variant="outline" className="gap-2 ml-auto" onClick={() => handleEstimateLifecycle((selectedEstimate as any).archivedAt ? 'restore' : 'archive')}>
+                        {(selectedEstimate as any).archivedAt ? 'Restore' : 'Archive'}
+                      </Button>
+                      {user?.role === 'company_owner' && (
+                        <Button size="sm" variant="ghost" className="gap-2 text-destructive" title="Permanently delete this estimate" onClick={() => setDeleteDialogId(selectedEstimate.id)}>
+                          <Trash2 className="w-3.5 h-3.5" /> Delete
+                        </Button>
+                      )}
+                    </>
                   )}
                 </div>
 

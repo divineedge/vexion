@@ -91,6 +91,7 @@ import type {
   CustomerUpdate,
   DashboardSummary,
   DenyJobCancellationBody,
+  DestructiveDeleteInput,
   Division,
   DivisionInput,
   EmployeeFormTemplate,
@@ -214,6 +215,7 @@ import type {
   LocationStockAdjustInput,
   LocationStockEntry,
   LoginInput,
+  MarkInvoicePaidInput,
   MasterClockState,
   MediaAttachment,
   PauseSeriesInput,
@@ -8599,6 +8601,292 @@ export const useUpdateInvoice = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getUpdateInvoiceMutationOptions(options));
+    }
+
+export const getDeleteInvoiceUrl = (id: number,) => {
+
+
+
+
+  return `/api/invoices/${id}`
+}
+
+/**
+ * @summary Permanently delete an invoice when no financial history must be preserved
+ */
+export const deleteInvoice = async (id: number,
+    destructiveDeleteInput: DestructiveDeleteInput, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteInvoiceUrl(id),
+  {
+    ...options,
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(destructiveDeleteInput)
+  }
+);}
+
+
+
+
+
+export const getDeleteInvoiceMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteInvoice>>, TError,{id: number;data: BodyType<DestructiveDeleteInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteInvoice>>, TError,{id: number;data: BodyType<DestructiveDeleteInput>}, TContext> => {
+
+const mutationKey = ['deleteInvoice'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteInvoice>>, {id: number;data: BodyType<DestructiveDeleteInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  deleteInvoice(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteInvoiceMutationResult = NonNullable<Awaited<ReturnType<typeof deleteInvoice>>>
+    export type DeleteInvoiceMutationBody = BodyType<DestructiveDeleteInput>
+    export type DeleteInvoiceMutationError = ErrorType<void>
+
+    /**
+ * @summary Permanently delete an invoice when no financial history must be preserved
+ */
+export const useDeleteInvoice = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteInvoice>>, TError,{id: number;data: BodyType<DestructiveDeleteInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteInvoice>>,
+        TError,
+        {id: number;data: BodyType<DestructiveDeleteInput>},
+        TContext
+      > => {
+      return useMutation(getDeleteInvoiceMutationOptions(options));
+    }
+
+export const getMarkInvoicePaidUrl = (id: number,) => {
+
+
+
+
+  return `/api/invoices/${id}/mark-paid`
+}
+
+/**
+ * @summary Mark an invoice paid with a payment method
+ */
+export const markInvoicePaid = async (id: number,
+    markInvoicePaidInput: MarkInvoicePaidInput, options?: RequestInit): Promise<Invoice> => {
+
+  return customFetch<Invoice>(getMarkInvoicePaidUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(markInvoicePaidInput)
+  }
+);}
+
+
+
+
+
+export const getMarkInvoicePaidMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markInvoicePaid>>, TError,{id: number;data: BodyType<MarkInvoicePaidInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markInvoicePaid>>, TError,{id: number;data: BodyType<MarkInvoicePaidInput>}, TContext> => {
+
+const mutationKey = ['markInvoicePaid'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markInvoicePaid>>, {id: number;data: BodyType<MarkInvoicePaidInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  markInvoicePaid(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkInvoicePaidMutationResult = NonNullable<Awaited<ReturnType<typeof markInvoicePaid>>>
+    export type MarkInvoicePaidMutationBody = BodyType<MarkInvoicePaidInput>
+    export type MarkInvoicePaidMutationError = ErrorType<void>
+
+    /**
+ * @summary Mark an invoice paid with a payment method
+ */
+export const useMarkInvoicePaid = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markInvoicePaid>>, TError,{id: number;data: BodyType<MarkInvoicePaidInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markInvoicePaid>>,
+        TError,
+        {id: number;data: BodyType<MarkInvoicePaidInput>},
+        TContext
+      > => {
+      return useMutation(getMarkInvoicePaidMutationOptions(options));
+    }
+
+export const getArchiveInvoiceUrl = (id: number,) => {
+
+
+
+
+  return `/api/invoices/${id}/archive`
+}
+
+/**
+ * @summary Archive an invoice
+ */
+export const archiveInvoice = async (id: number, options?: RequestInit): Promise<Invoice> => {
+
+  return customFetch<Invoice>(getArchiveInvoiceUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getArchiveInvoiceMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof archiveInvoice>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof archiveInvoice>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['archiveInvoice'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof archiveInvoice>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  archiveInvoice(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ArchiveInvoiceMutationResult = NonNullable<Awaited<ReturnType<typeof archiveInvoice>>>
+
+    export type ArchiveInvoiceMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Archive an invoice
+ */
+export const useArchiveInvoice = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof archiveInvoice>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof archiveInvoice>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getArchiveInvoiceMutationOptions(options));
+    }
+
+export const getRestoreInvoiceUrl = (id: number,) => {
+
+
+
+
+  return `/api/invoices/${id}/restore`
+}
+
+/**
+ * @summary Restore an archived invoice
+ */
+export const restoreInvoice = async (id: number, options?: RequestInit): Promise<Invoice> => {
+
+  return customFetch<Invoice>(getRestoreInvoiceUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRestoreInvoiceMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof restoreInvoice>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof restoreInvoice>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['restoreInvoice'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof restoreInvoice>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  restoreInvoice(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RestoreInvoiceMutationResult = NonNullable<Awaited<ReturnType<typeof restoreInvoice>>>
+
+    export type RestoreInvoiceMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Restore an archived invoice
+ */
+export const useRestoreInvoice = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof restoreInvoice>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof restoreInvoice>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getRestoreInvoiceMutationOptions(options));
     }
 
 export const getCreateInvoiceFromJobUrl = (jobId: number,) => {
@@ -20506,14 +20794,15 @@ export const getDeleteEstimateUrl = (id: number,) => {
 /**
  * @summary Delete an estimate
  */
-export const deleteEstimate = async (id: number, options?: RequestInit): Promise<void> => {
+export const deleteEstimate = async (id: number,
+    destructiveDeleteInput: DestructiveDeleteInput, options?: RequestInit): Promise<void> => {
 
   return customFetch<void>(getDeleteEstimateUrl(id),
   {
     ...options,
-    method: 'DELETE'
-
-
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(destructiveDeleteInput)
   }
 );}
 
@@ -20522,8 +20811,8 @@ export const deleteEstimate = async (id: number, options?: RequestInit): Promise
 
 
 export const getDeleteEstimateMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteEstimate>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof deleteEstimate>>, TError,{id: number}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteEstimate>>, TError,{id: number;data: BodyType<DestructiveDeleteInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteEstimate>>, TError,{id: number;data: BodyType<DestructiveDeleteInput>}, TContext> => {
 
 const mutationKey = ['deleteEstimate'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -20535,10 +20824,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteEstimate>>, {id: number}> = (props) => {
-          const {id} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteEstimate>>, {id: number;data: BodyType<DestructiveDeleteInput>}> = (props) => {
+          const {id,data} = props ?? {};
 
-          return  deleteEstimate(id,requestOptions)
+          return  deleteEstimate(id,data,requestOptions)
         }
 
 
@@ -20549,21 +20838,163 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type DeleteEstimateMutationResult = NonNullable<Awaited<ReturnType<typeof deleteEstimate>>>
-
+    export type DeleteEstimateMutationBody = BodyType<DestructiveDeleteInput>
     export type DeleteEstimateMutationError = ErrorType<unknown>
 
     /**
  * @summary Delete an estimate
  */
 export const useDeleteEstimate = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteEstimate>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteEstimate>>, TError,{id: number;data: BodyType<DestructiveDeleteInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof deleteEstimate>>,
+        TError,
+        {id: number;data: BodyType<DestructiveDeleteInput>},
+        TContext
+      > => {
+      return useMutation(getDeleteEstimateMutationOptions(options));
+    }
+
+export const getArchiveEstimateUrl = (id: number,) => {
+
+
+
+
+  return `/api/estimates/${id}/archive`
+}
+
+/**
+ * @summary Archive an estimate
+ */
+export const archiveEstimate = async (id: number, options?: RequestInit): Promise<Estimate> => {
+
+  return customFetch<Estimate>(getArchiveEstimateUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getArchiveEstimateMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof archiveEstimate>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof archiveEstimate>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['archiveEstimate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof archiveEstimate>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  archiveEstimate(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ArchiveEstimateMutationResult = NonNullable<Awaited<ReturnType<typeof archiveEstimate>>>
+
+    export type ArchiveEstimateMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Archive an estimate
+ */
+export const useArchiveEstimate = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof archiveEstimate>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof archiveEstimate>>,
         TError,
         {id: number},
         TContext
       > => {
-      return useMutation(getDeleteEstimateMutationOptions(options));
+      return useMutation(getArchiveEstimateMutationOptions(options));
+    }
+
+export const getRestoreEstimateUrl = (id: number,) => {
+
+
+
+
+  return `/api/estimates/${id}/restore`
+}
+
+/**
+ * @summary Restore an archived estimate
+ */
+export const restoreEstimate = async (id: number, options?: RequestInit): Promise<Estimate> => {
+
+  return customFetch<Estimate>(getRestoreEstimateUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRestoreEstimateMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof restoreEstimate>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof restoreEstimate>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['restoreEstimate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof restoreEstimate>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  restoreEstimate(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RestoreEstimateMutationResult = NonNullable<Awaited<ReturnType<typeof restoreEstimate>>>
+
+    export type RestoreEstimateMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Restore an archived estimate
+ */
+export const useRestoreEstimate = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof restoreEstimate>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof restoreEstimate>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getRestoreEstimateMutationOptions(options));
     }
 
 export const getSendEstimateUrl = (id: number,) => {

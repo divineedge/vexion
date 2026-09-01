@@ -18,6 +18,8 @@ export interface JobUpdate {
   priority?: JobUpdatePriority;
   assigneeId?: number;
   crewId?: number;
+  /** @nullable */
+  serviceId?: number | null;
   scheduledAt?: string;
   estimatedDuration?: number;
   recurrenceRule?: RecurrenceRule;

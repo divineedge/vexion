@@ -6,6 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ServiceFieldRequirements } from './serviceFieldRequirements';
+import type { ServicePricingMatrixItem } from './servicePricingMatrixItem';
+import type { ServicePricingMode } from './servicePricingMode';
 
 export interface Service {
   id: number;
@@ -16,6 +18,16 @@ export interface Service {
   /** @nullable */
   category?: string | null;
   basePrice: number;
+  /**
+     * Default estimated duration in minutes
+     * @nullable
+     */
+  estimatedDuration?: number | null;
+  pricingMode?: ServicePricingMode;
+  /** @nullable */
+  pricingMatrix?: ServicePricingMatrixItem[] | null;
+  /** @nullable */
+  linkedZoneTypeId?: string | null;
   isActive: boolean;
   fieldRequirements: ServiceFieldRequirements;
   createdAt: string;

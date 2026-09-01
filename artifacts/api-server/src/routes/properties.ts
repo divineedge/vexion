@@ -543,7 +543,11 @@ router.get("/properties", async (req, res): Promise<void> => {
       eq(customersTable.tenantId, tenantId),
     ))
     .where(baseWhere)
-    .orderBy(propertiesTable.createdAt);
+    .orderBy(
+      desc(sql`(SELECT count(*) FROM jobs usage_jobs WHERE usage_jobs.property_id = ${propertiesTable.id} AND usage_jobs.tenant_id = ${tenantId} AND usage_jobs.archived_at IS NULL)`),
+      desc(sql`(SELECT max(usage_jobs.scheduled_at) FROM jobs usage_jobs WHERE usage_jobs.property_id = ${propertiesTable.id} AND usage_jobs.tenant_id = ${tenantId} AND usage_jobs.archived_at IS NULL)`),
+      propertiesTable.createdAt,
+    );
 
   res.json(rows.map(r => formatProperty(r.property, r.customerName)));
 });

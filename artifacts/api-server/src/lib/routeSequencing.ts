@@ -40,6 +40,15 @@ function driveMinutes(milesDistance: number): number {
   return (milesDistance / AVG_SPEED_MPH) * 60;
 }
 
+/** Conservative haversine/28mph estimate used when road routing is unavailable. */
+export function estimatedDriveMinutes(
+  origin: { lat: number | null; lng: number | null },
+  destination: { lat: number | null; lng: number | null },
+): number {
+  if (origin.lat == null || origin.lng == null || destination.lat == null || destination.lng == null) return 0;
+  return Math.round(driveMinutes(haversineMiles(origin.lat, origin.lng, destination.lat, destination.lng)));
+}
+
 /**
  * Sequences stops into an efficient nearest-neighbor visiting order starting
  * and ending at the depot. Stops with no lat/lng are appended at the end

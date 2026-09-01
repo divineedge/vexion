@@ -2,9 +2,11 @@ import React from 'react';
 import {
   getListCustomersQueryKey,
   getListPropertiesQueryKey,
+  getListServicesQueryKey,
   useCreateJob,
   useListCustomers,
   useListProperties,
+  useListServices,
   useUpdateJobRoute,
 } from '@workspace/api-client-react';
 import { Badge } from '@/components/ui/badge';
@@ -15,9 +17,10 @@ import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { buildRecurrenceRule, DAY_LABELS, EMPTY_JOB, type NewJobForm } from '@/components/jobs/JobFormFields';
 import { useDebounce } from '@/hooks/use-debounce';
 import { cn } from '@/lib/utils';
-import { Check, ChevronLeft, ChevronsUpDown, Plus, Trash2 } from 'lucide-react';
+import { Check, ChevronLeft, ChevronsUpDown, Plus, RefreshCw, Trash2 } from 'lucide-react';
 
 type BulkRow = {
   key: number;
@@ -29,6 +32,56 @@ type BulkRow = {
 
 type AssignmentUser = { id: number; name: string; role: string };
 type AssignmentCrew = { id: number; name: string };
+type BulkRecurrence = Pick<
+  NewJobForm,
+  | 'recurring'
+  | 'recurrencePattern'
+  | 'recurrenceInterval'
+  | 'recurrenceDaysOfWeek'
+  | 'recurrenceDayOfMonth'
+  | 'recurrenceWeekOfMonth'
+  | 'recurrenceDayOfWeek'
+  | 'recurrenceEndCondition'
+  | 'recurrenceEndAfter'
+  | 'recurrenceEndDate'
+>;
+
+const EMPTY_BULK_RECURRENCE: BulkRecurrence = {
+  recurring: EMPTY_JOB.recurring,
+  recurrencePattern: EMPTY_JOB.recurrencePattern,
+  recurrenceInterval: EMPTY_JOB.recurrenceInterval,
+  recurrenceDaysOfWeek: EMPTY_JOB.recurrenceDaysOfWeek,
+  recurrenceDayOfMonth: EMPTY_JOB.recurrenceDayOfMonth,
+  recurrenceWeekOfMonth: EMPTY_JOB.recurrenceWeekOfMonth,
+  recurrenceDayOfWeek: EMPTY_JOB.recurrenceDayOfWeek,
+  recurrenceEndCondition: EMPTY_JOB.recurrenceEndCondition,
+  recurrenceEndAfter: EMPTY_JOB.recurrenceEndAfter,
+  recurrenceEndDate: EMPTY_JOB.recurrenceEndDate,
+};
+
+const WEEK_OF_MONTH_LABELS: Record<string, string> = {
+  '1': 'First',
+  '2': 'Second',
+  '3': 'Third',
+  '4': 'Fourth',
+  '5': 'Last',
+};
+
+function describeRecurrence(recurrence: BulkRecurrence) {
+  if (!recurrence.recurring) return 'One-time';
+  let schedule = '';
+  if (recurrence.recurrencePattern === 'weekly' || recurrence.recurrencePattern === 'biweekly') {
+    const days = recurrence.recurrenceDaysOfWeek.map(day => DAY_LABELS[day]).join(', ');
+    schedule = `${recurrence.recurrencePattern === 'biweekly' ? 'Every 2 weeks' : 'Weekly'} on ${days}`;
+  } else if (recurrence.recurrencePattern === 'monthly_date') {
+    schedule = `Monthly on day ${recurrence.recurrenceDayOfMonth}`;
+  } else {
+    schedule = `Monthly on the ${WEEK_OF_MONTH_LABELS[recurrence.recurrenceWeekOfMonth].toLowerCase()} ${DAY_LABELS[Number(recurrence.recurrenceDayOfWeek)]}`;
+  }
+  if (recurrence.recurrenceEndCondition === 'after') return `${schedule}, ${recurrence.recurrenceEndAfter} occurrences`;
+  if (recurrence.recurrenceEndCondition === 'on_date') return `${schedule}, through ${recurrence.recurrenceEndDate}`;
+  return `${schedule}, no end date`;
+}
 
 interface BulkJobSchedulerProps {
   open: boolean;
@@ -75,7 +128,7 @@ function CustomerJobRow({
   );
 
   React.useEffect(() => {
-    if (properties.length === 1 && row.propertyId !== String(properties[0].id)) {
+    if (properties.length > 0 && !row.propertyId) {
       onChange({ propertyId: String(properties[0].id) });
     }
   }, [properties, row.propertyId, onChange]);
@@ -110,7 +163,12 @@ function CustomerJobRow({
                       }}
                     >
                       <Check className={cn('w-4 h-4', row.customerId === String(customer.id) ? 'opacity-100' : 'opacity-0')} />
-                      {customer.name}
+                      <span className="min-w-0">
+                        <span className="block truncate">{customer.name}</span>
+                        {(customer.physicalAddress || customer.primaryPropertyAddress) && (
+                          <span className="block truncate text-xs text-muted-foreground">{customer.physicalAddress || customer.primaryPropertyAddress}</span>
+                        )}
+                      </span>
                     </CommandItem>
                   ))}
                 </CommandGroup>
@@ -167,28 +225,37 @@ export function BulkJobScheduler({
   const [step, setStep] = React.useState<'edit' | 'review' | 'result'>('edit');
   const [destination, setDestination] = React.useState<'route' | 'unassigned'>(routeTemplateId ? 'route' : 'unassigned');
   const [title, setTitle] = React.useState('');
+  const [serviceId, setServiceId] = React.useState('');
   const [description, setDescription] = React.useState('');
   const [priority, setPriority] = React.useState<'low' | 'normal' | 'high' | 'urgent'>('normal');
   const [scheduledDate, setScheduledDate] = React.useState(routeDate ?? '');
   const [scheduledTime, setScheduledTime] = React.useState('09:00');
   const [assigneeId, setAssigneeId] = React.useState('');
   const [crewId, setCrewId] = React.useState('');
+  const [recurrence, setRecurrence] = React.useState<BulkRecurrence>({ ...EMPTY_BULK_RECURRENCE });
   const [rows, setRows] = React.useState<BulkRow[]>([newRow(), newRow()]);
   const [submitting, setSubmitting] = React.useState(false);
   const [result, setResult] = React.useState<{ created: number; routed: number; routeFailed: string[]; failed: string[] } | null>(null);
   const createJob = useCreateJob();
   const updateJobRoute = useUpdateJobRoute();
+  const { data: services = [] } = useListServices(
+    { activeOnly: true },
+    { query: { queryKey: getListServicesQueryKey({ activeOnly: true }) } },
+  );
+  const selectedService = services.find(service => String(service.id) === serviceId);
 
   const reset = React.useCallback(() => {
     setStep('edit');
     setDestination(routeTemplateId ? 'route' : 'unassigned');
     setTitle('');
+    setServiceId('');
     setDescription('');
     setPriority('normal');
     setScheduledDate(routeDate ?? '');
     setScheduledTime('09:00');
     setAssigneeId('');
     setCrewId('');
+    setRecurrence({ ...EMPTY_BULK_RECURRENCE, recurrenceDaysOfWeek: [] });
     setRows([newRow(), newRow()]);
     setSubmitting(false);
     setResult(null);
@@ -205,15 +272,33 @@ export function BulkJobScheduler({
   const validationError = React.useMemo(() => {
     if (!title.trim()) return 'Enter the shared service or job title.';
     if (!scheduledDate || !scheduledTime) return 'Choose the scheduled date and time.';
+    if (recurrence.recurring && ['weekly', 'biweekly'].includes(recurrence.recurrencePattern) && recurrence.recurrenceDaysOfWeek.length === 0) {
+      return 'Choose at least one recurrence day.';
+    }
+    if (recurrence.recurring && recurrence.recurrencePattern === 'monthly_date'
+      && (!Number.isInteger(Number(recurrence.recurrenceDayOfMonth)) || Number(recurrence.recurrenceDayOfMonth) < 1 || Number(recurrence.recurrenceDayOfMonth) > 31)) {
+      return 'Enter a monthly day from 1 through 31.';
+    }
+    if (recurrence.recurring && recurrence.recurrenceEndCondition === 'after'
+      && (!Number.isInteger(Number(recurrence.recurrenceEndAfter)) || Number(recurrence.recurrenceEndAfter) < 1)) {
+      return 'Enter at least one occurrence.';
+    }
+    if (recurrence.recurring && recurrence.recurrenceEndCondition === 'on_date' && !recurrence.recurrenceEndDate) {
+      return 'Choose an end date for the recurrence.';
+    }
+    if (recurrence.recurring && recurrence.recurrenceEndCondition === 'on_date' && recurrence.recurrenceEndDate < scheduledDate) {
+      return 'Choose a recurrence end date on or after the scheduled date.';
+    }
     if (destination === 'route' && !routeTemplateId) return 'Open a route and date before choosing direct route assignment.';
     const activeRows = rows.filter(row => row.customerId || row.duration);
     if (activeRows.length === 0) return 'Add at least one customer.';
     if (activeRows.some(row => !row.customerId)) return 'Choose a customer for every row.';
-    if (activeRows.some(row => !Number.isFinite(Number(row.duration)) || Number(row.duration) <= 0)) return 'Enter a positive duration for every customer.';
+    if (activeRows.some(row => row.duration && (!Number.isFinite(Number(row.duration)) || Number(row.duration) <= 0))) return 'Enter a positive duration for every customer.';
+    if (!serviceId && activeRows.some(row => !row.duration)) return 'Enter a duration for every customer, or select a service that calculates it.';
     const keys = activeRows.map(row => `${row.customerId}:${row.propertyId || 'none'}`);
     if (new Set(keys).size !== keys.length) return 'The same customer and property is listed more than once.';
     return null;
-  }, [destination, routeTemplateId, rows, scheduledDate, scheduledTime, title]);
+  }, [destination, recurrence, routeTemplateId, rows, scheduledDate, scheduledTime, serviceId, title]);
 
   const activeRows = rows.filter(row => row.customerId || row.duration);
   const scheduledAt = scheduledDate && scheduledTime ? new Date(`${scheduledDate}T${scheduledTime}:00`).toISOString() : '';
@@ -221,16 +306,20 @@ export function BulkJobScheduler({
   const submit = async () => {
     if (validationError || submitting) return;
     setSubmitting(true);
+    const recurrenceRule = buildRecurrenceRule({ ...EMPTY_JOB, ...recurrence });
     const summary = { created: 0, routed: 0, routeFailed: [] as string[], failed: [] as string[] };
     for (const row of activeRows) {
       const label = row.customerName || `Customer #${row.customerId}`;
-      const estimatedDuration = durationUnit === 'hours'
-        ? Math.round(Number(row.duration) * 60)
-        : Math.round(Number(row.duration));
+      const estimatedDuration = row.duration
+        ? durationUnit === 'hours'
+          ? Math.round(Number(row.duration) * 60)
+          : Math.round(Number(row.duration))
+        : undefined;
       try {
         const job = await createJob.mutateAsync({
           data: {
             title: title.trim(),
+            serviceId: serviceId ? Number(serviceId) : undefined,
             description: description.trim() || undefined,
             scheduledAt,
             priority,
@@ -239,6 +328,7 @@ export function BulkJobScheduler({
             estimatedDuration,
             assigneeId: assigneeId ? Number(assigneeId) : undefined,
             crewId: crewId ? Number(crewId) : undefined,
+            recurrenceRule,
           },
         });
         summary.created++;
@@ -293,7 +383,42 @@ export function BulkJobScheduler({
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Service / Job Title</label>
+                <label className="text-sm font-medium">Service</label>
+                <Select
+                  value={serviceId || 'none'}
+                  onValueChange={value => {
+                    if (value === 'none') {
+                      setServiceId('');
+                      return;
+                    }
+                    const service = services.find(item => String(item.id) === value);
+                    if (!service) return;
+                    setServiceId(value);
+                    setTitle(service.name);
+                    const defaultDuration = service.pricingMode === 'matrix' ? '' : service.estimatedDuration != null
+                      ? String(durationUnit === 'hours' ? service.estimatedDuration / 60 : service.estimatedDuration)
+                      : '';
+                    setRows(current => current.map(row => row.duration ? row : { ...row, duration: defaultDuration }));
+                  }}
+                >
+                  <SelectTrigger data-testid="select-bulk-job-service"><SelectValue placeholder="Optional catalog service..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No catalog service</SelectItem>
+                    {services.map(service => (
+                      <SelectItem key={service.id} value={String(service.id)}>
+                        {service.name}{service.pricingMode === 'matrix' ? ' (matrix)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {selectedService?.pricingMode === 'matrix'
+                    ? 'Price and estimated time are calculated from each selected property’s measurements.'
+                    : 'The selected service supplies invoice pricing and a default duration.'}
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Job Title</label>
                 <Input value={title} onChange={event => setTitle(event.target.value)} placeholder="e.g. Weekly lawn service" data-testid="input-bulk-job-title" />
               </div>
               <div className="space-y-1.5">
@@ -337,6 +462,138 @@ export function BulkJobScheduler({
               </div>
             </div>
 
+            <div className="rounded-lg border p-4 space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <label className="text-sm font-medium flex items-center gap-1.5">
+                    <RefreshCw className="w-3.5 h-3.5 text-primary" /> Make Recurring
+                  </label>
+                  <p className="text-xs text-muted-foreground">Each customer row starts its own independent series using this shared schedule.</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={recurrence.recurring}
+                  title={recurrence.recurring ? 'Make these one-time jobs' : 'Make every customer job recurring'}
+                  onClick={() => setRecurrence(current => {
+                    const recurring = !current.recurring;
+                    if (!recurring || current.recurrenceDaysOfWeek.length > 0 || !scheduledDate) return { ...current, recurring };
+                    const date = new Date(`${scheduledDate}T00:00:00`);
+                    return {
+                      ...current,
+                      recurring,
+                      recurrenceDaysOfWeek: [date.getDay()],
+                      recurrenceDayOfMonth: String(date.getDate()),
+                      recurrenceDayOfWeek: String(date.getDay()),
+                    };
+                  })}
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${recurrence.recurring ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+                  data-testid="toggle-bulk-job-recurrence"
+                >
+                  <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${recurrence.recurring ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                </button>
+              </div>
+
+              {recurrence.recurring && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 rounded-lg bg-muted/20 border p-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Repeats</label>
+                    <Select value={recurrence.recurrencePattern} onValueChange={recurrencePattern => setRecurrence(current => ({
+                      ...current,
+                      recurrencePattern,
+                      recurrenceInterval: recurrencePattern === 'biweekly' ? '2' : current.recurrenceInterval,
+                    }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="weekly">Weekly</SelectItem>
+                        <SelectItem value="biweekly">Every 2 weeks</SelectItem>
+                        <SelectItem value="monthly_date">Monthly by date</SelectItem>
+                        <SelectItem value="monthly_weekday">Monthly by weekday</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {recurrence.recurrencePattern === 'monthly_date' && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Day of Month</label>
+                      <Input type="number" min={1} max={31} value={recurrence.recurrenceDayOfMonth} onChange={event => setRecurrence(current => ({ ...current, recurrenceDayOfMonth: event.target.value }))} />
+                    </div>
+                  )}
+
+                  {recurrence.recurrencePattern === 'monthly_weekday' && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Week</label>
+                        <Select value={recurrence.recurrenceWeekOfMonth} onValueChange={recurrenceWeekOfMonth => setRecurrence(current => ({ ...current, recurrenceWeekOfMonth }))}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {Object.entries(WEEK_OF_MONTH_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Day</label>
+                        <Select value={recurrence.recurrenceDayOfWeek} onValueChange={recurrenceDayOfWeek => setRecurrence(current => ({ ...current, recurrenceDayOfWeek }))}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {DAY_LABELS.map((label, day) => <SelectItem key={day} value={String(day)}>{label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
+
+                  {['weekly', 'biweekly'].includes(recurrence.recurrencePattern) && (
+                    <div className="md:col-span-2 space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Days of Week</label>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {DAY_LABELS.map((label, day) => (
+                          <button
+                            key={day}
+                            type="button"
+                            aria-pressed={recurrence.recurrenceDaysOfWeek.includes(day)}
+                            onClick={() => setRecurrence(current => ({
+                              ...current,
+                              recurrenceDaysOfWeek: current.recurrenceDaysOfWeek.includes(day)
+                                ? current.recurrenceDaysOfWeek.filter(value => value !== day)
+                                : [...current.recurrenceDaysOfWeek, day],
+                            }))}
+                            className={`w-10 h-9 rounded-md text-xs font-medium border transition-colors ${recurrence.recurrenceDaysOfWeek.includes(day) ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-muted border-border'}`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Ends</label>
+                    <Select value={recurrence.recurrenceEndCondition} onValueChange={recurrenceEndCondition => setRecurrence(current => ({ ...current, recurrenceEndCondition }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="never">Never</SelectItem>
+                        <SelectItem value="after">After a number of occurrences</SelectItem>
+                        <SelectItem value="on_date">On a date</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {recurrence.recurrenceEndCondition === 'after' && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Occurrences</label>
+                      <Input type="number" min={1} value={recurrence.recurrenceEndAfter} onChange={event => setRecurrence(current => ({ ...current, recurrenceEndAfter: event.target.value }))} />
+                    </div>
+                  )}
+                  {recurrence.recurrenceEndCondition === 'on_date' && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">End Date</label>
+                      <Input type="date" min={scheduledDate || undefined} value={recurrence.recurrenceEndDate} onChange={event => setRecurrence(current => ({ ...current, recurrenceEndDate: event.target.value }))} />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
@@ -365,10 +622,12 @@ export function BulkJobScheduler({
 
         {step === 'review' && (
           <div className="space-y-4">
-            <div className="rounded-lg border p-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+              <div className="rounded-lg border p-4 grid grid-cols-2 md:grid-cols-6 gap-3 text-sm">
+              <div><span className="text-muted-foreground block text-xs">Service</span>{selectedService?.name ?? 'No catalog service'}</div>
               <div><span className="text-muted-foreground block text-xs">Title</span>{title}</div>
               <div><span className="text-muted-foreground block text-xs">Destination</span>{destination === 'route' ? routeName : 'No route'}</div>
               <div><span className="text-muted-foreground block text-xs">Date</span>{scheduledDate} at {scheduledTime}</div>
+              <div><span className="text-muted-foreground block text-xs">Recurrence</span>{describeRecurrence(recurrence)}</div>
               <div><span className="text-muted-foreground block text-xs">Jobs</span>{activeRows.length}</div>
             </div>
             <div className="rounded-lg border divide-y">
@@ -376,7 +635,7 @@ export function BulkJobScheduler({
                 <div key={row.key} className="grid grid-cols-3 gap-3 px-4 py-3 text-sm">
                   <span className="font-medium">{row.customerName}</span>
                   <span className="text-muted-foreground">Property {row.propertyId || 'not selected'}</span>
-                  <span className="text-right">{row.duration} {durationUnit}</span>
+                  <span className="text-right">{row.duration ? `${row.duration} ${durationUnit}` : 'Auto from service matrix'}</span>
                 </div>
               ))}
             </div>

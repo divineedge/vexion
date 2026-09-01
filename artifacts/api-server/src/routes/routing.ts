@@ -18,8 +18,10 @@ import {
   recomputeDriveTimesForOrder,
   computeCapacity,
   frequencyMatchesWeek,
+  estimatedDriveMinutes,
   type RouteStop,
 } from "../lib/routeSequencing";
+import { getGoogleDriveMinutes } from "../lib/googleRoutes";
 
 const router: IRouter = Router();
 
@@ -319,7 +321,7 @@ router.get("/routes/:id/day", async (req, res): Promise<void> => {
   const hasManualOrder = rows.every(r => r.job.sequenceOrder != null);
   const stops: RouteStop[] = rows.map(r => ({ jobId: r.job.id, lat: r.propertyLat, lng: r.propertyLng, durationMinutes: r.job.estimatedDuration ?? 0 }));
 
-  const { sequenced, totalDriveMinutes } = hasManualOrder && stops.length > 0
+  const { sequenced } = hasManualOrder && stops.length > 0
     ? recomputeDriveTimesForOrder({ lat: division.depotLat, lng: division.depotLng }, [...stops].sort((a, b) => {
         const aOrder = rows.find(r => r.job.id === a.jobId)!.job.sequenceOrder!;
         const bOrder = rows.find(r => r.job.id === b.jobId)!.job.sequenceOrder!;
@@ -327,9 +329,55 @@ router.get("/routes/:id/day", async (req, res): Promise<void> => {
       }))
     : sequenceStops({ lat: division.depotLat, lng: division.depotLng }, stops);
 
+  // Sequencing remains deterministic and local; road durations are then resolved
+  // for the resulting ordered legs without persisting any schedule changes.
+  const depot = { lat: division.depotLat, lng: division.depotLng };
+  const legOrigins = sequenced.map((stop, index) => index === 0
+    ? depot
+    : { lat: sequenced[index - 1].lat, lng: sequenced[index - 1].lng });
+  const legDestinations = sequenced.map(stop => ({ lat: stop.lat, lng: stop.lng }));
+  const driveLegs = await Promise.all(sequenced.map(async (stop, index) => {
+    const origin = legOrigins[index];
+    const destination = legDestinations[index];
+    const estimatedMinutes = estimatedDriveMinutes(origin, destination);
+    if (origin.lat == null || origin.lng == null || destination.lat == null || destination.lng == null) {
+      return { minutes: estimatedMinutes, source: "estimated" as const };
+    }
+    const googleMinutes = await getGoogleDriveMinutes(
+      { lat: origin.lat, lng: origin.lng },
+      { lat: destination.lat, lng: destination.lng },
+    );
+    return googleMinutes == null
+      ? { minutes: estimatedMinutes, source: "estimated" as const }
+      : { minutes: googleMinutes, source: "google" as const };
+  }));
+  const returnOrigin = sequenced.length > 0 ? legDestinations[legDestinations.length - 1] : null;
+  const returnLeg = returnOrigin && depot.lat != null && depot.lng != null && returnOrigin.lat != null && returnOrigin.lng != null
+    ? await getGoogleDriveMinutes({ lat: returnOrigin.lat, lng: returnOrigin.lng }, { lat: depot.lat, lng: depot.lng })
+    : null;
+  const returnDriveMinutes = returnLeg ?? (returnOrigin ? estimatedDriveMinutes(returnOrigin, depot) : 0);
+  const totalRoadDriveMinutes = driveLegs.reduce((total, leg) => total + leg.minutes, 0) + returnDriveMinutes;
+  const allLegSources = [...driveLegs.map(leg => leg.source), ...(returnOrigin ? [returnLeg == null ? "estimated" : "google"] : [])];
+  const timingSource = allLegSources.length > 0 && allLegSources.every(source => source === "google")
+    ? "google"
+    : allLegSources.some(source => source === "google") ? "mixed" : "estimated";
+  const earliestScheduledAt = rows.reduce<Date | null>((earliest, row) => {
+    const scheduledAt = row.job.scheduledAt;
+    return !earliest || scheduledAt < earliest ? scheduledAt : earliest;
+  }, null);
+  const routeStartAnchor = earliestScheduledAt ?? new Date(`${date}T09:00:00`);
+  let previousStart = routeStartAnchor;
+  let previousDurationMinutes = 0;
+  const estimatedStarts = driveLegs.map((leg, index) => {
+    const start = new Date(previousStart.getTime() + (previousDurationMinutes + leg.minutes) * 60_000);
+    previousStart = start;
+    previousDurationMinutes = sequenced[index].durationMinutes;
+    return start.toISOString();
+  });
+
   const rowById = new Map(rows.map(r => [r.job.id, r]));
   const budgetedJobMinutes = stops.reduce((s, x) => s + x.durationMinutes, 0);
-  const capacity = computeCapacity(division.shiftHoursPerDay, budgetedJobMinutes, totalDriveMinutes);
+  const capacity = computeCapacity(division.shiftHoursPerDay, budgetedJobMinutes, totalRoadDriveMinutes);
 
   res.json({
     routeTemplateId: rt.id,
@@ -338,13 +386,16 @@ router.get("/routes/:id/day", async (req, res): Promise<void> => {
     divisionName: division.name,
     depotLabel: division.depotLabel,
     date,
+    timingSource,
     capacity,
-    stops: sequenced.map(s => {
+    stops: sequenced.map((s, index) => {
       const r = rowById.get(s.jobId)!;
       return {
         jobId: s.jobId,
         sequenceOrder: s.sequenceOrder,
-        driveMinutesFromPrev: s.driveMinutesFromPrev,
+        driveMinutesFromPrev: driveLegs[index].minutes,
+        estimatedStartAt: estimatedStarts[index],
+        driveTimeSource: driveLegs[index].source,
         title: r.job.title,
         customerName: r.customerName,
         propertyAddress: r.propertyAddress,

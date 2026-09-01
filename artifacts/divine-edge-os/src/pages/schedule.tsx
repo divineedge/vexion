@@ -29,6 +29,7 @@ import {
   useStartSubTimer, useStopSubTimer,
   useDeleteJob,
   useListRouteTemplates, getListRouteTemplatesQueryKey,
+  useGetRouteDayDetail, getGetRouteDayDetailQueryKey,
   useUpdateJobRoute,
   useListProperties, getListPropertiesQueryKey,
   useListCustomerPlans, getListCustomerPlansQueryKey,
@@ -362,11 +363,9 @@ export default function SchedulePage() {
   // Auto-select when the customer has exactly one property
   useEffect(() => {
     if (!customerProperties) return;
-    if (customerProperties.length === 1) {
-      setNewJob(f => ({ ...f, propertyId: String(customerProperties[0].id) }));
-    } else {
-      setNewJob(f => ({ ...f, propertyId: '' }));
-    }
+    setNewJob(f => f.propertyId || customerProperties.length === 0
+      ? f
+      : ({ ...f, propertyId: String(customerProperties[0].id) }));
   }, [customerProperties]);
 
   const { data: users } = useListUsers({
@@ -531,6 +530,18 @@ export default function SchedulePage() {
     query: { queryKey: getListRouteTemplatesQueryKey() },
   });
   const assignedRoute = routeTemplates?.find(rt => rt.id === (selectedJob as any)?.routeTemplateId);
+  const selectedJobRouteDate = selectedJob?.scheduledAt?.slice(0, 10) ?? '';
+  const { data: selectedJobRouteDetail } = useGetRouteDayDetail(
+    assignedRoute?.id ?? 0,
+    { date: selectedJobRouteDate },
+    {
+      query: {
+        enabled: !!assignedRoute && !!selectedJobRouteDate,
+        queryKey: getGetRouteDayDetailQueryKey(assignedRoute?.id ?? 0, { date: selectedJobRouteDate }),
+      },
+    },
+  );
+  const selectedJobRouteStop = selectedJobRouteDetail?.stops.find(stop => stop.jobId === selectedJobId);
 
   // Recurring series hooks
   const { data: recurringSeries } = useListRecurringSeries({
@@ -867,6 +878,7 @@ export default function SchedulePage() {
         priority: newJob.priority as 'low' | 'normal' | 'high' | 'urgent',
         customerId: newJob.customerId ? parseInt(newJob.customerId, 10) : undefined,
         propertyId: newJob.propertyId ? parseInt(newJob.propertyId, 10) : undefined,
+        serviceId: newJob.serviceId ? parseInt(newJob.serviceId, 10) : undefined,
         assigneeId: newJob.assigneeId ? parseInt(newJob.assigneeId, 10) : undefined,
         crewId: newJob.crewId ? parseInt(newJob.crewId, 10) : undefined,
         recurrenceRule,
@@ -2247,8 +2259,14 @@ export default function SchedulePage() {
                         {assignedRoute.divisionName && (
                           <span className="text-xs text-muted-foreground" title={`Division: ${assignedRoute.divisionName}`}>· {assignedRoute.divisionName}</span>
                         )}
+                        {selectedJobRouteStop && (
+                          <Badge variant="secondary" className="gap-1 font-normal" title={`${selectedJobRouteStop.driveMinutesFromPrev} minute drive from the previous stop · ${selectedJobRouteStop.driveTimeSource === 'google' ? 'Google Routes' : 'distance estimate'}`}>
+                            <Clock className="w-3 h-3" />
+                            Est. start {new Date(selectedJobRouteStop.estimatedStartAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                          </Badge>
+                        )}
                         <button
-                          title="Open route day detail"
+                          title="View this job in the route day detail"
                           className="ml-auto flex items-center gap-1 text-xs text-primary hover:underline"
                           onClick={() => {
                             const dateStr = selectedJob.scheduledAt.slice(0, 10);
@@ -2256,7 +2274,7 @@ export default function SchedulePage() {
                             setSelectedJobId(null);
                           }}
                         >
-                          <ExternalLink className="w-3 h-3" /> View in Routes
+                          <ExternalLink className="w-3 h-3" /> View route timing
                         </button>
                       </div>
                     ) : (

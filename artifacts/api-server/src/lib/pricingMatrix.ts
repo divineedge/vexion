@@ -10,6 +10,8 @@ export interface PricingTier {
   price: number;
   /** Per-sqft rate for the open-ended tier; takes precedence over price when set */
   perSqftRate?: number;
+  /** Optional estimated work time for this measurement tier, in minutes. */
+  estimatedMinutes?: number;
 }
 
 /**

@@ -7,6 +7,7 @@
  */
 import type { JobInputPriority } from './jobInputPriority';
 import type { JobInputStatus } from './jobInputStatus';
+import type { JobLineItem } from './jobLineItem';
 import type { RecurrenceRule } from './recurrenceRule';
 import type { SupplyItem } from './supplyItem';
 
@@ -17,10 +18,13 @@ export interface JobInput {
   priority?: JobInputPriority;
   customerId?: number;
   propertyId?: number;
+  serviceId?: number;
   assigneeId?: number;
   crewId?: number;
   scheduledAt: string;
   estimatedDuration?: number;
+  lineItems?: JobLineItem[];
+  totalAmount?: number;
   blueprintId?: number;
   recurrenceRule?: RecurrenceRule;
   /**

@@ -5,11 +5,14 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { RouteStopDetailDriveTimeSource } from './routeStopDetailDriveTimeSource';
 
 export interface RouteStopDetail {
   jobId: number;
   sequenceOrder: number;
   driveMinutesFromPrev: number;
+  estimatedStartAt: Date;
+  driveTimeSource: RouteStopDetailDriveTimeSource;
   title: string;
   /** @nullable */
   customerName?: string | null;

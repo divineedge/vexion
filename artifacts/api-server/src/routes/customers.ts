@@ -23,6 +23,70 @@ import {
 } from "../lib/importExport";
 
 const router: IRouter = Router();
+
+function normalizeIdentityText(value: unknown): string {
+  return typeof value === "string"
+    ? value.normalize("NFKC").trim().toLowerCase().replace(/\s+/g, " ")
+    : "";
+}
+
+function normalizeIdentityPhone(value: unknown): string {
+  const digits = typeof value === "string" ? value.replace(/\D/g, "") : "";
+  return digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+}
+
+function normalizeIdentityAddress(value: unknown): string {
+  return normalizeIdentityText(value)
+    .replace(/[.,#]/g, " ")
+    .replace(/\b(street)\b/g, "st")
+    .replace(/\b(avenue)\b/g, "ave")
+    .replace(/\b(road)\b/g, "rd")
+    .replace(/\b(drive)\b/g, "dr")
+    .replace(/\b(lane)\b/g, "ln")
+    .replace(/\b(boulevard)\b/g, "blvd")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function findLikelyDuplicateCustomer(
+  tenantId: number,
+  values: { name?: unknown; email?: unknown; phone?: unknown; physicalAddress?: unknown },
+): Promise<{ id: number; name: string; archivedAt: Date | null } | null> {
+  const email = normalizeIdentityText(values.email);
+  const phone = normalizeIdentityPhone(values.phone);
+  const name = normalizeIdentityText(values.name);
+  const address = normalizeIdentityAddress(values.physicalAddress);
+  if (!email && !phone && !(name && address)) return null;
+
+  const [customers, properties] = await Promise.all([
+    db.select({
+      id: customersTable.id,
+      name: customersTable.name,
+      email: customersTable.email,
+      phone: customersTable.phone,
+      physicalAddress: customersTable.physicalAddress,
+      archivedAt: customersTable.archivedAt,
+    }).from(customersTable).where(eq(customersTable.tenantId, tenantId)),
+    address
+      ? db.select({ customerId: propertiesTable.customerId, address: propertiesTable.address })
+          .from(propertiesTable)
+          .where(eq(propertiesTable.tenantId, tenantId))
+      : Promise.resolve([]),
+  ]);
+  const propertyAddresses = new Map<number, string[]>();
+  for (const property of properties) {
+    const list = propertyAddresses.get(property.customerId) ?? [];
+    list.push(normalizeIdentityAddress(property.address));
+    propertyAddresses.set(property.customerId, list);
+  }
+  return customers.find(customer => {
+    if (email && normalizeIdentityText(customer.email) === email) return true;
+    if (phone && phone.length >= 7 && normalizeIdentityPhone(customer.phone) === phone) return true;
+    if (!name || !address || normalizeIdentityText(customer.name) !== name) return false;
+    const addresses = [normalizeIdentityAddress(customer.physicalAddress), ...(propertyAddresses.get(customer.id) ?? [])];
+    return addresses.includes(address);
+  }) ?? null;
+}
 const CUSTOMER_REFERRAL_SOURCE = "customer_referral";
 
 async function validateReferringCustomer(
@@ -204,13 +268,12 @@ const customersImportExportConfig: ImportExportEntityConfig = {
     };
   },
   findExisting: async (tenantId, values) => {
-    const email = optionalString(String(values.email ?? ""));
-    if (!email) return null;
-    const [existing] = await db
-      .select({ id: customersTable.id })
-      .from(customersTable)
-      .where(and(eq(customersTable.tenantId, tenantId), sql`lower(${customersTable.email}) = lower(${email})`))
-      .limit(1);
+    const existing = await findLikelyDuplicateCustomer(tenantId, {
+      name: values.name,
+      email: values.email,
+      phone: values.phone,
+      physicalAddress: values.physicalAddress,
+    });
     return existing?.id ?? null;
   },
   insert: async (tenantId, values) => {
@@ -319,7 +382,7 @@ type LastReminderFailure = {
 
 function formatCustomer(
   c: typeof customersTable.$inferSelect,
-  extras?: { propertyCount?: number; createdPropertyId?: number; thisYearSpend?: number; lastYearSpend?: number; paymentStanding?: PaymentStanding; lastReminderFailure?: LastReminderFailure; referringCustomerName?: string | null }
+  extras?: { propertyCount?: number; createdPropertyId?: number; primaryPropertyAddress?: string | null; thisYearSpend?: number; lastYearSpend?: number; paymentStanding?: PaymentStanding; lastReminderFailure?: LastReminderFailure; referringCustomerName?: string | null }
 ) {
   return {
     id: c.id,
@@ -353,6 +416,7 @@ function formatCustomer(
     thisYearSpend: extras?.thisYearSpend ?? null,
     lastYearSpend: extras?.lastYearSpend ?? null,
     propertyCount: extras?.propertyCount ?? 0,
+    primaryPropertyAddress: extras?.primaryPropertyAddress ?? null,
     ...(extras?.createdPropertyId !== undefined ? { createdPropertyId: extras.createdPropertyId } : {}),
     paymentStanding: extras?.paymentStanding ?? null,
     lastReminderFailure: extras?.lastReminderFailure ?? null,
@@ -457,12 +521,29 @@ router.get("/customers", async (req, res): Promise<void> => {
     .offset(offset);
 
   const referrerIds = rows.map((row) => row.referringCustomerId).filter((value): value is number => value !== null);
-  const [propCounts, failureMap, lastServiceRows, referrers] = await Promise.all([
+  const [propCounts, primaryProperties, failureMap, lastServiceRows, referrers] = await Promise.all([
     db
       .select({ customerId: propertiesTable.customerId, count: sql<number>`count(*)::int` })
       .from(propertiesTable)
       .where(eq(propertiesTable.tenantId, tenantId))
       .groupBy(propertiesTable.customerId),
+    rows.length > 0
+      ? db.execute(sql`
+          SELECT DISTINCT ON (p.customer_id)
+            p.customer_id,
+            p.address
+          FROM properties p
+          LEFT JOIN jobs j
+            ON j.property_id = p.id
+            AND j.tenant_id = ${tenantId}
+            AND j.archived_at IS NULL
+          WHERE p.tenant_id = ${tenantId}
+            AND p.archived_at IS NULL
+            AND p.customer_id = ANY(${sql.raw(`ARRAY[${rows.map(row => row.id).join(",")}]`)}::int[])
+          GROUP BY p.id, p.customer_id, p.address, p.created_at
+          ORDER BY p.customer_id, count(j.id) DESC, max(j.scheduled_at) DESC NULLS LAST, p.created_at ASC
+        `) as unknown as Promise<{ rows: Array<{ customer_id: number; address: string }> }>
+      : Promise.resolve({ rows: [] as Array<{ customer_id: number; address: string }> }),
     fetchLastReminderFailures(tenantId, rows.map(r => r.id)),
     db
       .select({ customerId: jobsTable.customerId, lastDate: sql<string>`max(${jobsTable.scheduledAt})` })
@@ -476,12 +557,14 @@ router.get("/customers", async (req, res): Promise<void> => {
   ]);
 
   const propMap = Object.fromEntries(propCounts.map(p => [p.customerId, p.count]));
+  const primaryPropertyMap = Object.fromEntries(primaryProperties.rows.map(property => [property.customer_id, property.address]));
   const lastServiceMap = Object.fromEntries(lastServiceRows.map(r => [r.customerId, r.lastDate]));
   const referrerMap = Object.fromEntries(referrers.map(r => [r.id, r.name]));
 
   res.json({
     items: rows.map(c => ({ ...formatCustomer(c, {
       propertyCount: propMap[c.id] ?? 0,
+      primaryPropertyAddress: primaryPropertyMap[c.id] ?? null,
       lastReminderFailure: failureMap.get(c.id) ?? null,
       referringCustomerName: c.referringCustomerId ? referrerMap[c.referringCustomerId] ?? null : null,
     }), lastServiceDate: lastServiceMap[c.id] ?? null })),
@@ -522,6 +605,15 @@ router.post("/customers", async (req, res): Promise<void> => {
   }
   if (physicalPropertyType !== undefined && (typeof physicalPropertyType !== "string" || !physicalPropertyType.trim())) {
     res.status(400).json({ error: "physicalPropertyType must be a non-empty string when provided" });
+    return;
+  }
+  const duplicate = await findLikelyDuplicateCustomer(tenantId, { name, email, phone, physicalAddress });
+  if (duplicate) {
+    res.status(409).json({
+      error: `Possible duplicate customer: ${duplicate.name}${duplicate.archivedAt ? " (archived)" : ""}`,
+      existingCustomerId: duplicate.id,
+      archived: !!duplicate.archivedAt,
+    });
     return;
   }
   let referrer: { id: number; name: string } | null;

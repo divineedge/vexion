@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CapacitySummary } from './capacitySummary';
+import type { RouteDayDetailTimingSource } from './routeDayDetailTimingSource';
 import type { RouteStopDetail } from './routeStopDetail';
 
 export interface RouteDayDetail {
@@ -16,6 +17,7 @@ export interface RouteDayDetail {
   /** @nullable */
   depotLabel?: string | null;
   date: Date;
+  timingSource: RouteDayDetailTimingSource;
   capacity: CapacitySummary;
   stops: RouteStopDetail[];
 }

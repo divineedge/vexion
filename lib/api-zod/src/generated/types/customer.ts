@@ -51,6 +51,11 @@ export interface Customer {
   tags?: string[];
   customFieldValues?: CustomerCustomFieldValues;
   propertyCount?: number;
+  /**
+     * Most-used active property address for customer selection displays
+     * @nullable
+     */
+  primaryPropertyAddress?: string | null;
   /** Property created from the physical address during customer creation */
   createdPropertyId?: number;
   totalSpend?: number;

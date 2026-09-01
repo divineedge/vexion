@@ -36,6 +36,7 @@ import { checkRainBeforeWindow } from "../lib/weatherCheck";
 import { chemicalCompletionError, normalizeFieldRequirements } from "../lib/serviceFieldRequirements";
 import { resolveJobAssignmentRecipientIds, sendStaffPush } from "../lib/pushNotifications";
 import { canAccessJobMessages } from "../lib/jobMessageAccess";
+import { type PricingTier } from "../lib/pricingMatrix";
 import {
   importUpload,
   handleExportRequest,
@@ -54,6 +55,94 @@ import {
 } from "../lib/importExport";
 
 const router: IRouter = Router();
+
+type JobMeasurementPolygon = {
+  zoneTypeId?: string | null;
+  label?: string | null;
+  areaSqft?: number | null;
+  lengthFt?: number | null;
+  mode?: "area" | "linear";
+  enabled?: boolean;
+};
+type MeasurementZoneType = { id: string; name: string; mode?: "area" | "linear" };
+
+/**
+ * Creates an immutable catalog snapshot for a newly scheduled job. Matrix
+ * pricing deliberately stays unresolved when the relevant measurement is not
+ * available: choosing the first tier (or pricing it at zero) would invoice the
+ * wrong amount.
+ */
+async function resolveServiceJobSnapshot(
+  tenantId: number,
+  serviceId: unknown,
+  propertyId: number | null,
+): Promise<{ service: typeof servicesTable.$inferSelect; lineItems?: unknown[]; totalAmount?: number; estimatedDuration: number | null } | null> {
+  if (serviceId === undefined || serviceId === null || serviceId === "") return null;
+  const id = typeof serviceId === "number" ? serviceId : parseInt(String(serviceId), 10);
+  if (!Number.isInteger(id) || id <= 0) throw new Error("serviceId must be a valid integer");
+  const [service] = await db.select().from(servicesTable).where(and(
+    eq(servicesTable.id, id), eq(servicesTable.tenantId, tenantId), eq(servicesTable.isActive, true),
+  ));
+  if (!service) throw new Error("Selected service is not active or is not available");
+
+  // Flat services never depend on property measurements.
+  if (service.pricingMode === "flat") {
+    const price = service.basePrice;
+    return {
+      service,
+      estimatedDuration: service.estimatedDuration ?? null,
+      totalAmount: price,
+      lineItems: [{ serviceId: service.id, description: service.name, quantity: 1, qty: 1, unitPrice: price, total: price }],
+    };
+  }
+
+  if (service.pricingMode !== "matrix" || !propertyId) {
+    return { service, estimatedDuration: service.estimatedDuration ?? null };
+  }
+  const [property] = await db.select({
+    measurementPolygons: propertiesTable.measurementPolygons,
+    serviceableAreaSqft: propertiesTable.serviceableAreaSqft,
+  }).from(propertiesTable).where(and(eq(propertiesTable.id, propertyId), eq(propertiesTable.tenantId, tenantId)));
+  if (!property) return { service, estimatedDuration: service.estimatedDuration ?? null };
+
+  const [tenant] = await db.select({ measurementZoneTypes: tenantsTable.measurementZoneTypes })
+    .from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  const zoneTypes = ((tenant?.measurementZoneTypes as unknown[]) ?? []) as MeasurementZoneType[];
+  const polygons = ((property.measurementPolygons as unknown[]) ?? []) as JobMeasurementPolygon[];
+  const zoneByName = new Map(zoneTypes.map(zone => [zone.name, zone]));
+  const zoneById = new Map(zoneTypes.map(zone => [zone.id, zone]));
+  let areaSqft = 0;
+  let lengthFt = 0;
+  let foundMeasurement = false;
+  for (const polygon of polygons) {
+    if (polygon.enabled === false) continue;
+    const zone = polygon.zoneTypeId ? zoneById.get(polygon.zoneTypeId) : (polygon.label ? zoneByName.get(polygon.label) : undefined);
+    if (service.linkedZoneTypeId && zone?.id !== service.linkedZoneTypeId && polygon.zoneTypeId !== service.linkedZoneTypeId) continue;
+    const mode = polygon.mode ?? zone?.mode ?? "area";
+    if (mode === "linear" && Number.isFinite(polygon.lengthFt)) { lengthFt += polygon.lengthFt!; foundMeasurement = true; }
+    if (mode !== "linear" && Number.isFinite(polygon.areaSqft)) { areaSqft += polygon.areaSqft!; foundMeasurement = true; }
+  }
+  // An unlinked service can use the property's established aggregate area.
+  if (!service.linkedZoneTypeId && !foundMeasurement && property.serviceableAreaSqft != null) {
+    areaSqft = property.serviceableAreaSqft;
+    foundMeasurement = true;
+  }
+  if (!foundMeasurement) return { service, estimatedDuration: service.estimatedDuration ?? null };
+
+  const quantity = service.linkedZoneTypeId && zoneById.get(service.linkedZoneTypeId)?.mode === "linear" ? lengthFt : areaSqft;
+  const tiers = Array.isArray(service.pricingMatrix) ? service.pricingMatrix as PricingTier[] : [];
+  const tier = [...tiers].sort((a, b) => a.minSqft - b.minSqft)
+    .find(candidate => quantity >= candidate.minSqft && (candidate.maxSqft === null || quantity <= candidate.maxSqft));
+  if (!tier) return { service, estimatedDuration: service.estimatedDuration ?? null };
+  const price = tier.maxSqft === null && tier.perSqftRate != null && tier.perSqftRate > 0
+    ? tier.perSqftRate * quantity : tier.price;
+  return {
+    service,
+    estimatedDuration: tier.estimatedMinutes != null && tier.estimatedMinutes > 0 ? tier.estimatedMinutes : service.estimatedDuration ?? null,
+    totalAmount: price,
+    lineItems: [{ serviceId: service.id, description: service.name, quantity: 1, qty: 1, unitPrice: price, total: price }],
+  };
+}
 
 async function validateJobAssignment(
   tenantId: number,
@@ -573,7 +662,7 @@ router.post("/jobs", requireVerifiedStaff, async (req, res): Promise<void> => {
     res.status(403).json({ error: "Manager role required to create jobs directly" });
     return;
   }
-  const { title, description, status, priority, customerId, propertyId, assigneeId, crewId, scheduledAt, estimatedDuration, blueprintId, recurrenceRule, smsReminderEnabled, suppliesNeeded, offSeasonStart, offSeasonEnd } = req.body;
+  const { title, description, status, priority, customerId, propertyId, assigneeId, crewId, scheduledAt, estimatedDuration, blueprintId, recurrenceRule, smsReminderEnabled, suppliesNeeded, offSeasonStart, offSeasonEnd, serviceId, lineItems, totalAmount } = req.body;
 
   if (!title || !scheduledAt) {
     res.status(400).json({ error: "title and scheduledAt are required" });
@@ -590,6 +679,16 @@ router.post("/jobs", requireVerifiedStaff, async (req, res): Promise<void> => {
     res.status(400).json({ error: error instanceof Error ? error.message : "Invalid off-season window" });
     return;
   }
+  const resolvedPropertyId = propertyId ? parseInt(propertyId, 10) : null;
+  let serviceSnapshot: Awaited<ReturnType<typeof resolveServiceJobSnapshot>>;
+  try {
+    serviceSnapshot = await resolveServiceJobSnapshot(tenantId, serviceId, resolvedPropertyId);
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "Invalid service" });
+    return;
+  }
+  const callerSuppliedLineItems = Array.isArray(lineItems);
+  const callerSuppliedTotal = totalAmount !== undefined && totalAmount !== null && totalAmount !== "";
 
   const [job] = await db.insert(jobsTable).values({
     tenantId,
@@ -598,12 +697,15 @@ router.post("/jobs", requireVerifiedStaff, async (req, res): Promise<void> => {
     status: status ?? "scheduled",
     priority: priority ?? "normal",
     customerId: customerId ? parseInt(customerId, 10) : null,
-    propertyId: propertyId ? parseInt(propertyId, 10) : null,
+    propertyId: resolvedPropertyId,
     assigneeId: resolvedAssigneeId,
     crewId: resolvedCrewId,
     blueprintId: blueprintId ? parseInt(blueprintId, 10) : null,
     scheduledAt: new Date(scheduledAt),
-    estimatedDuration: estimatedDuration ?? null,
+    serviceId: serviceSnapshot?.service.id ?? null,
+    estimatedDuration: estimatedDuration !== undefined ? estimatedDuration : (serviceSnapshot?.estimatedDuration ?? null),
+    ...(callerSuppliedLineItems ? { lineItems } : serviceSnapshot?.lineItems ? { lineItems: serviceSnapshot.lineItems } : {}),
+    ...(callerSuppliedTotal ? { totalAmount: Number(totalAmount) } : serviceSnapshot?.totalAmount !== undefined ? { totalAmount: serviceSnapshot.totalAmount } : {}),
     recurrenceRule: recurrenceRule ?? null,
     smsReminderEnabled: smsReminderEnabled === true || smsReminderEnabled === "true",
     suppliesNeeded: normaliseSupplies(suppliesNeeded),
@@ -720,11 +822,25 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
   const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(rawId, 10);
 
-  const { title, description, status, priority, assigneeId, crewId, scheduledAt, estimatedDuration, recurrenceRule, editScope, smsReminderEnabled, holdFromBilling, planId, tags, suppliesNeeded, offSeasonStart, offSeasonEnd } = req.body;
+  const { title, description, status, priority, assigneeId, crewId, scheduledAt, estimatedDuration, recurrenceRule, editScope, smsReminderEnabled, holdFromBilling, planId, tags, suppliesNeeded, offSeasonStart, offSeasonEnd, serviceId } = req.body;
 
   // Fetch current job to check if it's a recurring instance
   const [currentJob] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
   if (!currentJob) { res.status(404).json({ error: "Not found" }); return; }
+  let resolvedServiceId: number | null | undefined;
+  if (serviceId !== undefined) {
+    if (serviceId === null || serviceId === "") {
+      resolvedServiceId = null;
+    } else {
+      try {
+        const snapshot = await resolveServiceJobSnapshot(tenantId, serviceId, currentJob.propertyId);
+        resolvedServiceId = snapshot?.service.id ?? null;
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : "Invalid service" });
+        return;
+      }
+    }
+  }
   // Completion may affect an entire recurrence scope. Check each target before
   // any update so a required chemical log cannot be bypassed by series editing.
   if (status === "completed") {
@@ -801,6 +917,7 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
     ...(assignmentWasRequested && { assigneeId: nextAssigneeId, crewId: nextCrewId }),
     ...(scheduledAt !== undefined && { scheduledAt: new Date(scheduledAt) }),
     ...(estimatedDuration !== undefined && { estimatedDuration }),
+    ...(resolvedServiceId !== undefined && { serviceId: resolvedServiceId }),
     ...(suppliesNeeded !== undefined && { suppliesNeeded: normaliseSupplies(suppliesNeeded) }),
     ...(smsReminderEnabled !== undefined && { smsReminderEnabled: smsReminderEnabled === true || smsReminderEnabled === "true" }),
     ...(holdFromBilling !== undefined && { holdFromBilling: holdFromBilling === true || holdFromBilling === "true" }),

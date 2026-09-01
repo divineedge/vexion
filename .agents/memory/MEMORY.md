@@ -13,7 +13,7 @@
 - [lib/db dist goes stale after schema edits](db-schema-dist-stale.md) — rebuild `lib/db` via `tsc --build --force` after schema changes, or downstream packages show phantom missing-export errors
 - [Expo Router typed routes staleness](expo-router-typed-routes-staleness.md) — new route files fail `pathname` typecheck until .expo/types/router.d.ts is regenerated
 - [Dev DB schema drift](db-schema-drift-dev.md) — existing route 500s with opaque "Failed query" on a schema column? Check dev DB has that column (`psql \d table`); run `pnpm --filter @workspace/db run push` if missing
-- [Route sequencing design](route-sequencing-design.md) — Divine Edge routing uses a self-written nearest-neighbor haversine heuristic + fixed 28mph speed, not a mapping API; stay consistent
+- [Route sequencing design](route-sequencing-design.md) — stop order stays deterministic locally; route-day travel uses Google road times with per-leg 28mph fallback and computed operational starts
 - [Equipment ledger cumulative readings](equipment-ledger-cumulative-readings.md) — ledger runtime cost needs ≥2 hour-meter/mileage readings in range to show non-zero; $0 with 1 reading is correct, not a bug
 - [Divine Edge OS toaster mismatch](divine-edge-toaster-mismatch.md) — App.tsx must mount sonner's Toaster; app code calls `toast` from 'sonner' everywhere
 - [Bulk import/export pattern](bulk-import-export-pattern.md) — transient file uploads use multer + manual-hooks, not presigned-URL storage or orval codegen; shared engine in importExport.ts
@@ -44,3 +44,4 @@
 - [Lifecycle view selectors](lifecycle-view-selectors.md) — active/archive switches must label current states explicitly; destination-labeled toggles make correct data look broken
 - [Clock adjustment invariants](clock-adjustment-invariants.md) — preserve recorded events, audit effective-time changes, and enforce work-day bounds in tenant time
 - [Owner scheduling eligibility](owner-scheduling-eligibility.md) — owner field-work eligibility is tenant-controlled and applies narrowly to job assignment and crew membership
+- [Job service snapshots](job-service-snapshots.md) — snapshot service/matrix price and duration onto each job so later catalog edits never change historical billing

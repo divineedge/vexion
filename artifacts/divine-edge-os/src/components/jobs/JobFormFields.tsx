@@ -1,6 +1,6 @@
 import React from 'react';
 import type { RecurrenceRule } from '@workspace/api-client-react';
-import { useListTags, getListTagsQueryKey } from '@workspace/api-client-react';
+import { useListTags, getListTagsQueryKey, useListServices, getListServicesQueryKey } from '@workspace/api-client-react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
@@ -24,6 +24,7 @@ export type NewJobForm = {
   propertyId: string;
   assigneeId: string;
   crewId: string;
+  serviceId: string;
   tags: string[];
   recurring: boolean;
   recurrencePattern: string;
@@ -52,6 +53,7 @@ export const EMPTY_JOB: NewJobForm = {
   propertyId: '',
   assigneeId: '',
   crewId: '',
+  serviceId: '',
   tags: [],
   recurring: false,
   recurrencePattern: 'weekly',
@@ -147,7 +149,7 @@ export function buildRecurrenceRule(form: NewJobForm): RecurrenceRule | undefine
 export interface JobFormFieldsProps {
   form: NewJobForm;
   setForm: React.Dispatch<React.SetStateAction<NewJobForm>>;
-  customers: { id: number; name: string }[];
+  customers: { id: number; name: string; physicalAddress?: string | null; primaryPropertyAddress?: string | null }[];
   /** Properties for the selected customer. Pass an empty array when none are loaded yet. */
   properties: { id: number; address: string }[];
   users: { id: number; name: string; role: string }[];
@@ -171,6 +173,10 @@ export interface JobFormFieldsProps {
 export function JobFormFields({ form, setForm, customers, properties, users, crews = [], ownersSchedulable = false, durationUnit, onCustomerSearch, customerSearchPending = false, showRecurrence = true, defaultOffSeasonStart, defaultOffSeasonEnd }: JobFormFieldsProps) {
   const [customerPickerOpen, setCustomerPickerOpen] = React.useState(false);
   const [selectedCustomerName, setSelectedCustomerName] = React.useState('');
+  const { data: services = [] } = useListServices(
+    { activeOnly: true },
+    { query: { queryKey: getListServicesQueryKey({ activeOnly: true }) } },
+  );
 
   React.useEffect(() => {
     const selected = customers.find(customer => String(customer.id) === form.customerId);
@@ -180,6 +186,32 @@ export function JobFormFields({ form, setForm, customers, properties, users, cre
 
   return (
     <>
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium">Service</label>
+        <Select
+          value={form.serviceId || 'none'}
+          onValueChange={value => {
+            if (value === 'none') { setForm(current => ({ ...current, serviceId: '' })); return; }
+            const service = services.find(item => item.id === Number(value));
+            if (!service) return;
+            setForm(current => ({
+              ...current,
+              serviceId: value,
+              title: service.name,
+              estimatedDuration: service.estimatedDuration != null
+                ? String(current.estimatedDurationUnit === 'hours' ? service.estimatedDuration / 60 : service.estimatedDuration)
+                : current.estimatedDuration,
+            }));
+          }}
+        >
+          <SelectTrigger title="Select a catalog service to link and price this job"><SelectValue placeholder="Optional service..." /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">No catalog service</SelectItem>
+            {services.map(service => <SelectItem key={service.id} value={String(service.id)}>{service.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">Selecting a service fills its title and default duration. You can edit the duration.</p>
+      </div>
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Title <span className="text-destructive">*</span></label>
         <Input title="Enter a descriptive job title" placeholder="e.g. Irrigation system repair" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
@@ -277,7 +309,12 @@ export function JobFormFields({ form, setForm, customers, properties, users, cre
                       data-testid={`option-job-customer-${customer.id}`}
                     >
                       <Check className={cn('mr-2 h-4 w-4', form.customerId === String(customer.id) ? 'opacity-100' : 'opacity-0')} />
-                      <span className="truncate">{customer.name}</span>
+                      <span className="min-w-0">
+                        <span className="block truncate">{customer.name}</span>
+                        {(customer.physicalAddress || customer.primaryPropertyAddress) && (
+                          <span className="block truncate text-xs text-muted-foreground">{customer.physicalAddress || customer.primaryPropertyAddress}</span>
+                        )}
+                      </span>
                     </CommandItem>
                   ))}
                 </CommandGroup>

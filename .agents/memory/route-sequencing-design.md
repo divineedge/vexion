@@ -1,12 +1,12 @@
 ---
 name: Route sequencing design decisions (Divine Edge OS)
-description: Stop-order and capacity math for the Routes feature uses a self-written nearest-neighbor heuristic and a fixed average speed, not a mapping API.
+description: Route order remains deterministic locally while route-day travel and operational starts use Google Routes with a per-leg estimate fallback.
 ---
 
 # Route sequencing design decisions (Divine Edge OS)
 
-**The decision:** Route stop sequencing uses a self-written nearest-neighbor haversine-distance heuristic from the depot, converting distance to drive time with a fixed average-speed assumption — no external mapping/routing API.
+**The decision:** Keep nearest-neighbor haversine sequencing for deterministic stop order, then calculate ordered road legs through Google Routes. Fall back per leg to the 28 mph estimate and derive operational starts from travel plus prior job duration.
 
-**Why:** Avoids a new third-party integration/API-key dependency; nearest-neighbor is "good enough" for daily field-service ordering versus true optimal routing, and a fixed speed avoids needing live traffic data.
+**Why:** The user explicitly requested map-based drive times and cascading estimated starts. Separating order from timing keeps optimization predictable while allowing partial Google failures without making route detail unusable.
 
-**How to apply:** Future work touching route stop order, drive-time estimates, or capacity math should stay consistent with this heuristic-and-fixed-speed approach unless the user explicitly asks for real mapping/traffic integration — that's a deliberate scope change, not a bug fix.
+**How to apply:** Preserve the local ordering algorithm unless optimization requirements change. Route-day displays and capacity should use resolved road legs, clearly label Google/mixed/estimated sources, and never overwrite requested appointment times with operational estimates.

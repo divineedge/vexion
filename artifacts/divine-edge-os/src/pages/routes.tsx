@@ -154,11 +154,9 @@ export default function RoutesDashboardPage() {
   // Auto-select when the customer has exactly one property
   useEffect(() => {
     if (!customerProperties) return;
-    if (customerProperties.length === 1) {
-      setNewJob(f => ({ ...f, propertyId: String(customerProperties[0].id) }));
-    } else {
-      setNewJob(f => ({ ...f, propertyId: '' }));
-    }
+    setNewJob(f => f.propertyId || customerProperties.length === 0
+      ? f
+      : ({ ...f, propertyId: String(customerProperties[0].id) }));
   }, [customerProperties]);
 
   const { data: users } = useListUsers({
@@ -296,6 +294,7 @@ export default function RoutesDashboardPage() {
         description: newJob.description || undefined,
         scheduledAt: scheduledAtIso,
         estimatedDuration: durationMins,
+        serviceId: newJob.serviceId ? parseInt(newJob.serviceId, 10) : undefined,
         priority: newJob.priority as 'low' | 'normal' | 'high' | 'urgent',
         customerId: newJob.customerId ? parseInt(newJob.customerId, 10) : undefined,
         propertyId: newJob.propertyId ? parseInt(newJob.propertyId, 10) : undefined,
@@ -601,6 +600,9 @@ export default function RoutesDashboardPage() {
                     <span title={`Estimated drive time: ${detail.capacity.driveHours.toFixed(1)}h`}>Drive: {detail.capacity.driveHours.toFixed(1)}h</span>
                     <span title={`Total shift length: ${detail.capacity.shiftHours.toFixed(1)}h`}>Shift: {detail.capacity.shiftHours.toFixed(1)}h</span>
                   </div>
+                   <p className="text-[10px] text-muted-foreground pt-1">
+                     Drive times: {detail.timingSource === 'google' ? 'Google Routes' : detail.timingSource === 'mixed' ? 'Google Routes + estimate' : '28 mph estimate'}
+                   </p>
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -655,7 +657,8 @@ export default function RoutesDashboardPage() {
                           </div>
                           <div className="flex flex-col items-end gap-1">
                             <Badge variant={stop.status === 'completed' ? 'outline' : 'secondary'} className={`text-xs ${stop.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : ''}`} title={`Stop status: ${stop.status.replace(/_/g, ' ')}`}>{stop.status.replace(/_/g, ' ')}</Badge>
-                            {idx > 0 && <span title={`${stop.driveMinutesFromPrev} minute drive from previous stop`} className="text-[10px] text-muted-foreground flex items-center gap-1"><Clock className="w-3 h-3" />+{stop.driveMinutesFromPrev}m drive</span>}
+                            <span title={`${stop.driveMinutesFromPrev} minute drive from ${idx === 0 ? 'depot' : 'previous stop'} (${stop.driveTimeSource === 'google' ? 'Google Routes' : 'estimated'})`} className="text-[10px] text-muted-foreground flex items-center gap-1"><Clock className="w-3 h-3" />+{stop.driveMinutesFromPrev}m drive · {stop.driveTimeSource === 'google' ? 'Google' : 'Est.'}</span>
+                            <span className="text-[10px] text-muted-foreground" title={`Estimated route start: ${new Date(stop.estimatedStartAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}>Route start {new Date(stop.estimatedStartAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                             {(stop as any).estimatedArrival && <span className="text-[10px] text-muted-foreground" title={`Estimated arrival: ${new Date((stop as any).estimatedArrival).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}>ETA {new Date((stop as any).estimatedArrival).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
                           </div>
                         </div>

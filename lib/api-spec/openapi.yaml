@@ -9437,6 +9437,9 @@ components:
             type: string
         propertyCount:
           type: integer
+        primaryPropertyAddress:
+          type: ["string", "null"]
+          description: "Most-used active property address for customer selection displays"
         createdPropertyId:
           type: integer
           description: Property created from the physical address during customer creation
@@ -10234,6 +10237,20 @@ components:
         description: { type: ["string", "null"] }
         category: { type: ["string", "null"] }
         basePrice: { type: number }
+        estimatedDuration: { type: ["integer", "null"], description: "Default estimated duration in minutes" }
+        pricingMode: { type: string, enum: [flat, per_sqft, per_linear_ft, matrix] }
+        pricingMatrix:
+          type: ["array", "null"]
+          items:
+            type: object
+            required: [minSqft, maxSqft, price]
+            properties:
+              minSqft: { type: number }
+              maxSqft: { type: ["number", "null"] }
+              price: { type: number }
+              perSqftRate: { type: number }
+              estimatedMinutes: { type: integer, description: "Estimated time for this tier in minutes" }
+        linkedZoneTypeId: { type: ["string", "null"] }
         isActive: { type: boolean }
         fieldRequirements:
           $ref: "#/components/schemas/ServiceFieldRequirements"
@@ -10503,6 +10520,8 @@ components:
           type: integer
         propertyId:
           type: integer
+        serviceId:
+          type: integer
         assigneeId:
           type: integer
         crewId:
@@ -10511,6 +10530,11 @@ components:
           type: string
         estimatedDuration:
           type: integer
+        lineItems:
+          type: array
+          items: { $ref: "#/components/schemas/JobLineItem" }
+        totalAmount:
+          type: number
         blueprintId:
           type: integer
         recurrenceRule:
@@ -10549,6 +10573,8 @@ components:
           type: integer
         crewId:
           type: integer
+        serviceId:
+          type: ["integer", "null"]
         scheduledAt:
           type: string
         estimatedDuration:
@@ -12469,7 +12495,7 @@ components:
 
     RouteStopDetail:
       type: object
-      required: [jobId, sequenceOrder, driveMinutesFromPrev, title, status]
+      required: [jobId, sequenceOrder, driveMinutesFromPrev, estimatedStartAt, driveTimeSource, title, status]
       properties:
         jobId:
           type: integer
@@ -12477,6 +12503,12 @@ components:
           type: integer
         driveMinutesFromPrev:
           type: integer
+        estimatedStartAt:
+          type: string
+          format: date-time
+        driveTimeSource:
+          type: string
+          enum: [google, estimated]
         title:
           type: string
         customerName:
@@ -12494,7 +12526,7 @@ components:
 
     RouteDayDetail:
       type: object
-      required: [routeTemplateId, routeTemplateName, divisionId, divisionName, date, capacity, stops]
+      required: [routeTemplateId, routeTemplateName, divisionId, divisionName, date, timingSource, capacity, stops]
       properties:
         routeTemplateId:
           type: integer
@@ -12509,6 +12541,9 @@ components:
         date:
           type: string
           format: date
+        timingSource:
+          type: string
+          enum: [google, mixed, estimated]
         capacity:
           $ref: "#/components/schemas/CapacitySummary"
         stops:

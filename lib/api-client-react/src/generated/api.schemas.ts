@@ -1182,6 +1182,11 @@ export interface Customer {
   tags?: string[];
   customFieldValues?: CustomerCustomFieldValues;
   propertyCount?: number;
+  /**
+     * Most-used active property address for customer selection displays
+     * @nullable
+     */
+  primaryPropertyAddress?: string | null;
   /** Property created from the physical address during customer creation */
   createdPropertyId?: number;
   totalSpend?: number;
@@ -1839,6 +1844,26 @@ export interface Job {
   createdAt: string;
 }
 
+export type ServicePricingMode = typeof ServicePricingMode[keyof typeof ServicePricingMode];
+
+
+export const ServicePricingMode = {
+  flat: 'flat',
+  per_sqft: 'per_sqft',
+  per_linear_ft: 'per_linear_ft',
+  matrix: 'matrix',
+} as const;
+
+export type ServicePricingMatrixItem = {
+  minSqft: number;
+  /** @nullable */
+  maxSqft: number | null;
+  price: number;
+  perSqftRate?: number;
+  /** Estimated time for this tier in minutes */
+  estimatedMinutes?: number;
+};
+
 export interface Service {
   id: number;
   tenantId: number;
@@ -1848,6 +1873,16 @@ export interface Service {
   /** @nullable */
   category?: string | null;
   basePrice: number;
+  /**
+     * Default estimated duration in minutes
+     * @nullable
+     */
+  estimatedDuration?: number | null;
+  pricingMode?: ServicePricingMode;
+  /** @nullable */
+  pricingMatrix?: ServicePricingMatrixItem[] | null;
+  /** @nullable */
+  linkedZoneTypeId?: string | null;
   isActive: boolean;
   fieldRequirements: ServiceFieldRequirements;
   createdAt: string;
@@ -2045,10 +2080,13 @@ export interface JobInput {
   priority?: JobInputPriority;
   customerId?: number;
   propertyId?: number;
+  serviceId?: number;
   assigneeId?: number;
   crewId?: number;
   scheduledAt: string;
   estimatedDuration?: number;
+  lineItems?: JobLineItem[];
+  totalAmount?: number;
   blueprintId?: number;
   recurrenceRule?: RecurrenceRule;
   /**
@@ -2107,6 +2145,8 @@ export interface JobUpdate {
   priority?: JobUpdatePriority;
   assigneeId?: number;
   crewId?: number;
+  /** @nullable */
+  serviceId?: number | null;
   scheduledAt?: string;
   estimatedDuration?: number;
   recurrenceRule?: RecurrenceRule;
@@ -3691,10 +3731,20 @@ export interface RouteDashboardEntry {
   capacity: CapacitySummary;
 }
 
+export type RouteStopDetailDriveTimeSource = typeof RouteStopDetailDriveTimeSource[keyof typeof RouteStopDetailDriveTimeSource];
+
+
+export const RouteStopDetailDriveTimeSource = {
+  google: 'google',
+  estimated: 'estimated',
+} as const;
+
 export interface RouteStopDetail {
   jobId: number;
   sequenceOrder: number;
   driveMinutesFromPrev: number;
+  estimatedStartAt: string;
+  driveTimeSource: RouteStopDetailDriveTimeSource;
   title: string;
   /** @nullable */
   customerName?: string | null;
@@ -3709,6 +3759,15 @@ export interface RouteStopDetail {
   status: string;
 }
 
+export type RouteDayDetailTimingSource = typeof RouteDayDetailTimingSource[keyof typeof RouteDayDetailTimingSource];
+
+
+export const RouteDayDetailTimingSource = {
+  google: 'google',
+  mixed: 'mixed',
+  estimated: 'estimated',
+} as const;
+
 export interface RouteDayDetail {
   routeTemplateId: number;
   routeTemplateName: string;
@@ -3717,6 +3776,7 @@ export interface RouteDayDetail {
   /** @nullable */
   depotLabel?: string | null;
   date: string;
+  timingSource: RouteDayDetailTimingSource;
   capacity: CapacitySummary;
   stops: RouteStopDetail[];
 }

@@ -55,6 +55,33 @@ import {
 
 const router: IRouter = Router();
 
+async function validateJobAssignment(
+  tenantId: number,
+  assigneeId: number | null,
+  crewId: number | null,
+): Promise<string | null> {
+  if (assigneeId && crewId) return "A job can be assigned to an individual or a crew, not both";
+  if (crewId) {
+    const [crew] = await db.select({ id: crewsTable.id }).from(crewsTable)
+      .where(and(eq(crewsTable.id, crewId), eq(crewsTable.tenantId, tenantId)));
+    if (!crew) return "Selected crew is not available";
+  }
+  if (assigneeId) {
+    const [row] = await db
+      .select({ role: usersTable.role, isActive: usersTable.isActive, ownersSchedulable: tenantsTable.ownersSchedulable })
+      .from(usersTable)
+      .innerJoin(tenantsTable, eq(tenantsTable.id, usersTable.tenantId))
+      .where(and(eq(usersTable.id, assigneeId), eq(usersTable.tenantId, tenantId)));
+    const eligible = row?.isActive && (
+      row.role === "technician"
+      || row.role === "crew_manager"
+      || (row.role === "company_owner" && row.ownersSchedulable)
+    );
+    if (!eligible) return "Selected individual is not eligible for job assignment";
+  }
+  return null;
+}
+
 function assignmentChanged(
   previous: { assigneeId: number | null; crewId: number | null },
   next: { assigneeId: number | null; crewId: number | null },
@@ -552,6 +579,10 @@ router.post("/jobs", requireVerifiedStaff, async (req, res): Promise<void> => {
     res.status(400).json({ error: "title and scheduledAt are required" });
     return;
   }
+  const resolvedAssigneeId = assigneeId ? parseInt(assigneeId, 10) : null;
+  const resolvedCrewId = crewId ? parseInt(crewId, 10) : null;
+  const assignmentError = await validateJobAssignment(tenantId, resolvedAssigneeId, resolvedCrewId);
+  if (assignmentError) { res.status(400).json({ error: assignmentError }); return; }
   let offSeasonWindow: ReturnType<typeof resolveOffSeasonWindow>;
   try {
     offSeasonWindow = resolveOffSeasonWindow(offSeasonStart, offSeasonEnd);
@@ -568,8 +599,8 @@ router.post("/jobs", requireVerifiedStaff, async (req, res): Promise<void> => {
     priority: priority ?? "normal",
     customerId: customerId ? parseInt(customerId, 10) : null,
     propertyId: propertyId ? parseInt(propertyId, 10) : null,
-    assigneeId: assigneeId ? parseInt(assigneeId, 10) : null,
-    crewId: crewId ? parseInt(crewId, 10) : null,
+    assigneeId: resolvedAssigneeId,
+    crewId: resolvedCrewId,
     blueprintId: blueprintId ? parseInt(blueprintId, 10) : null,
     scheduledAt: new Date(scheduledAt),
     estimatedDuration: estimatedDuration ?? null,
@@ -751,14 +782,23 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
     currentJob.status !== "in_progress" &&
     !(currentJob as any).clockInAt;
 
+  let nextAssigneeId = assigneeId !== undefined ? (assigneeId ? parseInt(assigneeId, 10) : null) : currentJob.assigneeId;
+  let nextCrewId = crewId !== undefined ? (crewId ? parseInt(crewId, 10) : null) : currentJob.crewId;
+  if (assigneeId) nextCrewId = null;
+  if (crewId) nextAssigneeId = null;
+  const assignmentWasRequested = assigneeId !== undefined || crewId !== undefined;
+  if (assignmentWasRequested) {
+    const assignmentError = await validateJobAssignment(tenantId, nextAssigneeId, nextCrewId);
+    if (assignmentError) { res.status(400).json({ error: assignmentError }); return; }
+  }
+
   const baseUpdate: Partial<typeof jobsTable.$inferInsert> = {
     ...(title !== undefined && { title }),
     ...(description !== undefined && { description }),
     ...(status !== undefined && { status }),
     ...(priority !== undefined && { priority }),
     ...(shouldSetClockIn && { clockInAt: new Date() } as any),
-    ...(assigneeId !== undefined && { assigneeId: assigneeId ? parseInt(assigneeId, 10) : null }),
-    ...(crewId !== undefined && { crewId: crewId ? parseInt(crewId, 10) : null }),
+    ...(assignmentWasRequested && { assigneeId: nextAssigneeId, crewId: nextCrewId }),
     ...(scheduledAt !== undefined && { scheduledAt: new Date(scheduledAt) }),
     ...(estimatedDuration !== undefined && { estimatedDuration }),
     ...(suppliesNeeded !== undefined && { suppliesNeeded: normaliseSupplies(suppliesNeeded) }),
@@ -770,8 +810,8 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
     ...(offSeasonWindow && { ...offSeasonWindow }),
   };
   const nextAssignment = {
-    assigneeId: assigneeId !== undefined ? (assigneeId ? parseInt(assigneeId, 10) : null) : currentJob.assigneeId,
-    crewId: crewId !== undefined ? (crewId ? parseInt(crewId, 10) : null) : currentJob.crewId,
+    assigneeId: nextAssigneeId,
+    crewId: nextCrewId,
   };
   const didChangeAssignment = assignmentChanged(currentJob, nextAssignment);
 

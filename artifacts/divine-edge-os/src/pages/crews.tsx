@@ -3,10 +3,12 @@ import {
   useListCrews, getListCrewsQueryKey,
   useGetCrew, getGetCrewQueryKey,
   useCreateCrew,
+  useUpdateCrew,
   useDeleteCrew,
   useAddCrewMember,
   useRemoveCrewMember,
   useListUsers, getListUsersQueryKey,
+  useGetTenantSettings, getGetTenantSettingsQueryKey,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
@@ -29,6 +31,8 @@ export default function CrewsPage() {
   const [selectedCrewId, setSelectedCrewId] = useState<number | null>(null);
   const [newCrewForm, setNewCrewForm] = useState({ name: '', description: '' });
   const [addMemberUserId, setAddMemberUserId] = useState('');
+  const [editingCrew, setEditingCrew] = useState(false);
+  const [editCrewForm, setEditCrewForm] = useState({ name: '', description: '', managerId: '' });
 
   const { data: crews, isLoading } = useListCrews({
     query: { queryKey: getListCrewsQueryKey() },
@@ -39,13 +43,19 @@ export default function CrewsPage() {
   });
 
   const { data: users } = useListUsers({ query: { queryKey: getListUsersQueryKey() } });
+  const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
 
   const createCrew = useCreateCrew();
+  const updateCrew = useUpdateCrew();
   const deleteCrew = useDeleteCrew();
   const addMember = useAddCrewMember();
   const removeMember = useRemoveCrewMember();
 
-  const eligibleMembers = users?.filter(u => u.role !== 'company_owner' && u.role !== 'super_admin') ?? [];
+  const eligibleMembers = users?.filter(u =>
+    u.role === 'technician'
+    || u.role === 'crew_manager'
+    || ((settings as any)?.ownersSchedulable && u.role === 'company_owner')
+  ) ?? [];
   const availableToAdd = selectedCrew
     ? eligibleMembers.filter(u => !selectedCrew.members?.some((m: { id: number }) => m.id === u.id))
     : eligibleMembers;
@@ -60,6 +70,39 @@ export default function CrewsPage() {
         setNewCrewForm({ name: '', description: '' });
       },
       onError: () => toast.error('Failed to create crew'),
+    });
+  };
+
+  React.useEffect(() => {
+    if (!selectedCrew) return;
+    setEditCrewForm({
+      name: selectedCrew.name,
+      description: selectedCrew.description ?? '',
+      managerId: selectedCrew.managerId ? String(selectedCrew.managerId) : '',
+    });
+    setEditingCrew(false);
+  }, [selectedCrew?.id]);
+
+  const handleUpdateCrew = () => {
+    if (!selectedCrewId || !editCrewForm.name.trim()) {
+      toast.error('Crew name is required');
+      return;
+    }
+    updateCrew.mutate({
+      id: selectedCrewId,
+      data: {
+        name: editCrewForm.name.trim(),
+        description: editCrewForm.description || undefined,
+        managerId: editCrewForm.managerId ? parseInt(editCrewForm.managerId, 10) : null,
+      },
+    }, {
+      onSuccess: () => {
+        toast.success('Crew updated');
+        qc.invalidateQueries({ queryKey: getListCrewsQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetCrewQueryKey(selectedCrewId) });
+        setEditingCrew(false);
+      },
+      onError: () => toast.error('Failed to update crew'),
     });
   };
 
@@ -250,6 +293,51 @@ export default function CrewsPage() {
               </SheetHeader>
 
               <div className="space-y-5">
+                {canManageOffice && (
+                  <div className="rounded-lg border p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Crew Details</p>
+                      {!editingCrew && (
+                        <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => setEditingCrew(true)} data-testid="button-edit-crew">
+                          <Edit className="w-3.5 h-3.5" /> Edit
+                        </Button>
+                      )}
+                    </div>
+                    {editingCrew ? (
+                      <>
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium">Crew Name</label>
+                          <Input value={editCrewForm.name} onChange={event => setEditCrewForm(current => ({ ...current, name: event.target.value }))} data-testid="input-edit-crew-name" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium">Description</label>
+                          <Input value={editCrewForm.description} onChange={event => setEditCrewForm(current => ({ ...current, description: event.target.value }))} />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium">Crew Manager</label>
+                          <Select value={editCrewForm.managerId || 'none'} onValueChange={value => setEditCrewForm(current => ({ ...current, managerId: value === 'none' ? '' : value }))}>
+                            <SelectTrigger><SelectValue placeholder="No manager" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">No manager</SelectItem>
+                              {eligibleMembers.map(user => <SelectItem key={user.id} value={String(user.id)}>{user.name} ({user.role === 'company_owner' ? 'owner' : user.role.replace(/_/g, ' ')})</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <Button variant="outline" size="sm" onClick={() => setEditingCrew(false)}>Cancel</Button>
+                          <Button size="sm" onClick={handleUpdateCrew} disabled={updateCrew.isPending} data-testid="button-save-crew">
+                            {updateCrew.isPending ? 'Saving…' : 'Save Crew'}
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <div>
+                        <p className="font-medium">{selectedCrew.name}</p>
+                        <p className="text-sm text-muted-foreground">{selectedCrew.description || 'No description'}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {selectedCrew.description && (
                   <p className="text-sm text-muted-foreground">{selectedCrew.description}</p>
                 )}

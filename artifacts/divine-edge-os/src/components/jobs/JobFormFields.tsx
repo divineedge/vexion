@@ -6,7 +6,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { RefreshCw, MessageSquare, Tag, X, Snowflake } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { cn } from '@/lib/utils';
+import { Check, ChevronsUpDown, RefreshCw, MessageSquare, Tag, X, Snowflake } from 'lucide-react';
 
 export type NewJobForm = {
   title: string;
@@ -19,6 +23,7 @@ export type NewJobForm = {
   customerId: string;
   propertyId: string;
   assigneeId: string;
+  crewId: string;
   tags: string[];
   recurring: boolean;
   recurrencePattern: string;
@@ -46,6 +51,7 @@ export const EMPTY_JOB: NewJobForm = {
   customerId: '',
   propertyId: '',
   assigneeId: '',
+  crewId: '',
   tags: [],
   recurring: false,
   recurrencePattern: 'weekly',
@@ -145,7 +151,11 @@ export interface JobFormFieldsProps {
   /** Properties for the selected customer. Pass an empty array when none are loaded yet. */
   properties: { id: number; address: string }[];
   users: { id: number; name: string; role: string }[];
+  crews?: { id: number; name: string }[];
+  ownersSchedulable?: boolean;
   durationUnit: string;
+  onCustomerSearch?: (query: string) => void;
+  customerSearchPending?: boolean;
   /** Show the "Make Recurring" section. Defaults to true. */
   showRecurrence?: boolean;
   /** Tenant defaults used when an office enables this series' annual pause. */
@@ -158,7 +168,16 @@ export interface JobFormFieldsProps {
  * page's "New Job" sheet and any other entry point (e.g. Routes' "New Job" action) that needs
  * to create a job with the same details.
  */
-export function JobFormFields({ form, setForm, customers, properties, users, durationUnit, showRecurrence = true, defaultOffSeasonStart, defaultOffSeasonEnd }: JobFormFieldsProps) {
+export function JobFormFields({ form, setForm, customers, properties, users, crews = [], ownersSchedulable = false, durationUnit, onCustomerSearch, customerSearchPending = false, showRecurrence = true, defaultOffSeasonStart, defaultOffSeasonEnd }: JobFormFieldsProps) {
+  const [customerPickerOpen, setCustomerPickerOpen] = React.useState(false);
+  const [selectedCustomerName, setSelectedCustomerName] = React.useState('');
+
+  React.useEffect(() => {
+    const selected = customers.find(customer => String(customer.id) === form.customerId);
+    if (selected) setSelectedCustomerName(selected.name);
+    if (!form.customerId) setSelectedCustomerName('');
+  }, [customers, form.customerId]);
+
   return (
     <>
       <div className="space-y-1.5">
@@ -215,17 +234,57 @@ export function JobFormFields({ form, setForm, customers, properties, users, dur
 
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Customer</label>
-        <Select
-          value={form.customerId}
-          onValueChange={v => setForm(f => ({ ...f, customerId: v, propertyId: '' }))}
-        >
-          <SelectTrigger title="Select the customer for this job"><SelectValue placeholder="Select customer..." /></SelectTrigger>
-          <SelectContent>
-            {customers.map(c => (
-              <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Popover open={customerPickerOpen} onOpenChange={open => {
+          setCustomerPickerOpen(open);
+          if (!open) onCustomerSearch?.('');
+        }}>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              role="combobox"
+              aria-expanded={customerPickerOpen}
+              className="w-full justify-between font-normal"
+              title="Search for the customer by name"
+              data-testid="button-job-customer-picker"
+            >
+              <span className={cn('truncate', !form.customerId && 'text-muted-foreground')}>
+                {form.customerId ? selectedCustomerName || `Customer #${form.customerId}` : 'Search customer name...'}
+              </span>
+              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0 z-[1300]" align="start">
+            <Command shouldFilter={false}>
+              <CommandInput
+                placeholder="Type a customer name..."
+                onValueChange={value => onCustomerSearch?.(value)}
+                data-testid="input-job-customer-search"
+              />
+              <CommandList>
+                <CommandEmpty>{customerSearchPending ? 'Searching...' : 'No customers found.'}</CommandEmpty>
+                <CommandGroup>
+                  {customers.map(customer => (
+                    <CommandItem
+                      key={customer.id}
+                      value={`${customer.name} ${customer.id}`}
+                      onSelect={() => {
+                        setSelectedCustomerName(customer.name);
+                        setForm(current => ({ ...current, customerId: String(customer.id), propertyId: '' }));
+                        onCustomerSearch?.('');
+                        setCustomerPickerOpen(false);
+                      }}
+                      data-testid={`option-job-customer-${customer.id}`}
+                    >
+                      <Check className={cn('mr-2 h-4 w-4', form.customerId === String(customer.id) ? 'opacity-100' : 'opacity-0')} />
+                      <span className="truncate">{customer.name}</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
       </div>
 
       {form.customerId && properties.length > 0 && (
@@ -244,14 +303,25 @@ export function JobFormFields({ form, setForm, customers, properties, users, dur
 
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Assign To</label>
-        <Select value={form.assigneeId} onValueChange={v => setForm(f => ({ ...f, assigneeId: v }))}>
-          <SelectTrigger title="Assign this job to a technician or crew manager"><SelectValue placeholder="Select technician..." /></SelectTrigger>
+        <Select
+          value={form.crewId ? `crew:${form.crewId}` : form.assigneeId ? `user:${form.assigneeId}` : 'unassigned'}
+          onValueChange={value => setForm(current => value === 'unassigned'
+            ? { ...current, assigneeId: '', crewId: '' }
+            : value.startsWith('crew:')
+              ? { ...current, crewId: value.slice(5), assigneeId: '' }
+              : { ...current, assigneeId: value.slice(5), crewId: '' })}
+        >
+          <SelectTrigger title="Assign this job to an individual or a crew" data-testid="select-job-assignment"><SelectValue placeholder="Select individual or crew..." /></SelectTrigger>
           <SelectContent>
+            <SelectItem value="unassigned">Unassigned</SelectItem>
             {users
-              .filter(u => u.role === 'technician' || u.role === 'crew_manager')
+              .filter(u => u.role === 'technician' || u.role === 'crew_manager' || (ownersSchedulable && u.role === 'company_owner'))
               .map(u => (
-                <SelectItem key={u.id} value={String(u.id)}>{u.name} ({u.role.replace(/_/g, ' ')})</SelectItem>
+                <SelectItem key={`user-${u.id}`} value={`user:${u.id}`}>{u.name} ({u.role === 'company_owner' ? 'owner' : u.role.replace(/_/g, ' ')})</SelectItem>
               ))}
+            {crews.map(crew => (
+              <SelectItem key={`crew-${crew.id}`} value={`crew:${crew.id}`}>{crew.name} (crew)</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

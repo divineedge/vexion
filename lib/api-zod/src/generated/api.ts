@@ -3087,7 +3087,7 @@ export const ListCrewsResponse = zod.array(ListCrewsResponseItem)
 export const CreateCrewBody = zod.object({
   "name": zod.string(),
   "description": zod.string().optional(),
-  "managerId": zod.number().optional()
+  "managerId": zod.number().nullish()
 })
 
 export const CreateCrewResponse = zod.object({
@@ -3143,7 +3143,7 @@ export const UpdateCrewParams = zod.object({
 export const UpdateCrewBody = zod.object({
   "name": zod.string().optional(),
   "description": zod.string().optional(),
-  "managerId": zod.number().optional()
+  "managerId": zod.number().nullish()
 })
 
 export const UpdateCrewResponse = zod.object({
@@ -5430,6 +5430,7 @@ export const GetTenantSettingsResponse = zod.object({
   "taxRate": zod.number().optional(),
   "defaultMarkupPct": zod.number().optional().describe('Default markup percentage applied to inventory cost prices.'),
   "showCostPriceToTech": zod.boolean().optional().describe('When true, technicians can see the cost\/buy price of inventory items.'),
+  "ownersSchedulable": zod.boolean().optional().describe('When true, company owners can be assigned jobs individually and added to crews.'),
   "durationUnit": zod.enum(['minutes', 'hours']).optional().describe('Whether job duration is displayed\/entered in minutes or hours'),
   "autoInvoiceFrequency": zod.enum(['off', 'daily', 'weekly', 'bi_monthly', 'monthly']).optional().describe('How often to auto-generate invoices'),
   "nonRecurringInvoiceCadence": zod.enum(['immediate', 'weekly']).optional().describe('How completed non-recurring jobs flagged for auto-invoicing get billed'),
@@ -5551,6 +5552,7 @@ export const UpdateTenantSettingsBody = zod.object({
   "taxRate": zod.number().optional(),
   "defaultMarkupPct": zod.number().optional(),
   "showCostPriceToTech": zod.boolean().optional(),
+  "ownersSchedulable": zod.boolean().optional(),
   "durationUnit": zod.enum(['minutes', 'hours']).optional(),
   "autoInvoiceFrequency": zod.enum(['off', 'daily', 'weekly', 'bi_monthly', 'monthly']).optional(),
   "nonRecurringInvoiceCadence": zod.enum(['immediate', 'weekly']).optional(),
@@ -5650,6 +5652,7 @@ export const UpdateTenantSettingsResponse = zod.object({
   "taxRate": zod.number().optional(),
   "defaultMarkupPct": zod.number().optional().describe('Default markup percentage applied to inventory cost prices.'),
   "showCostPriceToTech": zod.boolean().optional().describe('When true, technicians can see the cost\/buy price of inventory items.'),
+  "ownersSchedulable": zod.boolean().optional().describe('When true, company owners can be assigned jobs individually and added to crews.'),
   "durationUnit": zod.enum(['minutes', 'hours']).optional().describe('Whether job duration is displayed\/entered in minutes or hours'),
   "autoInvoiceFrequency": zod.enum(['off', 'daily', 'weekly', 'bi_monthly', 'monthly']).optional().describe('How often to auto-generate invoices'),
   "nonRecurringInvoiceCadence": zod.enum(['immediate', 'weekly']).optional().describe('How completed non-recurring jobs flagged for auto-invoicing get billed'),

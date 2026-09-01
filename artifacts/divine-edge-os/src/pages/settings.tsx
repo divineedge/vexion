@@ -100,6 +100,7 @@ export default function SettingsPage() {
 
   // Operational
   const [durationUnit, setDurationUnit] = useState<'minutes' | 'hours'>('minutes');
+  const [ownersSchedulable, setOwnersSchedulable] = useState(false);
   const [autoInvoiceFrequency, setAutoInvoiceFrequency] = useState<'off' | 'daily' | 'weekly' | 'bi_monthly' | 'monthly'>('off');
   const [nonRecurringInvoiceCadence, setNonRecurringInvoiceCadence] = useState<'immediate' | 'weekly'>('immediate');
   const [maxClockInHours, setMaxClockInHours] = useState('');
@@ -253,6 +254,7 @@ export default function SettingsPage() {
       setMarkupPct(String(settings.defaultMarkupPct ?? 20));
       setShowCostToTech(settings.showCostPriceToTech ?? false);
       setDurationUnit((settings.durationUnit as 'minutes' | 'hours') ?? 'minutes');
+      setOwnersSchedulable((settings as any).ownersSchedulable ?? false);
       setAutoInvoiceFrequency((settings.autoInvoiceFrequency as 'off' | 'daily' | 'weekly' | 'bi_monthly' | 'monthly') ?? 'off');
       setNonRecurringInvoiceCadence(((settings as any).nonRecurringInvoiceCadence as 'immediate' | 'weekly') ?? 'immediate');
       setMaxClockInHours((settings as any).maxClockInHours != null ? String((settings as any).maxClockInHours) : '');
@@ -501,7 +503,7 @@ export default function SettingsPage() {
 
   const saveOperational = () => {
     updateSettings.mutate(
-      { data: { durationUnit, autoInvoiceFrequency, nonRecurringInvoiceCadence, maxClockInHours: maxClockInHours ? parseFloat(maxClockInHours) : null, dailyTaskHourlyRate: parseFloat(dailyTaskHourlyRate) || 0, defaultOffSeasonStart: defaultOffSeasonStart || null, defaultOffSeasonEnd: defaultOffSeasonEnd || null } as Parameters<typeof updateSettings.mutate>[0]['data'] },
+      { data: { durationUnit, ownersSchedulable, autoInvoiceFrequency, nonRecurringInvoiceCadence, maxClockInHours: maxClockInHours ? parseFloat(maxClockInHours) : null, dailyTaskHourlyRate: parseFloat(dailyTaskHourlyRate) || 0, defaultOffSeasonStart: defaultOffSeasonStart || null, defaultOffSeasonEnd: defaultOffSeasonEnd || null } as Parameters<typeof updateSettings.mutate>[0]['data'] },
       {
         onSuccess: () => { toast.success('Operational settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
         onError: () => toast.error('Failed to save settings'),
@@ -1220,6 +1222,7 @@ export default function SettingsPage() {
                     </div>
                   ))}
                 </div>
+
               </div>
 
               <Button
@@ -2115,6 +2118,20 @@ export default function SettingsPage() {
                       className="h-8 px-4 text-sm"
                       onClick={() => setDurationUnit('hours')}
                     >Hours</Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Schedule Owners for Field Work</label>
+                  <p className="text-xs text-muted-foreground">Allow company owners to appear as individual job assignees and to be added to crews.</p>
+                  <div className="flex items-center gap-3">
+                    <Switch
+                      checked={ownersSchedulable}
+                      onCheckedChange={setOwnersSchedulable}
+                      title="Allow owners to be scheduled individually and added to crews"
+                      data-testid="switch-owners-schedulable"
+                    />
+                    <span className="text-sm text-muted-foreground">{ownersSchedulable ? 'Owners are available' : 'Owners are hidden'}</span>
                   </div>
                 </div>
 

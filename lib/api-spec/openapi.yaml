@@ -10633,7 +10633,7 @@ components:
         description:
           type: string
         managerId:
-          type: integer
+          type: ["integer", "null"]
 
     CrewUpdate:
       type: object
@@ -10643,7 +10643,7 @@ components:
         description:
           type: string
         managerId:
-          type: integer
+          type: ["integer", "null"]
 
     StockAdjustmentInput:
       type: object
@@ -12105,6 +12105,9 @@ components:
         showCostPriceToTech:
           type: boolean
           description: "When true, technicians can see the cost/buy price of inventory items."
+        ownersSchedulable:
+          type: boolean
+          description: "When true, company owners can be assigned jobs individually and added to crews."
         durationUnit:
           type: string
           enum: [minutes, hours]
@@ -12620,6 +12623,8 @@ components:
         defaultMarkupPct:
           type: number
         showCostPriceToTech:
+          type: boolean
+        ownersSchedulable:
           type: boolean
         durationUnit:
           type: string

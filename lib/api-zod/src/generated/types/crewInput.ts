@@ -9,5 +9,6 @@
 export interface CrewInput {
   name: string;
   description?: string;
-  managerId?: number;
+  /** @nullable */
+  managerId?: number | null;
 }

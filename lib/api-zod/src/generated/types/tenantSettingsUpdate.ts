@@ -27,6 +27,7 @@ export interface TenantSettingsUpdate {
   taxRate?: number;
   defaultMarkupPct?: number;
   showCostPriceToTech?: boolean;
+  ownersSchedulable?: boolean;
   durationUnit?: TenantSettingsUpdateDurationUnit;
   autoInvoiceFrequency?: TenantSettingsUpdateAutoInvoiceFrequency;
   nonRecurringInvoiceCadence?: TenantSettingsUpdateNonRecurringInvoiceCadence;

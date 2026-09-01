@@ -16,6 +16,8 @@ export const tenantsTable = pgTable("tenants", {
   taxRate: real("tax_rate").notNull().default(8.5),
   defaultMarkupPct: real("default_markup_pct").notNull().default(20),
   showCostPriceToTech: boolean("show_cost_price_to_tech").notNull().default(false),
+  /** Allow company owners to be scheduled individually and added to field crews. */
+  ownersSchedulable: boolean("owners_schedulable").notNull().default(false),
   /** 'minutes' | 'hours' — controls how job duration is displayed/entered company-wide */
   durationUnit: text("duration_unit").notNull().default("minutes"),
   /** auto-invoicing: 'off' | 'daily' | 'weekly' | 'bi_monthly' | 'monthly' */

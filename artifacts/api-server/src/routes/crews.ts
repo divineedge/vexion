@@ -1,9 +1,25 @@
 import { Router, type IRouter } from "express";
-import { db, crewsTable, crewMembersTable, usersTable, activityLogTable } from "@workspace/db";
+import { db, crewsTable, crewMembersTable, usersTable, activityLogTable, tenantsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 
 const router: IRouter = Router();
+
+async function getCrewEligibleUser(tenantId: number, userId: number) {
+  const [row] = await db
+    .select({
+      user: usersTable,
+      ownersSchedulable: tenantsTable.ownersSchedulable,
+    })
+    .from(usersTable)
+    .innerJoin(tenantsTable, eq(tenantsTable.id, usersTable.tenantId))
+    .where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId), eq(usersTable.isActive, true)));
+  if (!row) return null;
+  const allowed = row.user.role === "technician"
+    || row.user.role === "crew_manager"
+    || (row.user.role === "company_owner" && row.ownersSchedulable);
+  return allowed ? row.user : null;
+}
 
 function formatCrew(
   c: typeof crewsTable.$inferSelect,
@@ -84,12 +100,16 @@ router.post("/crews", async (req, res): Promise<void> => {
   const userId = getUserId(req);
   const { name, description, managerId } = req.body;
   if (!name) { res.status(400).json({ error: "name is required" }); return; }
+  const parsedManagerId = managerId ? parseInt(managerId, 10) : null;
+  if (parsedManagerId && !(await getCrewEligibleUser(tenantId, parsedManagerId))) {
+    res.status(400).json({ error: "Selected manager is not eligible for crew assignment" }); return;
+  }
 
   const [crew] = await db.insert(crewsTable).values({
     tenantId,
     name,
     description: description ?? null,
-    managerId: managerId ? parseInt(managerId, 10) : null,
+    managerId: parsedManagerId,
   }).returning();
 
   await db.insert(activityLogTable).values({ tenantId, userId, type: "crew_created", message: `Crew "${name}" created`, entityId: crew.id });
@@ -102,11 +122,16 @@ router.patch("/crews/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(req.params.id, 10);
   const { name, description, managerId } = req.body;
+  if (name !== undefined && !String(name).trim()) { res.status(400).json({ error: "name cannot be blank" }); return; }
+  const parsedManagerId = managerId ? parseInt(managerId, 10) : null;
+  if (managerId !== undefined && parsedManagerId && !(await getCrewEligibleUser(tenantId, parsedManagerId))) {
+    res.status(400).json({ error: "Selected manager is not eligible for crew assignment" }); return;
+  }
 
   const updates: Partial<typeof crewsTable.$inferInsert> = {};
-  if (name !== undefined) updates.name = name;
+  if (name !== undefined) updates.name = String(name).trim();
   if (description !== undefined) updates.description = description || null;
-  if (managerId !== undefined) updates.managerId = managerId ? parseInt(managerId, 10) : null;
+  if (managerId !== undefined) updates.managerId = parsedManagerId;
 
   const [updated] = await db.update(crewsTable).set(updates).where(and(eq(crewsTable.id, id), eq(crewsTable.tenantId, tenantId))).returning();
   if (!updated) { res.status(404).json({ error: "Crew not found" }); return; }
@@ -130,14 +155,20 @@ router.post("/crews/:id/members", async (req, res): Promise<void> => {
   const crewId = parseInt(req.params.id, 10);
   const { userId: memberUserId } = req.body;
   if (!memberUserId) { res.status(400).json({ error: "userId is required" }); return; }
+  const parsedMemberUserId = parseInt(memberUserId, 10);
+  const [crewExists] = await db.select({ id: crewsTable.id }).from(crewsTable).where(and(eq(crewsTable.id, crewId), eq(crewsTable.tenantId, tenantId)));
+  if (!crewExists) { res.status(404).json({ error: "Crew not found" }); return; }
+  if (!(await getCrewEligibleUser(tenantId, parsedMemberUserId))) {
+    res.status(400).json({ error: "Selected user is not eligible for crew assignment" }); return;
+  }
 
   // Check if already a member
   const [existing] = await db.select().from(crewMembersTable).where(
-    and(eq(crewMembersTable.crewId, crewId), eq(crewMembersTable.userId, parseInt(memberUserId, 10)), eq(crewMembersTable.tenantId, tenantId))
+    and(eq(crewMembersTable.crewId, crewId), eq(crewMembersTable.userId, parsedMemberUserId), eq(crewMembersTable.tenantId, tenantId))
   );
   if (existing) { res.status(409).json({ error: "User is already a member of this crew" }); return; }
 
-  await db.insert(crewMembersTable).values({ crewId, userId: parseInt(memberUserId, 10), tenantId });
+  await db.insert(crewMembersTable).values({ crewId, userId: parsedMemberUserId, tenantId });
 
   // Return updated crew
   const [crew] = await db.select().from(crewsTable).where(and(eq(crewsTable.id, crewId), eq(crewsTable.tenantId, tenantId)));

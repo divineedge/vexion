@@ -25,13 +25,17 @@ import { Progress } from '@/components/ui/progress';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
+import { useDebounce } from '@/hooks/use-debounce';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronRight, MapPinned, Route as RouteIcon, ArrowUp, ArrowDown,
   Wand2, Clock, User, Building, CalendarClock, Plus, Play, Square, Timer,
-  Printer, CheckCircle, Eye, MessageSquare, Users,
+  Printer, CheckCircle, Eye, MessageSquare, Users, Check, ChevronsUpDown,
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import RoutingSettings from '@/components/settings/RoutingSettings';
@@ -61,6 +65,7 @@ export default function RoutesDashboardPage() {
   const [location] = useLocation();
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 0 }));
   const [divisionFilter, setDivisionFilter] = useState<string>('all');
+  const [addStopJobPickerOpen, setAddStopJobPickerOpen] = useState(false);
   const [dayDetail, setDayDetail] = useState<{ routeTemplateId: number; date: string } | null>(() => {
     // Support deep-link from Schedule page: /routes?routeTemplateId=N&date=YYYY-MM-DD
     const params = new URLSearchParams(window.location.search);
@@ -117,7 +122,7 @@ export default function RoutesDashboardPage() {
     { startDate: weekStartStr, endDate: weekEndStr },
     { query: { enabled: routeTab === 'by-crew', queryKey: getListJobsQueryKey({ startDate: weekStartStr, endDate: weekEndStr }) } },
   );
-  const { data: crews } = useListCrews({ query: { enabled: routeTab === 'by-crew', queryKey: getListCrewsQueryKey() } });
+  const { data: crews } = useListCrews({ query: { enabled: routeTab === 'by-crew' || newJobOpen, queryKey: getListCrewsQueryKey() } });
 
   // Sub-timer (clock in/out per stop)
   const { data: subTimers } = useListSubTimers({ query: { queryKey: getListSubTimersQueryKey() } });
@@ -131,8 +136,11 @@ export default function RoutesDashboardPage() {
   const rescheduleOnce = useRescheduleJobOnce();
   const createJob = useCreateJob();
 
-  const { data: customers } = useListCustomers({}, {
-    query: { enabled: newJobOpen, queryKey: getListCustomersQueryKey({}) },
+  const [newJobCustomerSearch, setNewJobCustomerSearch] = useState('');
+  const debouncedNewJobCustomerSearch = useDebounce(newJobCustomerSearch, 250);
+  const customerQueryParams = { q: debouncedNewJobCustomerSearch || undefined, limit: 50 };
+  const { data: customers, isFetching: customerSearchPending } = useListCustomers(customerQueryParams, {
+    query: { enabled: newJobOpen, queryKey: getListCustomersQueryKey(customerQueryParams) },
   });
 
   const selectedCustomerIdNum = newJob.customerId ? parseInt(newJob.customerId, 10) : undefined;
@@ -290,6 +298,7 @@ export default function RoutesDashboardPage() {
         customerId: newJob.customerId ? parseInt(newJob.customerId, 10) : undefined,
         propertyId: newJob.propertyId ? parseInt(newJob.propertyId, 10) : undefined,
         assigneeId: newJob.assigneeId ? parseInt(newJob.assigneeId, 10) : undefined,
+        crewId: newJob.crewId ? parseInt(newJob.crewId, 10) : undefined,
         recurrenceRule,
         smsReminderEnabled: newJob.smsReminderEnabled,
         ...(newJob.offSeasonEnabled ? { offSeasonStart: newJob.offSeasonStart, offSeasonEnd: newJob.offSeasonEnd } : {}),
@@ -791,16 +800,53 @@ export default function RoutesDashboardPage() {
             <DialogTitle>Add Job to Route</DialogTitle>
             <DialogDescription>Assign an existing job scheduled on this date to this route.</DialogDescription>
           </DialogHeader>
-          <Select value={addStopJobId} onValueChange={setAddStopJobId}>
-            <SelectTrigger title="Select a job to add to this route"><SelectValue placeholder="Select a job..." /></SelectTrigger>
-            <SelectContent>
-              {unassignedJobsForDay.length === 0 ? (
-                <div className="px-3 py-6 text-sm text-muted-foreground text-center">No other jobs scheduled this day</div>
-              ) : unassignedJobsForDay.map(j => (
-                <SelectItem key={j.id} value={String(j.id)}>{j.title}{j.customerName ? ` — ${j.customerName}` : ''}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Popover open={addStopJobPickerOpen} onOpenChange={setAddStopJobPickerOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                role="combobox"
+                aria-expanded={addStopJobPickerOpen}
+                className="w-full justify-between font-normal"
+                title="Search by customer name or job title"
+                data-testid="button-route-job-picker"
+              >
+                <span className={cn('truncate', !addStopJobId && 'text-muted-foreground')}>
+                  {addStopJobId
+                    ? (() => {
+                        const selected = unassignedJobsForDay.find(job => String(job.id) === addStopJobId);
+                        return selected ? `${selected.title}${selected.customerName ? ` — ${selected.customerName}` : ''}` : `Job #${addStopJobId}`;
+                      })()
+                    : 'Search customer or job...'}
+                </span>
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0 z-[1300]" align="start">
+              <Command>
+                <CommandInput placeholder="Search customer or job..." data-testid="input-route-job-search" />
+                <CommandList>
+                  <CommandEmpty>No matching jobs scheduled this day.</CommandEmpty>
+                  <CommandGroup>
+                    {unassignedJobsForDay.map(job => (
+                      <CommandItem
+                        key={job.id}
+                        value={`${job.title} ${job.customerName ?? ''} ${job.id}`}
+                        onSelect={() => {
+                          setAddStopJobId(String(job.id));
+                          setAddStopJobPickerOpen(false);
+                        }}
+                        data-testid={`option-route-job-${job.id}`}
+                      >
+                        <Check className={cn('mr-2 h-4 w-4', addStopJobId === String(job.id) ? 'opacity-100' : 'opacity-0')} />
+                        <span className="truncate">{job.title}{job.customerName ? ` — ${job.customerName}` : ''}</span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
           <div className="flex gap-3 justify-end pt-2">
             <Button variant="outline" title="Cancel adding a stop to this route" onClick={() => setAddStopOpen(false)}>Cancel</Button>
             <Button title="Add the selected job as a stop on this route" onClick={handleAddStop} disabled={!addStopJobId || updateJobRoute.isPending}>
@@ -824,8 +870,12 @@ export default function RoutesDashboardPage() {
               form={newJob}
               setForm={setNewJob}
               customers={customers?.items ?? []}
+              onCustomerSearch={setNewJobCustomerSearch}
+              customerSearchPending={customerSearchPending}
               properties={customerProperties ?? []}
               users={users ?? []}
+              crews={crews ?? []}
+              ownersSchedulable={(settings as any)?.ownersSchedulable ?? false}
               durationUnit={durationUnit}
               defaultOffSeasonStart={settings?.defaultOffSeasonStart}
               defaultOffSeasonEnd={settings?.defaultOffSeasonEnd}

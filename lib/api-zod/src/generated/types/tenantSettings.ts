@@ -35,6 +35,8 @@ export interface TenantSettings {
   defaultMarkupPct?: number;
   /** When true, technicians can see the cost/buy price of inventory items. */
   showCostPriceToTech?: boolean;
+  /** When true, company owners can be assigned jobs individually and added to crews. */
+  ownersSchedulable?: boolean;
   /** Whether job duration is displayed/entered in minutes or hours */
   durationUnit?: TenantSettingsDurationUnit;
   /** How often to auto-generate invoices */

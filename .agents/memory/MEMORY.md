@@ -43,3 +43,4 @@
 - [Historical customer imports](historical-customer-imports.md) — imported legacy customers may omit current required contact/name data; preserve rows with safe blanks and fallback labels
 - [Lifecycle view selectors](lifecycle-view-selectors.md) — active/archive switches must label current states explicitly; destination-labeled toggles make correct data look broken
 - [Clock adjustment invariants](clock-adjustment-invariants.md) — preserve recorded events, audit effective-time changes, and enforce work-day bounds in tenant time
+- [Owner scheduling eligibility](owner-scheduling-eligibility.md) — owner field-work eligibility is tenant-controlled and applies narrowly to job assignment and crew membership

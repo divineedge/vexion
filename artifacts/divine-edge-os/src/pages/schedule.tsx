@@ -252,6 +252,8 @@ export default function SchedulePage() {
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [newJob, setNewJob] = useState<NewJobForm>(EMPTY_JOB);
+  const [newJobCustomerSearch, setNewJobCustomerSearch] = useState('');
+  const debouncedNewJobCustomerSearch = useDebounce(newJobCustomerSearch, 250);
 
   // Open create sheet when arriving via quick-add shortcut (?action=create) or prefill from property detail
   useEffect(() => {
@@ -346,8 +348,9 @@ export default function SchedulePage() {
     query: { enabled: selectedJobId != null, queryKey: getGetJobQueryKey(selectedJobId!) },
   });
 
-  const { data: customers } = useListCustomers({}, {
-    query: { enabled: createOpen, queryKey: getListCustomersQueryKey({}) },
+  const customerQueryParams = { q: debouncedNewJobCustomerSearch || undefined, limit: 50 };
+  const { data: customers, isFetching: customerSearchPending } = useListCustomers(customerQueryParams, {
+    query: { enabled: createOpen, queryKey: getListCustomersQueryKey(customerQueryParams) },
   });
 
   const selectedCustomerIdNum = newJob.customerId ? parseInt(newJob.customerId, 10) : undefined;
@@ -865,6 +868,7 @@ export default function SchedulePage() {
         customerId: newJob.customerId ? parseInt(newJob.customerId, 10) : undefined,
         propertyId: newJob.propertyId ? parseInt(newJob.propertyId, 10) : undefined,
         assigneeId: newJob.assigneeId ? parseInt(newJob.assigneeId, 10) : undefined,
+        crewId: newJob.crewId ? parseInt(newJob.crewId, 10) : undefined,
         recurrenceRule,
         smsReminderEnabled: newJob.smsReminderEnabled,
         tags: newJob.tags.length ? newJob.tags : undefined,
@@ -1538,8 +1542,12 @@ export default function SchedulePage() {
               form={newJob}
               setForm={setNewJob}
               customers={customers?.items ?? []}
+              onCustomerSearch={setNewJobCustomerSearch}
+              customerSearchPending={customerSearchPending}
               properties={customerProperties ?? []}
               users={users ?? []}
+              crews={crews}
+              ownersSchedulable={(settings as any)?.ownersSchedulable ?? false}
               durationUnit={durationUnit}
               defaultOffSeasonStart={settings?.defaultOffSeasonStart}
               defaultOffSeasonEnd={settings?.defaultOffSeasonEnd}

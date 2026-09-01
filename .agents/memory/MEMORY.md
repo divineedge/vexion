@@ -45,3 +45,4 @@
 - [Clock adjustment invariants](clock-adjustment-invariants.md) — preserve recorded events, audit effective-time changes, and enforce work-day bounds in tenant time
 - [Owner scheduling eligibility](owner-scheduling-eligibility.md) — owner field-work eligibility is tenant-controlled and applies narrowly to job assignment and crew membership
 - [Job service snapshots](job-service-snapshots.md) — snapshot service/matrix price and duration onto each job so later catalog edits never change historical billing
+- [Legacy shared database cutover](legacy-shared-database-cutover.md) — after removing a legacy database secret, compare the newly attached DB before restoring; Replit may attach an existing different dataset

@@ -647,6 +647,11 @@ paths:
           schema:
             type: boolean
           description: Include archived customers; archived customers are excluded by default
+        - name: archivedOnly
+          in: query
+          schema:
+            type: boolean
+          description: Return only archived customers
       responses:
         "200":
           description: List of customers

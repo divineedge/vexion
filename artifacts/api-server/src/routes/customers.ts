@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, customersTable, propertiesTable, jobsTable, invoicesTable, estimatesTable, activityLogTable, propertyOwnershipHistoryTable, customerOtpSessionsTable, stopServiceFlagsTable, communicationsLogTable, tenantsTable } from "@workspace/db";
-import { eq, and, ilike, sql, desc, isNull, ne, inArray } from "drizzle-orm";
+import { eq, and, or, ilike, sql, desc, isNull, isNotNull, ne, inArray } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { syncCustomerToMailchimp } from "../lib/mailchimpSync";
 import { isAdminRole } from "../lib/roles";
@@ -400,15 +400,24 @@ async function fetchLastReminderFailures(tenantId: number, customerIds: number[]
 
 router.get("/customers", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { q, page = "1", limit = "20", hasReminderFailure, includeArchived } = req.query as Record<string, string>;
+  const { q, page = "1", limit = "20", hasReminderFailure, includeArchived, archivedOnly } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page, 10));
   const limitNum = Math.min(100, parseInt(limit, 10));
   const offset = (pageNum - 1) * limitNum;
 
-  const baseWhere = includeArchived === "true"
-    ? eq(customersTable.tenantId, tenantId)
-    : and(eq(customersTable.tenantId, tenantId), isNull(customersTable.archivedAt));
-  let where = q ? and(baseWhere, ilike(customersTable.name, `%${q}%`)) : baseWhere;
+  const baseWhere = archivedOnly === "true"
+    ? and(eq(customersTable.tenantId, tenantId), isNotNull(customersTable.archivedAt))
+    : includeArchived === "true"
+      ? eq(customersTable.tenantId, tenantId)
+      : and(eq(customersTable.tenantId, tenantId), isNull(customersTable.archivedAt));
+  let where = q
+    ? and(baseWhere, or(
+        ilike(customersTable.name, `%${q}%`),
+        ilike(customersTable.company, `%${q}%`),
+        ilike(customersTable.email, `%${q}%`),
+        ilike(customersTable.phone, `%${q}%`),
+      ))
+    : baseWhere;
 
   // If filtering by reminder failure, restrict to customers whose MOST RECENT outbound reminder attempt failed.
   // Using a subquery with DISTINCT ON so a later successful send clears the badge.
@@ -443,7 +452,7 @@ router.get("/customers", async (req, res): Promise<void> => {
     .select()
     .from(customersTable)
     .where(where)
-    .orderBy(customersTable.createdAt)
+    .orderBy(desc(customersTable.createdAt))
     .limit(limitNum)
     .offset(offset);
 

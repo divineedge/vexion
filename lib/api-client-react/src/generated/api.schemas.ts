@@ -5998,6 +5998,10 @@ hasReminderFailure?: boolean;
  * Include archived customers; archived customers are excluded by default
  */
 includeArchived?: boolean;
+/**
+ * Return only archived customers
+ */
+archivedOnly?: boolean;
 };
 
 export type GetAddressSuggestionsParams = {

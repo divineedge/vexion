@@ -649,7 +649,8 @@ export const ListCustomersQueryParams = zod.object({
   "page": zod.coerce.number().optional(),
   "limit": zod.coerce.number().optional(),
   "hasReminderFailure": zod.coerce.boolean().optional().describe('Filter to customers whose last outbound reminder failed to send'),
-  "includeArchived": zod.coerce.boolean().optional().describe('Include archived customers; archived customers are excluded by default')
+  "includeArchived": zod.coerce.boolean().optional().describe('Include archived customers; archived customers are excluded by default'),
+  "archivedOnly": zod.coerce.boolean().optional().describe('Return only archived customers')
 })
 
 export const ListCustomersResponse = zod.object({

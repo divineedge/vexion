@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, forwardRef, useImperat
 import {
   useListCustomers, getListCustomersQueryKey,
   useCreateCustomer,
+  useDeleteCustomer,
   useGetTenantSettings, getGetTenantSettingsQueryKey,
   useListTags, getListTagsQueryKey,
   customFetch,
@@ -17,8 +18,10 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
-import { Search, Plus, Building, Phone, Mail, Save, X, User, Tag, FileText, Home, AlertTriangle, Filter, Zap, MapPin, CreditCard, DollarSign, Briefcase, MoreHorizontal } from 'lucide-react';
+import { Search, Plus, Building, Phone, Mail, Save, X, User, Tag, FileText, Home, AlertTriangle, Filter, Zap, MapPin, CreditCard, DollarSign, Briefcase, MoreHorizontal, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useLocation } from 'wouter';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -263,8 +266,13 @@ export default function CustomersPage() {
   const [openBalanceFilter, setOpenBalanceFilter] = useState(false);
   const [typeFilter, setTypeFilter] = useState('all');
   const [tagFilter, setTagFilter] = useState('__all__');
+  const [archiveView, setArchiveView] = useState<'active' | 'archived' | 'all'>('active');
   const [sortField, setSortField] = useState<'name' | 'totalSpend' | 'createdAt' | 'lastServiceDate'>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [page, setPage] = useState(1);
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState<Set<number>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleteConfirmation, setBulkDeleteConfirmation] = useState('');
 
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<FormData>(BLANK);
@@ -311,8 +319,11 @@ export default function CustomersPage() {
 
   const queryParams = {
     q: debouncedSearch || undefined,
-    limit: 200,
+    page,
+    limit: 50,
     hasReminderFailure: reminderFailureFilter ? true : undefined,
+    includeArchived: archiveView === 'all' ? true : undefined,
+    archivedOnly: archiveView === 'archived' ? true : undefined,
   };
 
   const { data, isLoading } = useListCustomers(
@@ -322,6 +333,7 @@ export default function CustomersPage() {
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
 
   const createCustomer = useCreateCustomer();
+  const deleteCustomer = useDeleteCustomer();
   const { data: bizTags = [] } = useListTags({ query: { queryKey: getListTagsQueryKey() } });
   const activeFields = getActiveCustomerFields(settings);
   const customerTypeField = activeFields.find(f => f.key === 'customerType');
@@ -337,6 +349,69 @@ export default function CustomersPage() {
       : ['Google', 'Word of Mouth', 'Flyer', 'Repeat Customer', 'Social Media', 'Referral', 'Other']),
     CUSTOMER_REFERRAL_SOURCE,
   ]));
+
+  useEffect(() => {
+    setPage(1);
+    setSelectedCustomerIds(new Set());
+  }, [debouncedSearch, reminderFailureFilter, openBalanceFilter, noCardFilter, typeFilter, tagFilter, archiveView]);
+
+  const visibleCustomers = (data?.items ?? [])
+    .filter(c => typeFilter === 'all' || (c as any).customerType === typeFilter)
+    .filter(c => !openBalanceFilter || ((c as any).paymentStanding?.overdueAmount ?? 0) > 0)
+    .filter(c => tagFilter === '__all__' || ((c as any).tags ?? []).includes(tagFilter))
+    .filter(c => !noCardFilter || (!(c as any).hasPaymentMethod && !(c as any).noCardAlertSilenced))
+    .sort((a, b) => {
+      let cmp = 0;
+      if (sortField === 'name') cmp = a.name.localeCompare(b.name);
+      else if (sortField === 'totalSpend') cmp = ((a as any).totalSpend ?? 0) - ((b as any).totalSpend ?? 0);
+      else if (sortField === 'createdAt') cmp = new Date((a as any).createdAt ?? 0).getTime() - new Date((b as any).createdAt ?? 0).getTime();
+      else if (sortField === 'lastServiceDate') cmp = new Date((a as any).lastServiceDate ?? 0).getTime() - new Date((b as any).lastServiceDate ?? 0).getTime();
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  const allVisibleSelected = visibleCustomers.length > 0 && visibleCustomers.every(customer => selectedCustomerIds.has(customer.id));
+  const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / 50));
+
+  const toggleCustomerSelection = (customerId: number, selected: boolean) => {
+    setSelectedCustomerIds(current => {
+      const next = new Set(current);
+      if (selected) next.add(customerId);
+      else next.delete(customerId);
+      return next;
+    });
+  };
+
+  const toggleVisibleCustomers = (selected: boolean) => {
+    setSelectedCustomerIds(current => {
+      const next = new Set(current);
+      for (const customer of visibleCustomers) {
+        if (selected) next.add(customer.id);
+        else next.delete(customer.id);
+      }
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = [...selectedCustomerIds];
+    const failedIds: number[] = [];
+    let deletedCount = 0;
+    for (const id of ids) {
+      try {
+        await deleteCustomer.mutateAsync({ id });
+        deletedCount++;
+      } catch {
+        failedIds.push(id);
+      }
+    }
+    await qc.invalidateQueries({ queryKey: ['customers'] });
+    setSelectedCustomerIds(new Set(failedIds));
+    setBulkDeleteOpen(false);
+    setBulkDeleteConfirmation('');
+    if (deletedCount > 0) toast.success(`Permanently deleted ${deletedCount} customer${deletedCount === 1 ? '' : 's'}`);
+    if (failedIds.length > 0) {
+      toast.error(`${failedIds.length} customer${failedIds.length === 1 ? '' : 's'} could not be deleted because related records still exist`);
+    }
+  };
 
   const setField = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }));
 
@@ -449,6 +524,16 @@ export default function CustomersPage() {
             {data?.total != null && (
               <span className="text-sm text-muted-foreground whitespace-nowrap" title="Customers matching current filters">{data.total.toLocaleString()} customer{data.total !== 1 ? 's' : ''}</span>
             )}
+            <Select value={archiveView} onValueChange={value => setArchiveView(value as 'active' | 'archived' | 'all')}>
+              <SelectTrigger className="h-9 w-36 text-sm" title="Choose active, archived, or all customers" data-testid="select-customer-archive-view">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="archived">Archived</SelectItem>
+                <SelectItem value="all">All customers</SelectItem>
+              </SelectContent>
+            </Select>
             <Select value={typeFilter} onValueChange={setTypeFilter}>
               <SelectTrigger className="h-9 w-40 text-sm" title="Filter by customer type">
                 <SelectValue placeholder="All types" />
@@ -507,21 +592,56 @@ export default function CustomersPage() {
                 </Select>
               ) : null;
             })()}
-            {(search || typeFilter !== 'all' || reminderFailureFilter || openBalanceFilter || tagFilter !== '__all__') && (
+            {(search || archiveView !== 'active' || typeFilter !== 'all' || reminderFailureFilter || openBalanceFilter || noCardFilter || tagFilter !== '__all__') && (
               <Button
                 variant="ghost"
                 size="sm"
                 title="Reset all filters"
                 className="gap-1.5 text-muted-foreground"
-                onClick={() => { setSearch(''); setTypeFilter('all'); setReminderFailureFilter(false); setOpenBalanceFilter(false); setNoCardFilter(false); setTagFilter('__all__'); }}
+                onClick={() => { setSearch(''); setArchiveView('active'); setTypeFilter('all'); setReminderFailureFilter(false); setOpenBalanceFilter(false); setNoCardFilter(false); setTagFilter('__all__'); }}
               >
                 <X className="w-3.5 h-3.5" /> Clear filters
               </Button>
             )}
           </div>
+          {selectedCustomerIds.size > 0 && (
+            <div className="px-4 py-3 border-b bg-destructive/5 flex items-center justify-between gap-4" data-testid="bulk-customer-actions">
+              <div className="text-sm">
+                <span className="font-semibold">{selectedCustomerIds.size}</span> customer{selectedCustomerIds.size === 1 ? '' : 's'} selected
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedCustomerIds(new Set())}
+                  data-testid="button-clear-customer-selection"
+                >
+                  Clear selection
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => setBulkDeleteOpen(true)}
+                  data-testid="button-delete-selected-customers"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete selected
+                </Button>
+              </div>
+            </div>
+          )}
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-12">
+                  <Checkbox
+                    checked={allVisibleSelected ? true : selectedCustomerIds.size > 0 ? 'indeterminate' : false}
+                    onCheckedChange={checked => toggleVisibleCustomers(checked === true)}
+                    aria-label="Select all customers on this page"
+                    data-testid="checkbox-select-page-customers"
+                  />
+                </TableHead>
                 <TableHead className="cursor-pointer select-none hover:text-foreground" onClick={() => { if (sortField === 'name') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortField('name'); setSortDir('asc'); } }}>
                   Name {sortField === 'name' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
                 </TableHead>
@@ -542,20 +662,19 @@ export default function CustomersPage() {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading customers...</TableCell></TableRow>
-              ) : (data?.items ?? []).filter(c => typeFilter === 'all' || (c as any).customerType === typeFilter).filter(c => !openBalanceFilter || ((c as any).paymentStanding?.overdueAmount ?? 0) > 0).filter(c => tagFilter === '__all__' || ((c as any).tags ?? []).includes(tagFilter)).length === 0 ? (
-                <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                  {reminderFailureFilter ? 'No customers with reminder failures found.' : openBalanceFilter ? 'No customers with open balances found.' : (<span>No customers found.{!search && !tagFilter && typeFilter === 'all' && <> <button className="text-primary hover:underline" onClick={() => setCreating(true)}>Add one →</button></>}</span>)}
+                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Loading customers...</TableCell></TableRow>
+              ) : visibleCustomers.length === 0 ? (
+                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                  {reminderFailureFilter
+                    ? 'No customers with reminder failures found.'
+                    : openBalanceFilter
+                      ? 'No customers with open balances found.'
+                      : archiveView === 'archived'
+                        ? 'No archived customers found.'
+                        : (<span>No customers found.{!search && tagFilter === '__all__' && typeFilter === 'all' && <> <button className="text-primary hover:underline" onClick={() => setCreating(true)}>Add one →</button></>}</span>)}
                 </TableCell></TableRow>
               ) : (
-                (data?.items ?? []).filter(c => typeFilter === 'all' || (c as any).customerType === typeFilter).filter(c => !openBalanceFilter || ((c as any).paymentStanding?.overdueAmount ?? 0) > 0).filter(c => tagFilter === '__all__' || ((c as any).tags ?? []).includes(tagFilter)).filter(c => !noCardFilter || (!(c as any).hasPaymentMethod && !(c as any).noCardAlertSilenced)).sort((a, b) => {
-                  let cmp = 0;
-                  if (sortField === 'name') cmp = a.name.localeCompare(b.name);
-                  else if (sortField === 'totalSpend') cmp = ((a as any).totalSpend ?? 0) - ((b as any).totalSpend ?? 0);
-                  else if (sortField === 'createdAt') cmp = new Date((a as any).createdAt ?? 0).getTime() - new Date((b as any).createdAt ?? 0).getTime();
-                  else if (sortField === 'lastServiceDate') cmp = new Date((a as any).lastServiceDate ?? 0).getTime() - new Date((b as any).lastServiceDate ?? 0).getTime();
-                  return sortDir === 'asc' ? cmp : -cmp;
-                }).map(customer => {
+                visibleCustomers.map(customer => {
                   const failure = (customer as any).lastReminderFailure as { channel: string; errorNote: string; failedAt: string } | null;
                   return (
                     <TableRow
@@ -563,12 +682,25 @@ export default function CustomersPage() {
                       className="cursor-pointer hover:bg-muted/50 group"
                       onClick={() => setLocation(`/customers/${customer.id}`)}
                     >
+                      <TableCell onClick={event => event.stopPropagation()}>
+                        <Checkbox
+                          checked={selectedCustomerIds.has(customer.id)}
+                          onCheckedChange={checked => toggleCustomerSelection(customer.id, checked === true)}
+                          aria-label={`Select ${customer.name}`}
+                          data-testid={`checkbox-customer-${customer.id}`}
+                        />
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <div className="font-medium truncate max-w-[200px]" title={customer.name}>{customer.name}</div>
                           {customer.autoInvoiceOnCompletion && (
                             <Badge variant="outline" className="gap-1 text-emerald-700 border-emerald-300 bg-emerald-50 text-[10px] px-1.5 py-0 shrink-0" title="Auto-invoice on job completion">
                               <Zap className="w-3 h-3" /> Auto-Invoice
+                            </Badge>
+                          )}
+                          {(customer as any).archivedAt && (
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0" title="This customer is archived">
+                              Archived
                             </Badge>
                           )}
                           {(customer as any).hasPaymentMethod ? (
@@ -646,13 +778,84 @@ export default function CustomersPage() {
               )}
             </TableBody>
           </Table>
-          {data && data.items.length >= 200 && data.total > 200 && (
-            <div className="px-4 py-3 border-t text-xs text-muted-foreground text-center">
-              Showing 200 of {data.total.toLocaleString()} customers — refine your search to find others
+          {data && data.total > 0 && (
+            <div className="px-4 py-3 border-t flex items-center justify-between gap-4">
+              <div className="text-sm text-muted-foreground" data-testid="text-customer-page-summary">
+                Showing {((page - 1) * 50) + 1}–{Math.min(page * 50, data.total)} of {data.total.toLocaleString()} customers
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1"
+                  disabled={page <= 1 || isLoading}
+                  onClick={() => { setPage(current => Math.max(1, current - 1)); setSelectedCustomerIds(new Set()); }}
+                  data-testid="button-previous-customer-page"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  Previous
+                </Button>
+                <span className="text-sm text-muted-foreground px-2" data-testid="text-customer-page-number">
+                  Page {page} of {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1"
+                  disabled={page >= totalPages || isLoading}
+                  onClick={() => { setPage(current => Math.min(totalPages, current + 1)); setSelectedCustomerIds(new Set()); }}
+                  data-testid="button-next-customer-page"
+                >
+                  Next
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={bulkDeleteOpen} onOpenChange={open => {
+        setBulkDeleteOpen(open);
+        if (!open) setBulkDeleteConfirmation('');
+      }}>
+        <DialogContent data-testid="dialog-bulk-delete-customers">
+          <DialogHeader>
+            <DialogTitle>Permanently delete {selectedCustomerIds.size} customer{selectedCustomerIds.size === 1 ? '' : 's'}?</DialogTitle>
+            <DialogDescription>
+              This permanently removes the selected customers and any properties that have no dependent records. Customers with jobs, invoices, estimates, or other protected history will be left in place and reported as blocked. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <label htmlFor="bulk-delete-confirmation" className="text-sm font-medium">
+              Type DELETE to confirm
+            </label>
+            <Input
+              id="bulk-delete-confirmation"
+              value={bulkDeleteConfirmation}
+              onChange={event => setBulkDeleteConfirmation(event.target.value)}
+              placeholder="DELETE"
+              autoComplete="off"
+              data-testid="input-confirm-bulk-customer-delete"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkDeleteOpen(false)} disabled={deleteCustomer.isPending}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              className="gap-2"
+              disabled={bulkDeleteConfirmation !== 'DELETE' || deleteCustomer.isPending}
+              onClick={handleBulkDelete}
+              data-testid="button-confirm-bulk-customer-delete"
+            >
+              <Trash2 className="w-4 h-4" />
+              {deleteCustomer.isPending ? 'Deleting…' : 'Permanently delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create Customer Sheet */}
       <Sheet open={creating} onOpenChange={setCreating}>

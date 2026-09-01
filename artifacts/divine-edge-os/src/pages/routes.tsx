@@ -42,6 +42,7 @@ import RoutingSettings from '@/components/settings/RoutingSettings';
 import { useListCrews, getListCrewsQueryKey } from '@workspace/api-client-react';
 import { startOfWeek, addWeeks, subWeeks, format, addDays } from 'date-fns';
 import { JobFormFields, EMPTY_JOB, buildRecurrenceRule, type NewJobForm } from '@/components/jobs/JobFormFields';
+import { BulkJobScheduler } from '@/components/jobs/BulkJobScheduler';
 
 const FREQUENCY_LABEL: Record<string, string> = {
   weekly: 'Weekly',
@@ -88,6 +89,7 @@ export default function RoutesDashboardPage() {
   const [addStopOpen, setAddStopOpen] = useState(false);
   const [addStopJobId, setAddStopJobId] = useState<string>('');
   const [newJobOpen, setNewJobOpen] = useState(false);
+  const [bulkJobOpen, setBulkJobOpen] = useState(false);
   const [newJob, setNewJob] = useState<NewJobForm>(EMPTY_JOB);
   const [capacityWarning, setCapacityWarning] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [routeTab, setRouteTab] = useState('dashboard');
@@ -609,6 +611,9 @@ export default function RoutesDashboardPage() {
                     <Button variant="outline" size="sm" className="gap-1.5 h-7 text-xs" title="Create a new job and add it to this route" onClick={openNewJob}>
                       <Plus className="w-3.5 h-3.5" /> New Job
                     </Button>
+                    <Button variant="outline" size="sm" className="gap-1.5 h-7 text-xs" title="Create several jobs with shared service details" onClick={() => setBulkJobOpen(true)} data-testid="button-bulk-schedule-jobs">
+                      <Users className="w-3.5 h-3.5" /> Schedule Multiple
+                    </Button>
                     <Button variant="outline" size="sm" className="gap-1.5 h-7 text-xs" title="Add an existing job as a stop on this route" onClick={() => setAddStopOpen(true)}>
                       <Plus className="w-3.5 h-3.5" /> Add Stop
                     </Button>
@@ -857,6 +862,23 @@ export default function RoutesDashboardPage() {
       </Dialog>
 
       {/* New Job Sheet — creates a brand-new job and assigns it straight to this route/day */}
+      <BulkJobScheduler
+        open={bulkJobOpen}
+        onOpenChange={setBulkJobOpen}
+        routeTemplateId={detail?.routeTemplateId}
+        routeName={detail?.routeTemplateName}
+        routeDate={detail?.date}
+        durationUnit={durationUnit as 'minutes' | 'hours'}
+        users={users ?? []}
+        crews={crews ?? []}
+        ownersSchedulable={(settings as any)?.ownersSchedulable ?? false}
+        onComplete={() => {
+          invalidateDetail();
+          if (dayDetail) qc.invalidateQueries({ queryKey: getListJobsQueryKey({ startDate: dayDetail.date, endDate: dayDetailEndDate }) });
+          qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+        }}
+      />
+
       <Sheet open={newJobOpen} onOpenChange={open => { if (!open) { setNewJobOpen(false); setNewJob(EMPTY_JOB); } }}>
         <SheetContent className="w-full sm:max-w-md overflow-y-auto">
           <SheetHeader className="pb-4">

@@ -1,0 +1,12 @@
+ALTER TABLE "equipment" ADD COLUMN IF NOT EXISTS "model" text;
+ALTER TABLE "equipment" ADD COLUMN IF NOT EXISTS "serial_number" text;
+ALTER TABLE "equipment" ADD COLUMN IF NOT EXISTS "year" integer;
+ALTER TABLE "equipment" ADD COLUMN IF NOT EXISTS "attachment_type" text;
+ALTER TABLE "equipment" ADD COLUMN IF NOT EXISTS "attachment_model" text;
+ALTER TABLE "equipment" ADD COLUMN IF NOT EXISTS "attachment_serial_number" text;
+ALTER TABLE "equipment" ADD COLUMN IF NOT EXISTS "attachment_year" integer;
+ALTER TABLE "equipment" ADD COLUMN IF NOT EXISTS "oil_filter_number" text;
+ALTER TABLE "equipment" ADD COLUMN IF NOT EXISTS "air_filter_number" text;
+ALTER TABLE "equipment" ADD COLUMN IF NOT EXISTS "fuel_filter_number" text;
+ALTER TABLE "equipment" ADD COLUMN IF NOT EXISTS "hydraulic_filter_number" text;
+ALTER TABLE "equipment" ADD COLUMN IF NOT EXISTS "other_filter_numbers" text;

@@ -85,6 +85,18 @@ function fmtHours(v: number | null | undefined) {
 interface EquipmentFormState {
   name: string;
   type: string;
+  model: string;
+  serialNumber: string;
+  year: string;
+  attachmentType: string;
+  attachmentModel: string;
+  attachmentSerialNumber: string;
+  attachmentYear: string;
+  oilFilterNumber: string;
+  airFilterNumber: string;
+  fuelFilterNumber: string;
+  hydraulicFilterNumber: string;
+  otherFilterNumbers: string;
   purchaseDate: string;
   purchasePrice: string;
   expectedLifespanYears: string;
@@ -98,6 +110,9 @@ interface EquipmentFormState {
 
 const EMPTY_EQ_FORM: EquipmentFormState = {
   name: '', type: '', purchaseDate: '', purchasePrice: '',
+  model: '', serialNumber: '', year: '', attachmentType: '', attachmentModel: '',
+  attachmentSerialNumber: '', attachmentYear: '', oilFilterNumber: '', airFilterNumber: '',
+  fuelFilterNumber: '', hydraulicFilterNumber: '', otherFilterNumbers: '',
   expectedLifespanYears: '', expectedLifespanHours: '', currentHours: '',
   currentMiles: '', notes: '', sellAfterHours: '', neverSell: false,
 };
@@ -106,6 +121,18 @@ function equipmentToForm(e: Equipment): EquipmentFormState {
   return {
     name: e.name,
     type: e.type,
+    model: e.model ?? '',
+    serialNumber: e.serialNumber ?? '',
+    year: e.year != null ? String(e.year) : '',
+    attachmentType: e.attachmentType ?? '',
+    attachmentModel: e.attachmentModel ?? '',
+    attachmentSerialNumber: e.attachmentSerialNumber ?? '',
+    attachmentYear: e.attachmentYear != null ? String(e.attachmentYear) : '',
+    oilFilterNumber: e.oilFilterNumber ?? '',
+    airFilterNumber: e.airFilterNumber ?? '',
+    fuelFilterNumber: e.fuelFilterNumber ?? '',
+    hydraulicFilterNumber: e.hydraulicFilterNumber ?? '',
+    otherFilterNumbers: e.otherFilterNumbers ?? '',
     purchaseDate: e.purchaseDate ?? '',
     purchasePrice: String(e.purchasePrice ?? ''),
     expectedLifespanYears: e.expectedLifespanYears != null ? String(e.expectedLifespanYears) : '',
@@ -538,6 +565,38 @@ function EquipmentDetailPanel({ equipment, onClose, onEdit }: { equipment: Equip
             </div>
           </div>
         ) : null}
+
+        {(equipment.model || equipment.serialNumber || equipment.year || equipment.attachmentType || equipment.attachmentModel || equipment.attachmentSerialNumber || equipment.attachmentYear) && (
+          <div className="rounded-lg border p-4 space-y-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Equipment Identification</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+              <div>
+                <p className="font-medium">Primary machine</p>
+                <p className="text-muted-foreground">{[equipment.year, equipment.model].filter(Boolean).join(' ') || 'Model not entered'}</p>
+                {equipment.serialNumber && <p className="font-mono text-xs">Serial: {equipment.serialNumber}</p>}
+              </div>
+              {(equipment.attachmentType || equipment.attachmentModel || equipment.attachmentSerialNumber || equipment.attachmentYear) && (
+                <div>
+                  <p className="font-medium">{equipment.attachmentType || 'Attachment'}</p>
+                  <p className="text-muted-foreground">{[equipment.attachmentYear, equipment.attachmentModel].filter(Boolean).join(' ') || 'Model not entered'}</p>
+                  {equipment.attachmentSerialNumber && <p className="font-mono text-xs">Serial: {equipment.attachmentSerialNumber}</p>}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        {(equipment.oilFilterNumber || equipment.airFilterNumber || equipment.fuelFilterNumber || equipment.hydraulicFilterNumber || equipment.otherFilterNumbers) && (
+          <div className="rounded-lg border p-4 space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Filter Part Numbers</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+              {equipment.oilFilterNumber && <p><span className="text-muted-foreground">Oil:</span> <span className="font-mono">{equipment.oilFilterNumber}</span></p>}
+              {equipment.airFilterNumber && <p><span className="text-muted-foreground">Air:</span> <span className="font-mono">{equipment.airFilterNumber}</span></p>}
+              {equipment.fuelFilterNumber && <p><span className="text-muted-foreground">Fuel:</span> <span className="font-mono">{equipment.fuelFilterNumber}</span></p>}
+              {equipment.hydraulicFilterNumber && <p><span className="text-muted-foreground">Hydraulic:</span> <span className="font-mono">{equipment.hydraulicFilterNumber}</span></p>}
+            </div>
+            {equipment.otherFilterNumbers && <p className="text-sm whitespace-pre-wrap"><span className="text-muted-foreground">Other:</span> {equipment.otherFilterNumbers}</p>}
+          </div>
+        )}
 
         {/* Cost summary cards */}
         <div className="grid grid-cols-2 gap-3">
@@ -1178,6 +1237,18 @@ export default function EquipmentPage() {
     const payload = {
       name: form.name,
       type: form.type,
+      model: form.model || null,
+      serialNumber: form.serialNumber || null,
+      year: form.year ? parseInt(form.year, 10) : null,
+      attachmentType: form.attachmentType || null,
+      attachmentModel: form.attachmentModel || null,
+      attachmentSerialNumber: form.attachmentSerialNumber || null,
+      attachmentYear: form.attachmentYear ? parseInt(form.attachmentYear, 10) : null,
+      oilFilterNumber: form.oilFilterNumber || null,
+      airFilterNumber: form.airFilterNumber || null,
+      fuelFilterNumber: form.fuelFilterNumber || null,
+      hydraulicFilterNumber: form.hydraulicFilterNumber || null,
+      otherFilterNumbers: form.otherFilterNumbers || null,
       purchaseDate: form.purchaseDate || undefined,
       purchasePrice: form.purchasePrice ? parseFloat(form.purchasePrice) : 0,
       expectedLifespanYears: form.expectedLifespanYears ? parseFloat(form.expectedLifespanYears) : undefined,
@@ -1580,6 +1651,39 @@ export default function EquipmentPage() {
                   <option key={t.id} value={t.label} />
                 ))}
               </datalist>
+            </div>
+            <div className="rounded-lg border p-3 space-y-3">
+              <p className="text-sm font-medium">Machine Identification</p>
+              <div className="grid grid-cols-3 gap-3">
+                <Input placeholder="Model" value={form.model} onChange={e => setForm(f => ({ ...f, model: e.target.value }))} />
+                <Input placeholder="Serial number" value={form.serialNumber} onChange={e => setForm(f => ({ ...f, serialNumber: e.target.value }))} />
+                <Input type="number" min="1900" max="2100" placeholder="Year" value={form.year} onChange={e => setForm(f => ({ ...f, year: e.target.value }))} />
+              </div>
+            </div>
+            <div className="rounded-lg border p-3 space-y-3">
+              <div>
+                <p className="text-sm font-medium">Attachment / Second Unit</p>
+                <p className="text-xs text-muted-foreground">Optional—for a bagger or another attachment</p>
+              </div>
+              <Input placeholder="Attachment type (e.g. Bagger)" value={form.attachmentType} onChange={e => setForm(f => ({ ...f, attachmentType: e.target.value }))} />
+              <div className="grid grid-cols-3 gap-3">
+                <Input placeholder="Model" value={form.attachmentModel} onChange={e => setForm(f => ({ ...f, attachmentModel: e.target.value }))} />
+                <Input placeholder="Serial number" value={form.attachmentSerialNumber} onChange={e => setForm(f => ({ ...f, attachmentSerialNumber: e.target.value }))} />
+                <Input type="number" min="1900" max="2100" placeholder="Year" value={form.attachmentYear} onChange={e => setForm(f => ({ ...f, attachmentYear: e.target.value }))} />
+              </div>
+            </div>
+            <div className="rounded-lg border p-3 space-y-3">
+              <div>
+                <p className="text-sm font-medium">Filter Part Numbers</p>
+                <p className="text-xs text-muted-foreground">Replacement numbers used during maintenance</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input placeholder="Oil filter" value={form.oilFilterNumber} onChange={e => setForm(f => ({ ...f, oilFilterNumber: e.target.value }))} />
+                <Input placeholder="Air filter" value={form.airFilterNumber} onChange={e => setForm(f => ({ ...f, airFilterNumber: e.target.value }))} />
+                <Input placeholder="Fuel filter" value={form.fuelFilterNumber} onChange={e => setForm(f => ({ ...f, fuelFilterNumber: e.target.value }))} />
+                <Input placeholder="Hydraulic filter" value={form.hydraulicFilterNumber} onChange={e => setForm(f => ({ ...f, hydraulicFilterNumber: e.target.value }))} />
+              </div>
+              <Input placeholder="Other filters (name and part number)" value={form.otherFilterNumbers} onChange={e => setForm(f => ({ ...f, otherFilterNumbers: e.target.value }))} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">

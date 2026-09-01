@@ -29,6 +29,18 @@ type Equipment = {
   id: number;
   name: string;
   type: string;
+  model?: string | null;
+  serialNumber?: string | null;
+  year?: number | null;
+  attachmentType?: string | null;
+  attachmentModel?: string | null;
+  attachmentSerialNumber?: string | null;
+  attachmentYear?: number | null;
+  oilFilterNumber?: string | null;
+  airFilterNumber?: string | null;
+  fuelFilterNumber?: string | null;
+  hydraulicFilterNumber?: string | null;
+  otherFilterNumbers?: string | null;
   currentHours: number;
   currentMiles?: number | null;
   totalFuelCost: number;
@@ -287,6 +299,51 @@ export default function EquipmentDetailScreen() {
             <StatBox label="Total Fuel Cost" value={`$${eq.totalFuelCost.toFixed(2)}`} colors={colors} />
           </View>
         </View>
+
+        {(eq.model || eq.serialNumber || eq.year || eq.attachmentType || eq.attachmentModel || eq.attachmentSerialNumber || eq.attachmentYear) && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Equipment Identification</Text>
+            <View style={[styles.serviceCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.serviceRow}>
+                <Ionicons name="barcode-outline" size={16} color={colors.mutedForeground} />
+                <Text style={[styles.serviceLabel, { color: colors.mutedForeground }]}>Primary</Text>
+                <Text style={[styles.serviceValue, { color: colors.foreground }]}>
+                  {[eq.year, eq.model, eq.serialNumber && `#${eq.serialNumber}`].filter(Boolean).join(' · ')}
+                </Text>
+              </View>
+              {(eq.attachmentType || eq.attachmentModel || eq.attachmentSerialNumber || eq.attachmentYear) && (
+                <View style={styles.serviceRow}>
+                  <Ionicons name="construct-outline" size={16} color={colors.mutedForeground} />
+                  <Text style={[styles.serviceLabel, { color: colors.mutedForeground }]}>{eq.attachmentType || 'Attachment'}</Text>
+                  <Text style={[styles.serviceValue, { color: colors.foreground }]}>
+                    {[eq.attachmentYear, eq.attachmentModel, eq.attachmentSerialNumber && `#${eq.attachmentSerialNumber}`].filter(Boolean).join(' · ')}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
+        {(eq.oilFilterNumber || eq.airFilterNumber || eq.fuelFilterNumber || eq.hydraulicFilterNumber || eq.otherFilterNumbers) && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Filter Part Numbers</Text>
+            <View style={[styles.serviceCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              {[
+                ['Oil', eq.oilFilterNumber],
+                ['Air', eq.airFilterNumber],
+                ['Fuel', eq.fuelFilterNumber],
+                ['Hydraulic', eq.hydraulicFilterNumber],
+                ['Other', eq.otherFilterNumbers],
+              ].filter(([, value]) => value).map(([label, value]) => (
+                <View key={label} style={styles.serviceRow}>
+                  <Ionicons name="filter-outline" size={16} color={colors.mutedForeground} />
+                  <Text style={[styles.serviceLabel, { color: colors.mutedForeground }]}>{label}</Text>
+                  <Text style={[styles.serviceValue, { color: colors.foreground }]}>{value}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
 
         {/* Next service info */}
         {(eq.nextServiceDueHours != null || eq.nextServiceDueMiles != null || eq.nextServiceDueDate) && (

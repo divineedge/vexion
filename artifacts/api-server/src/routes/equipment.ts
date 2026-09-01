@@ -81,6 +81,18 @@ const equipmentImportExportConfig: ImportExportEntityConfig = {
   fields: [
     { key: "name", header: "Name", required: true, hint: "Used to match an existing asset" },
     { key: "type", header: "Type", hint: "mower, truck, trailer, sprayer, blower, edger, chainsaw, other" },
+    { key: "model", header: "Model" },
+    { key: "serialNumber", header: "Serial Number" },
+    { key: "year", header: "Year" },
+    { key: "attachmentType", header: "Attachment Type" },
+    { key: "attachmentModel", header: "Attachment Model" },
+    { key: "attachmentSerialNumber", header: "Attachment Serial Number" },
+    { key: "attachmentYear", header: "Attachment Year" },
+    { key: "oilFilterNumber", header: "Oil Filter Number" },
+    { key: "airFilterNumber", header: "Air Filter Number" },
+    { key: "fuelFilterNumber", header: "Fuel Filter Number" },
+    { key: "hydraulicFilterNumber", header: "Hydraulic Filter Number" },
+    { key: "otherFilterNumbers", header: "Other Filter Numbers" },
     { key: "purchaseDate", header: "Purchase Date" },
     { key: "purchasePrice", header: "Purchase Price" },
     { key: "expectedLifespanYears", header: "Expected Lifespan (years)" },
@@ -94,6 +106,18 @@ const equipmentImportExportConfig: ImportExportEntityConfig = {
     { key: "id", header: "ID" },
     { key: "name", header: "Name" },
     { key: "type", header: "Type" },
+    { key: "model", header: "Model" },
+    { key: "serialNumber", header: "Serial Number" },
+    { key: "year", header: "Year" },
+    { key: "attachmentType", header: "Attachment Type" },
+    { key: "attachmentModel", header: "Attachment Model" },
+    { key: "attachmentSerialNumber", header: "Attachment Serial Number" },
+    { key: "attachmentYear", header: "Attachment Year" },
+    { key: "oilFilterNumber", header: "Oil Filter Number" },
+    { key: "airFilterNumber", header: "Air Filter Number" },
+    { key: "fuelFilterNumber", header: "Fuel Filter Number" },
+    { key: "hydraulicFilterNumber", header: "Hydraulic Filter Number" },
+    { key: "otherFilterNumbers", header: "Other Filter Numbers" },
     { key: "purchaseDate", header: "Purchase Date" },
     { key: "purchasePrice", header: "Purchase Price" },
     { key: "expectedLifespanYears", header: "Expected Lifespan (years)" },
@@ -114,6 +138,18 @@ const equipmentImportExportConfig: ImportExportEntityConfig = {
       id: e.id,
       name: e.name,
       type: e.type,
+      model: e.model ?? "",
+      serialNumber: e.serialNumber ?? "",
+      year: e.year ?? "",
+      attachmentType: e.attachmentType ?? "",
+      attachmentModel: e.attachmentModel ?? "",
+      attachmentSerialNumber: e.attachmentSerialNumber ?? "",
+      attachmentYear: e.attachmentYear ?? "",
+      oilFilterNumber: e.oilFilterNumber ?? "",
+      airFilterNumber: e.airFilterNumber ?? "",
+      fuelFilterNumber: e.fuelFilterNumber ?? "",
+      hydraulicFilterNumber: e.hydraulicFilterNumber ?? "",
+      otherFilterNumbers: e.otherFilterNumbers ?? "",
       purchaseDate: e.purchaseDate ?? "",
       purchasePrice: e.purchasePrice,
       expectedLifespanYears: e.expectedLifespanYears ?? "",
@@ -138,6 +174,18 @@ const equipmentImportExportConfig: ImportExportEntityConfig = {
     const values = {
       name,
       type: optionalString(raw.type) ?? "other",
+      model: optionalString(raw.model) ?? null,
+      serialNumber: optionalString(raw.serialNumber) ?? null,
+      year: optionalNumber(raw.year, "Year", errors) ?? null,
+      attachmentType: optionalString(raw.attachmentType) ?? null,
+      attachmentModel: optionalString(raw.attachmentModel) ?? null,
+      attachmentSerialNumber: optionalString(raw.attachmentSerialNumber) ?? null,
+      attachmentYear: optionalNumber(raw.attachmentYear, "Attachment Year", errors) ?? null,
+      oilFilterNumber: optionalString(raw.oilFilterNumber) ?? null,
+      airFilterNumber: optionalString(raw.airFilterNumber) ?? null,
+      fuelFilterNumber: optionalString(raw.fuelFilterNumber) ?? null,
+      hydraulicFilterNumber: optionalString(raw.hydraulicFilterNumber) ?? null,
+      otherFilterNumbers: optionalString(raw.otherFilterNumbers) ?? null,
       purchaseDate: purchaseDate ?? null,
       purchasePrice: optionalNumber(raw.purchasePrice, "Purchase Price", errors) ?? 0,
       expectedLifespanYears: optionalNumber(raw.expectedLifespanYears, "Expected Lifespan (years)", errors) ?? null,
@@ -356,6 +404,18 @@ function formatEquipment(
     tenantId: row.tenantId,
     name: row.name,
     type: row.type,
+    model: row.model ?? null,
+    serialNumber: row.serialNumber ?? null,
+    year: row.year ?? null,
+    attachmentType: row.attachmentType ?? null,
+    attachmentModel: row.attachmentModel ?? null,
+    attachmentSerialNumber: row.attachmentSerialNumber ?? null,
+    attachmentYear: row.attachmentYear ?? null,
+    oilFilterNumber: row.oilFilterNumber ?? null,
+    airFilterNumber: row.airFilterNumber ?? null,
+    fuelFilterNumber: row.fuelFilterNumber ?? null,
+    hydraulicFilterNumber: row.hydraulicFilterNumber ?? null,
+    otherFilterNumbers: row.otherFilterNumbers ?? null,
     purchaseDate: row.purchaseDate ?? null,
     purchasePrice: row.purchasePrice,
     expectedLifespanYears: row.expectedLifespanYears ?? null,
@@ -459,12 +519,24 @@ router.get("/equipment/:id", async (req, res): Promise<void> => {
 
 router.post("/equipment", requireOfficeRole, async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { name, type, purchaseDate, purchasePrice, expectedLifespanYears, expectedLifespanHours, currentHours, currentMiles, notes, sellAfterHours, neverSell } = req.body;
+  const { name, type, model, serialNumber, year, attachmentType, attachmentModel, attachmentSerialNumber, attachmentYear, oilFilterNumber, airFilterNumber, fuelFilterNumber, hydraulicFilterNumber, otherFilterNumbers, purchaseDate, purchasePrice, expectedLifespanYears, expectedLifespanHours, currentHours, currentMiles, notes, sellAfterHours, neverSell } = req.body;
   if (!name) { res.status(400).json({ error: "name is required" }); return; }
   const [row] = await db.insert(equipmentTable).values({
     tenantId,
     name,
     type: type ?? "other",
+    model: model ?? null,
+    serialNumber: serialNumber ?? null,
+    year: year != null ? parseInt(year, 10) : null,
+    attachmentType: attachmentType ?? null,
+    attachmentModel: attachmentModel ?? null,
+    attachmentSerialNumber: attachmentSerialNumber ?? null,
+    attachmentYear: attachmentYear != null ? parseInt(attachmentYear, 10) : null,
+    oilFilterNumber: oilFilterNumber ?? null,
+    airFilterNumber: airFilterNumber ?? null,
+    fuelFilterNumber: fuelFilterNumber ?? null,
+    hydraulicFilterNumber: hydraulicFilterNumber ?? null,
+    otherFilterNumbers: otherFilterNumbers ?? null,
     purchaseDate: purchaseDate ?? null,
     purchasePrice: purchasePrice != null ? parseFloat(purchasePrice) : 0,
     expectedLifespanYears: expectedLifespanYears != null ? parseFloat(expectedLifespanYears) : null,
@@ -483,10 +555,22 @@ router.patch("/equipment/:id", requireOfficeRole, async (req, res): Promise<void
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
-  const { name, type, purchaseDate, purchasePrice, expectedLifespanYears, expectedLifespanHours, currentHours, currentMiles, isActive, notes, sellAfterHours, neverSell } = req.body;
+  const { name, type, model, serialNumber, year, attachmentType, attachmentModel, attachmentSerialNumber, attachmentYear, oilFilterNumber, airFilterNumber, fuelFilterNumber, hydraulicFilterNumber, otherFilterNumbers, purchaseDate, purchasePrice, expectedLifespanYears, expectedLifespanHours, currentHours, currentMiles, isActive, notes, sellAfterHours, neverSell } = req.body;
   const updates: Partial<typeof equipmentTable.$inferInsert> = {};
   if (name != null) updates.name = name;
   if (type != null) updates.type = type;
+  if (model !== undefined) updates.model = model || null;
+  if (serialNumber !== undefined) updates.serialNumber = serialNumber || null;
+  if (year !== undefined) updates.year = year != null && year !== "" ? parseInt(year, 10) : null;
+  if (attachmentType !== undefined) updates.attachmentType = attachmentType || null;
+  if (attachmentModel !== undefined) updates.attachmentModel = attachmentModel || null;
+  if (attachmentSerialNumber !== undefined) updates.attachmentSerialNumber = attachmentSerialNumber || null;
+  if (attachmentYear !== undefined) updates.attachmentYear = attachmentYear != null && attachmentYear !== "" ? parseInt(attachmentYear, 10) : null;
+  if (oilFilterNumber !== undefined) updates.oilFilterNumber = oilFilterNumber || null;
+  if (airFilterNumber !== undefined) updates.airFilterNumber = airFilterNumber || null;
+  if (fuelFilterNumber !== undefined) updates.fuelFilterNumber = fuelFilterNumber || null;
+  if (hydraulicFilterNumber !== undefined) updates.hydraulicFilterNumber = hydraulicFilterNumber || null;
+  if (otherFilterNumbers !== undefined) updates.otherFilterNumbers = otherFilterNumbers || null;
   if (purchaseDate !== undefined) updates.purchaseDate = purchaseDate;
   if (purchasePrice != null) updates.purchasePrice = parseFloat(purchasePrice);
   if (expectedLifespanYears !== undefined) updates.expectedLifespanYears = expectedLifespanYears != null ? parseFloat(expectedLifespanYears) : null;

@@ -13361,6 +13361,30 @@ components:
           type: string
         type:
           type: string
+        model:
+          type: ["string", "null"]
+        serialNumber:
+          type: ["string", "null"]
+        year:
+          type: ["integer", "null"]
+        attachmentType:
+          type: ["string", "null"]
+        attachmentModel:
+          type: ["string", "null"]
+        attachmentSerialNumber:
+          type: ["string", "null"]
+        attachmentYear:
+          type: ["integer", "null"]
+        oilFilterNumber:
+          type: ["string", "null"]
+        airFilterNumber:
+          type: ["string", "null"]
+        fuelFilterNumber:
+          type: ["string", "null"]
+        hydraulicFilterNumber:
+          type: ["string", "null"]
+        otherFilterNumbers:
+          type: ["string", "null"]
         purchaseDate:
           type: ["string", "null"]
         purchasePrice:
@@ -13442,6 +13466,30 @@ components:
           type: string
         type:
           type: string
+        model:
+          type: ["string", "null"]
+        serialNumber:
+          type: ["string", "null"]
+        year:
+          type: ["integer", "null"]
+        attachmentType:
+          type: ["string", "null"]
+        attachmentModel:
+          type: ["string", "null"]
+        attachmentSerialNumber:
+          type: ["string", "null"]
+        attachmentYear:
+          type: ["integer", "null"]
+        oilFilterNumber:
+          type: ["string", "null"]
+        airFilterNumber:
+          type: ["string", "null"]
+        fuelFilterNumber:
+          type: ["string", "null"]
+        hydraulicFilterNumber:
+          type: ["string", "null"]
+        otherFilterNumbers:
+          type: ["string", "null"]
         purchaseDate:
           type: string
         purchasePrice:

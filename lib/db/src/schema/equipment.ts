@@ -12,6 +12,18 @@ export const equipmentTable = pgTable("equipment", {
   name: text("name").notNull(),
   /** mower | truck | trailer | sprayer | blower | edger | chainsaw | other */
   type: text("type").notNull().default("other"),
+  model: text("model"),
+  serialNumber: text("serial_number"),
+  year: integer("year"),
+  attachmentType: text("attachment_type"),
+  attachmentModel: text("attachment_model"),
+  attachmentSerialNumber: text("attachment_serial_number"),
+  attachmentYear: integer("attachment_year"),
+  oilFilterNumber: text("oil_filter_number"),
+  airFilterNumber: text("air_filter_number"),
+  fuelFilterNumber: text("fuel_filter_number"),
+  hydraulicFilterNumber: text("hydraulic_filter_number"),
+  otherFilterNumbers: text("other_filter_numbers"),
   purchaseDate: text("purchase_date"), // ISO date string YYYY-MM-DD
   purchasePrice: real("purchase_price").notNull().default(0),
   /** Expected lifespan in years (optional) */

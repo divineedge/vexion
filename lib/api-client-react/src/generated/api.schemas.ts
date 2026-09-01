@@ -4390,6 +4390,30 @@ export interface Equipment {
   name: string;
   type: string;
   /** @nullable */
+  model?: string | null;
+  /** @nullable */
+  serialNumber?: string | null;
+  /** @nullable */
+  year?: number | null;
+  /** @nullable */
+  attachmentType?: string | null;
+  /** @nullable */
+  attachmentModel?: string | null;
+  /** @nullable */
+  attachmentSerialNumber?: string | null;
+  /** @nullable */
+  attachmentYear?: number | null;
+  /** @nullable */
+  oilFilterNumber?: string | null;
+  /** @nullable */
+  airFilterNumber?: string | null;
+  /** @nullable */
+  fuelFilterNumber?: string | null;
+  /** @nullable */
+  hydraulicFilterNumber?: string | null;
+  /** @nullable */
+  otherFilterNumbers?: string | null;
+  /** @nullable */
   purchaseDate?: string | null;
   purchasePrice: number;
   /** @nullable */
@@ -4458,6 +4482,30 @@ export interface EquipmentTypeInput {
 export interface EquipmentInput {
   name: string;
   type?: string;
+  /** @nullable */
+  model?: string | null;
+  /** @nullable */
+  serialNumber?: string | null;
+  /** @nullable */
+  year?: number | null;
+  /** @nullable */
+  attachmentType?: string | null;
+  /** @nullable */
+  attachmentModel?: string | null;
+  /** @nullable */
+  attachmentSerialNumber?: string | null;
+  /** @nullable */
+  attachmentYear?: number | null;
+  /** @nullable */
+  oilFilterNumber?: string | null;
+  /** @nullable */
+  airFilterNumber?: string | null;
+  /** @nullable */
+  fuelFilterNumber?: string | null;
+  /** @nullable */
+  hydraulicFilterNumber?: string | null;
+  /** @nullable */
+  otherFilterNumbers?: string | null;
   purchaseDate?: string;
   purchasePrice?: number;
   expectedLifespanYears?: number;

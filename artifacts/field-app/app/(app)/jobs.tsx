@@ -34,6 +34,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useOffline } from '@/contexts/OfflineContext';
 import { JobTimeClockModal } from '@/components/JobTimeClockModal';
 import { messagePollInterval } from '@/utils/messages';
+import { openDirections } from '@/utils/directions';
+import { getClockLocation } from '@/utils/timeTracking';
 import {
   addTenantDateDays,
   tenantSchedulePeriod,
@@ -124,9 +126,10 @@ function JobCard({
 }) {
   const sc = statusColor(job.status, colors);
   const isRecurring = !!(job.recurrenceDescription || job.recurrenceParentId);
+  const isCompleted = job.status === 'completed';
   return (
     <TouchableOpacity
-      style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
+      style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, opacity: isCompleted ? 0.72 : 1 }]}
       onPress={onPress}
       onPressIn={onPressIn}
       activeOpacity={0.8}
@@ -169,12 +172,21 @@ function JobCard({
               </View>
             ) : null}
             {job.propertyAddress ? (
-              <View style={styles.metaRow}>
+              <TouchableOpacity
+                style={styles.metaRow}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  void openDirections(job.propertyAddress!);
+                }}
+                accessibilityRole="link"
+                accessibilityLabel={`Get directions to ${job.propertyAddress}`}
+              >
                 <Ionicons name="location-outline" size={13} color={colors.mutedForeground} />
-                <Text style={[styles.metaText, { color: colors.mutedForeground }]} numberOfLines={1}>
+                <Text style={[styles.metaText, { color: colors.primary }]} numberOfLines={1}>
                   {job.propertyAddress}
                 </Text>
-              </View>
+                <Ionicons name="navigate-outline" size={13} color={colors.primary} />
+              </TouchableOpacity>
             ) : null}
             <View style={styles.metaRow}>
               <Ionicons name="calendar-outline" size={13} color={colors.mutedForeground} />
@@ -190,7 +202,8 @@ function JobCard({
               <Text style={[styles.statusText, { color: job.priority === 'urgent' ? '#dc2626' : job.priority === 'high' ? '#ea580c' : '#64748b', textTransform: 'capitalize' }]}>{job.priority}</Text>
             </View>
           )}
-          <View style={[styles.statusBadge, { backgroundColor: sc + '22' }]}>
+          <View style={[styles.statusBadge, styles.statusBadgeRow, { backgroundColor: sc + '22' }]}>
+            {isCompleted ? <Ionicons name="checkmark-circle" size={13} color={sc} /> : null}
             <Text style={[styles.statusText, { color: sc }]}>{statusLabel(job.status)}</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.mutedForeground} style={{ marginTop: 8 }} />
@@ -327,10 +340,11 @@ export default function JobsScreen() {
 
   const handleClockToggle = useCallback(async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const location = await getClockLocation();
     if (masterClock?.isClockedIn) {
-      stopMasterClock.mutate({}, { onSuccess: () => refetchMasterClock() });
+      stopMasterClock.mutate({ data: location ?? undefined }, { onSuccess: () => refetchMasterClock() });
     } else {
-      startMasterClock.mutate({}, { onSuccess: () => refetchMasterClock() });
+      startMasterClock.mutate({ data: location ?? undefined }, { onSuccess: () => refetchMasterClock() });
     }
   }, [masterClock?.isClockedIn, startMasterClock, stopMasterClock, refetchMasterClock]);
 
@@ -441,6 +455,8 @@ export default function JobsScreen() {
     return period.dayKeys.map(key => ({
       key,
       jobs: searchedJobs.filter(job => tenantDateKey(new Date(job.scheduledAt), tenantTimezone) === key).sort((a, b) => {
+        const completionOrder = Number(a.status === 'completed') - Number(b.status === 'completed');
+        if (completionOrder) return completionOrder;
         const aStop = routeStopMap.get(a.id);
         const bStop = routeStopMap.get(b.id);
         const aRouted = a.routeTemplateId != null || aStop != null;
@@ -467,6 +483,8 @@ export default function JobsScreen() {
   })), [period.dayKeys, searchedVisits, tenantTimezone]);
   const selectedVisits = groupedVisits.find(group => group.key === selectedDateKey)?.visits ?? [];
   const selectedDayClockJobs = useMemo(() => [...selectedDayJobs].sort((a, b) => {
+    const completionOrder = Number(a.status === 'completed') - Number(b.status === 'completed');
+    if (completionOrder) return completionOrder;
     const aStop = routeStopMap.get(a.id);
     const bStop = routeStopMap.get(b.id);
     const aOrder = aStop?.sequenceOrder ?? a.sequenceOrder;
@@ -1123,6 +1141,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
+  },
+  statusBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   statusText: {
     fontFamily: 'Inter_500Medium',

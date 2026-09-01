@@ -10,7 +10,7 @@ import {
   getListTimeEntriesQueryKey,
   ScheduleItem,
   SubTimer,
-  useAdjustSubTimer,
+  useCompleteJob,
   useCreateGeofenceEntry,
   useGetTodaySchedule,
   useListSubTimers,
@@ -21,6 +21,7 @@ import { useColors } from '@/hooks/useColors';
 import { formatElapsed, getClockLocation, haversineMetres } from '@/utils/timeTracking';
 import { mergeFallbackJobs, optimisticClockIn, optimisticClockOut } from '@/utils/jobTimeClockState';
 import { tenantDateKey } from '@/utils/schedule';
+import { openDirections } from '@/utils/directions';
 
 type ClockJob = ScheduleItem & { kind: 'job' };
 
@@ -62,10 +63,11 @@ export function JobTimeClockModal({
   });
   const startTimer = useStartSubTimer();
   const stopTimer = useStopSubTimer();
-  const adjustTimer = useAdjustSubTimer();
+  const completeJob = useCompleteJob();
   const createGeofenceEntry = useCreateGeofenceEntry();
   const [busyJobId, setBusyJobId] = useState<number | null>(null);
   const [switchJob, setSwitchJob] = useState<ClockJob | null>(null);
+  const [completionJob, setCompletionJob] = useState<ClockJob | null>(null);
   const reported = useRef<Set<number>>(new Set());
 
   const fallback = useMemo<ClockJob[]>(() => mergeFallbackJobs(fallbackJobs.map(job => ({
@@ -81,7 +83,12 @@ export function JobTimeClockModal({
     elapsedSeconds: 0,
   })), activeTimers as SubTimer[] | undefined), [fallbackJobs, activeTimers]);
   const jobs = useMemo(
-    () => ((data as ScheduleItem[] | undefined)?.filter((item): item is ClockJob => item.kind === 'job') ?? fallback),
+    () => [...((data as ScheduleItem[] | undefined)?.filter((item): item is ClockJob => item.kind === 'job') ?? fallback)]
+      .sort((a, b) => {
+        const completionOrder = Number(a.status === 'completed') - Number(b.status === 'completed');
+        if (completionOrder) return completionOrder;
+        return new Date(a.scheduledAt ?? 0).getTime() - new Date(b.scheduledAt ?? 0).getTime();
+      }),
     [data, fallback],
   );
   const active = (activeTimers as SubTimer[] | undefined)?.[0] ?? null;
@@ -125,17 +132,6 @@ export function JobTimeClockModal({
       startTimer.mutate(
       { data: { label: job.label, type: 'job', jobId: job.id, ...(location ?? {}) } },
       {
-        onSuccess: () => {
-          const previousJob = active?.jobId ? jobs.find(item => item.id === active.jobId) : null;
-          if (active?.isLateArrival && previousJob?.scheduledAt) {
-            Alert.alert('Previous job was clocked out', `"${active.label}" was a late arrival. Keep the recorded time, or use its scheduled arrival time?`, [
-              { text: 'Keep Recorded', style: 'cancel' },
-              { text: 'Use Scheduled Time', onPress: () => adjustTimer.mutate({
-                id: active.id, data: { adjustedStartedAt: previousJob.scheduledAt! },
-              }, { onSettled: () => invalidate([previousJob.id]) }) },
-            ]);
-          }
-        },
         onError: (error) => {
           queryClient.setQueryData(scheduleKey, previous);
           Alert.alert('Clock in failed', error.message || 'Your timer was not changed.');
@@ -151,7 +147,7 @@ export function JobTimeClockModal({
       setBusyJobId(null);
       Alert.alert('Clock in failed', error instanceof Error ? error.message : 'Your timer was not changed.');
     }
-  }, [active, adjustTimer, invalidate, jobs, queryClient, scheduleKey, startTimer]);
+  }, [active, invalidate, queryClient, scheduleKey, startTimer]);
 
   const clockIn = useCallback((job: ClockJob) => {
     if (isOffline) { Alert.alert('Offline', 'Connect to the internet to clock in or out.'); return; }
@@ -177,17 +173,7 @@ export function JobTimeClockModal({
       stopTimer.mutate(
       { id: job.activeTimerId, data: location ?? undefined },
       {
-        onSuccess: (timer) => {
-          const stopped = timer as SubTimer & { jobScheduledAt?: string | null };
-          if (stopped.isLateArrival && stopped.jobScheduledAt && stopped.stoppedAt) {
-            Alert.alert('Late arrival detected', 'Keep the recorded time, or adjust clock-in to the scheduled arrival time?', [
-              { text: 'Keep Recorded', style: 'cancel' },
-              { text: 'Use Scheduled Time', onPress: () => adjustTimer.mutate({
-                id: stopped.id, data: { adjustedStartedAt: stopped.jobScheduledAt! },
-              }, { onSettled: () => invalidate([job.id]) }) },
-            ]);
-          }
-        },
+        onSuccess: () => setCompletionJob(job),
         onError: (error) => {
           queryClient.setQueryData(scheduleKey, previous);
           Alert.alert('Clock out failed', error.message || 'Your timer was not changed.');
@@ -200,7 +186,7 @@ export function JobTimeClockModal({
       setBusyJobId(null);
       Alert.alert('Clock out failed', error instanceof Error ? error.message : 'Your timer was not changed.');
     }
-  }, [adjustTimer, invalidate, isOffline, queryClient, scheduleKey, stopTimer]);
+  }, [completeJob, invalidate, isOffline, queryClient, scheduleKey, stopTimer]);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -230,6 +216,45 @@ export function JobTimeClockModal({
               </View>
             </View>
           )}
+          {completionJob && (
+            <View style={[styles.confirmation, { borderColor: colors.statusCompleted + '50', backgroundColor: colors.statusCompleted + '0D' }]}>
+              <Text style={[styles.confirmationTitle, { color: colors.foreground }]}>Mark Job Complete?</Text>
+              <Text style={[styles.confirmationText, { color: colors.mutedForeground }]}>
+                The recorded clock-in and clock-out times for “{completionJob.label}” have been saved. Is this job complete?
+              </Text>
+              <View style={styles.confirmationActions}>
+                <TouchableOpacity
+                  testID="job-clock-complete-not-yet"
+                  onPress={() => setCompletionJob(null)}
+                  style={[styles.confirmationButton, { borderColor: colors.border }]}
+                >
+                  <Text style={{ color: colors.foreground }}>Not yet</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  testID="job-clock-complete-confirm"
+                  disabled={completeJob.isPending}
+                  onPress={() => {
+                    const job = completionJob;
+                    completeJob.mutate(
+                      { id: job.id },
+                      {
+                        onSuccess: () => {
+                          setCompletionJob(null);
+                          invalidate([job.id]);
+                        },
+                        onError: (error) => Alert.alert('Unable to complete job', error.message || 'The job was not marked complete.'),
+                      },
+                    );
+                  }}
+                  style={[styles.confirmationButton, { backgroundColor: colors.statusCompleted, opacity: completeJob.isPending ? 0.55 : 1 }]}
+                >
+                  {completeJob.isPending
+                    ? <ActivityIndicator size="small" color={colors.primaryForeground} />
+                    : <Text style={{ color: colors.primaryForeground }}>Mark Complete</Text>}
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
           <FlatList
             data={jobs}
             keyExtractor={item => String(item.id)}
@@ -240,23 +265,43 @@ export function JobTimeClockModal({
             renderItem={({ item }) => {
               const running = item.activeTimerId != null;
               const busy = busyJobId === item.id;
+              const completed = item.status === 'completed';
               return (
-                <View style={[styles.row, { borderColor: running ? colors.primary : colors.border, backgroundColor: running ? colors.primary + '10' : colors.card }]}>
+                <View style={[styles.row, { borderColor: running ? colors.primary : colors.border, backgroundColor: running ? colors.primary + '10' : colors.card, opacity: completed ? 0.68 : 1 }]}>
                   <View style={styles.info}>
-                    <Text style={[styles.jobTitle, { color: colors.foreground }]} numberOfLines={1}>{item.label}</Text>
+                    <View style={styles.titleRow}>
+                      <Text style={[styles.jobTitle, { color: colors.foreground }]} numberOfLines={1}>{item.label}</Text>
+                      {completed ? (
+                        <View style={[styles.completedBadge, { backgroundColor: colors.statusCompleted + '20' }]}>
+                          <Ionicons name="checkmark-circle" size={12} color={colors.statusCompleted} />
+                          <Text style={[styles.completedText, { color: colors.statusCompleted }]}>Completed</Text>
+                        </View>
+                      ) : null}
+                    </View>
                     <Text style={[styles.meta, { color: colors.mutedForeground }]} numberOfLines={1}>
                       {item.scheduledAt ? new Date(item.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unscheduled'}
                       {item.customerName ? ` · ${item.customerName}` : ''}
                     </Text>
+                    {item.propertyAddress ? (
+                      <TouchableOpacity
+                        style={styles.addressRow}
+                        onPress={() => void openDirections(item.propertyAddress!)}
+                        accessibilityRole="link"
+                        accessibilityLabel={`Get directions to ${item.propertyAddress}`}
+                      >
+                        <Ionicons name="navigate-outline" size={12} color={colors.primary} />
+                        <Text style={[styles.addressText, { color: colors.primary }]} numberOfLines={1}>{item.propertyAddress}</Text>
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
                   {running && item.activeTimerStartedAt && <LiveElapsed startedAt={item.activeTimerStartedAt} fallback={item.elapsedSeconds ?? 0} />}
                   <TouchableOpacity
-                    disabled={busyJobId !== null || isOffline}
+                    disabled={busyJobId !== null || isOffline || (completed && !running)}
                     testID={`job-clock-${running ? 'out' : 'in'}-${item.id}`}
                     onPress={() => running ? void clockOut(item) : clockIn(item)}
-                    style={[styles.button, { backgroundColor: running ? '#ef444418' : colors.primary + '18', opacity: isOffline || (busyJobId !== null && !busy) ? 0.45 : 1 }]}
+                    style={[styles.button, { backgroundColor: running ? '#ef444418' : completed ? colors.statusCompleted + '18' : colors.primary + '18', opacity: isOffline || (busyJobId !== null && !busy) ? 0.45 : 1 }]}
                   >
-                    {busy ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={{ color: running ? '#ef4444' : colors.primary, fontWeight: '600' }}>{running ? 'Clock Out' : 'Clock In'}</Text>}
+                    {busy ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={{ color: running ? '#ef4444' : completed ? colors.statusCompleted : colors.primary, fontWeight: '600' }}>{running ? 'Clock Out' : completed ? 'Done' : 'Clock In'}</Text>}
                   </TouchableOpacity>
                 </View>
               );
@@ -278,8 +323,13 @@ const styles = StyleSheet.create({
   list: { padding: 12, gap: 8 },
   row: { borderWidth: 1, borderRadius: 12, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
   info: { flex: 1, minWidth: 0 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   jobTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 14 },
+  completedBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 },
+  completedText: { fontFamily: 'Inter_600SemiBold', fontSize: 10 },
   meta: { fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 2 },
+  addressRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  addressText: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 11 },
   elapsed: { color: '#2563eb', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   button: { minWidth: 78, minHeight: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
   empty: { textAlign: 'center', paddingVertical: 36 },

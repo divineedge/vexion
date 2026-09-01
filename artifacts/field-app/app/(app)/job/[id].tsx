@@ -20,7 +20,7 @@ import {
   useGetJob, useListJobChemicalApplications,
   useListSubTimers, useStartSubTimer, useStopSubTimer,
   useGetMasterClock, useStartMasterClock, useStopMasterClock,
-  useUpdateJob, useSkipNextOccurrence, useGetRouteDayDetail,
+  useUpdateJob, useCompleteJob, useSkipNextOccurrence, useGetRouteDayDetail,
   getGetJobQueryOptions,
   type GetJobQueryResult,
   customFetch,
@@ -36,6 +36,8 @@ import { useColors } from '@/hooks/useColors';
 import { useOffline } from '@/contexts/OfflineContext';
 import { messagePollInterval } from '@/utils/messages';
 import { MediaAttachments } from '@/components/MediaAttachments';
+import { openDirections } from '@/utils/directions';
+import { getClockLocation } from '@/utils/timeTracking';
 
 type RecurringJob = {
   id: number;
@@ -622,6 +624,7 @@ export default function JobDetailScreen() {
   const startMasterClock = useStartMasterClock();
   const stopMasterClock = useStopMasterClock();
   const updateJob = useUpdateJob();
+  const completeJob = useCompleteJob();
   const skipOccurrence = useSkipNextOccurrence();
   const activeJobTimer = subTimers?.find(t => t.isActive && t.jobId === jobId) ?? null;
   const [liveSeconds, setLiveSeconds] = useState(0);
@@ -751,12 +754,18 @@ export default function JobDetailScreen() {
             </View>
           </View>
           {(displayJob as { propertyAddress?: string | null }).propertyAddress ? (
-            <View style={styles.infoRow}>
-              <Ionicons name="location-outline" size={15} color={colors.mutedForeground} />
-              <Text style={[styles.infoText, { color: colors.mutedForeground }]}>
+            <TouchableOpacity
+              style={styles.infoRow}
+              onPress={() => void openDirections((displayJob as { propertyAddress: string }).propertyAddress)}
+              accessibilityRole="link"
+              accessibilityLabel={`Get directions to ${(displayJob as { propertyAddress: string }).propertyAddress}`}
+            >
+              <Ionicons name="navigate-outline" size={15} color={colors.primary} />
+              <Text style={[styles.infoText, { color: colors.primary }]}>
                 {(displayJob as { propertyAddress: string }).propertyAddress}
               </Text>
-            </View>
+              <Text style={[styles.directionsLabel, { color: colors.primary }]}>Directions</Text>
+            </TouchableOpacity>
           ) : null}
           {(displayJob as { customerName?: string | null }).customerName ? (
             <View style={styles.infoRow}>
@@ -872,10 +881,11 @@ export default function JobDetailScreen() {
                 style={[styles.clockBtn, { backgroundColor: masterClock?.isClockedIn ? '#ef444418' : colors.primary + '18' }]}
                 onPress={async () => {
                   await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  const location = await getClockLocation();
                   if (masterClock?.isClockedIn) {
-                    stopMasterClock.mutate({}, { onSuccess: () => refetchMasterClock() });
+                    stopMasterClock.mutate({ data: location ?? undefined }, { onSuccess: () => refetchMasterClock() });
                   } else {
-                    startMasterClock.mutate({}, { onSuccess: () => refetchMasterClock() });
+                    startMasterClock.mutate({ data: location ?? undefined }, { onSuccess: () => refetchMasterClock() });
                   }
                 }}
               >
@@ -907,7 +917,8 @@ export default function JobDetailScreen() {
                 onPress={async () => {
                   await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   if (activeJobTimer) {
-                    stopSubTimer.mutate({ id: activeJobTimer.id }, {
+                    const location = await getClockLocation();
+                    stopSubTimer.mutate({ id: activeJobTimer.id, data: location ?? undefined }, {
                       onSuccess: () => {
                         refetchSubTimers();
                         Alert.alert(
@@ -922,8 +933,8 @@ export default function JobDetailScreen() {
                                   Alert.alert('Chemical application required', 'Log a chemical application before marking this job complete.');
                                   return;
                                 }
-                                updateJob.mutate(
-                                  { id: jobId, data: { status: 'completed' } },
+                                completeJob.mutate(
+                                  { id: jobId },
                                   {
                                     onSuccess: () => refetchJob(),
                                     onError: (error: any) => Alert.alert('Unable to complete job', error?.message ?? 'A chemical application must be logged before completing this job.'),
@@ -936,8 +947,9 @@ export default function JobDetailScreen() {
                       },
                     });
                   } else {
+                    const location = await getClockLocation();
                     startSubTimer.mutate(
-                      { data: { label: (displayJob as any).title, type: 'job', jobId } },
+                      { data: { label: (displayJob as any).title, type: 'job', jobId, ...(location ?? {}) } },
                       { onSuccess: () => refetchSubTimers() },
                     );
                   }
@@ -1183,6 +1195,7 @@ const styles = StyleSheet.create({
   statusText: { fontFamily: 'Inter_500Medium', fontSize: 12, textTransform: 'capitalize' },
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 5 },
   infoText: { fontFamily: 'Inter_400Regular', fontSize: 14, flex: 1 },
+  directionsLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   section: { paddingHorizontal: 16 },
   sectionTitle: {
     fontFamily: 'Inter_700Bold',

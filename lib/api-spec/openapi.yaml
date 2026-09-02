@@ -4133,6 +4133,47 @@ paths:
               schema:
                 $ref: "#/components/schemas/EquipmentPreTripResult"
 
+  /equipment/pre-trip/{id}/media:
+    get:
+      operationId: listEquipmentPreTripMedia
+      tags: [equipment]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Inspection media
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/MediaAttachment" }
+    post:
+      operationId: addEquipmentPreTripMedia
+      tags: [equipment]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddMediaInput" }
+      responses:
+        "201":
+          description: Media attached
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MediaAttachment" }
+
+  /equipment/pre-trip/{id}/media/{mediaId}:
+    delete:
+      operationId: deleteEquipmentPreTripMedia
+      tags: [equipment]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: mediaId, in: path, required: true, schema: { type: integer } }
+      responses:
+        "204": { description: Media deleted }
+
   /equipment/{id}/ledger:
     get:
       operationId: getEquipmentLedger
@@ -12316,6 +12357,10 @@ components:
           type: ["string", "null"]
         routeExceptionFee:
           type: number
+        preTripChecklist:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreTripChecklistItem"
           description: "Trip charge auto-appended to a job's invoice when it uses a one-time reschedule"
         # ── Payroll ──────────────────────────────────────────────────────────
         dailyTaskHourlyRate:
@@ -12459,6 +12504,10 @@ components:
           description: "0=Sunday .. 6=Saturday"
         exceptionFeeOverride:
           type: ["number", "null"]
+        offSeasonStart:
+          type: ["string", "null"]
+        offSeasonEnd:
+          type: ["string", "null"]
         createdAt:
           type: string
 
@@ -12476,6 +12525,10 @@ components:
           type: integer
         exceptionFeeOverride:
           type: number
+        offSeasonStart:
+          type: ["string", "null"]
+        offSeasonEnd:
+          type: ["string", "null"]
 
     CapacitySummary:
       type: object
@@ -12819,6 +12872,10 @@ components:
           type: string
         routeExceptionFee:
           type: number
+        preTripChecklist:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreTripChecklistItem"
         dailyTaskHourlyRate:
           type: number
           description: "$/hour flat rate applied to daily task / compliance time for payroll. 0 = display-only."
@@ -13711,6 +13768,10 @@ components:
           type: number
         concerns:
           type: string
+        checklistResponses:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreTripChecklistResponse"
     EquipmentPreTripResult:
       type: object
       required: [taskId, duplicate]
@@ -13723,6 +13784,22 @@ components:
           type: [integer, "null"]
         duplicate:
           type: boolean
+
+    PreTripChecklistItem:
+      type: object
+      required: [id, label, required]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        required: { type: boolean }
+
+    PreTripChecklistResponse:
+      type: object
+      required: [id, label, checked]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        checked: { type: boolean }
 
     EquipmentLedger:
       type: object
@@ -14518,7 +14595,7 @@ components:
           minLength: 1
         scope:
           type: string
-          enum: [job_media, visit_media]
+          enum: [job_media, visit_media, pre_trip_media]
           description: Optional lifecycle scope for field media orphan cleanup
 
     UploadUrlResponse:

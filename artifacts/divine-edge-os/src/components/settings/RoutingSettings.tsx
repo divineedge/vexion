@@ -32,7 +32,7 @@ const FREQUENCY_LABEL: Record<string, string> = {
 const DAY_LABEL = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const EMPTY_DIVISION = { name: '', category: '', depotLabel: '', depotLat: '', depotLng: '', shiftHoursPerDay: '8', crewIds: [] as number[], technicianIds: [] as number[] };
-const EMPTY_ROUTE_TEMPLATE = { divisionId: '', name: '', frequency: 'weekly', dayOfWeek: '1', exceptionFeeOverride: '' };
+const EMPTY_ROUTE_TEMPLATE = { divisionId: '', name: '', frequency: 'weekly', dayOfWeek: '1', exceptionFeeOverride: '', offSeasonStart: '', offSeasonEnd: '' };
 
 export default function RoutingSettings() {
   const qc = useQueryClient();
@@ -120,6 +120,7 @@ export default function RoutingSettings() {
     setTplForm({
       divisionId: String(t.divisionId), name: t.name, frequency: t.frequency, dayOfWeek: String(t.dayOfWeek),
       exceptionFeeOverride: t.exceptionFeeOverride != null ? String(t.exceptionFeeOverride) : '',
+      offSeasonStart: t.offSeasonStart ?? '', offSeasonEnd: t.offSeasonEnd ?? '',
     });
     setSelectedTplId(t.id);
     setTplSheet('edit');
@@ -133,6 +134,8 @@ export default function RoutingSettings() {
       frequency: tplForm.frequency as 'weekly' | 'biweekly_a' | 'biweekly_b' | 'monthly',
       dayOfWeek: Number(tplForm.dayOfWeek),
       exceptionFeeOverride: tplForm.exceptionFeeOverride ? Number(tplForm.exceptionFeeOverride) : undefined,
+      offSeasonStart: tplForm.offSeasonStart || null,
+      offSeasonEnd: tplForm.offSeasonEnd || null,
     };
     if (tplSheet === 'create') {
       createTemplate.mutate({ data: payload }, {
@@ -406,6 +409,16 @@ export default function RoutingSettings() {
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Exception Fee Override</label>
               <Input type="number" step="0.01" title="Override the tenant default exception fee for this route — leave blank to use the default" placeholder="Leave blank to use the tenant default" value={tplForm.exceptionFeeOverride} onChange={e => setTplForm(f => ({ ...f, exceptionFeeOverride: e.target.value }))} />
+            </div>
+            <div className="space-y-2 rounded-lg border p-3">
+              <div>
+                <label className="text-sm font-medium">Enforced Off Season</label>
+                <p className="text-xs text-muted-foreground">Every job assigned to this route uses this annual pause window.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1"><label className="text-xs text-muted-foreground">Start (MM-DD)</label><Input placeholder="11-15" value={tplForm.offSeasonStart} onChange={e => setTplForm(f => ({ ...f, offSeasonStart: e.target.value }))} /></div>
+                <div className="space-y-1"><label className="text-xs text-muted-foreground">End (MM-DD)</label><Input placeholder="03-15" value={tplForm.offSeasonEnd} onChange={e => setTplForm(f => ({ ...f, offSeasonEnd: e.target.value }))} /></div>
+              </div>
             </div>
 
             <Separator />

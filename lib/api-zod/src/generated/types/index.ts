@@ -393,6 +393,8 @@ export * from './portalRequestPlanCancellation201';
 export * from './portalServiceRequestInput';
 export * from './portalSummary';
 export * from './portalUpdatePlanInput';
+export * from './preTripChecklistItem';
+export * from './preTripChecklistResponse';
 export * from './previewCustomerPlanInput';
 export * from './property';
 export * from './propertyInput';

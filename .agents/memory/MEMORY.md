@@ -47,3 +47,5 @@
 - [Job service snapshots](job-service-snapshots.md) — snapshot service/matrix price and duration onto each job so later catalog edits never change historical billing
 - [Legacy shared database cutover](legacy-shared-database-cutover.md) — after removing a legacy database secret, compare the newly attached DB before restoring; Replit may attach an existing different dataset
 - [PostgreSQL pool disconnects](postgres-pool-disconnects.md) — always handle pg Pool error events so an idle connection loss cannot terminate the API and make persistent data appear missing
+- [Route off-season authority](route-offseason-authority.md) — route template pause windows override assigned jobs and must propagate on assignment, edits, and removal
+- [Pre-trip inspection snapshots](pretrip-inspection-snapshots.md) — editable tenant checklists are snapshotted per equipment inspection; photo/video evidence belongs to that inspection

@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, boolean, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, boolean, uniqueIndex, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -37,6 +37,8 @@ export const internalTasksTable = pgTable("internal_tasks", {
   idempotencyKey: text("idempotency_key"),
   preTripFuelLogId: integer("pre_trip_fuel_log_id"),
   preTripReadingLogId: integer("pre_trip_reading_log_id"),
+  /** Immutable question labels and answers captured for this inspection. */
+  preTripChecklistSnapshot: jsonb("pre_trip_checklist_snapshot"),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   rejectionReason: text("rejection_reason"),
   /** Set when an admin soft-archives a task; archived tasks are hidden from all default list views. */

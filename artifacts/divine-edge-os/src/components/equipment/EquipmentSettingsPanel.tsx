@@ -11,7 +11,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, GripVertical } from 'lucide-react';
+
+type ChecklistItem = { id: string; label: string; required: boolean };
 
 export function EquipmentSettingsPanel() {
   const qc = useQueryClient();
@@ -20,11 +22,13 @@ export function EquipmentSettingsPanel() {
 
   const [equipRepairPct, setEquipRepairPct] = useState('50');
   const [equipResalePct, setEquipResalePct] = useState('20');
+  const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
 
   useEffect(() => {
     if (!settings) return;
     setEquipRepairPct(String((settings as any).equipmentRepairThresholdPct ?? 50));
     setEquipResalePct(String((settings as any).equipmentResaleThresholdPct ?? 20));
+    setChecklist(((settings as any).preTripChecklist ?? []) as ChecklistItem[]);
   }, [settings]);
 
   const saveThresholds = () => {
@@ -35,6 +39,14 @@ export function EquipmentSettingsPanel() {
         onError: () => toast.error('Failed to save thresholds'),
       }
     );
+  };
+
+  const saveChecklist = () => {
+    if (checklist.some(item => !item.label.trim())) { toast.error('Every checklist item needs a label'); return; }
+    updateSettings.mutate({ data: { preTripChecklist: checklist } }, {
+      onSuccess: () => { toast.success('Pre-trip checklist saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
+      onError: () => toast.error('Failed to save pre-trip checklist'),
+    });
   };
 
   const { data: equipmentTypes = [] } = useListEquipmentTypes({ query: { queryKey: getListEquipmentTypesQueryKey() } });
@@ -117,6 +129,28 @@ export function EquipmentSettingsPanel() {
           <Button onClick={saveThresholds} disabled={updateSettings.isPending} variant="outline">
             Save Thresholds
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* Equipment Types */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Pre-Trip Checklist</CardTitle>
+          <CardDescription>These questions appear in the Field App for every equipment inspection. Completed inspections keep the wording that was used that day.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {checklist.map((item, index) => (
+            <div key={item.id} className="flex items-center gap-2">
+              <GripVertical className="w-4 h-4 text-muted-foreground" />
+              <Input value={item.label} onChange={e => setChecklist(current => current.map((row, i) => i === index ? { ...row, label: e.target.value } : row))} />
+              <label className="flex items-center gap-1 text-xs whitespace-nowrap"><input type="checkbox" checked={item.required} onChange={e => setChecklist(current => current.map((row, i) => i === index ? { ...row, required: e.target.checked } : row))} /> Required</label>
+              <Button size="icon" variant="ghost" onClick={() => setChecklist(current => current.filter((_, i) => i !== index))}><Trash2 className="w-4 h-4" /></Button>
+            </div>
+          ))}
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setChecklist(current => [...current, { id: `item-${Date.now()}`, label: '', required: true }])}><Plus className="w-4 h-4 mr-1" /> Add Question</Button>
+            <Button onClick={saveChecklist} disabled={updateSettings.isPending}>Save Checklist</Button>
+          </div>
         </CardContent>
       </Card>
 

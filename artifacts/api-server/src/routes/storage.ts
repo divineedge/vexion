@@ -133,7 +133,7 @@ router.post(
       const objectPath =
         objectStorageService.normalizeObjectEntityPath(uploadURL);
       purgeExpiredStaffUploadIntents();
-      if (scope === 'job_media' || scope === 'visit_media') {
+      if (scope === 'job_media' || scope === 'visit_media' || scope === 'pre_trip_media') {
         const intent = {
           tenantId,
           userId,

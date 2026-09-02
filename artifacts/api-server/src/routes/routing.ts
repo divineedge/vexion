@@ -52,6 +52,8 @@ function formatRouteTemplate(rt: typeof routeTemplatesTable.$inferSelect, extras
     frequency: rt.frequency as "weekly" | "biweekly_a" | "biweekly_b" | "monthly",
     dayOfWeek: rt.dayOfWeek,
     exceptionFeeOverride: rt.exceptionFeeOverride ?? null,
+    offSeasonStart: rt.offSeasonStart ?? null,
+    offSeasonEnd: rt.offSeasonEnd ?? null,
     createdAt: rt.createdAt.toISOString(),
   };
 }
@@ -149,8 +151,11 @@ router.get("/route-templates", async (req, res): Promise<void> => {
 router.post("/route-templates", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
-  const { divisionId, name, frequency, dayOfWeek, exceptionFeeOverride } = req.body;
+  const { divisionId, name, frequency, dayOfWeek, exceptionFeeOverride, offSeasonStart, offSeasonEnd } = req.body;
   if (!divisionId || !name) { res.status(400).json({ error: "divisionId and name are required" }); return; }
+  if ((offSeasonStart || offSeasonEnd) && (!/^\d{2}-\d{2}$/.test(offSeasonStart ?? "") || !/^\d{2}-\d{2}$/.test(offSeasonEnd ?? ""))) {
+    res.status(400).json({ error: "offSeasonStart and offSeasonEnd must both use MM-DD" }); return;
+  }
 
   const [division] = await db.select().from(divisionsTable).where(and(eq(divisionsTable.id, parseInt(divisionId, 10)), eq(divisionsTable.tenantId, tenantId)));
   if (!division) { res.status(404).json({ error: "Division not found" }); return; }
@@ -162,6 +167,8 @@ router.post("/route-templates", async (req, res): Promise<void> => {
     frequency: frequency ?? "weekly",
     dayOfWeek: dayOfWeek != null ? parseInt(dayOfWeek, 10) : 1,
     exceptionFeeOverride: exceptionFeeOverride != null ? Number(exceptionFeeOverride) : null,
+    offSeasonStart: offSeasonStart || null,
+    offSeasonEnd: offSeasonEnd || null,
   }).returning();
 
   await db.insert(activityLogTable).values({ tenantId, userId, type: "route_template_created", message: `Route "${name}" created in ${division.name}`, entityId: rt.id });
@@ -172,13 +179,20 @@ router.post("/route-templates", async (req, res): Promise<void> => {
 router.patch("/route-templates/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(req.params.id, 10);
-  const { name, frequency, dayOfWeek, exceptionFeeOverride, divisionId } = req.body;
+  const { name, frequency, dayOfWeek, exceptionFeeOverride, divisionId, offSeasonStart, offSeasonEnd } = req.body;
+  if ((offSeasonStart !== undefined || offSeasonEnd !== undefined) && (
+    (offSeasonStart || offSeasonEnd) && (!/^\d{2}-\d{2}$/.test(offSeasonStart ?? "") || !/^\d{2}-\d{2}$/.test(offSeasonEnd ?? ""))
+  )) { res.status(400).json({ error: "offSeasonStart and offSeasonEnd must both use MM-DD" }); return; }
 
   const updates: Partial<typeof routeTemplatesTable.$inferInsert> = {};
   if (name !== undefined) updates.name = name;
   if (frequency !== undefined) updates.frequency = frequency;
   if (dayOfWeek !== undefined) updates.dayOfWeek = parseInt(dayOfWeek, 10);
   if (exceptionFeeOverride !== undefined) updates.exceptionFeeOverride = exceptionFeeOverride != null ? Number(exceptionFeeOverride) : null;
+  if (offSeasonStart !== undefined || offSeasonEnd !== undefined) {
+    updates.offSeasonStart = offSeasonStart || null;
+    updates.offSeasonEnd = offSeasonEnd || null;
+  }
   if (divisionId !== undefined) {
     const targetDivisionId = parseInt(divisionId, 10);
     const [targetDivision] = await db.select({ id: divisionsTable.id }).from(divisionsTable).where(and(eq(divisionsTable.id, targetDivisionId), eq(divisionsTable.tenantId, tenantId)));
@@ -186,7 +200,11 @@ router.patch("/route-templates/:id", async (req, res): Promise<void> => {
     updates.divisionId = targetDivisionId;
   }
 
-  const [updated] = await db.update(routeTemplatesTable).set(updates).where(and(eq(routeTemplatesTable.id, id), eq(routeTemplatesTable.tenantId, tenantId))).returning();
+  const [updated] = await db.transaction(async tx => {
+    const [route] = await tx.update(routeTemplatesTable).set(updates).where(and(eq(routeTemplatesTable.id, id), eq(routeTemplatesTable.tenantId, tenantId))).returning();
+    if (route) await tx.update(jobsTable).set({ offSeasonStart: route.offSeasonStart, offSeasonEnd: route.offSeasonEnd }).where(and(eq(jobsTable.routeTemplateId, id), eq(jobsTable.tenantId, tenantId)));
+    return [route];
+  });
   if (!updated) { res.status(404).json({ error: "Route template not found" }); return; }
 
   const [division] = await db.select({ name: divisionsTable.name }).from(divisionsTable).where(and(eq(divisionsTable.id, updated.divisionId), eq(divisionsTable.tenantId, tenantId)));
@@ -197,7 +215,7 @@ router.delete("/route-templates/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(req.params.id, 10);
 
-  await db.update(jobsTable).set({ routeTemplateId: null, sequenceOrder: null }).where(and(eq(jobsTable.routeTemplateId, id), eq(jobsTable.tenantId, tenantId)));
+  await db.update(jobsTable).set({ routeTemplateId: null, sequenceOrder: null, offSeasonStart: null, offSeasonEnd: null }).where(and(eq(jobsTable.routeTemplateId, id), eq(jobsTable.tenantId, tenantId)));
   await db.delete(routeTemplatesTable).where(and(eq(routeTemplatesTable.id, id), eq(routeTemplatesTable.tenantId, tenantId)));
   res.sendStatus(204);
 });
@@ -467,11 +485,15 @@ router.patch("/jobs/:id/route", async (req, res): Promise<void> => {
   if (routeTemplateId !== undefined) {
     if (routeTemplateId != null) {
       const targetTemplateId = parseInt(routeTemplateId, 10);
-      const [targetTemplate] = await db.select({ id: routeTemplatesTable.id }).from(routeTemplatesTable).where(and(eq(routeTemplatesTable.id, targetTemplateId), eq(routeTemplatesTable.tenantId, tenantId)));
+      const [targetTemplate] = await db.select({ id: routeTemplatesTable.id, offSeasonStart: routeTemplatesTable.offSeasonStart, offSeasonEnd: routeTemplatesTable.offSeasonEnd }).from(routeTemplatesTable).where(and(eq(routeTemplatesTable.id, targetTemplateId), eq(routeTemplatesTable.tenantId, tenantId)));
       if (!targetTemplate) { res.status(404).json({ error: "Route template not found" }); return; }
       updates.routeTemplateId = targetTemplateId;
+      updates.offSeasonStart = targetTemplate.offSeasonStart;
+      updates.offSeasonEnd = targetTemplate.offSeasonEnd;
     } else {
       updates.routeTemplateId = null;
+      updates.offSeasonStart = null;
+      updates.offSeasonEnd = null;
     }
   }
   if (scheduledAt !== undefined) updates.scheduledAt = new Date(scheduledAt);

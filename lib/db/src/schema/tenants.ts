@@ -145,6 +145,10 @@ export const tenantsTable = pgTable("tenants", {
   // ── Routing ───────────────────────────────────────────────────────────────
   /** Trip charge auto-appended to a job's invoice when it uses a one-time reschedule */
   routeExceptionFee: real("route_exception_fee").notNull().default(0),
+  /** Editable pre-trip questions. Shape: Array<{id,label,required}>. */
+  preTripChecklist: jsonb("pre_trip_checklist").default(
+    '[{"id":"tires","label":"Tires and wheels are safe","required":true},{"id":"fluids","label":"Fluids and leaks checked","required":true},{"id":"guards","label":"Guards and safety equipment are secure","required":true},{"id":"controls","label":"Controls, lights, and brakes operate correctly","required":true}]',
+  ),
   // ── Equipment Cost Ledger ─────────────────────────────────────────────────
   /** $/gallon used to price Fuel Log task items that only capture gallons (no dollar amount) */
   fuelPricePerGallon: real("fuel_price_per_gallon").notNull().default(4.0),

@@ -9,6 +9,7 @@ import type { ChemicalRecordRequirements } from './chemicalRecordRequirements';
 import type { CustomerFieldConfig } from './customerFieldConfig';
 import type { FollowupTriggerConfig } from './followupTriggerConfig';
 import type { PaymentReminderRule } from './paymentReminderRule';
+import type { PreTripChecklistItem } from './preTripChecklistItem';
 import type { TenantSettingsAutoInvoiceFrequency } from './tenantSettingsAutoInvoiceFrequency';
 import type { TenantSettingsDefaultGeofenceUnit } from './tenantSettingsDefaultGeofenceUnit';
 import type { TenantSettingsDurationUnit } from './tenantSettingsDurationUnit';
@@ -139,8 +140,9 @@ export interface TenantSettings {
   reviewCustomLink2Label?: string | null;
   /** @nullable */
   reviewCustomLink2Url?: string | null;
-  /** Trip charge auto-appended to a job's invoice when it uses a one-time reschedule */
   routeExceptionFee?: number;
+  /** Trip charge auto-appended to a job's invoice when it uses a one-time reschedule */
+  preTripChecklist?: PreTripChecklistItem[];
   /** $/hour flat rate applied to daily task / compliance time for payroll. 0 = display-only. */
   dailyTaskHourlyRate?: number;
   /** Ordered list of shortcut IDs shown in the header quick-add bar (tenant-wide, max 6) */

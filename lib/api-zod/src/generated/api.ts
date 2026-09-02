@@ -5652,7 +5652,12 @@ export const GetTenantSettingsResponse = zod.object({
   "reviewCustomLink1Url": zod.string().nullish(),
   "reviewCustomLink2Label": zod.string().nullish(),
   "reviewCustomLink2Url": zod.string().nullish(),
-  "routeExceptionFee": zod.number().optional().describe('Trip charge auto-appended to a job\'s invoice when it uses a one-time reschedule'),
+  "routeExceptionFee": zod.number().optional(),
+  "preTripChecklist": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "required": zod.boolean()
+})).optional().describe('Trip charge auto-appended to a job\'s invoice when it uses a one-time reschedule'),
   "dailyTaskHourlyRate": zod.number().optional().describe('$\/hour flat rate applied to daily task \/ compliance time for payroll. 0 = display-only.'),
   "quickShortcuts": zod.array(zod.string()).optional().describe('Ordered list of shortcut IDs shown in the header quick-add bar (tenant-wide, max 6)'),
   "slug": zod.string().nullish().describe('URL-safe slug used in the customer portal link (?tenant=slug)'),
@@ -5755,6 +5760,11 @@ export const UpdateTenantSettingsBody = zod.object({
   "reviewCustomLink2Label": zod.string().optional(),
   "reviewCustomLink2Url": zod.string().optional(),
   "routeExceptionFee": zod.number().optional(),
+  "preTripChecklist": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "required": zod.boolean()
+})).optional(),
   "dailyTaskHourlyRate": zod.number().optional().describe('$\/hour flat rate applied to daily task \/ compliance time for payroll. 0 = display-only.'),
   "quickShortcuts": zod.array(zod.string()).optional().describe('Ordered list of shortcut IDs shown in the header quick-add bar (max 6)'),
   "defaultInvoiceTemplateId": zod.number().nullish().describe('FK to invoice_templates — template applied when creating new invoices')
@@ -5874,7 +5884,12 @@ export const UpdateTenantSettingsResponse = zod.object({
   "reviewCustomLink1Url": zod.string().nullish(),
   "reviewCustomLink2Label": zod.string().nullish(),
   "reviewCustomLink2Url": zod.string().nullish(),
-  "routeExceptionFee": zod.number().optional().describe('Trip charge auto-appended to a job\'s invoice when it uses a one-time reschedule'),
+  "routeExceptionFee": zod.number().optional(),
+  "preTripChecklist": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "required": zod.boolean()
+})).optional().describe('Trip charge auto-appended to a job\'s invoice when it uses a one-time reschedule'),
   "dailyTaskHourlyRate": zod.number().optional().describe('$\/hour flat rate applied to daily task \/ compliance time for payroll. 0 = display-only.'),
   "quickShortcuts": zod.array(zod.string()).optional().describe('Ordered list of shortcut IDs shown in the header quick-add bar (tenant-wide, max 6)'),
   "slug": zod.string().nullish().describe('URL-safe slug used in the customer portal link (?tenant=slug)'),
@@ -6894,7 +6909,12 @@ export const CreateEquipmentPreTripBody = zod.object({
   "fuelCost": zod.number().optional(),
   "readingType": zod.enum(['hours', 'mileage']).optional(),
   "readingValue": zod.number().optional(),
-  "concerns": zod.string().optional()
+  "concerns": zod.string().optional(),
+  "checklistResponses": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "checked": zod.boolean()
+})).optional()
 })
 
 export const CreateEquipmentPreTripResponse = zod.object({
@@ -6903,6 +6923,70 @@ export const CreateEquipmentPreTripResponse = zod.object({
   "readingLogId": zod.number().nullish(),
   "duplicate": zod.boolean()
 })
+
+
+export const ListEquipmentPreTripMediaParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListEquipmentPreTripMediaResponseItem = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "entityType": zod.string(),
+  "entityId": zod.number(),
+  "fileKey": zod.string(),
+  "fileUrl": zod.string(),
+  "mimeType": zod.string(),
+  "sizeBytes": zod.number(),
+  "caption": zod.string().nullish(),
+  "isCover": zod.boolean(),
+  "createdBy": zod.number().nullish(),
+  "source": zod.string().nullish().describe('\'staff\' for staff-uploaded media, \'customer\' for customer portal uploads'),
+  "signedUrl": zod.string().nullish().describe('Short-lived URL for displaying or playing protected media'),
+  "videoCompressed": zod.boolean().nullish().describe('Whether a video was transcoded to 720p H.264'),
+  "createdAt": zod.string()
+})
+export const ListEquipmentPreTripMediaResponse = zod.array(ListEquipmentPreTripMediaResponseItem)
+
+
+export const AddEquipmentPreTripMediaParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AddEquipmentPreTripMediaBody = zod.object({
+  "fileKey": zod.string(),
+  "fileUrl": zod.string(),
+  "mimeType": zod.string(),
+  "sizeBytes": zod.number(),
+  "caption": zod.string().optional(),
+  "isCover": zod.boolean().optional()
+})
+
+export const AddEquipmentPreTripMediaResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "entityType": zod.string(),
+  "entityId": zod.number(),
+  "fileKey": zod.string(),
+  "fileUrl": zod.string(),
+  "mimeType": zod.string(),
+  "sizeBytes": zod.number(),
+  "caption": zod.string().nullish(),
+  "isCover": zod.boolean(),
+  "createdBy": zod.number().nullish(),
+  "source": zod.string().nullish().describe('\'staff\' for staff-uploaded media, \'customer\' for customer portal uploads'),
+  "signedUrl": zod.string().nullish().describe('Short-lived URL for displaying or playing protected media'),
+  "videoCompressed": zod.boolean().nullish().describe('Whether a video was transcoded to 720p H.264'),
+  "createdAt": zod.string()
+})
+
+
+export const DeleteEquipmentPreTripMediaParams = zod.object({
+  "id": zod.coerce.number(),
+  "mediaId": zod.coerce.number()
+})
+
+export const DeleteEquipmentPreTripMediaResponse = zod.void()
 
 
 /**
@@ -8491,7 +8575,7 @@ export const RequestUploadUrlBody = zod.object({
   "name": zod.string().min(1),
   "size": zod.number().min(1),
   "contentType": zod.string().min(1),
-  "scope": zod.enum(['job_media', 'visit_media']).optional().describe('Optional lifecycle scope for field media orphan cleanup')
+  "scope": zod.enum(['job_media', 'visit_media', 'pre_trip_media']).optional().describe('Optional lifecycle scope for field media orphan cleanup')
 })
 
 export const RequestUploadUrlResponse = zod.object({
@@ -9098,7 +9182,7 @@ export const PortalRequestUploadUrlBody = zod.object({
   "name": zod.string().min(1),
   "size": zod.number().min(1),
   "contentType": zod.string().min(1),
-  "scope": zod.enum(['job_media', 'visit_media']).optional().describe('Optional lifecycle scope for field media orphan cleanup')
+  "scope": zod.enum(['job_media', 'visit_media', 'pre_trip_media']).optional().describe('Optional lifecycle scope for field media orphan cleanup')
 })
 
 export const PortalRequestUploadUrlResponse = zod.object({
@@ -12629,6 +12713,8 @@ export const ListRouteTemplatesResponseItem = zod.object({
   "frequency": zod.enum(['weekly', 'biweekly_a', 'biweekly_b', 'monthly']),
   "dayOfWeek": zod.number().describe('0=Sunday .. 6=Saturday'),
   "exceptionFeeOverride": zod.number().nullish(),
+  "offSeasonStart": zod.string().nullish(),
+  "offSeasonEnd": zod.string().nullish(),
   "createdAt": zod.string()
 })
 export const ListRouteTemplatesResponse = zod.array(ListRouteTemplatesResponseItem)
@@ -12642,7 +12728,9 @@ export const CreateRouteTemplateBody = zod.object({
   "name": zod.string().optional(),
   "frequency": zod.enum(['weekly', 'biweekly_a', 'biweekly_b', 'monthly']).optional(),
   "dayOfWeek": zod.number().optional(),
-  "exceptionFeeOverride": zod.number().optional()
+  "exceptionFeeOverride": zod.number().optional(),
+  "offSeasonStart": zod.string().nullish(),
+  "offSeasonEnd": zod.string().nullish()
 })
 
 export const CreateRouteTemplateResponse = zod.object({
@@ -12654,6 +12742,8 @@ export const CreateRouteTemplateResponse = zod.object({
   "frequency": zod.enum(['weekly', 'biweekly_a', 'biweekly_b', 'monthly']),
   "dayOfWeek": zod.number().describe('0=Sunday .. 6=Saturday'),
   "exceptionFeeOverride": zod.number().nullish(),
+  "offSeasonStart": zod.string().nullish(),
+  "offSeasonEnd": zod.string().nullish(),
   "createdAt": zod.string()
 })
 
@@ -12670,7 +12760,9 @@ export const UpdateRouteTemplateBody = zod.object({
   "name": zod.string().optional(),
   "frequency": zod.enum(['weekly', 'biweekly_a', 'biweekly_b', 'monthly']).optional(),
   "dayOfWeek": zod.number().optional(),
-  "exceptionFeeOverride": zod.number().optional()
+  "exceptionFeeOverride": zod.number().optional(),
+  "offSeasonStart": zod.string().nullish(),
+  "offSeasonEnd": zod.string().nullish()
 })
 
 export const UpdateRouteTemplateResponse = zod.object({
@@ -12682,6 +12774,8 @@ export const UpdateRouteTemplateResponse = zod.object({
   "frequency": zod.enum(['weekly', 'biweekly_a', 'biweekly_b', 'monthly']),
   "dayOfWeek": zod.number().describe('0=Sunday .. 6=Saturday'),
   "exceptionFeeOverride": zod.number().nullish(),
+  "offSeasonStart": zod.string().nullish(),
+  "offSeasonEnd": zod.string().nullish(),
   "createdAt": zod.string()
 })
 

@@ -49,6 +49,9 @@ export const routeTemplatesTable = pgTable("route_templates", {
   dayOfWeek: integer("day_of_week").notNull().default(1),
   /** Per-route override of the tenant's default route exception trip charge */
   exceptionFeeOverride: real("exception_fee_override"),
+  /** Enforced annual pause window for every job assigned to this route (MM-DD). */
+  offSeasonStart: text("off_season_start"),
+  offSeasonEnd: text("off_season_end"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

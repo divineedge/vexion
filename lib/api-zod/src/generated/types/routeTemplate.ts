@@ -19,5 +19,9 @@ export interface RouteTemplate {
   dayOfWeek: number;
   /** @nullable */
   exceptionFeeOverride?: number | null;
+  /** @nullable */
+  offSeasonStart?: string | null;
+  /** @nullable */
+  offSeasonEnd?: string | null;
   createdAt: string;
 }

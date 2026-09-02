@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
-import { mediaAttachmentsTable, propertiesTable, jobsTable, customersTable, equipmentMaintenanceTable, visitsTable, crewMembersTable } from "@workspace/db";
+import { mediaAttachmentsTable, propertiesTable, jobsTable, customersTable, equipmentMaintenanceTable, visitsTable, crewMembersTable, internalTasksTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -497,6 +497,54 @@ router.delete("/visits/:id/media/:mediaId", requireVerifiedStaff, async (req: Re
     res.status(502).json({ error: "Unable to delete media attachment" });
     return;
   }
+  res.status(204).end();
+});
+
+router.get("/equipment/pre-trip/:id/media", requireVerifiedStaff, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = verifiedStaffIdentity(res);
+  const taskId = Number(req.params.id);
+  const [task] = await db.select({ id: internalTasksTable.id }).from(internalTasksTable).where(and(eq(internalTasksTable.id, taskId), eq(internalTasksTable.tenantId, tenantId), eq(internalTasksTable.taskType, "pre_trip_inspection"))).limit(1);
+  if (!task) { res.status(404).json({ error: "Pre-trip inspection not found" }); return; }
+  const rows = await db.select().from(mediaAttachmentsTable).where(and(eq(mediaAttachmentsTable.tenantId, tenantId), eq(mediaAttachmentsTable.entityType, "pre_trip_inspection"), eq(mediaAttachmentsTable.entityId, taskId)));
+  res.json(await withSignedUrls(rows));
+});
+
+router.post("/equipment/pre-trip/:id/media", requireVerifiedStaff, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId, userId } = verifiedStaffIdentity(res);
+  const taskId = Number(req.params.id);
+  const [task] = await db.select({ id: internalTasksTable.id }).from(internalTasksTable).where(and(eq(internalTasksTable.id, taskId), eq(internalTasksTable.tenantId, tenantId), eq(internalTasksTable.taskType, "pre_trip_inspection"))).limit(1);
+  if (!task) { res.status(404).json({ error: "Pre-trip inspection not found" }); return; }
+  const { fileKey, fileUrl, mimeType, sizeBytes, caption } = req.body;
+  if (!fileKey || !fileUrl || !mimeType || !sizeBytes || fileKey !== fileUrl || !consumeStaffUploadIntent(fileKey, tenantId, userId) || !isSupportedMedia(mimeType) || Number(sizeBytes) > MAX_MEDIA_SIZE_BYTES) {
+    if (fileKey) await cleanupUploadedObject(fileKey);
+    res.status(400).json({ error: "Only newly uploaded images and videos up to 10 MB are allowed" }); return;
+  }
+  try {
+    const validated = await objectStorageService.validateUploadedMedia(fileKey, MAX_MEDIA_SIZE_BYTES);
+    let finalSizeBytes = validated.sizeBytes;
+    let videoCompressed: boolean | null = null;
+    if (validated.contentType.startsWith("video/")) {
+      const result = await compressVideo(fileKey);
+      videoCompressed = result.compressed;
+      if (result.compressed) finalSizeBytes = result.sizeBytes;
+    }
+    const [attachment] = await db.insert(mediaAttachmentsTable).values({ tenantId, entityType: "pre_trip_inspection", entityId: taskId, fileKey, fileUrl, mimeType: videoCompressed ? "video/mp4" : validated.contentType, sizeBytes: finalSizeBytes, caption: caption?.trim() || null, isCover: false, videoCompressed, createdBy: userId, source: "staff" }).returning();
+    res.status(201).json(attachment);
+  } catch (error) {
+    await cleanupUploadedObject(fileKey);
+    req.log.error({ err: error, taskId }, "Failed to save pre-trip media");
+    res.status(500).json({ error: "Failed to save media attachment" });
+  }
+});
+
+router.delete("/equipment/pre-trip/:id/media/:mediaId", requireVerifiedStaff, async (req: Request, res: Response): Promise<void> => {
+  const { tenantId } = verifiedStaffIdentity(res);
+  const taskId = Number(req.params.id);
+  const mediaId = Number(req.params.mediaId);
+  const [attachment] = await db.select().from(mediaAttachmentsTable).where(and(eq(mediaAttachmentsTable.id, mediaId), eq(mediaAttachmentsTable.tenantId, tenantId), eq(mediaAttachmentsTable.entityType, "pre_trip_inspection"), eq(mediaAttachmentsTable.entityId, taskId))).limit(1);
+  if (!attachment) { res.status(404).json({ error: "Not found" }); return; }
+  await objectStorageService.deleteObjectEntity(attachment.fileKey);
+  await db.delete(mediaAttachmentsTable).where(eq(mediaAttachmentsTable.id, mediaId));
   res.status(204).end();
 });
 

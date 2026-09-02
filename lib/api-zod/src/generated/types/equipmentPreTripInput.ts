@@ -7,6 +7,7 @@
  */
 import type { EquipmentPreTripInputCondition } from './equipmentPreTripInputCondition';
 import type { EquipmentPreTripInputReadingType } from './equipmentPreTripInputReadingType';
+import type { PreTripChecklistResponse } from './preTripChecklistResponse';
 
 export interface EquipmentPreTripInput {
   idempotencyKey: string;
@@ -17,4 +18,5 @@ export interface EquipmentPreTripInput {
   readingType?: EquipmentPreTripInputReadingType;
   readingValue?: number;
   concerns?: string;
+  checklistResponses?: PreTripChecklistResponse[];
 }

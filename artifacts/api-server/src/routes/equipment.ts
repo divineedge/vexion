@@ -970,7 +970,7 @@ router.post("/equipment/:id/reading-logs", async (req, res): Promise<void> => {
 router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
-  const { idempotencyKey, equipmentId, condition, fuelGallons, fuelCost, readingType, readingValue, concerns } = req.body;
+  const { idempotencyKey, equipmentId, condition, fuelGallons, fuelCost, readingType, readingValue, concerns, checklistResponses } = req.body;
   if (typeof idempotencyKey !== "string" || !idempotencyKey.trim()) { res.status(400).json({ error: "idempotencyKey is required" }); return; }
   const normalizedIdempotencyKey = idempotencyKey.trim();
   if (!Number.isInteger(equipmentId)) { res.status(400).json({ error: "equipmentId must be an integer" }); return; }
@@ -1012,7 +1012,8 @@ router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
       if (readingType === "hours" && reading != null && reading > owned.currentHours) updates.currentHours = reading;
       if (readingType === "mileage" && reading != null && (owned.currentMiles == null || reading > owned.currentMiles)) updates.currentMiles = reading;
       if (Object.keys(updates).length) await tx.update(equipmentTable).set(updates).where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId)));
-      const [task] = await tx.insert(internalTasksTable).values({ tenantId, title: `Pre-trip inspection: ${owned.name}`, description: `Condition: ${condition.replace("_", " ")}.${typeof concerns === "string" && concerns.trim() ? `\nConcerns: ${concerns.trim()}` : ""}`, taskType: "pre_trip_inspection", createdById: userId, assignedToRole: "admin_office", priority: condition === "unsafe" ? "urgent" : condition === "needs_attention" ? "high" : "normal", status: "open", contextType: "equipment", contextId: equipmentId, idempotencyKey: normalizedIdempotencyKey, preTripFuelLogId: fuelLogId, preTripReadingLogId: readingLogId }).returning();
+      const checklist = Array.isArray(checklistResponses) ? checklistResponses.filter(item => item && typeof item.id === "string" && typeof item.label === "string" && typeof item.checked === "boolean") : [];
+      const [task] = await tx.insert(internalTasksTable).values({ tenantId, title: `Pre-trip inspection: ${owned.name}`, description: `Condition: ${condition.replace("_", " ")}.${typeof concerns === "string" && concerns.trim() ? `\nConcerns: ${concerns.trim()}` : ""}`, taskType: "pre_trip_inspection", createdById: userId, assignedToRole: "admin_office", priority: condition === "unsafe" ? "urgent" : condition === "needs_attention" ? "high" : "normal", status: "open", contextType: "equipment", contextId: equipmentId, idempotencyKey: normalizedIdempotencyKey, preTripFuelLogId: fuelLogId, preTripReadingLogId: readingLogId, preTripChecklistSnapshot: checklist }).returning();
       return { taskId: task.id, fuelLogId, readingLogId, duplicate: false };
     });
     res.status(201).json(result);

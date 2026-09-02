@@ -1,0 +1,4 @@
+ALTER TABLE "route_templates" ADD COLUMN IF NOT EXISTS "off_season_start" text;
+ALTER TABLE "route_templates" ADD COLUMN IF NOT EXISTS "off_season_end" text;
+ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "pre_trip_checklist" jsonb DEFAULT '[{"id":"tires","label":"Tires and wheels are safe","required":true},{"id":"fluids","label":"Fluids and leaks checked","required":true},{"id":"guards","label":"Guards and safety equipment are secure","required":true},{"id":"controls","label":"Controls, lights, and brakes operate correctly","required":true}]'::jsonb;
+ALTER TABLE "internal_tasks" ADD COLUMN IF NOT EXISTS "pre_trip_checklist_snapshot" jsonb;

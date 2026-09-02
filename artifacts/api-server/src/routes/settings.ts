@@ -145,6 +145,7 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     reviewCustomLink2Url: tenant.reviewCustomLink2Url ?? null,
     // Routing
     routeExceptionFee: tenant.routeExceptionFee ?? 0,
+    preTripChecklist: (tenant.preTripChecklist as Array<{ id: string; label: string; required: boolean }> | null) ?? [],
     // Equipment Cost Ledger
     fuelPricePerGallon: tenant.fuelPricePerGallon ?? 4.0,
     equipmentRuntimeHourlyRate: tenant.equipmentRuntimeHourlyRate ?? 0,
@@ -221,7 +222,7 @@ router.patch("/settings", async (req, res): Promise<void> => {
     reviewCustomLink1Label, reviewCustomLink1Url,
     reviewCustomLink2Label, reviewCustomLink2Url,
     // Routing
-    routeExceptionFee,
+    routeExceptionFee, preTripChecklist,
     // Equipment Cost Ledger
     fuelPricePerGallon, equipmentRuntimeHourlyRate, equipmentDowntimeHourlyRate,
     // Payroll
@@ -420,6 +421,12 @@ router.patch("/settings", async (req, res): Promise<void> => {
     updates.emailProviderConfig = merged;
   }
   if (routeExceptionFee !== undefined) updates.routeExceptionFee = parseFloat(routeExceptionFee);
+  if (preTripChecklist !== undefined) {
+    if (!Array.isArray(preTripChecklist) || preTripChecklist.some(item => !item || typeof item.id !== "string" || typeof item.label !== "string")) {
+      res.status(400).json({ error: "preTripChecklist must be an array of checklist items" }); return;
+    }
+    await db.execute(sql`UPDATE tenants SET pre_trip_checklist = ${JSON.stringify(preTripChecklist)}::jsonb WHERE id = ${tenantId}`);
+  }
   if (fuelPricePerGallon !== undefined) updates.fuelPricePerGallon = parseFloat(fuelPricePerGallon);
   if (equipmentRuntimeHourlyRate !== undefined) updates.equipmentRuntimeHourlyRate = parseFloat(equipmentRuntimeHourlyRate);
   if (equipmentDowntimeHourlyRate !== undefined) updates.equipmentDowntimeHourlyRate = parseFloat(equipmentDowntimeHourlyRate);

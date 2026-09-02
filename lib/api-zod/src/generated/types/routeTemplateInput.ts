@@ -13,4 +13,8 @@ export interface RouteTemplateInput {
   frequency?: RouteTemplateInputFrequency;
   dayOfWeek?: number;
   exceptionFeeOverride?: number;
+  /** @nullable */
+  offSeasonStart?: string | null;
+  /** @nullable */
+  offSeasonEnd?: string | null;
 }

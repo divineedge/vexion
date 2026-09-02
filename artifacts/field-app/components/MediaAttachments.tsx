@@ -37,7 +37,7 @@ type Props = {
   onAdd: (input: AddMediaInput) => Promise<unknown>;
   onDelete: (mediaId: number) => Promise<unknown>;
   onRefresh: () => void;
-  uploadScope: 'job_media' | 'visit_media';
+  uploadScope: 'job_media' | 'visit_media' | 'pre_trip_media';
 };
 
 function uploadBlob(

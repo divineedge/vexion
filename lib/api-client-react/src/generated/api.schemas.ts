@@ -3456,6 +3456,12 @@ export interface FollowupTriggerConfig {
   missedCall?: FollowupTriggerConfigMissedCall;
 }
 
+export interface PreTripChecklistItem {
+  id: string;
+  label: string;
+  required: boolean;
+}
+
 export interface TenantSettings {
   id: number;
   tenantId: number;
@@ -3576,8 +3582,9 @@ export interface TenantSettings {
   reviewCustomLink2Label?: string | null;
   /** @nullable */
   reviewCustomLink2Url?: string | null;
-  /** Trip charge auto-appended to a job's invoice when it uses a one-time reschedule */
   routeExceptionFee?: number;
+  /** Trip charge auto-appended to a job's invoice when it uses a one-time reschedule */
+  preTripChecklist?: PreTripChecklistItem[];
   /** $/hour flat rate applied to daily task / compliance time for payroll. 0 = display-only. */
   dailyTaskHourlyRate?: number;
   /** Ordered list of shortcut IDs shown in the header quick-add bar (tenant-wide, max 6) */
@@ -3683,6 +3690,10 @@ export interface RouteTemplate {
   dayOfWeek: number;
   /** @nullable */
   exceptionFeeOverride?: number | null;
+  /** @nullable */
+  offSeasonStart?: string | null;
+  /** @nullable */
+  offSeasonEnd?: string | null;
   createdAt: string;
 }
 
@@ -3702,6 +3713,10 @@ export interface RouteTemplateInput {
   frequency?: RouteTemplateInputFrequency;
   dayOfWeek?: number;
   exceptionFeeOverride?: number;
+  /** @nullable */
+  offSeasonStart?: string | null;
+  /** @nullable */
+  offSeasonEnd?: string | null;
 }
 
 export interface CapacitySummary {
@@ -3976,6 +3991,7 @@ export interface TenantSettingsUpdate {
   reviewCustomLink2Label?: string;
   reviewCustomLink2Url?: string;
   routeExceptionFee?: number;
+  preTripChecklist?: PreTripChecklistItem[];
   /** $/hour flat rate applied to daily task / compliance time for payroll. 0 = display-only. */
   dailyTaskHourlyRate?: number;
   /** Ordered list of shortcut IDs shown in the header quick-add bar (max 6) */
@@ -4633,6 +4649,12 @@ export const EquipmentPreTripInputReadingType = {
   mileage: 'mileage',
 } as const;
 
+export interface PreTripChecklistResponse {
+  id: string;
+  label: string;
+  checked: boolean;
+}
+
 export interface EquipmentPreTripInput {
   idempotencyKey: string;
   equipmentId: number;
@@ -4642,6 +4664,7 @@ export interface EquipmentPreTripInput {
   readingType?: EquipmentPreTripInputReadingType;
   readingValue?: number;
   concerns?: string;
+  checklistResponses?: PreTripChecklistResponse[];
 }
 
 export interface EquipmentPreTripResult {
@@ -5328,6 +5351,7 @@ export type UploadUrlRequestScope = typeof UploadUrlRequestScope[keyof typeof Up
 export const UploadUrlRequestScope = {
   job_media: 'job_media',
   visit_media: 'visit_media',
+  pre_trip_media: 'pre_trip_media',
 } as const;
 
 export interface UploadUrlRequest {

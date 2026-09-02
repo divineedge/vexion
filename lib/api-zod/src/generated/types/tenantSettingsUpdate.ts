@@ -8,6 +8,7 @@
 import type { ChemicalRecordRequirements } from './chemicalRecordRequirements';
 import type { CustomerFieldConfig } from './customerFieldConfig';
 import type { PaymentReminderRule } from './paymentReminderRule';
+import type { PreTripChecklistItem } from './preTripChecklistItem';
 import type { TenantSettingsUpdateAutoInvoiceFrequency } from './tenantSettingsUpdateAutoInvoiceFrequency';
 import type { TenantSettingsUpdateDefaultGeofenceUnit } from './tenantSettingsUpdateDefaultGeofenceUnit';
 import type { TenantSettingsUpdateDurationUnit } from './tenantSettingsUpdateDurationUnit';
@@ -99,6 +100,7 @@ export interface TenantSettingsUpdate {
   reviewCustomLink2Label?: string;
   reviewCustomLink2Url?: string;
   routeExceptionFee?: number;
+  preTripChecklist?: PreTripChecklistItem[];
   /** $/hour flat rate applied to daily task / compliance time for payroll. 0 = display-only. */
   dailyTaskHourlyRate?: number;
   /** Ordered list of shortcut IDs shown in the header quick-add bar (max 6) */

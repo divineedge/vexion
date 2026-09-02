@@ -15,4 +15,5 @@ export type UploadUrlRequestScope = typeof UploadUrlRequestScope[keyof typeof Up
 export const UploadUrlRequestScope = {
   job_media: 'job_media',
   visit_media: 'visit_media',
+  pre_trip_media: 'pre_trip_media',
 } as const;

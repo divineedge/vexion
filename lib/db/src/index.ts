@@ -11,6 +11,14 @@ if (!process.env.DATABASE_URL) {
 }
 
 export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+// pg emits idle-client connection failures on the Pool itself. Without a
+// listener Node treats the event as unhandled and terminates the whole API,
+// making healthy persistent data briefly appear missing after a reconnect.
+pool.on("error", (error) => {
+  console.error("Unexpected PostgreSQL pool connection error", error);
+});
+
 export const db = drizzle(pool, { schema });
 
 export * from "./schema";

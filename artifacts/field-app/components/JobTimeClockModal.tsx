@@ -14,6 +14,7 @@ import {
   useCreateGeofenceEntry,
   useGetTodaySchedule,
   useListSubTimers,
+  useReopenJob,
   useStartSubTimer,
   useStopSubTimer,
 } from '@workspace/api-client-react';
@@ -48,7 +49,7 @@ export function JobTimeClockModal({
   date: string;
   timezone: string;
   isOffline: boolean;
-  fallbackJobs: Array<{ id: number; title: string; scheduledAt: string; status: string; customerName?: string | null; propertyAddress?: string | null }>;
+  fallbackJobs: Array<{ id: number; title: string; scheduledAt: string; status: string; customerName?: string | null; propertyAddress?: string | null; serviceName?: string | null }>;
   onClose: () => void;
 }) {
   const colors = useColors();
@@ -64,10 +65,12 @@ export function JobTimeClockModal({
   const startTimer = useStartSubTimer();
   const stopTimer = useStopSubTimer();
   const completeJob = useCompleteJob();
+  const reopenJob = useReopenJob();
   const createGeofenceEntry = useCreateGeofenceEntry();
   const [busyJobId, setBusyJobId] = useState<number | null>(null);
   const [switchJob, setSwitchJob] = useState<ClockJob | null>(null);
   const [completionJob, setCompletionJob] = useState<ClockJob | null>(null);
+  const [reopenCandidate, setReopenCandidate] = useState<ClockJob | null>(null);
   const reported = useRef<Set<number>>(new Set());
 
   const fallback = useMemo<ClockJob[]>(() => mergeFallbackJobs(fallbackJobs.map(job => ({
@@ -77,6 +80,7 @@ export function JobTimeClockModal({
     scheduledAt: job.scheduledAt,
     customerName: job.customerName ?? null,
     propertyAddress: job.propertyAddress ?? null,
+    serviceName: job.serviceName ?? null,
     status: job.status,
     activeTimerId: null,
     activeTimerStartedAt: null,
@@ -255,6 +259,32 @@ export function JobTimeClockModal({
               </View>
             </View>
           )}
+          {reopenCandidate && (
+            <View style={[styles.confirmation, { borderColor: colors.primary + '50', backgroundColor: colors.primary + '0D' }]}>
+              <Text style={[styles.confirmationTitle, { color: colors.foreground }]}>Return Job to Scheduled?</Text>
+              <Text style={[styles.confirmationText, { color: colors.mutedForeground }]}>
+                Use this when “{reopenCandidate.label}” was marked complete by mistake. Existing time records and any draft invoice are kept.
+              </Text>
+              <View style={styles.confirmationActions}>
+                <TouchableOpacity onPress={() => setReopenCandidate(null)} style={[styles.confirmationButton, { borderColor: colors.border }]}>
+                  <Text style={{ color: colors.foreground }}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  disabled={reopenJob.isPending}
+                  onPress={() => {
+                    const job = reopenCandidate;
+                    reopenJob.mutate({ id: job.id }, {
+                      onSuccess: () => { setReopenCandidate(null); invalidate([job.id]); },
+                      onError: (error) => Alert.alert('Unable to reopen job', error.message || 'The job was not changed.'),
+                    });
+                  }}
+                  style={[styles.confirmationButton, { backgroundColor: colors.primary }]}
+                >
+                  <Text style={{ color: colors.primaryForeground }}>Return to Scheduled</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
           <FlatList
             data={jobs}
             keyExtractor={item => String(item.id)}
@@ -282,6 +312,12 @@ export function JobTimeClockModal({
                       {item.scheduledAt ? new Date(item.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Unscheduled'}
                       {item.customerName ? ` · ${item.customerName}` : ''}
                     </Text>
+                    {item.serviceName ? (
+                      <View style={styles.serviceRow}>
+                        <Ionicons name="pricetag-outline" size={12} color={colors.mutedForeground} />
+                        <Text style={[styles.serviceText, { color: colors.mutedForeground }]} numberOfLines={1}>{item.serviceName}</Text>
+                      </View>
+                    ) : null}
                     {item.propertyAddress ? (
                       <TouchableOpacity
                         style={styles.addressRow}
@@ -296,12 +332,12 @@ export function JobTimeClockModal({
                   </View>
                   {running && item.activeTimerStartedAt && <LiveElapsed startedAt={item.activeTimerStartedAt} fallback={item.elapsedSeconds ?? 0} />}
                   <TouchableOpacity
-                    disabled={busyJobId !== null || isOffline || (completed && !running)}
+                    disabled={busyJobId !== null || isOffline}
                     testID={`job-clock-${running ? 'out' : 'in'}-${item.id}`}
-                    onPress={() => running ? void clockOut(item) : clockIn(item)}
+                    onPress={() => running ? void clockOut(item) : completed ? setReopenCandidate(item) : clockIn(item)}
                     style={[styles.button, { backgroundColor: running ? '#ef444418' : completed ? colors.statusCompleted + '18' : colors.primary + '18', opacity: isOffline || (busyJobId !== null && !busy) ? 0.45 : 1 }]}
                   >
-                    {busy ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={{ color: running ? '#ef4444' : completed ? colors.statusCompleted : colors.primary, fontWeight: '600' }}>{running ? 'Clock Out' : completed ? 'Done' : 'Clock In'}</Text>}
+                    {busy ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={{ color: running ? '#ef4444' : completed ? colors.statusCompleted : colors.primary, fontWeight: '600' }}>{running ? 'Clock Out' : completed ? 'Reopen' : 'Clock In'}</Text>}
                   </TouchableOpacity>
                 </View>
               );
@@ -328,6 +364,8 @@ const styles = StyleSheet.create({
   completedBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 },
   completedText: { fontFamily: 'Inter_600SemiBold', fontSize: 10 },
   meta: { fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 2 },
+  serviceRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  serviceText: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 11 },
   addressRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   addressText: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 11 },
   elapsed: { color: '#2563eb', fontFamily: 'Inter_600SemiBold', fontSize: 12 },

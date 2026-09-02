@@ -4924,6 +4924,77 @@ export const useCompleteJob = <TError = ErrorType<void>,
       return useMutation(getCompleteJobMutationOptions(options));
     }
 
+export const getReopenJobUrl = (id: number,) => {
+
+
+
+
+  return `/api/jobs/${id}/reopen`
+}
+
+/**
+ * @summary Return an accidentally completed job to scheduled status
+ */
+export const reopenJob = async (id: number, options?: RequestInit): Promise<Job> => {
+
+  return customFetch<Job>(getReopenJobUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getReopenJobMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reopenJob>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reopenJob>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['reopenJob'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reopenJob>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  reopenJob(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReopenJobMutationResult = NonNullable<Awaited<ReturnType<typeof reopenJob>>>
+
+    export type ReopenJobMutationError = ErrorType<void>
+
+    /**
+ * @summary Return an accidentally completed job to scheduled status
+ */
+export const useReopenJob = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reopenJob>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reopenJob>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getReopenJobMutationOptions(options));
+    }
+
 export const getCompleteAndInvoiceJobUrl = (id: number,) => {
 
 

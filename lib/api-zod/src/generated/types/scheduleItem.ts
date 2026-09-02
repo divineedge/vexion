@@ -18,6 +18,8 @@ export interface ScheduleItem {
   /** @nullable */
   propertyAddress?: string | null;
   /** @nullable */
+  serviceName?: string | null;
+  /** @nullable */
   propertyId?: number | null;
   status: string;
   /** @nullable */

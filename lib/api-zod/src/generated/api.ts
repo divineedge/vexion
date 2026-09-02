@@ -2434,6 +2434,104 @@ export const CompleteJobResponse = zod.object({
 
 
 /**
+ * @summary Return an accidentally completed job to scheduled status
+ */
+export const ReopenJobParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const reopenJobResponseOffSeasonStartRegExp = new RegExp('^\\d{2}-\\d{2}$');
+export const reopenJobResponseOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
+
+
+export const ReopenJobResponse = zod.object({
+  "id": zod.number(),
+  "tenantId": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "status": zod.enum(['scheduled', 'in_progress', 'completed', 'cancelled', 'on_hold']),
+  "priority": zod.enum(['low', 'normal', 'high', 'urgent']).optional(),
+  "customerId": zod.number().nullish(),
+  "customerName": zod.string().nullish(),
+  "propertyId": zod.number().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "assigneeId": zod.number().nullish(),
+  "assigneeName": zod.string().nullish(),
+  "crewId": zod.number().nullish(),
+  "crewName": zod.string().nullish(),
+  "scheduledAt": zod.string(),
+  "estimatedDuration": zod.number().nullish().describe('Duration stored in minutes; display as hours or minutes per tenant durationUnit setting'),
+  "completedAt": zod.string().nullish(),
+  "totalAmount": zod.number().optional(),
+  "invoiceId": zod.number().nullish(),
+  "serviceId": zod.number().nullish(),
+  "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
+  "fieldRequirements": zod.object({
+  "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
+  "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
+}).optional(),
+  "blueprintId": zod.number().nullish(),
+  "lineItems": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "inventoryItemId": zod.number().nullish(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional(),
+  "jobParts": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unitPrice": zod.number(),
+  "total": zod.number()
+})).optional().describe('Parts used on this job from inventory'),
+  "suppliesNeeded": zod.array(zod.object({
+  "inventoryItemId": zod.number(),
+  "name": zod.string(),
+  "quantity": zod.number(),
+  "unit": zod.string()
+})).optional().describe('Supplies the crew will need on site'),
+  "recurrenceRule": zod.object({
+  "pattern": zod.enum(['daily', 'weekly', 'biweekly', 'monthly_date', 'monthly_weekday', 'custom']),
+  "interval": zod.number().optional().describe('Used by custom (days) and biweekly patterns'),
+  "daysOfWeek": zod.array(zod.number()).optional().describe('0=Sun…6=Sat; used by weekly and biweekly'),
+  "dayOfMonth": zod.number().optional().describe('1–31; used by monthly_date'),
+  "weekOfMonth": zod.number().optional().describe('1=first…5=last; used by monthly_weekday'),
+  "dayOfWeek": zod.number().optional().describe('0=Sun…6=Sat; used by monthly_weekday'),
+  "endCondition": zod.enum(['never', 'after', 'on_date']),
+  "endAfter": zod.number().optional().describe('Used when endCondition is after'),
+  "endDate": zod.string().optional().describe('ISO date string; used when endCondition is on_date')
+}).nullish().describe('Present only on series root jobs'),
+  "recurrenceParentId": zod.number().nullish().describe('FK to series root for generated instances'),
+  "recurrenceIndex": zod.number().nullish().describe('0-based index of this occurrence'),
+  "isRecurrencePaused": zod.boolean().optional(),
+  "resumeAt": zod.string().nullish().describe('Off-season pause: date the series will auto-resume'),
+  "recurrenceCount": zod.number().optional(),
+  "offSeasonStart": zod.string().regex(reopenJobResponseOffSeasonStartRegExp).nullish().describe('Annual recurring-series pause start (MM-DD); always paired with offSeasonEnd.'),
+  "offSeasonEnd": zod.string().regex(reopenJobResponseOffSeasonEndRegExp).nullish().describe('Annual recurring-series pause end (MM-DD); always paired with offSeasonStart.'),
+  "pendingWeeklyInvoice": zod.boolean().optional().describe('True when this completed non-recurring job is waiting to be swept into a weekly batch invoice'),
+  "recurrenceDescription": zod.string().nullish().describe('Human-readable summary e.g. Every Mon & Thu'),
+  "routeTemplateId": zod.number().nullish(),
+  "routeName": zod.string().nullish().describe('Name of the assigned route template, joined server-side for display'),
+  "sequenceOrder": zod.number().nullish(),
+  "isOneTimeReschedule": zod.boolean().optional(),
+  "originalScheduledDate": zod.string().nullish(),
+  "smsReminderEnabled": zod.boolean().optional().describe('When true, the scheduler sends an SMS reminder to the customer before this job'),
+  "holdFromBilling": zod.boolean().optional().describe('When true, this job is excluded from the next automatic overnight billing run. Cleared automatically once the job is billed.'),
+  "archivedAt": zod.coerce.date().nullish(),
+  "tags": zod.array(zod.string()).optional().describe('Tag names applied to this job'),
+  "skipReasonId": zod.number().nullish().describe('FK to skip_reasons — set when this occurrence was skipped with a reason'),
+  "skipNote": zod.string().nullish().describe('Optional note added alongside the skip reason'),
+  "cancellationRequestedAt": zod.string().nullish().describe('Set when the customer has requested cancellation via the portal; null means no pending request'),
+  "cancellationReason": zod.string().nullish().describe('Optional reason provided by the customer when requesting cancellation'),
+  "rescheduleRequestedAt": zod.string().nullish().describe('Set when the customer has requested rescheduling via the portal; null means no pending request'),
+  "reschedulePreferredDate": zod.string().nullish().describe('Customer\'s preferred new date (YYYY-MM-DD), if provided with the reschedule request'),
+  "createdAt": zod.string()
+})
+
+
+/**
  * @summary Atomically mark a job complete and create an invoice (single transaction)
  */
 export const CompleteAndInvoiceJobParams = zod.object({
@@ -4681,6 +4779,7 @@ export const GetTodayScheduleResponseItem = zod.object({
   "scheduledAt": zod.string().nullish(),
   "customerName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
+  "serviceName": zod.string().nullish(),
   "propertyId": zod.number().nullish(),
   "status": zod.string(),
   "activeTimerId": zod.number().nullish(),
@@ -9065,6 +9164,7 @@ export const ListEstimatesResponseItem = zod.object({
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
+  "serviceName": zod.string().nullish(),
   "paymentRequirement": zod.enum(['none', 'full', 'deposit_pct', 'deposit_fixed']).optional().describe('Payment required on acceptance: none=no payment, full=full total, deposit_pct=% of total, deposit_fixed=fixed $'),
   "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
   "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),
@@ -9158,6 +9258,7 @@ export const CreateEstimateResponse = zod.object({
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
+  "serviceName": zod.string().nullish(),
   "paymentRequirement": zod.enum(['none', 'full', 'deposit_pct', 'deposit_fixed']).optional().describe('Payment required on acceptance: none=no payment, full=full total, deposit_pct=% of total, deposit_fixed=fixed $'),
   "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
   "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),
@@ -9230,6 +9331,7 @@ export const GetEstimateResponse = zod.object({
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
+  "serviceName": zod.string().nullish(),
   "paymentRequirement": zod.enum(['none', 'full', 'deposit_pct', 'deposit_fixed']).optional().describe('Payment required on acceptance: none=no payment, full=full total, deposit_pct=% of total, deposit_fixed=fixed $'),
   "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
   "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),
@@ -9325,6 +9427,7 @@ export const UpdateEstimateResponse = zod.object({
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
+  "serviceName": zod.string().nullish(),
   "paymentRequirement": zod.enum(['none', 'full', 'deposit_pct', 'deposit_fixed']).optional().describe('Payment required on acceptance: none=no payment, full=full total, deposit_pct=% of total, deposit_fixed=fixed $'),
   "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
   "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),
@@ -9402,6 +9505,7 @@ export const ArchiveEstimateResponse = zod.object({
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
+  "serviceName": zod.string().nullish(),
   "paymentRequirement": zod.enum(['none', 'full', 'deposit_pct', 'deposit_fixed']).optional().describe('Payment required on acceptance: none=no payment, full=full total, deposit_pct=% of total, deposit_fixed=fixed $'),
   "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
   "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),
@@ -9465,6 +9569,7 @@ export const RestoreEstimateResponse = zod.object({
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
+  "serviceName": zod.string().nullish(),
   "paymentRequirement": zod.enum(['none', 'full', 'deposit_pct', 'deposit_fixed']).optional().describe('Payment required on acceptance: none=no payment, full=full total, deposit_pct=% of total, deposit_fixed=fixed $'),
   "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
   "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),
@@ -9528,6 +9633,7 @@ export const SendEstimateResponse = zod.object({
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
+  "serviceName": zod.string().nullish(),
   "paymentRequirement": zod.enum(['none', 'full', 'deposit_pct', 'deposit_fixed']).optional().describe('Payment required on acceptance: none=no payment, full=full total, deposit_pct=% of total, deposit_fixed=fixed $'),
   "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
   "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),
@@ -9670,6 +9776,7 @@ export const GetPublicEstimateResponse = zod.object({
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
+  "serviceName": zod.string().nullish(),
   "paymentRequirement": zod.enum(['none', 'full', 'deposit_pct', 'deposit_fixed']).optional().describe('Payment required on acceptance: none=no payment, full=full total, deposit_pct=% of total, deposit_fixed=fixed $'),
   "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
   "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),
@@ -9777,6 +9884,7 @@ export const RespondToEstimateResponse = zod.object({
   "customerName": zod.string().nullish(),
   "assigneeName": zod.string().nullish(),
   "propertyAddress": zod.string().nullish(),
+  "serviceName": zod.string().nullish(),
   "paymentRequirement": zod.enum(['none', 'full', 'deposit_pct', 'deposit_fixed']).optional().describe('Payment required on acceptance: none=no payment, full=full total, deposit_pct=% of total, deposit_fixed=fixed $'),
   "depositValue": zod.number().nullish().describe('Percentage (deposit_pct) or fixed dollar amount (deposit_fixed)'),
   "depositPaidAt": zod.string().nullish().describe('ISO timestamp when the deposit\/payment was collected'),

@@ -827,14 +827,13 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
   // Fetch current job to check if it's a recurring instance
   const [currentJob] = await db.select().from(jobsTable).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
   if (!currentJob) { res.status(404).json({ error: "Not found" }); return; }
-  let resolvedServiceId: number | null | undefined;
+  let serviceSnapshot: Awaited<ReturnType<typeof resolveServiceJobSnapshot>> | undefined;
   if (serviceId !== undefined) {
     if (serviceId === null || serviceId === "") {
-      resolvedServiceId = null;
+      serviceSnapshot = null;
     } else {
       try {
-        const snapshot = await resolveServiceJobSnapshot(tenantId, serviceId, currentJob.propertyId);
-        resolvedServiceId = snapshot?.service.id ?? null;
+        serviceSnapshot = await resolveServiceJobSnapshot(tenantId, serviceId, currentJob.propertyId);
       } catch (error) {
         res.status(400).json({ error: error instanceof Error ? error.message : "Invalid service" });
         return;
@@ -916,8 +915,13 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
     ...(shouldSetClockIn && { clockInAt: new Date() } as any),
     ...(assignmentWasRequested && { assigneeId: nextAssigneeId, crewId: nextCrewId }),
     ...(scheduledAt !== undefined && { scheduledAt: new Date(scheduledAt) }),
+    ...(serviceSnapshot !== undefined && {
+      serviceId: serviceSnapshot?.service.id ?? null,
+      lineItems: serviceSnapshot?.lineItems ?? [],
+      totalAmount: serviceSnapshot?.totalAmount ?? 0,
+      estimatedDuration: serviceSnapshot?.estimatedDuration ?? null,
+    }),
     ...(estimatedDuration !== undefined && { estimatedDuration }),
-    ...(resolvedServiceId !== undefined && { serviceId: resolvedServiceId }),
     ...(suppliesNeeded !== undefined && { suppliesNeeded: normaliseSupplies(suppliesNeeded) }),
     ...(smsReminderEnabled !== undefined && { smsReminderEnabled: smsReminderEnabled === true || smsReminderEnabled === "true" }),
     ...(holdFromBilling !== undefined && { holdFromBilling: holdFromBilling === true || holdFromBilling === "true" }),
@@ -1313,6 +1317,26 @@ async function runJobCompletionSideEffects(params: {
     .set({ isArchived: true, archivedAt: new Date() })
     .where(and(eq(blueprintsTable.tenantId, tenantId), or(eq(blueprintsTable.jobId, id), eq(blueprintsTable.id, blueprintId ?? -1))));
 }
+
+router.post("/jobs/:id/reopen", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const userId = getUserId(req);
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+  const [updated] = await db.update(jobsTable)
+    .set({ status: "scheduled", completedAt: null })
+    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId), eq(jobsTable.status, "completed")))
+    .returning();
+  if (!updated) { res.status(404).json({ error: "Completed job not found" }); return; }
+  await db.insert(activityLogTable).values({
+    tenantId,
+    userId,
+    type: "job_reopened",
+    message: `Job "${updated.title}" returned to scheduled`,
+    entityId: id,
+  });
+  res.json(formatJob(updated));
+});
 
 router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);

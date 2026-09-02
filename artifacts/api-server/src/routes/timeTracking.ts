@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, timeEntriesTable, timeEntryAdjustmentsTable, subTimersTable, geofenceEntriesTable, usersTable, taskBundleCompletionsTable, taskBundlesTable, jobsTable, visitsTable, customersTable, propertiesTable, crewMembersTable, tenantsTable } from "@workspace/db";
+import { db, timeEntriesTable, timeEntryAdjustmentsTable, subTimersTable, geofenceEntriesTable, usersTable, taskBundleCompletionsTable, taskBundlesTable, jobsTable, visitsTable, customersTable, propertiesTable, servicesTable, crewMembersTable, tenantsTable } from "@workspace/db";
 import { eq, and, sql, gte, lte, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { ADMIN_ROLES, getCallerRole } from "../lib/roles";
@@ -594,7 +594,17 @@ router.get("/time-tracking/today-schedule", requireVerifiedStaff, async (req, re
       status: jobsTable.status,
       scheduledAt: jobsTable.scheduledAt,
       customerName: customersTable.name,
-      propertyAddress: propertiesTable.address,
+      propertyAddress: sql<string | null>`COALESCE(
+        ${propertiesTable.address},
+        (SELECT fallback_property.address
+         FROM properties fallback_property
+         WHERE fallback_property.tenant_id = ${tenantId}
+           AND fallback_property.customer_id = ${jobsTable.customerId}
+           AND NULLIF(TRIM(fallback_property.address), '') IS NOT NULL
+         ORDER BY fallback_property.id
+         LIMIT 1)
+      )`,
+      serviceName: servicesTable.name,
       propertyId: propertiesTable.id,
       propertyLat: propertiesTable.lat,
       propertyLng: propertiesTable.lng,
@@ -607,6 +617,7 @@ router.get("/time-tracking/today-schedule", requireVerifiedStaff, async (req, re
     .from(jobsTable)
     .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
     .leftJoin(propertiesTable, eq(jobsTable.propertyId, propertiesTable.id))
+    .leftJoin(servicesTable, and(eq(jobsTable.serviceId, servicesTable.id), eq(servicesTable.tenantId, tenantId)))
     .where(jobWhere)
     .orderBy(
       sql`CASE WHEN ${jobsTable.sequenceOrder} IS NULL THEN 1 ELSE 0 END`,
@@ -660,6 +671,7 @@ router.get("/time-tracking/today-schedule", requireVerifiedStaff, async (req, re
       scheduledAt: j.scheduledAt.toISOString(),
       customerName: j.customerName ?? null,
       propertyAddress: j.propertyAddress ?? null,
+      serviceName: j.serviceName ?? null,
       propertyId: j.propertyId ?? null,
       status: j.status,
       activeTimerId: timer?.id ?? null,

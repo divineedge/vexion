@@ -7,4 +7,4 @@ description: Selected catalog services resolve immutable job billing and duratio
 
 **Why:** Service catalog and matrix edits must not retroactively change an existing job or its invoice, and route timing must use the same duration that was priced.
 
-**How to apply:** Resolve tenant-scoped active services during job creation, preserve explicit caller overrides, keep matrix pricing unresolved when required measurements are missing, and clone all snapshots into recurring children.
+**How to apply:** Resolve tenant-scoped active services during job creation and whenever an existing job changes services; update serviceId, line items, total, and duration together. Preserve explicit caller overrides, keep matrix pricing unresolved when required measurements are missing, and clone all snapshots into recurring children.

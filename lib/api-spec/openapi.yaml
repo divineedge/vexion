@@ -1359,6 +1359,27 @@ paths:
         "422":
           description: A required chemical application has not been logged
 
+  /jobs/{id}/reopen:
+    post:
+      operationId: reopenJob
+      tags: [jobs]
+      summary: Return an accidentally completed job to scheduled status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Reopened job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          description: Completed job not found
+
   /jobs/{id}/complete-and-invoice:
     post:
       operationId: completeAndInvoiceJob
@@ -8406,6 +8427,8 @@ components:
           type: ["string", "null"]
         propertyAddress:
           type: ["string", "null"]
+        serviceName:
+          type: ["string", "null"]
         paymentRequirement:
           type: string
           enum: [none, full, deposit_pct, deposit_fixed]
@@ -11556,6 +11579,8 @@ components:
         customerName:
           type: ["string", "null"]
         propertyAddress:
+          type: ["string", "null"]
+        serviceName:
           type: ["string", "null"]
         propertyId:
           type: ["integer", "null"]

@@ -63,6 +63,8 @@ export interface Estimate {
   assigneeName?: string | null;
   /** @nullable */
   propertyAddress?: string | null;
+  /** @nullable */
+  serviceName?: string | null;
   /** Payment required on acceptance: none=no payment, full=full total, deposit_pct=% of total, deposit_fixed=fixed $ */
   paymentRequirement?: EstimatePaymentRequirement;
   /**

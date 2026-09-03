@@ -446,14 +446,16 @@ function EquipmentDetailPanel({ equipment, onClose, onEdit }: { equipment: Equip
 
   const totalCost = equipment.purchasePrice + equipment.totalRepairCost + equipment.totalFuelCost;
 
-  // Build projected cost-per-hour at 500-hour intervals for mini chart
+  // Show how the current recorded total cost amortizes across the unit's useful life.
   const projections = (() => {
-    if (!equipment.currentHours || equipment.currentHours === 0) return [];
-    const maxHours = Math.max(equipment.currentHours * 1.5, 500);
+    if (!equipment.expectedLifespanHours || equipment.expectedLifespanHours <= 0) return [];
+    const maxHours = equipment.expectedLifespanHours;
     const pts: { hours: number; cph: number }[] = [];
-    for (let h = 500; h <= maxHours; h += 500) {
+    const interval = maxHours <= 1000 ? 250 : 500;
+    for (let h = interval; h < maxHours; h += interval) {
       pts.push({ hours: h, cph: h > 0 ? totalCost / h : 0 });
     }
+    pts.push({ hours: maxHours, cph: totalCost / maxHours });
     return pts;
   })();
 
@@ -609,8 +611,13 @@ function EquipmentDetailPanel({ equipment, onClose, onEdit }: { equipment: Equip
             {equipment.purchaseDate && <p className="text-[10px] text-muted-foreground" title={new Date(equipment.purchaseDate).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}>{new Date(equipment.purchaseDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</p>}
           </div>
           <div className="rounded-lg border p-3 space-y-1">
-            <p className="text-xs text-muted-foreground flex items-center gap-1.5"><Clock className="w-3 h-3" /> Cost / Hour</p>
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5"><Clock className="w-3 h-3" /> Lifetime Cost / Hour</p>
             <p className="font-semibold">{equipment.costPerHour != null ? fmt$(equipment.costPerHour) : '—'}</p>
+            <p className="text-[10px] text-muted-foreground">
+              {equipment.expectedLifespanHours
+                ? `Based on ${equipment.expectedLifespanHours.toLocaleString()} expected hours`
+                : 'Set expected lifespan hours to calculate'}
+            </p>
           </div>
           <div className="rounded-lg border p-3 space-y-1">
             <p className="text-xs text-muted-foreground flex items-center gap-1.5"><Wrench className="w-3 h-3" /> Total Repairs</p>
@@ -941,7 +948,7 @@ function EquipmentDetailPanel({ equipment, onClose, onEdit }: { equipment: Equip
                   <div className="grid grid-cols-2 gap-3">
                     {[
                       { label: 'Purchase Price', value: fmt$(equipment.purchasePrice ?? 0), title: 'Original purchase price of this equipment' },
-                      { label: 'Cost Per Hour', value: equipment.costPerHour != null ? fmt$(equipment.costPerHour) : '—', title: 'Total cost (purchase + repairs + fuel) divided by total hours' },
+                      { label: 'Lifetime Cost Per Hour', value: equipment.costPerHour != null ? fmt$(equipment.costPerHour) : '—', title: 'Purchase, repair, and fuel cost divided by expected lifespan hours' },
                       { label: 'Total Repairs', value: fmt$(equipment.totalRepairCost ?? 0), title: 'Sum of all logged maintenance and repair costs' },
                       { label: 'Total Fuel', value: fmt$(equipment.totalFuelCost ?? 0), title: 'Sum of all logged fuel costs' },
                       { label: 'Total Cost', value: fmt$(totalCost), title: 'Purchase + repairs + fuel' },
@@ -1575,6 +1582,16 @@ export default function EquipmentPage() {
                       {(item as any).notes && (
                         <p className="text-xs text-muted-foreground mt-1.5 line-clamp-1">{(item as any).notes}</p>
                       )}
+                      {(item.oilFilterNumber || item.airFilterNumber || item.fuelFilterNumber || item.hydraulicFilterNumber || item.otherFilterNumbers) && (
+                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                          <span className="font-medium text-muted-foreground">Part numbers:</span>
+                          {item.oilFilterNumber && <span><span className="text-muted-foreground">Oil</span> <span className="font-mono">{item.oilFilterNumber}</span></span>}
+                          {item.airFilterNumber && <span><span className="text-muted-foreground">Air</span> <span className="font-mono">{item.airFilterNumber}</span></span>}
+                          {item.fuelFilterNumber && <span><span className="text-muted-foreground">Fuel</span> <span className="font-mono">{item.fuelFilterNumber}</span></span>}
+                          {item.hydraulicFilterNumber && <span><span className="text-muted-foreground">Hydraulic</span> <span className="font-mono">{item.hydraulicFilterNumber}</span></span>}
+                          {item.otherFilterNumbers && <span><span className="text-muted-foreground">Other</span> {item.otherFilterNumbers}</span>}
+                        </div>
+                      )}
                       <div className="flex items-center gap-4 mt-2 flex-wrap">
                         <span className="text-xs text-muted-foreground flex items-center gap-1" title={`Hour meter: ${fmtHours(item.currentHours)}`}>
                           <Clock className="w-3 h-3" /> {fmtHours(item.currentHours)}
@@ -1590,7 +1607,7 @@ export default function EquipmentPage() {
                           </span>
                         )}
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <DollarSign className="w-3 h-3" /> <span title="Cost Per Hour = (purchase + repairs + fuel) ÷ total hours">CPH:</span> {item.costPerHour != null ? fmt$(item.costPerHour) : '—'}
+                          <DollarSign className="w-3 h-3" /> <span title="Lifetime CPH = (purchase + repairs + fuel) ÷ expected lifespan hours">CPH:</span> {item.costPerHour != null ? fmt$(item.costPerHour) : '—'}
                         </span>
                         <span className="text-xs text-muted-foreground flex items-center gap-1" title={`Total repair cost: ${fmt$(item.totalRepairCost)}`}>
                           <Wrench className="w-3 h-3" /> Repairs: {fmt$(item.totalRepairCost)}

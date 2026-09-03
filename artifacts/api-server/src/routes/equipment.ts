@@ -359,10 +359,12 @@ function computeEquipmentMetrics(
   repairThresholdPct: number,
   resaleThresholdPct: number,
 ) {
-  const { purchasePrice, currentHours, totalRepairCost, totalFuelCost, purchaseDate, expectedLifespanYears } = eq_row;
+  const { purchasePrice, currentHours, totalRepairCost, totalFuelCost, purchaseDate, expectedLifespanYears, expectedLifespanHours } = eq_row;
 
   const totalCost = purchasePrice + totalRepairCost + totalFuelCost;
-  const costPerHour = currentHours > 0 ? totalCost / currentHours : null;
+  const costPerHour = expectedLifespanHours != null && expectedLifespanHours > 0
+    ? totalCost / expectedLifespanHours
+    : null;
 
   let estimatedResaleValue: number | null = null;
   if (purchaseDate && expectedLifespanYears && expectedLifespanYears > 0 && purchasePrice > 0) {

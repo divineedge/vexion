@@ -7,4 +7,4 @@ description: The server-side rule for preventing cross-business reads and writes
 
 **Why:** Equipment records entered by a Divine Edge user were written to the legacy seed tenant because an older route trusted identity headers/defaulted to tenant 1. The destination tenant then could not see its own records, while the source tenant could.
 
-**How to apply:** Install verified-session middleware before private route handlers, make session identity override or eliminate legacy identity headers, scope every parent/child query to that identity, and test missing, forged, invalid, expired, and cross-tenant combinations.
+**How to apply:** Install verified-session middleware before private route handlers, eliminate legacy identity headers from staff clients, and scope every parent/child query to session identity. Staff clients must call server logout before clearing their token so sign-out revokes access. Test missing, forged, invalid, expired, cross-tenant, and post-logout combinations.

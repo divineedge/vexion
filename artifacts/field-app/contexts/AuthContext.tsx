@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { disableStaffNotificationDevice, setDefaultHeaders, setAuthTokenGetter } from '@workspace/api-client-react';
+import { disableStaffNotificationDevice, logout as revokeStaffSession, setDefaultHeaders, setAuthTokenGetter } from '@workspace/api-client-react';
 
 export interface AuthUser {
   id: number;
@@ -26,13 +26,6 @@ const USER_KEY = 'field_app_user';
 const TOKEN_KEY = 'field_app_token';
 const SESSION_TOKEN_KEY = 'field_app_session_token';
 
-function applyHeaders(user: AuthUser) {
-  setDefaultHeaders({
-    'x-user-id': String(user.id),
-    'x-tenant-id': String(user.tenantId),
-  });
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -49,7 +42,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           parsedUser.timezone ??= 'UTC';
           setToken(storedToken);
           setUser(parsedUser);
-          applyHeaders(parsedUser);
           // Restore session-token bearer auth for staff-authenticated endpoints
           if (storedSessionToken) {
             setAuthTokenGetter(() => storedSessionToken);
@@ -69,7 +61,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.setItem(USER_KEY, JSON.stringify(newUser));
     setToken(newToken);
     setUser(newUser);
-    applyHeaders(newUser);
     // Store and activate the cryptographic session token so staff-authenticated
     // endpoints (e.g. GET /api/staff-notes) receive Authorization: Bearer <token>
     if (sessionToken) {
@@ -92,6 +83,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch {
         // Non-fatal: a future signed-in lifecycle will retry the stored token.
       }
+    }
+    try {
+      await revokeStaffSession();
+    } catch {
+      // Best effort: local sign-out must still complete if the session already
+      // expired or the device is temporarily offline.
     }
     await AsyncStorage.removeItem(TOKEN_KEY);
     await AsyncStorage.removeItem(USER_KEY);

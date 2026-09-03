@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import { setDefaultHeaders } from '@workspace/api-client-react';
+import { logout as revokeStaffSession, setDefaultHeaders } from '@workspace/api-client-react';
 import type { User } from '@workspace/api-client-react';
 import { buildEffectivePermissions, type PermissionKey } from '@/hooks/usePermissions';
 
@@ -7,10 +7,7 @@ const SESSION_TOKEN_KEY = 'divine_edge_session_token';
 
 function applyUserHeaders(u: User | null, sessionToken?: string) {
   if (u) {
-    const headers: Record<string, string> = {
-      'x-tenant-id': String(u.tenantId),
-      'x-user-id': String(u.id),
-    };
+    const headers: Record<string, string> = {};
     const token = sessionToken ?? localStorage.getItem(SESSION_TOKEN_KEY) ?? undefined;
     if (token) headers['x-staff-session'] = token;
     setDefaultHeaders(headers);
@@ -75,6 +72,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    // Start server-side revocation while the session header is still configured.
+    // Keep this API synchronous for existing navigation/click-handler contracts.
+    void revokeStaffSession().catch(() => undefined);
     setUser(null);
     setTenantPermissionsState(null);
     localStorage.removeItem('divine_edge_user');

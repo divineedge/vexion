@@ -3,7 +3,6 @@ import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customer
 import { eq, and, gt, desc, lte, isNotNull, ne, sql, isNull, inArray, or } from "drizzle-orm";
 import { objectStorageService } from "./storage";
 import crypto from "crypto";
-import { getTenantId } from "../lib/tenantHelper";
 import { sendEmail, buildOtpEmailHtml, type EmailProviderConfig } from "../lib/emailProvider";
 import { logger } from "../lib/logger";
 import { syncInvoicePaymentToQBO } from "../lib/quickbooksSync";
@@ -59,6 +58,28 @@ function generateOtp(): string {
 
 function generateToken(): string {
   return crypto.randomBytes(32).toString("hex");
+}
+
+async function resolvePortalTenantSelector(req: Request): Promise<number | null> {
+  const queryTenant = typeof req.query.tenant === "string"
+    ? req.query.tenant
+    : typeof req.query.tenantId === "string"
+      ? req.query.tenantId
+      : undefined;
+  const rawHeader = req.headers["x-tenant-id"];
+  const headerTenant = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
+  const selector = queryTenant ?? headerTenant;
+  if (!selector) return null;
+
+  const numericTenantId = Number(selector);
+  if (Number.isInteger(numericTenantId) && numericTenantId > 0) return numericTenantId;
+
+  const [tenant] = await db
+    .select({ id: tenantsTable.id })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.slug, selector))
+    .limit(1);
+  return tenant?.id ?? null;
 }
 
 // Middleware that reads x-portal-token and attaches customer info to req
@@ -133,12 +154,13 @@ router.get("/portal/tenant-info", async (req, res): Promise<void> => {
 // POST /portal/auth/login  (email + last 4 digits of phone on file)
 // ---------------------------------------------------------------------------
 router.post("/portal/auth/login", async (req, res): Promise<void> => {
-  // Support slug-based tenant lookup: ?tenant=divine-edge OR x-tenant-id: 11
-  let tenantId = getTenantId(req);
-  const slugParam = req.query.tenant as string | undefined;
-  if (slugParam && isNaN(Number(slugParam))) {
-    const [slugRow] = await db.select({ id: tenantsTable.id }).from(tenantsTable).where(eq(tenantsTable.slug, slugParam)).limit(1);
-    if (slugRow) tenantId = slugRow.id;
+  // The tenant value selects the customer authentication realm; it does not
+  // authorize access. Successful login still requires matching customer
+  // credentials, and every later portal request is bound to the issued token.
+  const tenantId = await resolvePortalTenantSelector(req);
+  if (tenantId === null) {
+    res.status(400).json({ error: "A valid tenant is required" });
+    return;
   }
   const { email, last4Phone } = req.body as { email?: string; last4Phone?: string };
 
@@ -218,7 +240,11 @@ router.post("/portal/auth/login", async (req, res): Promise<void> => {
 // POST /portal/auth/request-otp
 // ---------------------------------------------------------------------------
 router.post("/portal/auth/request-otp", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
+  const tenantId = await resolvePortalTenantSelector(req);
+  if (tenantId === null) {
+    res.status(400).json({ error: "A valid tenant is required" });
+    return;
+  }
   const { email } = req.body as { email?: string };
   if (!email) {
     res.status(400).json({ error: "email required" });
@@ -347,7 +373,11 @@ router.post("/portal/auth/request-otp", async (req, res): Promise<void> => {
 // POST /portal/auth/verify-otp
 // ---------------------------------------------------------------------------
 router.post("/portal/auth/verify-otp", async (req, res): Promise<void> => {
-  const tenantId = getTenantId(req);
+  const tenantId = await resolvePortalTenantSelector(req);
+  if (tenantId === null) {
+    res.status(400).json({ error: "A valid tenant is required" });
+    return;
+  }
   const { email, otp } = req.body as { email?: string; otp?: string };
   if (!email || !otp) {
     res.status(400).json({ error: "email and otp required" });

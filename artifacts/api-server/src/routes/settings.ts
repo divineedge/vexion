@@ -721,9 +721,10 @@ router.get("/settings/users", async (req, res): Promise<void> => {
 router.post("/settings/users", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const { email, name, role, password, hourlyRate, hireDate } = req.body;
-  if (!email || !name || !role) { res.status(400).json({ error: "email, name, role required" }); return; }
+  if (!email || !name || !role || !password) { res.status(400).json({ error: "email, name, role, password required" }); return; }
+  if (String(password).length < 8) { res.status(400).json({ error: "Password must be at least 8 characters" }); return; }
 
-  const passwordHash = password ? await bcrypt.hash(password, 10) : "mock";
+  const passwordHash = await bcrypt.hash(password, 10);
   const [user] = await db.insert(usersTable).values({
     tenantId,
     email,

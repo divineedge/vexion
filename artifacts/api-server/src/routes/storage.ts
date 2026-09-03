@@ -15,8 +15,7 @@ import {
 import { db, mediaAttachmentsTable, customerOtpSessionsTable, tenantsTable, jobsTable, visitsTable, crewMembersTable } from '@workspace/db';
 import { eq, and, isNotNull, gt } from 'drizzle-orm';
 import { createHash } from 'crypto';
-import { requireVerifiedStaff, verifiedStaffIdentity } from '../lib/verifiedStaff';
-import { resolveStaffSession } from './auth';
+import { requireVerifiedStaff, resolveVerifiedStaffIdentity, verifiedStaffIdentity } from '../lib/verifiedStaff';
 import { getCallerRole } from '../lib/roles';
 
 const router: IRouter = Router();
@@ -48,12 +47,13 @@ function scheduleUnclaimedUploadCleanup(objectPath: string, expiresAt: number): 
 }
 
 async function resolveObjectReadPrincipal(req: Request): Promise<{ tenantId: number; userId?: number } | null> {
-  const staff = await resolveStaffSession(req);
+  const staff = await resolveVerifiedStaffIdentity(req);
   if (staff) return staff;
-  const authHeader = req.headers.authorization ?? '';
-  const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (!bearer) return null;
-  const tokenHash = createHash('sha256').update(bearer).digest('hex');
+  const rawPortalToken = req.headers['x-portal-token'];
+  const portalToken = (Array.isArray(rawPortalToken) ? rawPortalToken[0] : rawPortalToken)
+    ?? (req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : null);
+  if (!portalToken) return null;
+  const tokenHash = createHash('sha256').update(portalToken).digest('hex');
   const [session] = await db.select({ tenantId: customerOtpSessionsTable.tenantId })
     .from(customerOtpSessionsTable)
     .where(and(
@@ -221,7 +221,7 @@ router.get(
  * GET /storage/read-url
  *
  * Returns a short-lived signed read URL for a private object.
- * Requires auth (staff headers or non-expired portal Bearer token).
+ * Requires an active staff session or non-expired portal token.
  * Verifies tenant ownership via media_attachments before issuing the URL.
  * Used by frontend <img>/<video> elements that cannot include custom headers.
  */

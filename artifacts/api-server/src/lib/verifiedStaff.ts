@@ -3,15 +3,23 @@ import { and, eq } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import { resolveStaffSession } from "../routes/auth";
 
-/** Establishes trusted staff identity. Never use caller identity headers after this middleware. */
-export async function requireVerifiedStaff(req: Request, res: Response, next: NextFunction): Promise<void> {
-  if (req.headers["x-portal-token"]) { res.status(403).json({ error: "This endpoint is not available to portal users" }); return; }
+export type VerifiedStaffIdentity = { tenantId: number; userId: number };
+
+/** Resolves a session only when it belongs to an active staff user in that tenant. */
+export async function resolveVerifiedStaffIdentity(req: Request): Promise<VerifiedStaffIdentity | null> {
   const session = await resolveStaffSession(req);
-  if (!session) { res.status(401).json({ error: "Valid staff session required" }); return; }
+  if (!session) return null;
   const [user] = await db.select({ id: usersTable.id }).from(usersTable).where(and(
     eq(usersTable.id, session.userId), eq(usersTable.tenantId, session.tenantId), eq(usersTable.isActive, true),
   )).limit(1);
-  if (!user) { res.status(401).json({ error: "Staff account is inactive or not found" }); return; }
+  return user ? session : null;
+}
+
+/** Establishes trusted staff identity. Never use caller identity headers after this middleware. */
+export async function requireVerifiedStaff(req: Request, res: Response, next: NextFunction): Promise<void> {
+  if (req.headers["x-portal-token"]) { res.status(403).json({ error: "This endpoint is not available to portal users" }); return; }
+  const session = await resolveVerifiedStaffIdentity(req);
+  if (!session) { res.status(401).json({ error: "Valid staff session required" }); return; }
   res.locals.staffTenantId = session.tenantId;
   res.locals.staffUserId = session.userId;
   (req as Request & { verifiedTenantId?: number; verifiedUserId?: number }).verifiedTenantId = session.tenantId;

@@ -86,7 +86,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
   });
 });
 
-// Login — validates password (legacy 'mock' hash lets dev seed users log in with any password)
+// Login — validates password (legacy seed users are available outside production only)
 router.post("/auth/login", async (req, res): Promise<void> => {
   const { email, password } = req.body;
   if (!email) {
@@ -103,9 +103,9 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     return;
   }
 
-  // Dev seed users have passwordHash='mock' — skip bcrypt check so they keep working
+  // Never allow the legacy password-less seed credential in production.
   const valid = user.passwordHash === "mock"
-    ? true
+    ? process.env.NODE_ENV !== "production"
     : await bcrypt.compare(password ?? "", user.passwordHash);
 
   if (!valid) {
@@ -145,21 +145,36 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   });
 });
 
-router.post("/auth/logout", async (_req, res): Promise<void> => {
+router.post("/auth/logout", async (req, res): Promise<void> => {
+  const rawToken = getPresentedStaffToken(req);
+  if (!rawToken) {
+    res.status(401).json({ error: "Valid staff session required" });
+    return;
+  }
+  const deleted = await db.delete(staffSessionsTable)
+    .where(eq(staffSessionsTable.tokenHash, hashToken(rawToken)))
+    .returning({ id: staffSessionsTable.id });
+  if (deleted.length === 0) {
+    res.status(401).json({ error: "Valid staff session required" });
+    return;
+  }
   res.json({ success: true });
 });
 
 router.get("/auth/me", async (req, res): Promise<void> => {
-  const userId = req.headers["x-user-id"];
-  if (!userId) {
-    res.status(401).json({ error: "Unauthorized" });
+  const session = await resolveStaffSession(req);
+  if (!session) {
+    res.status(401).json({ error: "Valid staff session required" });
     return;
   }
 
-  const id = parseInt(Array.isArray(userId) ? userId[0] : userId, 10);
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, id));
+  const [user] = await db.select().from(usersTable).where(and(
+    eq(usersTable.id, session.userId),
+    eq(usersTable.tenantId, session.tenantId),
+    eq(usersTable.isActive, true),
+  ));
   if (!user) {
-    res.status(401).json({ error: "User not found" });
+    res.status(401).json({ error: "Staff account is inactive or not found" });
     return;
   }
 
@@ -191,13 +206,7 @@ router.get("/auth/me", async (req, res): Promise<void> => {
 export async function resolveStaffSession(
   req: Parameters<typeof router.get>[1] extends (req: infer R, ...args: unknown[]) => unknown ? R : never
 ): Promise<{ tenantId: number; userId: number } | null> {
-  // Try x-staff-session first, then Authorization: Bearer
-  const raw = req.headers["x-staff-session"] as string | undefined
-    ?? (() => {
-      const auth = req.headers["authorization"] as string | undefined;
-      if (auth?.startsWith("Bearer ")) return auth.slice(7);
-      return undefined;
-    })();
+  const raw = getPresentedStaffToken(req);
 
   if (!raw) return null;
 
@@ -216,6 +225,19 @@ export async function resolveStaffSession(
     .limit(1);
 
   return session ?? null;
+}
+
+function getPresentedStaffToken(req: { headers: Record<string, string | string[] | undefined> }): string | undefined {
+  const staffHeader = req.headers["x-staff-session"];
+  const staffToken = Array.isArray(staffHeader) ? staffHeader[0] : staffHeader;
+  if (staffToken) return staffToken;
+  const authHeader = req.headers["authorization"];
+  const auth = Array.isArray(authHeader) ? authHeader[0] : authHeader;
+  if (auth?.startsWith("Bearer ")) {
+    const token = auth.slice(7).trim();
+    return token || undefined;
+  }
+  return undefined;
 }
 
 export default router;

@@ -6,6 +6,7 @@ import { resolveServicePrice, type PricingTier } from "../lib/pricingMatrix";
 import crypto from "crypto";
 
 const router: IRouter = Router();
+export const publicQuotesRouter: IRouter = Router();
 
 function generateToken(): string {
   return crypto.randomBytes(32).toString("hex");
@@ -197,7 +198,7 @@ router.get("/properties/:id/quotes", async (req, res): Promise<void> => {
 });
 
 // GET /quotes/:token — public route (no auth required)
-router.get("/quotes/:token", async (req, res): Promise<void> => {
+publicQuotesRouter.get("/quotes/:token", async (req, res): Promise<void> => {
   const { token } = req.params;
 
   const [row] = await db
@@ -289,7 +290,7 @@ router.get("/quotes/:token", async (req, res): Promise<void> => {
 });
 
 // POST /quotes/:token/respond — public: approve or decline
-router.post("/quotes/:token/respond", async (req, res): Promise<void> => {
+publicQuotesRouter.post("/quotes/:token/respond", async (req, res): Promise<void> => {
   const { token } = req.params;
   const { action, customerNote } = req.body; // action: 'approved' | 'declined'
 

@@ -23,7 +23,7 @@ import p4pRouter from "./p4p";
 import servicesRouter from "./services";
 import chemicalsRouter from "./chemicals";
 import equipmentRouter from "./equipment";
-import quotesRouter from "./quotes";
+import quotesRouter, { publicQuotesRouter } from "./quotes";
 import widgetRouter from "./widget";
 import portalRouter from "./portal";
 import communicationsRouter from "./communications";
@@ -57,11 +57,35 @@ import jobEquipmentUsesRouter from "./jobEquipmentUses";
 import jobRequestsRouter from "./jobRequests";
 import staffMessagesRouter from "./staffMessages";
 import staffNotificationDevicesRouter from "./staffNotificationDevices";
+import { requireVerifiedStaff } from "../lib/verifiedStaff";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(authRouter);
+router.use(publicQuotesRouter);
+router.use(widgetRouter);
+router.use(portalRouter);
+
+/**
+ * Server-wide staff boundary. The narrowly enumerated paths below implement
+ * their own public token, portal-session, or webhook verification. Everything
+ * else mounted after this point must present a valid active staff session.
+ */
+router.use((req, res, next) => {
+  const publicCustomerPath =
+    req.path.startsWith("/public/") ||
+    req.path.startsWith("/storage/public-objects/") ||
+    req.path.startsWith("/storage/objects/") ||
+    req.path === "/storage/read-url" ||
+    (req.path === "/communications/webhook" && req.method === "POST");
+  if (publicCustomerPath) {
+    next();
+    return;
+  }
+  void requireVerifiedStaff(req, res, next);
+});
+
 router.use(storageRouter);
 router.use(mediaRouter);
 router.use(dashboardRouter);
@@ -84,12 +108,15 @@ router.use(marketingRouter);
 router.use(p4pRouter);
 router.use(servicesRouter);
 router.use(chemicalsRouter);
-router.use(equipmentRouter);
-router.use(quotesRouter);
-router.use(widgetRouter);
-router.use(portalRouter);
+// These mixed routers contain explicit public token/webhook handlers. Mount
+// them before equipment's defense-in-depth router middleware so those public
+// handlers remain reachable; the server-wide boundary above still protects
+// all of their staff handlers.
 router.use(communicationsRouter);
 router.use(estimatesRouter);
+router.use(reviewsRouter);
+router.use(equipmentRouter);
+router.use(quotesRouter);
 router.use(visitsRouter);
 router.use(estimateTemplatesRouter);
 router.use(billingRouter);
@@ -99,7 +126,6 @@ router.use(expensesRouter);
 router.use(broadcastsRouter);
 router.use(integrationsRouter);
 router.use(devToolsRouter);
-router.use(reviewsRouter);
 router.use(stopServiceFlagsRouter);
 router.use(internalTasksRouter);
 router.use(routingRouter);

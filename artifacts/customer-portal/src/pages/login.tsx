@@ -67,11 +67,11 @@ export default function Login() {
     setTenantId(id);
     setDefaultHeaders({ "x-tenant-id": id.toString() });
 
-    fetch(`/api/settings`, { headers: { "x-tenant-id": id.toString() } })
+    fetch(`/api/portal/tenant-info?tenantId=${encodeURIComponent(id.toString())}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (d?.logoUrl) setTenantLogoUrl(d.logoUrl);
-        if (d?.companyName) setTenantName(d.companyName);
+        if (d?.name) setTenantName(d.name);
       })
       .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -109,7 +109,6 @@ export default function Login() {
       localStorage.setItem("portal_token", data.token);
       setDefaultHeaders({
         "x-portal-token": data.token,
-        "x-tenant-id": tenantId.toString(),
       });
       toast.success(`Welcome back${data.customer?.name ? `, ${data.customer.name.split(" ")[0]}` : ""}!`);
       setLocation("/home");

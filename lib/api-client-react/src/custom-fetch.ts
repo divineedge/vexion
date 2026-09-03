@@ -7,6 +7,7 @@ export type ErrorType<T = unknown> = ApiError<T>;
 export type BodyType<T> = T;
 
 export type AuthTokenGetter = () => Promise<string | null> | string | null;
+export type UnauthorizedHandler = () => Promise<void> | void;
 
 const NO_BODY_STATUS = new Set([204, 205, 304]);
 const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
@@ -17,6 +18,7 @@ const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 
 let _baseUrl: string | null = null;
 let _authTokenGetter: AuthTokenGetter | null = null;
+let _unauthorizedHandler: UnauthorizedHandler | null = null;
 let _defaultHeaders: Record<string, string> = {};
 
 /**
@@ -43,6 +45,10 @@ export function setBaseUrl(url: string | null): void {
  */
 export function setAuthTokenGetter(getter: AuthTokenGetter | null): void {
   _authTokenGetter = getter;
+}
+
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void {
+  _unauthorizedHandler = handler;
 }
 
 /**
@@ -377,6 +383,9 @@ export async function customFetch<T = unknown>(
   const response = await fetch(input, { ...init, method, headers });
 
   if (!response.ok) {
+    if (response.status === 401 && _authTokenGetter && _unauthorizedHandler) {
+      await _unauthorizedHandler();
+    }
     const errorData = await parseErrorBody(response, method);
     throw new ApiError(response, errorData, requestInfo);
   }

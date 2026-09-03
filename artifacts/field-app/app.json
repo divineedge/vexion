@@ -7,12 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "field-app",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/images/icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#2563eb"
-    },
     "ios": {
       "supportsTablet": false,
       "infoPlist": {
@@ -39,6 +33,21 @@
       ],
       "expo-font",
       "expo-web-browser",
+      "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow Divine Edge Field to use Face ID to unlock your saved work session."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#2563eb"
+        }
+      ],
       [
         "expo-notifications",
         {

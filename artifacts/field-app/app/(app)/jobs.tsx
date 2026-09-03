@@ -277,7 +277,7 @@ export default function JobsScreen() {
   const colors = useColors();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
-  const { user, signOut } = useAuth();
+  const { user, signOut, lockApp } = useAuth();
   const tenantTimezone = user?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'UTC';
   const { isOffline, reportNetworkStatus, cacheJobs, getCachedJobs } = useOffline();
   const params = useLocalSearchParams<{ scheduleMode?: string; scheduleDate?: string }>();
@@ -548,6 +548,12 @@ export default function JobsScreen() {
     router.replace('/');
   }, [signOut]);
 
+  const handleLockApp = useCallback(async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await lockApp();
+    router.replace('/');
+  }, [lockApp]);
+
   const handleEquipmentPress = useCallback(async () => {
     await Haptics.selectionAsync();
     router.push('/(app)/equipment');
@@ -646,6 +652,9 @@ export default function JobsScreen() {
           </TouchableOpacity>
           <TouchableOpacity onPress={handleSignOut} style={styles.headerBtn} testID="sign-out-button">
             <Ionicons name="log-out-outline" size={22} color={colors.mutedForeground} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleLockApp} style={styles.headerBtn} testID="lock-app-button">
+            <Ionicons name="lock-closed-outline" size={21} color={colors.mutedForeground} />
           </TouchableOpacity>
         </View>
       </View>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -18,12 +18,13 @@ import { useLogin } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
 import { mapLoginUser } from '@/utils/authUser';
+import { UnlockEnrollment, UnlockScreen } from '@/components/AuthUnlock';
 
 export default function LoginScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
-  const { signIn } = useAuth();
+  const { signIn, user, isLoading, isLocked, needsEnrollment } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -45,7 +46,6 @@ export default function LoginScreen() {
         timezone: result.user.timezone ?? 'UTC',
       });
       await signIn(result.sessionToken, userData, result.sessionToken ?? undefined);
-      router.replace('/(app)/jobs');
     } catch (err: unknown) {
       let message = 'Invalid email or password. Please try again.';
       if (err && typeof err === 'object') {
@@ -78,6 +78,16 @@ export default function LoginScreen() {
   };
 
   const isDark = colorScheme === 'dark';
+
+  useEffect(() => {
+    if (!isLoading && user && !needsEnrollment) router.replace('/(app)/jobs');
+  }, [isLoading, needsEnrollment, user]);
+
+  if (isLoading) {
+    return <View style={[styles.container, styles.centered, { backgroundColor: colors.background }]}><ActivityIndicator color={colors.primary} size="large" /></View>;
+  }
+  if (isLocked) return <UnlockScreen />;
+  if (user && needsEnrollment) return <UnlockEnrollment />;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -216,6 +226,10 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  centered: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   header: {
     alignItems: 'center',

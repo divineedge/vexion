@@ -141,8 +141,9 @@ export interface TenantSettings {
   /** @nullable */
   reviewCustomLink2Url?: string | null;
   routeExceptionFee?: number;
-  /** Trip charge auto-appended to a job's invoice when it uses a one-time reschedule */
   preTripChecklist?: PreTripChecklistItem[];
+  /** Trip charge auto-appended to a job's invoice when it uses a one-time reschedule */
+  endOfDayChecklist?: PreTripChecklistItem[];
   /** $/hour flat rate applied to daily task / compliance time for payroll. 0 = display-only. */
   dailyTaskHourlyRate?: number;
   /** Ordered list of shortcut IDs shown in the header quick-add bar (tenant-wide, max 6) */

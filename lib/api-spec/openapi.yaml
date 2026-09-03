@@ -12361,6 +12361,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PreTripChecklistItem"
+        endOfDayChecklist:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreTripChecklistItem"
           description: "Trip charge auto-appended to a job's invoice when it uses a one-time reschedule"
         # ── Payroll ──────────────────────────────────────────────────────────
         dailyTaskHourlyRate:
@@ -12873,6 +12877,10 @@ components:
         routeExceptionFee:
           type: number
         preTripChecklist:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreTripChecklistItem"
+        endOfDayChecklist:
           type: array
           items:
             $ref: "#/components/schemas/PreTripChecklistItem"
@@ -13768,6 +13776,9 @@ components:
           type: number
         concerns:
           type: string
+        inspectionType:
+          type: string
+          enum: [pre_trip, end_of_day]
         checklistResponses:
           type: array
           items:

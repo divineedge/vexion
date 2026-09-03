@@ -182,6 +182,7 @@ export * from './equipmentMaintenance';
 export * from './equipmentMaintenanceInput';
 export * from './equipmentPreTripInput';
 export * from './equipmentPreTripInputCondition';
+export * from './equipmentPreTripInputInspectionType';
 export * from './equipmentPreTripInputReadingType';
 export * from './equipmentPreTripResult';
 export * from './equipmentReadingLog';

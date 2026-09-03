@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db } from "@workspace/db";
 import { mediaAttachmentsTable, propertiesTable, jobsTable, customersTable, equipmentMaintenanceTable, visitsTable, crewMembersTable, internalTasksTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { getCallerRole } from "../lib/roles";
@@ -503,7 +503,7 @@ router.delete("/visits/:id/media/:mediaId", requireVerifiedStaff, async (req: Re
 router.get("/equipment/pre-trip/:id/media", requireVerifiedStaff, async (req: Request, res: Response): Promise<void> => {
   const { tenantId } = verifiedStaffIdentity(res);
   const taskId = Number(req.params.id);
-  const [task] = await db.select({ id: internalTasksTable.id }).from(internalTasksTable).where(and(eq(internalTasksTable.id, taskId), eq(internalTasksTable.tenantId, tenantId), eq(internalTasksTable.taskType, "pre_trip_inspection"))).limit(1);
+  const [task] = await db.select({ id: internalTasksTable.id }).from(internalTasksTable).where(and(eq(internalTasksTable.id, taskId), eq(internalTasksTable.tenantId, tenantId), or(eq(internalTasksTable.taskType, "pre_trip_inspection"), eq(internalTasksTable.taskType, "end_of_day_inspection")))).limit(1);
   if (!task) { res.status(404).json({ error: "Pre-trip inspection not found" }); return; }
   const rows = await db.select().from(mediaAttachmentsTable).where(and(eq(mediaAttachmentsTable.tenantId, tenantId), eq(mediaAttachmentsTable.entityType, "pre_trip_inspection"), eq(mediaAttachmentsTable.entityId, taskId)));
   res.json(await withSignedUrls(rows));
@@ -512,7 +512,7 @@ router.get("/equipment/pre-trip/:id/media", requireVerifiedStaff, async (req: Re
 router.post("/equipment/pre-trip/:id/media", requireVerifiedStaff, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, userId } = verifiedStaffIdentity(res);
   const taskId = Number(req.params.id);
-  const [task] = await db.select({ id: internalTasksTable.id }).from(internalTasksTable).where(and(eq(internalTasksTable.id, taskId), eq(internalTasksTable.tenantId, tenantId), eq(internalTasksTable.taskType, "pre_trip_inspection"))).limit(1);
+  const [task] = await db.select({ id: internalTasksTable.id }).from(internalTasksTable).where(and(eq(internalTasksTable.id, taskId), eq(internalTasksTable.tenantId, tenantId), or(eq(internalTasksTable.taskType, "pre_trip_inspection"), eq(internalTasksTable.taskType, "end_of_day_inspection")))).limit(1);
   if (!task) { res.status(404).json({ error: "Pre-trip inspection not found" }); return; }
   const { fileKey, fileUrl, mimeType, sizeBytes, caption } = req.body;
   if (!fileKey || !fileUrl || !mimeType || !sizeBytes || fileKey !== fileUrl || !consumeStaffUploadIntent(fileKey, tenantId, userId) || !isSupportedMedia(mimeType) || Number(sizeBytes) > MAX_MEDIA_SIZE_BYTES) {

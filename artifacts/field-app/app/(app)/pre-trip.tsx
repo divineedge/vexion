@@ -44,14 +44,21 @@ export default function PreTripScreen() {
   const [concerns, setConcerns] = useState('');
   const [answers, setAnswers] = useState<Record<string, boolean>>({});
   const [savedTaskId, setSavedTaskId] = useState<number | null>(null);
-  const checklist = (settings?.preTripChecklist ?? []) as ChecklistItem[];
+  const [inspectionType, setInspectionType] = useState<'pre_trip' | 'end_of_day'>('pre_trip');
+  const preTripChecklist = (settings?.preTripChecklist ?? []) as ChecklistItem[];
+  const endOfDayChecklist = (settings?.endOfDayChecklist ?? []) as ChecklistItem[];
+  const checklist = inspectionType === 'end_of_day' ? endOfDayChecklist : preTripChecklist;
   const mediaQuery = useListEquipmentPreTripMedia(savedTaskId ?? 0, { query: { queryKey: getListEquipmentPreTripMediaQueryKey(savedTaskId ?? 0), enabled: savedTaskId != null } });
   const addMedia = useAddEquipmentPreTripMedia();
   const deleteMedia = useDeleteEquipmentPreTripMedia();
 
   const equipment = ((data as Equipment[] | undefined) ?? []).filter(item => item.isActive);
   const selected = equipment.find(item => item.id === selectedId) ?? null;
-  useEffect(() => { setAnswers({}); setSavedTaskId(null); }, [selectedId]);
+  useEffect(() => {
+    setAnswers({});
+    setSavedTaskId(null);
+    idempotencyKey.current = `${inspectionType}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }, [selectedId, inspectionType]);
   // Kept for the life of this entry so a network retry can safely replay it.
   const idempotencyKey = useRef(`pretrip-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const isSaving = createPreTrip.isPending;
@@ -97,6 +104,7 @@ export default function PreTripScreen() {
           idempotencyKey: idempotencyKey.current,
           equipmentId: selected.id,
           condition,
+          inspectionType,
           ...(gallons ? { fuelGallons: Number(gallons) } : {}),
           ...(fuelCost ? { fuelCost: Number(fuelCost) } : {}),
           ...(reading ? { readingType, readingValue: Number(reading) } : {}),
@@ -112,13 +120,13 @@ export default function PreTripScreen() {
       setCondition('good');
       setAnswers({});
       setSavedTaskId(result.taskId);
-      idempotencyKey.current = `pretrip-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      Alert.alert('Pre-trip saved', 'Inspection saved. You can now attach photos or videos below.');
+      idempotencyKey.current = `${inspectionType}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      Alert.alert(`${inspectionType === 'end_of_day' ? 'End-of-day' : 'Pre-trip'} check saved`, 'Inspection saved. You can now attach photos or videos below.');
     } catch {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Could not save pre-trip', 'Check your connection and try again. No separate equipment ledger was created.');
     }
-  }, [selected, gallons, fuelCost, reading, readingType, condition, concerns, checklist, answers, createPreTrip]);
+  }, [selected, gallons, fuelCost, reading, readingType, condition, concerns, checklist, answers, inspectionType, createPreTrip]);
 
   if (isLoading) {
     return <View style={[styles.centered, { backgroundColor: colors.background }]}><ActivityIndicator color={colors.primary} size="large" /></View>;
@@ -127,7 +135,13 @@ export default function PreTripScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAwareScrollViewCompat contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + (Platform.OS === 'web' ? 34 : 0) + 92 }} keyboardShouldPersistTaps="handled" bottomOffset={70}>
-        <Text style={[styles.intro, { color: colors.mutedForeground }]}>Complete this before heading to jobs. Fuel and meter entries use the existing equipment history.</Text>
+        <Text style={[styles.intro, { color: colors.mutedForeground }]}>Complete one check for each piece of equipment. Fuel and meter entries use the existing equipment history.</Text>
+        {endOfDayChecklist.length > 0 && (
+          <View style={styles.choices}>
+            <TouchableOpacity onPress={() => setInspectionType('pre_trip')} style={[styles.choice, { backgroundColor: inspectionType === 'pre_trip' ? colors.primary : colors.muted }]}><Text style={[styles.choiceText, { color: inspectionType === 'pre_trip' ? '#fff' : colors.mutedForeground }]}>Pre-trip</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => setInspectionType('end_of_day')} style={[styles.choice, { backgroundColor: inspectionType === 'end_of_day' ? colors.primary : colors.muted }]}><Text style={[styles.choiceText, { color: inspectionType === 'end_of_day' ? '#fff' : colors.mutedForeground }]}>End of day</Text></TouchableOpacity>
+          </View>
+        )}
         <Text style={[styles.label, { color: colors.foreground }]}>Equipment</Text>
         <View style={styles.equipmentList}>
           {equipment.map(item => (
@@ -137,7 +151,7 @@ export default function PreTripScreen() {
               {selectedId === item.id && <Ionicons name="checkmark-circle" size={20} color={colors.primary} />}
             </TouchableOpacity>
           ))}
-          {!equipment.length && <Text style={[styles.small, { color: colors.mutedForeground }]}>No active equipment is available.</Text>}
+          {!equipment.length && <Text style={[styles.small, { color: colors.mutedForeground }]}>No active equipment is available. In the office app, add equipment or restore it from Equipment → Archived.</Text>}
         </View>
         <Text style={[styles.label, { color: colors.foreground }]}>Condition</Text>
         <View style={styles.choices}>
@@ -154,6 +168,7 @@ export default function PreTripScreen() {
             ))}
           </View>
         </>}
+        <Text style={[styles.small, { color: colors.mutedForeground, marginTop: 8 }]}>Office staff can change these questions in Settings → Equipment → {inspectionType === 'end_of_day' ? 'Optional End-of-Day Checklist' : 'Pre-Trip Checklist'}.</Text>
         <Text style={[styles.label, { color: colors.foreground }]}>Fuel added (optional)</Text>
         <View style={styles.row}><TextInput value={gallons} onChangeText={setGallons} placeholder="Gallons" keyboardType="decimal-pad" placeholderTextColor={colors.mutedForeground} style={[styles.input, { color: colors.foreground, backgroundColor: colors.muted, borderColor: colors.border }]} /><TextInput value={fuelCost} onChangeText={setFuelCost} placeholder="Cost" keyboardType="decimal-pad" placeholderTextColor={colors.mutedForeground} style={[styles.input, { color: colors.foreground, backgroundColor: colors.muted, borderColor: colors.border }]} /></View>
         <Text style={[styles.label, { color: colors.foreground }]}>Meter reading (optional)</Text>
@@ -173,7 +188,7 @@ export default function PreTripScreen() {
           />
         </>}
       </KeyboardAwareScrollViewCompat>
-      <View style={[styles.footer, { backgroundColor: colors.background, borderTopColor: colors.border, paddingBottom: insets.bottom + (Platform.OS === 'web' ? 34 : 0) + 12 }]}><TouchableOpacity disabled={isSaving} onPress={handleSave} style={[styles.save, { backgroundColor: colors.primary, opacity: isSaving ? .65 : 1 }]} testID="save-pre-trip-button">{isSaving ? <ActivityIndicator color="#fff" /> : <><Ionicons name="checkmark-circle-outline" size={20} color="#fff" /><Text style={styles.saveText}>Save Pre-trip Check</Text></>}</TouchableOpacity></View>
+      <View style={[styles.footer, { backgroundColor: colors.background, borderTopColor: colors.border, paddingBottom: insets.bottom + (Platform.OS === 'web' ? 34 : 0) + 12 }]}><TouchableOpacity disabled={isSaving} onPress={handleSave} style={[styles.save, { backgroundColor: colors.primary, opacity: isSaving ? .65 : 1 }]} testID="save-pre-trip-button">{isSaving ? <ActivityIndicator color="#fff" /> : <><Ionicons name="checkmark-circle-outline" size={20} color="#fff" /><Text style={styles.saveText}>Save {inspectionType === 'end_of_day' ? 'End-of-Day' : 'Pre-trip'} Check</Text></>}</TouchableOpacity></View>
     </View>
   );
 }

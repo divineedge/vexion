@@ -1,0 +1,1 @@
+ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "end_of_day_checklist" jsonb DEFAULT '[]'::jsonb;

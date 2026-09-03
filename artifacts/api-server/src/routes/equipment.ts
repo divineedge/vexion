@@ -970,7 +970,8 @@ router.post("/equipment/:id/reading-logs", async (req, res): Promise<void> => {
 router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
-  const { idempotencyKey, equipmentId, condition, fuelGallons, fuelCost, readingType, readingValue, concerns, checklistResponses } = req.body;
+  const { idempotencyKey, equipmentId, condition, fuelGallons, fuelCost, readingType, readingValue, concerns, checklistResponses, inspectionType = "pre_trip" } = req.body;
+  if (!["pre_trip", "end_of_day"].includes(inspectionType)) { res.status(400).json({ error: "inspectionType must be pre_trip or end_of_day" }); return; }
   if (typeof idempotencyKey !== "string" || !idempotencyKey.trim()) { res.status(400).json({ error: "idempotencyKey is required" }); return; }
   const normalizedIdempotencyKey = idempotencyKey.trim();
   if (!Number.isInteger(equipmentId)) { res.status(400).json({ error: "equipmentId must be an integer" }); return; }
@@ -984,6 +985,13 @@ router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
   if (cost != null && (!Number.isFinite(cost) || cost < 0)) { res.status(400).json({ error: "fuelCost must be a non-negative number" }); return; }
   if (cost != null && !hasFuel) { res.status(400).json({ error: "fuelCost requires fuelGallons" }); return; }
   if (hasReading && (!["hours", "mileage"].includes(readingType) || !Number.isFinite(reading) || reading! < 0)) { res.status(400).json({ error: "readingType and a non-negative readingValue are required together" }); return; }
+  const [tenant] = await db.select({ preTripChecklist: tenantsTable.preTripChecklist, endOfDayChecklist: tenantsTable.endOfDayChecklist }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
+  const configuredChecklist = ((inspectionType === "end_of_day" ? tenant?.endOfDayChecklist : tenant?.preTripChecklist) as Array<{ id: string; label: string; required: boolean }> | null) ?? [];
+  if (inspectionType === "end_of_day" && configuredChecklist.length === 0) { res.status(400).json({ error: "End-of-day checklist is not enabled" }); return; }
+  const submitted = new Map((Array.isArray(checklistResponses) ? checklistResponses : []).filter(item => item && typeof item.id === "string").map(item => [item.id, item.checked === true]));
+  const checklist = configuredChecklist.map(item => ({ id: item.id, label: item.label, checked: submitted.get(item.id) === true }));
+  const missingRequired = configuredChecklist.filter(item => item.required && submitted.get(item.id) !== true);
+  if (missingRequired.length) { res.status(400).json({ error: "Complete all required checklist questions" }); return; }
 
   const existing = await db.select().from(internalTasksTable).where(and(eq(internalTasksTable.tenantId, tenantId), eq(internalTasksTable.idempotencyKey, normalizedIdempotencyKey))).limit(1);
   if (existing[0]) { res.json({ taskId: existing[0].id, fuelLogId: existing[0].preTripFuelLogId, readingLogId: existing[0].preTripReadingLogId, duplicate: true }); return; }
@@ -991,7 +999,7 @@ router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
     const result = await db.transaction(async (tx) => {
       const [owned] = await tx.select().from(equipmentTable).where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId))).for("update");
       if (!owned) throw new Error("Equipment not found");
-      if (owned.archivedAt) throw new Error("Cannot log a pre-trip on archived equipment");
+      if (owned.archivedAt) throw new Error("Cannot inspect archived equipment");
       if (readingType === "hours" && reading != null && reading < owned.currentHours) throw new Error(`Hour reading cannot be below current reading (${owned.currentHours})`);
       if (readingType === "mileage" && reading != null && owned.currentMiles != null && reading < owned.currentMiles) throw new Error(`Mileage reading cannot be below current reading (${owned.currentMiles})`);
       let fuelLogId: number | null = null;
@@ -1012,8 +1020,8 @@ router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
       if (readingType === "hours" && reading != null && reading > owned.currentHours) updates.currentHours = reading;
       if (readingType === "mileage" && reading != null && (owned.currentMiles == null || reading > owned.currentMiles)) updates.currentMiles = reading;
       if (Object.keys(updates).length) await tx.update(equipmentTable).set(updates).where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId)));
-      const checklist = Array.isArray(checklistResponses) ? checklistResponses.filter(item => item && typeof item.id === "string" && typeof item.label === "string" && typeof item.checked === "boolean") : [];
-      const [task] = await tx.insert(internalTasksTable).values({ tenantId, title: `Pre-trip inspection: ${owned.name}`, description: `Condition: ${condition.replace("_", " ")}.${typeof concerns === "string" && concerns.trim() ? `\nConcerns: ${concerns.trim()}` : ""}`, taskType: "pre_trip_inspection", createdById: userId, assignedToRole: "admin_office", priority: condition === "unsafe" ? "urgent" : condition === "needs_attention" ? "high" : "normal", status: "open", contextType: "equipment", contextId: equipmentId, idempotencyKey: normalizedIdempotencyKey, preTripFuelLogId: fuelLogId, preTripReadingLogId: readingLogId, preTripChecklistSnapshot: checklist }).returning();
+      const isEndOfDay = inspectionType === "end_of_day";
+      const [task] = await tx.insert(internalTasksTable).values({ tenantId, title: `${isEndOfDay ? "End-of-day" : "Pre-trip"} inspection: ${owned.name}`, description: `Condition: ${condition.replace("_", " ")}.${typeof concerns === "string" && concerns.trim() ? `\nConcerns: ${concerns.trim()}` : ""}`, taskType: isEndOfDay ? "end_of_day_inspection" : "pre_trip_inspection", createdById: userId, assignedToRole: "admin_office", priority: condition === "unsafe" ? "urgent" : condition === "needs_attention" ? "high" : "normal", status: "open", contextType: "equipment", contextId: equipmentId, idempotencyKey: normalizedIdempotencyKey, preTripFuelLogId: fuelLogId, preTripReadingLogId: readingLogId, preTripChecklistSnapshot: checklist }).returning();
       return { taskId: task.id, fuelLogId, readingLogId, duplicate: false };
     });
     res.status(201).json(result);

@@ -164,6 +164,12 @@ function JobCard({
             <Text style={[styles.jobTitle, { color: colors.foreground }]} numberOfLines={1}>
               {job.title}
             </Text>
+            {job.customerName ? (
+              <View style={styles.metaRow}>
+                <Ionicons name="person-outline" size={13} color={colors.mutedForeground} />
+                <Text style={[styles.metaText, { color: colors.foreground }]} numberOfLines={1}>{job.customerName}</Text>
+              </View>
+            ) : null}
             {isRecurring ? (
               <View style={[styles.recurringBadge, { backgroundColor: colors.primary + '18' }]}>
                 <Text style={[styles.recurringBadgeText, { color: colors.primary }]}>

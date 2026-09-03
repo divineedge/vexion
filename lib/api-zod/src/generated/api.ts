@@ -5657,6 +5657,11 @@ export const GetTenantSettingsResponse = zod.object({
   "id": zod.string(),
   "label": zod.string(),
   "required": zod.boolean()
+})).optional(),
+  "endOfDayChecklist": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "required": zod.boolean()
 })).optional().describe('Trip charge auto-appended to a job\'s invoice when it uses a one-time reschedule'),
   "dailyTaskHourlyRate": zod.number().optional().describe('$\/hour flat rate applied to daily task \/ compliance time for payroll. 0 = display-only.'),
   "quickShortcuts": zod.array(zod.string()).optional().describe('Ordered list of shortcut IDs shown in the header quick-add bar (tenant-wide, max 6)'),
@@ -5761,6 +5766,11 @@ export const UpdateTenantSettingsBody = zod.object({
   "reviewCustomLink2Url": zod.string().optional(),
   "routeExceptionFee": zod.number().optional(),
   "preTripChecklist": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "required": zod.boolean()
+})).optional(),
+  "endOfDayChecklist": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string(),
   "required": zod.boolean()
@@ -5886,6 +5896,11 @@ export const UpdateTenantSettingsResponse = zod.object({
   "reviewCustomLink2Url": zod.string().nullish(),
   "routeExceptionFee": zod.number().optional(),
   "preTripChecklist": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "required": zod.boolean()
+})).optional(),
+  "endOfDayChecklist": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string(),
   "required": zod.boolean()
@@ -6910,6 +6925,7 @@ export const CreateEquipmentPreTripBody = zod.object({
   "readingType": zod.enum(['hours', 'mileage']).optional(),
   "readingValue": zod.number().optional(),
   "concerns": zod.string().optional(),
+  "inspectionType": zod.enum(['pre_trip', 'end_of_day']).optional(),
   "checklistResponses": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string(),

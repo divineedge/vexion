@@ -170,7 +170,14 @@ router.delete("/callbacks/:id", async (req, res): Promise<void> => {
 // GET /callbacks/stats — per-technician callback ratios + company summary
 router.get("/callbacks/stats", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const result = await getCallbackRatioStats(tenantId);
+  const { fromDate, toDate } = req.query as Record<string, string>;
+  const range = fromDate || toDate
+    ? {
+        rangeStart: fromDate ? new Date(`${fromDate}T00:00:00`) : undefined,
+        rangeEnd: toDate ? new Date(`${toDate}T23:59:59.999`) : undefined,
+      }
+    : undefined;
+  const result = await getCallbackRatioStats(tenantId, range);
   res.json(result);
 });
 

@@ -108,8 +108,13 @@ export default function CallbacksPage() {
   });
 
   const { data: stats } = useQuery<CallbackStats>({
-    queryKey: ['callback-stats'],
-    queryFn: () => customFetch<CallbackStats>('/api/callbacks/stats'),
+    queryKey: ['callback-stats', filterFromDate, filterToDate],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (filterFromDate) params.set('fromDate', filterFromDate);
+      if (filterToDate) params.set('toDate', filterToDate);
+      return customFetch<CallbackStats>(`/api/callbacks/stats?${params}`);
+    },
   });
 
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
@@ -197,8 +202,8 @@ export default function CallbacksPage() {
       (cb.assigneeName ?? '').toLowerCase().includes(callbackSearch.toLowerCase()) ||
       (cb.reason ?? '').toLowerCase().includes(callbackSearch.toLowerCase()) ||
       ((cb as any).customerName ?? '').toLowerCase().includes(callbackSearch.toLowerCase()))
-    .filter(cb => !filterFromDate || new Date(cb.status === 'resolved' && cb.resolvedAt ? cb.resolvedAt : cb.createdAt) >= new Date(filterFromDate))
-    .filter(cb => !filterToDate || new Date(cb.status === 'resolved' && cb.resolvedAt ? cb.resolvedAt : cb.createdAt) <= new Date(filterToDate + 'T23:59:59'))
+    .filter(cb => !filterFromDate || new Date(cb.createdAt) >= new Date(filterFromDate))
+    .filter(cb => !filterToDate || new Date(cb.createdAt) <= new Date(filterToDate + 'T23:59:59'))
     .filter(cb => filterPriority === '__all__' || (cb as any).priority === filterPriority);
 
   return (

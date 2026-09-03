@@ -1,5 +1,5 @@
 import { db, callbacksTable, jobsTable, usersTable } from "@workspace/db";
-import { eq, and, count } from "drizzle-orm";
+import { eq, and, count, gte, lte } from "drizzle-orm";
 
 export interface TechnicianCallbackStat {
   userId: number;
@@ -34,7 +34,10 @@ const WARNING_THRESHOLD_PCT = 10;
  * denominator (assuming the original job is completed), so ratios never silently collapse to 0%
  * due to attribution mismatches.
  */
-export async function getCallbackRatioStats(tenantId: number): Promise<CallbackRatioStats> {
+export async function getCallbackRatioStats(
+  tenantId: number,
+  range?: { rangeStart?: Date; rangeEnd?: Date },
+): Promise<CallbackRatioStats> {
   // Callbacks per assignee
   const cbRows = await db
     .select({
@@ -44,7 +47,11 @@ export async function getCallbackRatioStats(tenantId: number): Promise<CallbackR
     })
     .from(callbacksTable)
     .leftJoin(usersTable, eq(callbacksTable.originalAssigneeId, usersTable.id))
-    .where(eq(callbacksTable.tenantId, tenantId))
+    .where(and(
+      eq(callbacksTable.tenantId, tenantId),
+      ...(range?.rangeStart ? [gte(callbacksTable.createdAt, range.rangeStart)] : []),
+      ...(range?.rangeEnd ? [lte(callbacksTable.createdAt, range.rangeEnd)] : []),
+    ))
     .groupBy(callbacksTable.originalAssigneeId, usersTable.name);
 
   // All techs with any completed jobs — correct denominator, includes techs with 0 callbacks
@@ -56,7 +63,12 @@ export async function getCallbackRatioStats(tenantId: number): Promise<CallbackR
     })
     .from(jobsTable)
     .leftJoin(usersTable, eq(jobsTable.assigneeId, usersTable.id))
-    .where(and(eq(jobsTable.tenantId, tenantId), eq(jobsTable.status, "completed")))
+    .where(and(
+      eq(jobsTable.tenantId, tenantId),
+      eq(jobsTable.status, "completed"),
+      ...(range?.rangeStart ? [gte(jobsTable.completedAt, range.rangeStart)] : []),
+      ...(range?.rangeEnd ? [lte(jobsTable.completedAt, range.rangeEnd)] : []),
+    ))
     .groupBy(jobsTable.assigneeId, usersTable.name);
 
   const cbMap = new Map<number, { callbackCount: number; name: string }>();

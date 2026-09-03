@@ -110,7 +110,7 @@ router.get("/efficiency", async (req, res): Promise<void> => {
   `);
 
   // Callback ratio stats (shared source so both pages match)
-  const callbackStats = await getCallbackRatioStats(tenantId);
+  const callbackStats = await getCallbackRatioStats(tenantId, { rangeStart, rangeEnd });
   const callbackStatMap = new Map(callbackStats.technicians.map(t => [t.userId, t]));
 
   // User names + roles
@@ -243,27 +243,20 @@ router.get("/efficiency/by-crew", async (req, res): Promise<void> => {
     GROUP BY j.crew_id
   `);
 
-  // Callbacks per crew: aggregate technician callbacks for crew members
+  // Callback tickets per crew, attributed to the crew on the original job.
   const callbackRows = await db.execute(sql`
     SELECT
-      cm.crew_id,
+      original_job.crew_id,
       COUNT(c.id)::int AS callbacks
     FROM callbacks c
-    JOIN crew_members cm ON cm.user_id = c.assignee_id AND cm.tenant_id = c.tenant_id
+    JOIN jobs original_job
+      ON original_job.id = c.original_job_id
+      AND original_job.tenant_id = c.tenant_id
     WHERE c.tenant_id = ${tenantId}
-    GROUP BY cm.crew_id
-  `);
-
-  // Completed jobs per crew member (for callback ratio denominator)
-  const crewJobsRows = await db.execute(sql`
-    SELECT
-      cm.crew_id,
-      COUNT(j.id)::int AS completed_jobs_total
-    FROM jobs j
-    JOIN crew_members cm ON cm.user_id = j.assignee_id AND cm.tenant_id = j.tenant_id
-    WHERE j.tenant_id = ${tenantId}
-      AND j.status = 'completed'
-    GROUP BY cm.crew_id
+      AND c.created_at >= ${rangeStart.toISOString()}::timestamptz
+      AND c.created_at <= ${rangeEnd.toISOString()}::timestamptz
+      AND original_job.crew_id IS NOT NULL
+    GROUP BY original_job.crew_id
   `);
 
   // All crews for this tenant
@@ -284,19 +277,13 @@ router.get("/efficiency/by-crew", async (req, res): Promise<void> => {
   for (const r of callbackRows.rows as { crew_id: number; callbacks: number }[]) {
     cbMap.set(Number(r.crew_id), Number(r.callbacks ?? 0));
   }
-  const jobsMap = new Map<number, number>();
-  for (const r of crewJobsRows.rows as { crew_id: number; completed_jobs_total: number }[]) {
-    jobsMap.set(Number(r.crew_id), Number(r.completed_jobs_total ?? 0));
-  }
-
   const crewMetrics = crews.map(crew => {
     const b = budgetMap.get(crew.id);
     const budgetMinutes = b?.budgetMinutes ?? 0;
     const completedJobs = b?.completedJobs ?? 0;
     const jobSeconds = subMap.get(crew.id) ?? 0;
     const callbacks = cbMap.get(crew.id) ?? 0;
-    const totalJobs = jobsMap.get(crew.id) ?? 0;
-    const callbackRatio = totalJobs > 0 ? Math.round((callbacks / totalJobs) * 100) : 0;
+    const callbackRatio = completedJobs > 0 ? Math.round((callbacks / completedJobs) * 100 * 10) / 10 : 0;
     return {
       crewId: crew.id,
       name: crew.name,
@@ -325,22 +312,35 @@ router.get("/efficiency/by-service", async (req, res): Promise<void> => {
     ({ rangeStart, rangeEnd } = getPeriodRange(period));
   }
 
-  // Budget minutes + jobs per service
+  // Budget minutes + completed jobs per service.
   const budgetRows = await db.execute(sql`
     SELECT
       j.service_id,
       COALESCE(s.name, 'Unspecified') AS service_name,
       COALESCE(SUM(j.estimated_duration), 0) AS budget_minutes,
-      COUNT(j.id)::int AS completed_jobs,
-      COUNT(c.id)::int AS callbacks
+      COUNT(j.id)::int AS completed_jobs
     FROM jobs j
     LEFT JOIN services s ON s.id = j.service_id
-    LEFT JOIN callbacks c ON c.job_id = j.id
     WHERE j.tenant_id = ${tenantId}
       AND j.status = 'completed'
       AND j.completed_at >= ${rangeStart.toISOString()}::timestamptz
       AND j.completed_at <= ${rangeEnd.toISOString()}::timestamptz
     GROUP BY j.service_id, s.name
+  `);
+
+  // Every callback ticket in the period, attributed to its original job's service.
+  const callbackRows = await db.execute(sql`
+    SELECT
+      original_job.service_id,
+      COUNT(c.id)::int AS callbacks
+    FROM callbacks c
+    JOIN jobs original_job
+      ON original_job.id = c.original_job_id
+      AND original_job.tenant_id = c.tenant_id
+    WHERE c.tenant_id = ${tenantId}
+      AND c.created_at >= ${rangeStart.toISOString()}::timestamptz
+      AND c.created_at <= ${rangeEnd.toISOString()}::timestamptz
+    GROUP BY original_job.service_id
   `);
 
   // Actual job seconds per service (join sub_timers → jobs)
@@ -363,20 +363,23 @@ router.get("/efficiency/by-service", async (req, res): Promise<void> => {
     const key = r.service_id != null ? String(r.service_id) : "null";
     subMap.set(key, Number(r.job_seconds ?? 0));
   }
+  const callbackMap = new Map<string, number>();
+  for (const r of callbackRows.rows as { service_id: number | null; callbacks: number }[]) {
+    callbackMap.set(r.service_id != null ? String(r.service_id) : "null", Number(r.callbacks ?? 0));
+  }
 
   const serviceMetrics = (budgetRows.rows as {
     service_id: number | null;
     service_name: string;
     budget_minutes: string;
     completed_jobs: number;
-    callbacks: number;
   }[]).map(r => {
     const key = r.service_id != null ? String(r.service_id) : "null";
     const budgetMinutes = Number(r.budget_minutes ?? 0);
     const jobSeconds = subMap.get(key) ?? 0;
     const completedJobs = Number(r.completed_jobs ?? 0);
-    const callbacks = Number(r.callbacks ?? 0);
-    const callbackRatio = completedJobs > 0 ? Math.round((callbacks / completedJobs) * 100) : 0;
+    const callbacks = callbackMap.get(key) ?? 0;
+    const callbackRatio = completedJobs > 0 ? Math.round((callbacks / completedJobs) * 100 * 10) / 10 : 0;
     return {
       serviceId: r.service_id ?? null,
       serviceName: r.service_name ?? "Unspecified",

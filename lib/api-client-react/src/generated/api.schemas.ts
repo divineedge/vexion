@@ -4687,6 +4687,16 @@ export interface EquipmentPreTripResult {
   duplicate: boolean;
 }
 
+export type EquipmentRecoveryResultEquipmentItem = {
+  id: number;
+  name: string;
+};
+
+export interface EquipmentRecoveryResult {
+  recoveredCount: number;
+  equipment: EquipmentRecoveryResultEquipmentItem[];
+}
+
 export type EquipmentLedgerOperating = {
   fuelCost: number;
   runtimeHours: number;

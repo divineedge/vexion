@@ -4133,6 +4133,18 @@ paths:
               schema:
                 $ref: "#/components/schemas/EquipmentPreTripResult"
 
+  /equipment/recover-misassigned-divine-edge:
+    post:
+      operationId: recoverMisassignedDivineEdgeEquipment
+      tags: [equipment]
+      responses:
+        "200":
+          description: Confirmed misplaced equipment recovered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EquipmentRecoveryResult"
+
   /equipment/pre-trip/{id}/media:
     get:
       operationId: listEquipmentPreTripMedia
@@ -13795,6 +13807,21 @@ components:
           type: [integer, "null"]
         duplicate:
           type: boolean
+
+    EquipmentRecoveryResult:
+      type: object
+      required: [recoveredCount, equipment]
+      properties:
+        recoveredCount:
+          type: integer
+        equipment:
+          type: array
+          items:
+            type: object
+            required: [id, name]
+            properties:
+              id: { type: integer }
+              name: { type: string }
 
     PreTripChecklistItem:
       type: object

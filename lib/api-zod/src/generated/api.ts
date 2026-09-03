@@ -6941,6 +6941,15 @@ export const CreateEquipmentPreTripResponse = zod.object({
 })
 
 
+export const RecoverMisassignedDivineEdgeEquipmentResponse = zod.object({
+  "recoveredCount": zod.number(),
+  "equipment": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string()
+}))
+})
+
+
 export const ListEquipmentPreTripMediaParams = zod.object({
   "id": zod.coerce.number()
 })

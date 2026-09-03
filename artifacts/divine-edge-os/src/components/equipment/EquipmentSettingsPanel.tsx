@@ -5,6 +5,7 @@ import {
   useUpdateTenantSettings,
   useListEquipmentTypes, getListEquipmentTypesQueryKey,
   useCreateEquipmentType, useUpdateEquipmentType, useDeleteEquipmentType,
+  useRecoverMisassignedDivineEdgeEquipment, getListEquipmentQueryKey,
 } from '@workspace/api-client-react';
 import type { EquipmentType } from '@workspace/api-client-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -19,6 +20,7 @@ export function EquipmentSettingsPanel() {
   const qc = useQueryClient();
   const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
   const updateSettings = useUpdateTenantSettings();
+  const recoverEquipment = useRecoverMisassignedDivineEdgeEquipment();
 
   const [equipRepairPct, setEquipRepairPct] = useState('50');
   const [equipResalePct, setEquipResalePct] = useState('20');
@@ -91,6 +93,29 @@ export function EquipmentSettingsPanel() {
 
   return (
     <div className="space-y-6 py-2">
+      {(settings as any)?.tenantId === 11 && (
+        <Card className="border-amber-300 bg-amber-50/40">
+          <CardHeader>
+            <CardTitle>Recover September Equipment</CardTitle>
+            <CardDescription>Three confirmed equipment records were saved to the legacy seed business on September 1. This owner-only action moves only those exact records into Divine Edge.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              variant="outline"
+              disabled={recoverEquipment.isPending}
+              onClick={() => recoverEquipment.mutate(undefined, {
+                onSuccess: result => {
+                  toast.success(result.recoveredCount ? `Recovered ${result.recoveredCount} equipment records` : 'Those equipment records are already recovered');
+                  qc.invalidateQueries({ queryKey: getListEquipmentQueryKey() });
+                },
+                onError: () => toast.error('Could not recover the equipment records'),
+              })}
+            >
+              {recoverEquipment.isPending ? 'Recovering…' : 'Move 3 Equipment Records to Divine Edge'}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
       {/* Sell Thresholds */}
       <Card>
         <CardHeader>

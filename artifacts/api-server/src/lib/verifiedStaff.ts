@@ -14,6 +14,8 @@ export async function requireVerifiedStaff(req: Request, res: Response, next: Ne
   if (!user) { res.status(401).json({ error: "Staff account is inactive or not found" }); return; }
   res.locals.staffTenantId = session.tenantId;
   res.locals.staffUserId = session.userId;
+  (req as Request & { verifiedTenantId?: number; verifiedUserId?: number }).verifiedTenantId = session.tenantId;
+  (req as Request & { verifiedTenantId?: number; verifiedUserId?: number }).verifiedUserId = session.userId;
   next();
 }
 

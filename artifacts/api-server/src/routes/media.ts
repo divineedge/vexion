@@ -583,7 +583,7 @@ router.patch("/properties/:id/media/:mediaId", async (req: Request, res: Respons
 
 // ── Equipment Maintenance Media ─────────────────────────────────────────────────
 
-router.get("/equipment/maintenance/:id/media", async (req: Request, res: Response): Promise<void> => {
+router.get("/equipment/maintenance/:id/media", requireVerifiedStaff, async (req: Request, res: Response): Promise<void> => {
   const tenantId = getTenantId(req);
   const maintenanceId = Number(req.params.id);
 
@@ -604,7 +604,7 @@ router.get("/equipment/maintenance/:id/media", async (req: Request, res: Respons
   res.json(await withSignedUrls(media));
 });
 
-router.post("/equipment/maintenance/:id/media", async (req: Request, res: Response): Promise<void> => {
+router.post("/equipment/maintenance/:id/media", requireVerifiedStaff, async (req: Request, res: Response): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
   const maintenanceId = Number(req.params.id);
@@ -647,7 +647,7 @@ router.post("/equipment/maintenance/:id/media", async (req: Request, res: Respon
   res.status(201).json(attachment);
 });
 
-router.delete("/equipment/maintenance/:id/media/:mediaId", async (req: Request, res: Response): Promise<void> => {
+router.delete("/equipment/maintenance/:id/media/:mediaId", requireVerifiedStaff, async (req: Request, res: Response): Promise<void> => {
   const tenantId = getTenantId(req);
   const maintenanceId = Number(req.params.id);
   const mediaId = Number(req.params.mediaId);

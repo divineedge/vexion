@@ -3,6 +3,7 @@ import { db, equipmentTable, equipmentMaintenanceTable, equipmentFuelLogsTable, 
 import { eq, and, desc, sum, isNull, isNotNull, inArray, or, gte, lte, ilike, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isOwnerRole } from "../lib/roles";
+import { requireVerifiedStaff } from "../lib/verifiedStaff";
 import {
   importUpload,
   handleExportRequest,
@@ -17,6 +18,9 @@ import {
 } from "../lib/importExport";
 
 const router: IRouter = Router();
+// Equipment contains tenant-private operational and inspection data. A verified
+// session is mandatory, and its tenant/user identity overrides all caller headers.
+router.use(requireVerifiedStaff);
 
 // ─── Equipment Types (tenant-scoped label list) ────────────────────────────────
 
@@ -284,6 +288,34 @@ async function requireOwnerRole(req: Request, res: Response, next: NextFunction)
   }
   next();
 }
+
+// Incident-scoped recovery for the three September 1 records that were written
+// to the legacy seed tenant before equipment routes required verified sessions.
+// Exact IDs + names + source tenant make this incapable of claiming arbitrary data.
+router.post("/equipment/recover-misassigned-divine-edge", requireOwnerRole, async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  if (tenantId !== 11) { res.status(403).json({ error: "This recovery is only available to the Divine Edge owner" }); return; }
+  const expected = new Map<number, string>([
+    [3, 'Scag 52" VRide 2 2026'],
+    [4, "Turfco T3000i "],
+    [5, 'Scag Vride2 60" 2024'],
+  ]);
+  const recovered = await db.transaction(async tx => {
+    const rows = await tx.select({ id: equipmentTable.id, name: equipmentTable.name }).from(equipmentTable).where(and(
+      eq(equipmentTable.tenantId, 1),
+      inArray(equipmentTable.id, [...expected.keys()]),
+    )).for("update");
+    const exact = rows.filter(row => expected.get(row.id) === row.name);
+    if (exact.length) {
+      await tx.update(equipmentTable).set({ tenantId }).where(and(
+        eq(equipmentTable.tenantId, 1),
+        inArray(equipmentTable.id, exact.map(row => row.id)),
+      ));
+    }
+    return exact;
+  });
+  res.json({ recoveredCount: recovered.length, equipment: recovered });
+});
 
 /**
  * Verify that the given equipment belongs to the tenant.

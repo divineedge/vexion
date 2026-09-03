@@ -112,6 +112,7 @@ import type {
   EquipmentPreTripResult,
   EquipmentReadingLog,
   EquipmentReadingLogInput,
+  EquipmentRecoveryResult,
   EquipmentType,
   EquipmentTypeInput,
   EquipmentUseHistoryItem,
@@ -14971,6 +14972,71 @@ export const useCreateEquipmentPreTrip = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCreateEquipmentPreTripMutationOptions(options));
+    }
+
+export const getRecoverMisassignedDivineEdgeEquipmentUrl = () => {
+
+
+
+
+  return `/api/equipment/recover-misassigned-divine-edge`
+}
+
+export const recoverMisassignedDivineEdgeEquipment = async ( options?: RequestInit): Promise<EquipmentRecoveryResult> => {
+
+  return customFetch<EquipmentRecoveryResult>(getRecoverMisassignedDivineEdgeEquipmentUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRecoverMisassignedDivineEdgeEquipmentMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recoverMisassignedDivineEdgeEquipment>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof recoverMisassignedDivineEdgeEquipment>>, TError,void, TContext> => {
+
+const mutationKey = ['recoverMisassignedDivineEdgeEquipment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof recoverMisassignedDivineEdgeEquipment>>, void> = () => {
+
+
+          return  recoverMisassignedDivineEdgeEquipment(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RecoverMisassignedDivineEdgeEquipmentMutationResult = NonNullable<Awaited<ReturnType<typeof recoverMisassignedDivineEdgeEquipment>>>
+
+    export type RecoverMisassignedDivineEdgeEquipmentMutationError = ErrorType<unknown>
+
+    export const useRecoverMisassignedDivineEdgeEquipment = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recoverMisassignedDivineEdgeEquipment>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof recoverMisassignedDivineEdgeEquipment>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getRecoverMisassignedDivineEdgeEquipmentMutationOptions(options));
     }
 
 export const getListEquipmentPreTripMediaUrl = (id: number,) => {

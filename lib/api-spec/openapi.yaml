@@ -4134,6 +4134,16 @@ paths:
                 $ref: "#/components/schemas/EquipmentPreTripResult"
 
   /equipment/recover-misassigned-divine-edge:
+    get:
+      operationId: getMisassignedDivineEdgeEquipmentRecoveryStatus
+      tags: [equipment]
+      responses:
+        "200":
+          description: Whether the signed-in owner has confirmed equipment awaiting recovery
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EquipmentRecoveryStatus"
     post:
       operationId: recoverMisassignedDivineEdgeEquipment
       tags: [equipment]
@@ -13822,6 +13832,15 @@ components:
             properties:
               id: { type: integer }
               name: { type: string }
+
+    EquipmentRecoveryStatus:
+      type: object
+      required: [eligible, pendingCount]
+      properties:
+        eligible:
+          type: boolean
+        pendingCount:
+          type: integer
 
     PreTripChecklistItem:
       type: object

@@ -292,6 +292,21 @@ async function requireOwnerRole(req: Request, res: Response, next: NextFunction)
 // Incident-scoped recovery for the three September 1 records that were written
 // to the legacy seed tenant before equipment routes required verified sessions.
 // Exact IDs + names + source tenant make this incapable of claiming arbitrary data.
+router.get("/equipment/recover-misassigned-divine-edge", requireOwnerRole, async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  if (tenantId !== 11) { res.json({ eligible: false, pendingCount: 0 }); return; }
+  const rows = await db.select({ id: equipmentTable.id, name: equipmentTable.name }).from(equipmentTable).where(and(
+    eq(equipmentTable.tenantId, 1),
+    inArray(equipmentTable.id, [3, 4, 5]),
+  ));
+  const expected = new Map<number, string>([
+    [3, 'Scag 52" VRide 2 2026'],
+    [4, "Turfco T3000i "],
+    [5, 'Scag Vride2 60" 2024'],
+  ]);
+  res.json({ eligible: true, pendingCount: rows.filter(row => expected.get(row.id) === row.name).length });
+});
+
 router.post("/equipment/recover-misassigned-divine-edge", requireOwnerRole, async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   if (tenantId !== 11) { res.status(403).json({ error: "This recovery is only available to the Divine Edge owner" }); return; }

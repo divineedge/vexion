@@ -27,6 +27,9 @@ import {
   useListEquipmentLifecycleEvents, getListEquipmentLifecycleEventsQueryKey,
   useListEquipmentTypes, getListEquipmentTypesQueryKey,
   useListEquipmentUses, getListEquipmentUsesQueryKey,
+  useRecoverMisassignedDivineEdgeEquipment,
+  useGetMisassignedDivineEdgeEquipmentRecoveryStatus,
+  getGetMisassignedDivineEdgeEquipmentRecoveryStatusQueryKey,
 } from '@workspace/api-client-react';
 import type { Equipment, EquipmentMaintenance, EquipmentFuelLog, EquipmentLinkedPart } from '@workspace/api-client-react';
 import { Link } from 'wouter';
@@ -1186,6 +1189,13 @@ export default function EquipmentPage() {
   const updateEquipment = useUpdateEquipment();
   const deleteEquipment = useDeleteEquipment();
   const hardDeleteEquipment = useHardDeleteEquipment();
+  const recoverEquipment = useRecoverMisassignedDivineEdgeEquipment();
+  const { data: recoveryStatus } = useGetMisassignedDivineEdgeEquipmentRecoveryStatus({
+    query: {
+      enabled: isOwner,
+      queryKey: getGetMisassignedDivineEdgeEquipmentRecoveryStatusQueryKey(),
+    },
+  });
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -1329,25 +1339,25 @@ export default function EquipmentPage() {
   const maintenanceDueCount = equipment?.filter(e => !e.archivedAt && e.maintenanceDue).length ?? 0;
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex items-center justify-between gap-4">
-        <div>
+    <div className="min-w-0 overflow-x-hidden space-y-6 animate-in fade-in duration-500">
+      <div className="flex min-w-0 flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="shrink-0">
           <h1 className="text-3xl font-bold tracking-tight">Equipment</h1>
           <p className="text-muted-foreground mt-1">Track operating costs, maintenance, and fuel for your fleet.{(equipment?.length ?? 0) > 0 && <span className="ml-2 text-xs font-medium bg-muted px-1.5 py-0.5 rounded-full">{equipment?.length}</span>}</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative hidden sm:block">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 xl:justify-end">
+          <div className="relative w-full sm:w-auto">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
             <Input
               value={equipmentSearch}
               onChange={e => setEquipmentSearch(e.target.value)}
               placeholder="Search equipment…"
               title="Search by equipment name, make, or model"
-              className="h-9 text-sm pl-7 w-44"
+              className="h-9 w-full pl-7 text-sm sm:w-44"
             />
             {equipmentSearch && <button onClick={() => setEquipmentSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>}
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1">
             {(['all', 'maintenance', 'sell'] as const).map(s => (
               <button
                 key={s}
@@ -1414,6 +1424,32 @@ export default function EquipmentPage() {
         </div>
       </div>
 
+      {isOwner && recoveryStatus?.eligible && recoveryStatus.pendingCount > 0 && (
+        <div className="flex flex-col gap-3 rounded-lg border border-amber-300 bg-amber-50/70 p-4 text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <RotateCcw className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+            <div>
+              <p className="text-sm font-semibold">Your {recoveryStatus.pendingCount} September equipment records are ready to recover</p>
+              <p className="mt-0.5 text-xs text-amber-800">This moves only the three confirmed records from the incorrect business into Divine Edge.</p>
+            </div>
+          </div>
+          <Button
+            className="shrink-0"
+            disabled={recoverEquipment.isPending}
+            onClick={() => recoverEquipment.mutate(undefined, {
+              onSuccess: result => {
+                toast.success(result.recoveredCount ? `Recovered ${result.recoveredCount} equipment records` : 'Those equipment records were already recovered');
+                invalidateEquipmentLists(qc);
+                qc.invalidateQueries({ queryKey: getGetMisassignedDivineEdgeEquipmentRecoveryStatusQueryKey() });
+              },
+              onError: () => toast.error('Could not recover the equipment records'),
+            })}
+          >
+            {recoverEquipment.isPending ? 'Recovering…' : `Recover ${recoveryStatus.pendingCount} Equipment Records`}
+          </Button>
+        </div>
+      )}
+
       {/* Maintenance due banner */}
       {maintenanceDueCount > 0 && (
         <div className="flex items-center gap-3 p-4 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive">
@@ -1467,9 +1503,9 @@ export default function EquipmentPage() {
         </div>
       )}
 
-      <div className="flex gap-6">
+      <div className="flex min-w-0 gap-6">
         {/* Equipment list — always full width; detail opens in Sheet */}
-        <div className="flex flex-col gap-3 w-full">
+        <div className="flex min-w-0 w-full flex-col gap-3">
           {isLoading && (
             <div className="text-center text-muted-foreground py-12">Loading equipment…</div>
           )}

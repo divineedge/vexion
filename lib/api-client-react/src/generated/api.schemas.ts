@@ -4697,6 +4697,11 @@ export interface EquipmentRecoveryResult {
   equipment: EquipmentRecoveryResultEquipmentItem[];
 }
 
+export interface EquipmentRecoveryStatus {
+  eligible: boolean;
+  pendingCount: number;
+}
+
 export type EquipmentLedgerOperating = {
   fuelCost: number;
   runtimeHours: number;

@@ -189,6 +189,7 @@ export * from './equipmentReadingLog';
 export * from './equipmentReadingLogInput';
 export * from './equipmentRecoveryResult';
 export * from './equipmentRecoveryResultEquipmentItem';
+export * from './equipmentRecoveryStatus';
 export * from './equipmentType';
 export * from './equipmentTypeInput';
 export * from './equipmentUseHistoryItem';

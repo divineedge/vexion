@@ -113,6 +113,7 @@ import type {
   EquipmentReadingLog,
   EquipmentReadingLogInput,
   EquipmentRecoveryResult,
+  EquipmentRecoveryStatus,
   EquipmentType,
   EquipmentTypeInput,
   EquipmentUseHistoryItem,
@@ -14973,6 +14974,77 @@ export const useCreateEquipmentPreTrip = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getCreateEquipmentPreTripMutationOptions(options));
     }
+
+export const getGetMisassignedDivineEdgeEquipmentRecoveryStatusUrl = () => {
+
+
+
+
+  return `/api/equipment/recover-misassigned-divine-edge`
+}
+
+export const getMisassignedDivineEdgeEquipmentRecoveryStatus = async ( options?: RequestInit): Promise<EquipmentRecoveryStatus> => {
+
+  return customFetch<EquipmentRecoveryStatus>(getGetMisassignedDivineEdgeEquipmentRecoveryStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMisassignedDivineEdgeEquipmentRecoveryStatusQueryKey = () => {
+    return [
+    `/api/equipment/recover-misassigned-divine-edge`
+    ] as const;
+    }
+
+
+export const getGetMisassignedDivineEdgeEquipmentRecoveryStatusQueryOptions = <TData = Awaited<ReturnType<typeof getMisassignedDivineEdgeEquipmentRecoveryStatus>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMisassignedDivineEdgeEquipmentRecoveryStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMisassignedDivineEdgeEquipmentRecoveryStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMisassignedDivineEdgeEquipmentRecoveryStatus>>> = ({ signal }) => getMisassignedDivineEdgeEquipmentRecoveryStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMisassignedDivineEdgeEquipmentRecoveryStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMisassignedDivineEdgeEquipmentRecoveryStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getMisassignedDivineEdgeEquipmentRecoveryStatus>>>
+export type GetMisassignedDivineEdgeEquipmentRecoveryStatusQueryError = ErrorType<unknown>
+
+
+
+export function useGetMisassignedDivineEdgeEquipmentRecoveryStatus<TData = Awaited<ReturnType<typeof getMisassignedDivineEdgeEquipmentRecoveryStatus>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMisassignedDivineEdgeEquipmentRecoveryStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMisassignedDivineEdgeEquipmentRecoveryStatusQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getRecoverMisassignedDivineEdgeEquipmentUrl = () => {
 

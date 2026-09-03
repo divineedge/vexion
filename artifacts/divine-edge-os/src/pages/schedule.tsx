@@ -335,8 +335,12 @@ export default function SchedulePage() {
 
   const assigneeId = isTechnician && user ? user.id : undefined;
 
-  const start = view === 'week' ? startOfWeek(currentDate, { weekStartsOn: 1 }) : startOfMonth(currentDate);
-  const end   = view === 'week' ? endOfWeek(currentDate, { weekStartsOn: 1 })   : endOfMonth(currentDate);
+  const start = view === 'week'
+    ? startOfWeek(currentDate, { weekStartsOn: 1 })
+    : startOfWeek(startOfMonth(currentDate), { weekStartsOn: 1 });
+  const end = view === 'week'
+    ? endOfWeek(currentDate, { weekStartsOn: 1 })
+    : endOfWeek(endOfMonth(currentDate), { weekStartsOn: 1 });
 
   const routeTemplateIdParam = routeFilter !== 'all' ? parseInt(routeFilter, 10) : undefined;
 
@@ -1342,7 +1346,7 @@ export default function SchedulePage() {
       {view !== 'series' && (
       <Card className="flex-1 flex flex-col min-h-[600px] overflow-hidden">
         <div className="grid grid-cols-7 border-b shrink-0 bg-muted/30">
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => (
             <div key={d} className="py-3 text-center text-sm font-semibold text-muted-foreground border-r last:border-r-0">{d}</div>
           ))}
         </div>

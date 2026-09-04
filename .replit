@@ -24,3 +24,8 @@ channel = "stable-25_05"
 
 [objectStorage]
 defaultBucketID = "replit-objstore-67138859-71bd-4fc7-bac8-bb8e125311d7"
+
+[userenv]
+
+[userenv.development]
+EXPO_PUBLIC_DOMAIN = "divine-edge--divineedgepm.replit.app"

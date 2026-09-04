@@ -47,17 +47,8 @@ function easProjectId(): string | undefined {
 
 export function NotificationLifecycle() {
   const { user, isLoading } = useAuth();
-  const priorUser = useRef<AuthUser | null>(null);
   const userRef = useRef<AuthUser | null>(user);
   userRef.current = user;
-
-  useEffect(() => {
-    const previous = priorUser.current;
-    if (previous && (!user || previous.id !== user.id || previous.tenantId !== user.tenantId)) {
-      void disableStoredDevice(previous);
-    }
-    priorUser.current = user;
-  }, [user?.id, user?.tenantId]);
 
   useEffect(() => {
     if (isLoading || !user || !isPhysicalNativeDevice()) return;

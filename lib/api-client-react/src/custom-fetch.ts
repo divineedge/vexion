@@ -378,6 +378,13 @@ export async function customFetch<T = unknown>(
     }
   }
 
+  // React Native can expose a raw 304 response without the cached body that
+  // browsers normally restore. Authenticated mobile reads must receive the
+  // current JSON payload rather than a bodyless revalidation response.
+  if (_authTokenGetter && !headers.has("cache-control")) {
+    headers.set("cache-control", "no-cache");
+  }
+
   const requestInfo = { method, url: resolveUrl(input) };
 
   const response = await fetch(input, { ...init, method, headers });

@@ -9,13 +9,12 @@ import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  disableStaffNotificationDevice,
   getMe,
-  logout as revokeStaffSession,
   setDefaultHeaders,
   setAuthTokenGetter,
   setUnauthorizedHandler,
 } from '@workspace/api-client-react';
+import { endRemoteStaffSession } from '@/utils/authSessionCleanup';
 
 export interface AuthUser {
   id: number;
@@ -114,12 +113,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [pinAttemptsRemaining, setPinAttemptsRemaining] = useState(MAX_PIN_ATTEMPTS);
   const appState = useRef<AppStateStatus>(AppState.currentState);
 
-  const clearLocalAuth = useCallback(async (knownUser?: AuthUser | null) => {
-    const currentUser = knownUser;
-    if (currentUser) {
-      await AsyncStorage.removeItem(`field_app_notification_device:${currentUser.tenantId}:${currentUser.id}`);
-    }
-    await Promise.all([
+  const clearLocalAuth = useCallback(async () => {
+    await Promise.allSettled([
       AsyncStorage.removeItem(USER_KEY),
       AsyncStorage.removeItem(LEGACY_TOKEN_KEY),
       AsyncStorage.removeItem(LEGACY_SESSION_TOKEN_KEY),
@@ -141,12 +136,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     queryClient.clear();
   }, [queryClient]);
 
+  const endSavedSession = useCallback(async (
+    storedToken: string | null,
+    storedUser: AuthUser | null,
+  ) => {
+    setAuthTokenGetter(null);
+    await endRemoteStaffSession(storedToken, storedUser);
+    await clearLocalAuth();
+  }, [clearLocalAuth]);
+
   const validateSession = useCallback(async (storedToken: string, storedUser: AuthUser): Promise<UnlockResult> => {
     setAuthTokenGetter(() => storedToken);
     try {
       const current = normalizeUser(await getMe());
       if (current.id !== storedUser.id || current.tenantId !== storedUser.tenantId) {
-        await clearLocalAuth(storedUser);
+        await endSavedSession(storedToken, storedUser);
         return { ok: false, message: 'Your saved session is no longer valid. Please sign in again.', wiped: true };
       }
       await AsyncStorage.setItem(USER_KEY, JSON.stringify(current));
@@ -158,16 +162,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { ok: true };
     } catch (error) {
       if (errorStatus(error) === 401 || errorStatus(error) === 403) {
-        await clearLocalAuth(storedUser);
+        await clearLocalAuth();
         return { ok: false, message: 'Your session expired. Please sign in with your password.', wiped: true };
       }
       setAuthTokenGetter(null);
       return { ok: false, message: 'Unable to verify your session. Check your connection and try again.' };
     }
-  }, [clearLocalAuth]);
+  }, [clearLocalAuth, endSavedSession]);
 
   useEffect(() => {
-    setUnauthorizedHandler(() => clearLocalAuth(user));
+    setUnauthorizedHandler(() => clearLocalAuth());
     return () => setUnauthorizedHandler(null);
   }, [clearLocalAuth, user]);
 
@@ -195,16 +199,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (storedToken && storedUserJson && (biometric === 'true' || verifier)) {
           setIsLocked(true);
         } else if (storedToken || storedUserJson) {
-          await clearLocalAuth(storedUserJson ? normalizeUser(JSON.parse(storedUserJson)) : null);
+          await endSavedSession(
+            storedToken,
+            storedUserJson ? normalizeUser(JSON.parse(storedUserJson)) : null,
+          );
         }
       } catch {
-        await clearLocalAuth(null);
+        await clearLocalAuth();
       } finally {
         setIsLoading(false);
       }
     }
     void restore();
-  }, [clearLocalAuth]);
+  }, [clearLocalAuth, endSavedSession]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextState => {
@@ -214,7 +221,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         void (async () => {
           const hasUnlock = biometricEnabled || pinEnabled;
           if (!hasUnlock) {
-            await clearLocalAuth(user);
+            await endSavedSession(await secureGet(TOKEN_KEY), user);
             return;
           }
           setUser(null);
@@ -225,7 +232,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
     return () => subscription.remove();
-  }, [biometricEnabled, clearLocalAuth, needsEnrollment, pinEnabled, user]);
+  }, [biometricEnabled, endSavedSession, needsEnrollment, pinEnabled, user]);
 
   const signIn = useCallback(async (newToken: string, newUser: AuthUser, sessionToken?: string) => {
     const secureToken = sessionToken ?? newToken;
@@ -282,7 +289,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       AsyncStorage.getItem(USER_KEY),
     ]);
     if (!storedToken || !storedUserJson) {
-      await clearLocalAuth(null);
+      await clearLocalAuth();
       return { ok: false, message: 'No saved session was found. Please sign in again.', wiped: true };
     }
     const result = await LocalAuthentication.authenticateAsync({
@@ -308,7 +315,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (pinVerifier(pin, salt) !== verifier) {
       const attempts = Number(attemptsValue ?? '0') + 1;
       if (attempts >= MAX_PIN_ATTEMPTS) {
-        await clearLocalAuth(normalizeUser(JSON.parse(storedUserJson)));
+        await endSavedSession(storedToken, normalizeUser(JSON.parse(storedUserJson)));
         return { ok: false, message: 'Too many incorrect attempts. Sign in with your password.', wiped: true };
       }
       await secureSet(PIN_ATTEMPTS_KEY, String(attempts));
@@ -316,18 +323,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { ok: false, message: `Incorrect PIN. ${MAX_PIN_ATTEMPTS - attempts} attempts remaining.` };
     }
     return validateSession(storedToken, normalizeUser(JSON.parse(storedUserJson)));
-  }, [clearLocalAuth, validateSession]);
+  }, [endSavedSession, validateSession]);
 
   const lockApp = useCallback(async () => {
     if (!biometricEnabled && !pinEnabled) {
-      await clearLocalAuth(user);
+      await endSavedSession(await secureGet(TOKEN_KEY), user);
       return;
     }
     setUser(null);
     setToken(null);
     setAuthTokenGetter(null);
     setIsLocked(true);
-  }, [biometricEnabled, clearLocalAuth, pinEnabled, user]);
+  }, [biometricEnabled, endSavedSession, pinEnabled, user]);
 
   const signOut = useCallback(async () => {
     const [storedToken, storedUserJson] = await Promise.all([
@@ -335,23 +342,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       AsyncStorage.getItem(USER_KEY),
     ]);
     const signedInUser = user ?? (storedUserJson ? normalizeUser(JSON.parse(storedUserJson)) : null);
-    if (signedInUser) {
-      const notificationKey = `field_app_notification_device:${signedInUser.tenantId}:${signedInUser.id}`;
-      try {
-        const expoPushToken = await AsyncStorage.getItem(notificationKey);
-        if (expoPushToken) await disableStaffNotificationDevice({ expoPushToken });
-      } catch {
-        // Server/session availability must never prevent local credential removal.
-      }
-    }
-    try {
-      if (storedToken) setAuthTokenGetter(() => storedToken);
-      await revokeStaffSession();
-    } catch {
-      // Best effort; local credential removal is authoritative on this device.
-    }
-    await clearLocalAuth(signedInUser);
-  }, [clearLocalAuth, user]);
+    await endSavedSession(storedToken, signedInUser);
+  }, [endSavedSession, user]);
 
   return (
     <AuthContext.Provider value={{

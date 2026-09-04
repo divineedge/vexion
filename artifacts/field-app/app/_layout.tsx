@@ -1,7 +1,9 @@
-import React, { useEffect } from 'react';
+import React, { lazy, Suspense, useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { isRunningInExpoGo } from 'expo';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
+import { Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import {
@@ -16,7 +18,15 @@ import * as SplashScreen from 'expo-splash-screen';
 import { setBaseUrl } from '@workspace/api-client-react';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { OfflineProvider } from '@/contexts/OfflineContext';
-import { NotificationLifecycle } from '@/components/NotificationLifecycle';
+
+// expo-notifications executes Android push-registration side effects as soon as
+// its module loads. Android Expo Go intentionally omits that native capability,
+// so defer loading our notification lifecycle and skip it in Expo Go.
+const NotificationLifecycle = Platform.OS === 'android' && isRunningInExpoGo()
+  ? null
+  : lazy(() => import('@/components/NotificationLifecycle').then(module => ({
+      default: module.NotificationLifecycle,
+    })));
 
 // Set the API base URL so Expo (outside the proxy) can reach the API server.
 if (process.env.EXPO_PUBLIC_DOMAIN) {
@@ -60,7 +70,11 @@ export default function RootLayout() {
             <KeyboardProvider>
               <AuthProvider>
                 <OfflineProvider>
-                  <NotificationLifecycle />
+                  {NotificationLifecycle ? (
+                    <Suspense fallback={null}>
+                      <NotificationLifecycle />
+                    </Suspense>
+                  ) : null}
                   <RootLayoutNav />
                 </OfflineProvider>
               </AuthProvider>

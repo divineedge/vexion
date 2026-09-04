@@ -156,6 +156,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await AsyncStorage.setItem(USER_KEY, JSON.stringify(current));
       await secureSet(PIN_ATTEMPTS_KEY, '0');
       setPinAttemptsRemaining(MAX_PIN_ATTEMPTS);
+      queryClient.clear();
       setToken(storedToken);
       setUser(current);
       setIsLocked(false);
@@ -168,7 +169,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthTokenGetter(null);
       return { ok: false, message: 'Unable to verify your session. Check your connection and try again.' };
     }
-  }, [clearLocalAuth, endSavedSession]);
+  }, [clearLocalAuth, endSavedSession, queryClient]);
 
   useEffect(() => {
     setUnauthorizedHandler(() => clearLocalAuth());
@@ -242,12 +243,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       AsyncStorage.setItem(USER_KEY, JSON.stringify(normalized)),
       secureSet(PIN_ATTEMPTS_KEY, '0'),
     ]);
+    queryClient.clear();
     setAuthTokenGetter(() => secureToken);
     setToken(secureToken);
     setUser(normalized);
     setIsLocked(false);
     setNeedsEnrollment(true);
-  }, []);
+  }, [queryClient]);
 
   const configureUnlock = useCallback(async ({ biometric, pin }: { biometric: boolean; pin?: string }) => {
     if (!biometric && !pin) throw new Error('Choose biometrics, a PIN, or Skip for now.');
@@ -330,11 +332,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await endSavedSession(await secureGet(TOKEN_KEY), user);
       return;
     }
+    setAuthTokenGetter(null);
+    queryClient.clear();
     setUser(null);
     setToken(null);
-    setAuthTokenGetter(null);
     setIsLocked(true);
-  }, [biometricEnabled, endSavedSession, pinEnabled, user]);
+  }, [biometricEnabled, endSavedSession, pinEnabled, queryClient, user]);
 
   const signOut = useCallback(async () => {
     const [storedToken, storedUserJson] = await Promise.all([

@@ -12,8 +12,92 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { Plus, Pencil, Trash2, GripVertical } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 
-type ChecklistItem = { id: string; label: string; required: boolean };
+type ChecklistItem = { id: string; label: string; required: boolean; equipmentTypes?: string[] };
+
+type ChecklistEditorProps = {
+  items: ChecklistItem[];
+  equipmentTypes: EquipmentType[];
+  onChange: (items: ChecklistItem[]) => void;
+};
+
+function ChecklistEditor({ items, equipmentTypes, onChange }: ChecklistEditorProps) {
+  const updateItem = (index: number, update: Partial<ChecklistItem>) => {
+    onChange(items.map((item, itemIndex) => itemIndex === index ? { ...item, ...update } : item));
+  };
+
+  return (
+    <>
+      {items.map((item, index) => (
+        <div key={item.id} className="rounded-lg border p-3 space-y-3" data-testid={`checklist-item-${item.id}`}>
+          <div className="flex items-center gap-2">
+            <GripVertical className="w-4 h-4 text-muted-foreground" />
+            <Input
+              value={item.label}
+              onChange={event => updateItem(index, { label: event.target.value })}
+              data-testid={`input-checklist-label-${item.id}`}
+            />
+            <label className="flex items-center gap-2 text-xs whitespace-nowrap">
+              <Checkbox
+                checked={item.required}
+                onCheckedChange={checked => updateItem(index, { required: checked === true })}
+                data-testid={`checkbox-checklist-required-${item.id}`}
+              />
+              Required
+            </label>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => onChange(items.filter((_, itemIndex) => itemIndex !== index))}
+              data-testid={`button-delete-checklist-${item.id}`}
+            >
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          </div>
+          <div className="pl-6 space-y-2">
+            <p className="text-xs font-medium">Applies to equipment types</p>
+            {equipmentTypes.length === 0 ? (
+              <p className="text-xs text-muted-foreground">All equipment (add equipment types below to target this question).</p>
+            ) : (
+              <div className="flex flex-wrap gap-x-4 gap-y-2">
+                <label className="flex items-center gap-2 text-xs">
+                  <Checkbox
+                    checked={!item.equipmentTypes?.length}
+                    onCheckedChange={checked => {
+                      if (checked === true) updateItem(index, { equipmentTypes: [] });
+                    }}
+                    data-testid={`checkbox-checklist-all-types-${item.id}`}
+                  />
+                  All equipment
+                </label>
+                {equipmentTypes.map(equipmentType => {
+                  const selectedTypes = item.equipmentTypes ?? [];
+                  const checked = selectedTypes.includes(equipmentType.label);
+                  return (
+                    <label key={equipmentType.id} className="flex items-center gap-2 text-xs">
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={nextChecked => {
+                          const nextTypes = nextChecked === true
+                            ? [...selectedTypes, equipmentType.label]
+                            : selectedTypes.filter(type => type !== equipmentType.label);
+                          updateItem(index, { equipmentTypes: nextTypes });
+                        }}
+                        data-testid={`checkbox-checklist-type-${item.id}-${equipmentType.id}`}
+                      />
+                      {equipmentType.label}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
 
 export function EquipmentSettingsPanel() {
   const qc = useQueryClient();
@@ -147,16 +231,9 @@ export function EquipmentSettingsPanel() {
           <CardDescription>Field staff can complete this separately for each piece of equipment. Leave it empty to disable the end-of-day option.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {endOfDayChecklist.map((item, index) => (
-            <div key={item.id} className="flex items-center gap-2">
-              <GripVertical className="w-4 h-4 text-muted-foreground" />
-              <Input value={item.label} onChange={e => setEndOfDayChecklist(current => current.map((row, i) => i === index ? { ...row, label: e.target.value } : row))} />
-              <label className="flex items-center gap-1 text-xs whitespace-nowrap"><input type="checkbox" checked={item.required} onChange={e => setEndOfDayChecklist(current => current.map((row, i) => i === index ? { ...row, required: e.target.checked } : row))} /> Required</label>
-              <Button size="icon" variant="ghost" onClick={() => setEndOfDayChecklist(current => current.filter((_, i) => i !== index))}><Trash2 className="w-4 h-4" /></Button>
-            </div>
-          ))}
+          <ChecklistEditor items={endOfDayChecklist} equipmentTypes={equipmentTypes} onChange={setEndOfDayChecklist} />
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setEndOfDayChecklist(current => [...current, { id: `end-day-${Date.now()}`, label: '', required: true }])}><Plus className="w-4 h-4 mr-1" /> Add Question</Button>
+            <Button variant="outline" onClick={() => setEndOfDayChecklist(current => [...current, { id: `end-day-${Date.now()}`, label: '', required: true, equipmentTypes: [] }])} data-testid="button-add-end-day-question"><Plus className="w-4 h-4 mr-1" /> Add Question</Button>
             <Button onClick={saveEndOfDayChecklist} disabled={updateSettings.isPending}>{endOfDayChecklist.length ? 'Save End-of-Day Checklist' : 'Keep Disabled'}</Button>
           </div>
         </CardContent>
@@ -166,19 +243,12 @@ export function EquipmentSettingsPanel() {
       <Card>
         <CardHeader>
           <CardTitle>Pre-Trip Checklist</CardTitle>
-          <CardDescription>These questions appear in the Field App for every equipment inspection. Completed inspections keep the wording that was used that day.</CardDescription>
+          <CardDescription>Choose which equipment types see each question. Questions set to all equipment preserve the tenant-wide checklist behavior. Completed inspections keep the wording that was used that day.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {checklist.map((item, index) => (
-            <div key={item.id} className="flex items-center gap-2">
-              <GripVertical className="w-4 h-4 text-muted-foreground" />
-              <Input value={item.label} onChange={e => setChecklist(current => current.map((row, i) => i === index ? { ...row, label: e.target.value } : row))} />
-              <label className="flex items-center gap-1 text-xs whitespace-nowrap"><input type="checkbox" checked={item.required} onChange={e => setChecklist(current => current.map((row, i) => i === index ? { ...row, required: e.target.checked } : row))} /> Required</label>
-              <Button size="icon" variant="ghost" onClick={() => setChecklist(current => current.filter((_, i) => i !== index))}><Trash2 className="w-4 h-4" /></Button>
-            </div>
-          ))}
+          <ChecklistEditor items={checklist} equipmentTypes={equipmentTypes} onChange={setChecklist} />
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setChecklist(current => [...current, { id: `item-${Date.now()}`, label: '', required: true }])}><Plus className="w-4 h-4 mr-1" /> Add Question</Button>
+            <Button variant="outline" onClick={() => setChecklist(current => [...current, { id: `item-${Date.now()}`, label: '', required: true, equipmentTypes: [] }])} data-testid="button-add-pre-trip-question"><Plus className="w-4 h-4 mr-1" /> Add Question</Button>
             <Button onClick={saveChecklist} disabled={updateSettings.isPending}>Save Checklist</Button>
           </div>
         </CardContent>

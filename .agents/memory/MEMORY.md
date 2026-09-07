@@ -52,3 +52,4 @@
 - [Tenant identity boundary](tenant-identity-boundary.md) — private APIs must authorize tenant/user solely from a verified staff session, never caller identity headers
 - [Callback ratio definition](callback-ratio-definition.md) — count every callback ticket over completed jobs in the same selected period; keep original-work attribution stable
 - [Android Expo Go push imports](android-expo-go-push-imports.md) — SDK 53+ can crash on expo-notifications push side effects; skip loading them in Android Expo Go
+- [Field App session unlock](field-app-session-unlock.md) — password once per 30-day session; biometric/PIN only at cold launch or explicit lock, never per job action

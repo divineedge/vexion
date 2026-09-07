@@ -145,8 +145,8 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     reviewCustomLink2Url: tenant.reviewCustomLink2Url ?? null,
     // Routing
     routeExceptionFee: tenant.routeExceptionFee ?? 0,
-    preTripChecklist: (tenant.preTripChecklist as Array<{ id: string; label: string; required: boolean }> | null) ?? [],
-    endOfDayChecklist: (tenant.endOfDayChecklist as Array<{ id: string; label: string; required: boolean }> | null) ?? [],
+    preTripChecklist: (tenant.preTripChecklist as Array<{ id: string; label: string; required: boolean; equipmentTypes?: string[] }> | null) ?? [],
+    endOfDayChecklist: (tenant.endOfDayChecklist as Array<{ id: string; label: string; required: boolean; equipmentTypes?: string[] }> | null) ?? [],
     // Equipment Cost Ledger
     fuelPricePerGallon: tenant.fuelPricePerGallon ?? 4.0,
     equipmentRuntimeHourlyRate: tenant.equipmentRuntimeHourlyRate ?? 0,
@@ -423,13 +423,31 @@ router.patch("/settings", async (req, res): Promise<void> => {
   }
   if (routeExceptionFee !== undefined) updates.routeExceptionFee = parseFloat(routeExceptionFee);
   if (preTripChecklist !== undefined) {
-    if (!Array.isArray(preTripChecklist) || preTripChecklist.some(item => !item || typeof item.id !== "string" || typeof item.label !== "string")) {
+    if (!Array.isArray(preTripChecklist) || preTripChecklist.some(item =>
+      !item ||
+      typeof item.id !== "string" ||
+      typeof item.label !== "string" ||
+      typeof item.required !== "boolean" ||
+      (item.equipmentTypes !== undefined && (
+        !Array.isArray(item.equipmentTypes) ||
+        item.equipmentTypes.some((type: unknown) => typeof type !== "string")
+      ))
+    )) {
       res.status(400).json({ error: "preTripChecklist must be an array of checklist items" }); return;
     }
     await db.execute(sql`UPDATE tenants SET pre_trip_checklist = ${JSON.stringify(preTripChecklist)}::jsonb WHERE id = ${tenantId}`);
   }
   if (endOfDayChecklist !== undefined) {
-    if (!Array.isArray(endOfDayChecklist) || endOfDayChecklist.some(item => !item || typeof item.id !== "string" || typeof item.label !== "string")) {
+    if (!Array.isArray(endOfDayChecklist) || endOfDayChecklist.some(item =>
+      !item ||
+      typeof item.id !== "string" ||
+      typeof item.label !== "string" ||
+      typeof item.required !== "boolean" ||
+      (item.equipmentTypes !== undefined && (
+        !Array.isArray(item.equipmentTypes) ||
+        item.equipmentTypes.some((type: unknown) => typeof type !== "string")
+      ))
+    )) {
       res.status(400).json({ error: "endOfDayChecklist must be an array of checklist items" }); return;
     }
     await db.execute(sql`UPDATE tenants SET end_of_day_checklist = ${JSON.stringify(endOfDayChecklist)}::jsonb WHERE id = ${tenantId}`);

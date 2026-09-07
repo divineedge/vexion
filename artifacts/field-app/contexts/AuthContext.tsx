@@ -1,5 +1,5 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { AppState, Platform, type AppStateStatus } from 'react-native';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -42,7 +42,6 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   lockApp: () => Promise<void>;
   configureUnlock: (options: { biometric: boolean; pin?: string }) => Promise<void>;
-  skipUnlockEnrollment: () => Promise<void>;
   unlockWithBiometrics: () => Promise<UnlockResult>;
   unlockWithPin: (pin: string) => Promise<UnlockResult>;
 }
@@ -111,7 +110,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [pinEnabled, setPinEnabled] = useState(false);
   const [pinAttemptsRemaining, setPinAttemptsRemaining] = useState(MAX_PIN_ATTEMPTS);
-  const appState = useRef<AppStateStatus>(AppState.currentState);
 
   const clearLocalAuth = useCallback(async () => {
     await Promise.allSettled([
@@ -174,11 +172,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setUnauthorizedHandler(() => clearLocalAuth());
     return () => setUnauthorizedHandler(null);
-  }, [clearLocalAuth, user]);
+  }, [clearLocalAuth]);
 
   useEffect(() => {
     async function restore() {
       try {
+        queryClient.clear();
         await Promise.all([
           AsyncStorage.removeItem(LEGACY_TOKEN_KEY),
           AsyncStorage.removeItem(LEGACY_SESSION_TOKEN_KEY),
@@ -212,28 +211,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
     void restore();
-  }, [clearLocalAuth, endSavedSession]);
-
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', nextState => {
-      const wasBackground = appState.current === 'background' || appState.current === 'inactive';
-      appState.current = nextState;
-      if (nextState === 'active' && wasBackground && user && !needsEnrollment) {
-        void (async () => {
-          const hasUnlock = biometricEnabled || pinEnabled;
-          if (!hasUnlock) {
-            await endSavedSession(await secureGet(TOKEN_KEY), user);
-            return;
-          }
-          setUser(null);
-          setToken(null);
-          setAuthTokenGetter(null);
-          setIsLocked(true);
-        })();
-      }
-    });
-    return () => subscription.remove();
-  }, [biometricEnabled, endSavedSession, needsEnrollment, pinEnabled, user]);
+  }, [clearLocalAuth, endSavedSession, queryClient]);
 
   const signIn = useCallback(async (newToken: string, newUser: AuthUser, sessionToken?: string) => {
     const secureToken = sessionToken ?? newToken;
@@ -271,17 +249,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setBiometricEnabled(biometric);
     setPinEnabled(Boolean(pin));
     setPinAttemptsRemaining(MAX_PIN_ATTEMPTS);
-    setNeedsEnrollment(false);
-  }, []);
-
-  const skipUnlockEnrollment = useCallback(async () => {
-    await Promise.all([
-      secureDelete(BIOMETRIC_KEY),
-      secureDelete(PIN_SALT_KEY),
-      secureDelete(PIN_VERIFIER_KEY),
-    ]);
-    setBiometricEnabled(false);
-    setPinEnabled(false);
     setNeedsEnrollment(false);
   }, []);
 
@@ -352,7 +319,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider value={{
       user, token, isLoading, isLocked, needsEnrollment, biometricAvailable,
       biometricEnabled, pinEnabled, pinAttemptsRemaining, signIn, signOut,
-      lockApp, configureUnlock, skipUnlockEnrollment, unlockWithBiometrics, unlockWithPin,
+      lockApp, configureUnlock, unlockWithBiometrics, unlockWithPin,
     }}>
       {children}
     </AuthContext.Provider>

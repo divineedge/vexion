@@ -13849,6 +13849,10 @@ components:
         id: { type: string }
         label: { type: string }
         required: { type: boolean }
+        equipmentTypes:
+          type: array
+          items: { type: string }
+          description: "Equipment type labels this question applies to. Missing or empty applies to all equipment."
 
     PreTripChecklistResponse:
       type: object

@@ -14,11 +14,14 @@ import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLogin } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
 import { mapLoginUser } from '@/utils/authUser';
 import { UnlockEnrollment, UnlockScreen } from '@/components/AuthUnlock';
+
+const REMEMBERED_EMAIL_KEY = 'field_app_remembered_email';
 
 export default function LoginScreen() {
   const colors = useColors();
@@ -37,8 +40,13 @@ export default function LoginScreen() {
       setError('Email is required');
       return;
     }
+    if (!password) {
+      setError('Password is required');
+      return;
+    }
     setError('');
     try {
+      await AsyncStorage.setItem(REMEMBERED_EMAIL_KEY, normalizedEmail).catch(() => undefined);
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       const result = await loginMutation.mutateAsync({ data: { email: normalizedEmail, password } });
       const userData = mapLoginUser({
@@ -78,6 +86,16 @@ export default function LoginScreen() {
   };
 
   const isDark = colorScheme === 'dark';
+
+  useEffect(() => {
+    let mounted = true;
+    void AsyncStorage.getItem(REMEMBERED_EMAIL_KEY).then(rememberedEmail => {
+      if (mounted && rememberedEmail) setEmail(rememberedEmail);
+    }).catch(() => undefined);
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!isLoading && user && !needsEnrollment) router.replace('/(app)/jobs');

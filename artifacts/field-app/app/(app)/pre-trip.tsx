@@ -27,7 +27,7 @@ import { MediaAttachments } from '@/components/MediaAttachments';
 
 type Equipment = { id: number; name: string; type: string; currentHours: number; currentMiles?: number | null; isActive: boolean };
 type Condition = 'good' | 'needs_attention' | 'unsafe';
-type ChecklistItem = { id: string; label: string; required: boolean };
+type ChecklistItem = { id: string; label: string; required: boolean; equipmentTypes?: string[] };
 
 export default function PreTripScreen() {
   const colors = useColors();
@@ -47,13 +47,16 @@ export default function PreTripScreen() {
   const [inspectionType, setInspectionType] = useState<'pre_trip' | 'end_of_day'>('pre_trip');
   const preTripChecklist = (settings?.preTripChecklist ?? []) as ChecklistItem[];
   const endOfDayChecklist = (settings?.endOfDayChecklist ?? []) as ChecklistItem[];
-  const checklist = inspectionType === 'end_of_day' ? endOfDayChecklist : preTripChecklist;
+  const configuredChecklist = inspectionType === 'end_of_day' ? endOfDayChecklist : preTripChecklist;
   const mediaQuery = useListEquipmentPreTripMedia(savedTaskId ?? 0, { query: { queryKey: getListEquipmentPreTripMediaQueryKey(savedTaskId ?? 0), enabled: savedTaskId != null } });
   const addMedia = useAddEquipmentPreTripMedia();
   const deleteMedia = useDeleteEquipmentPreTripMedia();
 
   const equipment = ((data as Equipment[] | undefined) ?? []).filter(item => item.isActive);
   const selected = equipment.find(item => item.id === selectedId) ?? null;
+  const checklist = selected
+    ? configuredChecklist.filter(item => !item.equipmentTypes?.length || item.equipmentTypes.includes(selected.type))
+    : [];
   useEffect(() => {
     setAnswers({});
     setSavedTaskId(null);

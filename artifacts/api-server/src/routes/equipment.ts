@@ -1034,16 +1034,26 @@ router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
   if (cost != null && (!Number.isFinite(cost) || cost < 0)) { res.status(400).json({ error: "fuelCost must be a non-negative number" }); return; }
   if (cost != null && !hasFuel) { res.status(400).json({ error: "fuelCost requires fuelGallons" }); return; }
   if (hasReading && (!["hours", "mileage"].includes(readingType) || !Number.isFinite(reading) || reading! < 0)) { res.status(400).json({ error: "readingType and a non-negative readingValue are required together" }); return; }
-  const [tenant] = await db.select({ preTripChecklist: tenantsTable.preTripChecklist, endOfDayChecklist: tenantsTable.endOfDayChecklist }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
-  const configuredChecklist = ((inspectionType === "end_of_day" ? tenant?.endOfDayChecklist : tenant?.preTripChecklist) as Array<{ id: string; label: string; required: boolean }> | null) ?? [];
-  if (inspectionType === "end_of_day" && configuredChecklist.length === 0) { res.status(400).json({ error: "End-of-day checklist is not enabled" }); return; }
-  const submitted = new Map((Array.isArray(checklistResponses) ? checklistResponses : []).filter(item => item && typeof item.id === "string").map(item => [item.id, item.checked === true]));
-  const checklist = configuredChecklist.map(item => ({ id: item.id, label: item.label, checked: submitted.get(item.id) === true }));
-  const missingRequired = configuredChecklist.filter(item => item.required && submitted.get(item.id) !== true);
-  if (missingRequired.length) { res.status(400).json({ error: "Complete all required checklist questions" }); return; }
-
   const existing = await db.select().from(internalTasksTable).where(and(eq(internalTasksTable.tenantId, tenantId), eq(internalTasksTable.idempotencyKey, normalizedIdempotencyKey))).limit(1);
   if (existing[0]) { res.json({ taskId: existing[0].id, fuelLogId: existing[0].preTripFuelLogId, readingLogId: existing[0].preTripReadingLogId, duplicate: true }); return; }
+  const [[tenant], [equipment]] = await Promise.all([
+    db.select({ preTripChecklist: tenantsTable.preTripChecklist, endOfDayChecklist: tenantsTable.endOfDayChecklist }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
+    db.select({ type: equipmentTable.type, archivedAt: equipmentTable.archivedAt }).from(equipmentTable).where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId))).limit(1),
+  ]);
+  if (!equipment) { res.status(404).json({ error: "Equipment not found" }); return; }
+  if (equipment.archivedAt) { res.status(400).json({ error: "Cannot inspect archived equipment" }); return; }
+  const configuredChecklist = ((inspectionType === "end_of_day" ? tenant?.endOfDayChecklist : tenant?.preTripChecklist) as Array<{ id: string; label: string; required: boolean; equipmentTypes?: string[] }> | null) ?? [];
+  if (inspectionType === "end_of_day" && configuredChecklist.length === 0) { res.status(400).json({ error: "End-of-day checklist is not enabled" }); return; }
+  const applicableChecklist = configuredChecklist.filter(item =>
+    !Array.isArray(item.equipmentTypes) ||
+    item.equipmentTypes.length === 0 ||
+    item.equipmentTypes.includes(equipment.type),
+  );
+  const submitted = new Map((Array.isArray(checklistResponses) ? checklistResponses : []).filter(item => item && typeof item.id === "string").map(item => [item.id, item.checked === true]));
+  const checklist = applicableChecklist.map(item => ({ id: item.id, label: item.label, checked: submitted.get(item.id) === true }));
+  const missingRequired = applicableChecklist.filter(item => item.required && submitted.get(item.id) !== true);
+  if (missingRequired.length) { res.status(400).json({ error: "Complete all required checklist questions" }); return; }
+
   try {
     const result = await db.transaction(async (tx) => {
       const [owned] = await tx.select().from(equipmentTable).where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId))).for("update");

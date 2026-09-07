@@ -59,7 +59,7 @@ export function UnlockScreen() {
 export function UnlockEnrollment() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { biometricAvailable, configureUnlock, skipUnlockEnrollment } = useAuth();
+  const { biometricAvailable, configureUnlock } = useAuth();
   const [useBiometric, setUseBiometric] = useState(biometricAvailable);
   const [pin, setPin] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -97,7 +97,6 @@ export function UnlockEnrollment() {
       <TextInput value={confirm} onChangeText={value => setConfirm(value.replace(/\D/g, '').slice(0, 8))} secureTextEntry keyboardType="number-pad" placeholder="Confirm PIN" placeholderTextColor={colors.mutedForeground} style={[styles.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.card }]} />
       {message ? <Text style={[styles.message, { color: colors.destructive }]}>{message}</Text> : null}
       <PrimaryButton label="Save secure unlock" icon="shield-checkmark" busy={busy} onPress={() => void save()} />
-      <TouchableOpacity onPress={() => void skipUnlockEnrollment()}><Text style={[styles.link, { color: colors.mutedForeground }]}>Skip for now</Text></TouchableOpacity>
     </View>
   );
 }

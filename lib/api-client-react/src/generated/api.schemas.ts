@@ -3460,6 +3460,8 @@ export interface PreTripChecklistItem {
   id: string;
   label: string;
   required: boolean;
+  /** Equipment type labels this question applies to. Missing or empty applies to all equipment. */
+  equipmentTypes?: string[];
 }
 
 export interface TenantSettings {

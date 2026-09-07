@@ -12,6 +12,13 @@ vi.mock("@workspace/db", () => ({
   internalTasksTable: {},
 }));
 vi.mock("../lib/roles", () => ({ isOwnerRole: vi.fn() }));
+vi.mock("../lib/verifiedStaff", () => ({
+  requireVerifiedStaff: (req: { verifiedTenantId?: number; verifiedUserId?: number }, _res: unknown, next: () => void) => {
+    req.verifiedTenantId = 1;
+    req.verifiedUserId = 2;
+    next();
+  },
+}));
 vi.mock("../lib/importExport", () => ({
   importUpload: { single: vi.fn().mockReturnValue((_a: unknown, _b: unknown, next: () => void) => next()) },
   handleExportRequest: vi.fn(), handleImportPreview: vi.fn(), handleImportCommit: vi.fn(),
@@ -50,8 +57,13 @@ describe("POST /equipment/pre-trip", () => {
   });
 
   it("does not commit partial fuel/reading writes when a later task insert fails", async () => {
-    // First lookup finds no completed request; post-failure duplicate lookup also finds none.
-    select.mockReturnValue(whereResult([]));
+    // First lookup finds no completed request, then settings + equipment are loaded.
+    // The post-failure duplicate lookup also finds none.
+    select
+      .mockReturnValueOnce(whereResult([]))
+      .mockReturnValueOnce(whereResult([{ preTripChecklist: [], endOfDayChecklist: [] }]))
+      .mockReturnValueOnce(whereResult([{ type: "mower", archivedAt: null }]))
+      .mockReturnValue(whereResult([]));
     let committed = false;
     const insertedValues: any[] = [];
     transaction.mockImplementation(async (work: (tx: any) => Promise<unknown>) => {
@@ -91,5 +103,101 @@ describe("POST /equipment/pre-trip", () => {
     expect(transaction).toHaveBeenCalledOnce();
     expect(insertedValues[0].date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(insertedValues[0].date).not.toContain("T");
+  });
+
+  it("requires and snapshots only questions applicable to the equipment type", async () => {
+    select
+      .mockReturnValueOnce(whereResult([]))
+      .mockReturnValueOnce(whereResult([{
+        preTripChecklist: [
+          { id: "all", label: "Universal check", required: true },
+          { id: "mower", label: "Mower-only check", required: true, equipmentTypes: ["mower"] },
+          { id: "truck", label: "Truck-only check", required: true, equipmentTypes: ["truck"] },
+        ],
+        endOfDayChecklist: [],
+      }]))
+      .mockReturnValueOnce(whereResult([{ type: "mower", archivedAt: null }]))
+      .mockReturnValue(whereResult([]));
+
+    let taskValues: any;
+    transaction.mockImplementation(async (work: (tx: any) => Promise<unknown>) => work({
+      select: () => ({ from: () => ({ where: () => ({ for: () => Promise.resolve([{ id: 7, name: "Mower", type: "mower", archivedAt: null, currentHours: 0, currentMiles: null }]) }) }) }),
+      insert: () => ({
+        values: (values: unknown) => {
+          taskValues = values;
+          return { returning: () => Promise.resolve([{ id: 123 }]) };
+        },
+      }),
+      update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
+    }));
+
+    const app = express(); app.use(express.json());
+    const { default: router } = await import("./equipment"); app.use("/", router);
+    const response = await request(app).post("/equipment/pre-trip").set(headers).send({
+      idempotencyKey: "type-specific",
+      equipmentId: 7,
+      condition: "good",
+      checklistResponses: [
+        { id: "all", label: "ignored client label", checked: true },
+        { id: "mower", label: "ignored client label", checked: true },
+        { id: "truck", label: "ignored client label", checked: false },
+      ],
+    });
+
+    expect(response.status).toBe(201);
+    expect(taskValues.preTripChecklistSnapshot).toEqual([
+      { id: "all", label: "Universal check", checked: true },
+      { id: "mower", label: "Mower-only check", checked: true },
+    ]);
+  });
+
+  it("does not require a question configured for another equipment type", async () => {
+    select
+      .mockReturnValueOnce(whereResult([]))
+      .mockReturnValueOnce(whereResult([{
+        preTripChecklist: [{ id: "truck", label: "Truck-only check", required: true, equipmentTypes: ["truck"] }],
+        endOfDayChecklist: [],
+      }]))
+      .mockReturnValueOnce(whereResult([{ type: "mower", archivedAt: null }]))
+      .mockReturnValue(whereResult([]));
+    transaction.mockImplementation(async (work: (tx: any) => Promise<unknown>) => work({
+      select: () => ({ from: () => ({ where: () => ({ for: () => Promise.resolve([{ id: 7, name: "Mower", type: "mower", archivedAt: null, currentHours: 0, currentMiles: null }]) }) }) }),
+      insert: () => ({ values: () => ({ returning: () => Promise.resolve([{ id: 124 }]) }) }),
+      update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
+    }));
+
+    const app = express(); app.use(express.json());
+    const { default: router } = await import("./equipment"); app.use("/", router);
+    const response = await request(app).post("/equipment/pre-trip").set(headers).send({
+      idempotencyKey: "other-type-not-required",
+      equipmentId: 7,
+      condition: "good",
+      checklistResponses: [],
+    });
+
+    expect(response.status).toBe(201);
+  });
+
+  it("requires a matching equipment-type question", async () => {
+    select
+      .mockReturnValueOnce(whereResult([]))
+      .mockReturnValueOnce(whereResult([{
+        preTripChecklist: [{ id: "mower", label: "Mower-only check", required: true, equipmentTypes: ["mower"] }],
+        endOfDayChecklist: [],
+      }]))
+      .mockReturnValueOnce(whereResult([{ type: "mower", archivedAt: null }]));
+
+    const app = express(); app.use(express.json());
+    const { default: router } = await import("./equipment"); app.use("/", router);
+    const response = await request(app).post("/equipment/pre-trip").set(headers).send({
+      idempotencyKey: "matching-type-required",
+      equipmentId: 7,
+      condition: "good",
+      checklistResponses: [],
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ error: "Complete all required checklist questions" });
+    expect(transaction).not.toHaveBeenCalled();
   });
 });

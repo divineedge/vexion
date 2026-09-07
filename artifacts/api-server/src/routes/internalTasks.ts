@@ -8,6 +8,7 @@ import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { ADMIN_ROLES, getCallerRole, getSingleAdmin } from "../lib/roles";
 import { validateTaskAssignment, roleBucketMatches } from "../lib/taskRouting";
 import { sendStaffPush } from "../lib/pushNotifications";
+import { canAccessEquipment } from "../lib/equipmentAccess";
 
 const router: IRouter = Router();
 
@@ -132,6 +133,12 @@ router.get("/tasks", async (req, res): Promise<void> => {
 
   let rows = await db.select().from(internalTasksTable).where(where).orderBy(desc(internalTasksTable.createdAt));
   rows = rows.filter(t => canViewTask(t, userId, role, isAdmin, scope));
+  if (!isAdmin) {
+    const access = await Promise.all(rows.map(async task => (
+      task.contextType !== "equipment" || task.contextId == null || await canAccessEquipment(tenantId, userId, task.contextId)
+    )));
+    rows = rows.filter((_task, index) => access[index]);
+  }
 
   res.json(await enrichTasks(tenantId, rows));
 });
@@ -146,6 +153,10 @@ router.get("/tasks/:id", async (req, res): Promise<void> => {
   if (!task) { res.status(404).json({ error: "Task not found" }); return; }
 
   const isAdmin = ADMIN_ROLES.has(role);
+  if (!isAdmin && task.contextType === "equipment" && (task.contextId == null || !(await canAccessEquipment(tenantId, userId, task.contextId)))) {
+    res.status(404).json({ error: "Task not found" });
+    return;
+  }
   if (!canViewTask(task, userId, role, isAdmin)) { res.status(403).json({ error: "You do not have access to this task" }); return; }
 
   const [enriched] = await enrichTasks(tenantId, [task]);
@@ -185,6 +196,13 @@ router.post("/tasks", async (req, res): Promise<void> => {
     if (!check.ok) { res.status(403).json({ error: check.error }); return; }
   }
 
+  if (contextType === "equipment" && (
+    !Number.isInteger(contextId) || !(await canAccessEquipment(tenantId, userId, contextId))
+  )) {
+    res.status(404).json({ error: "Equipment not found" });
+    return;
+  }
+
   const [row] = await db.insert(internalTasksTable).values({
     tenantId,
     title,
@@ -217,11 +235,18 @@ router.patch("/tasks/:id", async (req, res): Promise<void> => {
   if (!task) { res.status(404).json({ error: "Task not found" }); return; }
 
   const isAdmin = ADMIN_ROLES.has(role);
+  const { title, description, priority, dueDate, contextType, contextId, assignedToUserId, assignedToRole, status, rejectionReason } = req.body;
+  const resultingContextType = contextType !== undefined ? contextType : task.contextType;
+  const resultingContextId = contextId !== undefined ? contextId : task.contextId;
+  if (resultingContextType === "equipment" && (
+    !Number.isInteger(resultingContextId) || !(await canAccessEquipment(tenantId, userId, resultingContextId))
+  )) {
+    res.status(404).json({ error: "Equipment not found" });
+    return;
+  }
   const isCreator = task.createdById === userId;
   const isAssignee = task.assignedToUserId === userId;
   const canClaim = task.assignedToRole != null && task.assignedToUserId == null && roleBucketMatches(task.assignedToRole, role);
-
-  const { title, description, priority, dueDate, contextType, contextId, assignedToUserId, assignedToRole, status, rejectionReason } = req.body;
 
   const updates: Partial<typeof internalTasksTable.$inferInsert> = {};
 
@@ -345,6 +370,10 @@ router.get("/equipment/:id/tasks", async (req, res): Promise<void> => {
   const role = await getCallerRole(tenantId, userId);
   const isAdmin = ADMIN_ROLES.has(role);
   const equipmentId = parseInt(req.params.id, 10);
+  if (!(await canAccessEquipment(tenantId, userId, equipmentId))) {
+    res.status(404).json({ error: "Equipment not found" });
+    return;
+  }
   let rows = await db.select().from(internalTasksTable).where(and(
     eq(internalTasksTable.tenantId, tenantId),
     eq(internalTasksTable.contextType, "equipment"),

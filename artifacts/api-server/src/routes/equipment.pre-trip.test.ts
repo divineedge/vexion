@@ -9,9 +9,9 @@ vi.mock("@workspace/db", () => ({
   equipmentTable: {}, equipmentMaintenanceTable: {}, equipmentFuelLogsTable: {},
   equipmentReadingLogsTable: {}, equipmentLifecycleEventsTable: {}, tenantEquipmentTypesTable: {},
   tenantsTable: {}, usersTable: {}, jobsTable: {}, taskBundlesItemsTable: {}, inventoryItemsTable: {},
-  internalTasksTable: {},
+  internalTasksTable: {}, crewsTable: {}, crewMembersTable: {},
 }));
-vi.mock("../lib/roles", () => ({ isOwnerRole: vi.fn() }));
+vi.mock("../lib/roles", () => ({ isOwnerRole: vi.fn(), ADMIN_ROLES: new Set(["company_owner", "office_manager", "department_manager"]) }));
 vi.mock("../lib/verifiedStaff", () => ({
   requireVerifiedStaff: (req: { verifiedTenantId?: number; verifiedUserId?: number }, _res: unknown, next: () => void) => {
     req.verifiedTenantId = 1;
@@ -29,11 +29,17 @@ vi.mock("../lib/importExport", () => ({
 const input = { idempotencyKey: "retry-key", equipmentId: 7, condition: "good", fuelGallons: 2, readingType: "hours", readingValue: 12 };
 const headers = { "x-tenant-id": "1", "x-user-id": "2" };
 const whereResult = (rows: unknown[]) => ({ from: () => ({ where: () => ({ limit: () => Promise.resolve(rows) }) }) });
+const authorizeAsAdmin = () => {
+  select
+    .mockReturnValueOnce(whereResult([{ id: 7, assignedUserId: null, assignedCrewId: null }]))
+    .mockReturnValueOnce(whereResult([{ role: "company_owner" }]));
+};
 
 describe("POST /equipment/pre-trip", () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
   it("returns the prior successful task and performs no duplicate transaction", async () => {
+    authorizeAsAdmin();
     select.mockReturnValueOnce(whereResult([{ id: 99 }]));
     const app = express(); app.use(express.json());
     const { default: router } = await import("./equipment"); app.use("/", router);
@@ -59,6 +65,7 @@ describe("POST /equipment/pre-trip", () => {
   it("does not commit partial fuel/reading writes when a later task insert fails", async () => {
     // First lookup finds no completed request, then settings + equipment are loaded.
     // The post-failure duplicate lookup also finds none.
+    authorizeAsAdmin();
     select
       .mockReturnValueOnce(whereResult([]))
       .mockReturnValueOnce(whereResult([{ preTripChecklist: [], endOfDayChecklist: [] }]))
@@ -106,6 +113,7 @@ describe("POST /equipment/pre-trip", () => {
   });
 
   it("requires and snapshots only questions applicable to the equipment type", async () => {
+    authorizeAsAdmin();
     select
       .mockReturnValueOnce(whereResult([]))
       .mockReturnValueOnce(whereResult([{
@@ -152,6 +160,7 @@ describe("POST /equipment/pre-trip", () => {
   });
 
   it("does not require a question configured for another equipment type", async () => {
+    authorizeAsAdmin();
     select
       .mockReturnValueOnce(whereResult([]))
       .mockReturnValueOnce(whereResult([{
@@ -179,6 +188,7 @@ describe("POST /equipment/pre-trip", () => {
   });
 
   it("requires a matching equipment-type question", async () => {
+    authorizeAsAdmin();
     select
       .mockReturnValueOnce(whereResult([]))
       .mockReturnValueOnce(whereResult([{
@@ -199,5 +209,37 @@ describe("POST /equipment/pre-trip", () => {
     expect(response.status).toBe(400);
     expect(response.body).toEqual({ error: "Complete all required checklist questions" });
     expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 before creating an inspection for equipment not assigned to the field user", async () => {
+    select
+      .mockReturnValueOnce(whereResult([{ id: 7, assignedUserId: 8, assignedCrewId: null }]))
+      .mockReturnValueOnce(whereResult([{ role: "technician" }]));
+    const app = express(); app.use(express.json());
+    const { default: router } = await import("./equipment"); app.use("/", router);
+    const response = await request(app).post("/equipment/pre-trip").set(headers).send(input);
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ error: "Equipment not found" });
+    expect(transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("equipment assignment validation", () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it("rejects an employee assignment from another tenant", async () => {
+    // requireOfficeRole recognizes the caller as an office user; the following
+    // empty employee lookup models an ID that does not belong to tenant 1.
+    select
+      .mockReturnValueOnce(whereResult([{ role: "office_manager" }]))
+      .mockReturnValueOnce(whereResult([]));
+    const app = express(); app.use(express.json());
+    const { default: router } = await import("./equipment"); app.use("/", router);
+    const response = await request(app).post("/equipment").set(headers).send({
+      name: "Mower",
+      assignedUserId: 999,
+    });
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ error: "assignedUserId must identify an employee in this account" });
   });
 });

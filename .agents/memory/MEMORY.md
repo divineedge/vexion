@@ -49,6 +49,7 @@
 - [PostgreSQL pool disconnects](postgres-pool-disconnects.md) — always handle pg Pool error events so an idle connection loss cannot terminate the API and make persistent data appear missing
 - [Route off-season authority](route-offseason-authority.md) — route template pause windows override assigned jobs and must propagate on assignment, edits, and removal
 - [Pre-trip inspection snapshots](pretrip-inspection-snapshots.md) — editable tenant checklists are snapshotted per equipment inspection; photo/video evidence belongs to that inspection
+- [Equipment assignment visibility](equipment-assignment-visibility.md) — field staff access equipment only by direct or current crew assignment; managers retain tenant-wide access
 - [Tenant identity boundary](tenant-identity-boundary.md) — private APIs must authorize tenant/user solely from a verified staff session, never caller identity headers
 - [Callback ratio definition](callback-ratio-definition.md) — count every callback ticket over completed jobs in the same selected period; keep original-work attribution stable
 - [Android Expo Go push imports](android-expo-go-push-imports.md) — SDK 53+ can crash on expo-notifications push side effects; skip loading them in Android Expo Go

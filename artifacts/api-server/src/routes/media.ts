@@ -6,6 +6,7 @@ import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { getCallerRole } from "../lib/roles";
 import { requireVerifiedStaff, verifiedStaffIdentity } from "../lib/verifiedStaff";
+import { canAccessEquipment } from "../lib/equipmentAccess";
 import { consumeStaffUploadIntent } from "./storage";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -501,10 +502,10 @@ router.delete("/visits/:id/media/:mediaId", requireVerifiedStaff, async (req: Re
 });
 
 router.get("/equipment/pre-trip/:id/media", requireVerifiedStaff, async (req: Request, res: Response): Promise<void> => {
-  const { tenantId } = verifiedStaffIdentity(res);
+  const { tenantId, userId } = verifiedStaffIdentity(res);
   const taskId = Number(req.params.id);
-  const [task] = await db.select({ id: internalTasksTable.id }).from(internalTasksTable).where(and(eq(internalTasksTable.id, taskId), eq(internalTasksTable.tenantId, tenantId), or(eq(internalTasksTable.taskType, "pre_trip_inspection"), eq(internalTasksTable.taskType, "end_of_day_inspection")))).limit(1);
-  if (!task) { res.status(404).json({ error: "Pre-trip inspection not found" }); return; }
+  const [task] = await db.select({ id: internalTasksTable.id, equipmentId: internalTasksTable.contextId }).from(internalTasksTable).where(and(eq(internalTasksTable.id, taskId), eq(internalTasksTable.tenantId, tenantId), eq(internalTasksTable.contextType, "equipment"), or(eq(internalTasksTable.taskType, "pre_trip_inspection"), eq(internalTasksTable.taskType, "end_of_day_inspection")))).limit(1);
+  if (!task || task.equipmentId == null || !(await canAccessEquipment(tenantId, userId, task.equipmentId))) { res.status(404).json({ error: "Pre-trip inspection not found" }); return; }
   const rows = await db.select().from(mediaAttachmentsTable).where(and(eq(mediaAttachmentsTable.tenantId, tenantId), eq(mediaAttachmentsTable.entityType, "pre_trip_inspection"), eq(mediaAttachmentsTable.entityId, taskId)));
   res.json(await withSignedUrls(rows));
 });
@@ -512,8 +513,8 @@ router.get("/equipment/pre-trip/:id/media", requireVerifiedStaff, async (req: Re
 router.post("/equipment/pre-trip/:id/media", requireVerifiedStaff, async (req: Request, res: Response): Promise<void> => {
   const { tenantId, userId } = verifiedStaffIdentity(res);
   const taskId = Number(req.params.id);
-  const [task] = await db.select({ id: internalTasksTable.id }).from(internalTasksTable).where(and(eq(internalTasksTable.id, taskId), eq(internalTasksTable.tenantId, tenantId), or(eq(internalTasksTable.taskType, "pre_trip_inspection"), eq(internalTasksTable.taskType, "end_of_day_inspection")))).limit(1);
-  if (!task) { res.status(404).json({ error: "Pre-trip inspection not found" }); return; }
+  const [task] = await db.select({ id: internalTasksTable.id, equipmentId: internalTasksTable.contextId }).from(internalTasksTable).where(and(eq(internalTasksTable.id, taskId), eq(internalTasksTable.tenantId, tenantId), eq(internalTasksTable.contextType, "equipment"), or(eq(internalTasksTable.taskType, "pre_trip_inspection"), eq(internalTasksTable.taskType, "end_of_day_inspection")))).limit(1);
+  if (!task || task.equipmentId == null || !(await canAccessEquipment(tenantId, userId, task.equipmentId))) { res.status(404).json({ error: "Pre-trip inspection not found" }); return; }
   const { fileKey, fileUrl, mimeType, sizeBytes, caption } = req.body;
   if (!fileKey || !fileUrl || !mimeType || !sizeBytes || fileKey !== fileUrl || !consumeStaffUploadIntent(fileKey, tenantId, userId) || !isSupportedMedia(mimeType) || Number(sizeBytes) > MAX_MEDIA_SIZE_BYTES) {
     if (fileKey) await cleanupUploadedObject(fileKey);
@@ -538,9 +539,15 @@ router.post("/equipment/pre-trip/:id/media", requireVerifiedStaff, async (req: R
 });
 
 router.delete("/equipment/pre-trip/:id/media/:mediaId", requireVerifiedStaff, async (req: Request, res: Response): Promise<void> => {
-  const { tenantId } = verifiedStaffIdentity(res);
+  const { tenantId, userId } = verifiedStaffIdentity(res);
   const taskId = Number(req.params.id);
   const mediaId = Number(req.params.mediaId);
+  const [task] = await db.select({ equipmentId: internalTasksTable.contextId }).from(internalTasksTable).where(and(
+    eq(internalTasksTable.id, taskId),
+    eq(internalTasksTable.tenantId, tenantId),
+    eq(internalTasksTable.contextType, "equipment"),
+  )).limit(1);
+  if (!task || task.equipmentId == null || !(await canAccessEquipment(tenantId, userId, task.equipmentId))) { res.status(404).json({ error: "Not found" }); return; }
   const [attachment] = await db.select().from(mediaAttachmentsTable).where(and(eq(mediaAttachmentsTable.id, mediaId), eq(mediaAttachmentsTable.tenantId, tenantId), eq(mediaAttachmentsTable.entityType, "pre_trip_inspection"), eq(mediaAttachmentsTable.entityId, taskId))).limit(1);
   if (!attachment) { res.status(404).json({ error: "Not found" }); return; }
   await objectStorageService.deleteObjectEntity(attachment.fileKey);
@@ -585,13 +592,15 @@ router.patch("/properties/:id/media/:mediaId", async (req: Request, res: Respons
 
 router.get("/equipment/maintenance/:id/media", requireVerifiedStaff, async (req: Request, res: Response): Promise<void> => {
   const tenantId = getTenantId(req);
+  const userId = getUserId(req);
   const maintenanceId = Number(req.params.id);
 
-  const [record] = await db.select({ id: equipmentMaintenanceTable.id })
+  const [record] = await db.select({ id: equipmentMaintenanceTable.id, equipmentId: equipmentMaintenanceTable.equipmentId })
     .from(equipmentMaintenanceTable)
     .where(and(eq(equipmentMaintenanceTable.id, maintenanceId), eq(equipmentMaintenanceTable.tenantId, tenantId)))
     .limit(1);
   if (!record) { res.status(404).json({ error: "Maintenance record not found" }); return; }
+  if (!(await canAccessEquipment(tenantId, userId, record.equipmentId))) { res.status(404).json({ error: "Maintenance record not found" }); return; }
 
   const media = await db.select().from(mediaAttachmentsTable)
     .where(and(
@@ -609,11 +618,12 @@ router.post("/equipment/maintenance/:id/media", requireVerifiedStaff, async (req
   const userId = getUserId(req);
   const maintenanceId = Number(req.params.id);
 
-  const [record] = await db.select({ id: equipmentMaintenanceTable.id })
+  const [record] = await db.select({ id: equipmentMaintenanceTable.id, equipmentId: equipmentMaintenanceTable.equipmentId })
     .from(equipmentMaintenanceTable)
     .where(and(eq(equipmentMaintenanceTable.id, maintenanceId), eq(equipmentMaintenanceTable.tenantId, tenantId)))
     .limit(1);
   if (!record) { res.status(404).json({ error: "Maintenance record not found" }); return; }
+  if (!(await canAccessEquipment(tenantId, userId, record.equipmentId))) { res.status(404).json({ error: "Maintenance record not found" }); return; }
 
   const { fileKey, fileUrl, mimeType, sizeBytes, caption } = req.body as {
     fileKey?: string; fileUrl?: string; mimeType?: string;
@@ -649,8 +659,14 @@ router.post("/equipment/maintenance/:id/media", requireVerifiedStaff, async (req
 
 router.delete("/equipment/maintenance/:id/media/:mediaId", requireVerifiedStaff, async (req: Request, res: Response): Promise<void> => {
   const tenantId = getTenantId(req);
+  const userId = getUserId(req);
   const maintenanceId = Number(req.params.id);
   const mediaId = Number(req.params.mediaId);
+  const [record] = await db.select({ equipmentId: equipmentMaintenanceTable.equipmentId }).from(equipmentMaintenanceTable).where(and(
+    eq(equipmentMaintenanceTable.id, maintenanceId),
+    eq(equipmentMaintenanceTable.tenantId, tenantId),
+  )).limit(1);
+  if (!record || !(await canAccessEquipment(tenantId, userId, record.equipmentId))) { res.status(404).json({ error: "Not found" }); return; }
 
   const [deleted] = await db.delete(mediaAttachmentsTable)
     .where(and(

@@ -9,6 +9,7 @@ import { eq, and, desc, gte, lte, sql, sum } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { ADMIN_ROLES, getCallerRole } from "../lib/roles";
 import { roleBucketMatches } from "../lib/taskRouting";
+import { canAccessEquipment } from "../lib/equipmentAccess";
 
 const router: IRouter = Router();
 
@@ -87,6 +88,13 @@ async function validateLinkedRefs(
   return null;
 }
 
+/** Field users may only run or inspect bundles whose linked assets they can access now. */
+async function canAccessBundleEquipment(tenantId: number, userId: number, role: string, items: BundleItem[]) {
+  if (ADMIN_ROLES.has(role)) return true;
+  const equipmentIds = [...new Set(items.flatMap(item => item.linkedEquipmentId == null ? [] : [item.linkedEquipmentId]))];
+  return (await Promise.all(equipmentIds.map(id => canAccessEquipment(tenantId, userId, id)))).every(Boolean);
+}
+
 // ─── Task Bundles CRUD ──────────────────────────────────────────────────────────
 
 router.get("/task-bundles", async (req, res): Promise<void> => {
@@ -119,10 +127,13 @@ router.get("/task-bundles", async (req, res): Promise<void> => {
 
 router.get("/task-bundles/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
+  const userId = getUserId(req);
   const id = parseInt(String(req.params.id), 10);
   const bundle = await requireBundleOwnership(id, tenantId, res);
   if (!bundle) return;
   const items = await db.select().from(taskBundlesItemsTable).where(and(eq(taskBundlesItemsTable.bundleId, id), eq(taskBundlesItemsTable.tenantId, tenantId))).orderBy(taskBundlesItemsTable.order);
+  const role = await getCallerRole(tenantId, userId);
+  if (!(await canAccessBundleEquipment(tenantId, userId, role, items))) { res.status(404).json({ error: "Task bundle not found" }); return; }
   res.json({ ...formatBundle(bundle, items.length, null), items: items.map(formatItem) });
 });
 
@@ -297,6 +308,11 @@ router.post("/task-bundles/:id/start", async (req, res): Promise<void> => {
     || (bundle.assignedToRole != null && roleBucketMatches(bundle.assignedToRole, role))
     || ADMIN_ROLES.has(role);
   if (!isAllowed) { res.status(403).json({ error: "You are not assigned to this bundle" }); return; }
+  const items = await db.select().from(taskBundlesItemsTable).where(and(
+    eq(taskBundlesItemsTable.bundleId, bundleId),
+    eq(taskBundlesItemsTable.tenantId, tenantId),
+  ));
+  if (!(await canAccessBundleEquipment(tenantId, userId, role, items))) { res.status(404).json({ error: "Task bundle not found" }); return; }
 
   const [row] = await db.insert(taskBundleCompletionsTable).values({
     tenantId,
@@ -335,6 +351,16 @@ router.post("/task-bundle-completions/:id/complete", async (req, res): Promise<v
   if (completion.status === "completed") { res.status(409).json({ error: "This run has already been submitted" }); return; }
 
   const itemResults: ItemResultInput[] = Array.isArray(req.body.itemResults) ? req.body.itemResults : [];
+  // Check every linked asset before claiming the completion transaction. This
+  // prevents a reassigned asset from receiving any reading/fuel/ledger write.
+  const linkedItems = await db.select().from(taskBundlesItemsTable).where(and(
+    eq(taskBundlesItemsTable.bundleId, completion.bundleId),
+    eq(taskBundlesItemsTable.tenantId, tenantId),
+  ));
+  if (!(await canAccessBundleEquipment(tenantId, userId, role, linkedItems))) {
+    res.status(404).json({ error: "Completion not found" });
+    return;
+  }
 
   try {
     const updated = await db.transaction(async (tx) => {

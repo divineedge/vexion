@@ -1,8 +1,8 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, equipmentTable, equipmentMaintenanceTable, equipmentFuelLogsTable, equipmentReadingLogsTable, equipmentLifecycleEventsTable, tenantEquipmentTypesTable, tenantsTable, usersTable, jobsTable, taskBundlesItemsTable, inventoryItemsTable, internalTasksTable } from "@workspace/db";
+import { db, equipmentTable, equipmentMaintenanceTable, equipmentFuelLogsTable, equipmentReadingLogsTable, equipmentLifecycleEventsTable, tenantEquipmentTypesTable, tenantsTable, usersTable, crewsTable, crewMembersTable, jobsTable, taskBundlesItemsTable, inventoryItemsTable, internalTasksTable } from "@workspace/db";
 import { eq, and, desc, sum, isNull, isNotNull, inArray, or, gte, lte, ilike, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
-import { isOwnerRole } from "../lib/roles";
+import { ADMIN_ROLES, isOwnerRole } from "../lib/roles";
 import { requireVerifiedStaff } from "../lib/verifiedStaff";
 import {
   importUpload,
@@ -16,6 +16,7 @@ import {
   registerImportExportConfig,
   type ImportExportEntityConfig,
 } from "../lib/importExport";
+import { hasEquipmentVisibility } from "../lib/equipmentVisibility";
 
 const router: IRouter = Router();
 // Equipment contains tenant-private operational and inspection data. A verified
@@ -243,7 +244,7 @@ const equipmentImportExportConfig: ImportExportEntityConfig = {
 };
 registerImportExportConfig(equipmentImportExportConfig);
 
-router.get("/equipment/export", async (req, res): Promise<void> => {
+router.get("/equipment/export", requireOfficeRole, async (req, res): Promise<void> => {
   await handleExportRequest(req, res, getTenantId(req), equipmentImportExportConfig);
 });
 
@@ -261,16 +262,17 @@ async function getUserRole(tenantId: number, userId: number): Promise<string | n
   const [user] = await db
     .select({ role: usersTable.role })
     .from(usersTable)
-    .where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId)));
+    .where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId)))
+    .limit(1);
   return user?.role ?? null;
 }
 
-/** Only admin/office may mutate equipment records; all roles can view and add fuel logs */
+/** Only owner/office/department management may mutate equipment records. */
 async function requireOfficeRole(req: Request, res: Response, next: NextFunction): Promise<void> {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
   const role = await getUserRole(tenantId, userId);
-  if (!role || role === "technician") {
+  if (!role || !ADMIN_ROLES.has(role)) {
     res.status(403).json({ error: "Admin or office role required" });
     return;
   }
@@ -339,17 +341,73 @@ router.post("/equipment/recover-misassigned-divine-edge", requireOwnerRole, asyn
 async function requireEquipmentOwnership(
   equipmentId: number,
   tenantId: number,
+  userId: number,
   res: Response,
 ): Promise<(typeof equipmentTable.$inferSelect) | null> {
   const [row] = await db
     .select()
     .from(equipmentTable)
-    .where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId)));
+    .where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId)))
+    .limit(1);
   if (!row) {
     res.status(404).json({ error: "Equipment not found" });
     return null;
   }
+  const role = await getUserRole(tenantId, userId);
+  if (!role || !ADMIN_ROLES.has(role)) {
+    const memberships = row.assignedCrewId == null ? [] : await db
+      .select({ crewId: crewMembersTable.crewId })
+      .from(crewMembersTable)
+      .where(and(
+        eq(crewMembersTable.tenantId, tenantId),
+        eq(crewMembersTable.crewId, row.assignedCrewId),
+        eq(crewMembersTable.userId, userId),
+      ))
+      .limit(1);
+    if (!hasEquipmentVisibility(role, userId, new Set(memberships.map(membership => membership.crewId)), row)) {
+      res.status(404).json({ error: "Equipment not found" });
+      return null;
+    }
+  }
   return row;
+}
+
+async function validateAssignments(
+  tenantId: number,
+  assignedUserId: unknown,
+  assignedCrewId: unknown,
+): Promise<string | null> {
+  if (assignedUserId !== undefined && assignedUserId !== null) {
+    if (!Number.isInteger(assignedUserId)) return "assignedUserId must be an integer or null";
+    const [user] = await db.select({ id: usersTable.id }).from(usersTable).where(and(
+      eq(usersTable.id, assignedUserId as number),
+      eq(usersTable.tenantId, tenantId),
+    )).limit(1);
+    if (!user) return "assignedUserId must identify an employee in this account";
+  }
+  if (assignedCrewId !== undefined && assignedCrewId !== null) {
+    if (!Number.isInteger(assignedCrewId)) return "assignedCrewId must be an integer or null";
+    const [crew] = await db.select({ id: crewsTable.id }).from(crewsTable).where(and(
+      eq(crewsTable.id, assignedCrewId as number),
+      eq(crewsTable.tenantId, tenantId),
+    )).limit(1);
+    if (!crew) return "assignedCrewId must identify a crew in this account";
+  }
+  return null;
+}
+
+async function getAssignmentNames(rows: Array<typeof equipmentTable.$inferSelect>) {
+  const tenantId = rows[0]?.tenantId;
+  const userIds = [...new Set(rows.flatMap(row => row.assignedUserId == null ? [] : [row.assignedUserId]))];
+  const crewIds = [...new Set(rows.flatMap(row => row.assignedCrewId == null ? [] : [row.assignedCrewId]))];
+  const [users, crews] = await Promise.all([
+    userIds.length && tenantId != null ? db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable).where(and(eq(usersTable.tenantId, tenantId), inArray(usersTable.id, userIds))) : [],
+    crewIds.length && tenantId != null ? db.select({ id: crewsTable.id, name: crewsTable.name }).from(crewsTable).where(and(eq(crewsTable.tenantId, tenantId), inArray(crewsTable.id, crewIds))) : [],
+  ]);
+  return {
+    users: new Map(users.map(row => [row.id, row.name])),
+    crews: new Map(crews.map(row => [row.id, row.name])),
+  };
 }
 
 // ─── Computed fields helpers ──────────────────────────────────────────────────
@@ -445,12 +503,17 @@ function formatEquipment(
   repairThresholdPct: number,
   resaleThresholdPct: number,
   schedule: MaintenanceSchedule | null = null,
+  assignmentNames?: { assignedUserName?: string | null; assignedCrewName?: string | null },
 ) {
   const metrics = computeEquipmentMetrics(row, repairThresholdPct, resaleThresholdPct);
   const maintenanceStatus = computeMaintenanceStatus(row, schedule);
   return {
     id: row.id,
     tenantId: row.tenantId,
+    assignedUserId: row.assignedUserId ?? null,
+    assignedCrewId: row.assignedCrewId ?? null,
+    assignedUserName: assignmentNames?.assignedUserName ?? null,
+    assignedCrewName: assignmentNames?.assignedCrewName ?? null,
     name: row.name,
     type: row.type,
     model: row.model ?? null,
@@ -542,36 +605,66 @@ async function getTenantThresholds(tenantId: number) {
 
 router.get("/equipment", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
+  const userId = getUserId(req);
   const includeArchived = req.query.includeArchived === "true" || req.query.includeArchived === "1";
-  const whereClause = includeArchived
-    ? eq(equipmentTable.tenantId, tenantId)
-    : and(eq(equipmentTable.tenantId, tenantId), isNull(equipmentTable.archivedAt));
+  const role = await getUserRole(tenantId, userId);
+  const archiveCondition = includeArchived ? undefined : isNull(equipmentTable.archivedAt);
+  let visibilityCondition = undefined;
+  if (!role || !ADMIN_ROLES.has(role)) {
+    const memberships = await db.select({ crewId: crewMembersTable.crewId }).from(crewMembersTable).where(and(
+      eq(crewMembersTable.tenantId, tenantId),
+      eq(crewMembersTable.userId, userId),
+    ));
+    visibilityCondition = memberships.length
+      ? or(eq(equipmentTable.assignedUserId, userId), inArray(equipmentTable.assignedCrewId, memberships.map(row => row.crewId)))
+      : eq(equipmentTable.assignedUserId, userId);
+  }
+  const whereClause = and(eq(equipmentTable.tenantId, tenantId), archiveCondition, visibilityCondition);
   const [rows, thresholds, scheduleMap] = await Promise.all([
     db.select().from(equipmentTable).where(whereClause).orderBy(equipmentTable.name),
     getTenantThresholds(tenantId),
     getScheduleMap(tenantId),
   ]);
-  res.json(rows.map(r => formatEquipment(r, thresholds.repairThresholdPct, thresholds.resaleThresholdPct, scheduleMap.get(r.id) ?? null)));
+  const names = await getAssignmentNames(rows);
+  res.json(rows.map(r => formatEquipment(
+    r,
+    thresholds.repairThresholdPct,
+    thresholds.resaleThresholdPct,
+    scheduleMap.get(r.id) ?? null,
+    {
+      assignedUserName: r.assignedUserId == null ? null : names.users.get(r.assignedUserId) ?? null,
+      assignedCrewName: r.assignedCrewId == null ? null : names.crews.get(r.assignedCrewId) ?? null,
+    },
+  )));
 });
 
 router.get("/equipment/:id", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
+  const userId = getUserId(req);
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
-  const [[row], thresholds, scheduleMap] = await Promise.all([
-    db.select().from(equipmentTable).where(and(eq(equipmentTable.id, id), eq(equipmentTable.tenantId, tenantId))),
+  const [row, thresholds, scheduleMap] = await Promise.all([
+    requireEquipmentOwnership(id, tenantId, userId, res),
     getTenantThresholds(tenantId),
     getScheduleMap(tenantId),
   ]);
-  if (!row) { res.status(404).json({ error: "Equipment not found" }); return; }
-  res.json(formatEquipment(row, thresholds.repairThresholdPct, thresholds.resaleThresholdPct, scheduleMap.get(row.id) ?? null));
+  if (!row) return;
+  const names = await getAssignmentNames([row]);
+  res.json(formatEquipment(row, thresholds.repairThresholdPct, thresholds.resaleThresholdPct, scheduleMap.get(row.id) ?? null, {
+    assignedUserName: row.assignedUserId == null ? null : names.users.get(row.assignedUserId) ?? null,
+    assignedCrewName: row.assignedCrewId == null ? null : names.crews.get(row.assignedCrewId) ?? null,
+  }));
 });
 
 router.post("/equipment", requireOfficeRole, async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const { name, type, model, serialNumber, year, attachmentType, attachmentModel, attachmentSerialNumber, attachmentYear, oilFilterNumber, airFilterNumber, fuelFilterNumber, hydraulicFilterNumber, otherFilterNumbers, purchaseDate, purchasePrice, expectedLifespanYears, expectedLifespanHours, currentHours, currentMiles, notes, sellAfterHours, neverSell } = req.body;
+  const { name, type, model, serialNumber, year, attachmentType, attachmentModel, attachmentSerialNumber, attachmentYear, oilFilterNumber, airFilterNumber, fuelFilterNumber, hydraulicFilterNumber, otherFilterNumbers, purchaseDate, purchasePrice, expectedLifespanYears, expectedLifespanHours, currentHours, currentMiles, notes, sellAfterHours, neverSell, assignedUserId, assignedCrewId } = req.body;
   if (!name) { res.status(400).json({ error: "name is required" }); return; }
+  const assignmentError = await validateAssignments(tenantId, assignedUserId, assignedCrewId);
+  if (assignmentError) { res.status(400).json({ error: assignmentError }); return; }
   const [row] = await db.insert(equipmentTable).values({
     tenantId,
+    assignedUserId: assignedUserId ?? null,
+    assignedCrewId: assignedCrewId ?? null,
     name,
     type: type ?? "other",
     model: model ?? null,
@@ -597,15 +690,23 @@ router.post("/equipment", requireOfficeRole, async (req, res): Promise<void> => 
     neverSell: neverSell === true || neverSell === "true",
   }).returning();
   const thresholds = await getTenantThresholds(tenantId);
-  res.status(201).json(formatEquipment(row, thresholds.repairThresholdPct, thresholds.resaleThresholdPct));
+  const names = await getAssignmentNames([row]);
+  res.status(201).json(formatEquipment(row, thresholds.repairThresholdPct, thresholds.resaleThresholdPct, null, {
+    assignedUserName: row.assignedUserId == null ? null : names.users.get(row.assignedUserId) ?? null,
+    assignedCrewName: row.assignedCrewId == null ? null : names.crews.get(row.assignedCrewId) ?? null,
+  }));
 });
 
 router.patch("/equipment/:id", requireOfficeRole, async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
-  const { name, type, model, serialNumber, year, attachmentType, attachmentModel, attachmentSerialNumber, attachmentYear, oilFilterNumber, airFilterNumber, fuelFilterNumber, hydraulicFilterNumber, otherFilterNumbers, purchaseDate, purchasePrice, expectedLifespanYears, expectedLifespanHours, currentHours, currentMiles, isActive, notes, sellAfterHours, neverSell } = req.body;
+  const { name, type, model, serialNumber, year, attachmentType, attachmentModel, attachmentSerialNumber, attachmentYear, oilFilterNumber, airFilterNumber, fuelFilterNumber, hydraulicFilterNumber, otherFilterNumbers, purchaseDate, purchasePrice, expectedLifespanYears, expectedLifespanHours, currentHours, currentMiles, isActive, notes, sellAfterHours, neverSell, assignedUserId, assignedCrewId } = req.body;
+  const assignmentError = await validateAssignments(tenantId, assignedUserId, assignedCrewId);
+  if (assignmentError) { res.status(400).json({ error: assignmentError }); return; }
   const updates: Partial<typeof equipmentTable.$inferInsert> = {};
+  if (assignedUserId !== undefined) updates.assignedUserId = assignedUserId;
+  if (assignedCrewId !== undefined) updates.assignedCrewId = assignedCrewId;
   if (name != null) updates.name = name;
   if (type != null) updates.type = type;
   if (model !== undefined) updates.model = model || null;
@@ -657,13 +758,17 @@ router.patch("/equipment/:id", requireOfficeRole, async (req, res): Promise<void
   }
 
   const thresholds = await getTenantThresholds(tenantId);
-  res.json(formatEquipment(row, thresholds.repairThresholdPct, thresholds.resaleThresholdPct));
+  const names = await getAssignmentNames([row]);
+  res.json(formatEquipment(row, thresholds.repairThresholdPct, thresholds.resaleThresholdPct, null, {
+    assignedUserName: row.assignedUserId == null ? null : names.users.get(row.assignedUserId) ?? null,
+    assignedCrewName: row.assignedCrewId == null ? null : names.crews.get(row.assignedCrewId) ?? null,
+  }));
 });
 
 router.get("/equipment/:id/lifecycle-events", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
-  const owned = await requireEquipmentOwnership(id, tenantId, res);
+  const owned = await requireEquipmentOwnership(id, tenantId, getUserId(req), res);
   if (!owned) return;
   const rows = await db
     .select()
@@ -687,7 +792,7 @@ router.delete("/equipment/:id", requireOfficeRole, async (req, res): Promise<voi
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
 
   // Verify ownership before touching anything
-  const owned = await requireEquipmentOwnership(id, tenantId, res);
+  const owned = await requireEquipmentOwnership(id, tenantId, getUserId(req), res);
   if (!owned) return;
 
   // Resolve the actor's display name for the audit log
@@ -717,7 +822,7 @@ router.delete("/equipment/:id/hard-delete", requireOwnerRole, async (req, res): 
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
 
   // Verify ownership before touching anything
-  const owned = await requireEquipmentOwnership(id, tenantId, res);
+  const owned = await requireEquipmentOwnership(id, tenantId, getUserId(req), res);
   if (!owned) return;
 
   // Delete child rows first to satisfy FK constraints, then delete the parent
@@ -735,7 +840,7 @@ router.get("/equipment/:id/maintenance", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const equipmentId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   // Verify ownership
-  const owned = await requireEquipmentOwnership(equipmentId, tenantId, res);
+  const owned = await requireEquipmentOwnership(equipmentId, tenantId, getUserId(req), res);
   if (!owned) return;
   const rows = await db
     .select()
@@ -754,7 +859,7 @@ router.post("/equipment/:id/maintenance", async (req, res): Promise<void> => {
   const equipmentId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
 
   // Verify the equipment belongs to this tenant before inserting a child record
-  const owned = await requireEquipmentOwnership(equipmentId, tenantId, res);
+  const owned = await requireEquipmentOwnership(equipmentId, tenantId, getUserId(req), res);
   if (!owned) return;
 
   // Reject new records against archived equipment
@@ -808,7 +913,7 @@ router.delete("/equipment/:equipmentId/maintenance/:id", requireOfficeRole, asyn
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
 
   // Verify the equipment belongs to this tenant
-  const owned = await requireEquipmentOwnership(equipmentId, tenantId, res);
+  const owned = await requireEquipmentOwnership(equipmentId, tenantId, getUserId(req), res);
   if (!owned) return;
 
   // Delete scoped by all three keys: id + equipmentId + tenantId
@@ -842,7 +947,7 @@ router.get("/equipment/:id/fuel-logs", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const equipmentId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
   // Verify ownership
-  const owned = await requireEquipmentOwnership(equipmentId, tenantId, res);
+  const owned = await requireEquipmentOwnership(equipmentId, tenantId, getUserId(req), res);
   if (!owned) return;
   const rows = await db
     .select()
@@ -858,7 +963,7 @@ router.post("/equipment/:id/fuel-logs", async (req, res): Promise<void> => {
   const equipmentId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
 
   // Verify the equipment belongs to this tenant before inserting a child record
-  const owned = await requireEquipmentOwnership(equipmentId, tenantId, res);
+  const owned = await requireEquipmentOwnership(equipmentId, tenantId, getUserId(req), res);
   if (!owned) return;
 
   // Reject new records against archived equipment
@@ -930,7 +1035,7 @@ router.delete("/equipment/:equipmentId/fuel-logs/:id", requireOfficeRole, async 
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
 
   // Verify the equipment belongs to this tenant
-  const owned = await requireEquipmentOwnership(equipmentId, tenantId, res);
+  const owned = await requireEquipmentOwnership(equipmentId, tenantId, getUserId(req), res);
   if (!owned) return;
 
   // Delete scoped by all three keys: id + equipmentId + tenantId
@@ -965,7 +1070,7 @@ router.post("/equipment/:id/reading-logs", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const equipmentId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
 
-  const owned = await requireEquipmentOwnership(equipmentId, tenantId, res);
+  const owned = await requireEquipmentOwnership(equipmentId, tenantId, getUserId(req), res);
   if (!owned) return;
 
   if (owned.archivedAt) {
@@ -1034,6 +1139,8 @@ router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
   if (cost != null && (!Number.isFinite(cost) || cost < 0)) { res.status(400).json({ error: "fuelCost must be a non-negative number" }); return; }
   if (cost != null && !hasFuel) { res.status(400).json({ error: "fuelCost requires fuelGallons" }); return; }
   if (hasReading && (!["hours", "mileage"].includes(readingType) || !Number.isFinite(reading) || reading! < 0)) { res.status(400).json({ error: "readingType and a non-negative readingValue are required together" }); return; }
+  const accessibleEquipment = await requireEquipmentOwnership(equipmentId, tenantId, userId, res);
+  if (!accessibleEquipment) return;
   const existing = await db.select().from(internalTasksTable).where(and(eq(internalTasksTable.tenantId, tenantId), eq(internalTasksTable.idempotencyKey, normalizedIdempotencyKey))).limit(1);
   if (existing[0]) { res.json({ taskId: existing[0].id, fuelLogId: existing[0].preTripFuelLogId, readingLogId: existing[0].preTripReadingLogId, duplicate: true }); return; }
   const [[tenant], [equipment]] = await Promise.all([
@@ -1102,7 +1209,7 @@ router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
 router.get("/equipment/:id/ledger", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const equipmentId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
-  const owned = await requireEquipmentOwnership(equipmentId, tenantId, res);
+  const owned = await requireEquipmentOwnership(equipmentId, tenantId, getUserId(req), res);
   if (!owned) return;
 
   const { from, to } = req.query as Record<string, string | undefined>;
@@ -1172,7 +1279,7 @@ router.get("/equipment/:id/ledger", async (req, res): Promise<void> => {
 router.get("/equipment/:id/linked-parts", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const equipmentId = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
-  const owned = await requireEquipmentOwnership(equipmentId, tenantId, res);
+  const owned = await requireEquipmentOwnership(equipmentId, tenantId, getUserId(req), res);
   if (!owned) return;
 
   const linkedRows = await db

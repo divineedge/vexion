@@ -1,14 +1,20 @@
-import { pgTable, text, serial, timestamp, integer, real, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, boolean, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { jobsTable } from "./jobs";
+import { usersTable } from "./users";
+import { crewsTable } from "./crews";
 
 // ── Equipment ─────────────────────────────────────────────────────────────────
 
 export const equipmentTable = pgTable("equipment", {
   id: serial("id").primaryKey(),
   tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
+  /** Optional direct employee assignment. May be set together with assignedCrewId. */
+  assignedUserId: integer("assigned_user_id").references(() => usersTable.id, { onDelete: "set null" }),
+  /** Optional crew assignment. Field visibility is the union of direct and crew assignment. */
+  assignedCrewId: integer("assigned_crew_id").references(() => crewsTable.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   /** mower | truck | trailer | sprayer | blower | edger | chainsaw | other */
   type: text("type").notNull().default("other"),
@@ -48,7 +54,10 @@ export const equipmentTable = pgTable("equipment", {
   neverSell: boolean("never_sell").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
-});
+}, table => [
+  index("equipment_tenant_assigned_user_idx").on(table.tenantId, table.assignedUserId),
+  index("equipment_tenant_assigned_crew_idx").on(table.tenantId, table.assignedCrewId),
+]);
 
 export const insertEquipmentSchema = createInsertSchema(equipmentTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertEquipment = z.infer<typeof insertEquipmentSchema>;
@@ -151,8 +160,6 @@ export type InsertTenantEquipmentType = z.infer<typeof insertTenantEquipmentType
 export type TenantEquipmentType = typeof tenantEquipmentTypesTable.$inferSelect;
 
 // ── Equipment Lifecycle Events (archive / restore audit trail) ────────────────
-
-import { usersTable } from "./users";
 
 export const equipmentLifecycleEventsTable = pgTable("equipment_lifecycle_events", {
   id: serial("id").primaryKey(),

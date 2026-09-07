@@ -13463,12 +13463,24 @@ components:
 
     Equipment:
       type: object
-      required: [id, tenantId, name, type, purchasePrice, currentHours, totalRepairCost, totalFuelCost, isActive, createdAt, updatedAt]
+      required: [id, tenantId, assignedUserId, assignedCrewId, assignedUserName, assignedCrewName, name, type, purchasePrice, currentHours, totalRepairCost, totalFuelCost, isActive, createdAt, updatedAt]
       properties:
         id:
           type: integer
         tenantId:
           type: integer
+        assignedUserId:
+          type: ["integer", "null"]
+          description: Employee directly assigned to this equipment
+        assignedCrewId:
+          type: ["integer", "null"]
+          description: Crew assigned to this equipment; may be set together with assignedUserId
+        assignedUserName:
+          type: ["string", "null"]
+          description: Display name of the directly assigned employee
+        assignedCrewName:
+          type: ["string", "null"]
+          description: Display name of the assigned crew
         name:
           type: string
         type:
@@ -13574,6 +13586,12 @@ components:
       type: object
       required: [name]
       properties:
+        assignedUserId:
+          type: ["integer", "null"]
+          description: Employee to assign, or null to remove the direct assignment
+        assignedCrewId:
+          type: ["integer", "null"]
+          description: Crew to assign, or null to remove the crew assignment
         name:
           type: string
         type:

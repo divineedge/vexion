@@ -4411,6 +4411,26 @@ export type ChemicalApplicationInput = (unknown & {
 export interface Equipment {
   id: number;
   tenantId: number;
+  /**
+     * Employee directly assigned to this equipment
+     * @nullable
+     */
+  assignedUserId: number | null;
+  /**
+     * Crew assigned to this equipment; may be set together with assignedUserId
+     * @nullable
+     */
+  assignedCrewId: number | null;
+  /**
+     * Display name of the directly assigned employee
+     * @nullable
+     */
+  assignedUserName: string | null;
+  /**
+     * Display name of the assigned crew
+     * @nullable
+     */
+  assignedCrewName: string | null;
   name: string;
   type: string;
   /** @nullable */
@@ -4504,6 +4524,16 @@ export interface EquipmentTypeInput {
 }
 
 export interface EquipmentInput {
+  /**
+     * Employee to assign, or null to remove the direct assignment
+     * @nullable
+     */
+  assignedUserId?: number | null;
+  /**
+     * Crew to assign, or null to remove the crew assignment
+     * @nullable
+     */
+  assignedCrewId?: number | null;
   name: string;
   type?: string;
   /** @nullable */

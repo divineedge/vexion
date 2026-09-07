@@ -27,6 +27,10 @@ import {
   useListEquipmentLifecycleEvents, getListEquipmentLifecycleEventsQueryKey,
   useListEquipmentTypes, getListEquipmentTypesQueryKey,
   useListEquipmentUses, getListEquipmentUsesQueryKey,
+  useListUsers,
+  useListCrews,
+  getListUsersQueryKey,
+  getListCrewsQueryKey,
   useRecoverMisassignedDivineEdgeEquipment,
   useGetMisassignedDivineEdgeEquipmentRecoveryStatus,
   getGetMisassignedDivineEdgeEquipmentRecoveryStatusQueryKey,
@@ -109,6 +113,8 @@ interface EquipmentFormState {
   notes: string;
   sellAfterHours: string;
   neverSell: boolean;
+  assignedUserId: string;
+  assignedCrewId: string;
 }
 
 const EMPTY_EQ_FORM: EquipmentFormState = {
@@ -118,6 +124,7 @@ const EMPTY_EQ_FORM: EquipmentFormState = {
   fuelFilterNumber: '', hydraulicFilterNumber: '', otherFilterNumbers: '',
   expectedLifespanYears: '', expectedLifespanHours: '', currentHours: '',
   currentMiles: '', notes: '', sellAfterHours: '', neverSell: false,
+  assignedUserId: '', assignedCrewId: '',
 };
 
 function equipmentToForm(e: Equipment): EquipmentFormState {
@@ -145,6 +152,8 @@ function equipmentToForm(e: Equipment): EquipmentFormState {
     notes: e.notes ?? '',
     sellAfterHours: (e as any).sellAfterHours != null ? String((e as any).sellAfterHours) : '',
     neverSell: !!(e as any).neverSell,
+    assignedUserId: e.assignedUserId != null ? String(e.assignedUserId) : '',
+    assignedCrewId: e.assignedCrewId != null ? String(e.assignedCrewId) : '',
   };
 }
 
@@ -1187,11 +1196,14 @@ export default function EquipmentPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [includeArchived, setIncludeArchived] = useState(false);
   const [equipmentSearch, setEquipmentSearch] = useState('');
+  const [formOpen, setFormOpen] = useState(false);
   const { data: equipment, isLoading } = useListEquipment(
     { includeArchived },
     { query: { queryKey: getListEquipmentQueryKey({ includeArchived }) } },
   );
   const { data: equipmentTypes = [] } = useListEquipmentTypes({ query: { queryKey: getListEquipmentTypesQueryKey() } });
+  const { data: users = [] } = useListUsers({ query: { queryKey: getListUsersQueryKey(), enabled: formOpen } });
+  const { data: crews = [] } = useListCrews({ query: { queryKey: getListCrewsQueryKey(), enabled: formOpen } });
   const createEquipment = useCreateEquipment();
   const updateEquipment = useUpdateEquipment();
   const deleteEquipment = useDeleteEquipment();
@@ -1205,7 +1217,6 @@ export default function EquipmentPage() {
   });
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [formOpen, setFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Equipment | null>(null);
   const [form, setForm] = useState<EquipmentFormState>(EMPTY_EQ_FORM);
 
@@ -1252,6 +1263,8 @@ export default function EquipmentPage() {
   const handleSave = () => {
     if (!form.name) { toast.error('Name is required'); return; }
     const payload = {
+      assignedUserId: form.assignedUserId ? Number(form.assignedUserId) : null,
+      assignedCrewId: form.assignedCrewId ? Number(form.assignedCrewId) : null,
       name: form.name,
       type: form.type,
       model: form.model || null,
@@ -1550,6 +1563,9 @@ export default function EquipmentPage() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-semibold" title={item.name}>{item.name}</p>
                         <Badge variant="secondary" className="text-xs capitalize cursor-pointer hover:bg-secondary/70" title={`Show only ${item.type} equipment`} onClick={e => { e.stopPropagation(); setEquipmentTypeFilter(item.type); }}>{item.type}</Badge>
+                        {item.assignedUserName && <Badge variant="outline" className="text-xs">Employee: {item.assignedUserName}</Badge>}
+                        {item.assignedCrewName && <Badge variant="outline" className="text-xs">Crew: {item.assignedCrewName}</Badge>}
+                        {!item.assignedUserId && !item.assignedCrewId && <Badge variant="outline" className="text-xs text-muted-foreground">Unassigned</Badge>}
                         {item.sellRecommended && (
                           <Badge variant="destructive" className="text-xs gap-1" title="Recommended for sale or retirement">
                             <AlertTriangle className="w-3 h-3" /> Sell Rec.
@@ -1704,6 +1720,34 @@ export default function EquipmentPage() {
                   <option key={t.id} value={t.label} />
                 ))}
               </datalist>
+            </div>
+            <div className="rounded-lg border p-3 space-y-3">
+              <div>
+                <p className="text-sm font-medium">Assignments</p>
+                <p className="text-xs text-muted-foreground">Assign an employee, a crew, both, or neither. Either assignment grants field access.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium">Employee</label>
+                  <Select value={form.assignedUserId || 'none'} onValueChange={value => setForm(f => ({ ...f, assignedUserId: value === 'none' ? '' : value }))}>
+                    <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No employee</SelectItem>
+                      {users.filter(user => user.isActive).map(user => <SelectItem key={user.id} value={String(user.id)}>{user.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium">Crew</label>
+                  <Select value={form.assignedCrewId || 'none'} onValueChange={value => setForm(f => ({ ...f, assignedCrewId: value === 'none' ? '' : value }))}>
+                    <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No crew</SelectItem>
+                      {crews.map(crew => <SelectItem key={crew.id} value={String(crew.id)}>{crew.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
             <div className="rounded-lg border p-3 space-y-3">
               <p className="text-sm font-medium">Machine Identification</p>

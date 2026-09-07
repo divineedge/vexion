@@ -7,6 +7,7 @@ import { Router, type IRouter, type Request, type Response, type NextFunction } 
 import { db, jobEquipmentUsesTable, jobsTable, usersTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { resolveStaffSession } from "./auth";
+import { canAccessEquipment } from "../lib/equipmentAccess";
 
 const router: IRouter = Router();
 
@@ -31,6 +32,7 @@ router.use("/equipment/:equipmentId/uses", requireVerifiedStaff);
 // ── GET /jobs/:jobId/equipment-uses ──────────────────────────────────────
 router.get("/jobs/:jobId/equipment-uses", async (req, res): Promise<void> => {
   const tenantId = res.locals["staffTenantId"] as number;
+  const userId = res.locals["staffUserId"] as number;
   const jobId = parseInt(req.params.jobId, 10);
   if (isNaN(jobId)) { res.status(400).json({ error: "Invalid jobId" }); return; }
 
@@ -42,12 +44,18 @@ router.get("/jobs/:jobId/equipment-uses", async (req, res): Promise<void> => {
     .where(and(eq(jobEquipmentUsesTable.jobId, jobId), eq(jobEquipmentUsesTable.tenantId, tenantId)))
     .orderBy(desc(jobEquipmentUsesTable.createdAt));
 
-  res.json(rows.map(r => ({ ...r, createdAt: r.createdAt.toISOString() })));
+  const visible = await Promise.all(rows.map(async row => (
+    row.equipmentId == null || await canAccessEquipment(tenantId, userId, row.equipmentId)
+      ? row
+      : null
+  )));
+  res.json(visible.filter((row): row is typeof rows[number] => row != null).map(r => ({ ...r, createdAt: r.createdAt.toISOString() })));
 });
 
 // ── POST /jobs/:jobId/equipment-uses ─────────────────────────────────────
 router.post("/jobs/:jobId/equipment-uses", async (req, res): Promise<void> => {
   const tenantId = res.locals["staffTenantId"] as number;
+  const userId = res.locals["staffUserId"] as number;
   const jobId = parseInt(req.params.jobId, 10);
   if (isNaN(jobId)) { res.status(400).json({ error: "Invalid jobId" }); return; }
 
@@ -60,12 +68,20 @@ router.post("/jobs/:jobId/equipment-uses", async (req, res): Promise<void> => {
   if (!name) { res.status(400).json({ error: "equipmentName is required" }); return; }
   const hours = parseFloat(String(hoursUsed ?? ""));
   if (isNaN(hours) || hours <= 0) { res.status(400).json({ error: "hoursUsed must be a positive number" }); return; }
+  const parsedEquipmentId = equipmentId != null ? parseInt(String(equipmentId), 10) : null;
+  if (parsedEquipmentId != null && (
+    !Number.isInteger(parsedEquipmentId)
+    || !(await canAccessEquipment(tenantId, userId, parsedEquipmentId))
+  )) {
+    res.status(404).json({ error: "Equipment not found" });
+    return;
+  }
 
   const [row] = await db.insert(jobEquipmentUsesTable).values({
     tenantId,
     jobId,
     equipmentName: name,
-    equipmentId: equipmentId != null ? parseInt(String(equipmentId), 10) : null,
+    equipmentId: parsedEquipmentId,
     hoursUsed: hours,
     notes: notes ? String(notes).trim() : null,
   }).returning();
@@ -76,12 +92,18 @@ router.post("/jobs/:jobId/equipment-uses", async (req, res): Promise<void> => {
 // ── DELETE /jobs/:jobId/equipment-uses/:id ───────────────────────────────
 router.delete("/jobs/:jobId/equipment-uses/:id", async (req, res): Promise<void> => {
   const tenantId = res.locals["staffTenantId"] as number;
+  const userId = res.locals["staffUserId"] as number;
+  const jobId = parseInt(req.params.jobId, 10);
   const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(id) || isNaN(jobId)) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const [row] = await db.select().from(jobEquipmentUsesTable)
-    .where(and(eq(jobEquipmentUsesTable.id, id), eq(jobEquipmentUsesTable.tenantId, tenantId))).limit(1);
+    .where(and(eq(jobEquipmentUsesTable.id, id), eq(jobEquipmentUsesTable.jobId, jobId), eq(jobEquipmentUsesTable.tenantId, tenantId))).limit(1);
   if (!row) { res.status(404).json({ error: "Record not found" }); return; }
+  if (row.equipmentId != null && !(await canAccessEquipment(tenantId, userId, row.equipmentId))) {
+    res.status(404).json({ error: "Record not found" });
+    return;
+  }
 
   await db.delete(jobEquipmentUsesTable).where(eq(jobEquipmentUsesTable.id, id));
   res.status(204).send();
@@ -91,8 +113,13 @@ router.delete("/jobs/:jobId/equipment-uses/:id", async (req, res): Promise<void>
 // Shows usage history for a piece of equipment across all jobs
 router.get("/equipment/:equipmentId/uses", async (req, res): Promise<void> => {
   const tenantId = res.locals["staffTenantId"] as number;
+  const userId = res.locals["staffUserId"] as number;
   const equipmentId = parseInt(req.params.equipmentId, 10);
   if (isNaN(equipmentId)) { res.status(400).json({ error: "Invalid equipmentId" }); return; }
+  if (!(await canAccessEquipment(tenantId, userId, equipmentId))) {
+    res.status(404).json({ error: "Equipment not found" });
+    return;
+  }
 
   const rows = await db
     .select({

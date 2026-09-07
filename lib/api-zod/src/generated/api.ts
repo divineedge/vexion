@@ -6480,6 +6480,10 @@ export const ListEquipmentQueryParams = zod.object({
 export const ListEquipmentResponseItem = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
+  "assignedUserId": zod.number().nullable().describe('Employee directly assigned to this equipment'),
+  "assignedCrewId": zod.number().nullable().describe('Crew assigned to this equipment; may be set together with assignedUserId'),
+  "assignedUserName": zod.string().nullable().describe('Display name of the directly assigned employee'),
+  "assignedCrewName": zod.string().nullable().describe('Display name of the assigned crew'),
   "name": zod.string(),
   "type": zod.string(),
   "model": zod.string().nullish(),
@@ -6525,6 +6529,8 @@ export const ListEquipmentResponse = zod.array(ListEquipmentResponseItem)
  * @summary Create equipment (admin/office only)
  */
 export const CreateEquipmentBody = zod.object({
+  "assignedUserId": zod.number().nullish().describe('Employee to assign, or null to remove the direct assignment'),
+  "assignedCrewId": zod.number().nullish().describe('Crew to assign, or null to remove the crew assignment'),
   "name": zod.string(),
   "type": zod.string().optional(),
   "model": zod.string().nullish(),
@@ -6552,6 +6558,10 @@ export const CreateEquipmentBody = zod.object({
 export const CreateEquipmentResponse = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
+  "assignedUserId": zod.number().nullable().describe('Employee directly assigned to this equipment'),
+  "assignedCrewId": zod.number().nullable().describe('Crew assigned to this equipment; may be set together with assignedUserId'),
+  "assignedUserName": zod.string().nullable().describe('Display name of the directly assigned employee'),
+  "assignedCrewName": zod.string().nullable().describe('Display name of the assigned crew'),
   "name": zod.string(),
   "type": zod.string(),
   "model": zod.string().nullish(),
@@ -6602,6 +6612,10 @@ export const GetEquipmentParams = zod.object({
 export const GetEquipmentResponse = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
+  "assignedUserId": zod.number().nullable().describe('Employee directly assigned to this equipment'),
+  "assignedCrewId": zod.number().nullable().describe('Crew assigned to this equipment; may be set together with assignedUserId'),
+  "assignedUserName": zod.string().nullable().describe('Display name of the directly assigned employee'),
+  "assignedCrewName": zod.string().nullable().describe('Display name of the assigned crew'),
   "name": zod.string(),
   "type": zod.string(),
   "model": zod.string().nullish(),
@@ -6650,6 +6664,8 @@ export const UpdateEquipmentParams = zod.object({
 })
 
 export const UpdateEquipmentBody = zod.object({
+  "assignedUserId": zod.number().nullish().describe('Employee to assign, or null to remove the direct assignment'),
+  "assignedCrewId": zod.number().nullish().describe('Crew to assign, or null to remove the crew assignment'),
   "name": zod.string(),
   "type": zod.string().optional(),
   "model": zod.string().nullish(),
@@ -6677,6 +6693,10 @@ export const UpdateEquipmentBody = zod.object({
 export const UpdateEquipmentResponse = zod.object({
   "id": zod.number(),
   "tenantId": zod.number(),
+  "assignedUserId": zod.number().nullable().describe('Employee directly assigned to this equipment'),
+  "assignedCrewId": zod.number().nullable().describe('Crew assigned to this equipment; may be set together with assignedUserId'),
+  "assignedUserName": zod.string().nullable().describe('Display name of the directly assigned employee'),
+  "assignedCrewName": zod.string().nullable().describe('Display name of the assigned crew'),
   "name": zod.string(),
   "type": zod.string(),
   "model": zod.string().nullish(),

@@ -7,6 +7,16 @@
  */
 
 export interface EquipmentInput {
+  /**
+     * Employee to assign, or null to remove the direct assignment
+     * @nullable
+     */
+  assignedUserId?: number | null;
+  /**
+     * Crew to assign, or null to remove the crew assignment
+     * @nullable
+     */
+  assignedCrewId?: number | null;
   name: string;
   type?: string;
   /** @nullable */

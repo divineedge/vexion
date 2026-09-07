@@ -7,4 +7,4 @@ Do not load code with `expo-notifications` remote-push side effects in Android E
 
 **Why:** Android remote push support was removed from Expo Go. Import-time auto-registration can throw before Expo Router evaluates the root layout, producing misleading follow-on errors such as a missing layout export or undefined error boundary.
 
-**How to apply:** When adding or restructuring mobile notifications, ensure the Android Expo Go path never evaluates the push module. Validate secure and non-push flows in stock Expo Go, but test push registration and delivery in an installable development or production build.
+**How to apply:** When adding or restructuring mobile notifications, ensure the Android Expo Go path never evaluates the push module. Validate secure and non-push flows in stock Expo Go, but test push registration and delivery in an installable development or production build. If a valid bundle stops loading after an SDK upgrade, update the Expo Go app itself and align all Expo patch packages with `expo install --check` before debugging application code.

@@ -50,6 +50,7 @@ import IntegrationsGrid from '@/components/settings/IntegrationsGrid';
 import DevToolsPanel from '@/components/settings/DevToolsPanel';
 import RoutingSettings from '@/components/settings/RoutingSettings';
 import { AddressAutocomplete, type AddressSuggestion } from '@/components/shared/AddressAutocomplete';
+import ExternalAccessSettings from '@/components/settings/ExternalAccessSettings';
 
 export default function SettingsPage() {
   const { isSuperAdmin, isOwner, user } = useAuth();
@@ -651,6 +652,7 @@ export default function SettingsPage() {
           <TabsTrigger value="payments"><CreditCard className="w-4 h-4 mr-2" />Integrations</TabsTrigger>
           <TabsTrigger value="communications"><MessageSquare className="w-4 h-4 mr-2" />Communications</TabsTrigger>
           <TabsTrigger value="users"><Users className="w-4 h-4 mr-2" />Team</TabsTrigger>
+          {isOwner && <TabsTrigger value="api-access"><Zap className="w-4 h-4 mr-2" />API & AI Access</TabsTrigger>}
           {isSuperAdmin && <TabsTrigger value="plans"><Shield className="w-4 h-4 mr-2" />Plans</TabsTrigger>}
           <TabsTrigger value="estimate-templates"><FileText className="w-4 h-4 mr-2" />Estimate Templates</TabsTrigger>
           <TabsTrigger value="invoice-templates"><FileText className="w-4 h-4 mr-2" />Invoice Templates</TabsTrigger>
@@ -2041,6 +2043,12 @@ export default function SettingsPage() {
             </SheetContent>
           </Sheet>
         </TabsContent>
+
+        {isOwner && (
+          <TabsContent value="api-access" className="focus-visible:outline-none">
+            <ExternalAccessSettings />
+          </TabsContent>
+        )}
 
         {/* ── Plans (superadmin) ── */}
         {isSuperAdmin && (

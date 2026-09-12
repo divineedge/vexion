@@ -29,3 +29,6 @@ defaultBucketID = "replit-objstore-67138859-71bd-4fc7-bac8-bb8e125311d7"
 
 [userenv.development]
 EXPO_PUBLIC_DOMAIN = "divine-edge--divineedgepm.replit.app"
+
+[userenv.shared]
+VITE_PUBLIC_APP_URL = "https://divine-edge--divineedgepm.replit.app"

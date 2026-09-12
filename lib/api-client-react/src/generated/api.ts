@@ -122,6 +122,13 @@ import type {
   EstimateRespondInput,
   EstimateTemplate,
   ExpenseEntry,
+  ExternalAccessAuditRow,
+  ExternalAccessCatalog,
+  ExternalConnection,
+  ExternalConnectionInput,
+  ExternalConnectionToken,
+  ExternalConnectionUpdate,
+  ExternalWebhookSecretInput,
   FinancialsSummary,
   FollowupQueueItem,
   FollowupQueueItemContext,
@@ -193,6 +200,7 @@ import type {
   ListEquipmentParams,
   ListEstimatesParams,
   ListExpensesParams,
+  ListExternalAuditParams,
   ListFollowupQueueItemsParams,
   ListGeofenceEntriesParams,
   ListInventoryItemsParams,
@@ -459,10 +467,6 @@ export function useListJobRequests<TData = Awaited<ReturnType<typeof listJobRequ
 
   return withQueryKey(query, queryOptions.queryKey);
 }
-
-
-
-
 
 
 
@@ -30573,3 +30577,591 @@ export const useDeleteRepairLog = <TError = ErrorType<unknown>,
       return useMutation(getDeleteRepairLogMutationOptions(options));
     }
 
+export const getGetExternalAccessCatalogUrl = () => {
+
+
+
+
+  return `/api/external-access/catalog`
+}
+
+/**
+ * @summary Owner-only external-access permissions and presets
+ */
+export const getExternalAccessCatalog = async ( options?: RequestInit): Promise<ExternalAccessCatalog> => {
+
+  return customFetch<ExternalAccessCatalog>(getGetExternalAccessCatalogUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetExternalAccessCatalogQueryKey = () => {
+    return [
+    `/api/external-access/catalog`
+    ] as const;
+    }
+
+
+export const getGetExternalAccessCatalogQueryOptions = <TData = Awaited<ReturnType<typeof getExternalAccessCatalog>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getExternalAccessCatalog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetExternalAccessCatalogQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getExternalAccessCatalog>>> = ({ signal }) => getExternalAccessCatalog({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getExternalAccessCatalog>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetExternalAccessCatalogQueryResult = NonNullable<Awaited<ReturnType<typeof getExternalAccessCatalog>>>
+export type GetExternalAccessCatalogQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Owner-only external-access permissions and presets
+ */
+
+export function useGetExternalAccessCatalog<TData = Awaited<ReturnType<typeof getExternalAccessCatalog>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getExternalAccessCatalog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetExternalAccessCatalogQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListExternalConnectionsUrl = () => {
+
+
+
+
+  return `/api/external-access/connections`
+}
+
+/**
+ * @summary List owner-managed external connections
+ */
+export const listExternalConnections = async ( options?: RequestInit): Promise<ExternalConnection[]> => {
+
+  return customFetch<ExternalConnection[]>(getListExternalConnectionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListExternalConnectionsQueryKey = () => {
+    return [
+    `/api/external-access/connections`
+    ] as const;
+    }
+
+
+export const getListExternalConnectionsQueryOptions = <TData = Awaited<ReturnType<typeof listExternalConnections>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listExternalConnections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListExternalConnectionsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listExternalConnections>>> = ({ signal }) => listExternalConnections({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listExternalConnections>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListExternalConnectionsQueryResult = NonNullable<Awaited<ReturnType<typeof listExternalConnections>>>
+export type ListExternalConnectionsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List owner-managed external connections
+ */
+
+export function useListExternalConnections<TData = Awaited<ReturnType<typeof listExternalConnections>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listExternalConnections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListExternalConnectionsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateExternalConnectionUrl = () => {
+
+
+
+
+  return `/api/external-access/connections`
+}
+
+/**
+ * @summary Create an external connection and return its one-time token
+ */
+export const createExternalConnection = async (externalConnectionInput: ExternalConnectionInput, options?: RequestInit): Promise<ExternalConnectionToken> => {
+
+  return customFetch<ExternalConnectionToken>(getCreateExternalConnectionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(externalConnectionInput)
+  }
+);}
+
+
+
+
+
+export const getCreateExternalConnectionMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createExternalConnection>>, TError,{data: BodyType<ExternalConnectionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createExternalConnection>>, TError,{data: BodyType<ExternalConnectionInput>}, TContext> => {
+
+const mutationKey = ['createExternalConnection'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createExternalConnection>>, {data: BodyType<ExternalConnectionInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createExternalConnection(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateExternalConnectionMutationResult = NonNullable<Awaited<ReturnType<typeof createExternalConnection>>>
+    export type CreateExternalConnectionMutationBody = BodyType<ExternalConnectionInput>
+    export type CreateExternalConnectionMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create an external connection and return its one-time token
+ */
+export const useCreateExternalConnection = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createExternalConnection>>, TError,{data: BodyType<ExternalConnectionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createExternalConnection>>,
+        TError,
+        {data: BodyType<ExternalConnectionInput>},
+        TContext
+      > => {
+      return useMutation(getCreateExternalConnectionMutationOptions(options));
+    }
+
+export const getUpdateExternalConnectionUrl = (id: string,) => {
+
+
+
+
+  return `/api/external-access/connections/${id}`
+}
+
+/**
+ * @summary Update or pause an external connection
+ */
+export const updateExternalConnection = async (id: string,
+    externalConnectionUpdate: ExternalConnectionUpdate, options?: RequestInit): Promise<ExternalConnection> => {
+
+  return customFetch<ExternalConnection>(getUpdateExternalConnectionUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(externalConnectionUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateExternalConnectionMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateExternalConnection>>, TError,{id: string;data: BodyType<ExternalConnectionUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateExternalConnection>>, TError,{id: string;data: BodyType<ExternalConnectionUpdate>}, TContext> => {
+
+const mutationKey = ['updateExternalConnection'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateExternalConnection>>, {id: string;data: BodyType<ExternalConnectionUpdate>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateExternalConnection(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateExternalConnectionMutationResult = NonNullable<Awaited<ReturnType<typeof updateExternalConnection>>>
+    export type UpdateExternalConnectionMutationBody = BodyType<ExternalConnectionUpdate>
+    export type UpdateExternalConnectionMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update or pause an external connection
+ */
+export const useUpdateExternalConnection = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateExternalConnection>>, TError,{id: string;data: BodyType<ExternalConnectionUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateExternalConnection>>,
+        TError,
+        {id: string;data: BodyType<ExternalConnectionUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateExternalConnectionMutationOptions(options));
+    }
+
+export const getRotateExternalConnectionUrl = (id: string,) => {
+
+
+
+
+  return `/api/external-access/connections/${id}/rotate`
+}
+
+/**
+ * @summary Rotate an active external connection token
+ */
+export const rotateExternalConnection = async (id: string, options?: RequestInit): Promise<ExternalConnectionToken> => {
+
+  return customFetch<ExternalConnectionToken>(getRotateExternalConnectionUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRotateExternalConnectionMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rotateExternalConnection>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof rotateExternalConnection>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['rotateExternalConnection'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof rotateExternalConnection>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  rotateExternalConnection(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RotateExternalConnectionMutationResult = NonNullable<Awaited<ReturnType<typeof rotateExternalConnection>>>
+
+    export type RotateExternalConnectionMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Rotate an active external connection token
+ */
+export const useRotateExternalConnection = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rotateExternalConnection>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof rotateExternalConnection>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getRotateExternalConnectionMutationOptions(options));
+    }
+
+export const getRevokeExternalConnectionUrl = (id: string,) => {
+
+
+
+
+  return `/api/external-access/connections/${id}/revoke`
+}
+
+/**
+ * @summary Irreversibly revoke an external connection
+ */
+export const revokeExternalConnection = async (id: string, options?: RequestInit): Promise<ExternalConnection> => {
+
+  return customFetch<ExternalConnection>(getRevokeExternalConnectionUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRevokeExternalConnectionMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeExternalConnection>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof revokeExternalConnection>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['revokeExternalConnection'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof revokeExternalConnection>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  revokeExternalConnection(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RevokeExternalConnectionMutationResult = NonNullable<Awaited<ReturnType<typeof revokeExternalConnection>>>
+
+    export type RevokeExternalConnectionMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Irreversibly revoke an external connection
+ */
+export const useRevokeExternalConnection = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeExternalConnection>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof revokeExternalConnection>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getRevokeExternalConnectionMutationOptions(options));
+    }
+
+export const getSetExternalWebhookSecretUrl = (id: string,) => {
+
+
+
+
+  return `/api/external-access/connections/${id}/webhook-secret`
+}
+
+/**
+ * @summary Set a Quo webhook signing secret without returning it
+ */
+export const setExternalWebhookSecret = async (id: string,
+    externalWebhookSecretInput: ExternalWebhookSecretInput, options?: RequestInit): Promise<ExternalConnection> => {
+
+  return customFetch<ExternalConnection>(getSetExternalWebhookSecretUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(externalWebhookSecretInput)
+  }
+);}
+
+
+
+
+
+export const getSetExternalWebhookSecretMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setExternalWebhookSecret>>, TError,{id: string;data: BodyType<ExternalWebhookSecretInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setExternalWebhookSecret>>, TError,{id: string;data: BodyType<ExternalWebhookSecretInput>}, TContext> => {
+
+const mutationKey = ['setExternalWebhookSecret'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setExternalWebhookSecret>>, {id: string;data: BodyType<ExternalWebhookSecretInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  setExternalWebhookSecret(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetExternalWebhookSecretMutationResult = NonNullable<Awaited<ReturnType<typeof setExternalWebhookSecret>>>
+    export type SetExternalWebhookSecretMutationBody = BodyType<ExternalWebhookSecretInput>
+    export type SetExternalWebhookSecretMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Set a Quo webhook signing secret without returning it
+ */
+export const useSetExternalWebhookSecret = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setExternalWebhookSecret>>, TError,{id: string;data: BodyType<ExternalWebhookSecretInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setExternalWebhookSecret>>,
+        TError,
+        {id: string;data: BodyType<ExternalWebhookSecretInput>},
+        TContext
+      > => {
+      return useMutation(getSetExternalWebhookSecretMutationOptions(options));
+    }
+
+export const getListExternalAuditUrl = (params?: ListExternalAuditParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/external-access/audit?${stringifiedParams}` : `/api/external-access/audit`
+}
+
+/**
+ * @summary List metadata-only external-access audit activity
+ */
+export const listExternalAudit = async (params?: ListExternalAuditParams, options?: RequestInit): Promise<ExternalAccessAuditRow[]> => {
+
+  return customFetch<ExternalAccessAuditRow[]>(getListExternalAuditUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListExternalAuditQueryKey = (params?: ListExternalAuditParams,) => {
+    return [
+    `/api/external-access/audit`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListExternalAuditQueryOptions = <TData = Awaited<ReturnType<typeof listExternalAudit>>, TError = ErrorType<unknown>>(params?: ListExternalAuditParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listExternalAudit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListExternalAuditQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listExternalAudit>>> = ({ signal }) => listExternalAudit(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listExternalAudit>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListExternalAuditQueryResult = NonNullable<Awaited<ReturnType<typeof listExternalAudit>>>
+export type ListExternalAuditQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List metadata-only external-access audit activity
+ */
+
+export function useListExternalAudit<TData = Awaited<ReturnType<typeof listExternalAudit>>, TError = ErrorType<unknown>>(
+ params?: ListExternalAuditParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listExternalAudit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListExternalAuditQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}

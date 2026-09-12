@@ -6132,6 +6132,170 @@ export interface TaskNotification {
   createdAt: string;
 }
 
+export type ExternalPermissionId = typeof ExternalPermissionId[keyof typeof ExternalPermissionId];
+
+
+export const ExternalPermissionId = {
+  'customers:read': 'customers:read',
+  'customers:contact': 'customers:contact',
+  'jobs:read': 'jobs:read',
+  'equipment:read': 'equipment:read',
+  'invoices:read': 'invoices:read',
+  'tasks:read': 'tasks:read',
+  'tasks:create': 'tasks:create',
+  'communications:read': 'communications:read',
+  'communications:content': 'communications:content',
+  'communications:ingest': 'communications:ingest',
+} as const;
+
+export interface ExternalPermission {
+  id: ExternalPermissionId;
+  label: string;
+  description: string;
+  sensitive: boolean;
+  write: boolean;
+}
+
+export type ExternalScope = typeof ExternalScope[keyof typeof ExternalScope];
+
+
+export const ExternalScope = {
+  'customers:read': 'customers:read',
+  'customers:contact': 'customers:contact',
+  'jobs:read': 'jobs:read',
+  'equipment:read': 'equipment:read',
+  'invoices:read': 'invoices:read',
+  'tasks:read': 'tasks:read',
+  'tasks:create': 'tasks:create',
+  'communications:read': 'communications:read',
+  'communications:content': 'communications:content',
+  'communications:ingest': 'communications:ingest',
+} as const;
+
+export type ExternalMode = typeof ExternalMode[keyof typeof ExternalMode];
+
+
+export const ExternalMode = {
+  api: 'api',
+  mcp: 'mcp',
+  both: 'both',
+  webhook: 'webhook',
+} as const;
+
+export type ExternalProvider = typeof ExternalProvider[keyof typeof ExternalProvider];
+
+
+export const ExternalProvider = {
+  generic: 'generic',
+  quo: 'quo',
+  ringcentral: 'ringcentral',
+} as const;
+
+export interface ExternalPreset {
+  id: string;
+  label: string;
+  description: string;
+  scopes: ExternalScope[];
+  mode: ExternalMode;
+  provider: ExternalProvider;
+}
+
+export interface ExternalAccessCatalog {
+  permissions: ExternalPermission[];
+  presets: ExternalPreset[];
+}
+
+export interface ExternalConnection {
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  id: string;
+  name: string;
+  description: string;
+  mode: ExternalMode;
+  provider: ExternalProvider;
+  scopes: ExternalScope[];
+  allowWrites: boolean;
+  enabled: boolean;
+  expiresAt: string;
+  /** @nullable */
+  revokedAt: string | null;
+  /** @nullable */
+  lastUsedAt: string | null;
+  createdAt: string;
+  tokenPrefix: string;
+  webhookSecretConfigured: boolean;
+}
+
+export interface ExternalConnectionInput {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  name: string;
+  /** @maxLength 1000 */
+  description?: string;
+  mode: ExternalMode;
+  provider: ExternalProvider;
+  scopes: ExternalScope[];
+  allowWrites: boolean;
+  expiresAt: string;
+  riskAcknowledged: true;
+}
+
+export interface ExternalConnectionUpdate {
+  /**
+     * @minLength 1
+     * @maxLength 100
+     */
+  name?: string;
+  /** @maxLength 1000 */
+  description?: string;
+  mode?: ExternalMode;
+  provider?: ExternalProvider;
+  scopes?: ExternalScope[];
+  allowWrites?: boolean;
+  enabled?: boolean;
+  expiresAt?: string;
+  riskAcknowledged?: true;
+}
+
+export interface ExternalConnectionToken {
+  connection: ExternalConnection;
+  token: string;
+}
+
+export interface ExternalWebhookSecretInput {
+  /**
+     * @minLength 8
+     * @maxLength 4096
+     */
+  secret: string;
+}
+
+export type ExternalAccessAuditRowStatus = typeof ExternalAccessAuditRowStatus[keyof typeof ExternalAccessAuditRowStatus];
+
+
+export const ExternalAccessAuditRowStatus = {
+  allowed: 'allowed',
+  denied: 'denied',
+} as const;
+
+export interface ExternalAccessAuditRow {
+  /** @pattern ^[0-9a-fA-F-]{36}$ */
+  id: string;
+  /**
+     * @nullable
+     * @pattern ^[0-9a-fA-F-]{36}$
+     */
+  connectionId: string | null;
+  connectionName: string;
+  action: string;
+  transport: string;
+  status: ExternalAccessAuditRowStatus;
+  /** @nullable */
+  requestId: string | null;
+  createdAt: string;
+}
+
 export type AmendJobRequestBody = {
   notes?: string;
   /** @minLength 1 */
@@ -6669,5 +6833,17 @@ blueprintId?: number;
 
 export type GetRepairLogSummaryParams = {
 propertyId: number;
+};
+
+export type ListExternalAuditParams = {
+/**
+ * @pattern ^[0-9a-fA-F-]{36}$
+ */
+connectionId?: string;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
 };
 

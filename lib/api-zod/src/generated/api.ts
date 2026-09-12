@@ -13370,3 +13370,278 @@ export const DeleteRepairLogParams = zod.object({
 export const DeleteRepairLogResponse = zod.void()
 
 
+/**
+ * @summary Owner-only external-access permissions and presets
+ */
+export const GetExternalAccessCatalogResponse = zod.object({
+  "permissions": zod.array(zod.object({
+  "id": zod.enum(['customers:read', 'customers:contact', 'jobs:read', 'equipment:read', 'invoices:read', 'tasks:read', 'tasks:create', 'communications:read', 'communications:content', 'communications:ingest']),
+  "label": zod.string(),
+  "description": zod.string(),
+  "sensitive": zod.boolean(),
+  "write": zod.boolean()
+})),
+  "presets": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "description": zod.string(),
+  "scopes": zod.array(zod.enum(['customers:read', 'customers:contact', 'jobs:read', 'equipment:read', 'invoices:read', 'tasks:read', 'tasks:create', 'communications:read', 'communications:content', 'communications:ingest'])),
+  "mode": zod.enum(['api', 'mcp', 'both', 'webhook']),
+  "provider": zod.enum(['generic', 'quo', 'ringcentral'])
+}))
+})
+
+
+/**
+ * @summary List owner-managed external connections
+ */
+export const listExternalConnectionsResponseIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+
+export const ListExternalConnectionsResponseItem = zod.object({
+  "id": zod.string().regex(listExternalConnectionsResponseIdRegExp),
+  "name": zod.string(),
+  "description": zod.string(),
+  "mode": zod.enum(['api', 'mcp', 'both', 'webhook']),
+  "provider": zod.enum(['generic', 'quo', 'ringcentral']),
+  "scopes": zod.array(zod.enum(['customers:read', 'customers:contact', 'jobs:read', 'equipment:read', 'invoices:read', 'tasks:read', 'tasks:create', 'communications:read', 'communications:content', 'communications:ingest'])),
+  "allowWrites": zod.boolean(),
+  "enabled": zod.boolean(),
+  "expiresAt": zod.coerce.date(),
+  "revokedAt": zod.coerce.date().nullable(),
+  "lastUsedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "tokenPrefix": zod.string(),
+  "webhookSecretConfigured": zod.boolean()
+})
+export const ListExternalConnectionsResponse = zod.array(ListExternalConnectionsResponseItem)
+
+
+/**
+ * @summary Create an external connection and return its one-time token
+ */
+export const createExternalConnectionBodyNameMax = 100;
+
+export const createExternalConnectionBodyDescriptionMax = 1000;
+
+
+
+export const CreateExternalConnectionBody = zod.object({
+  "name": zod.string().min(1).max(createExternalConnectionBodyNameMax),
+  "description": zod.string().max(createExternalConnectionBodyDescriptionMax).optional(),
+  "mode": zod.enum(['api', 'mcp', 'both', 'webhook']),
+  "provider": zod.enum(['generic', 'quo', 'ringcentral']),
+  "scopes": zod.array(zod.enum(['customers:read', 'customers:contact', 'jobs:read', 'equipment:read', 'invoices:read', 'tasks:read', 'tasks:create', 'communications:read', 'communications:content', 'communications:ingest'])),
+  "allowWrites": zod.boolean(),
+  "expiresAt": zod.coerce.date(),
+  "riskAcknowledged": zod.boolean()
+})
+
+export const createExternalConnectionResponseConnectionIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+
+export const CreateExternalConnectionResponse = zod.object({
+  "connection": zod.object({
+  "id": zod.string().regex(createExternalConnectionResponseConnectionIdRegExp),
+  "name": zod.string(),
+  "description": zod.string(),
+  "mode": zod.enum(['api', 'mcp', 'both', 'webhook']),
+  "provider": zod.enum(['generic', 'quo', 'ringcentral']),
+  "scopes": zod.array(zod.enum(['customers:read', 'customers:contact', 'jobs:read', 'equipment:read', 'invoices:read', 'tasks:read', 'tasks:create', 'communications:read', 'communications:content', 'communications:ingest'])),
+  "allowWrites": zod.boolean(),
+  "enabled": zod.boolean(),
+  "expiresAt": zod.coerce.date(),
+  "revokedAt": zod.coerce.date().nullable(),
+  "lastUsedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "tokenPrefix": zod.string(),
+  "webhookSecretConfigured": zod.boolean()
+}),
+  "token": zod.string()
+})
+
+
+/**
+ * @summary Update or pause an external connection
+ */
+export const updateExternalConnectionPathIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+
+export const UpdateExternalConnectionParams = zod.object({
+  "id": zod.coerce.string().regex(updateExternalConnectionPathIdRegExp)
+})
+
+export const updateExternalConnectionBodyNameMax = 100;
+
+export const updateExternalConnectionBodyDescriptionMax = 1000;
+
+
+
+export const UpdateExternalConnectionBody = zod.object({
+  "name": zod.string().min(1).max(updateExternalConnectionBodyNameMax).optional(),
+  "description": zod.string().max(updateExternalConnectionBodyDescriptionMax).optional(),
+  "mode": zod.enum(['api', 'mcp', 'both', 'webhook']).optional(),
+  "provider": zod.enum(['generic', 'quo', 'ringcentral']).optional(),
+  "scopes": zod.array(zod.enum(['customers:read', 'customers:contact', 'jobs:read', 'equipment:read', 'invoices:read', 'tasks:read', 'tasks:create', 'communications:read', 'communications:content', 'communications:ingest'])).optional(),
+  "allowWrites": zod.boolean().optional(),
+  "enabled": zod.boolean().optional(),
+  "expiresAt": zod.coerce.date().optional(),
+  "riskAcknowledged": zod.boolean().optional()
+})
+
+export const updateExternalConnectionResponseIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+
+export const UpdateExternalConnectionResponse = zod.object({
+  "id": zod.string().regex(updateExternalConnectionResponseIdRegExp),
+  "name": zod.string(),
+  "description": zod.string(),
+  "mode": zod.enum(['api', 'mcp', 'both', 'webhook']),
+  "provider": zod.enum(['generic', 'quo', 'ringcentral']),
+  "scopes": zod.array(zod.enum(['customers:read', 'customers:contact', 'jobs:read', 'equipment:read', 'invoices:read', 'tasks:read', 'tasks:create', 'communications:read', 'communications:content', 'communications:ingest'])),
+  "allowWrites": zod.boolean(),
+  "enabled": zod.boolean(),
+  "expiresAt": zod.coerce.date(),
+  "revokedAt": zod.coerce.date().nullable(),
+  "lastUsedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "tokenPrefix": zod.string(),
+  "webhookSecretConfigured": zod.boolean()
+})
+
+
+/**
+ * @summary Rotate an active external connection token
+ */
+export const rotateExternalConnectionPathIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+
+export const RotateExternalConnectionParams = zod.object({
+  "id": zod.coerce.string().regex(rotateExternalConnectionPathIdRegExp)
+})
+
+export const rotateExternalConnectionResponseConnectionIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+
+export const RotateExternalConnectionResponse = zod.object({
+  "connection": zod.object({
+  "id": zod.string().regex(rotateExternalConnectionResponseConnectionIdRegExp),
+  "name": zod.string(),
+  "description": zod.string(),
+  "mode": zod.enum(['api', 'mcp', 'both', 'webhook']),
+  "provider": zod.enum(['generic', 'quo', 'ringcentral']),
+  "scopes": zod.array(zod.enum(['customers:read', 'customers:contact', 'jobs:read', 'equipment:read', 'invoices:read', 'tasks:read', 'tasks:create', 'communications:read', 'communications:content', 'communications:ingest'])),
+  "allowWrites": zod.boolean(),
+  "enabled": zod.boolean(),
+  "expiresAt": zod.coerce.date(),
+  "revokedAt": zod.coerce.date().nullable(),
+  "lastUsedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "tokenPrefix": zod.string(),
+  "webhookSecretConfigured": zod.boolean()
+}),
+  "token": zod.string()
+})
+
+
+/**
+ * @summary Irreversibly revoke an external connection
+ */
+export const revokeExternalConnectionPathIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+
+export const RevokeExternalConnectionParams = zod.object({
+  "id": zod.coerce.string().regex(revokeExternalConnectionPathIdRegExp)
+})
+
+export const revokeExternalConnectionResponseIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+
+export const RevokeExternalConnectionResponse = zod.object({
+  "id": zod.string().regex(revokeExternalConnectionResponseIdRegExp),
+  "name": zod.string(),
+  "description": zod.string(),
+  "mode": zod.enum(['api', 'mcp', 'both', 'webhook']),
+  "provider": zod.enum(['generic', 'quo', 'ringcentral']),
+  "scopes": zod.array(zod.enum(['customers:read', 'customers:contact', 'jobs:read', 'equipment:read', 'invoices:read', 'tasks:read', 'tasks:create', 'communications:read', 'communications:content', 'communications:ingest'])),
+  "allowWrites": zod.boolean(),
+  "enabled": zod.boolean(),
+  "expiresAt": zod.coerce.date(),
+  "revokedAt": zod.coerce.date().nullable(),
+  "lastUsedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "tokenPrefix": zod.string(),
+  "webhookSecretConfigured": zod.boolean()
+})
+
+
+/**
+ * @summary Set a Quo webhook signing secret without returning it
+ */
+export const setExternalWebhookSecretPathIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+
+export const SetExternalWebhookSecretParams = zod.object({
+  "id": zod.coerce.string().regex(setExternalWebhookSecretPathIdRegExp)
+})
+
+export const setExternalWebhookSecretBodySecretMin = 8;
+export const setExternalWebhookSecretBodySecretMax = 4096;
+
+
+
+export const SetExternalWebhookSecretBody = zod.object({
+  "secret": zod.string().min(setExternalWebhookSecretBodySecretMin).max(setExternalWebhookSecretBodySecretMax)
+})
+
+export const setExternalWebhookSecretResponseIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+
+export const SetExternalWebhookSecretResponse = zod.object({
+  "id": zod.string().regex(setExternalWebhookSecretResponseIdRegExp),
+  "name": zod.string(),
+  "description": zod.string(),
+  "mode": zod.enum(['api', 'mcp', 'both', 'webhook']),
+  "provider": zod.enum(['generic', 'quo', 'ringcentral']),
+  "scopes": zod.array(zod.enum(['customers:read', 'customers:contact', 'jobs:read', 'equipment:read', 'invoices:read', 'tasks:read', 'tasks:create', 'communications:read', 'communications:content', 'communications:ingest'])),
+  "allowWrites": zod.boolean(),
+  "enabled": zod.boolean(),
+  "expiresAt": zod.coerce.date(),
+  "revokedAt": zod.coerce.date().nullable(),
+  "lastUsedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "tokenPrefix": zod.string(),
+  "webhookSecretConfigured": zod.boolean()
+})
+
+
+/**
+ * @summary List metadata-only external-access audit activity
+ */
+export const listExternalAuditQueryConnectionIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const listExternalAuditQueryLimitMax = 100;
+
+
+
+export const ListExternalAuditQueryParams = zod.object({
+  "connectionId": zod.coerce.string().regex(listExternalAuditQueryConnectionIdRegExp).optional(),
+  "limit": zod.coerce.number().min(1).max(listExternalAuditQueryLimitMax).optional()
+})
+
+export const listExternalAuditResponseIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+export const listExternalAuditResponseConnectionIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+
+export const ListExternalAuditResponseItem = zod.object({
+  "id": zod.string().regex(listExternalAuditResponseIdRegExp),
+  "connectionId": zod.string().regex(listExternalAuditResponseConnectionIdRegExp).nullable(),
+  "connectionName": zod.string(),
+  "action": zod.string(),
+  "transport": zod.string(),
+  "status": zod.enum(['allowed', 'denied']),
+  "requestId": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})
+export const ListExternalAuditResponse = zod.array(ListExternalAuditResponseItem)
+
+

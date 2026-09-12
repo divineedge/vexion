@@ -54,3 +54,4 @@ export * from "./staffMessages";
 export * from "./jobEquipmentUses";
 export * from "./jobRequests";
 export * from "./staffNotificationDevices";
+export * from "./externalAccess";

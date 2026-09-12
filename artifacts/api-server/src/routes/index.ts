@@ -57,6 +57,10 @@ import jobEquipmentUsesRouter from "./jobEquipmentUses";
 import jobRequestsRouter from "./jobRequests";
 import staffMessagesRouter from "./staffMessages";
 import staffNotificationDevicesRouter from "./staffNotificationDevices";
+import externalAccessRouter from "./externalAccess";
+import externalRestRouter from "./externalRest";
+import externalMcpRouter from "./externalMcp";
+import externalWebhooksRouter from "./externalWebhooks";
 import { requireVerifiedStaff } from "../lib/verifiedStaff";
 
 const router: IRouter = Router();
@@ -66,6 +70,11 @@ router.use(authRouter);
 router.use(publicQuotesRouter);
 router.use(widgetRouter);
 router.use(portalRouter);
+// These routes define their own opaque-token/provider authentication. They must
+// remain outside the staff-session boundary and never inherit staff identity.
+router.use(externalRestRouter);
+router.use(externalMcpRouter);
+router.use(externalWebhooksRouter);
 
 /**
  * Server-wide staff boundary. The narrowly enumerated paths below implement
@@ -144,5 +153,6 @@ router.use(jobMessagesRouter);
 router.use(staffMessagesRouter);
 router.use(staffNotificationDevicesRouter);
 router.use(jobEquipmentUsesRouter);
+router.use(externalAccessRouter);
 
 export default router;

@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "@google-cloud/storage": "^7.21.0",
     "@swc/helpers": "^0.5.23",
     "@types/nodemailer": "^8.0.1",

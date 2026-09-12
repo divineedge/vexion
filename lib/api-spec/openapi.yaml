@@ -8347,6 +8347,124 @@ paths:
         "204":
           description: Deleted
 
+  /external-access/catalog:
+    get:
+      operationId: getExternalAccessCatalog
+      tags: [settings]
+      summary: Owner-only external-access permissions and presets
+      responses:
+        "200":
+          description: Catalog
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExternalAccessCatalog" }
+  /external-access/connections:
+    get:
+      operationId: listExternalConnections
+      tags: [settings]
+      summary: List owner-managed external connections
+      responses:
+        "200":
+          description: Connections
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ExternalConnection" }
+    post:
+      operationId: createExternalConnection
+      tags: [settings]
+      summary: Create an external connection and return its one-time token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExternalConnectionInput" }
+      responses:
+        "201":
+          description: Created connection and one-time token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExternalConnectionToken" }
+  /external-access/connections/{id}:
+    patch:
+      operationId: updateExternalConnection
+      tags: [settings]
+      summary: Update or pause an external connection
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: "^[0-9a-fA-F-]{36}$" } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExternalConnectionUpdate" }
+      responses:
+        "200":
+          description: Updated connection
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExternalConnection" }
+  /external-access/connections/{id}/rotate:
+    post:
+      operationId: rotateExternalConnection
+      tags: [settings]
+      summary: Rotate an active external connection token
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: "^[0-9a-fA-F-]{36}$" } }
+      responses:
+        "200":
+          description: Rotated connection and one-time token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExternalConnectionToken" }
+  /external-access/connections/{id}/revoke:
+    post:
+      operationId: revokeExternalConnection
+      tags: [settings]
+      summary: Irreversibly revoke an external connection
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: "^[0-9a-fA-F-]{36}$" } }
+      responses:
+        "200":
+          description: Revoked connection
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExternalConnection" }
+  /external-access/connections/{id}/webhook-secret:
+    put:
+      operationId: setExternalWebhookSecret
+      tags: [settings]
+      summary: Set a Quo webhook signing secret without returning it
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: "^[0-9a-fA-F-]{36}$" } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExternalWebhookSecretInput" }
+      responses:
+        "200":
+          description: Updated connection
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExternalConnection" }
+  /external-access/audit:
+    get:
+      operationId: listExternalAudit
+      tags: [settings]
+      summary: List metadata-only external-access audit activity
+      parameters:
+        - { name: connectionId, in: query, required: false, schema: { type: string, pattern: "^[0-9a-fA-F-]{36}$" } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses:
+        "200":
+          description: Audit rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ExternalAccessAuditRow" }
+
 components:
   schemas:
     JobRequestInput:
@@ -15481,3 +15599,124 @@ components:
         linkPath: { type: string, nullable: true }
         isRead: { type: boolean }
         createdAt: { type: string }
+
+    ExternalPermission:
+      type: object
+      additionalProperties: false
+      required: [id, label, description, sensitive, write]
+      properties:
+        id: { type: string, enum: [customers:read, customers:contact, jobs:read, equipment:read, invoices:read, tasks:read, tasks:create, communications:read, communications:content, communications:ingest] }
+        label: { type: string }
+        description: { type: string }
+        sensitive: { type: boolean }
+        write: { type: boolean }
+    ExternalPreset:
+      type: object
+      additionalProperties: false
+      required: [id, label, description, scopes, mode, provider]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        description: { type: string }
+        scopes:
+          type: array
+          items: { $ref: "#/components/schemas/ExternalScope" }
+        mode: { $ref: "#/components/schemas/ExternalMode" }
+        provider: { $ref: "#/components/schemas/ExternalProvider" }
+    ExternalAccessCatalog:
+      type: object
+      additionalProperties: false
+      required: [permissions, presets]
+      properties:
+        permissions:
+          type: array
+          items: { $ref: "#/components/schemas/ExternalPermission" }
+        presets:
+          type: array
+          items: { $ref: "#/components/schemas/ExternalPreset" }
+    ExternalScope:
+      type: string
+      enum: [customers:read, customers:contact, jobs:read, equipment:read, invoices:read, tasks:read, tasks:create, communications:read, communications:content, communications:ingest]
+    ExternalMode:
+      type: string
+      enum: [api, mcp, both, webhook]
+    ExternalProvider:
+      type: string
+      enum: [generic, quo, ringcentral]
+    ExternalConnection:
+      type: object
+      additionalProperties: false
+      required: [id, name, description, mode, provider, scopes, allowWrites, enabled, expiresAt, revokedAt, lastUsedAt, createdAt, tokenPrefix, webhookSecretConfigured]
+      properties:
+        id: { type: string, pattern: "^[0-9a-fA-F-]{36}$" }
+        name: { type: string }
+        description: { type: string }
+        mode: { $ref: "#/components/schemas/ExternalMode" }
+        provider: { $ref: "#/components/schemas/ExternalProvider" }
+        scopes:
+          type: array
+          items: { $ref: "#/components/schemas/ExternalScope" }
+        allowWrites: { type: boolean }
+        enabled: { type: boolean }
+        expiresAt: { type: string, format: date-time }
+        revokedAt: { type: ["string", "null"], format: date-time }
+        lastUsedAt: { type: ["string", "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+        tokenPrefix: { type: string }
+        webhookSecretConfigured: { type: boolean }
+    ExternalConnectionInput:
+      type: object
+      additionalProperties: false
+      required: [name, mode, provider, scopes, allowWrites, expiresAt, riskAcknowledged]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: string, maxLength: 1000 }
+        mode: { $ref: "#/components/schemas/ExternalMode" }
+        provider: { $ref: "#/components/schemas/ExternalProvider" }
+        scopes:
+          type: array
+          items: { $ref: "#/components/schemas/ExternalScope" }
+        allowWrites: { type: boolean }
+        expiresAt: { type: string, format: date-time }
+        riskAcknowledged: { type: boolean, const: true }
+    ExternalConnectionUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: string, maxLength: 1000 }
+        mode: { $ref: "#/components/schemas/ExternalMode" }
+        provider: { $ref: "#/components/schemas/ExternalProvider" }
+        scopes:
+          type: array
+          items: { $ref: "#/components/schemas/ExternalScope" }
+        allowWrites: { type: boolean }
+        enabled: { type: boolean }
+        expiresAt: { type: string, format: date-time }
+        riskAcknowledged: { type: boolean, const: true }
+    ExternalConnectionToken:
+      type: object
+      additionalProperties: false
+      required: [connection, token]
+      properties:
+        connection: { $ref: "#/components/schemas/ExternalConnection" }
+        token: { type: string }
+    ExternalWebhookSecretInput:
+      type: object
+      additionalProperties: false
+      required: [secret]
+      properties:
+        secret: { type: string, minLength: 8, maxLength: 4096 }
+    ExternalAccessAuditRow:
+      type: object
+      additionalProperties: false
+      required: [id, connectionId, connectionName, action, transport, status, requestId, createdAt]
+      properties:
+        id: { type: string, pattern: "^[0-9a-fA-F-]{36}$" }
+        connectionId: { type: ["string", "null"], pattern: "^[0-9a-fA-F-]{36}$" }
+        connectionName: { type: string }
+        action: { type: string }
+        transport: { type: string }
+        status: { type: string, enum: [allowed, denied] }
+        requestId: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }

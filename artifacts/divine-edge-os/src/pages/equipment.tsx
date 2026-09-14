@@ -62,7 +62,7 @@ import {
   CalendarCheck2, Pencil,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { SlidersHorizontal } from 'lucide-react';
+import { Settings } from 'lucide-react';
 
 // EQUIPMENT_TYPES is now loaded from the tenant's equipment types list via API.
 // The combobox below falls back to free-form entry for values not in the list.
@@ -1432,8 +1432,8 @@ export default function EquipmentPage() {
             />
           )}
           {isOwner && (
-            <Button variant="outline" size="icon" title="Equipment settings (types and sell thresholds)" onClick={() => setSettingsOpen(true)}>
-              <SlidersHorizontal className="w-4 h-4" />
+            <Button variant="outline" size="icon" title="Equipment settings" aria-label="Equipment settings" onClick={() => setSettingsOpen(true)}>
+              <Settings className="w-4 h-4" />
             </Button>
           )}
           {can('actions.addEquipment') && (

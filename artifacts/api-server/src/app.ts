@@ -2,6 +2,7 @@ import express, { type Express } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
+import { oauthDiscoveryRouter } from "./routes/externalOAuth";
 import { logger } from "./lib/logger";
 import { startReminderScheduler } from "./lib/reminderScheduler";
 import { startRecurrenceScheduler } from "./lib/recurrenceScheduler";
@@ -49,6 +50,9 @@ app.use(
 );
 app.use(express.urlencoded({ extended: true }));
 
+// OAuth protected-resource and authorization-server discovery are intentionally
+// rooted paths, as required by RFC 9728/RFC 8414, not accidental `/api` aliases.
+app.use(oauthDiscoveryRouter);
 app.use("/api", router);
 
 // Start automated reminder scheduler

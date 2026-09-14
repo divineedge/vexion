@@ -61,6 +61,7 @@ import externalAccessRouter from "./externalAccess";
 import externalRestRouter from "./externalRest";
 import externalMcpRouter from "./externalMcp";
 import externalWebhooksRouter from "./externalWebhooks";
+import externalOAuthRouter from "./externalOAuth";
 import { requireVerifiedStaff } from "../lib/verifiedStaff";
 
 const router: IRouter = Router();
@@ -75,6 +76,7 @@ router.use(portalRouter);
 router.use(externalRestRouter);
 router.use(externalMcpRouter);
 router.use(externalWebhooksRouter);
+router.use(externalOAuthRouter);
 
 /**
  * Server-wide staff boundary. The narrowly enumerated paths below implement

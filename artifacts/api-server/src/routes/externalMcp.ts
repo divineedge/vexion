@@ -6,6 +6,7 @@ import {
   appendExternalAudit, authorizeExternalRequest, createExternalTask, ingestExternalCommunication, listExternalResource,
   parseListQuery, requireExternalScope, validateTaskInput, validateVoipEvent, type ExternalScope,
 } from "../lib/externalAccess";
+import { oauthEndpoints } from "../lib/externalOAuth";
 
 const router: IRouter = Router();
 const listInput = z.object({ q: z.string().max(100).optional(), limit: z.number().int().min(1).max(100).optional(), cursor: z.string().regex(/^[1-9]\d*$/).optional() });
@@ -33,7 +34,16 @@ router.post("/external/mcp", async (req, res): Promise<void> => {
     return;
   }
   const initial = await authorizeExternalRequest(req, "mcp", "mcp:request");
-  if (!initial.ok) { res.status(initial.status).json({ error: initial.error }); return; }
+  if (!initial.ok) {
+    if (initial.status === 401) {
+      const endpoints = oauthEndpoints();
+      if (endpoints) {
+        const hasBearer = Boolean(req.header("authorization"));
+        res.set("WWW-Authenticate", `Bearer${hasBearer ? ' error="invalid_token",' : ""} resource_metadata="${endpoints.protectedResourceMetadata}"`);
+      }
+    }
+    res.status(initial.status).json({ error: initial.error }); return;
+  }
 
   const server = new McpServer({ name: "divine-edge-external", version: "1.0.0" });
   const registerList = (name: string, resource: string, scope: ExternalScope) => {

@@ -8,6 +8,7 @@ import {
   externalAccessAuditTable,
   externalConnectionRateLimitsTable,
   externalConnectionsTable,
+  externalOAuthAccessTokensTable,
   externalVoipEventsTable,
   externalWriteIdempotencyTable,
   internalTasksTable,
@@ -177,30 +178,50 @@ async function consumeRateLimit(connectionId: string): Promise<boolean> {
 export async function authorizeExternalRequest(req: Request, transport: "rest" | "mcp", action: string): Promise<{ ok: true; context: ExternalConnectionContext } | { ok: false; status: number; error: string }> {
   const token = bearerFromRequest(req);
   if (!token) return { ok: false, status: 401, error: "Bearer authentication required" };
-  const [row] = await db.select({
-    connection: externalConnectionsTable,
-    ownerActive: usersTable.isActive,
-    ownerRole: usersTable.role,
-  }).from(externalConnectionsTable).innerJoin(usersTable, and(
-    eq(usersTable.id, externalConnectionsTable.createdByUserId),
-    eq(usersTable.tenantId, externalConnectionsTable.tenantId),
-  ))
-    .where(eq(externalConnectionsTable.tokenHash, sha256(token))).limit(1);
-  if (!row) return { ok: false, status: 401, error: "Invalid external credential" };
+  const oauthToken = token.startsWith("eao_");
+  const oauthRows = oauthToken
+    ? await db.select({
+      connection: externalConnectionsTable, oauth: externalOAuthAccessTokensTable,
+      ownerActive: usersTable.isActive, ownerRole: usersTable.role,
+    }).from(externalOAuthAccessTokensTable).innerJoin(externalConnectionsTable, eq(externalConnectionsTable.id, externalOAuthAccessTokensTable.connectionId))
+      .innerJoin(usersTable, and(eq(usersTable.id, externalConnectionsTable.createdByUserId), eq(usersTable.tenantId, externalConnectionsTable.tenantId)))
+      .where(eq(externalOAuthAccessTokensTable.tokenHash, sha256(token))).limit(1)
+    : [];
+  const legacyRows = oauthToken
+    ? []
+    : await db.select({
+      connection: externalConnectionsTable,
+      ownerActive: usersTable.isActive,
+      ownerRole: usersTable.role,
+    }).from(externalConnectionsTable).innerJoin(usersTable, and(
+      eq(usersTable.id, externalConnectionsTable.createdByUserId),
+      eq(usersTable.tenantId, externalConnectionsTable.tenantId),
+    ))
+      .where(eq(externalConnectionsTable.tokenHash, sha256(token))).limit(1);
+  const oauthRow = oauthRows[0];
+  const row = oauthRow ?? legacyRows[0];
+  if (!row) return { ok: false, status: 401, error: oauthToken ? "OAuth access token is invalid or expired" : "Invalid external credential" };
   const connection = row.connection;
+  const grantedScopes = oauthToken
+    ? (oauthRow!.oauth.scopes as ExternalScope[]).filter((scope) => connection.scopes.includes(scope))
+    : connection.scopes as ExternalScope[];
+  const grantedWrites = oauthToken ? oauthRow!.oauth.allowWrites && connection.allowWrites : connection.allowWrites;
   const context: ExternalConnectionContext = {
     id: connection.id, tenantId: connection.tenantId, createdByUserId: connection.createdByUserId, name: connection.name,
     mode: connection.mode as ExternalMode, provider: connection.provider as ExternalProvider,
-    scopes: connection.scopes as ExternalScope[], allowWrites: connection.allowWrites, tokenHash: connection.tokenHash,
+    scopes: grantedScopes, allowWrites: grantedWrites, tokenHash: connection.tokenHash,
     webhookSecretEncrypted: connection.webhookSecretEncrypted,
   };
-  const usableMode =
-    connection.mode === "both" ||
-    (transport === "rest" && connection.mode === "api") ||
-    (transport === "mcp" && connection.mode === "mcp");
-  if (!usableMode || !connection.enabled || connection.revokedAt || connection.expiresAt <= new Date() || !row.ownerActive || row.ownerRole !== "company_owner") {
+  // OAuth tokens are minted for the remote MCP protected resource, never for
+  // the REST API. Keep that audience boundary even if a connection is edited.
+  const usableMode = oauthToken
+    ? transport === "mcp" && connection.mode === "mcp"
+    : connection.mode === "both" ||
+      (transport === "rest" && connection.mode === "api") ||
+      (transport === "mcp" && connection.mode === "mcp");
+  if (!usableMode || !connection.enabled || connection.revokedAt || connection.expiresAt <= new Date() || (oauthToken && oauthRow!.oauth.expiresAt <= new Date()) || !row.ownerActive || row.ownerRole !== "company_owner") {
     await appendExternalAudit(context, action, transport, "denied", requestId(req));
-    return { ok: false, status: 403, error: "External connection is not active" };
+    return { ok: false, status: oauthToken ? 401 : 403, error: oauthToken ? "OAuth access token is invalid or expired" : "External connection is not active" };
   }
   if (!await consumeRateLimit(connection.id)) {
     await appendExternalAudit(context, action, transport, "denied", requestId(req));

@@ -56,9 +56,13 @@ The server advertises only allowed tools and checks authorization again when
 tools run. The permission rules and data redaction are shared with REST.
 Write tools require an explicit idempotency key.
 
-Client configuration formats differ. Your MCP client must support a remote
-Streamable HTTP URL plus custom bearer headers. OAuth-only connection screens are
-not supported by this release. This is not an anonymous or legacy SSE endpoint.
+Client configuration formats differ. Bearer connections require a remote
+Streamable HTTP URL plus custom bearer headers. For clients requiring sign-in,
+choose **OAuth MCP** when creating the connection, register the assistant's exact
+HTTPS callback, and use its public client ID (no client secret). The owner must
+then approve the requested permissions in the sign-in flow. See
+[OAuth client setup](./external-oauth-client-setup.md) for documented provider
+paths and verification limits. This is not an anonymous or legacy SSE endpoint.
 
 ## Quo / OpenPhone
 

@@ -17,13 +17,15 @@ route external credentials through ordinary staff middleware or infer employee
 roles from a connection. If per-record restrictions are added later, make them
 explicit connection settings rather than silently borrowing staff visibility.
 
-MCP initially supports remote Streamable HTTP clients with bearer headers, not
-an OAuth consent flow.
+OAuth assistant registrations must remain explicit owner-approved connections,
+not automatic grants to any client that discovers the server.
 
-**Why:** Shipping OAuth discovery or a sign-in button without a complete secure
-authorization flow would misleadingly promise compatibility with OAuth-only
-assistants. Real per-connection controls take priority over broad compatibility
-claims.
+**Why:** Public client registration identifies an assistant but does not establish
+trust or permission to access a business. Exact pre-registered callbacks and
+per-connection scope limits make that boundary clear without introducing remote
+metadata fetching or open registration.
 
-**How to apply:** Keep setup documentation explicit about client authentication
-requirements until a complete consent/PKCE flow has been implemented and verified.
+**How to apply:** Preserve explicit owner registration and consent when extending
+OAuth. Treat official provider setup documentation and actual live-account
+verification as separate evidence; protocol support alone never justifies
+claiming compatibility with a named assistant.

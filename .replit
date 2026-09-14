@@ -32,3 +32,6 @@ EXPO_PUBLIC_DOMAIN = "divine-edge--divineedgepm.replit.app"
 
 [userenv.shared]
 VITE_PUBLIC_APP_URL = "https://divine-edge--divineedgepm.replit.app"
+
+[userenv.production]
+OAUTH_ISSUER = "https://divine-edge--divineedgepm.replit.app"

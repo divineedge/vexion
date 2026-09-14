@@ -19,13 +19,17 @@ vi.mock("drizzle-orm", () => ({
 vi.mock("@workspace/db", () => {
   const table = (columns: string[]) => Object.fromEntries(columns.map((column) => [column, column]));
   const externalConnectionsTable = table(["id", "tenantId", "createdByUserId", "name", "mode", "provider", "scopes", "allowWrites", "enabled", "expiresAt", "revokedAt", "tokenHash", "webhookSecretEncrypted", "lastUsedAt"]);
+  const externalOAuthAccessTokensTable = table(["connectionId", "tokenHash", "scopes", "allowWrites", "expiresAt"]);
   const externalWriteIdempotencyTable = table(["connectionId", "action", "idempotencyKey", "fingerprint", "resourceId"]);
   const internalTasksTable = table(["id", "tenantId"]);
   const customersTable = table(["id", "tenantId", "name", "archivedAt", "email", "phone", "secondaryPhone", "company", "createdAt"]);
   const communicationsLogTable = table(["id", "tenantId", "fromAddress", "toAddress", "direction", "channel", "status", "externalId", "messageType", "jobId", "createdAt", "body", "subject"]);
   const select = vi.fn(() => ({
     from: () => ({
-      innerJoin: () => ({ where: () => ({ limit: async () => state.authRow ? [state.authRow] : [] }) }),
+      innerJoin: () => ({
+        innerJoin: () => ({ where: () => ({ limit: async () => state.authRow ? [state.authRow] : [] }) }),
+        where: () => ({ limit: async () => state.authRow ? [state.authRow] : [] }),
+      }),
       where: () => ({ orderBy: () => ({ limit: async () => state.listRows }) }),
     }),
   }));
@@ -51,7 +55,7 @@ vi.mock("@workspace/db", () => {
   return {
     communicationsLogTable, customersTable, db: { select, execute: async () => ({ rows: [{ count: 1 }] }), delete: () => ({ where: async () => undefined }), update: () => ({ set: () => ({ where: async () => undefined }) }), insert: () => ({ values: async () => undefined }), transaction },
     equipmentTable: table(["id", "tenantId", "name"]), externalAccessAuditTable: table(["tenantId", "connectionId", "connectionName", "action", "transport", "status", "requestId"]),
-    externalConnectionRateLimitsTable: table(["connectionId", "minuteBucket", "count"]), externalConnectionsTable,
+    externalConnectionRateLimitsTable: table(["connectionId", "minuteBucket", "count"]), externalConnectionsTable, externalOAuthAccessTokensTable,
     externalVoipEventsTable: table(["connectionId", "provider", "eventId", "communicationsLogId"]), externalWriteIdempotencyTable,
     internalTasksTable, invoicesTable: table(["id", "tenantId", "invoiceNumber"]), jobsTable: table(["id", "tenantId", "title"]), usersTable: table(["id", "isActive", "role"]),
   };
@@ -88,6 +92,18 @@ describe("external access shared authorization and serialization", () => {
       const result = await authorizeExternalRequest(request, "rest", "test");
       expect(result).toMatchObject({ ok: false, status: 403 });
     }
+  });
+
+  it("turns expired OAuth MCP credentials into invalid_token-style 401 results while preserving legacy bearer behavior", async () => {
+    state.authRow = {
+      connection: connection({ mode: "mcp" }), oauth: { scopes: ["customers:read"], allowWrites: false, expiresAt: new Date(Date.now() - 1) },
+      ownerActive: true, ownerRole: "company_owner",
+    };
+    const oauthRequest = { header: (name: string) => name === "authorization" ? "Bearer eao_test_token_1234567890" : undefined, id: "request-1" } as never;
+    const result = await authorizeExternalRequest(oauthRequest, "mcp", "tools/list");
+    expect(result).toMatchObject({ ok: false, status: 401, error: "OAuth access token is invalid or expired" });
+    state.authRow = { connection: connection({ expiresAt: new Date(Date.now() - 1) }), ownerActive: true, ownerRole: "company_owner" };
+    expect(await authorizeExternalRequest(request, "rest", "list:customers")).toMatchObject({ ok: false, status: 403 });
   });
 
   it("redacts customer contact data and communications content unless the dependent scope is present", async () => {

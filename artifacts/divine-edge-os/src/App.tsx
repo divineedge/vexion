@@ -47,6 +47,7 @@ import EmployeeDetailPage from '@/pages/employee-detail';
 import PortalInboxPage from '@/pages/portal-inbox';
 import BudgetPage from '@/pages/budget';
 import StaffMessagesPage from '@/pages/staff-messages';
+import OAuthConsentPage from '@/pages/oauth-consent';
 
 import NotFound from '@/pages/not-found';
 import OnboardingWalkthrough, { useOnboarding } from '@/components/onboarding/OnboardingWalkthrough';
@@ -119,10 +120,15 @@ function Router() {
       <Route path="/review/:token" component={ReviewPublicPage} />
       <Route path="/login" component={LoginPage} />
       <Route path="/signup" component={SignupPage} />
-      <Route path="/" component={() => <Redirect to="/dashboard" />} />
+      <Route path="/" component={HomeRoute} />
       <Route component={ProtectedRoutes} />
     </Switch>
   );
+}
+
+function HomeRoute() {
+  const hasOAuthConsentRequest = new URLSearchParams(window.location.search).has('oauth_consent');
+  return hasOAuthConsentRequest ? <OAuthConsentPage /> : <Redirect to="/dashboard" />;
 }
 
 function App() {

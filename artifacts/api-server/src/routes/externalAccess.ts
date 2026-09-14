@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { db, externalAccessAuditTable, externalConnectionRateLimitsTable, externalConnectionsTable } from "@workspace/db";
+import { db, externalAccessAuditTable, externalConnectionRateLimitsTable, externalConnectionsTable, externalOAuthClientsTable } from "@workspace/db";
 import { decryptSecretConfig, encryptSecretConfig } from "../lib/secretsCrypto";
 import { isOwnerRole } from "../lib/roles";
 import { requireVerifiedStaff, verifiedStaffIdentity } from "../lib/verifiedStaff";
@@ -61,6 +61,11 @@ router.patch("/external-access/connections/:id", async (req, res): Promise<void>
   if (!existing) { res.status(404).json({ error: "Connection not found" }); return; }
   if (existing.revokedAt) { res.status(409).json({ error: "Revoked connections cannot be updated" }); return; }
   const raw = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body as Record<string, unknown> : {};
+  const [oauthClient] = await db.select({ id: externalOAuthClientsTable.id }).from(externalOAuthClientsTable).where(eq(externalOAuthClientsTable.connectionId, existing.id)).limit(1);
+  if (oauthClient && ("mode" in raw || "provider" in raw)) {
+    res.status(409).json({ error: "OAuth MCP connections are bound to the MCP protected resource and cannot change protocol mode" });
+    return;
+  }
   const merged = {
     name: raw.name ?? existing.name, description: raw.description ?? existing.description,
     mode: raw.mode ?? existing.mode, provider: raw.provider ?? existing.provider, scopes: raw.scopes ?? existing.scopes,
@@ -91,6 +96,8 @@ router.post("/external-access/connections/:id/rotate", async (req, res): Promise
   const [existing] = await db.select().from(externalConnectionsTable).where(and(eq(externalConnectionsTable.id, id), eq(externalConnectionsTable.tenantId, identity.tenantId))).limit(1);
   if (!existing) { res.status(404).json({ error: "Connection not found" }); return; }
   if (existing.revokedAt) { res.status(409).json({ error: "Revoked connections cannot be rotated" }); return; }
+  const [oauthClient] = await db.select({ id: externalOAuthClientsTable.id }).from(externalOAuthClientsTable).where(eq(externalOAuthClientsTable.connectionId, existing.id)).limit(1);
+  if (oauthClient) { res.status(409).json({ error: "OAuth MCP connections do not have a reusable bearer token; authorize the registered client instead" }); return; }
   const generated = makeExternalToken();
   const [connection] = await db.update(externalConnectionsTable).set({ tokenHash: generated.tokenHash, tokenPrefix: generated.tokenPrefix }).where(eq(externalConnectionsTable.id, existing.id)).returning();
   await auditStaffConnection(connection, "connection.rotated", req);

@@ -18,6 +18,16 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [isServerError, setIsServerError] = useState(false);
 
+  const getLoginDestination = () => {
+    const returnTo = new URLSearchParams(window.location.search).get('returnTo');
+    // OAuth consent is the only cross-route continuation currently accepted.
+    // Keeping this allowlist avoids turning the login page into an open redirect.
+    if (returnTo?.startsWith('/?oauth_consent=') && !returnTo.startsWith('//')) {
+      return returnTo;
+    }
+    return null;
+  };
+
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
     setError('');
@@ -27,7 +37,8 @@ export default function LoginPage() {
       {
         onSuccess: (data) => {
           login(data.user, data.sessionToken);
-          setLocation(data.user.role === 'technician' ? '/schedule' : '/dashboard');
+            const continuation = getLoginDestination();
+            setLocation(continuation ?? (data.user.role === 'technician' ? '/schedule' : '/dashboard'));
         },
         onError: (err: unknown) => {
           const status = (err as { status?: number })?.status ?? (err as { response?: { status?: number } })?.response?.status;

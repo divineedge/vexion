@@ -92,4 +92,13 @@ describe("external MCP stateless permission parity", () => {
     expect(browser.status).toBe(403);
     expect(mocks.authorizeExternalRequest).toHaveBeenCalledTimes(authorizationCalls);
   });
+
+  it("challenges an expired or revoked OAuth token with invalid_token discovery metadata", async () => {
+    process.env.OAUTH_ISSUER = "https://app.example";
+    mocks.authorizeExternalRequest.mockResolvedValue({ ok: false, status: 401, error: "OAuth access token is invalid or expired" });
+    const response = await rpc(initialize);
+    expect(response.status).toBe(401);
+    expect(response.headers["www-authenticate"]).toContain('error="invalid_token"');
+    expect(response.headers["www-authenticate"]).toContain('resource_metadata="https://app.example/.well-known/oauth-protected-resource/api/external/mcp"');
+  });
 });

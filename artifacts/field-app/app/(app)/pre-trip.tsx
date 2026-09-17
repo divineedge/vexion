@@ -12,10 +12,17 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   useCreateEquipmentPreTrip,
   useListEquipment,
   useGetTenantSettings,
+  useListBulkFuelTanks,
+  getListBulkFuelTanksQueryKey,
+  getGetEquipmentQueryKey,
+  getListEquipmentFuelLogsQueryKey,
+  getGetEquipmentLedgerQueryKey,
+  getGetEquipmentFuelUsageQueryKey,
   useListEquipmentPreTripMedia,
   getListEquipmentPreTripMediaQueryKey,
   useAddEquipmentPreTripMedia,
@@ -24,6 +31,7 @@ import {
 import { useColors } from '@/hooks/useColors';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { MediaAttachments } from '@/components/MediaAttachments';
+import { FuelSourceFields, type FuelSource } from '@/components/FuelSourceFields';
 
 type Equipment = { id: number; name: string; type: string; currentHours: number; currentMiles?: number | null; isActive: boolean };
 type Condition = 'good' | 'needs_attention' | 'unsafe';
@@ -35,10 +43,14 @@ export default function PreTripScreen() {
   const { data, isLoading } = useListEquipment();
   const { data: settings } = useGetTenantSettings();
   const createPreTrip = useCreateEquipmentPreTrip();
+  const queryClient = useQueryClient();
+  const bulkTanksQuery = useListBulkFuelTanks({ includeInactive: false });
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [condition, setCondition] = useState<Condition>('good');
   const [gallons, setGallons] = useState('');
   const [fuelCost, setFuelCost] = useState('');
+  const [fuelSource, setFuelSource] = useState<FuelSource>('purchased');
+  const [bulkFuelTankId, setBulkFuelTankId] = useState<number | null>(null);
   const [readingType, setReadingType] = useState<'hours' | 'mileage'>('hours');
   const [reading, setReading] = useState('');
   const [concerns, setConcerns] = useState('');
@@ -53,6 +65,7 @@ export default function PreTripScreen() {
   const deleteMedia = useDeleteEquipmentPreTripMedia();
 
   const equipment = ((data as Equipment[] | undefined) ?? []).filter(item => item.isActive);
+  const bulkTanks = bulkTanksQuery.data ?? [];
   const selected = equipment.find(item => item.id === selectedId) ?? null;
   const checklist = selected
     ? configuredChecklist.filter(item => !item.equipmentTypes?.length || item.equipmentTypes.includes(selected.type))
@@ -60,11 +73,39 @@ export default function PreTripScreen() {
   useEffect(() => {
     setAnswers({});
     setSavedTaskId(null);
-    idempotencyKey.current = `${inspectionType}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }, [selectedId, inspectionType]);
   // Kept for the life of this entry so a network retry can safely replay it.
   const idempotencyKey = useRef(`pretrip-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const isSaving = createPreTrip.isPending;
+
+  const handleFuelSourceChange = useCallback((source: FuelSource) => {
+    setFuelSource(source);
+    setBulkFuelTankId(null);
+    if (source === 'bulk_tank') setFuelCost('');
+  }, []);
+
+  const handleGallonsChange = useCallback((value: string) => {
+    setGallons(value);
+    if (!value || !Number.isFinite(Number(value)) || Number(value) <= 0) {
+      setBulkFuelTankId(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    idempotencyKey.current = `${inspectionType}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }, [
+    selectedId,
+    inspectionType,
+    fuelSource,
+    gallons,
+    fuelCost,
+    bulkFuelTankId,
+    readingType,
+    reading,
+    concerns,
+    condition,
+    answers,
+  ]);
 
   const handleSave = useCallback(async () => {
     if (!selected) {
@@ -88,6 +129,17 @@ export default function PreTripScreen() {
       Alert.alert('Fuel amount required', 'Enter gallons before adding a fuel cost.');
       return;
     }
+    const hasFuel = !!gallons;
+    const parsedGallons = Number(gallons);
+    const selectedTank = bulkTanks.find(tank => tank.id === bulkFuelTankId);
+    if (hasFuel && fuelSource === 'bulk_tank' && (bulkFuelTankId == null || !selectedTank)) {
+      Alert.alert('Choose a bulk tank', 'Select the tank supplying this fuel, or switch to Purchased.');
+      return;
+    }
+    if (hasFuel && fuelSource === 'bulk_tank' && selectedTank && selectedTank.availableGallons < parsedGallons) {
+      Alert.alert('Not enough fuel', 'This tank does not have enough available fuel for the fill. Refresh and choose another tank.');
+      return;
+    }
     if (reading && (Number.isNaN(Number(reading)) || Number(reading) < 0)) {
       Alert.alert('Invalid meter reading', 'Enter a non-negative meter reading or leave it blank.');
       return;
@@ -102,14 +154,22 @@ export default function PreTripScreen() {
     }
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
+      const fuelFields = hasFuel
+        ? fuelSource === 'bulk_tank' && selectedTank
+          ? { fuelGallons: parsedGallons, fuelSource, bulkFuelTankId: selectedTank.id }
+          : {
+              fuelGallons: parsedGallons,
+              fuelSource,
+              ...(fuelCost ? { fuelCost: Number(fuelCost) } : {}),
+            }
+        : {};
       const result = await createPreTrip.mutateAsync({
         data: {
           idempotencyKey: idempotencyKey.current,
           equipmentId: selected.id,
           condition,
           inspectionType,
-          ...(gallons ? { fuelGallons: Number(gallons) } : {}),
-          ...(fuelCost ? { fuelCost: Number(fuelCost) } : {}),
+          ...fuelFields,
           ...(reading ? { readingType, readingValue: Number(reading) } : {}),
           ...(concerns.trim() ? { concerns: concerns.trim() } : {}),
           checklistResponses: checklist.map(item => ({ id: item.id, label: item.label, checked: !!answers[item.id] })),
@@ -118,18 +178,34 @@ export default function PreTripScreen() {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setGallons('');
       setFuelCost('');
+      setFuelSource('purchased');
+      setBulkFuelTankId(null);
       setReading('');
       setConcerns('');
       setCondition('good');
       setAnswers({});
       setSavedTaskId(result.taskId);
       idempotencyKey.current = `${inspectionType}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      Alert.alert(`${inspectionType === 'end_of_day' ? 'End-of-day' : 'Pre-trip'} check saved`, 'Inspection saved. You can now attach photos or videos below.');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getListBulkFuelTanksQueryKey({ includeInactive: false }) }),
+        queryClient.invalidateQueries({ queryKey: getGetEquipmentQueryKey(selected.id) }),
+        queryClient.invalidateQueries({ queryKey: getListEquipmentFuelLogsQueryKey(selected.id) }),
+        queryClient.invalidateQueries({ queryKey: getGetEquipmentLedgerQueryKey(selected.id) }),
+        queryClient.invalidateQueries({ queryKey: getGetEquipmentFuelUsageQueryKey() }),
+      ]);
+      const serverCost = result.fuelCost;
+      const fuelConfirmation = result.fuelLogId
+        ? ` Fuel recorded on ${selected.name}${serverCost != null ? ` for $${serverCost.toFixed(2)}` : ''}${result.fuelCostPerGallon != null ? ` ($${result.fuelCostPerGallon.toFixed(2)}/gal)` : ''}${result.fuelSource === 'bulk_tank' && result.bulkFuelTankName ? ` from ${result.bulkFuelTankName}` : ''}.`
+        : '';
+      Alert.alert(
+        `${inspectionType === 'end_of_day' ? 'End-of-day' : 'Pre-trip'} check saved`,
+        `Inspection saved.${fuelConfirmation} You can now attach photos or videos below.`,
+      );
     } catch {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('Could not save pre-trip', 'Check your connection and try again. No separate equipment ledger was created.');
+      Alert.alert('Could not confirm pre-trip save', 'Check your connection, then retry this entry without changing it. If it already saved, the retry will not record the fuel twice.');
     }
-  }, [selected, gallons, fuelCost, reading, readingType, condition, concerns, checklist, answers, inspectionType, createPreTrip]);
+  }, [selected, gallons, fuelCost, fuelSource, bulkFuelTankId, bulkTanks, reading, readingType, condition, concerns, checklist, answers, inspectionType, createPreTrip, queryClient]);
 
   if (isLoading) {
     return <View style={[styles.centered, { backgroundColor: colors.background }]}><ActivityIndicator color={colors.primary} size="large" /></View>;
@@ -172,8 +248,21 @@ export default function PreTripScreen() {
           </View>
         </>}
         <Text style={[styles.small, { color: colors.mutedForeground, marginTop: 8 }]}>Office staff can change these questions in Settings → Equipment → {inspectionType === 'end_of_day' ? 'Optional End-of-Day Checklist' : 'Pre-Trip Checklist'}.</Text>
-        <Text style={[styles.label, { color: colors.foreground }]}>Fuel added (optional)</Text>
-        <View style={styles.row}><TextInput value={gallons} onChangeText={setGallons} placeholder="Gallons" keyboardType="decimal-pad" placeholderTextColor={colors.mutedForeground} style={[styles.input, { color: colors.foreground, backgroundColor: colors.muted, borderColor: colors.border }]} /><TextInput value={fuelCost} onChangeText={setFuelCost} placeholder="Cost" keyboardType="decimal-pad" placeholderTextColor={colors.mutedForeground} style={[styles.input, { color: colors.foreground, backgroundColor: colors.muted, borderColor: colors.border }]} /></View>
+         <Text style={[styles.label, { color: colors.foreground }]}>Fuel added (optional)</Text>
+         <FuelSourceFields
+           source={fuelSource}
+           onSourceChange={handleFuelSourceChange}
+           gallons={gallons}
+           onGallonsChange={handleGallonsChange}
+           cost={fuelCost}
+           onCostChange={setFuelCost}
+           bulkFuelTankId={bulkFuelTankId}
+           onBulkFuelTankChange={setBulkFuelTankId}
+           tanks={bulkTanks}
+           tanksLoading={bulkTanksQuery.isLoading}
+           tanksError={!!bulkTanksQuery.error}
+           colors={colors}
+         />
         <Text style={[styles.label, { color: colors.foreground }]}>Meter reading (optional)</Text>
         <View style={styles.choices}><TouchableOpacity onPress={() => setReadingType('hours')} style={[styles.choice, { backgroundColor: readingType === 'hours' ? colors.primary : colors.muted }]}><Text style={[styles.choiceText, { color: readingType === 'hours' ? '#fff' : colors.mutedForeground }]}>Hours</Text></TouchableOpacity><TouchableOpacity onPress={() => setReadingType('mileage')} style={[styles.choice, { backgroundColor: readingType === 'mileage' ? colors.primary : colors.muted }]}><Text style={[styles.choiceText, { color: readingType === 'mileage' ? '#fff' : colors.mutedForeground }]}>Mileage</Text></TouchableOpacity></View>
         <TextInput value={reading} onChangeText={setReading} placeholder={readingType === 'hours' ? 'Current hour meter' : 'Current odometer'} keyboardType="decimal-pad" placeholderTextColor={colors.mutedForeground} style={[styles.fullInput, { color: colors.foreground, backgroundColor: colors.muted, borderColor: colors.border }]} />
@@ -203,7 +292,6 @@ const styles = StyleSheet.create({
   equipmentList: { gap: 7 }, equipment: { borderWidth: 1, borderRadius: 10, padding: 11, flexDirection: 'row', alignItems: 'center', gap: 9 },
   equipmentName: { fontFamily: 'Inter_600SemiBold', fontSize: 14 }, small: { fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 2 },
   choices: { flexDirection: 'row', gap: 7 }, choice: { flex: 1, borderRadius: 8, paddingVertical: 9, paddingHorizontal: 8, alignItems: 'center' }, choiceText: { fontFamily: 'Inter_500Medium', fontSize: 12, textTransform: 'capitalize' },
-  row: { flexDirection: 'row', gap: 8 }, input: { flex: 1, height: 44, borderWidth: 1, borderRadius: 9, paddingHorizontal: 12, fontFamily: 'Inter_400Regular' },
   fullInput: { height: 44, borderWidth: 1, borderRadius: 9, paddingHorizontal: 12, fontFamily: 'Inter_400Regular', marginTop: 8 },
   concerns: { minHeight: 92, borderWidth: 1, borderRadius: 9, padding: 12, fontFamily: 'Inter_400Regular', textAlignVertical: 'top' },
   footer: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 16, paddingTop: 10, borderTopWidth: 1 },

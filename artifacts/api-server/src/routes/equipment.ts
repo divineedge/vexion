@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, equipmentTable, equipmentMaintenanceTable, equipmentFuelLogsTable, equipmentReadingLogsTable, equipmentLifecycleEventsTable, tenantEquipmentTypesTable, tenantsTable, usersTable, crewsTable, crewMembersTable, jobsTable, taskBundlesItemsTable, inventoryItemsTable, internalTasksTable } from "@workspace/db";
-import { eq, and, desc, sum, isNull, isNotNull, inArray, or, gte, lte, ilike, sql } from "drizzle-orm";
+import { db, equipmentTable, equipmentMaintenanceTable, equipmentFuelLogsTable, equipmentReadingLogsTable, equipmentLifecycleEventsTable, tenantEquipmentTypesTable, tenantsTable, usersTable, crewsTable, crewMembersTable, jobsTable, taskBundlesItemsTable, inventoryItemsTable, internalTasksTable, bulkFuelTanksTable, bulkFuelTransactionsTable } from "@workspace/db";
+import { eq, and, desc, sum, isNull, isNotNull, inArray, or, gte, lte, ilike, sql, lt } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { ADMIN_ROLES, isOwnerRole } from "../lib/roles";
 import { requireVerifiedStaff } from "../lib/verifiedStaff";
@@ -17,6 +17,8 @@ import {
   type ImportExportEntityConfig,
 } from "../lib/importExport";
 import { hasEquipmentVisibility } from "../lib/equipmentVisibility";
+import { dollarsToCents, dispenseBulkFuel, formatFuelLog, formatTank, formatTransaction, gallonsToThousandths, isDateKey, MAX_INVENTORY_INT, normalizeFuelDate, tenantDateKey } from "../lib/bulkFuel";
+import { invalidateTenantReportCache } from "../lib/reportsCache";
 
 const router: IRouter = Router();
 // Equipment contains tenant-private operational and inspection data. A verified
@@ -291,6 +293,130 @@ async function requireOwnerRole(req: Request, res: Response, next: NextFunction)
   next();
 }
 
+function parsedId(value: string | string[] | undefined): number | null {
+  const result = parseInt(Array.isArray(value) ? value[0] : value ?? "", 10);
+  return Number.isInteger(result) && result > 0 ? result : null;
+}
+
+async function requireTankManager(req: Request, res: Response): Promise<boolean> {
+  const role = await getUserRole(getTenantId(req), getUserId(req));
+  if (!role || !ADMIN_ROLES.has(role)) {
+    res.status(403).json({ error: "Office role required for bulk fuel tank management" });
+    return false;
+  }
+  return true;
+}
+
+// ─── Bulk fuel tanks and append-only inventory history ─────────────────────────
+router.get("/bulk-fuel/tanks", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  const includeInactive = req.query.includeInactive === "true";
+  const role = await getUserRole(tenantId, getUserId(req));
+  if (includeInactive && (!role || !ADMIN_ROLES.has(role))) {
+    res.status(403).json({ error: "Office role required to view inactive bulk fuel tanks" });
+    return;
+  }
+  const rows = await db.select().from(bulkFuelTanksTable).where(and(
+    eq(bulkFuelTanksTable.tenantId, tenantId),
+    ...(includeInactive ? [] : [eq(bulkFuelTanksTable.isActive, true)]),
+  )).orderBy(bulkFuelTanksTable.name);
+  res.json(rows.map(formatTank));
+});
+
+router.post("/bulk-fuel/tanks", async (req, res): Promise<void> => {
+  if (!(await requireTankManager(req, res))) return;
+  const tenantId = getTenantId(req);
+  const { name, fuelType, capacityGallons } = req.body;
+  if (typeof name !== "string" || !name.trim() || typeof fuelType !== "string" || !fuelType.trim()) {
+    res.status(400).json({ error: "name and fuelType are required" }); return;
+  }
+  let capacityThousandths: number | null = null;
+  try {
+    if (capacityGallons != null) capacityThousandths = gallonsToThousandths(capacityGallons, "capacityGallons");
+  } catch (error: any) { res.status(400).json({ error: error.message }); return; }
+  const [tank] = await db.insert(bulkFuelTanksTable).values({
+    tenantId, name: name.trim(), fuelType: fuelType.trim(), capacityThousandths,
+  }).returning();
+  res.status(201).json(formatTank(tank));
+});
+
+router.patch("/bulk-fuel/tanks/:id", async (req, res): Promise<void> => {
+  if (!(await requireTankManager(req, res))) return;
+  const id = parsedId(req.params.id); const tenantId = getTenantId(req);
+  if (!id) { res.status(400).json({ error: "Invalid tank id" }); return; }
+  const { name, fuelType, capacityGallons, isActive } = req.body;
+  if (![name, fuelType, capacityGallons, isActive].some(v => v !== undefined)) { res.status(400).json({ error: "Nothing to update" }); return; }
+  try {
+    const updated = await db.transaction(async tx => {
+      const [tank] = await tx.select().from(bulkFuelTanksTable).where(and(eq(bulkFuelTanksTable.id, id), eq(bulkFuelTanksTable.tenantId, tenantId))).for("update");
+      if (!tank) throw new Error("Bulk fuel tank not found");
+      const updates: Partial<typeof bulkFuelTanksTable.$inferInsert> = {};
+      if (name !== undefined) { if (typeof name !== "string" || !name.trim()) throw new Error("name must be non-empty"); updates.name = name.trim(); }
+      if (fuelType !== undefined) { if (typeof fuelType !== "string" || !fuelType.trim()) throw new Error("fuelType must be non-empty"); updates.fuelType = fuelType.trim(); }
+      if (capacityGallons !== undefined) {
+        const capacity = capacityGallons == null ? null : gallonsToThousandths(capacityGallons, "capacityGallons");
+        if (capacity != null && capacity < tank.availableThousandths) throw new Error("capacityGallons cannot be below inventory on hand");
+        updates.capacityThousandths = capacity;
+      }
+      if (isActive !== undefined) {
+        if (typeof isActive !== "boolean") throw new Error("isActive must be boolean");
+        if (!isActive && tank.availableThousandths !== 0) throw new Error("Only an empty bulk fuel tank may be deactivated");
+        updates.isActive = isActive;
+      }
+      const [row] = await tx.update(bulkFuelTanksTable).set(updates).where(eq(bulkFuelTanksTable.id, id)).returning();
+      return row;
+    });
+    res.json(formatTank(updated));
+  } catch (error: any) { res.status(error?.message === "Bulk fuel tank not found" ? 404 : 400).json({ error: error.message }); }
+});
+
+router.get("/bulk-fuel/tanks/:id/transactions", async (req, res): Promise<void> => {
+  if (!(await requireTankManager(req, res))) return;
+  const id = parsedId(req.params.id); const tenantId = getTenantId(req);
+  if (!id) { res.status(400).json({ error: "Invalid tank id" }); return; }
+  const [tank] = await db.select({ id: bulkFuelTanksTable.id }).from(bulkFuelTanksTable).where(and(eq(bulkFuelTanksTable.id, id), eq(bulkFuelTanksTable.tenantId, tenantId))).limit(1);
+  if (!tank) { res.status(404).json({ error: "Bulk fuel tank not found" }); return; }
+  const limit = req.query.limit == null ? 100 : Number(req.query.limit);
+  const cursor = req.query.cursor == null ? null : Number(req.query.cursor);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100 || (cursor != null && (!Number.isInteger(cursor) || cursor < 1))) { res.status(400).json({ error: "Invalid limit or cursor" }); return; }
+  const rows = await db.select().from(bulkFuelTransactionsTable).where(and(
+    eq(bulkFuelTransactionsTable.tankId, id), ...(cursor == null ? [] : [lt(bulkFuelTransactionsTable.id, cursor)]),
+  )).orderBy(desc(bulkFuelTransactionsTable.id)).limit(limit + 1);
+  const page = rows.slice(0, limit);
+  res.json({ data: page.map(formatTransaction), nextCursor: rows.length > limit ? String(page[page.length - 1].id) : null });
+});
+
+router.post("/bulk-fuel/tanks/:id/intakes", async (req, res): Promise<void> => {
+  if (!(await requireTankManager(req, res))) return;
+  const id = parsedId(req.params.id); const tenantId = getTenantId(req);
+  if (!id) { res.status(400).json({ error: "Invalid tank id" }); return; }
+  const { kind, date, gallons, totalCost, supplier, reference, notes, idempotencyKey } = req.body;
+  if (!["delivery", "opening_balance"].includes(kind) || !isDateKey(date) || typeof idempotencyKey !== "string" || !idempotencyKey.trim()) { res.status(400).json({ error: "kind, date (YYYY-MM-DD), and idempotencyKey are required" }); return; }
+  let qty: number; let cents: number;
+  try { qty = gallonsToThousandths(gallons); cents = dollarsToCents(totalCost); } catch (error: any) { res.status(400).json({ error: error.message }); return; }
+  try {
+    const result = await db.transaction(async tx => {
+      const [tank] = await tx.select().from(bulkFuelTanksTable).where(and(eq(bulkFuelTanksTable.id, id), eq(bulkFuelTanksTable.tenantId, tenantId))).for("update");
+      if (!tank) throw new Error("Bulk fuel tank not found");
+      if (!tank.isActive) throw new Error("Bulk fuel tank is inactive");
+      const [duplicate] = await tx.select().from(bulkFuelTransactionsTable).where(and(eq(bulkFuelTransactionsTable.tankId, id), eq(bulkFuelTransactionsTable.idempotencyKey, idempotencyKey.trim()))).limit(1);
+      if (duplicate) {
+        if (duplicate.type !== kind || duplicate.date !== date || duplicate.gallonsThousandths !== qty || duplicate.totalCostCents !== cents || (duplicate.supplier ?? null) !== (typeof supplier === "string" ? supplier.trim() || null : null) || (duplicate.reference ?? null) !== (typeof reference === "string" ? reference.trim() || null : null) || (duplicate.notes ?? null) !== (typeof notes === "string" ? notes.trim() || null : null)) throw new Error("Idempotency key was already used with different intake details");
+        return { tank, transaction: duplicate, duplicate: true };
+      }
+      if (kind === "opening_balance") {
+        const [activity] = await tx.select({ id: bulkFuelTransactionsTable.id }).from(bulkFuelTransactionsTable).where(eq(bulkFuelTransactionsTable.tankId, id)).limit(1);
+        if (activity) throw new Error("Opening balance is only allowed before other tank activity");
+      }
+      if (tank.availableThousandths > MAX_INVENTORY_INT - qty || tank.inventoryValueCents > MAX_INVENTORY_INT - cents || (tank.capacityThousandths != null && tank.availableThousandths + qty > tank.capacityThousandths)) throw new Error("Delivery exceeds tank capacity or inventory limits");
+      const [transaction] = await tx.insert(bulkFuelTransactionsTable).values({ tankId: id, tenantId, type: kind, date, gallonsThousandths: qty, totalCostCents: cents, supplier: typeof supplier === "string" ? supplier.trim() || null : null, reference: typeof reference === "string" ? reference.trim() || null : null, notes: typeof notes === "string" ? notes.trim() || null : null, idempotencyKey: idempotencyKey.trim() }).returning();
+      const [updated] = await tx.update(bulkFuelTanksTable).set({ availableThousandths: tank.availableThousandths + qty, inventoryValueCents: tank.inventoryValueCents + cents }).where(eq(bulkFuelTanksTable.id, id)).returning();
+      return { tank: updated, transaction, duplicate: false };
+    });
+    res.status(result.duplicate ? 200 : 201).json({ tank: formatTank(result.tank), transaction: formatTransaction(result.transaction), duplicate: result.duplicate });
+  } catch (error: any) { res.status(error?.message === "Bulk fuel tank not found" ? 404 : 409).json({ error: error?.message ?? "Unable to record intake" }); }
+});
+
 // Incident-scoped recovery for the three September 1 records that were written
 // to the legacy seed tenant before equipment routes required verified sessions.
 // Exact IDs + names + source tenant make this incapable of claiming arbitrary data.
@@ -370,6 +496,18 @@ async function requireEquipmentOwnership(
     }
   }
   return row;
+}
+
+/** Recheck staff assignment after the equipment row is locked for a write. */
+async function canWriteLockedEquipment(tx: any, tenantId: number, userId: number, equipment: typeof equipmentTable.$inferSelect): Promise<boolean> {
+  const [user] = await tx.select({ role: usersTable.role }).from(usersTable).where(and(
+    eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId), eq(usersTable.isActive, true),
+  )).limit(1);
+  if (!user) return false;
+  const memberships = equipment.assignedCrewId == null ? [] : await tx.select({ crewId: crewMembersTable.crewId }).from(crewMembersTable).where(and(
+    eq(crewMembersTable.tenantId, tenantId), eq(crewMembersTable.crewId, equipment.assignedCrewId), eq(crewMembersTable.userId, userId),
+  )).limit(1);
+  return hasEquipmentVisibility(user.role, userId, new Set((memberships as Array<{ crewId: number }>).map(row => row.crewId)), equipment);
 }
 
 async function validateAssignments(
@@ -954,7 +1092,7 @@ router.get("/equipment/:id/fuel-logs", async (req, res): Promise<void> => {
     .from(equipmentFuelLogsTable)
     .where(and(eq(equipmentFuelLogsTable.equipmentId, equipmentId), eq(equipmentFuelLogsTable.tenantId, tenantId)))
     .orderBy(desc(equipmentFuelLogsTable.date));
-  res.json(rows.map(r => ({ ...r, createdAt: r.createdAt.toISOString() })));
+  res.json(rows.map(formatFuelLog));
 });
 
 router.post("/equipment/:id/fuel-logs", async (req, res): Promise<void> => {
@@ -972,8 +1110,16 @@ router.post("/equipment/:id/fuel-logs", async (req, res): Promise<void> => {
     return;
   }
 
-  const { date, gallons, cost, costPerGallon, odometerReading, jobId } = req.body;
-  if (!date || gallons == null) { res.status(400).json({ error: "date and gallons are required" }); return; }
+  const { date, gallons, cost, costPerGallon, odometerReading, jobId, fuelSource = "purchased", bulkFuelTankId, idempotencyKey } = req.body;
+  if (date == null || gallons == null) { res.status(400).json({ error: "date and gallons are required" }); return; }
+  if (!["purchased", "bulk_tank"].includes(fuelSource)) { res.status(400).json({ error: "fuelSource must be purchased or bulk_tank" }); return; }
+  if (fuelSource === "bulk_tank" && (!Number.isInteger(bulkFuelTankId) || typeof idempotencyKey !== "string" || !idempotencyKey.trim())) {
+    res.status(400).json({ error: "bulkFuelTankId and idempotencyKey are required for bulk tank fuel" }); return;
+  }
+  if (fuelSource === "purchased" && bulkFuelTankId != null) { res.status(400).json({ error: "bulkFuelTankId is only valid with bulk_tank fuelSource" }); return; }
+  const [tenant] = await db.select({ timezone: tenantsTable.timezone }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
+  let fuelDate: string;
+  try { fuelDate = normalizeFuelDate(date, tenant?.timezone ?? "UTC"); } catch (error: any) { res.status(400).json({ error: error.message }); return; }
 
   // Validate jobId belongs to this tenant when provided
   let parsedJobId: number | null = null;
@@ -985,48 +1131,50 @@ router.post("/equipment/:id/fuel-logs", async (req, res): Promise<void> => {
     if (!job) { res.status(400).json({ error: "jobId not found or does not belong to this tenant" }); return; }
   }
 
-  const parsedGallons = parseFloat(gallons);
-  const parsedCpg = costPerGallon != null ? parseFloat(costPerGallon) : null;
-  // If total cost not provided but cost-per-gallon is, derive it
-  const parsedCost = cost != null ? parseFloat(cost) : (parsedCpg ? parsedGallons * parsedCpg : 0);
-
-  const [row] = await db.insert(equipmentFuelLogsTable).values({
-    equipmentId,
-    tenantId,
-    jobId: parsedJobId,
-    date,
-    gallons: parsedGallons,
-    costPerGallon: parsedCpg,
-    cost: parsedCost,
-    odometerReading: odometerReading != null ? parseFloat(odometerReading) : null,
-  }).returning();
-
-  // Recalculate fuel cost total — scoped by BOTH equipmentId AND tenantId
-  const result = await db
-    .select({ total: sum(equipmentFuelLogsTable.cost) })
-    .from(equipmentFuelLogsTable)
-    .where(and(eq(equipmentFuelLogsTable.equipmentId, equipmentId), eq(equipmentFuelLogsTable.tenantId, tenantId)));
-  const newFuelTotal = parseFloat(String(result[0]?.total ?? 0));
-
-  const equipUpdates: Partial<typeof equipmentTable.$inferInsert> = { totalFuelCost: newFuelTotal };
-  if (odometerReading != null) {
-    const parsed = parseFloat(odometerReading);
-    // Update currentHours if reading is higher than current — scoped by BOTH id AND tenantId
-    const [current] = await db
-      .select({ currentHours: equipmentTable.currentHours })
-      .from(equipmentTable)
-      .where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId)));
-    if (current && parsed > (current.currentHours ?? 0)) {
-      equipUpdates.currentHours = parsed;
-    }
-  }
-
-  // Update parent — scoped by BOTH id AND tenantId
-  await db.update(equipmentTable)
-    .set(equipUpdates)
-    .where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId)));
-
-  res.status(201).json({ ...row, createdAt: row.createdAt.toISOString() });
+  let parsedGallons: number; let parsedCpg: number | null; let parsedCost: number; let parsedOdometer: number | null;
+  try {
+    parsedGallons = gallonsToThousandths(gallons) / 1000;
+    parsedCpg = costPerGallon != null ? Number(costPerGallon) : null;
+    if (parsedCpg != null && (!Number.isFinite(parsedCpg) || parsedCpg < 0)) throw new Error("costPerGallon must be a non-negative finite number");
+    parsedCost = cost != null ? Number(cost) : (parsedCpg != null ? parsedGallons * parsedCpg : 0);
+    if (!Number.isFinite(parsedCost) || parsedCost < 0) throw new Error("cost must be a non-negative finite number");
+    parsedOdometer = odometerReading != null ? Number(odometerReading) : null;
+    if (parsedOdometer != null && (!Number.isFinite(parsedOdometer) || parsedOdometer < 0)) throw new Error("odometerReading must be non-negative");
+  } catch (error: any) { res.status(400).json({ error: error.message }); return; }
+  try {
+    const result = await db.transaction(async tx => {
+      // Every write locks equipment first, then the shared primitive locks tank.
+      const [lockedEquipment] = await tx.select().from(equipmentTable).where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId))).for("update");
+      if (!lockedEquipment || lockedEquipment.archivedAt) throw new Error("Cannot log fuel fills on archived equipment");
+      if (!(await canWriteLockedEquipment(tx, tenantId, getUserId(req), lockedEquipment))) throw new Error("Equipment access changed");
+      if (fuelSource === "bulk_tank") {
+        const key = idempotencyKey.trim();
+        const [prior] = await tx.select().from(equipmentFuelLogsTable).where(and(eq(equipmentFuelLogsTable.tenantId, tenantId), eq(equipmentFuelLogsTable.idempotencyKey, key))).limit(1);
+        if (prior) {
+          if (prior.equipmentId !== equipmentId || prior.bulkFuelTankId !== bulkFuelTankId || prior.gallons !== parsedGallons || prior.date !== fuelDate || prior.jobId !== parsedJobId || prior.odometerReading !== parsedOdometer) throw new Error("Idempotency key was already used with different fuel details");
+          return { row: prior, duplicate: true };
+        }
+        // A deleted log deliberately leaves its dispense movement in history.
+        // Do not let the old key turn a retry into a second physical draw.
+        const [historicDispense] = await tx.select({ id: bulkFuelTransactionsTable.id }).from(bulkFuelTransactionsTable).where(and(
+          eq(bulkFuelTransactionsTable.tankId, bulkFuelTankId),
+          eq(bulkFuelTransactionsTable.idempotencyKey, key),
+          eq(bulkFuelTransactionsTable.type, "dispense"),
+        )).limit(1);
+        if (historicDispense) throw new Error("This idempotency key belongs to a deleted fuel log and cannot be replayed");
+        const bulk = await dispenseBulkFuel(tx, { tenantId, equipment: lockedEquipment, tankId: bulkFuelTankId, date: fuelDate, gallonsThousandths: Math.round(parsedGallons * 1000), jobId: parsedJobId, odometerReading: parsedOdometer, idempotencyKey: key });
+        const [total] = await tx.select({ total: sum(equipmentFuelLogsTable.cost) }).from(equipmentFuelLogsTable).where(and(eq(equipmentFuelLogsTable.equipmentId, equipmentId), eq(equipmentFuelLogsTable.tenantId, tenantId)));
+        await tx.update(equipmentTable).set({ totalFuelCost: Number(total?.total ?? 0), ...(parsedOdometer != null && parsedOdometer > lockedEquipment.currentHours ? { currentHours: parsedOdometer } : {}) }).where(eq(equipmentTable.id, equipmentId));
+        return { row: bulk.fuel, duplicate: false };
+      }
+      const [row] = await tx.insert(equipmentFuelLogsTable).values({ equipmentId, tenantId, jobId: parsedJobId, date: fuelDate, gallons: parsedGallons, costPerGallon: parsedCpg, cost: parsedCost, odometerReading: parsedOdometer, fuelSource: "purchased", bulkFuelTankId: null, bulkFuelTankName: null }).returning();
+      const [total] = await tx.select({ total: sum(equipmentFuelLogsTable.cost) }).from(equipmentFuelLogsTable).where(and(eq(equipmentFuelLogsTable.equipmentId, equipmentId), eq(equipmentFuelLogsTable.tenantId, tenantId)));
+      await tx.update(equipmentTable).set({ totalFuelCost: Number(total?.total ?? 0), ...(parsedOdometer != null && parsedOdometer > lockedEquipment.currentHours ? { currentHours: parsedOdometer } : {}) }).where(eq(equipmentTable.id, equipmentId));
+      return { row, duplicate: false };
+    });
+    invalidateTenantReportCache(tenantId);
+    res.status(result.duplicate ? 200 : 201).json(formatFuelLog(result.row));
+  } catch (error: any) { res.status(409).json({ error: error?.message ?? "Unable to log fuel" }); }
 });
 
 router.delete("/equipment/:equipmentId/fuel-logs/:id", requireOfficeRole, async (req, res): Promise<void> => {
@@ -1038,29 +1186,32 @@ router.delete("/equipment/:equipmentId/fuel-logs/:id", requireOfficeRole, async 
   const owned = await requireEquipmentOwnership(equipmentId, tenantId, getUserId(req), res);
   if (!owned) return;
 
-  // Delete scoped by all three keys: id + equipmentId + tenantId
-  const [deleted] = await db.delete(equipmentFuelLogsTable)
-    .where(and(
-      eq(equipmentFuelLogsTable.id, id),
-      eq(equipmentFuelLogsTable.equipmentId, equipmentId),
-      eq(equipmentFuelLogsTable.tenantId, tenantId),
-    ))
-    .returning({ id: equipmentFuelLogsTable.id });
-  if (!deleted) { res.status(404).json({ error: "Fuel log not found" }); return; }
-
-  // Recalculate — scoped by BOTH equipmentId AND tenantId
-  const result = await db
-    .select({ total: sum(equipmentFuelLogsTable.cost) })
-    .from(equipmentFuelLogsTable)
-    .where(and(eq(equipmentFuelLogsTable.equipmentId, equipmentId), eq(equipmentFuelLogsTable.tenantId, tenantId)));
-  const newFuelTotal = parseFloat(String(result[0]?.total ?? 0));
-
-  // Update parent — scoped by BOTH id AND tenantId
-  await db.update(equipmentTable)
-    .set({ totalFuelCost: newFuelTotal })
-    .where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId)));
-
-  res.sendStatus(204);
+  try {
+    const outcome = await db.transaction(async tx => {
+      const [lockedEquipment] = await tx.select().from(equipmentTable).where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId))).for("update");
+      if (!lockedEquipment) throw new Error("Equipment not found");
+      const [fuel] = await tx.select().from(equipmentFuelLogsTable).where(and(eq(equipmentFuelLogsTable.id, id), eq(equipmentFuelLogsTable.equipmentId, equipmentId), eq(equipmentFuelLogsTable.tenantId, tenantId))).for("update");
+      if (!fuel) return "missing" as const;
+      if (fuel.fuelSource === "bulk_tank") {
+        if (fuel.bulkFuelTankId == null) throw new Error("Bulk fuel log has no linked tank");
+        const [tank] = await tx.select().from(bulkFuelTanksTable).where(and(eq(bulkFuelTanksTable.id, fuel.bulkFuelTankId), eq(bulkFuelTanksTable.tenantId, tenantId))).for("update");
+        if (!tank) throw new Error("Bulk fuel tank no longer exists");
+        if (!tank.isActive) throw new Error("Cannot refund fuel into an inactive bulk fuel tank");
+        const gallonsThousandths = gallonsToThousandths(fuel.gallons);
+        const cents = dollarsToCents(fuel.cost);
+        if (tank.availableThousandths > MAX_INVENTORY_INT - gallonsThousandths || tank.inventoryValueCents > MAX_INVENTORY_INT - cents || (tank.capacityThousandths != null && tank.availableThousandths + gallonsThousandths > tank.capacityThousandths)) throw new Error("Fuel refund exceeds tank capacity or inventory limits");
+        await tx.insert(bulkFuelTransactionsTable).values({ tankId: tank.id, tenantId, type: "reversal", date: fuel.date, gallonsThousandths, totalCostCents: cents, equipmentId, equipmentName: lockedEquipment.name, fuelLogId: fuel.id, notes: "Fuel log deletion refund" });
+        await tx.update(bulkFuelTanksTable).set({ availableThousandths: tank.availableThousandths + gallonsThousandths, inventoryValueCents: tank.inventoryValueCents + cents }).where(eq(bulkFuelTanksTable.id, tank.id));
+      }
+      await tx.delete(equipmentFuelLogsTable).where(eq(equipmentFuelLogsTable.id, fuel.id));
+      const [total] = await tx.select({ total: sum(equipmentFuelLogsTable.cost) }).from(equipmentFuelLogsTable).where(and(eq(equipmentFuelLogsTable.equipmentId, equipmentId), eq(equipmentFuelLogsTable.tenantId, tenantId)));
+      await tx.update(equipmentTable).set({ totalFuelCost: Number(total?.total ?? 0) }).where(eq(equipmentTable.id, equipmentId));
+      return "deleted" as const;
+    });
+    if (outcome === "missing") { res.status(404).json({ error: "Fuel log not found" }); return; }
+    invalidateTenantReportCache(tenantId);
+    res.sendStatus(204);
+  } catch (error: any) { res.status(409).json({ error: error?.message ?? "Unable to delete fuel log" }); }
 });
 
 // ─── Reading Logs Sub-resource ────────────────────────────────────────────────
@@ -1124,7 +1275,7 @@ router.post("/equipment/:id/reading-logs", async (req, res): Promise<void> => {
 router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
-  const { idempotencyKey, equipmentId, condition, fuelGallons, fuelCost, readingType, readingValue, concerns, checklistResponses, inspectionType = "pre_trip" } = req.body;
+  const { idempotencyKey, equipmentId, condition, fuelGallons, fuelCost, fuelSource = "purchased", bulkFuelTankId, readingType, readingValue, concerns, checklistResponses, inspectionType = "pre_trip" } = req.body;
   if (!["pre_trip", "end_of_day"].includes(inspectionType)) { res.status(400).json({ error: "inspectionType must be pre_trip or end_of_day" }); return; }
   if (typeof idempotencyKey !== "string" || !idempotencyKey.trim()) { res.status(400).json({ error: "idempotencyKey is required" }); return; }
   const normalizedIdempotencyKey = idempotencyKey.trim();
@@ -1136,15 +1287,20 @@ router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
   const cost = fuelCost != null ? Number(fuelCost) : null;
   const reading = hasReading ? Number(readingValue) : null;
   if (hasFuel && (!Number.isFinite(gallons) || gallons! <= 0)) { res.status(400).json({ error: "fuelGallons must be a positive number" }); return; }
+  let fuelThousandths: number | null = null;
+  if (gallons != null) {
+    try { fuelThousandths = gallonsToThousandths(gallons, "fuelGallons"); } catch (error: any) { res.status(400).json({ error: error.message }); return; }
+  }
   if (cost != null && (!Number.isFinite(cost) || cost < 0)) { res.status(400).json({ error: "fuelCost must be a non-negative number" }); return; }
   if (cost != null && !hasFuel) { res.status(400).json({ error: "fuelCost requires fuelGallons" }); return; }
+  if (!["purchased", "bulk_tank"].includes(fuelSource)) { res.status(400).json({ error: "fuelSource must be purchased or bulk_tank" }); return; }
+  if (fuelSource === "bulk_tank" && hasFuel && !Number.isInteger(bulkFuelTankId)) { res.status(400).json({ error: "bulkFuelTankId is required for bulk tank fuel" }); return; }
+  if (fuelSource === "bulk_tank" && !hasFuel) { res.status(400).json({ error: "bulkFuelTankId requires fuelGallons" }); return; }
   if (hasReading && (!["hours", "mileage"].includes(readingType) || !Number.isFinite(reading) || reading! < 0)) { res.status(400).json({ error: "readingType and a non-negative readingValue are required together" }); return; }
   const accessibleEquipment = await requireEquipmentOwnership(equipmentId, tenantId, userId, res);
   if (!accessibleEquipment) return;
-  const existing = await db.select().from(internalTasksTable).where(and(eq(internalTasksTable.tenantId, tenantId), eq(internalTasksTable.idempotencyKey, normalizedIdempotencyKey))).limit(1);
-  if (existing[0]) { res.json({ taskId: existing[0].id, fuelLogId: existing[0].preTripFuelLogId, readingLogId: existing[0].preTripReadingLogId, duplicate: true }); return; }
   const [[tenant], [equipment]] = await Promise.all([
-    db.select({ preTripChecklist: tenantsTable.preTripChecklist, endOfDayChecklist: tenantsTable.endOfDayChecklist }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
+    db.select({ preTripChecklist: tenantsTable.preTripChecklist, endOfDayChecklist: tenantsTable.endOfDayChecklist, timezone: tenantsTable.timezone }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
     db.select({ type: equipmentTable.type, archivedAt: equipmentTable.archivedAt }).from(equipmentTable).where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId))).limit(1),
   ]);
   if (!equipment) { res.status(404).json({ error: "Equipment not found" }); return; }
@@ -1160,19 +1316,46 @@ router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
   const checklist = applicableChecklist.map(item => ({ id: item.id, label: item.label, checked: submitted.get(item.id) === true }));
   const missingRequired = applicableChecklist.filter(item => item.required && submitted.get(item.id) !== true);
   if (missingRequired.length) { res.status(400).json({ error: "Complete all required checklist questions" }); return; }
+  const today = tenantDateKey(new Date(), tenant?.timezone ?? "UTC");
+  const requestFingerprint = JSON.stringify({
+    equipmentId, condition, inspectionType,
+    fuelGallons: fuelThousandths,
+    fuelSource: gallons == null ? null : fuelSource,
+    bulkFuelTankId: gallons != null && fuelSource === "bulk_tank" ? bulkFuelTankId : null,
+    // Bulk price is server-authoritative and deliberately excluded.
+    purchasedFuelCents: gallons != null && fuelSource === "purchased" ? dollarsToCents(cost ?? 0, "fuelCost") : null,
+    readingType: readingType ?? null, readingValue: reading ?? null,
+    concerns: typeof concerns === "string" ? concerns.trim() || null : null,
+    checklist: checklist.map(item => ({ id: item.id, checked: item.checked })).sort((a, b) => a.id.localeCompare(b.id)),
+  });
+  const existing = await db.select().from(internalTasksTable).where(and(eq(internalTasksTable.tenantId, tenantId), eq(internalTasksTable.idempotencyKey, normalizedIdempotencyKey))).limit(1);
+  if (existing[0]) {
+    if (existing[0].contextType !== "equipment" || existing[0].contextId !== equipmentId || existing[0].preTripRequestFingerprint == null || existing[0].preTripRequestFingerprint !== requestFingerprint) {
+      res.status(409).json({ error: "Idempotency key was already used with different or unverifiable pre-trip details" }); return;
+    }
+    const [fuel] = existing[0].preTripFuelLogId == null ? [] : await db.select().from(equipmentFuelLogsTable).where(and(eq(equipmentFuelLogsTable.id, existing[0].preTripFuelLogId), eq(equipmentFuelLogsTable.tenantId, tenantId))).limit(1);
+    res.json({ taskId: existing[0].id, ...(existing[0].preTripFuelLogId != null ? { fuelLogId: existing[0].preTripFuelLogId } : {}), ...(existing[0].preTripReadingLogId != null ? { readingLogId: existing[0].preTripReadingLogId } : {}), ...(fuel ? { fuelCost: fuel.cost, fuelCostPerGallon: fuel.costPerGallon, fuelSource: fuel.fuelSource, bulkFuelTankName: fuel.bulkFuelTankName } : {}), duplicate: true }); return;
+  }
 
   try {
     const result = await db.transaction(async (tx) => {
       const [owned] = await tx.select().from(equipmentTable).where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId))).for("update");
       if (!owned) throw new Error("Equipment not found");
       if (owned.archivedAt) throw new Error("Cannot inspect archived equipment");
+      if (!(await canWriteLockedEquipment(tx, tenantId, userId, owned))) throw new Error("Equipment access changed");
       if (readingType === "hours" && reading != null && reading < owned.currentHours) throw new Error(`Hour reading cannot be below current reading (${owned.currentHours})`);
       if (readingType === "mileage" && reading != null && owned.currentMiles != null && reading < owned.currentMiles) throw new Error(`Mileage reading cannot be below current reading (${owned.currentMiles})`);
       let fuelLogId: number | null = null;
+      let recordedFuel: typeof equipmentFuelLogsTable.$inferSelect | null = null;
       let readingLogId: number | null = null;
       if (gallons != null) {
-        const [fuel] = await tx.insert(equipmentFuelLogsTable).values({ equipmentId, tenantId, date: new Date().toISOString().slice(0, 10), gallons, cost: cost ?? 0, costPerGallon: null, odometerReading: null }).returning();
-        fuelLogId = fuel.id;
+        if (fuelSource === "bulk_tank") {
+          const bulk = await dispenseBulkFuel(tx, { tenantId, equipment: owned, tankId: bulkFuelTankId, date: today, gallonsThousandths: fuelThousandths!, jobId: null, odometerReading: null, idempotencyKey: normalizedIdempotencyKey });
+          recordedFuel = bulk.fuel; fuelLogId = bulk.fuel.id;
+        } else {
+          const [fuel] = await tx.insert(equipmentFuelLogsTable).values({ equipmentId, tenantId, date: today, gallons, cost: cost ?? 0, costPerGallon: gallons ? (cost ?? 0) / gallons : 0, odometerReading: null, fuelSource: "purchased", bulkFuelTankId: null, bulkFuelTankName: null }).returning();
+          recordedFuel = fuel; fuelLogId = fuel.id;
+        }
       }
       if (reading != null) {
         const [entry] = await tx.insert(equipmentReadingLogsTable).values({ equipmentId, tenantId, date: new Date().toISOString().slice(0, 10), readingType, value: reading, source: "manual" }).returning();
@@ -1187,14 +1370,20 @@ router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
       if (readingType === "mileage" && reading != null && (owned.currentMiles == null || reading > owned.currentMiles)) updates.currentMiles = reading;
       if (Object.keys(updates).length) await tx.update(equipmentTable).set(updates).where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId)));
       const isEndOfDay = inspectionType === "end_of_day";
-      const [task] = await tx.insert(internalTasksTable).values({ tenantId, title: `${isEndOfDay ? "End-of-day" : "Pre-trip"} inspection: ${owned.name}`, description: `Condition: ${condition.replace("_", " ")}.${typeof concerns === "string" && concerns.trim() ? `\nConcerns: ${concerns.trim()}` : ""}`, taskType: isEndOfDay ? "end_of_day_inspection" : "pre_trip_inspection", createdById: userId, assignedToRole: "admin_office", priority: condition === "unsafe" ? "urgent" : condition === "needs_attention" ? "high" : "normal", status: "open", contextType: "equipment", contextId: equipmentId, idempotencyKey: normalizedIdempotencyKey, preTripFuelLogId: fuelLogId, preTripReadingLogId: readingLogId, preTripChecklistSnapshot: checklist }).returning();
-      return { taskId: task.id, fuelLogId, readingLogId, duplicate: false };
+      const fuelDescription = recordedFuel ? `\nFuel: ${recordedFuel.fuelSource === "bulk_tank" ? `Bulk tank ${recordedFuel.bulkFuelTankName}` : "Purchased"} — ${recordedFuel.gallons} gal at $${(recordedFuel.costPerGallon ?? 0).toFixed(2)}/gal ($${recordedFuel.cost.toFixed(2)}).` : "";
+      const [task] = await tx.insert(internalTasksTable).values({ tenantId, title: `${isEndOfDay ? "End-of-day" : "Pre-trip"} inspection: ${owned.name}`, description: `Condition: ${condition.replace("_", " ")}.${fuelDescription}${typeof concerns === "string" && concerns.trim() ? `\nConcerns: ${concerns.trim()}` : ""}`, taskType: isEndOfDay ? "end_of_day_inspection" : "pre_trip_inspection", createdById: userId, assignedToRole: "admin_office", priority: condition === "unsafe" ? "urgent" : condition === "needs_attention" ? "high" : "normal", status: "open", contextType: "equipment", contextId: equipmentId, idempotencyKey: normalizedIdempotencyKey, preTripRequestFingerprint: requestFingerprint, preTripFuelLogId: fuelLogId, preTripReadingLogId: readingLogId, preTripChecklistSnapshot: checklist }).returning();
+      return { taskId: task.id, ...(fuelLogId != null ? { fuelLogId } : {}), ...(readingLogId != null ? { readingLogId } : {}), ...(recordedFuel ? { fuelCost: recordedFuel.cost, fuelCostPerGallon: recordedFuel.costPerGallon, fuelSource: recordedFuel.fuelSource, bulkFuelTankName: recordedFuel.bulkFuelTankName } : {}), duplicate: false };
     });
+    invalidateTenantReportCache(tenantId);
     res.status(201).json(result);
   } catch (error: any) {
     // A concurrent retry may have won after our initial lookup.
     const [duplicate] = await db.select().from(internalTasksTable).where(and(eq(internalTasksTable.tenantId, tenantId), eq(internalTasksTable.idempotencyKey, normalizedIdempotencyKey))).limit(1);
-    if (duplicate) { res.json({ taskId: duplicate.id, fuelLogId: duplicate.preTripFuelLogId, readingLogId: duplicate.preTripReadingLogId, duplicate: true }); return; }
+    if (duplicate) {
+      if (duplicate.contextType !== "equipment" || duplicate.contextId !== equipmentId || duplicate.preTripRequestFingerprint == null || duplicate.preTripRequestFingerprint !== requestFingerprint) { res.status(409).json({ error: "Idempotency key was already used with different or unverifiable pre-trip details" }); return; }
+      const [fuel] = duplicate.preTripFuelLogId == null ? [] : await db.select().from(equipmentFuelLogsTable).where(and(eq(equipmentFuelLogsTable.id, duplicate.preTripFuelLogId), eq(equipmentFuelLogsTable.tenantId, tenantId))).limit(1);
+      res.json({ taskId: duplicate.id, ...(duplicate.preTripFuelLogId != null ? { fuelLogId: duplicate.preTripFuelLogId } : {}), ...(duplicate.preTripReadingLogId != null ? { readingLogId: duplicate.preTripReadingLogId } : {}), ...(fuel ? { fuelCost: fuel.cost, fuelCostPerGallon: fuel.costPerGallon, fuelSource: fuel.fuelSource, bulkFuelTankName: fuel.bulkFuelTankName } : {}), duplicate: true }); return;
+    }
     const message = error?.message ?? "Unable to save pre-trip";
     res.status(message === "Equipment not found" ? 404 : 400).json({ error: message });
   }
@@ -1258,7 +1447,7 @@ router.get("/equipment/:id/ledger", async (req, res): Promise<void> => {
       runtimeHours: runtimeHoursInWindow,
       runtimeCost,
       total: fuelCost + runtimeCost,
-      fuelLogs: fuelLogs.map(f => ({ ...f, createdAt: f.createdAt.toISOString() })),
+      fuelLogs: fuelLogs.map(formatFuelLog),
     },
     maintenance: {
       partsCost: partsTotal,

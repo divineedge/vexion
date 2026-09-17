@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, real, boolean, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, real, boolean, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -111,14 +111,70 @@ export const equipmentFuelLogsTable = pgTable("equipment_fuel_logs", {
   costPerGallon: real("cost_per_gallon"),
   /** Total cost of this fill */
   cost: real("cost").notNull().default(0),
+  /** purchased is the legacy/station source; bulk_tank is allocated from inventory. */
+  fuelSource: text("fuel_source").notNull().default("purchased"),
+  bulkFuelTankId: integer("bulk_fuel_tank_id"),
+  /** Tank display label at dispense time; tank renames never rewrite this history. */
+  bulkFuelTankName: text("bulk_fuel_tank_name"),
+  /** Required by bulk dispensing and used to make retries replay-safe. */
+  idempotencyKey: text("idempotency_key"),
   /** Odometer reading at fill (hours for equipment, miles for vehicles) */
   odometerReading: real("odometer_reading"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, table => [
+  index("equipment_fuel_logs_tenant_tank_idx").on(table.tenantId, table.bulkFuelTankId),
+  uniqueIndex("equipment_fuel_logs_tenant_idempotency_uidx").on(table.tenantId, table.idempotencyKey),
+]);
 
 export const insertEquipmentFuelLogSchema = createInsertSchema(equipmentFuelLogsTable).omit({ id: true, createdAt: true });
 export type InsertEquipmentFuelLog = z.infer<typeof insertEquipmentFuelLogSchema>;
 export type EquipmentFuelLog = typeof equipmentFuelLogsTable.$inferSelect;
+
+// ── Bulk fuel inventory ───────────────────────────────────────────────────────
+// Inventory uses integer thousandths of a US gallon and integer cents.  The
+// customer-facing API converts at its boundary; never derive current inventory
+// from historical floating point fuel log values.
+export const bulkFuelTanksTable = pgTable("bulk_fuel_tanks", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  fuelType: text("fuel_type").notNull(),
+  capacityThousandths: integer("capacity_thousandths"),
+  availableThousandths: integer("available_thousandths").notNull().default(0),
+  inventoryValueCents: integer("inventory_value_cents").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => [
+  index("bulk_fuel_tanks_tenant_active_idx").on(table.tenantId, table.isActive),
+]);
+
+export const bulkFuelTransactionsTable = pgTable("bulk_fuel_transactions", {
+  id: serial("id").primaryKey(),
+  tankId: integer("tank_id").notNull().references(() => bulkFuelTanksTable.id),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
+  /** delivery | opening_balance | dispense | reversal */
+  type: text("type").notNull(),
+  date: text("date").notNull(),
+  gallonsThousandths: integer("gallons_thousandths").notNull(),
+  totalCostCents: integer("total_cost_cents").notNull(),
+  supplier: text("supplier"),
+  reference: text("reference"),
+  notes: text("notes"),
+  equipmentId: integer("equipment_id").references(() => equipmentTable.id, { onDelete: "set null" }),
+  /** Equipment label at movement time; retained even after an equipment rename. */
+  equipmentName: text("equipment_name"),
+  fuelLogId: integer("fuel_log_id").references(() => equipmentFuelLogsTable.id, { onDelete: "set null" }),
+  idempotencyKey: text("idempotency_key"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => [
+  index("bulk_fuel_transactions_tank_created_idx").on(table.tankId, table.createdAt),
+  index("bulk_fuel_transactions_tenant_date_idx").on(table.tenantId, table.date),
+  uniqueIndex("bulk_fuel_transactions_tank_idempotency_uidx").on(table.tankId, table.idempotencyKey),
+  uniqueIndex("bulk_fuel_transactions_fuel_log_type_uidx").on(table.fuelLogId, table.type),
+]);
+
+export type BulkFuelTank = typeof bulkFuelTanksTable.$inferSelect;
+export type BulkFuelTransaction = typeof bulkFuelTransactionsTable.$inferSelect;
 
 // ── Equipment Reading Logs (hour-meter / mileage history) ────────────────────
 // Historical ledger of hour-meter and mileage readings, primarily populated by

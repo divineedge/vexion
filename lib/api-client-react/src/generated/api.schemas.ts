@@ -4618,6 +4618,14 @@ export interface EquipmentMaintenanceInput {
   nextServiceDueMiles?: number;
 }
 
+export type EquipmentFuelLogFuelSource = typeof EquipmentFuelLogFuelSource[keyof typeof EquipmentFuelLogFuelSource];
+
+
+export const EquipmentFuelLogFuelSource = {
+  purchased: 'purchased',
+  bulk_tank: 'bulk_tank',
+} as const;
+
 export interface EquipmentFuelLog {
   id: number;
   equipmentId: number;
@@ -4629,16 +4637,35 @@ export interface EquipmentFuelLog {
   jobId?: number | null;
   date: string;
   gallons: number;
+  /** @nullable */
+  costPerGallon?: number | null;
   cost: number;
+  fuelSource: EquipmentFuelLogFuelSource;
+  /** @nullable */
+  bulkFuelTankId: number | null;
+  /** @nullable */
+  bulkFuelTankName: string | null;
   /** @nullable */
   odometerReading?: number | null;
   createdAt: string;
 }
 
+export type EquipmentFuelLogInputFuelSource = typeof EquipmentFuelLogInputFuelSource[keyof typeof EquipmentFuelLogInputFuelSource];
+
+
+export const EquipmentFuelLogInputFuelSource = {
+  purchased: 'purchased',
+  bulk_tank: 'bulk_tank',
+} as const;
+
 export interface EquipmentFuelLogInput {
   date: string;
   gallons: number;
   cost?: number;
+  costPerGallon?: number;
+  fuelSource?: EquipmentFuelLogInputFuelSource;
+  bulkFuelTankId?: number;
+  idempotencyKey?: string;
   odometerReading?: number;
   /** Optional job to attribute this fuel cost to. Improves per-job fuel cost accuracy in the Job Profitability report. */
   jobId?: number;
@@ -4675,6 +4702,14 @@ export const EquipmentPreTripInputCondition = {
   unsafe: 'unsafe',
 } as const;
 
+export type EquipmentPreTripInputFuelSource = typeof EquipmentPreTripInputFuelSource[keyof typeof EquipmentPreTripInputFuelSource];
+
+
+export const EquipmentPreTripInputFuelSource = {
+  purchased: 'purchased',
+  bulk_tank: 'bulk_tank',
+} as const;
+
 export type EquipmentPreTripInputReadingType = typeof EquipmentPreTripInputReadingType[keyof typeof EquipmentPreTripInputReadingType];
 
 
@@ -4703,6 +4738,8 @@ export interface EquipmentPreTripInput {
   condition: EquipmentPreTripInputCondition;
   fuelGallons?: number;
   fuelCost?: number;
+  fuelSource?: EquipmentPreTripInputFuelSource;
+  bulkFuelTankId?: number;
   readingType?: EquipmentPreTripInputReadingType;
   readingValue?: number;
   concerns?: string;
@@ -4716,7 +4753,141 @@ export interface EquipmentPreTripResult {
   fuelLogId?: number | null;
   /** @nullable */
   readingLogId?: number | null;
+  /** @nullable */
+  fuelCost?: number | null;
+  /** @nullable */
+  fuelCostPerGallon?: number | null;
+  /** @nullable */
+  fuelSource?: string | null;
+  /** @nullable */
+  bulkFuelTankName?: string | null;
   duplicate: boolean;
+}
+
+export interface BulkFuelTank {
+  id: number;
+  name: string;
+  fuelType: string;
+  /** @nullable */
+  capacityGallons: number | null;
+  isActive: boolean;
+  availableGallons: number;
+  inventoryValue: number;
+  unitCostPerGallon: number;
+  createdAt: string;
+}
+
+export interface BulkFuelTankInput {
+  name: string;
+  fuelType: string;
+  /** @nullable */
+  capacityGallons?: number | null;
+}
+
+export interface BulkFuelTankUpdate {
+  name?: string;
+  fuelType?: string;
+  /** @nullable */
+  capacityGallons?: number | null;
+  isActive?: boolean;
+}
+
+export type BulkFuelTransactionType = typeof BulkFuelTransactionType[keyof typeof BulkFuelTransactionType];
+
+
+export const BulkFuelTransactionType = {
+  delivery: 'delivery',
+  opening_balance: 'opening_balance',
+  dispense: 'dispense',
+  reversal: 'reversal',
+} as const;
+
+export interface BulkFuelTransaction {
+  id: number;
+  tankId: number;
+  type: BulkFuelTransactionType;
+  date: string;
+  gallons: number;
+  totalCost: number;
+  costPerGallon: number;
+  /** @nullable */
+  supplier: string | null;
+  /** @nullable */
+  reference: string | null;
+  /** @nullable */
+  notes: string | null;
+  /** @nullable */
+  equipmentId: number | null;
+  /** @nullable */
+  equipmentName: string | null;
+  /** @nullable */
+  fuelLogId: number | null;
+  createdAt: string;
+}
+
+export interface BulkFuelTransactionPage {
+  data: BulkFuelTransaction[];
+  /** @nullable */
+  nextCursor: string | null;
+}
+
+export type BulkFuelIntakeInputKind = typeof BulkFuelIntakeInputKind[keyof typeof BulkFuelIntakeInputKind];
+
+
+export const BulkFuelIntakeInputKind = {
+  delivery: 'delivery',
+  opening_balance: 'opening_balance',
+} as const;
+
+export interface BulkFuelIntakeInput {
+  kind: BulkFuelIntakeInputKind;
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  date: string;
+  gallons: number;
+  totalCost: number;
+  supplier?: string;
+  reference?: string;
+  notes?: string;
+  idempotencyKey: string;
+}
+
+export interface BulkFuelIntakeResult {
+  tank: BulkFuelTank;
+  transaction: BulkFuelTransaction;
+  duplicate: boolean;
+}
+
+export interface EquipmentFuelUsageRow {
+  equipmentId: number;
+  equipmentName: string;
+  totalGallons: number;
+  totalCost: number;
+  averageCostPerGallon: number;
+  fillCount: number;
+  bulkGallons: number;
+  purchasedGallons: number;
+}
+
+export type EquipmentFuelUsageReportPeriod = typeof EquipmentFuelUsageReportPeriod[keyof typeof EquipmentFuelUsageReportPeriod];
+
+
+export const EquipmentFuelUsageReportPeriod = {
+  week: 'week',
+  month: 'month',
+  year: 'year',
+} as const;
+
+export interface EquipmentFuelUsageReport {
+  period: EquipmentFuelUsageReportPeriod;
+  from: string;
+  to: string;
+  totalGallons: number;
+  totalCost: number;
+  averageCostPerGallon: number;
+  fillCount: number;
+  bulkGallons: number;
+  purchasedGallons: number;
+  equipment: EquipmentFuelUsageRow[];
 }
 
 export type EquipmentRecoveryResultEquipmentItem = {
@@ -6576,6 +6747,19 @@ export type ListEquipmentParams = {
 includeArchived?: boolean;
 };
 
+export type ListBulkFuelTanksParams = {
+includeInactive?: boolean;
+};
+
+export type ListBulkFuelTransactionsParams = {
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+cursor?: string;
+};
+
 export type GetEquipmentLedgerParams = {
 from?: string;
 to?: string;
@@ -6760,6 +6944,24 @@ export type GetDevToolsEnvironment200 = {
   isProduction: boolean;
   environment: string;
 };
+
+export type GetEquipmentFuelUsageParams = {
+period: GetEquipmentFuelUsagePeriod;
+/**
+ * @pattern ^\d{4}-\d{2}-\d{2}$
+ */
+anchorDate: string;
+equipmentId?: number;
+};
+
+export type GetEquipmentFuelUsagePeriod = typeof GetEquipmentFuelUsagePeriod[keyof typeof GetEquipmentFuelUsagePeriod];
+
+
+export const GetEquipmentFuelUsagePeriod = {
+  week: 'week',
+  month: 'month',
+  year: 'year',
+} as const;
 
 export type GetJobProfitabilityReportParams = {
 startDate?: string;

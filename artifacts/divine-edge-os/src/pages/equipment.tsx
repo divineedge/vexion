@@ -63,6 +63,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Settings } from 'lucide-react';
+import { EquipmentFuelForm } from '@/components/equipment/EquipmentFuelForm';
+import { EquipmentFuelReport } from '@/components/equipment/EquipmentFuelReport';
+import { BulkFuelManager } from '@/components/equipment/BulkFuelManager';
 
 // EQUIPMENT_TYPES is now loaded from the tenant's equipment types list via API.
 // The combobox below falls back to free-form entry for values not in the list.
@@ -332,7 +335,8 @@ function EquipmentLedgerPanel({ equipmentId }: { equipmentId: number }) {
 
 function EquipmentDetailPanel({ equipment, onClose, onEdit }: { equipment: Equipment; onClose: () => void; onEdit?: () => void }) {
   const qc = useQueryClient();
-  const { isTechnician } = useAuth();
+  const { user, isTechnician } = useAuth();
+  const isManager = user && ['company_owner', 'office_manager', 'department_manager'].includes(user.role);
 
   // Maintenance
   const { data: maintenance } = useListEquipmentMaintenance(equipment.id, {
@@ -352,10 +356,8 @@ function EquipmentDetailPanel({ equipment, onClose, onEdit }: { equipment: Equip
   const deleteFuelLog = useDeleteEquipmentFuelLog();
 
   const todayStr = new Date().toISOString().slice(0, 10);
-  const [fuelForm, setFuelForm] = useState({ date: todayStr, gallons: '', costPerGallon: '', cost: '', odometerReading: '', jobId: '' });
   const [fuelOpen, setFuelOpen] = useState(false);
   useEffect(() => { if (maintOpen) setMaintForm(f => ({ ...f, date: todayStr })); }, [maintOpen]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (fuelOpen) setFuelForm(f => ({ ...f, date: todayStr })); }, [fuelOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Recent jobs for linking a fuel fill to a specific job
   const { data: recentJobs = [] } = useListJobs(
@@ -404,32 +406,6 @@ function EquipmentDetailPanel({ equipment, onClose, onEdit }: { equipment: Equip
     });
   };
 
-  const handleAddFuel = () => {
-    if (!fuelForm.date || !fuelForm.gallons) { toast.error('Date and gallons are required'); return; }
-    const gallons = parseFloat(fuelForm.gallons);
-    const cpg = fuelForm.costPerGallon ? parseFloat(fuelForm.costPerGallon) : null;
-    const totalCost = fuelForm.cost ? parseFloat(fuelForm.cost) : (cpg ? gallons * cpg : 0);
-    createFuelLog.mutate({
-      id: equipment.id,
-      data: {
-        date: fuelForm.date,
-        gallons,
-        costPerGallon: cpg ?? undefined,
-        cost: totalCost,
-        odometerReading: fuelForm.odometerReading ? parseFloat(fuelForm.odometerReading) : undefined,
-        jobId: fuelForm.jobId ? parseInt(fuelForm.jobId, 10) : undefined,
-      } as Parameters<typeof createFuelLog.mutate>[0]['data'],
-    }, {
-      onSuccess: () => {
-        toast.success('Fuel log added');
-        qc.invalidateQueries({ queryKey: getListEquipmentFuelLogsQueryKey(equipment.id) });
-        qc.invalidateQueries({ queryKey: getListEquipmentQueryKey() });
-        setFuelOpen(false);
-        setFuelForm({ date: '', gallons: '', costPerGallon: '', cost: '', odometerReading: '', jobId: '' });
-      },
-      onError: () => toast.error('Failed to add fuel log'),
-    });
-  };
 
   const handleDeleteMaintenance = (id: number) => {
     deleteMaintenance.mutate({ equipmentId: equipment.id, id }, {
@@ -785,65 +761,13 @@ function EquipmentDetailPanel({ equipment, onClose, onEdit }: { equipment: Equip
                 <Archive className="w-3.5 h-3.5" /> Archived — new fuel fills cannot be added
               </p>
             )}
-            {fuelOpen && (
-              <Card className="border-primary/30">
-                <CardContent className="p-4 space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium">Date *</label>
-                      <Input type="date" title="Date this fuel fill-up occurred" value={fuelForm.date} onChange={e => setFuelForm(f => ({ ...f, date: e.target.value }))} />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium">Gallons *</label>
-                      <Input type="number" title="Number of gallons filled" placeholder="5.0" step="0.1" value={fuelForm.gallons}
-                        onChange={e => {
-                          const gals = e.target.value;
-                          const cpg = parseFloat(fuelForm.costPerGallon) || 0;
-                          setFuelForm(f => ({ ...f, gallons: gals, cost: cpg && gals ? String((parseFloat(gals) * cpg).toFixed(2)) : f.cost }));
-                        }} />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium">$ / Gallon</label>
-                      <Input type="number" title="Price paid per gallon — used to calculate total fuel cost" placeholder="e.g. 3.89" step="0.001" value={fuelForm.costPerGallon}
-                        onChange={e => {
-                          const cpg = e.target.value;
-                          const gals = parseFloat(fuelForm.gallons) || 0;
-                          setFuelForm(f => ({ ...f, costPerGallon: cpg, cost: cpg && gals ? String((parseFloat(cpg) * gals).toFixed(2)) : f.cost }));
-                        }} />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium">Total Cost ($)</label>
-                      <Input type="number" title="Total amount paid for this fill-up (auto-calculated from gallons × price/gallon)" placeholder="0.00" value={fuelForm.cost} onChange={e => setFuelForm(f => ({ ...f, cost: e.target.value }))} />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium">Hours Reading</label>
-                      <Input type="number" title="Engine hour-meter reading at the time of fill-up (used for fuel efficiency calculations)" placeholder="Current hours" value={fuelForm.odometerReading} onChange={e => setFuelForm(f => ({ ...f, odometerReading: e.target.value }))} />
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium">Job (optional)</label>
-                    <Select value={fuelForm.jobId || '__none__'} onValueChange={v => setFuelForm(f => ({ ...f, jobId: v === '__none__' ? '' : v }))}>
-                      <SelectTrigger className="w-full text-sm" title="Optionally associate this fuel cost with a specific job">
-                        <SelectValue placeholder="No job — fleet overhead" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">No job — fleet overhead</SelectItem>
-                        {recentJobs.map(j => (
-                          <SelectItem key={j.id} value={String(j.id)}>
-                            {j.title}{j.scheduledAt ? ` · ${j.scheduledAt.slice(0, 10)}` : ''}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">Linking to a job attributes the fuel cost directly to that job's profitability.</p>
-                  </div>
-                  <div className="flex gap-2 justify-end">
-                    <Button variant="outline" size="sm" disabled={createFuelLog.isPending} onClick={() => setFuelOpen(false)}>Cancel</Button>
-                    <Button size="sm" title="Save this fuel fill-up record" onClick={handleAddFuel} disabled={createFuelLog.isPending}>{createFuelLog.isPending ? 'Saving…' : 'Save'}</Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            
+            <EquipmentFuelForm 
+              equipmentId={equipment.id} 
+              open={fuelOpen} 
+              onOpenChange={setFuelOpen} 
+            />
+
             {fuelLogs && fuelLogs.length > 0 ? (
               <div className="space-y-2">
                 {(() => { const totalGal = fuelLogs.reduce((s, f) => s + (f.gallons ?? 0), 0); const totalCost = fuelLogs.reduce((s, f) => s + (f.cost ?? 0), 0); return totalGal > 0 ? <div className="flex items-center gap-3 px-3 py-2 bg-muted/50 rounded-lg text-sm"><span className="text-muted-foreground">Total:</span><span className="font-medium">{totalGal.toFixed(1)} gal</span><span className="font-medium">${totalCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div> : null; })()}
@@ -852,7 +776,7 @@ function EquipmentDetailPanel({ equipment, onClose, onEdit }: { equipment: Equip
                   return (
                     <div key={f.id} className="rounded-lg border p-3 flex items-start gap-3">
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
                           <p className="text-sm font-medium" title={`${f.gallons} gallons`}>{f.gallons} gal</p>
                           <Badge variant="outline" className="text-xs" title={`Fuel cost: ${fmt$(f.cost)}`}>{fmt$(f.cost)}</Badge>
                           {f.odometerReading != null && <span className="text-xs text-muted-foreground" title={`Hour meter reading: ${f.odometerReading} hrs`}>@ {f.odometerReading} hrs</span>}
@@ -863,10 +787,29 @@ function EquipmentDetailPanel({ equipment, onClose, onEdit }: { equipment: Equip
                             </Badge>
                           )}
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5" title={f.date ? new Date(f.date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : undefined}>{f.date ? new Date(f.date + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</p>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                          <span title={f.date ? new Date(f.date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : undefined}>{f.date ? new Date(f.date + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</span>
+                          <span>•</span>
+                          <span>{f.fuelSource === 'bulk_tank' ? `Bulk Tank: ${f.bulkFuelTankName || 'Unknown Tank'}` : 'Purchased / Other'}</span>
+                          {f.costPerGallon != null && (
+                            <>
+                              <span>•</span>
+                              <span>{fmt$(f.costPerGallon)}/gal</span>
+                            </>
+                          )}
+                        </div>
                       </div>
                       {!isTechnician && (
-                        <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground hover:text-destructive shrink-0 disabled:opacity-40" disabled={deleteFuelLog.isPending} onClick={() => handleDeleteFuel(f.id)}>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="w-7 h-7 text-muted-foreground hover:text-destructive shrink-0 disabled:opacity-40" 
+                          disabled={deleteFuelLog.isPending} 
+                          onClick={() => {
+                            if (f.fuelSource === 'bulk_tank' && !confirm('Are you sure? Deleting this bulk fuel log will restore the gallons and cost back to the tank.')) return;
+                            handleDeleteFuel(f.id);
+                          }}
+                        >
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       )}
@@ -941,7 +884,13 @@ function EquipmentDetailPanel({ equipment, onClose, onEdit }: { equipment: Equip
           </TabsContent>
 
           {/* Report tab — cost and efficiency summary */}
-          <TabsContent value="report" className="mt-4">
+          <TabsContent value="report" className="mt-4 space-y-6">
+            {isManager && (
+              <>
+                <EquipmentFuelReport equipmentId={equipment.id} />
+                <Separator />
+              </>
+            )}
             {(() => {
               const age = equipment.createdAt
                 ? Math.floor((Date.now() - new Date(equipment.createdAt).getTime()) / (1000 * 60 * 60 * 24 * 365.25))
@@ -1190,7 +1139,8 @@ function ReorderSuggestionSheet({
 
 export default function EquipmentPage() {
   const qc = useQueryClient();
-  const { isTechnician, isOwner } = useAuth();
+  const { user, isTechnician, isOwner } = useAuth();
+  const isManager = user && ['company_owner', 'office_manager', 'department_manager'].includes(user.role);
   const { can } = usePermissions();
 
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1358,38 +1308,44 @@ export default function EquipmentPage() {
   const sellCount = equipment?.filter(e => e.sellRecommended).length ?? 0;
   const maintenanceDueCount = equipment?.filter(e => !e.archivedAt && e.maintenanceDue).length ?? 0;
 
+  const [mainTab, setMainTab] = useState<'fleet' | 'bulk_fuel' | 'fuel_report'>('fleet');
+
   return (
     <div className="min-w-0 overflow-x-hidden space-y-6 animate-in fade-in duration-500">
       <div className="flex min-w-0 flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="shrink-0">
-          <h1 className="text-3xl font-bold tracking-tight">Equipment</h1>
-          <p className="text-muted-foreground mt-1">Track operating costs, maintenance, and fuel for your fleet.{(equipment?.length ?? 0) > 0 && <span className="ml-2 text-xs font-medium bg-muted px-1.5 py-0.5 rounded-full">{equipment?.length}</span>}</p>
+          <h1 className="text-3xl font-bold tracking-tight">Equipment & Fuel</h1>
+          <p className="text-muted-foreground mt-1">Track operating costs, maintenance, and fuel for your fleet.</p>
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-2 xl:justify-end">
-          <div className="relative w-full sm:w-auto">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-            <Input
-              value={equipmentSearch}
-              onChange={e => setEquipmentSearch(e.target.value)}
-              placeholder="Search equipment…"
-              title="Search by equipment name, make, or model"
-              className="h-9 w-full pl-7 text-sm sm:w-44"
-            />
-            {equipmentSearch && <button onClick={() => setEquipmentSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>}
-          </div>
-          <div className="flex flex-wrap items-center gap-1">
-            {(['all', 'maintenance', 'sell'] as const).map(s => (
-              <button
-                key={s}
-                title={s === 'all' ? 'Show all equipment' : s === 'maintenance' ? 'Show equipment flagged for maintenance' : 'Show equipment flagged to sell'}
-                className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${equipmentStatusFilter === s ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
-                onClick={() => setEquipmentStatusFilter(s)}
-              >
-                {s === 'all' ? 'All' : s === 'maintenance' ? `Maintenance (${maintenanceDueCount})` : `Sell (${sellCount})`}
-              </button>
-            ))}
-          </div>
-          {equipmentTypes.length > 0 && (
+          {mainTab === 'fleet' && (
+            <div className="relative w-full sm:w-auto">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              <Input
+                value={equipmentSearch}
+                onChange={e => setEquipmentSearch(e.target.value)}
+                placeholder="Search equipment…"
+                title="Search by equipment name, make, or model"
+                className="h-9 w-full pl-7 text-sm sm:w-44"
+              />
+              {equipmentSearch && <button onClick={() => setEquipmentSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>}
+            </div>
+          )}
+          {mainTab === 'fleet' && (
+            <div className="flex flex-wrap items-center gap-1">
+              {(['all', 'maintenance', 'sell'] as const).map(s => (
+                <button
+                  key={s}
+                  title={s === 'all' ? 'Show all equipment' : s === 'maintenance' ? 'Show equipment flagged for maintenance' : 'Show equipment flagged to sell'}
+                  className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${equipmentStatusFilter === s ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
+                  onClick={() => setEquipmentStatusFilter(s)}
+                >
+                  {s === 'all' ? 'All' : s === 'maintenance' ? `Maintenance (${maintenanceDueCount})` : `Sell (${sellCount})`}
+                </button>
+              ))}
+            </div>
+          )}
+          {mainTab === 'fleet' && equipmentTypes.length > 0 && (
             <select
               value={equipmentTypeFilter}
               onChange={e => setEquipmentTypeFilter(e.target.value)}
@@ -1402,28 +1358,32 @@ export default function EquipmentPage() {
               ))}
             </select>
           )}
-          <select
-            value={equipmentSort}
-            onChange={e => setEquipmentSort(e.target.value as typeof equipmentSort)}
-            className="h-9 text-sm px-2.5 rounded-md border border-input bg-background"
-            title="Sort by"
-          >
-            <option value="name">Sort: Name</option>
-            <option value="type">Sort: Type</option>
-            <option value="age">Sort: Oldest first</option>
-            <option value="hours">Sort: Highest hours</option>
-          </select>
-          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-            <input
-              type="checkbox"
-              title="Show archived (retired) equipment alongside active equipment"
-              className="w-4 h-4 rounded border-input"
-              checked={includeArchived}
-              onChange={e => setIncludeArchived(e.target.checked)}
-            />
-            Include archived
-          </label>
-          {!isTechnician && (
+          {mainTab === 'fleet' && (
+            <>
+              <select
+                value={equipmentSort}
+                onChange={e => setEquipmentSort(e.target.value as typeof equipmentSort)}
+                className="h-9 text-sm px-2.5 rounded-md border border-input bg-background"
+                title="Sort by"
+              >
+                <option value="name">Sort: Name</option>
+                <option value="type">Sort: Type</option>
+                <option value="age">Sort: Oldest first</option>
+                <option value="hours">Sort: Highest hours</option>
+              </select>
+              <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  title="Show archived (retired) equipment alongside active equipment"
+                  className="w-4 h-4 rounded border-input"
+                  checked={includeArchived}
+                  onChange={e => setIncludeArchived(e.target.checked)}
+                />
+                Include archived
+              </label>
+            </>
+          )}
+          {mainTab === 'fleet' && !isTechnician && (
             <ImportExportControls
               entity="equipment"
               entityLabel="Equipment"
@@ -1436,13 +1396,21 @@ export default function EquipmentPage() {
               <Settings className="w-4 h-4" />
             </Button>
           )}
-          {can('actions.addEquipment') && (
+          {mainTab === 'fleet' && can('actions.addEquipment') && (
             <Button onClick={openCreate} className="gap-2" title="Add a new piece of equipment">
               <Plus className="w-4 h-4" /> Add Equipment
             </Button>
           )}
         </div>
       </div>
+
+      <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as 'fleet' | 'bulk_fuel' | 'fuel_report')}>
+        <TabsList className={`w-full sm:w-auto grid sm:inline-grid ${isManager ? 'grid-cols-3' : 'grid-cols-1'}`}>
+          <TabsTrigger value="fleet">Fleet {(equipment?.length ?? 0) > 0 && `(${equipment?.length})`}</TabsTrigger>
+          {isManager && <TabsTrigger value="fuel_report">Fuel Report</TabsTrigger>}
+          {isManager && <TabsTrigger value="bulk_fuel">Bulk Fuel</TabsTrigger>}
+        </TabsList>
+        <TabsContent value="fleet" className="mt-4 space-y-6">
 
       {isOwner && recoveryStatus?.eligible && recoveryStatus.pendingCount > 0 && (
         <div className="flex flex-col gap-3 rounded-lg border border-amber-300 bg-amber-50/70 p-4 text-amber-950 sm:flex-row sm:items-center sm:justify-between">
@@ -1679,6 +1647,21 @@ export default function EquipmentPage() {
         </div>
 
       </div>
+
+      </TabsContent>
+      
+      {isManager && (
+        <TabsContent value="bulk_fuel" className="mt-4">
+          <BulkFuelManager />
+        </TabsContent>
+      )}
+
+      {isManager && (
+        <TabsContent value="fuel_report" className="mt-4">
+          <EquipmentFuelReport />
+        </TabsContent>
+      )}
+      </Tabs>
 
       {/* Equipment detail — full-width Sheet */}
       <Sheet open={selectedEquipment !== null} onOpenChange={open => { if (!open) setSelectedId(null); }}>

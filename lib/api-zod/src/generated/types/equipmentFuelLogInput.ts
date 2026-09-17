@@ -5,11 +5,16 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { EquipmentFuelLogInputFuelSource } from './equipmentFuelLogInputFuelSource';
 
 export interface EquipmentFuelLogInput {
   date: string;
   gallons: number;
   cost?: number;
+  costPerGallon?: number;
+  fuelSource?: EquipmentFuelLogInputFuelSource;
+  bulkFuelTankId?: number;
+  idempotencyKey?: string;
   odometerReading?: number;
   /** Optional job to attribute this fuel cost to. Improves per-job fuel cost accuracy in the Job Profitability report. */
   jobId?: number;

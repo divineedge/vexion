@@ -35,6 +35,8 @@ export const internalTasksTable = pgTable("internal_tasks", {
   contextId: integer("context_id"),
   /** Client retry key for atomic pre-trip inspections; unique within a tenant. */
   idempotencyKey: text("idempotency_key"),
+  /** Canonical pre-trip content bound to the retry key; prevents key reuse with changed data. */
+  preTripRequestFingerprint: text("pre_trip_request_fingerprint"),
   preTripFuelLogId: integer("pre_trip_fuel_log_id"),
   preTripReadingLogId: integer("pre_trip_reading_log_id"),
   /** Immutable question labels and answers captured for this inspection. */

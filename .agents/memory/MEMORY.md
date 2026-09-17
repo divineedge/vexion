@@ -55,3 +55,4 @@
 - [Android Expo Go push imports](android-expo-go-push-imports.md) — SDK 53+ can crash on expo-notifications push side effects; skip loading them in Android Expo Go
 - [Field App session unlock](field-app-session-unlock.md) — password once per 30-day session; biometric/PIN only at cold launch or explicit lock, never per job action
 - [External service grants](external-service-grants.md) — owner-delegated business-wide categories are separate from staff roles; MCP client authentication limits must remain explicit
+- [Bulk fuel costing](bulk-fuel-costing.md) — blended tank costs are snapshotted per fill; receipts and allocated equipment fuel must not become duplicate expenses

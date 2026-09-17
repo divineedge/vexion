@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,13 +13,23 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   useGetEquipment,
   useCreateEquipmentFuelLog,
+  useListBulkFuelTanks,
+  getListBulkFuelTanksQueryKey,
+  getGetEquipmentQueryKey,
+  getListEquipmentFuelLogsQueryKey,
+  getGetEquipmentLedgerQueryKey,
+  getGetEquipmentFuelUsageQueryKey,
   type EquipmentFuelLogInput,
 } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
+import { useAuth } from '@/contexts/AuthContext';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
+import { FuelSourceFields, type FuelSource } from '@/components/FuelSourceFields';
+import { tenantDateKey } from '@/utils/schedule';
 
 type Equipment = { id: number; name: string; currentHours: number };
 
@@ -80,6 +90,9 @@ function StyledInput({
 export default function LogFuelFillScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  const tenantTimezone = user?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'UTC';
+  const [submissionDate] = useState(() => tenantDateKey(new Date(), tenantTimezone));
   const { id, jobId } = useLocalSearchParams<{ id: string; jobId?: string }>();
   const equipmentId = Number(id);
   const linkedJobId = jobId ? Number(jobId) : null;
@@ -87,19 +100,49 @@ export default function LogFuelFillScreen() {
   const { data: equipment } = useGetEquipment(equipmentId);
   const eq = equipment as Equipment | undefined;
   const createMutation = useCreateEquipmentFuelLog();
+  const queryClient = useQueryClient();
+  const bulkTanksQuery = useListBulkFuelTanks({ includeInactive: false });
+  const bulkTanks = bulkTanksQuery.data ?? [];
 
   const [gallons, setGallons] = useState('');
   const [cost, setCost] = useState('');
+  const [fuelSource, setFuelSource] = useState<FuelSource>('purchased');
+  const [bulkFuelTankId, setBulkFuelTankId] = useState<number | null>(null);
   const [hoursReading, setHoursReading] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const idempotencyKey = useRef(`fuel-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+
+  useEffect(() => {
+    idempotencyKey.current = `fuel-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }, [gallons, cost, fuelSource, bulkFuelTankId, hoursReading, linkedJobId]);
+
+  const handleFuelSourceChange = useCallback((source: FuelSource) => {
+    setFuelSource(source);
+    setBulkFuelTankId(null);
+    if (source === 'bulk_tank') setCost('');
+  }, []);
+
+  const handleGallonsChange = useCallback((value: string) => {
+    setGallons(value);
+    if (!value || !Number.isFinite(Number(value)) || Number(value) <= 0) {
+      setBulkFuelTankId(null);
+    }
+  }, []);
 
   const validate = useCallback((): boolean => {
     const e: Record<string, string> = {};
     if (!gallons || isNaN(Number(gallons)) || Number(gallons) <= 0) {
       e.gallons = 'Enter a valid amount of gallons';
     }
-    if (cost && isNaN(Number(cost))) {
-      e.cost = 'Enter a valid cost';
+    if (cost && (isNaN(Number(cost)) || Number(cost) < 0)) {
+      e.cost = 'Enter a non-negative cost';
+    }
+    const selectedTank = bulkTanks.find(tank => tank.id === bulkFuelTankId);
+    if (fuelSource === 'bulk_tank' && (bulkFuelTankId == null || !selectedTank)) {
+      e.tank = 'Choose an available bulk tank';
+    }
+    if (fuelSource === 'bulk_tank' && selectedTank && selectedTank.availableGallons < Number(gallons)) {
+      e.tank = 'This tank does not have enough fuel for this fill';
     }
     if (hoursReading && isNaN(Number(hoursReading))) {
       e.hoursReading = 'Enter a valid hours reading';
@@ -114,7 +157,7 @@ export default function LogFuelFillScreen() {
     }
     setErrors(e);
     return Object.keys(e).length === 0;
-  }, [gallons, cost, hoursReading, eq]);
+  }, [gallons, cost, hoursReading, eq, fuelSource, bulkFuelTankId, bulkTanks]);
 
   const handleSubmit = useCallback(async () => {
     if (!validate()) {
@@ -125,22 +168,43 @@ export default function LogFuelFillScreen() {
 
     try {
       const body: EquipmentFuelLogInput = {
-        date: new Date().toISOString(),
+        date: submissionDate,
         gallons: Number(gallons),
+        fuelSource,
       };
-      if (cost.trim()) body.cost = Number(cost);
+      if (fuelSource === 'bulk_tank') {
+        const selectedTank = bulkTanks.find(tank => tank.id === bulkFuelTankId);
+        if (!selectedTank) return;
+        body.bulkFuelTankId = selectedTank.id;
+        body.idempotencyKey = idempotencyKey.current;
+      } else if (cost.trim()) {
+        body.cost = Number(cost);
+      }
       if (hoursReading.trim()) body.odometerReading = Number(hoursReading);
       if (linkedJobId != null) body.jobId = linkedJobId;
 
-      await createMutation.mutateAsync({ id: equipmentId, data: body });
+      const result = await createMutation.mutateAsync({ id: equipmentId, data: body });
 
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.back();
-    } catch (err) {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getListBulkFuelTanksQueryKey({ includeInactive: false }) }),
+        queryClient.invalidateQueries({ queryKey: getGetEquipmentQueryKey(equipmentId) }),
+        queryClient.invalidateQueries({ queryKey: getListEquipmentFuelLogsQueryKey(equipmentId) }),
+        queryClient.invalidateQueries({ queryKey: getGetEquipmentLedgerQueryKey(equipmentId) }),
+        queryClient.invalidateQueries({ queryKey: getGetEquipmentFuelUsageQueryKey() }),
+      ]);
+      idempotencyKey.current = `fuel-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      Alert.alert(
+        'Fuel fill recorded',
+        `${result.gallons} gallons recorded on the selected equipment for $${result.cost.toFixed(2)}${result.fuelSource === 'bulk_tank' && result.bulkFuelTankName ? ` from ${result.bulkFuelTankName}` : ''}.`,
+        [{ text: 'Done', onPress: () => router.back() }],
+        { cancelable: false },
+      );
+    } catch {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Error', 'Failed to log fuel fill. Please try again.');
     }
-  }, [validate, gallons, cost, hoursReading, createMutation, equipmentId]);
+  }, [validate, gallons, cost, fuelSource, bulkFuelTankId, hoursReading, createMutation, equipmentId, linkedJobId, queryClient, submissionDate]);
 
   const bottomPad = insets.bottom + (Platform.OS === 'web' ? 34 : 0) + 100;
 
@@ -166,31 +230,23 @@ export default function LogFuelFillScreen() {
             </View>
           )}
 
-          <Field label="Gallons" required colors={colors}>
-            <StyledInput
-              value={gallons}
-              onChangeText={setGallons}
-              placeholder="0.0"
-              colors={colors}
-              error={!!errors.gallons}
-            />
-            {errors.gallons && (
-              <Text style={[styles.errMsg, { color: colors.destructive }]}>{errors.gallons}</Text>
-            )}
-          </Field>
-
-          <Field label="Cost" colors={colors}>
-            <StyledInput
-              value={cost}
-              onChangeText={setCost}
-              placeholder="0.00"
-              colors={colors}
-              error={!!errors.cost}
-            />
-            {errors.cost && (
-              <Text style={[styles.errMsg, { color: colors.destructive }]}>{errors.cost}</Text>
-            )}
-          </Field>
+          <FuelSourceFields
+            source={fuelSource}
+            onSourceChange={handleFuelSourceChange}
+            gallons={gallons}
+            onGallonsChange={handleGallonsChange}
+            cost={cost}
+            onCostChange={setCost}
+            bulkFuelTankId={bulkFuelTankId}
+            onBulkFuelTankChange={setBulkFuelTankId}
+            tanks={bulkTanks}
+            tanksLoading={bulkTanksQuery.isLoading}
+            tanksError={!!bulkTanksQuery.error}
+            colors={colors}
+            gallonsError={errors.gallons}
+            costError={errors.cost}
+            tankError={errors.tank}
+          />
 
           <Field label="Current Hours Reading" colors={colors}>
             <StyledInput

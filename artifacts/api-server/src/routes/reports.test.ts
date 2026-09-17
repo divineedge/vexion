@@ -45,6 +45,12 @@ import { db } from "@workspace/db";
 function buildApp() {
   const app = express();
   app.use(express.json());
+  // Routes consume verified identity, not caller-controlled tenant headers.
+  app.use((req, _res, next) => {
+    (req as typeof req & { verifiedTenantId: number; verifiedUserId: number }).verifiedTenantId = Number(req.get("x-tenant-id") ?? 1);
+    (req as typeof req & { verifiedTenantId: number; verifiedUserId: number }).verifiedUserId = Number(req.get("x-user-id") ?? 1);
+    next();
+  });
   return app;
 }
 

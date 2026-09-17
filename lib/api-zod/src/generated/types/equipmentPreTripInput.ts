@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { EquipmentPreTripInputCondition } from './equipmentPreTripInputCondition';
+import type { EquipmentPreTripInputFuelSource } from './equipmentPreTripInputFuelSource';
 import type { EquipmentPreTripInputInspectionType } from './equipmentPreTripInputInspectionType';
 import type { EquipmentPreTripInputReadingType } from './equipmentPreTripInputReadingType';
 import type { PreTripChecklistResponse } from './preTripChecklistResponse';
@@ -16,6 +17,8 @@ export interface EquipmentPreTripInput {
   condition: EquipmentPreTripInputCondition;
   fuelGallons?: number;
   fuelCost?: number;
+  fuelSource?: EquipmentPreTripInputFuelSource;
+  bulkFuelTankId?: number;
   readingType?: EquipmentPreTripInputReadingType;
   readingValue?: number;
   concerns?: string;

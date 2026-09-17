@@ -44,6 +44,12 @@ import type {
   BroadcastPreviewResult,
   BulkArchiveTasks200,
   BulkArchiveTasksInput,
+  BulkFuelIntakeInput,
+  BulkFuelIntakeResult,
+  BulkFuelTank,
+  BulkFuelTankInput,
+  BulkFuelTankUpdate,
+  BulkFuelTransactionPage,
   BusinessTag,
   CancelPlanVisit200,
   CancelPlanVisitInput,
@@ -102,6 +108,7 @@ import type {
   Equipment,
   EquipmentFuelLog,
   EquipmentFuelLogInput,
+  EquipmentFuelUsageReport,
   EquipmentInput,
   EquipmentLedger,
   EquipmentLifecycleEvent,
@@ -142,6 +149,7 @@ import type {
   GetAddressSuggestionsParams,
   GetDevToolsEnvironment200,
   GetEmployeeRevenueReportParams,
+  GetEquipmentFuelUsageParams,
   GetEquipmentLedgerParams,
   GetGmailAuthorizeUrl200,
   GetInventorySalesReportParams,
@@ -194,6 +202,8 @@ import type {
   JobUpdate,
   ListBankTransactionsParams,
   ListBlueprintsParams,
+  ListBulkFuelTanksParams,
+  ListBulkFuelTransactionsParams,
   ListChemicalApplicationsParams,
   ListCustomerPlansParams,
   ListCustomersParams,
@@ -467,6 +477,10 @@ export function useListJobRequests<TData = Awaited<ReturnType<typeof listJobRequ
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+
+
+
 
 
 
@@ -14836,6 +14850,364 @@ export const useDeleteEquipmentFuelLog = <TError = ErrorType<unknown>,
       return useMutation(getDeleteEquipmentFuelLogMutationOptions(options));
     }
 
+export const getListBulkFuelTanksUrl = (params?: ListBulkFuelTanksParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/bulk-fuel/tanks?${stringifiedParams}` : `/api/bulk-fuel/tanks`
+}
+
+export const listBulkFuelTanks = async (params?: ListBulkFuelTanksParams, options?: RequestInit): Promise<BulkFuelTank[]> => {
+
+  return customFetch<BulkFuelTank[]>(getListBulkFuelTanksUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListBulkFuelTanksQueryKey = (params?: ListBulkFuelTanksParams,) => {
+    return [
+    `/api/bulk-fuel/tanks`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListBulkFuelTanksQueryOptions = <TData = Awaited<ReturnType<typeof listBulkFuelTanks>>, TError = ErrorType<unknown>>(params?: ListBulkFuelTanksParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBulkFuelTanks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListBulkFuelTanksQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listBulkFuelTanks>>> = ({ signal }) => listBulkFuelTanks(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listBulkFuelTanks>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListBulkFuelTanksQueryResult = NonNullable<Awaited<ReturnType<typeof listBulkFuelTanks>>>
+export type ListBulkFuelTanksQueryError = ErrorType<unknown>
+
+
+
+export function useListBulkFuelTanks<TData = Awaited<ReturnType<typeof listBulkFuelTanks>>, TError = ErrorType<unknown>>(
+ params?: ListBulkFuelTanksParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBulkFuelTanks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListBulkFuelTanksQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateBulkFuelTankUrl = () => {
+
+
+
+
+  return `/api/bulk-fuel/tanks`
+}
+
+export const createBulkFuelTank = async (bulkFuelTankInput: BulkFuelTankInput, options?: RequestInit): Promise<BulkFuelTank> => {
+
+  return customFetch<BulkFuelTank>(getCreateBulkFuelTankUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(bulkFuelTankInput)
+  }
+);}
+
+
+
+
+
+export const getCreateBulkFuelTankMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBulkFuelTank>>, TError,{data: BodyType<BulkFuelTankInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createBulkFuelTank>>, TError,{data: BodyType<BulkFuelTankInput>}, TContext> => {
+
+const mutationKey = ['createBulkFuelTank'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createBulkFuelTank>>, {data: BodyType<BulkFuelTankInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createBulkFuelTank(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateBulkFuelTankMutationResult = NonNullable<Awaited<ReturnType<typeof createBulkFuelTank>>>
+    export type CreateBulkFuelTankMutationBody = BodyType<BulkFuelTankInput>
+    export type CreateBulkFuelTankMutationError = ErrorType<unknown>
+
+    export const useCreateBulkFuelTank = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBulkFuelTank>>, TError,{data: BodyType<BulkFuelTankInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createBulkFuelTank>>,
+        TError,
+        {data: BodyType<BulkFuelTankInput>},
+        TContext
+      > => {
+      return useMutation(getCreateBulkFuelTankMutationOptions(options));
+    }
+
+export const getUpdateBulkFuelTankUrl = (id: number,) => {
+
+
+
+
+  return `/api/bulk-fuel/tanks/${id}`
+}
+
+export const updateBulkFuelTank = async (id: number,
+    bulkFuelTankUpdate: BulkFuelTankUpdate, options?: RequestInit): Promise<BulkFuelTank> => {
+
+  return customFetch<BulkFuelTank>(getUpdateBulkFuelTankUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(bulkFuelTankUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateBulkFuelTankMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateBulkFuelTank>>, TError,{id: number;data: BodyType<BulkFuelTankUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateBulkFuelTank>>, TError,{id: number;data: BodyType<BulkFuelTankUpdate>}, TContext> => {
+
+const mutationKey = ['updateBulkFuelTank'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateBulkFuelTank>>, {id: number;data: BodyType<BulkFuelTankUpdate>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateBulkFuelTank(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateBulkFuelTankMutationResult = NonNullable<Awaited<ReturnType<typeof updateBulkFuelTank>>>
+    export type UpdateBulkFuelTankMutationBody = BodyType<BulkFuelTankUpdate>
+    export type UpdateBulkFuelTankMutationError = ErrorType<unknown>
+
+    export const useUpdateBulkFuelTank = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateBulkFuelTank>>, TError,{id: number;data: BodyType<BulkFuelTankUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateBulkFuelTank>>,
+        TError,
+        {id: number;data: BodyType<BulkFuelTankUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateBulkFuelTankMutationOptions(options));
+    }
+
+export const getListBulkFuelTransactionsUrl = (id: number,
+    params?: ListBulkFuelTransactionsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/bulk-fuel/tanks/${id}/transactions?${stringifiedParams}` : `/api/bulk-fuel/tanks/${id}/transactions`
+}
+
+export const listBulkFuelTransactions = async (id: number,
+    params?: ListBulkFuelTransactionsParams, options?: RequestInit): Promise<BulkFuelTransactionPage> => {
+
+  return customFetch<BulkFuelTransactionPage>(getListBulkFuelTransactionsUrl(id,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListBulkFuelTransactionsQueryKey = (id: number,
+    params?: ListBulkFuelTransactionsParams,) => {
+    return [
+    `/api/bulk-fuel/tanks/${id}/transactions`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListBulkFuelTransactionsQueryOptions = <TData = Awaited<ReturnType<typeof listBulkFuelTransactions>>, TError = ErrorType<unknown>>(id: number,
+    params?: ListBulkFuelTransactionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBulkFuelTransactions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListBulkFuelTransactionsQueryKey(id,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listBulkFuelTransactions>>> = ({ signal }) => listBulkFuelTransactions(id,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listBulkFuelTransactions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListBulkFuelTransactionsQueryResult = NonNullable<Awaited<ReturnType<typeof listBulkFuelTransactions>>>
+export type ListBulkFuelTransactionsQueryError = ErrorType<unknown>
+
+
+
+export function useListBulkFuelTransactions<TData = Awaited<ReturnType<typeof listBulkFuelTransactions>>, TError = ErrorType<unknown>>(
+ id: number,
+    params?: ListBulkFuelTransactionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBulkFuelTransactions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListBulkFuelTransactionsQueryOptions(id,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateBulkFuelIntakeUrl = (id: number,) => {
+
+
+
+
+  return `/api/bulk-fuel/tanks/${id}/intakes`
+}
+
+export const createBulkFuelIntake = async (id: number,
+    bulkFuelIntakeInput: BulkFuelIntakeInput, options?: RequestInit): Promise<BulkFuelIntakeResult> => {
+
+  return customFetch<BulkFuelIntakeResult>(getCreateBulkFuelIntakeUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(bulkFuelIntakeInput)
+  }
+);}
+
+
+
+
+
+export const getCreateBulkFuelIntakeMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBulkFuelIntake>>, TError,{id: number;data: BodyType<BulkFuelIntakeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createBulkFuelIntake>>, TError,{id: number;data: BodyType<BulkFuelIntakeInput>}, TContext> => {
+
+const mutationKey = ['createBulkFuelIntake'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createBulkFuelIntake>>, {id: number;data: BodyType<BulkFuelIntakeInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  createBulkFuelIntake(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateBulkFuelIntakeMutationResult = NonNullable<Awaited<ReturnType<typeof createBulkFuelIntake>>>
+    export type CreateBulkFuelIntakeMutationBody = BodyType<BulkFuelIntakeInput>
+    export type CreateBulkFuelIntakeMutationError = ErrorType<unknown>
+
+    export const useCreateBulkFuelIntake = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBulkFuelIntake>>, TError,{id: number;data: BodyType<BulkFuelIntakeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createBulkFuelIntake>>,
+        TError,
+        {id: number;data: BodyType<BulkFuelIntakeInput>},
+        TContext
+      > => {
+      return useMutation(getCreateBulkFuelIntakeMutationOptions(options));
+    }
+
 export const getCreateEquipmentReadingLogUrl = (id: number,) => {
 
 
@@ -27156,6 +27528,84 @@ export const useSimulateRunRecurringScheduler = <TError = ErrorType<unknown>,
       return useMutation(getSimulateRunRecurringSchedulerMutationOptions(options));
     }
 
+export const getGetEquipmentFuelUsageUrl = (params: GetEquipmentFuelUsageParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/reports/equipment-fuel-usage?${stringifiedParams}` : `/api/reports/equipment-fuel-usage`
+}
+
+export const getEquipmentFuelUsage = async (params: GetEquipmentFuelUsageParams, options?: RequestInit): Promise<EquipmentFuelUsageReport> => {
+
+  return customFetch<EquipmentFuelUsageReport>(getGetEquipmentFuelUsageUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetEquipmentFuelUsageQueryKey = (params?: GetEquipmentFuelUsageParams,) => {
+    return [
+    `/api/reports/equipment-fuel-usage`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetEquipmentFuelUsageQueryOptions = <TData = Awaited<ReturnType<typeof getEquipmentFuelUsage>>, TError = ErrorType<unknown>>(params: GetEquipmentFuelUsageParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEquipmentFuelUsage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetEquipmentFuelUsageQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getEquipmentFuelUsage>>> = ({ signal }) => getEquipmentFuelUsage(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getEquipmentFuelUsage>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetEquipmentFuelUsageQueryResult = NonNullable<Awaited<ReturnType<typeof getEquipmentFuelUsage>>>
+export type GetEquipmentFuelUsageQueryError = ErrorType<unknown>
+
+
+
+export function useGetEquipmentFuelUsage<TData = Awaited<ReturnType<typeof getEquipmentFuelUsage>>, TError = ErrorType<unknown>>(
+ params: GetEquipmentFuelUsageParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEquipmentFuelUsage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetEquipmentFuelUsageQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getGetJobProfitabilityReportUrl = (params?: GetJobProfitabilityReportParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -31165,3 +31615,10 @@ export function useListExternalAudit<TData = Awaited<ReturnType<typeof listExter
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+
+
+
+
+
+

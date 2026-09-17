@@ -53,14 +53,6 @@ type Equipment = {
   milesUntilService?: number | null;
 };
 
-type FuelLog = {
-  id: number;
-  date: string;
-  gallons: number;
-  cost: number;
-  odometerReading?: number | null;
-};
-
 type MaintenanceRecord = {
   id: number;
   date: string;
@@ -259,7 +251,7 @@ export default function EquipmentDetailScreen() {
   }
 
   const eq = equipment as Equipment | undefined;
-  const logs = (fuelLogs as FuelLog[] | undefined) ?? [];
+  const logs = fuelLogs ?? [];
   const maint = (maintenanceLogs as MaintenanceRecord[] | undefined) ?? [];
 
   if (!eq) {
@@ -477,7 +469,10 @@ export default function EquipmentDetailScreen() {
                     {log.gallons} gal · ${log.cost.toFixed(2)}
                   </Text>
                   <Text style={[styles.logMeta, { color: colors.mutedForeground }]}>
-                    {formatDate(log.date)}
+                    {log.fuelSource === 'bulk_tank' ? 'Bulk tank' : 'Purchased'}
+                    {log.bulkFuelTankName ? ` · ${log.bulkFuelTankName}` : ''}
+                    {log.costPerGallon != null ? ` · $${log.costPerGallon.toFixed(2)}/gal` : ''}
+                    {'  ·  '}{formatDate(log.date)}
                     {log.odometerReading != null ? `  ·  ${log.odometerReading.toLocaleString()} hrs` : ''}
                   </Text>
                 </View>

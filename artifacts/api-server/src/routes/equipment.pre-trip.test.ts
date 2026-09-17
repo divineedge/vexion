@@ -8,6 +8,7 @@ vi.mock("@workspace/db", () => ({
   db: { select, transaction, update: vi.fn(), insert: vi.fn(), delete: vi.fn() },
   equipmentTable: {}, equipmentMaintenanceTable: {}, equipmentFuelLogsTable: {},
   equipmentReadingLogsTable: {}, equipmentLifecycleEventsTable: {}, tenantEquipmentTypesTable: {},
+  bulkFuelTanksTable: {}, bulkFuelTransactionsTable: {},
   tenantsTable: {}, usersTable: {}, jobsTable: {}, taskBundlesItemsTable: {}, inventoryItemsTable: {},
   internalTasksTable: {}, crewsTable: {}, crewMembersTable: {},
 }));
@@ -36,17 +37,69 @@ const authorizeAsAdmin = () => {
 };
 
 describe("POST /equipment/pre-trip", () => {
-  beforeEach(() => { vi.clearAllMocks(); });
+  beforeEach(() => { vi.clearAllMocks(); select.mockReset(); transaction.mockReset(); });
 
   it("returns the prior successful task and performs no duplicate transaction", async () => {
     authorizeAsAdmin();
-    select.mockReturnValueOnce(whereResult([{ id: 99 }]));
+    const fingerprint = JSON.stringify({ equipmentId: 7, condition: "good", inspectionType: "pre_trip", fuelGallons: 2000, fuelSource: "purchased", bulkFuelTankId: null, purchasedFuelCents: 0, readingType: "hours", readingValue: 12, concerns: null, checklist: [] });
+    select
+      .mockReturnValueOnce(whereResult([{ preTripChecklist: [], endOfDayChecklist: [], timezone: "UTC" }]))
+      .mockReturnValueOnce(whereResult([{ type: "mower", archivedAt: null }]))
+      .mockReturnValueOnce(whereResult([{ id: 99, contextType: "equipment", contextId: 7, preTripRequestFingerprint: fingerprint }]));
     const app = express(); app.use(express.json());
     const { default: router } = await import("./equipment"); app.use("/", router);
     const response = await request(app).post("/equipment/pre-trip").set(headers).send(input);
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ taskId: 99, duplicate: true });
     expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects reuse of a pre-trip retry key when normalized request content changed", async () => {
+    authorizeAsAdmin();
+    const original = JSON.stringify({ equipmentId: 7, condition: "good", inspectionType: "pre_trip", fuelGallons: 2000, fuelSource: "purchased", bulkFuelTankId: null, purchasedFuelCents: 0, readingType: "hours", readingValue: 12, concerns: null, checklist: [] });
+    select
+      .mockReturnValueOnce(whereResult([{ preTripChecklist: [], endOfDayChecklist: [], timezone: "UTC" }]))
+      .mockReturnValueOnce(whereResult([{ type: "mower", archivedAt: null }]))
+      .mockReturnValueOnce(whereResult([{ id: 99, contextType: "equipment", contextId: 7, preTripRequestFingerprint: original }]));
+    const app = express(); app.use(express.json());
+    const { default: router } = await import("./equipment"); app.use("/", router);
+    const response = await request(app).post("/equipment/pre-trip").set(headers).send({ ...input, condition: "unsafe" });
+    expect(response.status).toBe(409);
+    expect(response.body.error).toMatch(/idempotency key/i);
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it("creates exactly one bulk fuel log and one tank dispense in a pre-trip", async () => {
+    authorizeAsAdmin();
+    select
+      .mockReturnValueOnce(whereResult([{ preTripChecklist: [], endOfDayChecklist: [], timezone: "UTC" }]))
+      .mockReturnValueOnce(whereResult([{ type: "mower", archivedAt: null }]))
+      .mockReturnValueOnce(whereResult([]));
+    const inserted: any[] = [];
+    transaction.mockImplementation(async (work: (tx: any) => Promise<unknown>) => {
+      let selects = 0; let inserts = 0;
+      return work({
+        select: () => {
+          selects += 1;
+          if (selects === 1) return { from: () => ({ where: () => ({ for: () => Promise.resolve([{ id: 7, name: "Mower", assignedCrewId: null, archivedAt: null, currentHours: 0, currentMiles: null }]) }) }) };
+          if (selects === 2) return { from: () => ({ where: () => ({ limit: () => Promise.resolve([{ role: "company_owner" }]) }) }) };
+          if (selects === 3) return { from: () => ({ where: () => ({ for: () => Promise.resolve([{ id: 3, name: "Shop tank", tenantId: 1, isActive: true, availableThousandths: 3000, inventoryValueCents: 1500 }]) }) }) };
+          return { from: () => ({ where: () => Promise.resolve([{ total: 10 }]) }) };
+        },
+        insert: () => ({ values: (value: any) => { inserted.push(value); inserts += 1; return { returning: () => Promise.resolve([{ id: inserts === 1 ? 44 : inserts === 2 ? 45 : 46, ...value }]) }; } }),
+        update: () => ({ set: () => ({ where: () => ({ returning: () => Promise.resolve([{ id: 3, name: "Shop tank", fuelType: "gas", capacityThousandths: null, availableThousandths: 1000, inventoryValueCents: 500, isActive: true, createdAt: new Date() }]) }) }) }),
+      });
+    });
+    const app = express(); app.use(express.json());
+    const { default: router } = await import("./equipment"); app.use("/", router);
+    const response = await request(app).post("/equipment/pre-trip").set(headers).send({
+      idempotencyKey: "bulk-pretrip", equipmentId: 7, condition: "good",
+      fuelGallons: 2, fuelSource: "bulk_tank", bulkFuelTankId: 3,
+    });
+    expect(response.status).toBe(201);
+    expect(response.body.fuelLogId).toBe(44);
+    expect(inserted.filter(value => value.type === "dispense")).toHaveLength(1);
+    expect(inserted.filter(value => value.fuelSource === "bulk_tank")).toHaveLength(1);
   });
 
   it("rejects fuel cost without gallons before creating any records", async () => {
@@ -63,13 +116,14 @@ describe("POST /equipment/pre-trip", () => {
   });
 
   it("does not commit partial fuel/reading writes when a later task insert fails", async () => {
-    // First lookup finds no completed request, then settings + equipment are loaded.
+    // Settings/equipment are loaded before the idempotency lookup so the
+    // canonical checklist fingerprint can be compared.
     // The post-failure duplicate lookup also finds none.
     authorizeAsAdmin();
     select
-      .mockReturnValueOnce(whereResult([]))
       .mockReturnValueOnce(whereResult([{ preTripChecklist: [], endOfDayChecklist: [] }]))
       .mockReturnValueOnce(whereResult([{ type: "mower", archivedAt: null }]))
+      .mockReturnValueOnce(whereResult([]))
       .mockReturnValue(whereResult([]));
     let committed = false;
     const insertedValues: any[] = [];
@@ -82,7 +136,9 @@ describe("POST /equipment/pre-trip", () => {
             selectCount += 1;
             return selectCount === 1
               ? { from: () => ({ where: () => ({ for: () => Promise.resolve([{ id: 7, name: "Mower", archivedAt: null, currentHours: 0, currentMiles: null }]) }) }) }
-              : { from: () => ({ where: () => Promise.resolve([{ total: 2 }]) }) };
+              : selectCount === 2
+                ? { from: () => ({ where: () => ({ limit: () => Promise.resolve([{ role: "company_owner" }]) }) }) }
+                : { from: () => ({ where: () => Promise.resolve([{ total: 2 }]) }) };
           },
           insert: () => ({
             values: (values: unknown) => {
@@ -115,7 +171,6 @@ describe("POST /equipment/pre-trip", () => {
   it("requires and snapshots only questions applicable to the equipment type", async () => {
     authorizeAsAdmin();
     select
-      .mockReturnValueOnce(whereResult([]))
       .mockReturnValueOnce(whereResult([{
         preTripChecklist: [
           { id: "all", label: "Universal check", required: true },
@@ -125,11 +180,13 @@ describe("POST /equipment/pre-trip", () => {
         endOfDayChecklist: [],
       }]))
       .mockReturnValueOnce(whereResult([{ type: "mower", archivedAt: null }]))
+      .mockReturnValueOnce(whereResult([]))
       .mockReturnValue(whereResult([]));
 
     let taskValues: any;
-    transaction.mockImplementation(async (work: (tx: any) => Promise<unknown>) => work({
-      select: () => ({ from: () => ({ where: () => ({ for: () => Promise.resolve([{ id: 7, name: "Mower", type: "mower", archivedAt: null, currentHours: 0, currentMiles: null }]) }) }) }),
+    transaction.mockImplementation(async (work: (tx: any) => Promise<unknown>) => {
+      let count = 0; return work({
+      select: () => { count += 1; return count === 1 ? { from: () => ({ where: () => ({ for: () => Promise.resolve([{ id: 7, name: "Mower", type: "mower", archivedAt: null, currentHours: 0, currentMiles: null }]) }) }) } : { from: () => ({ where: () => ({ limit: () => Promise.resolve([{ role: "company_owner" }]) }) }) }; },
       insert: () => ({
         values: (values: unknown) => {
           taskValues = values;
@@ -137,7 +194,7 @@ describe("POST /equipment/pre-trip", () => {
         },
       }),
       update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
-    }));
+    }); });
 
     const app = express(); app.use(express.json());
     const { default: router } = await import("./equipment"); app.use("/", router);
@@ -162,18 +219,19 @@ describe("POST /equipment/pre-trip", () => {
   it("does not require a question configured for another equipment type", async () => {
     authorizeAsAdmin();
     select
-      .mockReturnValueOnce(whereResult([]))
       .mockReturnValueOnce(whereResult([{
         preTripChecklist: [{ id: "truck", label: "Truck-only check", required: true, equipmentTypes: ["truck"] }],
         endOfDayChecklist: [],
       }]))
       .mockReturnValueOnce(whereResult([{ type: "mower", archivedAt: null }]))
+      .mockReturnValueOnce(whereResult([]))
       .mockReturnValue(whereResult([]));
-    transaction.mockImplementation(async (work: (tx: any) => Promise<unknown>) => work({
-      select: () => ({ from: () => ({ where: () => ({ for: () => Promise.resolve([{ id: 7, name: "Mower", type: "mower", archivedAt: null, currentHours: 0, currentMiles: null }]) }) }) }),
+    transaction.mockImplementation(async (work: (tx: any) => Promise<unknown>) => {
+      let count = 0; return work({
+      select: () => { count += 1; return count === 1 ? { from: () => ({ where: () => ({ for: () => Promise.resolve([{ id: 7, name: "Mower", type: "mower", archivedAt: null, currentHours: 0, currentMiles: null }]) }) }) } : { from: () => ({ where: () => ({ limit: () => Promise.resolve([{ role: "company_owner" }]) }) }) }; },
       insert: () => ({ values: () => ({ returning: () => Promise.resolve([{ id: 124 }]) }) }),
       update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
-    }));
+    }); });
 
     const app = express(); app.use(express.json());
     const { default: router } = await import("./equipment"); app.use("/", router);
@@ -190,12 +248,12 @@ describe("POST /equipment/pre-trip", () => {
   it("requires a matching equipment-type question", async () => {
     authorizeAsAdmin();
     select
-      .mockReturnValueOnce(whereResult([]))
       .mockReturnValueOnce(whereResult([{
         preTripChecklist: [{ id: "mower", label: "Mower-only check", required: true, equipmentTypes: ["mower"] }],
         endOfDayChecklist: [],
       }]))
-      .mockReturnValueOnce(whereResult([{ type: "mower", archivedAt: null }]));
+      .mockReturnValueOnce(whereResult([{ type: "mower", archivedAt: null }]))
+      .mockReturnValueOnce(whereResult([]));
 
     const app = express(); app.use(express.json());
     const { default: router } = await import("./equipment"); app.use("/", router);
@@ -225,7 +283,7 @@ describe("POST /equipment/pre-trip", () => {
 });
 
 describe("equipment assignment validation", () => {
-  beforeEach(() => { vi.clearAllMocks(); });
+  beforeEach(() => { vi.clearAllMocks(); select.mockReset(); transaction.mockReset(); });
 
   it("rejects an employee assignment from another tenant", async () => {
     // requireOfficeRole recognizes the caller as an office user; the following

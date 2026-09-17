@@ -4089,6 +4089,81 @@ paths:
         "204":
           description: Deleted
 
+  /bulk-fuel/tanks:
+    get:
+      operationId: listBulkFuelTanks
+      tags: [equipment]
+      parameters:
+        - { name: includeInactive, in: query, schema: { type: boolean } }
+      responses:
+        "200":
+          description: Bulk fuel tanks visible to signed-in staff
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/BulkFuelTank" } }
+    post:
+      operationId: createBulkFuelTank
+      tags: [equipment]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BulkFuelTankInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BulkFuelTank" }
+  /bulk-fuel/tanks/{id}:
+    patch:
+      operationId: updateBulkFuelTank
+      tags: [equipment]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BulkFuelTankUpdate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BulkFuelTank" }
+  /bulk-fuel/tanks/{id}/transactions:
+    get:
+      operationId: listBulkFuelTransactions
+      tags: [equipment]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Append-only tank history
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BulkFuelTransactionPage" }
+  /bulk-fuel/tanks/{id}/intakes:
+    post:
+      operationId: createBulkFuelIntake
+      tags: [equipment]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BulkFuelIntakeInput" }
+      responses:
+        "201":
+          description: Intake recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BulkFuelIntakeResult" }
+
   /equipment/{id}/reading-logs:
     post:
       operationId: createEquipmentReadingLog
@@ -7581,6 +7656,21 @@ paths:
                 $ref: "#/components/schemas/SimulationResult"
 
   # BUSINESS REPORTS SUITE
+  /reports/equipment-fuel-usage:
+    get:
+      operationId: getEquipmentFuelUsage
+      tags: [reports]
+      parameters:
+        - { name: period, in: query, required: true, schema: { type: string, enum: [week, month, year] } }
+        - { name: anchorDate, in: query, required: true, schema: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' } }
+        - { name: equipmentId, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: Tenant-calendar equipment fuel usage
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EquipmentFuelUsageReport" }
+
   /reports/job-profitability:
     get:
       operationId: getJobProfitabilityReport
@@ -13837,7 +13927,7 @@ components:
 
     EquipmentFuelLog:
       type: object
-      required: [id, equipmentId, tenantId, date, gallons, cost, createdAt]
+      required: [id, equipmentId, tenantId, date, gallons, cost, fuelSource, bulkFuelTankId, bulkFuelTankName, createdAt]
       properties:
         id:
           type: integer
@@ -13852,8 +13942,17 @@ components:
           type: string
         gallons:
           type: number
+        costPerGallon:
+          type: ["number", "null"]
         cost:
           type: number
+        fuelSource:
+          type: string
+          enum: [purchased, bulk_tank]
+        bulkFuelTankId:
+          type: ["integer", "null"]
+        bulkFuelTankName:
+          type: ["string", "null"]
         odometerReading:
           type: ["number", "null"]
         createdAt:
@@ -13869,6 +13968,15 @@ components:
           type: number
         cost:
           type: number
+        costPerGallon:
+          type: number
+        fuelSource:
+          type: string
+          enum: [purchased, bulk_tank]
+        bulkFuelTankId:
+          type: integer
+        idempotencyKey:
+          type: string
         odometerReading:
           type: number
         jobId:
@@ -13927,6 +14035,11 @@ components:
           type: number
         fuelCost:
           type: number
+        fuelSource:
+          type: string
+          enum: [purchased, bulk_tank]
+        bulkFuelTankId:
+          type: integer
         readingType:
           type: string
           enum: [hours, mileage]
@@ -13951,8 +14064,114 @@ components:
           type: [integer, "null"]
         readingLogId:
           type: [integer, "null"]
+        fuelCost:
+          type: ["number", "null"]
+        fuelCostPerGallon:
+          type: ["number", "null"]
+        fuelSource:
+          type: ["string", "null"]
+        bulkFuelTankName:
+          type: ["string", "null"]
         duplicate:
           type: boolean
+
+    BulkFuelTank:
+      type: object
+      required: [id, name, fuelType, capacityGallons, isActive, availableGallons, inventoryValue, unitCostPerGallon, createdAt]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        fuelType: { type: string }
+        capacityGallons: { type: ["number", "null"] }
+        isActive: { type: boolean }
+        availableGallons: { type: number }
+        inventoryValue: { type: number }
+        unitCostPerGallon: { type: number }
+        createdAt: { type: string }
+    BulkFuelTankInput:
+      type: object
+      required: [name, fuelType]
+      properties:
+        name: { type: string }
+        fuelType: { type: string }
+        capacityGallons: { type: ["number", "null"] }
+    BulkFuelTankUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        fuelType: { type: string }
+        capacityGallons: { type: ["number", "null"] }
+        isActive: { type: boolean }
+    BulkFuelTransaction:
+      type: object
+      required: [id, tankId, type, date, gallons, totalCost, costPerGallon, supplier, reference, notes, equipmentId, equipmentName, fuelLogId, createdAt]
+      properties:
+        id: { type: integer }
+        tankId: { type: integer }
+        type: { type: string, enum: [delivery, opening_balance, dispense, reversal] }
+        date: { type: string }
+        gallons: { type: number }
+        totalCost: { type: number }
+        costPerGallon: { type: number }
+        supplier: { type: ["string", "null"] }
+        reference: { type: ["string", "null"] }
+        notes: { type: ["string", "null"] }
+        equipmentId: { type: ["integer", "null"] }
+        equipmentName: { type: ["string", "null"] }
+        fuelLogId: { type: ["integer", "null"] }
+        createdAt: { type: string }
+    BulkFuelTransactionPage:
+      type: object
+      required: [data, nextCursor]
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/BulkFuelTransaction" } }
+        nextCursor: { type: ["string", "null"] }
+    BulkFuelIntakeInput:
+      type: object
+      required: [kind, date, gallons, totalCost, idempotencyKey]
+      properties:
+        kind: { type: string, enum: [delivery, opening_balance] }
+        date: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+        gallons: { type: number }
+        totalCost: { type: number }
+        supplier: { type: string }
+        reference: { type: string }
+        notes: { type: string }
+        idempotencyKey: { type: string }
+    BulkFuelIntakeResult:
+      type: object
+      required: [tank, transaction, duplicate]
+      properties:
+        tank: { $ref: "#/components/schemas/BulkFuelTank" }
+        transaction: { $ref: "#/components/schemas/BulkFuelTransaction" }
+        duplicate: { type: boolean }
+
+    EquipmentFuelUsageRow:
+      type: object
+      required: [equipmentId, equipmentName, totalGallons, totalCost, averageCostPerGallon, fillCount, bulkGallons, purchasedGallons]
+      properties:
+        equipmentId: { type: integer }
+        equipmentName: { type: string }
+        totalGallons: { type: number }
+        totalCost: { type: number }
+        averageCostPerGallon: { type: number }
+        fillCount: { type: integer }
+        bulkGallons: { type: number }
+        purchasedGallons: { type: number }
+    EquipmentFuelUsageReport:
+      type: object
+      required: [period, from, to, totalGallons, totalCost, averageCostPerGallon, fillCount, bulkGallons, purchasedGallons, equipment]
+      properties:
+        period: { type: string, enum: [week, month, year] }
+        from: { type: string }
+        to: { type: string }
+        totalGallons: { type: number }
+        totalCost: { type: number }
+        averageCostPerGallon: { type: number }
+        fillCount: { type: integer }
+        bulkGallons: { type: number }
+        purchasedGallons: { type: number }
+        equipment: { type: array, items: { $ref: "#/components/schemas/EquipmentFuelUsageRow" } }
 
     EquipmentRecoveryResult:
       type: object

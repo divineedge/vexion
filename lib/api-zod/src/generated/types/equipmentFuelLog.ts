@@ -5,6 +5,7 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { EquipmentFuelLogFuelSource } from './equipmentFuelLogFuelSource';
 
 export interface EquipmentFuelLog {
   id: number;
@@ -17,7 +18,14 @@ export interface EquipmentFuelLog {
   jobId?: number | null;
   date: string;
   gallons: number;
+  /** @nullable */
+  costPerGallon?: number | null;
   cost: number;
+  fuelSource: EquipmentFuelLogFuelSource;
+  /** @nullable */
+  bulkFuelTankId: number | null;
+  /** @nullable */
+  bulkFuelTankName: string | null;
   /** @nullable */
   odometerReading?: number | null;
   createdAt: string;

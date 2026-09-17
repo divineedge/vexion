@@ -57,6 +57,71 @@ async function getTenantP4pPct(tenantId: number): Promise<number> {
   return tenant?.p4pMasterPercentage ?? 0;
 }
 
+function calendarDateKey(date: Date): string {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+}
+
+function fuelUsageRange(period: string, anchor: string): { from: string; to: string } | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(anchor) || !["week", "month", "year"].includes(period)) return null;
+  const [year, month, day] = anchor.split("-").map(Number);
+  const calendar = new Date(Date.UTC(year, month - 1, day));
+  if (calendarDateKey(calendar) !== anchor) return null;
+  if (period === "week") {
+    const mondayOffset = (calendar.getUTCDay() + 6) % 7;
+    calendar.setUTCDate(calendar.getUTCDate() - mondayOffset);
+    const from = calendarDateKey(calendar); calendar.setUTCDate(calendar.getUTCDate() + 6);
+    return { from, to: calendarDateKey(calendar) };
+  }
+  if (period === "month") return { from: `${anchor.slice(0, 7)}-01`, to: calendarDateKey(new Date(Date.UTC(year, month, 0))) };
+  return { from: `${year}-01-01`, to: `${year}-12-31` };
+}
+
+// Date-only forms are already tenant calendar keys. Older pre-trip rows used
+// ISO timestamps, which must be converted in the tenant timezone before range
+// comparison (lexicographic YYYY-MM-DD comparison loses late Sunday fills).
+function fuelLogTenantDate(timezone: string) {
+  return sql`CASE WHEN f.date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN f.date ELSE to_char(f.date::timestamptz AT TIME ZONE ${timezone}, 'YYYY-MM-DD') END`;
+}
+
+router.get("/reports/equipment-fuel-usage", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req); const userId = getUserId(req);
+  if (!(await requireAdmin(tenantId, userId, res))) return;
+  const q = req.query as Record<string, string | undefined>;
+  const range = fuelUsageRange(q.period ?? "", q.anchorDate ?? "");
+  if (!range) { res.status(400).json({ error: "period (week, month, year) and anchorDate (YYYY-MM-DD) are required" }); return; }
+  let equipmentId: number | null = null;
+  if (q.equipmentId != null) {
+    equipmentId = Number(q.equipmentId);
+    if (!Number.isInteger(equipmentId) || equipmentId < 1) { res.status(400).json({ error: "equipmentId must be an integer" }); return; }
+    const equipmentRows = (await db.execute(sql`SELECT id FROM equipment WHERE id = ${equipmentId} AND tenant_id = ${tenantId} LIMIT 1`)).rows;
+    if (!equipmentRows[0]) { res.status(404).json({ error: "Equipment not found" }); return; }
+  }
+  const [tenant] = await db.select({ timezone: tenantsTable.timezone }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
+  const timezone = tenant?.timezone ?? "UTC";
+  try { new Intl.DateTimeFormat("en-US", { timeZone: timezone }); } catch { res.status(500).json({ error: "Tenant timezone is invalid" }); return; }
+  const dateKey = fuelLogTenantDate(timezone);
+  const rows = (await db.execute(sql`
+    SELECT f.equipment_id AS "equipmentId", e.name AS "equipmentName",
+      COALESCE(SUM(f.gallons), 0)::float AS "totalGallons",
+      COALESCE(SUM(f.cost), 0)::float AS "totalCost",
+      COUNT(*)::int AS "fillCount",
+      COALESCE(SUM(CASE WHEN f.fuel_source = 'bulk_tank' THEN f.gallons ELSE 0 END), 0)::float AS "bulkGallons",
+      COALESCE(SUM(CASE WHEN f.fuel_source = 'purchased' THEN f.gallons ELSE 0 END), 0)::float AS "purchasedGallons"
+    FROM equipment_fuel_logs f
+    INNER JOIN equipment e ON e.id = f.equipment_id AND e.tenant_id = f.tenant_id
+    WHERE f.tenant_id = ${tenantId} AND ${dateKey} >= ${range.from} AND ${dateKey} <= ${range.to}
+      ${equipmentId == null ? sql`` : sql`AND f.equipment_id = ${equipmentId}`}
+    GROUP BY f.equipment_id, e.name ORDER BY e.name
+  `)).rows as Array<{ equipmentId: number; equipmentName: string; totalGallons: number; totalCost: number; fillCount: number; bulkGallons: number; purchasedGallons: number }>;
+  const equipment = rows.map(row => {
+    const totalGallons = Number(row.totalGallons); const totalCost = Number(row.totalCost);
+    return { ...row, totalGallons, totalCost, fillCount: Number(row.fillCount), bulkGallons: Number(row.bulkGallons), purchasedGallons: Number(row.purchasedGallons), averageCostPerGallon: totalGallons ? Math.round(totalCost / totalGallons * 10000) / 10000 : 0 };
+  });
+  const totalGallons = equipment.reduce((sum, row) => sum + row.totalGallons, 0);
+  const totalCost = equipment.reduce((sum, row) => sum + row.totalCost, 0);
+  res.json({ period: q.period, from: range.from, to: range.to, totalGallons, totalCost, averageCostPerGallon: totalGallons ? Math.round(totalCost / totalGallons * 10000) / 10000 : 0, fillCount: equipment.reduce((sum, row) => sum + row.fillCount, 0), bulkGallons: equipment.reduce((sum, row) => sum + row.bulkGallons, 0), purchasedGallons: equipment.reduce((sum, row) => sum + row.purchasedGallons, 0), equipment });
+});
+
 // ── Report A: Job Profitability ───────────────────────────────────────────────
 router.get("/reports/job-profitability", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);

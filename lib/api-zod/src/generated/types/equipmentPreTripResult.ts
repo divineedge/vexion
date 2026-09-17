@@ -12,5 +12,13 @@ export interface EquipmentPreTripResult {
   fuelLogId?: number | null;
   /** @nullable */
   readingLogId?: number | null;
+  /** @nullable */
+  fuelCost?: number | null;
+  /** @nullable */
+  fuelCostPerGallon?: number | null;
+  /** @nullable */
+  fuelSource?: string | null;
+  /** @nullable */
+  bulkFuelTankName?: string | null;
   duplicate: boolean;
 }

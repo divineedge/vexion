@@ -6867,7 +6867,11 @@ export const ListEquipmentFuelLogsResponseItem = zod.object({
   "jobId": zod.number().nullish().describe('Optional link to the job this fuel was consumed for. When set, the Job Profitability report attributes this cost directly to that job rather than spreading it across all jobs.'),
   "date": zod.string(),
   "gallons": zod.number(),
+  "costPerGallon": zod.number().nullish(),
   "cost": zod.number(),
+  "fuelSource": zod.enum(['purchased', 'bulk_tank']),
+  "bulkFuelTankId": zod.number().nullable(),
+  "bulkFuelTankName": zod.string().nullable(),
   "odometerReading": zod.number().nullish(),
   "createdAt": zod.string()
 })
@@ -6885,6 +6889,10 @@ export const CreateEquipmentFuelLogBody = zod.object({
   "date": zod.string(),
   "gallons": zod.number(),
   "cost": zod.number().optional(),
+  "costPerGallon": zod.number().optional(),
+  "fuelSource": zod.enum(['purchased', 'bulk_tank']).optional(),
+  "bulkFuelTankId": zod.number().optional(),
+  "idempotencyKey": zod.string().optional(),
   "odometerReading": zod.number().optional(),
   "jobId": zod.number().optional().describe('Optional job to attribute this fuel cost to. Improves per-job fuel cost accuracy in the Job Profitability report.')
 })
@@ -6896,7 +6904,11 @@ export const CreateEquipmentFuelLogResponse = zod.object({
   "jobId": zod.number().nullish().describe('Optional link to the job this fuel was consumed for. When set, the Job Profitability report attributes this cost directly to that job rather than spreading it across all jobs.'),
   "date": zod.string(),
   "gallons": zod.number(),
+  "costPerGallon": zod.number().nullish(),
   "cost": zod.number(),
+  "fuelSource": zod.enum(['purchased', 'bulk_tank']),
+  "bulkFuelTankId": zod.number().nullable(),
+  "bulkFuelTankName": zod.string().nullable(),
   "odometerReading": zod.number().nullish(),
   "createdAt": zod.string()
 })
@@ -6911,6 +6923,151 @@ export const DeleteEquipmentFuelLogParams = zod.object({
 })
 
 export const DeleteEquipmentFuelLogResponse = zod.void()
+
+
+export const ListBulkFuelTanksQueryParams = zod.object({
+  "includeInactive": zod.coerce.boolean().optional()
+})
+
+export const ListBulkFuelTanksResponseItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "fuelType": zod.string(),
+  "capacityGallons": zod.number().nullable(),
+  "isActive": zod.boolean(),
+  "availableGallons": zod.number(),
+  "inventoryValue": zod.number(),
+  "unitCostPerGallon": zod.number(),
+  "createdAt": zod.string()
+})
+export const ListBulkFuelTanksResponse = zod.array(ListBulkFuelTanksResponseItem)
+
+
+export const CreateBulkFuelTankBody = zod.object({
+  "name": zod.string(),
+  "fuelType": zod.string(),
+  "capacityGallons": zod.number().nullish()
+})
+
+export const CreateBulkFuelTankResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "fuelType": zod.string(),
+  "capacityGallons": zod.number().nullable(),
+  "isActive": zod.boolean(),
+  "availableGallons": zod.number(),
+  "inventoryValue": zod.number(),
+  "unitCostPerGallon": zod.number(),
+  "createdAt": zod.string()
+})
+
+
+export const UpdateBulkFuelTankParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateBulkFuelTankBody = zod.object({
+  "name": zod.string().optional(),
+  "fuelType": zod.string().optional(),
+  "capacityGallons": zod.number().nullish(),
+  "isActive": zod.boolean().optional()
+})
+
+export const UpdateBulkFuelTankResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "fuelType": zod.string(),
+  "capacityGallons": zod.number().nullable(),
+  "isActive": zod.boolean(),
+  "availableGallons": zod.number(),
+  "inventoryValue": zod.number(),
+  "unitCostPerGallon": zod.number(),
+  "createdAt": zod.string()
+})
+
+
+export const ListBulkFuelTransactionsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const listBulkFuelTransactionsQueryLimitMax = 100;
+
+
+
+export const ListBulkFuelTransactionsQueryParams = zod.object({
+  "limit": zod.coerce.number().min(1).max(listBulkFuelTransactionsQueryLimitMax).optional(),
+  "cursor": zod.coerce.string().optional()
+})
+
+export const ListBulkFuelTransactionsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "tankId": zod.number(),
+  "type": zod.enum(['delivery', 'opening_balance', 'dispense', 'reversal']),
+  "date": zod.string(),
+  "gallons": zod.number(),
+  "totalCost": zod.number(),
+  "costPerGallon": zod.number(),
+  "supplier": zod.string().nullable(),
+  "reference": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "equipmentId": zod.number().nullable(),
+  "equipmentName": zod.string().nullable(),
+  "fuelLogId": zod.number().nullable(),
+  "createdAt": zod.string()
+})),
+  "nextCursor": zod.string().nullable()
+})
+
+
+export const CreateBulkFuelIntakeParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const createBulkFuelIntakeBodyDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+
+
+export const CreateBulkFuelIntakeBody = zod.object({
+  "kind": zod.enum(['delivery', 'opening_balance']),
+  "date": zod.string().regex(createBulkFuelIntakeBodyDateRegExp),
+  "gallons": zod.number(),
+  "totalCost": zod.number(),
+  "supplier": zod.string().optional(),
+  "reference": zod.string().optional(),
+  "notes": zod.string().optional(),
+  "idempotencyKey": zod.string()
+})
+
+export const CreateBulkFuelIntakeResponse = zod.object({
+  "tank": zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "fuelType": zod.string(),
+  "capacityGallons": zod.number().nullable(),
+  "isActive": zod.boolean(),
+  "availableGallons": zod.number(),
+  "inventoryValue": zod.number(),
+  "unitCostPerGallon": zod.number(),
+  "createdAt": zod.string()
+}),
+  "transaction": zod.object({
+  "id": zod.number(),
+  "tankId": zod.number(),
+  "type": zod.enum(['delivery', 'opening_balance', 'dispense', 'reversal']),
+  "date": zod.string(),
+  "gallons": zod.number(),
+  "totalCost": zod.number(),
+  "costPerGallon": zod.number(),
+  "supplier": zod.string().nullable(),
+  "reference": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "equipmentId": zod.number().nullable(),
+  "equipmentName": zod.string().nullable(),
+  "fuelLogId": zod.number().nullable(),
+  "createdAt": zod.string()
+}),
+  "duplicate": zod.boolean()
+})
 
 
 /**
@@ -6948,6 +7105,8 @@ export const CreateEquipmentPreTripBody = zod.object({
   "condition": zod.enum(['good', 'needs_attention', 'unsafe']),
   "fuelGallons": zod.number().optional(),
   "fuelCost": zod.number().optional(),
+  "fuelSource": zod.enum(['purchased', 'bulk_tank']).optional(),
+  "bulkFuelTankId": zod.number().optional(),
   "readingType": zod.enum(['hours', 'mileage']).optional(),
   "readingValue": zod.number().optional(),
   "concerns": zod.string().optional(),
@@ -6963,6 +7122,10 @@ export const CreateEquipmentPreTripResponse = zod.object({
   "taskId": zod.number(),
   "fuelLogId": zod.number().nullish(),
   "readingLogId": zod.number().nullish(),
+  "fuelCost": zod.number().nullish(),
+  "fuelCostPerGallon": zod.number().nullish(),
+  "fuelSource": zod.string().nullish(),
+  "bulkFuelTankName": zod.string().nullish(),
   "duplicate": zod.boolean()
 })
 
@@ -7071,7 +7234,11 @@ export const GetEquipmentLedgerResponse = zod.object({
   "jobId": zod.number().nullish().describe('Optional link to the job this fuel was consumed for. When set, the Job Profitability report attributes this cost directly to that job rather than spreading it across all jobs.'),
   "date": zod.string(),
   "gallons": zod.number(),
+  "costPerGallon": zod.number().nullish(),
   "cost": zod.number(),
+  "fuelSource": zod.enum(['purchased', 'bulk_tank']),
+  "bulkFuelTankId": zod.number().nullable(),
+  "bulkFuelTankName": zod.string().nullable(),
   "odometerReading": zod.number().nullish(),
   "createdAt": zod.string()
 }))
@@ -12085,6 +12252,38 @@ export const SimulateRunRecurringSchedulerResponse = zod.object({
   "estimatedAmount": zod.number().optional(),
   "invoiceGenerated": zod.boolean().optional(),
   "invoiceId": zod.number().optional()
+})
+
+
+export const getEquipmentFuelUsageQueryAnchorDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+
+
+export const GetEquipmentFuelUsageQueryParams = zod.object({
+  "period": zod.enum(['week', 'month', 'year']),
+  "anchorDate": zod.coerce.string().regex(getEquipmentFuelUsageQueryAnchorDateRegExp),
+  "equipmentId": zod.coerce.number().optional()
+})
+
+export const GetEquipmentFuelUsageResponse = zod.object({
+  "period": zod.enum(['week', 'month', 'year']),
+  "from": zod.string(),
+  "to": zod.string(),
+  "totalGallons": zod.number(),
+  "totalCost": zod.number(),
+  "averageCostPerGallon": zod.number(),
+  "fillCount": zod.number(),
+  "bulkGallons": zod.number(),
+  "purchasedGallons": zod.number(),
+  "equipment": zod.array(zod.object({
+  "equipmentId": zod.number(),
+  "equipmentName": zod.string(),
+  "totalGallons": zod.number(),
+  "totalCost": zod.number(),
+  "averageCostPerGallon": zod.number(),
+  "fillCount": zod.number(),
+  "bulkGallons": zod.number(),
+  "purchasedGallons": zod.number()
+}))
 })
 
 

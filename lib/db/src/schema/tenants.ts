@@ -158,6 +158,10 @@ export const tenantsTable = pgTable("tenants", {
   equipmentRuntimeHourlyRate: real("equipment_runtime_hourly_rate").notNull().default(0),
   /** $/hour cost of an asset being out of service for repair (Maintenance & Repair ledger) */
   equipmentDowntimeHourlyRate: real("equipment_downtime_hourly_rate").notNull().default(0),
+  /** Rolling window and optional thresholds for bulk-fuel reconciliation loss warnings. */
+  bulkFuelLossPeriodDays: integer("bulk_fuel_loss_period_days").notNull().default(30),
+  bulkFuelLossGallonThreshold: real("bulk_fuel_loss_gallon_threshold"),
+  bulkFuelLossValueThreshold: real("bulk_fuel_loss_value_threshold"),
   // ── Time Tracking ─────────────────────────────────────────────────────────
   /** Hard cap (hours) on a single master-clock shift; after this, the system auto clocks-out the staffer. Null = no cap. */
   maxClockInHours: real("max_clock_in_hours").default(12),

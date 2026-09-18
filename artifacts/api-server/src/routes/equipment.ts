@@ -17,7 +17,7 @@ import {
   type ImportExportEntityConfig,
 } from "../lib/importExport";
 import { hasEquipmentVisibility } from "../lib/equipmentVisibility";
-import { dollarsToCents, dispenseBulkFuel, formatFuelLog, formatTank, formatTransaction, gallonsToThousandths, isDateKey, MAX_INVENTORY_INT, normalizeFuelDate, tenantDateKey } from "../lib/bulkFuel";
+import { bulkFuelLossExceedsThreshold, dollarsToCents, dispenseBulkFuel, formatFuelLog, formatTank, formatTransaction, gallonsToThousandths, isDateKey, MAX_INVENTORY_INT, normalizeFuelDate, parseBulkFuelLossAlertSettings, tenantDateKey, type BulkFuelLossAlertSettings } from "../lib/bulkFuel";
 import { invalidateTenantReportCache } from "../lib/reportsCache";
 import { AdjustmentError, reconcileBulkFuel } from "../lib/bulkFuelAdjustment";
 
@@ -309,6 +309,94 @@ async function requireTankManager(req: Request, res: Response): Promise<boolean>
 }
 
 // ─── Bulk fuel tanks and append-only inventory history ─────────────────────────
+function tenantLossAlertSettings(tenant: {
+  bulkFuelLossPeriodDays: number;
+  bulkFuelLossGallonThreshold: number | null;
+  bulkFuelLossValueThreshold: number | null;
+}): BulkFuelLossAlertSettings {
+  return {
+    periodDays: tenant.bulkFuelLossPeriodDays,
+    gallonThreshold: tenant.bulkFuelLossGallonThreshold,
+    valueThreshold: tenant.bulkFuelLossValueThreshold,
+  };
+}
+
+async function getTenantLossAlertSettings(tenantId: number): Promise<BulkFuelLossAlertSettings | null> {
+  const [tenant] = await db.select({
+    bulkFuelLossPeriodDays: tenantsTable.bulkFuelLossPeriodDays,
+    bulkFuelLossGallonThreshold: tenantsTable.bulkFuelLossGallonThreshold,
+    bulkFuelLossValueThreshold: tenantsTable.bulkFuelLossValueThreshold,
+  }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
+  return tenant ? tenantLossAlertSettings(tenant) : null;
+}
+
+router.get("/bulk-fuel/loss-alerts/settings", async (req, res): Promise<void> => {
+  if (!(await requireTankManager(req, res))) return;
+  const settings = await getTenantLossAlertSettings(getTenantId(req));
+  if (!settings) { res.status(404).json({ error: "Tenant not found" }); return; }
+  res.json(settings);
+});
+
+router.put("/bulk-fuel/loss-alerts/settings", async (req, res): Promise<void> => {
+  if (!(await requireTankManager(req, res))) return;
+  let settings: BulkFuelLossAlertSettings;
+  try {
+    settings = parseBulkFuelLossAlertSettings(req.body);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+    return;
+  }
+  const [tenant] = await db.update(tenantsTable).set({
+    bulkFuelLossPeriodDays: settings.periodDays,
+    bulkFuelLossGallonThreshold: settings.gallonThreshold,
+    bulkFuelLossValueThreshold: settings.valueThreshold,
+  }).where(eq(tenantsTable.id, getTenantId(req))).returning({
+    bulkFuelLossPeriodDays: tenantsTable.bulkFuelLossPeriodDays,
+    bulkFuelLossGallonThreshold: tenantsTable.bulkFuelLossGallonThreshold,
+    bulkFuelLossValueThreshold: tenantsTable.bulkFuelLossValueThreshold,
+  });
+  if (!tenant) { res.status(404).json({ error: "Tenant not found" }); return; }
+  res.json(tenantLossAlertSettings(tenant));
+});
+
+router.get("/bulk-fuel/loss-alerts", async (req, res): Promise<void> => {
+  if (!(await requireTankManager(req, res))) return;
+  const tenantId = getTenantId(req);
+  const settings = await getTenantLossAlertSettings(tenantId);
+  if (!settings) { res.status(404).json({ error: "Tenant not found" }); return; }
+  if (settings.gallonThreshold === null && settings.valueThreshold === null) {
+    res.json({ settings, alerts: [] });
+    return;
+  }
+  const cutoff = new Date(Date.now() - settings.periodDays * 24 * 60 * 60 * 1000);
+  const rows = await db.select({
+    tankId: bulkFuelTanksTable.id,
+    tankName: bulkFuelTanksTable.name,
+    lossThousandths: sql<number>`sum(-${bulkFuelTransactionsTable.gallonsThousandths})`,
+    lossCents: sql<number>`sum(-${bulkFuelTransactionsTable.totalCostCents})`,
+    adjustmentCount: sql<number>`count(*)`,
+  }).from(bulkFuelTransactionsTable)
+    .innerJoin(bulkFuelTanksTable, and(
+      eq(bulkFuelTanksTable.id, bulkFuelTransactionsTable.tankId),
+      eq(bulkFuelTanksTable.tenantId, tenantId),
+    ))
+    .where(and(
+      eq(bulkFuelTransactionsTable.tenantId, tenantId),
+      eq(bulkFuelTransactionsTable.type, "adjustment"),
+      sql`${bulkFuelTransactionsTable.gallonsThousandths} < 0`,
+      gte(bulkFuelTransactionsTable.createdAt, cutoff),
+    ))
+    .groupBy(bulkFuelTanksTable.id, bulkFuelTanksTable.name);
+  const alerts = rows.map(row => ({
+    tankId: row.tankId,
+    tankName: row.tankName,
+    lossGallons: Number(row.lossThousandths) / 1000,
+    lossValue: Number(row.lossCents) / 100,
+    adjustmentCount: Number(row.adjustmentCount),
+  })).filter(alert => bulkFuelLossExceedsThreshold(alert.lossGallons, alert.lossValue, settings));
+  res.json({ settings, alerts });
+});
+
 for (const commit of [false, true]) {
   router.post(`/bulk-fuel/tanks/:id/adjustments${commit ? "" : "/preview"}`, async (req, res): Promise<void> => {
     if (!(await requireTankManager(req, res))) return;

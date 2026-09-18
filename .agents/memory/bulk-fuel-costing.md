@@ -40,6 +40,15 @@ and automatic operating expenses. An empty tank has no current average to value
 a positive correction; use a properly valued intake instead.
 
 Fuel usage reports mean gallons added to equipment, not measured engine burn.
+Loss monitoring should be opt-in and use audited recording time rather than an
+operator-entered business date.
+
+**Why:** There is no universally safe loss tolerance across tank sizes, and
+backdating a correction must not hide a newly discovered loss from managers.
+
+**How to apply:** Keep limits disabled until chosen by the tenant; base rolling
+loss warnings on when adjustments entered the audit history.
+
 Historical unclassified fuel must not be relabeled as known station purchases
 or repriced using today's bulk tank price.
 

@@ -9,6 +9,47 @@ import {
 /** PostgreSQL integer columns are deliberately used for inventory arithmetic. */
 export const MAX_INVENTORY_INT = 2_000_000_000;
 
+export type BulkFuelLossAlertSettings = {
+  periodDays: number;
+  gallonThreshold: number | null;
+  valueThreshold: number | null;
+};
+
+export const DEFAULT_BULK_FUEL_LOSS_ALERT_SETTINGS: BulkFuelLossAlertSettings = {
+  periodDays: 30,
+  gallonThreshold: null,
+  valueThreshold: null,
+};
+
+export function parseBulkFuelLossAlertSettings(body: unknown): BulkFuelLossAlertSettings {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new Error("settings body is required");
+  }
+  const { periodDays, gallonThreshold, valueThreshold } = body as Record<string, unknown>;
+  if (!Number.isInteger(periodDays) || (periodDays as number) < 1 || (periodDays as number) > 365) {
+    throw new Error("periodDays must be an integer from 1 to 365");
+  }
+  for (const [name, value] of [["gallonThreshold", gallonThreshold], ["valueThreshold", valueThreshold]] as const) {
+    if (value !== null && (typeof value !== "number" || !Number.isFinite(value) || value <= 0)) {
+      throw new Error(`${name} must be a positive finite number or null`);
+    }
+  }
+  return {
+    periodDays: periodDays as number,
+    gallonThreshold: gallonThreshold as number | null,
+    valueThreshold: valueThreshold as number | null,
+  };
+}
+
+export function bulkFuelLossExceedsThreshold(
+  lossGallons: number,
+  lossValue: number,
+  settings: BulkFuelLossAlertSettings,
+): boolean {
+  return (settings.gallonThreshold !== null && lossGallons > settings.gallonThreshold)
+    || (settings.valueThreshold !== null && lossValue > settings.valueThreshold);
+}
+
 export function gallonsToThousandths(value: unknown, label = "gallons"): number {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) throw new Error(`${label} must be a positive finite number`);

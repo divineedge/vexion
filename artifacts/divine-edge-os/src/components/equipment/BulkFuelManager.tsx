@@ -21,6 +21,7 @@ import { Plus, Settings, History, Droplet, Scale } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { BulkFuelReconcileDialog } from './BulkFuelReconcileDialog';
+import { BulkFuelLossAlerts } from './BulkFuelLossAlerts';
 
 function fmt$(v: number | null | undefined) {
   if (v == null) return '—';
@@ -130,6 +131,10 @@ export function BulkFuelManager() {
 
   return (
     <div className="space-y-4">
+      {canManageOffice && <BulkFuelLossAlerts onHistory={id => {
+        const tank = tanks?.find(t => t.id === id);
+        if (tank) openHistory(tank);
+      }} />}
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold">Bulk Fuel Tanks</h3>

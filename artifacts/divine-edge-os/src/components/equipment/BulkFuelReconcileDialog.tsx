@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { fuelLossAlertKey } from './BulkFuelLossAlerts';
 
 const formSchema = z.object({
   measuredGallons: z.string()
@@ -151,6 +152,7 @@ export function BulkFuelReconcileDialog({
           expectedMovementId: preview.expectedMovementId,
         },
       });
+      void queryClient.invalidateQueries({ queryKey: fuelLossAlertKey });
       toast[result.duplicate ? 'info' : 'success'](
         result.duplicate
           ? 'This reconciliation was already recorded.'

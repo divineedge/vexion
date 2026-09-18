@@ -17,8 +17,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Settings, History, Droplet } from 'lucide-react';
+import { Plus, Settings, History, Droplet, Scale } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
+import { BulkFuelReconcileDialog } from './BulkFuelReconcileDialog';
 
 function fmt$(v: number | null | undefined) {
   if (v == null) return '—';
@@ -27,9 +29,16 @@ function fmt$(v: number | null | undefined) {
 
 export function BulkFuelManager() {
   const qc = useQueryClient();
+  const { canManageOffice } = useAuth();
   const { data: tanks, isLoading } = useListBulkFuelTanks(
     { includeInactive: true },
-    { query: { queryKey: getListBulkFuelTanksQueryKey({ includeInactive: true }) } }
+    {
+      query: {
+        queryKey: getListBulkFuelTanksQueryKey({ includeInactive: true }),
+        refetchInterval: 30_000,
+        staleTime: 15_000,
+      },
+    }
   );
 
   const [formOpen, setFormOpen] = useState(false);
@@ -111,6 +120,14 @@ export function BulkFuelManager() {
     setHistoryOpen(true);
   };
 
+  const [reconcileOpen, setReconcileOpen] = useState(false);
+  const [reconcileTank, setReconcileTank] = useState<BulkFuelTank | null>(null);
+
+  const openReconcile = (tank: BulkFuelTank) => {
+    setReconcileTank(tank);
+    setReconcileOpen(true);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -162,6 +179,17 @@ export function BulkFuelManager() {
                   {tank.isActive && (
                     <Button variant="outline" size="sm" onClick={() => openIntake(tank)} className="flex-1 min-w-[100px] gap-1.5 h-8">
                       <Droplet className="w-3.5 h-3.5" /> Intake
+                    </Button>
+                  )}
+                  {tank.isActive && canManageOffice && (
+                    <Button
+                      data-testid={`button-reconcile-tank-${tank.id}`}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openReconcile(tank)}
+                      className="flex-1 min-w-[100px] gap-1.5 h-8"
+                    >
+                      <Scale className="w-3.5 h-3.5" /> Reconcile
                     </Button>
                   )}
                   <Button variant="outline" size="sm" onClick={() => openHistory(tank)} className="flex-1 min-w-[100px] gap-1.5 h-8">
@@ -254,6 +282,14 @@ export function BulkFuelManager() {
 
       {historyTank && (
         <BulkFuelHistoryDialog tank={historyTank} open={historyOpen} onOpenChange={setHistoryOpen} />
+      )}
+
+      {reconcileTank && (
+        <BulkFuelReconcileDialog
+          tank={reconcileTank}
+          open={reconcileOpen}
+          onOpenChange={setReconcileOpen}
+        />
       )}
     </div>
   );
@@ -433,7 +469,14 @@ function BulkFuelHistoryDialog({ tank, open, onOpenChange }: { tank: BulkFuelTan
   const { data: page, isLoading } = useListBulkFuelTransactions(
     tank.id,
     { limit: 100 },
-    { query: { queryKey: getListBulkFuelTransactionsQueryKey(tank.id, { limit: 100 }), enabled: open } }
+    {
+      query: {
+        queryKey: getListBulkFuelTransactionsQueryKey(tank.id, { limit: 100 }),
+        enabled: open,
+        refetchInterval: open ? 30_000 : false,
+        staleTime: 15_000,
+      },
+    }
   );
 
   return (
@@ -442,7 +485,7 @@ function BulkFuelHistoryDialog({ tank, open, onOpenChange }: { tank: BulkFuelTan
         <DialogHeader className="px-6 py-4 border-b shrink-0 bg-card">
           <DialogTitle>History: {tank.name}</DialogTitle>
           <DialogDescription>
-            Audit log of all intakes, dispense events, and reversals for this tank.
+            Audit log of all intakes, dispense events, reversals, and inventory adjustments for this tank.
           </DialogDescription>
         </DialogHeader>
         
@@ -481,7 +524,8 @@ function BulkFuelHistoryDialog({ tank, open, onOpenChange }: { tank: BulkFuelTan
                     <TableCell>
                       <Badge variant="outline" className={`capitalize text-[10px] py-0 border-none font-medium ${
                         tx.type === 'dispense' ? 'bg-orange-500/10 text-orange-700 dark:text-orange-400' :
-                        tx.type === 'reversal' ? 'bg-blue-500/10 text-blue-700 dark:text-blue-400' :
+                         tx.type === 'reversal' ? 'bg-blue-500/10 text-blue-700 dark:text-blue-400' :
+                         tx.type === 'adjustment' ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400' :
                         'bg-green-500/10 text-green-700 dark:text-green-400'
                       }`}>
                         {tx.type.replace('_', ' ')}
@@ -497,7 +541,22 @@ function BulkFuelHistoryDialog({ tank, open, onOpenChange }: { tank: BulkFuelTan
                       {fmt$(Math.abs(tx.totalCost))}
                     </TableCell>
                     <TableCell className="text-xs">
-                      {tx.type === 'dispense' || tx.type === 'reversal' ? (
+                       {tx.type === 'adjustment' ? (
+                         <div data-testid={`audit-adjustment-${tx.id}`} className="space-y-0.5">
+                           <span className="font-medium">
+                             {tx.actorName || (tx.actorId ? `Staff #${tx.actorId}` : 'Unknown staff')}
+                           </span>
+                           <span className="block text-muted-foreground">
+                             {tx.reason || 'No reason recorded'} · {new Date(tx.createdAt).toLocaleString()}
+                           </span>
+                           {tx.beforeGallons != null && tx.afterGallons != null && (
+                             <span className="block font-mono text-[10px]">
+                               {tx.beforeGallons.toLocaleString(undefined, { maximumFractionDigits: 3 })} → {tx.afterGallons.toLocaleString(undefined, { maximumFractionDigits: 3 })} gal
+                               {tx.beforeValue != null && tx.afterValue != null && ` · ${fmt$(tx.beforeValue)} → ${fmt$(tx.afterValue)}`}
+                             </span>
+                           )}
+                         </div>
+                       ) : tx.type === 'dispense' || tx.type === 'reversal' ? (
                          tx.equipmentName ? <span className="font-medium">EQ: {tx.equipmentName}</span> : <span className="text-muted-foreground italic">Unknown Equipment</span>
                       ) : (
                          tx.supplier ? <span className="font-medium">From: {tx.supplier}</span> : <span className="text-muted-foreground italic">Manual Entry</span>

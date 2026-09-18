@@ -6925,6 +6925,97 @@ export const DeleteEquipmentFuelLogParams = zod.object({
 export const DeleteEquipmentFuelLogResponse = zod.void()
 
 
+export const PreviewBulkFuelAdjustmentParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const previewBulkFuelAdjustmentBodyMeasuredGallonsMin = 0;
+
+export const previewBulkFuelAdjustmentBodyReasonMax = 2000;
+
+export const previewBulkFuelAdjustmentBodyDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+
+
+export const PreviewBulkFuelAdjustmentBody = zod.object({
+  "measuredGallons": zod.number().min(previewBulkFuelAdjustmentBodyMeasuredGallonsMin),
+  "reason": zod.string().min(1).max(previewBulkFuelAdjustmentBodyReasonMax),
+  "date": zod.string().regex(previewBulkFuelAdjustmentBodyDateRegExp)
+})
+
+export const PreviewBulkFuelAdjustmentResponse = zod.object({
+  "beforeGallons": zod.number(),
+  "afterGallons": zod.number(),
+  "gallonsChange": zod.number(),
+  "beforeValue": zod.number(),
+  "afterValue": zod.number(),
+  "valueChange": zod.number(),
+  "expectedMovementId": zod.number()
+})
+
+
+export const CreateBulkFuelAdjustmentParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const createBulkFuelAdjustmentBodyOneMeasuredGallonsMin = 0;
+
+export const createBulkFuelAdjustmentBodyOneReasonMax = 2000;
+
+export const createBulkFuelAdjustmentBodyOneDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const createBulkFuelAdjustmentBodyTwoIdempotencyKeyMax = 200;
+
+export const createBulkFuelAdjustmentBodyTwoExpectedMovementIdMin = 0;
+
+
+
+export const CreateBulkFuelAdjustmentBody = zod.object({
+  "measuredGallons": zod.number().min(createBulkFuelAdjustmentBodyOneMeasuredGallonsMin),
+  "reason": zod.string().min(1).max(createBulkFuelAdjustmentBodyOneReasonMax),
+  "date": zod.string().regex(createBulkFuelAdjustmentBodyOneDateRegExp)
+}).and(zod.object({
+  "idempotencyKey": zod.string().min(1).max(createBulkFuelAdjustmentBodyTwoIdempotencyKeyMax),
+  "expectedMovementId": zod.number().min(createBulkFuelAdjustmentBodyTwoExpectedMovementIdMin)
+}))
+
+export const CreateBulkFuelAdjustmentResponse = zod.object({
+  "tank": zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "fuelType": zod.string(),
+  "capacityGallons": zod.number().nullable(),
+  "isActive": zod.boolean(),
+  "availableGallons": zod.number(),
+  "inventoryValue": zod.number(),
+  "unitCostPerGallon": zod.number(),
+  "createdAt": zod.string()
+}),
+  "transaction": zod.object({
+  "id": zod.number(),
+  "tankId": zod.number(),
+  "type": zod.enum(['delivery', 'opening_balance', 'dispense', 'reversal', 'adjustment']),
+  "reason": zod.string().nullish(),
+  "actorId": zod.number().nullish(),
+  "actorName": zod.string().nullish(),
+  "beforeGallons": zod.number().nullish(),
+  "afterGallons": zod.number().nullish(),
+  "beforeValue": zod.number().nullish(),
+  "afterValue": zod.number().nullish(),
+  "date": zod.string(),
+  "gallons": zod.number(),
+  "totalCost": zod.number(),
+  "costPerGallon": zod.number(),
+  "supplier": zod.string().nullable(),
+  "reference": zod.string().nullable(),
+  "notes": zod.string().nullable(),
+  "equipmentId": zod.number().nullable(),
+  "equipmentName": zod.string().nullable(),
+  "fuelLogId": zod.number().nullable(),
+  "createdAt": zod.string()
+}),
+  "duplicate": zod.boolean()
+})
+
+
 export const ListBulkFuelTanksQueryParams = zod.object({
   "includeInactive": zod.coerce.boolean().optional()
 })
@@ -7003,7 +7094,14 @@ export const ListBulkFuelTransactionsResponse = zod.object({
   "data": zod.array(zod.object({
   "id": zod.number(),
   "tankId": zod.number(),
-  "type": zod.enum(['delivery', 'opening_balance', 'dispense', 'reversal']),
+  "type": zod.enum(['delivery', 'opening_balance', 'dispense', 'reversal', 'adjustment']),
+  "reason": zod.string().nullish(),
+  "actorId": zod.number().nullish(),
+  "actorName": zod.string().nullish(),
+  "beforeGallons": zod.number().nullish(),
+  "afterGallons": zod.number().nullish(),
+  "beforeValue": zod.number().nullish(),
+  "afterValue": zod.number().nullish(),
   "date": zod.string(),
   "gallons": zod.number(),
   "totalCost": zod.number(),
@@ -7053,7 +7151,14 @@ export const CreateBulkFuelIntakeResponse = zod.object({
   "transaction": zod.object({
   "id": zod.number(),
   "tankId": zod.number(),
-  "type": zod.enum(['delivery', 'opening_balance', 'dispense', 'reversal']),
+  "type": zod.enum(['delivery', 'opening_balance', 'dispense', 'reversal', 'adjustment']),
+  "reason": zod.string().nullish(),
+  "actorId": zod.number().nullish(),
+  "actorName": zod.string().nullish(),
+  "beforeGallons": zod.number().nullish(),
+  "afterGallons": zod.number().nullish(),
+  "beforeValue": zod.number().nullish(),
+  "afterValue": zod.number().nullish(),
   "date": zod.string(),
   "gallons": zod.number(),
   "totalCost": zod.number(),

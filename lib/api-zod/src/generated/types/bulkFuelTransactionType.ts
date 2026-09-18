@@ -14,4 +14,5 @@ export const BulkFuelTransactionType = {
   opening_balance: 'opening_balance',
   dispense: 'dispense',
   reversal: 'reversal',
+  adjustment: 'adjustment',
 } as const;

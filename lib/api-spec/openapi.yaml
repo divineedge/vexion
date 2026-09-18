@@ -4089,6 +4089,49 @@ paths:
         "204":
           description: Deleted
 
+  /bulk-fuel/tanks/{id}/adjustments/preview:
+    post:
+      operationId: previewBulkFuelAdjustment
+      tags: [Equipment]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BulkFuelAdjustmentInput" }
+      responses:
+        "200":
+          description: Locked stock snapshot and weighted-average valuation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BulkFuelAdjustmentPreview" }
+        "400": { description: "Invalid measurement, capacity, reason, or valuation basis" }
+        "401": { description: Verified staff session required }
+        "403": { description: Manager role required }
+        "404": { description: Tank not found in tenant }
+  /bulk-fuel/tanks/{id}/adjustments:
+    post:
+      operationId: createBulkFuelAdjustment
+      tags: [Equipment]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BulkFuelAdjustmentCommit" }
+      responses:
+        "200":
+          description: Audited adjustment or matching idempotent replay
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BulkFuelIntakeResult" }
+        "400": { description: "Invalid measurement, capacity, reason, or valuation basis" }
+        "401": { description: Verified staff session required }
+        "403": { description: Manager role required }
+        "404": { description: Tank not found in tenant }
+        "409": { description: Stock changed since preview or idempotency payload mismatch }
   /bulk-fuel/tanks:
     get:
       operationId: listBulkFuelTanks
@@ -14075,6 +14118,32 @@ components:
         duplicate:
           type: boolean
 
+    BulkFuelAdjustmentInput:
+      type: object
+      required: [measuredGallons, reason, date]
+      properties:
+        measuredGallons: { type: number, minimum: 0 }
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+        date: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+    BulkFuelAdjustmentCommit:
+      allOf:
+        - { $ref: "#/components/schemas/BulkFuelAdjustmentInput" }
+        - type: object
+          required: [idempotencyKey, expectedMovementId]
+          properties:
+            idempotencyKey: { type: string, minLength: 1, maxLength: 200 }
+            expectedMovementId: { type: integer, minimum: 0 }
+    BulkFuelAdjustmentPreview:
+      type: object
+      required: [beforeGallons, afterGallons, gallonsChange, beforeValue, afterValue, valueChange, expectedMovementId]
+      properties:
+        beforeGallons: { type: number }
+        afterGallons: { type: number }
+        gallonsChange: { type: number }
+        beforeValue: { type: number }
+        afterValue: { type: number }
+        valueChange: { type: number }
+        expectedMovementId: { type: integer }
     BulkFuelTank:
       type: object
       required: [id, name, fuelType, capacityGallons, isActive, availableGallons, inventoryValue, unitCostPerGallon, createdAt]
@@ -14108,7 +14177,14 @@ components:
       properties:
         id: { type: integer }
         tankId: { type: integer }
-        type: { type: string, enum: [delivery, opening_balance, dispense, reversal] }
+        type: { type: string, enum: [delivery, opening_balance, dispense, reversal, adjustment] }
+        reason: { type: ["string", "null"] }
+        actorId: { type: ["integer", "null"] }
+        actorName: { type: ["string", "null"] }
+        beforeGallons: { type: ["number", "null"] }
+        afterGallons: { type: ["number", "null"] }
+        beforeValue: { type: ["number", "null"] }
+        afterValue: { type: ["number", "null"] }
         date: { type: string }
         gallons: { type: number }
         totalCost: { type: number }

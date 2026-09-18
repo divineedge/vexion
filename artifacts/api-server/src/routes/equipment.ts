@@ -19,6 +19,7 @@ import {
 import { hasEquipmentVisibility } from "../lib/equipmentVisibility";
 import { dollarsToCents, dispenseBulkFuel, formatFuelLog, formatTank, formatTransaction, gallonsToThousandths, isDateKey, MAX_INVENTORY_INT, normalizeFuelDate, tenantDateKey } from "../lib/bulkFuel";
 import { invalidateTenantReportCache } from "../lib/reportsCache";
+import { AdjustmentError, reconcileBulkFuel } from "../lib/bulkFuelAdjustment";
 
 const router: IRouter = Router();
 // Equipment contains tenant-private operational and inspection data. A verified
@@ -308,6 +309,25 @@ async function requireTankManager(req: Request, res: Response): Promise<boolean>
 }
 
 // ─── Bulk fuel tanks and append-only inventory history ─────────────────────────
+for (const commit of [false, true]) {
+  router.post(`/bulk-fuel/tanks/:id/adjustments${commit ? "" : "/preview"}`, async (req, res): Promise<void> => {
+    if (!(await requireTankManager(req, res))) return;
+    const tankId = parsedId(req.params.id);
+    if (!tankId) { res.status(400).json({ error: "Invalid tank id" }); return; }
+    const tenantId = getTenantId(req); const actorId = getUserId(req);
+    const [actor] = await db.select().from(usersTable).where(and(eq(usersTable.id, actorId), eq(usersTable.tenantId, tenantId))).limit(1);
+    if (!actor) { res.status(403).json({ error: "Verified manager required" }); return; }
+    try {
+      const result = await db.transaction(tx => reconcileBulkFuel(tx, {
+        tenantId, tankId, actorId, actorName: actor.name, body: req.body, commit,
+      }));
+      res.json(result);
+    } catch (error) {
+      if (error instanceof AdjustmentError) { res.status(error.status).json({ error: error.message }); return; }
+      throw error;
+    }
+  });
+}
 router.get("/bulk-fuel/tanks", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const includeInactive = req.query.includeInactive === "true";

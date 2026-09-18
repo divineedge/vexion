@@ -67,7 +67,12 @@ export function formatTransaction(
   row: typeof bulkFuelTransactionsTable.$inferSelect,
 ) {
   return {
-    id: row.id, tankId: row.tankId, type: row.type as "delivery" | "opening_balance" | "dispense" | "reversal",
+    id: row.id, tankId: row.tankId, type: row.type as "delivery" | "opening_balance" | "dispense" | "reversal" | "adjustment",
+    reason: row.reason ?? null, actorId: row.actorId ?? null, actorName: row.actorName ?? null,
+    beforeGallons: row.beforeThousandths == null ? null : row.beforeThousandths / 1000,
+    afterGallons: row.afterThousandths == null ? null : row.afterThousandths / 1000,
+    beforeValue: row.beforeValueCents == null ? null : row.beforeValueCents / 100,
+    afterValue: row.afterValueCents == null ? null : row.afterValueCents / 100,
     date: row.date, gallons: row.gallonsThousandths / 1000, totalCost: row.totalCostCents / 100,
     costPerGallon: row.gallonsThousandths === 0 ? 0 : Math.round((row.totalCostCents / row.gallonsThousandths) * 1_000_000) / 100_000,
     supplier: row.supplier ?? null, reference: row.reference ?? null, notes: row.notes ?? null,

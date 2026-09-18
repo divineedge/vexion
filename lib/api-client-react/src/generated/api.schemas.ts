@@ -4764,6 +4764,38 @@ export interface EquipmentPreTripResult {
   duplicate: boolean;
 }
 
+export interface BulkFuelAdjustmentInput {
+  /** @minimum 0 */
+  measuredGallons: number;
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  reason: string;
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  date: string;
+}
+
+export type BulkFuelAdjustmentCommit = BulkFuelAdjustmentInput & {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  idempotencyKey: string;
+  /** @minimum 0 */
+  expectedMovementId: number;
+};
+
+export interface BulkFuelAdjustmentPreview {
+  beforeGallons: number;
+  afterGallons: number;
+  gallonsChange: number;
+  beforeValue: number;
+  afterValue: number;
+  valueChange: number;
+  expectedMovementId: number;
+}
+
 export interface BulkFuelTank {
   id: number;
   name: string;
@@ -4800,12 +4832,27 @@ export const BulkFuelTransactionType = {
   opening_balance: 'opening_balance',
   dispense: 'dispense',
   reversal: 'reversal',
+  adjustment: 'adjustment',
 } as const;
 
 export interface BulkFuelTransaction {
   id: number;
   tankId: number;
   type: BulkFuelTransactionType;
+  /** @nullable */
+  reason?: string | null;
+  /** @nullable */
+  actorId?: number | null;
+  /** @nullable */
+  actorName?: string | null;
+  /** @nullable */
+  beforeGallons?: number | null;
+  /** @nullable */
+  afterGallons?: number | null;
+  /** @nullable */
+  beforeValue?: number | null;
+  /** @nullable */
+  afterValue?: number | null;
   date: string;
   gallons: number;
   totalCost: number;

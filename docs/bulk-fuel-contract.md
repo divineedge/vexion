@@ -57,6 +57,39 @@ Transaction gallons/value are signed inventory changes (dispense is negative).
 History is append-only. Editing a tank name must not rewrite old equipment-source
 labels. Intake records are not silently editable after recording.
 
+## Manager stock reconciliation
+
+`previewBulkFuelAdjustment`: POST `/bulk-fuel/tanks/:id/adjustments/preview`
+with `{ measuredGallons, reason, date: "YYYY-MM-DD" }` returns
+`{ beforeGallons, afterGallons, gallonsChange, beforeValue, afterValue,
+valueChange, expectedMovementId }`. Quantities are gallons; values are dollars.
+`createBulkFuelAdjustment`: POST `/bulk-fuel/tanks/:id/adjustments` takes the
+same input plus `{ idempotencyKey, expectedMovementId }` and returns
+`{ tank, transaction, duplicate }`. Preview does not change inventory.
+
+The snapshot token `expectedMovementId` is the latest append-only movement ID
+(zero without history). Every stock mutation holds the same tank row lock;
+any intervening movement, even one subsequently reversed, invalidates confirmation.
+409 requires a new preview or indicates a key reused with a different payload.
+Matching retries return the original audit movement and the current tank; actor,
+date, reason, rounded measurement, and snapshot token must all match.
+401 means no verified staff session, 403 means not an office manager role,
+404 means tank absent in this tenant, and 400 contains a specific validation error.
+
+Adjustments use current weighted-average valuation rounded to cents, including
+exactly zero value when emptied. Zero-gallon measurements are allowed; negative,
+nonfinite, capacity overflow, unchanged stock, and gains from an empty tank with
+no valuation basis are rejected. Use an intake for empty stock rather than
+inventing a price. A zero-cost nonempty tank has a valid zero-cost basis.
+
+History type includes `adjustment`, with signed gallons/value and nullable
+`reason, actorId, actorName, beforeGallons, afterGallons, beforeValue, afterValue`.
+Actor ID and name are verified server-side and snapshotted, never caller input.
+Existing movements have null adjustment audit fields. No equipment fuel log,
+operating expense, or historical equipment cost is created or changed.
+Apply additive migration `lib/db/drizzle/0076_add_bulk_fuel_adjustments.sql`
+before serving the updated API.
+
 ## Existing equipment fueling
 
 Extend existing `createEquipmentFuelLog` request with:

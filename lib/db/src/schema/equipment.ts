@@ -152,7 +152,7 @@ export const bulkFuelTransactionsTable = pgTable("bulk_fuel_transactions", {
   id: serial("id").primaryKey(),
   tankId: integer("tank_id").notNull().references(() => bulkFuelTanksTable.id),
   tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id, { onDelete: "cascade" }),
-  /** delivery | opening_balance | dispense | reversal */
+  /** delivery | opening_balance | dispense | reversal | adjustment */
   type: text("type").notNull(),
   date: text("date").notNull(),
   gallonsThousandths: integer("gallons_thousandths").notNull(),
@@ -160,6 +160,14 @@ export const bulkFuelTransactionsTable = pgTable("bulk_fuel_transactions", {
   supplier: text("supplier"),
   reference: text("reference"),
   notes: text("notes"),
+  reason: text("reason"),
+  actorId: integer("actor_id"),
+  actorName: text("actor_name"),
+  beforeThousandths: integer("before_thousandths"),
+  afterThousandths: integer("after_thousandths"),
+  beforeValueCents: integer("before_value_cents"),
+  afterValueCents: integer("after_value_cents"),
+  expectedMovementId: integer("expected_movement_id"),
   equipmentId: integer("equipment_id").references(() => equipmentTable.id, { onDelete: "set null" }),
   /** Equipment label at movement time; retained even after an equipment rename. */
   equipmentName: text("equipment_name"),

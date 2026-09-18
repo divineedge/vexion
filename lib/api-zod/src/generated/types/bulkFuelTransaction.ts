@@ -11,6 +11,20 @@ export interface BulkFuelTransaction {
   id: number;
   tankId: number;
   type: BulkFuelTransactionType;
+  /** @nullable */
+  reason?: string | null;
+  /** @nullable */
+  actorId?: number | null;
+  /** @nullable */
+  actorName?: string | null;
+  /** @nullable */
+  beforeGallons?: number | null;
+  /** @nullable */
+  afterGallons?: number | null;
+  /** @nullable */
+  beforeValue?: number | null;
+  /** @nullable */
+  afterValue?: number | null;
   date: string;
   gallons: number;
   totalCost: number;

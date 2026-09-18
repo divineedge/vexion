@@ -44,6 +44,9 @@ import type {
   BroadcastPreviewResult,
   BulkArchiveTasks200,
   BulkArchiveTasksInput,
+  BulkFuelAdjustmentCommit,
+  BulkFuelAdjustmentInput,
+  BulkFuelAdjustmentPreview,
   BulkFuelIntakeInput,
   BulkFuelIntakeResult,
   BulkFuelTank,
@@ -14848,6 +14851,138 @@ export const useDeleteEquipmentFuelLog = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteEquipmentFuelLogMutationOptions(options));
+    }
+
+export const getPreviewBulkFuelAdjustmentUrl = (id: number,) => {
+
+
+
+
+  return `/api/bulk-fuel/tanks/${id}/adjustments/preview`
+}
+
+export const previewBulkFuelAdjustment = async (id: number,
+    bulkFuelAdjustmentInput: BulkFuelAdjustmentInput, options?: RequestInit): Promise<BulkFuelAdjustmentPreview> => {
+
+  return customFetch<BulkFuelAdjustmentPreview>(getPreviewBulkFuelAdjustmentUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(bulkFuelAdjustmentInput)
+  }
+);}
+
+
+
+
+
+export const getPreviewBulkFuelAdjustmentMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewBulkFuelAdjustment>>, TError,{id: number;data: BodyType<BulkFuelAdjustmentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof previewBulkFuelAdjustment>>, TError,{id: number;data: BodyType<BulkFuelAdjustmentInput>}, TContext> => {
+
+const mutationKey = ['previewBulkFuelAdjustment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof previewBulkFuelAdjustment>>, {id: number;data: BodyType<BulkFuelAdjustmentInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  previewBulkFuelAdjustment(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PreviewBulkFuelAdjustmentMutationResult = NonNullable<Awaited<ReturnType<typeof previewBulkFuelAdjustment>>>
+    export type PreviewBulkFuelAdjustmentMutationBody = BodyType<BulkFuelAdjustmentInput>
+    export type PreviewBulkFuelAdjustmentMutationError = ErrorType<void>
+
+    export const usePreviewBulkFuelAdjustment = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewBulkFuelAdjustment>>, TError,{id: number;data: BodyType<BulkFuelAdjustmentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof previewBulkFuelAdjustment>>,
+        TError,
+        {id: number;data: BodyType<BulkFuelAdjustmentInput>},
+        TContext
+      > => {
+      return useMutation(getPreviewBulkFuelAdjustmentMutationOptions(options));
+    }
+
+export const getCreateBulkFuelAdjustmentUrl = (id: number,) => {
+
+
+
+
+  return `/api/bulk-fuel/tanks/${id}/adjustments`
+}
+
+export const createBulkFuelAdjustment = async (id: number,
+    bulkFuelAdjustmentCommit: BulkFuelAdjustmentCommit, options?: RequestInit): Promise<BulkFuelIntakeResult> => {
+
+  return customFetch<BulkFuelIntakeResult>(getCreateBulkFuelAdjustmentUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(bulkFuelAdjustmentCommit)
+  }
+);}
+
+
+
+
+
+export const getCreateBulkFuelAdjustmentMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBulkFuelAdjustment>>, TError,{id: number;data: BodyType<BulkFuelAdjustmentCommit>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createBulkFuelAdjustment>>, TError,{id: number;data: BodyType<BulkFuelAdjustmentCommit>}, TContext> => {
+
+const mutationKey = ['createBulkFuelAdjustment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createBulkFuelAdjustment>>, {id: number;data: BodyType<BulkFuelAdjustmentCommit>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  createBulkFuelAdjustment(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateBulkFuelAdjustmentMutationResult = NonNullable<Awaited<ReturnType<typeof createBulkFuelAdjustment>>>
+    export type CreateBulkFuelAdjustmentMutationBody = BodyType<BulkFuelAdjustmentCommit>
+    export type CreateBulkFuelAdjustmentMutationError = ErrorType<void>
+
+    export const useCreateBulkFuelAdjustment = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBulkFuelAdjustment>>, TError,{id: number;data: BodyType<BulkFuelAdjustmentCommit>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createBulkFuelAdjustment>>,
+        TError,
+        {id: number;data: BodyType<BulkFuelAdjustmentCommit>},
+        TContext
+      > => {
+      return useMutation(getCreateBulkFuelAdjustmentMutationOptions(options));
     }
 
 export const getListBulkFuelTanksUrl = (params?: ListBulkFuelTanksParams,) => {

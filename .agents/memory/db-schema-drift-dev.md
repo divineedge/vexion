@@ -7,4 +7,10 @@ Symptom: an existing (untouched) API route throws `Error: Failed query: select .
 
 **Why:** Drizzle schema files and the live dev database can drift independently — schema edits alone don't touch the DB. If a previous task added a column in code but the push step didn't happen (or ran against a different DB instance), any route touching that table fails for everyone, not just new work.
 
-**How to apply:** Before assuming a regression in your own change, run `psql "$DATABASE_URL" -c '\d <table>'` and compare to the Drizzle schema. If columns are missing, run `pnpm --filter @workspace/db run push` (safe/additive for new nullable columns) to sync, then retest.
+**How to apply:** Compare database column metadata with the Drizzle schema before assuming a code regression. Review schema changes before applying them to development; if a broad push proposes unrelated destructive changes, apply only the reviewed additive development migrations instead.
+
+Missing optional-feature columns on a shared tenant record can break login for everyone because login loads that record, not just authentication-specific fields.
+
+**Why:** A successful code build does not prove the development schema was updated. Publishing compares actual development and production databases, so it cannot propagate columns that exist only in source code.
+
+**How to apply:** Confirm full tenant queries execute against development before asking the user to republish. Keep production schema changes in the managed Publish flow, with no data-overwrite option. Treat a setup command that matched no workspace package as a failure, not successful reconciliation.

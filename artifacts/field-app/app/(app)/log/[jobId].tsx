@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Platform,
   Alert,
+  Linking,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,6 +20,8 @@ import * as Haptics from 'expo-haptics';
 import {
   useListChemicalMixtures,
   useListChemicalProducts,
+  useListChemicalDocuments,
+  useGetChemicalDocumentReadUrl,
   useCreateJobChemicalApplication,
   useGetJob,
   useGetProperty,
@@ -31,8 +34,8 @@ import { useColors } from '@/hooks/useColors';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { normalizeChemicalRecordRequirements } from '@/utils/chemicalRequirements';
 
-type ChemMixture = { id: number; name: string; items?: unknown[] };
-type ChemProduct = { id: number; name: string; unit?: string };
+type ChemMixture = { id: number; name: string; items?: { productId: number; productName?: string | null }[] };
+type ChemProduct = { id: number; name: string; unit?: string; labelSdsUrl?: string | null };
 
 type BreakdownItem = {
   productId?: number | null;
@@ -220,6 +223,100 @@ function SelectButton({
   );
 }
 
+// Read-only access to stored safety sheets and the product's older external SDS link.
+function httpDocumentUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value.trim());
+    return (url.protocol === 'https:' || url.protocol === 'http:') && !!url.hostname ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function ChemicalSafetySheets({ product }: { product: ChemProduct }) {
+  const colors = useColors();
+  const { data: documents, isLoading, isError, refetch } = useListChemicalDocuments(product.id);
+  const readUrlMutation = useGetChemicalDocumentReadUrl();
+  const [opening, setOpening] = useState<string | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
+  const legacyUrl = httpDocumentUrl(product.labelSdsUrl);
+
+  const openDocument = async (documentId: number) => {
+    if (opening) return;
+    setOpening(String(documentId));
+    setOpenError(null);
+    try {
+      const { url } = await readUrlMutation.mutateAsync({ id: product.id, documentId });
+      const safeUrl = httpDocumentUrl(url);
+      if (!safeUrl) throw new Error('The safety sheet link is unavailable.');
+      await Linking.openURL(safeUrl);
+    } catch {
+      setOpenError('Could not open this safety sheet. Please try again.');
+    } finally {
+      setOpening(null);
+    }
+  };
+
+  const openLegacy = async () => {
+    if (!legacyUrl || opening) return;
+    setOpening('legacy');
+    setOpenError(null);
+    try {
+      await Linking.openURL(legacyUrl);
+    } catch {
+      setOpenError('Could not open the external SDS link. Please try again.');
+    } finally {
+      setOpening(null);
+    }
+  };
+
+  return (
+    <View style={[safetyStyles.product, { borderColor: colors.border }]}>
+      <Text style={[safetyStyles.productName, { color: colors.foreground }]}>{product.name}</Text>
+      {isLoading && <ActivityIndicator size="small" color={colors.primary} style={safetyStyles.loading} />}
+      {isError && (
+        <TouchableOpacity onPress={() => { void refetch(); }} testID={`retry-safety-sheets-${product.id}`}>
+          <Text style={[safetyStyles.message, { color: colors.destructive }]}>Safety sheets unavailable. Tap to retry.</Text>
+        </TouchableOpacity>
+      )}
+      {!isLoading && !isError && documents?.length === 0 && (
+        <Text style={[safetyStyles.message, { color: colors.mutedForeground }]}>No uploaded safety sheets available.</Text>
+      )}
+      {documents?.map(document => (
+        <TouchableOpacity
+          key={document.id}
+          style={safetyStyles.link}
+          onPress={() => { void openDocument(document.id); }}
+          disabled={opening !== null}
+          testID={`safety-sheet-${product.id}-${document.id}`}
+        >
+          {opening === String(document.id)
+            ? <ActivityIndicator size="small" color={colors.primary} />
+            : <Ionicons name="document-text-outline" size={16} color={colors.primary} />}
+          <Text style={[safetyStyles.linkText, { color: colors.primary }]} numberOfLines={2}>
+            {document.documentType.toUpperCase()} · {document.fileName}
+          </Text>
+          <Ionicons name="open-outline" size={15} color={colors.primary} />
+        </TouchableOpacity>
+      ))}
+      {legacyUrl && (
+        <TouchableOpacity style={safetyStyles.link} onPress={() => { void openLegacy(); }} disabled={opening !== null} testID={`legacy-sds-${product.id}`}>
+          {opening === 'legacy'
+            ? <ActivityIndicator size="small" color={colors.primary} />
+            : <Ionicons name="link-outline" size={16} color={colors.primary} />}
+          <Text style={[safetyStyles.linkText, { color: colors.primary }]}>External SDS link (legacy)</Text>
+          <Ionicons name="open-outline" size={15} color={colors.primary} />
+        </TouchableOpacity>
+      )}
+      {!!product.labelSdsUrl && !legacyUrl && (
+        <Text style={[safetyStyles.message, { color: colors.mutedForeground }]}>External SDS link unavailable.</Text>
+      )}
+      {openError && <Text style={[safetyStyles.message, { color: colors.destructive }]}>{openError}</Text>}
+    </View>
+  );
+}
+
 // ─── Breakdown Result ─────────────────────────────────────────────────────────
 
 function BreakdownResult({
@@ -401,6 +498,12 @@ export default function LogApplicationScreen() {
   const { data: mixtures, isLoading: mixturesLoading } = useListChemicalMixtures();
   const { data: products, isLoading: productsLoading } = useListChemicalProducts();
   const { data: tenantSettings } = useGetTenantSettings();
+  const selectedSafetyProducts: ChemProduct[] = mode === 'product'
+    ? (selectedProduct ? [selectedProduct] : [])
+    : Array.from(new Set(selectedMixture?.items?.map(item => item.productId) ?? []))
+        .filter(id => Number.isInteger(id) && id > 0)
+        .map(id => (products as ChemProduct[] | undefined)?.find(product => product.id === id)
+          ?? { id, name: selectedMixture?.items?.find(item => item.productId === id)?.productName ?? `Product #${id}` });
   const chemicalRequirements = normalizeChemicalRecordRequirements(tenantSettings?.chemicalRecordRequirements);
   const createMutation = useCreateJobChemicalApplication();
 
@@ -565,6 +668,13 @@ export default function LogApplicationScreen() {
                 <Text style={[styles.errMsg, { color: colors.destructive }]}>{errors.product}</Text>
               )}
             </Field>
+          )}
+
+          {selectedSafetyProducts.length > 0 && (
+            <View style={[safetyStyles.container, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[safetyStyles.title, { color: colors.foreground }]}>Chemical Safety Sheets</Text>
+              {selectedSafetyProducts.map(product => <ChemicalSafetySheets key={product.id} product={product} />)}
+            </View>
           )}
 
           {/* Volume Applied */}
@@ -992,6 +1102,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#ffffff',
   },
+});
+
+const safetyStyles = StyleSheet.create({
+  container: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingTop: 12, marginBottom: 18 },
+  title: { fontFamily: 'Inter_600SemiBold', fontSize: 14, marginBottom: 4 },
+  product: { borderTopWidth: StyleSheet.hairlineWidth, paddingVertical: 10 },
+  productName: { fontFamily: 'Inter_500Medium', fontSize: 13, marginBottom: 3 },
+  loading: { alignSelf: 'flex-start', marginTop: 6 },
+  message: { fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 5 },
+  link: { flexDirection: 'row', alignItems: 'center', minHeight: 36, gap: 8, paddingVertical: 5 },
+  linkText: { fontFamily: 'Inter_500Medium', fontSize: 13, flex: 1 },
 });
 
 const pickerStyles = StyleSheet.create({

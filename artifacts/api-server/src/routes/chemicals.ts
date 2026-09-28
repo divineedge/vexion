@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { db, chemicalProductsTable, chemicalMixturesTable, chemicalMixtureItemsTable, chemicalApplicationsTable, jobsTable, propertiesTable, tenantsTable, usersTable } from "@workspace/db";
+import { db, chemicalProductsTable, chemicalMixturesTable, chemicalMixtureItemsTable, chemicalApplicationsTable, jobsTable, propertiesTable, tenantsTable, usersTable, mediaAttachmentsTable } from "@workspace/db";
+import { ObjectStorageService } from "../lib/objectStorage";
 import { eq, and, gte, lte, desc, inArray } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { normalizeChemicalRecordRequirements, parseStrictChemicalAppliedAt, validateChemicalRecordRequirements, validateSuppliedChemicalApplicationFields } from "../lib/chemicalRequirements";
@@ -95,7 +96,20 @@ router.patch("/chemical-products/:id", requireOfficeRole, async (req, res): Prom
 router.delete("/chemical-products/:id", requireOfficeRole, async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id, 10);
-  await db.delete(chemicalProductsTable).where(and(eq(chemicalProductsTable.id, id), eq(chemicalProductsTable.tenantId, tenantId)));
+  const documents = await db.transaction(async tx => {
+    // FK failures roll back without touching documents.
+    const deleted = await tx.delete(chemicalProductsTable).where(and(eq(chemicalProductsTable.id, id), eq(chemicalProductsTable.tenantId, tenantId))).returning({ id: chemicalProductsTable.id });
+    if (!deleted.length) return [];
+    return tx.delete(mediaAttachmentsTable).where(and(
+      eq(mediaAttachmentsTable.tenantId, tenantId), eq(mediaAttachmentsTable.entityId, id),
+      inArray(mediaAttachmentsTable.entityType, ["chemical_sds", "chemical_msds"]),
+    )).returning({ fileKey: mediaAttachmentsTable.fileKey });
+  });
+  const storage = new ObjectStorageService();
+  for (const document of documents) {
+    try { await storage.deleteObjectEntity(document.fileKey); }
+    catch (error) { req.log.error({ err: error, fileKey: document.fileKey }, "Deleted chemical product document cleanup failed"); }
+  }
   res.sendStatus(204);
 });
 

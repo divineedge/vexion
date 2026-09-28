@@ -4223,6 +4223,22 @@ export interface Plan {
   maxProperties?: number | null;
 }
 
+export type ChemicalDocumentDocumentType = typeof ChemicalDocumentDocumentType[keyof typeof ChemicalDocumentDocumentType];
+
+
+export const ChemicalDocumentDocumentType = {
+  sds: 'sds',
+  msds: 'msds',
+} as const;
+
+export interface ChemicalDocument {
+  id: number;
+  documentType: ChemicalDocumentDocumentType;
+  fileName: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
 export interface ChemicalProduct {
   id: number;
   tenantId: number;
@@ -6776,6 +6792,23 @@ export type ApplyBlueprintTemplateBody = {
 };
 
 export type GetGmailAuthorizeUrl200 = {
+  url: string;
+};
+
+export type UploadChemicalDocumentBodyDocumentType = typeof UploadChemicalDocumentBodyDocumentType[keyof typeof UploadChemicalDocumentBodyDocumentType];
+
+
+export const UploadChemicalDocumentBodyDocumentType = {
+  sds: 'sds',
+  msds: 'msds',
+} as const;
+
+export type UploadChemicalDocumentBody = {
+  file: Blob;
+  documentType: UploadChemicalDocumentBodyDocumentType;
+};
+
+export type GetChemicalDocumentReadUrl200 = {
   url: string;
 };
 

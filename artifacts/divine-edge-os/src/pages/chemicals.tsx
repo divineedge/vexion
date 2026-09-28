@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   useListChemicalApplications, useListUsers, getListChemicalApplicationsQueryKey,
   useListChemicalProducts, getListChemicalProductsQueryKey,
@@ -6,8 +6,10 @@ import {
   useListChemicalMixtures, getListChemicalMixturesQueryKey,
   useCreateChemicalMixture, useUpdateChemicalMixture, useDeleteChemicalMixture,
   useGetTenantSettings, getGetTenantSettingsQueryKey, useUpdateTenantSettings,
+  useListChemicalDocuments, getListChemicalDocumentsQueryKey,
+  useUploadChemicalDocument, useDeleteChemicalDocument, useGetChemicalDocumentReadUrl,
 } from '@workspace/api-client-react';
-import type { ChemicalProduct, ChemicalMixture, ChemicalMixtureItem } from '@workspace/api-client-react';
+import type { ChemicalProduct, ChemicalMixture, ChemicalMixtureItem, ChemicalDocument } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -20,14 +22,197 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { FlaskConical, Download, Filter, ChevronDown, ChevronRight, Plus, Pencil, Trash2, X, ShieldCheck, Save } from 'lucide-react';
+import { FlaskConical, Download, Filter, ChevronDown, ChevronRight, Plus, Pencil, Trash2, X, ShieldCheck, Save, FileText, ExternalLink } from 'lucide-react';
 import {
   CHEMICAL_REQUIREMENT_GROUPS,
   normalizeChemicalRecordRequirements,
   type ChemicalRequirementKey,
 } from '@/lib/chemicalRequirements';
+
+const MAX_SAFETY_SHEET_BYTES = 20 * 1024 * 1024;
+
+function safeHttpUrl(value: string, allowRelative = false): string | null {
+  try {
+    if (allowRelative && value.startsWith('/') && !value.startsWith('//')) {
+      return new URL(value, window.location.origin).href;
+    }
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function ChemicalSafetySheets({ product, canManage, onClose }: { product: ChemicalProduct; canManage: boolean; onClose: () => void }) {
+  const qc = useQueryClient();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [documentType, setDocumentType] = useState<'sds' | 'msds'>('sds');
+  const [file, setFile] = useState<File | null>(null);
+  const [uploadError, setUploadError] = useState('');
+  const [openingId, setOpeningId] = useState<number | null>(null);
+  const [removing, setRemoving] = useState<ChemicalDocument | null>(null);
+  const { data: documents, isLoading, isError, error, refetch } = useListChemicalDocuments(product.id, {
+    query: { queryKey: getListChemicalDocumentsQueryKey(product.id), refetchOnMount: 'always' },
+  });
+  const upload = useUploadChemicalDocument();
+  const remove = useDeleteChemicalDocument();
+  const getReadUrl = useGetChemicalDocumentReadUrl();
+
+  const selectFile = (selected: File | null) => {
+    setUploadError('');
+    setFile(null);
+    if (!selected) return;
+    if (!/\.pdf$/i.test(selected.name) || (selected.type && selected.type !== 'application/pdf')) {
+      setUploadError('Select a PDF file.');
+      if (fileInput.current) fileInput.current.value = '';
+      return;
+    }
+    if (selected.size > MAX_SAFETY_SHEET_BYTES) {
+      setUploadError('PDF files must be 20 MB or smaller.');
+      if (fileInput.current) fileInput.current.value = '';
+      return;
+    }
+    if (!selected.size) {
+      setUploadError('The selected PDF is empty.');
+      if (fileInput.current) fileInput.current.value = '';
+      return;
+    }
+    setFile(selected);
+  };
+
+  const uploadFile = () => {
+    if (!file || upload.isPending) return;
+    setUploadError('');
+    upload.mutate({ id: product.id, data: { file, documentType } }, {
+      onSuccess: () => {
+        setFile(null);
+        if (fileInput.current) fileInput.current.value = '';
+        qc.invalidateQueries({ queryKey: getListChemicalDocumentsQueryKey(product.id) });
+        toast.success('Safety sheet uploaded');
+      },
+      onError: error => setUploadError(error.message || 'Upload failed. Please try again.'),
+    });
+  };
+
+  const openDocument = (documentId: number) => {
+    // Reserve the tab during the click: opening it after the signed URL request may be blocked.
+    const tab = window.open('', '_blank');
+    if (!tab) { toast.error('Allow pop-ups to open this safety sheet.'); return; }
+    setOpeningId(documentId);
+    getReadUrl.mutate({ id: product.id, documentId }, {
+      onSuccess: ({ url }) => {
+        const safeUrl = safeHttpUrl(url, true);
+        if (!safeUrl) {
+          tab.close();
+          toast.error('The safety sheet link is invalid.');
+          return;
+        }
+        tab.opener = null;
+        tab.location.replace(safeUrl);
+      },
+      onError: error => {
+        tab.close();
+        toast.error(error.message || 'Could not open the safety sheet. Try again.');
+      },
+      onSettled: () => setOpeningId(null),
+    });
+  };
+
+  const openExternalLink = () => {
+    const url = safeHttpUrl(product.labelSdsUrl ?? '');
+    if (!url) { toast.error('The external label / SDS URL must start with http:// or https://.'); return; }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  return (
+    <Sheet open onOpenChange={open => { if (!open && !upload.isPending && !remove.isPending) onClose(); }}>
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetHeader className="pb-4">
+          <SheetTitle>Safety Sheets · {product.name}</SheetTitle>
+          <SheetDescription>Stored SDS and MSDS PDFs for this chemical product.</SheetDescription>
+        </SheetHeader>
+        <div className="space-y-5 pb-6">
+          {product.labelSdsUrl && (
+            <div className="rounded-md border p-3 text-sm">
+              <p className="text-xs text-muted-foreground mb-1">External label / SDS URL (not a stored PDF)</p>
+              <Button variant="link" className="h-auto p-0 gap-1 max-w-full" onClick={openExternalLink}>
+                <ExternalLink className="h-3.5 w-3.5 shrink-0" /> Open external link
+              </Button>
+            </div>
+          )}
+          {canManage && (
+            <div className="rounded-md border p-4 space-y-3">
+              <p className="text-sm font-medium">Upload a safety sheet</p>
+              <div className="flex items-center gap-2">
+                <label htmlFor="chemical-document-type" className="text-sm">Type</label>
+                <Select value={documentType} onValueChange={value => setDocumentType(value as 'sds' | 'msds')} disabled={upload.isPending}>
+                  <SelectTrigger id="chemical-document-type" className="w-28"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="sds">SDS</SelectItem><SelectItem value="msds">MSDS</SelectItem></SelectContent>
+                </Select>
+              </div>
+              <Input ref={fileInput} type="file" accept=".pdf,application/pdf" aria-label="Choose safety sheet PDF" disabled={upload.isPending} onChange={e => selectFile(e.target.files?.[0] ?? null)} />
+              <p className="text-xs text-muted-foreground">PDF only · maximum 20 MB. Multiple sheets can be stored per product.</p>
+              {uploadError && <p role="alert" className="text-sm text-destructive">{uploadError}</p>}
+              <Button size="sm" disabled={!file || upload.isPending} onClick={uploadFile}>
+                {upload.isPending ? 'Uploading…' : uploadError && file ? 'Retry upload' : 'Upload PDF'}
+              </Button>
+            </div>
+          )}
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium">Stored PDFs</h3>
+            {isLoading ? <p className="text-sm text-muted-foreground">Loading safety sheets…</p>
+              : isError ? <div className="text-sm text-destructive" role="alert">
+                  Could not load safety sheets: {error.message}
+                  <Button variant="link" size="sm" onClick={() => refetch()}>Retry</Button>
+                </div>
+              : !documents?.length ? <p className="text-sm text-muted-foreground">No safety sheets uploaded yet.</p>
+              : documents.map(doc => (
+                <div key={doc.id} className="flex items-center gap-2 rounded-md border p-3">
+                  <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium break-words">{doc.fileName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {doc.documentType.toUpperCase()} · {(doc.sizeBytes / 1024 / 1024).toFixed(2)} MB · {format(new Date(doc.createdAt), 'MMM d, yyyy')}
+                    </p>
+                  </div>
+                  <Button variant="outline" size="sm" disabled={openingId !== null} onClick={() => openDocument(doc.id)}>
+                    {openingId === doc.id ? 'Opening…' : 'Open'}
+                  </Button>
+                  {canManage && <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" aria-label={`Remove ${doc.fileName}`} onClick={() => setRemoving(doc)}><Trash2 className="h-4 w-4" /></Button>}
+                </div>
+              ))}
+          </div>
+        </div>
+        <AlertDialog open={!!removing} onOpenChange={open => { if (!open && !remove.isPending) setRemoving(null); }}>
+          <AlertDialogContent className="z-[1003]">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove safety sheet?</AlertDialogTitle>
+              <AlertDialogDescription>This permanently removes {removing?.fileName} from this product.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={remove.isPending}>Cancel</AlertDialogCancel>
+              <AlertDialogAction disabled={remove.isPending} onClick={event => {
+                event.preventDefault();
+                if (!removing || !canManage) return;
+                remove.mutate({ id: product.id, documentId: removing.id }, {
+                  onSuccess: () => {
+                    setRemoving(null);
+                    qc.invalidateQueries({ queryKey: getListChemicalDocumentsQueryKey(product.id) });
+                    toast.success('Safety sheet removed');
+                  },
+                  onError: error => toast.error(error.message || 'Could not remove safety sheet. Try again.'),
+                });
+              }}>{remove.isPending ? 'Removing…' : 'Remove'}</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </SheetContent>
+    </Sheet>
+  );
+}
 
 export default function ChemicalsPage() {
   const { canManageOffice } = useAuth();
@@ -87,6 +272,7 @@ export default function ChemicalsPage() {
 
   const [prodFormOpen, setProdFormOpen] = useState(false);
   const [editingProd, setEditingProd] = useState<ChemicalProduct | null>(null);
+  const [safetyProd, setSafetyProd] = useState<ChemicalProduct | null>(null);
   const [prodForm, setProdForm] = useState({ name: '', epaRegNumber: '', activeIngredients: '', signalWord: '', rei: '', phi: '', labelSdsUrl: '', unit: 'oz', rainfastHours: '' });
 
   const openAddProd = () => {
@@ -108,7 +294,7 @@ export default function ChemicalsPage() {
       signalWord: (prodForm.signalWord && prodForm.signalWord !== 'none') ? prodForm.signalWord as 'CAUTION' | 'WARNING' | 'DANGER' : undefined,
       rei: prodForm.rei ? parseInt(prodForm.rei, 10) : undefined,
       phi: prodForm.phi ? parseInt(prodForm.phi, 10) : undefined,
-      labelSdsUrl: prodForm.labelSdsUrl || undefined,
+      labelSdsUrl: prodForm.labelSdsUrl.trim() || (editingProd ? null : undefined),
       unit: prodForm.unit,
       rainfastHours: prodForm.rainfastHours ? parseFloat(prodForm.rainfastHours) : undefined,
     } as any;
@@ -119,7 +305,12 @@ export default function ChemicalsPage() {
       });
     } else {
       createChemProduct.mutate({ data }, {
-        onSuccess: () => { toast.success('Product added'); qc.invalidateQueries({ queryKey: getListChemicalProductsQueryKey() }); setProdFormOpen(false); },
+        onSuccess: product => {
+          toast.success('Product added. You can now upload safety sheets.');
+          qc.invalidateQueries({ queryKey: getListChemicalProductsQueryKey() });
+          setProdFormOpen(false);
+          setSafetyProd(product);
+        },
         onError: () => toast.error('Failed to add product'),
       });
     }
@@ -397,9 +588,9 @@ export default function ChemicalsPage() {
                 <CardTitle className="flex items-center gap-2"><FlaskConical className="w-5 h-5" /> Chemical Products</CardTitle>
                 <CardDescription>Pesticides, herbicides, and fertilizers with EPA registration and safety data.</CardDescription>
               </div>
-              <Button size="sm" className="gap-2 ml-4 shrink-0" onClick={openAddProd}>
+              {canManageOffice && <Button size="sm" className="gap-2 ml-4 shrink-0" onClick={openAddProd}>
                 <Plus className="w-4 h-4" /> Add Product
-              </Button>
+              </Button>}
             </CardHeader>
             <CardContent className="p-0">
               {(chemProducts ?? []).length === 0 ? (
@@ -428,6 +619,10 @@ export default function ChemicalsPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
+                        <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setSafetyProd(p)}>
+                          <FileText className="w-3.5 h-3.5" /> Safety Sheets
+                        </Button>
+                        {canManageOffice && <>
                         <Button variant="ghost" size="icon" className="w-7 h-7" onClick={() => openEditProd(p)}>
                           <Pencil className="w-3.5 h-3.5" />
                         </Button>
@@ -439,6 +634,7 @@ export default function ChemicalsPage() {
                         }}>
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
+                        </>}
                       </div>
                     </div>
                   ))}
@@ -513,9 +709,18 @@ export default function ChemicalsPage() {
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Label / SDS URL</label>
+                   <label className="text-sm font-medium">External label / SDS URL</label>
                   <Input placeholder="https://…" value={prodForm.labelSdsUrl} onChange={e => setProdForm(f => ({ ...f, labelSdsUrl: e.target.value }))} />
+                   <p className="text-xs text-muted-foreground">This is an external link, not an uploaded safety sheet.</p>
                 </div>
+                {editingProd ? (
+                  <div className="space-y-1">
+                    <Button variant="outline" className="gap-2" onClick={() => { setProdFormOpen(false); setSafetyProd(editingProd); }}>
+                      <FileText className="h-4 w-4" /> Manage Safety Sheets
+                    </Button>
+                    <p className="text-xs text-muted-foreground">Save changes above first; opening Safety Sheets closes this form.</p>
+                  </div>
+                ) : <p className="text-xs text-muted-foreground">Save the product first, then upload SDS or MSDS PDFs in Safety Sheets.</p>}
                 <Separator />
                 <div className="flex gap-3 justify-end">
                   <Button variant="outline" onClick={() => setProdFormOpen(false)}>Cancel</Button>
@@ -526,6 +731,7 @@ export default function ChemicalsPage() {
               </div>
             </SheetContent>
           </Sheet>
+          {safetyProd && <ChemicalSafetySheets key={safetyProd.id} product={safetyProd} canManage={canManageOffice} onClose={() => setSafetyProd(null)} />}
         </TabsContent>
 
         {/* ── Mixtures tab ─────────────────────────────────────────────────── */}

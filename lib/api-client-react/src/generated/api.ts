@@ -59,6 +59,7 @@ import type {
   CancelRecurringSeriesParams,
   ChemicalApplication,
   ChemicalApplicationInput,
+  ChemicalDocument,
   ChemicalMixture,
   ChemicalMixtureInput,
   ChemicalProduct,
@@ -150,6 +151,7 @@ import type {
   GeofenceEntryInput,
   GeofencePinUpdate,
   GetAddressSuggestionsParams,
+  GetChemicalDocumentReadUrl200,
   GetDevToolsEnvironment200,
   GetEmployeeRevenueReportParams,
   GetEquipmentFuelUsageParams,
@@ -374,6 +376,7 @@ import type {
   UpdateTagBody,
   UpdateTaskInput,
   UpdateVisitInput,
+  UploadChemicalDocumentBody,
   UploadUrlRequest,
   UploadUrlResponse,
   User,
@@ -12630,6 +12633,280 @@ export const useDeleteUser = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteUserMutationOptions(options));
+    }
+
+export const getListChemicalDocumentsUrl = (id: number,) => {
+
+
+
+
+  return `/api/chemical-products/${id}/documents`
+}
+
+export const listChemicalDocuments = async (id: number, options?: RequestInit): Promise<ChemicalDocument[]> => {
+
+  return customFetch<ChemicalDocument[]>(getListChemicalDocumentsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListChemicalDocumentsQueryKey = (id: number,) => {
+    return [
+    `/api/chemical-products/${id}/documents`
+    ] as const;
+    }
+
+
+export const getListChemicalDocumentsQueryOptions = <TData = Awaited<ReturnType<typeof listChemicalDocuments>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listChemicalDocuments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListChemicalDocumentsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listChemicalDocuments>>> = ({ signal }) => listChemicalDocuments(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listChemicalDocuments>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListChemicalDocumentsQueryResult = NonNullable<Awaited<ReturnType<typeof listChemicalDocuments>>>
+export type ListChemicalDocumentsQueryError = ErrorType<unknown>
+
+
+
+export function useListChemicalDocuments<TData = Awaited<ReturnType<typeof listChemicalDocuments>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listChemicalDocuments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListChemicalDocumentsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUploadChemicalDocumentUrl = (id: number,) => {
+
+
+
+
+  return `/api/chemical-products/${id}/documents`
+}
+
+export const uploadChemicalDocument = async (id: number,
+    uploadChemicalDocumentBody: UploadChemicalDocumentBody, options?: RequestInit): Promise<ChemicalDocument> => {
+    const formData = new FormData();
+formData.append(`file`, uploadChemicalDocumentBody.file);
+formData.append(`documentType`, uploadChemicalDocumentBody.documentType);
+
+  return customFetch<ChemicalDocument>(getUploadChemicalDocumentUrl(id),
+  {
+    ...options,
+    method: 'POST'
+    ,
+    body: formData
+  }
+);}
+
+
+
+
+
+export const getUploadChemicalDocumentMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadChemicalDocument>>, TError,{id: number;data: BodyType<UploadChemicalDocumentBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof uploadChemicalDocument>>, TError,{id: number;data: BodyType<UploadChemicalDocumentBody>}, TContext> => {
+
+const mutationKey = ['uploadChemicalDocument'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof uploadChemicalDocument>>, {id: number;data: BodyType<UploadChemicalDocumentBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  uploadChemicalDocument(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UploadChemicalDocumentMutationResult = NonNullable<Awaited<ReturnType<typeof uploadChemicalDocument>>>
+    export type UploadChemicalDocumentMutationBody = BodyType<UploadChemicalDocumentBody>
+    export type UploadChemicalDocumentMutationError = ErrorType<unknown>
+
+    export const useUploadChemicalDocument = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadChemicalDocument>>, TError,{id: number;data: BodyType<UploadChemicalDocumentBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof uploadChemicalDocument>>,
+        TError,
+        {id: number;data: BodyType<UploadChemicalDocumentBody>},
+        TContext
+      > => {
+      return useMutation(getUploadChemicalDocumentMutationOptions(options));
+    }
+
+export const getDeleteChemicalDocumentUrl = (id: number,
+    documentId: number,) => {
+
+
+
+
+  return `/api/chemical-products/${id}/documents/${documentId}`
+}
+
+export const deleteChemicalDocument = async (id: number,
+    documentId: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteChemicalDocumentUrl(id,documentId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteChemicalDocumentMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteChemicalDocument>>, TError,{id: number;documentId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteChemicalDocument>>, TError,{id: number;documentId: number}, TContext> => {
+
+const mutationKey = ['deleteChemicalDocument'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteChemicalDocument>>, {id: number;documentId: number}> = (props) => {
+          const {id,documentId} = props ?? {};
+
+          return  deleteChemicalDocument(id,documentId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteChemicalDocumentMutationResult = NonNullable<Awaited<ReturnType<typeof deleteChemicalDocument>>>
+
+    export type DeleteChemicalDocumentMutationError = ErrorType<unknown>
+
+    export const useDeleteChemicalDocument = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteChemicalDocument>>, TError,{id: number;documentId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteChemicalDocument>>,
+        TError,
+        {id: number;documentId: number},
+        TContext
+      > => {
+      return useMutation(getDeleteChemicalDocumentMutationOptions(options));
+    }
+
+export const getGetChemicalDocumentReadUrlUrl = (id: number,
+    documentId: number,) => {
+
+
+
+
+  return `/api/chemical-products/${id}/documents/${documentId}/read-url`
+}
+
+export const getChemicalDocumentReadUrl = async (id: number,
+    documentId: number, options?: RequestInit): Promise<GetChemicalDocumentReadUrl200> => {
+
+  return customFetch<GetChemicalDocumentReadUrl200>(getGetChemicalDocumentReadUrlUrl(id,documentId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetChemicalDocumentReadUrlMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getChemicalDocumentReadUrl>>, TError,{id: number;documentId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof getChemicalDocumentReadUrl>>, TError,{id: number;documentId: number}, TContext> => {
+
+const mutationKey = ['getChemicalDocumentReadUrl'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof getChemicalDocumentReadUrl>>, {id: number;documentId: number}> = (props) => {
+          const {id,documentId} = props ?? {};
+
+          return  getChemicalDocumentReadUrl(id,documentId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GetChemicalDocumentReadUrlMutationResult = NonNullable<Awaited<ReturnType<typeof getChemicalDocumentReadUrl>>>
+
+    export type GetChemicalDocumentReadUrlMutationError = ErrorType<unknown>
+
+    export const useGetChemicalDocumentReadUrl = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getChemicalDocumentReadUrl>>, TError,{id: number;documentId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof getChemicalDocumentReadUrl>>,
+        TError,
+        {id: number;documentId: number},
+        TContext
+      > => {
+      return useMutation(getGetChemicalDocumentReadUrlMutationOptions(options));
     }
 
 export const getListChemicalProductsUrl = () => {

@@ -22,6 +22,7 @@ import marketingRouter from "./marketing";
 import p4pRouter from "./p4p";
 import servicesRouter from "./services";
 import chemicalsRouter from "./chemicals";
+import chemicalDocumentsRouter from "./chemicalDocuments";
 import equipmentRouter from "./equipment";
 import quotesRouter, { publicQuotesRouter } from "./quotes";
 import widgetRouter from "./widget";
@@ -119,6 +120,7 @@ router.use(marketingRouter);
 router.use(p4pRouter);
 router.use(servicesRouter);
 router.use(chemicalsRouter);
+router.use(chemicalDocumentsRouter);
 // These mixed routers contain explicit public token/webhook handlers. Mount
 // them before equipment's defense-in-depth router middleware so those public
 // handlers remain reachable; the server-wide boundary above still protects

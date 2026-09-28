@@ -133,6 +133,18 @@ export class ObjectStorageService {
     });
   }
 
+  /** Server-proxied documents: no public ACL and no generic upload intent. */
+  async savePrivatePdf(bytes: Buffer): Promise<string> {
+    const key = `chemical-documents/${randomUUID()}`;
+    const { bucketName, objectName } = parseObjectPath(`${this.getPrivateObjectDir()}/${key}`);
+    const file = objectStorageClient.bucket(bucketName).file(objectName);
+    await file.save(bytes, {
+      resumable: false,
+      metadata: { contentType: 'application/pdf', cacheControl: 'private, no-store' },
+    });
+    return `/objects/${key}`;
+  }
+
   async getObjectEntityFile(objectPath: string): Promise<File> {
     if (!objectPath.startsWith('/objects/')) {
       throw new ObjectNotFoundError();

@@ -3500,6 +3500,81 @@ paths:
           description: Deleted
 
   # CHEMICALS
+  /chemical-products/{id}/documents:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer }
+    get:
+      operationId: listChemicalDocuments
+      tags: [Chemicals]
+      responses:
+        "200":
+          description: Chemical safety documents
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ChemicalDocument" }
+    post:
+      operationId: uploadChemicalDocument
+      tags: [Chemicals]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, documentType]
+              properties:
+                file: { type: string, format: binary }
+                documentType: { type: string, enum: [sds, msds] }
+      responses:
+        "201":
+          description: Uploaded private PDF
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChemicalDocument" }
+  /chemical-products/{id}/documents/{documentId}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer }
+      - in: path
+        name: documentId
+        required: true
+        schema: { type: integer }
+    delete:
+      operationId: deleteChemicalDocument
+      tags: [Chemicals]
+      responses:
+        "204":
+          description: Document removed
+  /chemical-products/{id}/documents/{documentId}/read-url:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer }
+      - in: path
+        name: documentId
+        required: true
+        schema: { type: integer }
+    post:
+      operationId: getChemicalDocumentReadUrl
+      tags: [Chemicals]
+      responses:
+        "200":
+          description: Short-lived private read URL
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url]
+                properties:
+                  url: { type: string }
   /chemical-products:
     get:
       operationId: listChemicalProducts
@@ -13466,6 +13541,15 @@ components:
         maxProperties:
           type: ["integer", "null"]
 
+    ChemicalDocument:
+      type: object
+      required: [id, documentType, fileName, sizeBytes, createdAt]
+      properties:
+        id: { type: integer }
+        documentType: { type: string, enum: [sds, msds] }
+        fileName: { type: string }
+        sizeBytes: { type: integer }
+        createdAt: { type: string, format: date-time }
     ChemicalProduct:
       type: object
       required: [id, tenantId, name, unit, isActive, createdAt, updatedAt]

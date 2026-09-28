@@ -6025,6 +6025,56 @@ export const DeleteUserParams = zod.object({
 export const DeleteUserResponse = zod.void()
 
 
+export const ListChemicalDocumentsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListChemicalDocumentsResponseItem = zod.object({
+  "id": zod.number(),
+  "documentType": zod.enum(['sds', 'msds']),
+  "fileName": zod.string(),
+  "sizeBytes": zod.number(),
+  "createdAt": zod.coerce.date()
+})
+export const ListChemicalDocumentsResponse = zod.array(ListChemicalDocumentsResponseItem)
+
+
+export const UploadChemicalDocumentParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UploadChemicalDocumentBody = zod.object({
+  "file": zod.custom<Blob>((value) => typeof Blob !== "undefined" && value instanceof Blob),
+  "documentType": zod.enum(['sds', 'msds'])
+})
+
+export const UploadChemicalDocumentResponse = zod.object({
+  "id": zod.number(),
+  "documentType": zod.enum(['sds', 'msds']),
+  "fileName": zod.string(),
+  "sizeBytes": zod.number(),
+  "createdAt": zod.coerce.date()
+})
+
+
+export const DeleteChemicalDocumentParams = zod.object({
+  "id": zod.coerce.number(),
+  "documentId": zod.coerce.number()
+})
+
+export const DeleteChemicalDocumentResponse = zod.void()
+
+
+export const GetChemicalDocumentReadUrlParams = zod.object({
+  "id": zod.coerce.number(),
+  "documentId": zod.coerce.number()
+})
+
+export const GetChemicalDocumentReadUrlResponse = zod.object({
+  "url": zod.string()
+})
+
+
 /**
  * @summary List chemical products library
  */

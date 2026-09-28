@@ -12,7 +12,7 @@ import {
   ObjectNotFoundError,
   ObjectStorageService,
 } from '../lib/objectStorage';
-import { db, mediaAttachmentsTable, customerOtpSessionsTable, tenantsTable, jobsTable, visitsTable, crewMembersTable } from '@workspace/db';
+import { db, mediaAttachmentsTable, customerOtpSessionsTable, tenantsTable, jobsTable, visitsTable, crewMembersTable, chemicalProductsTable } from '@workspace/db';
 import { eq, and, isNotNull, gt } from 'drizzle-orm';
 import { createHash } from 'crypto';
 import { requireVerifiedStaff, resolveVerifiedStaffIdentity, verifiedStaffIdentity } from '../lib/verifiedStaff';
@@ -69,6 +69,11 @@ async function staffCanReadAttachment(
   userId: number,
   attachment: { entityType: string; entityId: number },
 ): Promise<boolean> {
+  if (attachment.entityType === 'chemical_sds' || attachment.entityType === 'chemical_msds') {
+    const [product] = await db.select({ id: chemicalProductsTable.id }).from(chemicalProductsTable)
+      .where(and(eq(chemicalProductsTable.id, attachment.entityId), eq(chemicalProductsTable.tenantId, tenantId))).limit(1);
+    return Boolean(product);
+  }
   if (await getCallerRole(tenantId, userId) !== 'technician') return true;
   if (attachment.entityType === 'visit') {
     const [visit] = await db.select({ id: visitsTable.id }).from(visitsTable).where(and(
@@ -250,13 +255,13 @@ router.get('/storage/read-url', async (req: Request, res: Response) => {
     )
     .limit(1);
 
-  if (!attachment || (principal.userId && !(await staffCanReadAttachment(principal.tenantId, principal.userId, attachment)))) {
+  if (!attachment || ((!principal.userId || req.headers['x-portal-token']) && ['chemical_sds', 'chemical_msds'].includes(attachment.entityType)) || (principal.userId && !(await staffCanReadAttachment(principal.tenantId, principal.userId, attachment)))) {
     res.status(403).json({ error: 'Forbidden' });
     return;
   }
 
   try {
-    const signedUrl = await objectStorageService.generateSignedReadUrl(objectPath);
+    const signedUrl = await objectStorageService.generateSignedReadUrl(objectPath, ['chemical_sds', 'chemical_msds'].includes(attachment.entityType) ? 60 : 3600);
     res.json({ signedUrl });
   } catch (error) {
     req.log.error({ err: error }, 'Error generating signed read URL');
@@ -296,13 +301,13 @@ router.get('/storage/objects/*path', async (req: Request, res: Response) => {
       )
       .limit(1);
 
-    if (!attachment || (principal.userId && !(await staffCanReadAttachment(principal.tenantId, principal.userId, attachment)))) {
+    if (!attachment || ((!principal.userId || req.headers['x-portal-token']) && ['chemical_sds', 'chemical_msds'].includes(attachment.entityType)) || (principal.userId && !(await staffCanReadAttachment(principal.tenantId, principal.userId, attachment)))) {
       res.status(403).json({ error: 'Forbidden' });
       return;
     }
 
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
-    const response = await objectStorageService.downloadObject(objectFile);
+    const response = await objectStorageService.downloadObject(objectFile, ['chemical_sds', 'chemical_msds'].includes(attachment.entityType) ? 0 : 3600);
 
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));

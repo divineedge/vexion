@@ -189,11 +189,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           secureGet(PIN_VERIFIER_KEY),
           secureGet(PIN_ATTEMPTS_KEY),
         ]);
-        const hardware = await LocalAuthentication.hasHardwareAsync();
-        const enrolled = hardware && await LocalAuthentication.isEnrolledAsync();
+        const enrolled = Platform.OS !== 'web' &&
+          await LocalAuthentication.getEnrolledLevelAsync() !== LocalAuthentication.SecurityLevel.NONE;
         setBiometricAvailable(enrolled);
-        setBiometricEnabled(biometric === 'true');
-        setPinEnabled(Boolean(verifier));
+        const usePhoneUnlock = Platform.OS !== 'web' && enrolled && (biometric === 'true' || Boolean(verifier));
+        setBiometricEnabled(usePhoneUnlock || (Platform.OS === 'web' && biometric === 'true'));
+        setPinEnabled(Platform.OS === 'web' && Boolean(verifier));
+        if (usePhoneUnlock) {
+          await secureSet(BIOMETRIC_KEY, 'true');
+          await Promise.all([secureDelete(PIN_SALT_KEY), secureDelete(PIN_VERIFIER_KEY), secureDelete(PIN_ATTEMPTS_KEY)]);
+        }
         const failedAttempts = Number(attempts ?? '0');
         setPinAttemptsRemaining(Math.max(0, MAX_PIN_ATTEMPTS - failedAttempts));
         if (storedToken && storedUserJson && (biometric === 'true' || verifier)) {
@@ -230,7 +235,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [queryClient]);
 
   const configureUnlock = useCallback(async ({ biometric, pin }: { biometric: boolean; pin?: string }) => {
-    if (!biometric && !pin) throw new Error('Choose biometrics, a PIN, or Skip for now.');
+    if (Platform.OS !== 'web' && biometric) {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Enable phone unlock for Divine Edge Field',
+        cancelLabel: 'Cancel',
+        fallbackLabel: 'Use phone passcode',
+        disableDeviceFallback: false,
+      });
+      if (!result.success) throw new Error('Phone verification was cancelled or unsuccessful. Please try again.');
+      pin = undefined;
+    }
+    if (Platform.OS === 'web' && !biometric && !pin) throw new Error('Choose an app PIN.');
     if (biometric) await secureSet(BIOMETRIC_KEY, 'true');
     else await secureDelete(BIOMETRIC_KEY);
     if (pin) {
@@ -261,12 +276,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await clearLocalAuth();
       return { ok: false, message: 'No saved session was found. Please sign in again.', wiped: true };
     }
-    const result = await LocalAuthentication.authenticateAsync({
-      promptMessage: 'Unlock Divine Edge Field',
-      cancelLabel: 'Use PIN',
-      disableDeviceFallback: true,
-    });
-    if (!result.success) return { ok: false, message: 'Biometric unlock was cancelled or unsuccessful.' };
+    let result: LocalAuthentication.LocalAuthenticationResult;
+    try {
+      result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Unlock Divine Edge Field',
+        cancelLabel: 'Cancel',
+        fallbackLabel: 'Use phone passcode',
+        disableDeviceFallback: false,
+      });
+    } catch {
+      return { ok: false, message: 'Phone unlock is unavailable. Try again or sign in with your password.' };
+    }
+    if (!result.success) return { ok: false, message: 'Phone unlock was not completed. Try again and use your phone PIN/passcode, or sign in with your password.' };
     return validateSession(storedToken, normalizeUser(JSON.parse(storedUserJson)));
   }, [clearLocalAuth, validateSession]);
 

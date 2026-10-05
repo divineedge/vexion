@@ -167,7 +167,7 @@ function JobCard({
             {job.customerName ? (
               <View style={styles.metaRow}>
                 <Ionicons name="person-outline" size={13} color={colors.mutedForeground} />
-                <Text style={[styles.metaText, { color: colors.foreground }]} numberOfLines={1}>{job.customerName}</Text>
+                <Text style={[styles.metaText, { color: colors.foreground }]}>{job.customerName}</Text>
               </View>
             ) : null}
             {isRecurring ? (
@@ -188,7 +188,7 @@ function JobCard({
                 accessibilityLabel={`Get directions to ${job.propertyAddress}`}
               >
                 <Ionicons name="location-outline" size={13} color={colors.mutedForeground} />
-                <Text style={[styles.metaText, { color: colors.primary }]} numberOfLines={1}>
+                <Text style={[styles.metaText, { color: colors.primary }]}>
                   {job.propertyAddress}
                 </Text>
                 <Ionicons name="navigate-outline" size={13} color={colors.primary} />
@@ -250,10 +250,16 @@ function VisitCard({
                 <Text style={[styles.visitBadgeText, { color: colors.primary }]}>VISIT</Text>
               </View>
             </View>
+            {visit.customerName ? (
+              <View style={styles.metaRow}>
+                <Ionicons name="person-outline" size={13} color={colors.mutedForeground} />
+                <Text style={[styles.metaText, { color: colors.foreground }]}>{visit.customerName}</Text>
+              </View>
+            ) : null}
             {visit.propertyAddress ? (
               <View style={styles.metaRow}>
                 <Ionicons name="location-outline" size={13} color={colors.mutedForeground} />
-                <Text style={[styles.metaText, { color: colors.mutedForeground }]} numberOfLines={1}>{visit.propertyAddress}</Text>
+                <Text style={[styles.metaText, { color: colors.mutedForeground }]}>{visit.propertyAddress}</Text>
               </View>
             ) : null}
             {visit.scheduledAt ? (

@@ -450,12 +450,12 @@ export default function TimeTrackingScreen() {
           <Text style={[styles.scheduleLabel, { color: colors.foreground }]} numberOfLines={1}>
             {item.label}
           </Text>
-          <Text style={[styles.scheduleMeta, { color: colors.mutedForeground }]} numberOfLines={1}>
+          <Text style={[styles.scheduleMeta, { color: colors.mutedForeground }]}>
             {formatTime(item.scheduledAt)}
             {item.customerName ? `  ·  ${item.customerName}` : ''}
           </Text>
           {item.propertyAddress ? (
-            <Text style={[styles.scheduleAddress, { color: colors.mutedForeground }]} numberOfLines={1}>
+            <Text style={[styles.scheduleAddress, { color: colors.mutedForeground }]}>
               {item.propertyAddress}
             </Text>
           ) : null}

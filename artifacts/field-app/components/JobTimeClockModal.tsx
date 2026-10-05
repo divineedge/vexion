@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   getGetJobQueryKey,
+  getGetMasterClockQueryKey,
   getGetTodayScheduleQueryKey,
   getListJobsQueryKey,
   getListSubTimersQueryKey,
@@ -103,6 +104,7 @@ export function JobTimeClockModal({
     void queryClient.invalidateQueries({ queryKey: getGetTodayScheduleQueryKey() });
     void queryClient.invalidateQueries({ queryKey: getListSubTimersQueryKey() });
     void queryClient.invalidateQueries({ queryKey: getListTimeEntriesQueryKey() });
+    void queryClient.invalidateQueries({ queryKey: getGetMasterClockQueryKey() });
     void queryClient.invalidateQueries({ queryKey: getListJobsQueryKey() });
     jobIds.forEach(id => void queryClient.invalidateQueries({ queryKey: getGetJobQueryKey(id) }));
   }, [queryClient, scheduleKey]);

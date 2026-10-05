@@ -950,7 +950,7 @@ export default function JobDetailScreen() {
                     const location = await getClockLocation();
                     startSubTimer.mutate(
                       { data: { label: (displayJob as any).title, type: 'job', jobId, ...(location ?? {}) } },
-                      { onSuccess: () => refetchSubTimers() },
+                      { onSuccess: () => { refetchSubTimers(); refetchMasterClock(); } },
                     );
                   }
                 }}

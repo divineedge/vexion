@@ -67,21 +67,32 @@ describe.skipIf(!RUN)("time tracking — verified staff HTTP integration", () =>
     expect(ownerSchedule.body.map((x: { id: number }) => x.id)).toEqual([crewJob, direct, routeSecond, otherJob, unassigned]);
     expect(ownerSchedule.body.some((x: { id: number }) => x.id === foreignJob)).toBe(false);
   });
-  it("starts only assigned tenant jobs, switches atomically, and never mutates master entries", async () => {
-    const beforeMasters = await db.select().from(timeEntriesTable).where(and(eq(timeEntriesTable.tenantId, tenantA), eq(timeEntriesTable.userId, tech)));
-    expect((await request(app).post("/api/time-tracking/sub-timers").set(auth(tech)).send({ label: "Direct", type: "job", jobId: direct })).status).toBe(201);
+  it("starts the master clock with an authorized job and preserves it across job switches", async () => {
     expect((await request(app).post("/api/time-tracking/sub-timers").set(auth(tech)).send({ label: "No", type: "job", jobId: unassigned })).status).toBe(403);
     expect((await request(app).post("/api/time-tracking/sub-timers").set(auth(tech)).send({ label: "Foreign", type: "job", jobId: foreignJob })).status).toBe(404);
+    const masters = () => db.select().from(timeEntriesTable).where(and(eq(timeEntriesTable.tenantId, tenantA), eq(timeEntriesTable.userId, tech), eq(timeEntriesTable.isMasterClock, true)));
+    expect(await masters()).toHaveLength(0);
+    const started = await request(app).post("/api/time-tracking/sub-timers").set(auth(tech)).send({ label: "Direct", type: "job", jobId: direct, lat: 40, lng: -105 });
+    expect(started.status).toBe(201);
+    const beforeMasters = await masters();
+    expect(beforeMasters).toHaveLength(1);
+    expect(beforeMasters[0].clockedInAt.toISOString()).toBe(started.body.startedAt);
+    expect(Number(beforeMasters[0].clockInLat)).toBe(40);
+    expect(Number(beforeMasters[0].clockInLng)).toBe(-105);
     await request(app).post("/api/time-tracking/sub-timers").set(auth(tech)).send({ label: "Crew", type: "job", jobId: crewJob });
     const active = await db.select().from(subTimersTable).where(and(eq(subTimersTable.tenantId, tenantA), eq(subTimersTable.userId, tech), eq(subTimersTable.isActive, true)));
     expect(active).toHaveLength(1); expect(active[0].jobId).toBe(crewJob);
-    expect(await db.select().from(timeEntriesTable).where(and(eq(timeEntriesTable.tenantId, tenantA), eq(timeEntriesTable.userId, tech)))).toEqual(beforeMasters);
+    expect(await masters()).toEqual(beforeMasters);
   });
   it("requires timer ownership to explicitly stop and concurrent starts still leave one active timer", async () => {
     const [timer] = await db.select().from(subTimersTable).where(and(eq(subTimersTable.userId, tech), eq(subTimersTable.isActive, true)));
     expect((await request(app).post(`/api/time-tracking/sub-timers/${timer.id}/stop`).set(auth(other)).send({})).status).toBe(404);
     expect((await request(app).post(`/api/time-tracking/sub-timers/${timer.id}/stop`).set(auth(tech)).send({})).status).toBe(200);
+    expect((await request(app).get("/api/time-tracking/master-clock").set(auth(tech))).body.isClockedIn).toBe(true);
+    await request(app).post("/api/time-tracking/master-clock/stop").set(auth(tech)).send({});
     await Promise.all([direct, crewJob].map(jobId => request(app).post("/api/time-tracking/sub-timers").set(auth(tech)).send({ label: `job-${jobId}`, type: "job", jobId })));
+    const activeMasters = await db.select().from(timeEntriesTable).where(and(eq(timeEntriesTable.userId, tech), eq(timeEntriesTable.isMasterClock, true), sql`clocked_out_at IS NULL`));
+    expect(activeMasters).toHaveLength(1);
     expect(await db.select().from(subTimersTable).where(and(eq(subTimersTable.userId, tech), eq(subTimersTable.isActive, true)))).toHaveLength(1);
   });
   it("rejects malformed, future, and reversed time adjustments", async () => {

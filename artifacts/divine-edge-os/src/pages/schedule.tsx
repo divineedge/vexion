@@ -26,7 +26,7 @@ import {
   usePauseRecurringSeries,
   useCancelRecurringSeries,
   useListSubTimers, getListSubTimersQueryKey,
-  useStartSubTimer, useStopSubTimer,
+  useStartSubTimer, useStopSubTimer, getGetMasterClockQueryKey,
   useDeleteJob,
   useListRouteTemplates, getListRouteTemplatesQueryKey,
   useGetRouteDayDetail, getGetRouteDayDetailQueryKey,
@@ -1715,7 +1715,7 @@ export default function SchedulePage() {
                       title="Start a timer to clock in to this job"
                       disabled={startSubTimer.isPending}
                       onClick={() => startSubTimer.mutate({ data: { label: (selectedJob as any)?.title ?? `Job #${selectedJobId}`, type: 'job', jobId: selectedJobId! } }, {
-                        onSuccess: () => { toast.success('Clocked in'); qc.invalidateQueries({ queryKey: getListSubTimersQueryKey() }); },
+                        onSuccess: () => { toast.success('Clocked in'); qc.invalidateQueries({ queryKey: getListSubTimersQueryKey() }); qc.invalidateQueries({ queryKey: getGetMasterClockQueryKey() }); },
                         onError: () => toast.error('Failed to clock in'),
                       })}
                     >

@@ -301,6 +301,23 @@ router.post("/time-tracking/sub-timers", requireVerifiedStaff, async (req, res):
       .for("update"); // row-level lock prevents concurrent start races
 
     const now = new Date();
+    // Share the master-clock advisory lock and transaction: never start a job
+    // without its day clock, and preserve an already-running day clock.
+    if (type === "job") {
+      const [master] = await tx.select().from(timeEntriesTable).where(and(
+        eq(timeEntriesTable.tenantId, tenantId),
+        eq(timeEntriesTable.userId, userId),
+        eq(timeEntriesTable.isMasterClock, true),
+        sql`clocked_out_at IS NULL`,
+      )).for("update");
+      if (!master) {
+        await tx.insert(timeEntriesTable).values({
+          tenantId, userId, isMasterClock: true, clockedInAt: now,
+          clockInLat: lat != null ? Number(lat) : null,
+          clockInLng: lng != null ? Number(lng) : null,
+        });
+      }
+    }
     for (const active of activeTimers) {
       const elapsed = Math.floor((now.getTime() - active.startedAt.getTime()) / 1000);
       await tx.update(subTimersTable)
@@ -314,6 +331,7 @@ router.post("/time-tracking/sub-timers", requireVerifiedStaff, async (req, res):
       label,
       type,
       jobId: jobIdNum,
+      startedAt: now,
       startLat: lat != null ? Number(lat) : null,
       startLng: lng != null ? Number(lng) : null,
       isLateArrival,

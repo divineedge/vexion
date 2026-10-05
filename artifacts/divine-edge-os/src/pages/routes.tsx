@@ -13,7 +13,7 @@ import {
   useListUsers, getListUsersQueryKey,
   useGetTenantSettings, getGetTenantSettingsQueryKey,
   useListSubTimers, getListSubTimersQueryKey,
-  useStartSubTimer, useStopSubTimer,
+  useStartSubTimer, useStopSubTimer, getGetMasterClockQueryKey,
   useUpdateJob, getListJobsQueryKey as getJobsQueryKey,
   useListProperties, getListPropertiesQueryKey,
 } from '@workspace/api-client-react';
@@ -711,7 +711,7 @@ export default function RoutesDashboardPage() {
                                 title="Clock in to this job and start a timer"
                                 disabled={startSubTimer.isPending}
                                 onClick={() => startSubTimer.mutate({ data: { label: stop.title, type: 'job', jobId: stop.jobId } }, {
-                                  onSuccess: () => { toast.success('Clocked in'); qc.invalidateQueries({ queryKey: getListSubTimersQueryKey() }); },
+                                  onSuccess: () => { toast.success('Clocked in'); qc.invalidateQueries({ queryKey: getListSubTimersQueryKey() }); qc.invalidateQueries({ queryKey: getGetMasterClockQueryKey() }); },
                                   onError: () => toast.error('Failed to clock in'),
                                 })}
                               >

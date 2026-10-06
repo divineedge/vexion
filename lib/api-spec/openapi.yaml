@@ -12709,6 +12709,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PreTripChecklistItem"
+        preTripChecklistName:
+          type: string
+          minLength: 1
+          maxLength: 80
         endOfDayChecklist:
           type: array
           items:
@@ -13224,6 +13228,10 @@ components:
           type: string
         routeExceptionFee:
           type: number
+        preTripChecklistName:
+          type: string
+          minLength: 1
+          maxLength: 80
         preTripChecklist:
           type: array
           items:
@@ -14089,6 +14097,12 @@ components:
       type: object
       required: [date, gallons]
       properties:
+        meterReading:
+          type: number
+          minimum: 0
+        expectedMeterReading:
+          type: number
+          minimum: 0
         date:
           type: string
         gallons:
@@ -14151,6 +14165,12 @@ components:
       type: object
       required: [idempotencyKey, equipmentId, condition]
       properties:
+        meterReading:
+          type: number
+          minimum: 0
+        expectedMeterReading:
+          type: number
+          minimum: 0
         idempotencyKey:
           type: string
         equipmentId:
@@ -14232,6 +14252,7 @@ components:
       type: object
       required: [id, name, fuelType, capacityGallons, isActive, availableGallons, inventoryValue, unitCostPerGallon, createdAt]
       properties:
+        currentMeterReading: { type: ["number", "null"] }
         id: { type: integer }
         name: { type: string }
         fuelType: { type: string }
@@ -14245,12 +14266,14 @@ components:
       type: object
       required: [name, fuelType]
       properties:
+        currentMeterReading: { type: number, minimum: 0 }
         name: { type: string }
         fuelType: { type: string }
         capacityGallons: { type: ["number", "null"] }
     BulkFuelTankUpdate:
       type: object
       properties:
+        currentMeterReading: { type: number, minimum: 0 }
         name: { type: string }
         fuelType: { type: string }
         capacityGallons: { type: ["number", "null"] }
@@ -14259,6 +14282,8 @@ components:
       type: object
       required: [id, tankId, type, date, gallons, totalCost, costPerGallon, supplier, reference, notes, equipmentId, equipmentName, fuelLogId, createdAt]
       properties:
+        meterReadingBefore: { type: ["number", "null"] }
+        meterReadingAfter: { type: ["number", "null"] }
         id: { type: integer }
         tankId: { type: integer }
         type: { type: string, enum: [delivery, opening_balance, dispense, reversal, adjustment] }

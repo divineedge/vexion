@@ -100,6 +100,11 @@ export interface TenantSettingsUpdate {
   reviewCustomLink2Label?: string;
   reviewCustomLink2Url?: string;
   routeExceptionFee?: number;
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  preTripChecklistName?: string;
   preTripChecklist?: PreTripChecklistItem[];
   endOfDayChecklist?: PreTripChecklistItem[];
   /** $/hour flat rate applied to daily task / compliance time for payroll. 0 = display-only. */

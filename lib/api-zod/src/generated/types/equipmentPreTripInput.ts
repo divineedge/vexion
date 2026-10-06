@@ -12,6 +12,10 @@ import type { EquipmentPreTripInputReadingType } from './equipmentPreTripInputRe
 import type { PreTripChecklistResponse } from './preTripChecklistResponse';
 
 export interface EquipmentPreTripInput {
+  /** @minimum 0 */
+  meterReading?: number;
+  /** @minimum 0 */
+  expectedMeterReading?: number;
   idempotencyKey: string;
   equipmentId: number;
   condition: EquipmentPreTripInputCondition;

@@ -57,3 +57,18 @@ engine consumption telemetry; old entries do not identify the original source.
 
 **How to apply:** Label totals as fuel added and recorded cost. Keep bulk versus
 other/manual source breakdowns honest about historical data.
+
+The tank line meter is a cumulative gallons-dispensed total, not the tank's
+remaining stock gauge or an equipment hour meter. Meter fills compare against
+the explicitly confirmed prior reading. A stale reading must require staff to
+review and reconfirm, never silently rebase an in-progress entry.
+
+**Why:** Multiple vehicles share one tank; silently subtracting a newer reading
+could charge the wrong quantity to the next vehicle. The user requested one
+new line-meter reading per morning fill with automatic gallons and cost.
+
+**How to apply:** Set an initial baseline without creating an expense. Keep
+meter advancement and inventory/cost allocation atomic. Manual-gallon draws
+advance a configured meter as well. Reversing accounting entries must not
+rewind a physical cumulative meter; resets/replacements need a separate
+audited workflow, not an ordinary tank edit.

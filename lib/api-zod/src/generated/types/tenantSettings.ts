@@ -142,6 +142,11 @@ export interface TenantSettings {
   reviewCustomLink2Url?: string | null;
   routeExceptionFee?: number;
   preTripChecklist?: PreTripChecklistItem[];
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  preTripChecklistName?: string;
   /** Trip charge auto-appended to a job's invoice when it uses a one-time reschedule */
   endOfDayChecklist?: PreTripChecklistItem[];
   /** $/hour flat rate applied to daily task / compliance time for payroll. 0 = display-only. */

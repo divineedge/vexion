@@ -28,6 +28,7 @@ import {
   getListVisitsQueryKey,
   getGetStaffMessagesUnreadSummaryQueryKey,
   useGetStaffMessagesUnreadSummary,
+  useGetTenantSettings,
 } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
@@ -281,6 +282,8 @@ function VisitCard({
 
 export default function JobsScreen() {
   const colors = useColors();
+  const { data: tenantSettings } = useGetTenantSettings();
+  const checklistName = tenantSettings?.preTripChecklistName?.trim() || 'Pre-trip';
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const { user, signOut, lockApp } = useAuth();
@@ -722,7 +725,7 @@ export default function JobsScreen() {
         >
           <Ionicons name="checkmark-circle-outline" size={18} color={colors.primary} />
           <View style={{ flex: 1 }}>
-            <Text style={[styles.preTripTitle, { color: colors.primary }]}>Pre-trip equipment check</Text>
+            <Text style={[styles.preTripTitle, { color: colors.primary }]}>{checklistName} equipment check</Text>
             <Text style={[styles.preTripSubtitle, { color: colors.mutedForeground }]}>Condition, fuel, meter readings, and concerns</Text>
           </View>
           <Ionicons name="chevron-forward" size={17} color={colors.primary} />

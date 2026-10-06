@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { Stack } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -31,7 +32,7 @@ import {
 import { useColors } from '@/hooks/useColors';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { MediaAttachments } from '@/components/MediaAttachments';
-import { FuelSourceFields, type FuelSource } from '@/components/FuelSourceFields';
+import { FuelSourceFields, type FuelSource, useBulkMeterEntry, isMeterActive, isMeterStale, meterValidationError, meterPayload } from '@/components/FuelSourceFields';
 
 type Equipment = { id: number; name: string; type: string; currentHours: number; currentMiles?: number | null; isActive: boolean };
 type Condition = 'good' | 'needs_attention' | 'unsafe';
@@ -51,12 +52,15 @@ export default function PreTripScreen() {
   const [fuelCost, setFuelCost] = useState('');
   const [fuelSource, setFuelSource] = useState<FuelSource>('purchased');
   const [bulkFuelTankId, setBulkFuelTankId] = useState<number | null>(null);
+  const meter = useBulkMeterEntry();
+  const { resetForTank, meterReading, expectedMeterReading, meterMode } = meter;
   const [readingType, setReadingType] = useState<'hours' | 'mileage'>('hours');
   const [reading, setReading] = useState('');
   const [concerns, setConcerns] = useState('');
   const [answers, setAnswers] = useState<Record<string, boolean>>({});
   const [savedTaskId, setSavedTaskId] = useState<number | null>(null);
   const [inspectionType, setInspectionType] = useState<'pre_trip' | 'end_of_day'>('pre_trip');
+  const checklistName = settings?.preTripChecklistName?.trim() || 'Pre-trip';
   const preTripChecklist = (settings?.preTripChecklist ?? []) as ChecklistItem[];
   const endOfDayChecklist = (settings?.endOfDayChecklist ?? []) as ChecklistItem[];
   const configuredChecklist = inspectionType === 'end_of_day' ? endOfDayChecklist : preTripChecklist;
@@ -81,15 +85,17 @@ export default function PreTripScreen() {
   const handleFuelSourceChange = useCallback((source: FuelSource) => {
     setFuelSource(source);
     setBulkFuelTankId(null);
+    setGallons('');
+    resetForTank(null);
     if (source === 'bulk_tank') setFuelCost('');
-  }, []);
+  }, [resetForTank]);
 
-  const handleGallonsChange = useCallback((value: string) => {
-    setGallons(value);
-    if (!value || !Number.isFinite(Number(value)) || Number(value) <= 0) {
-      setBulkFuelTankId(null);
-    }
-  }, []);
+  const handleTankChange = useCallback((tankId: number | null) => {
+    setBulkFuelTankId(tankId);
+    setGallons('');
+    // Snapshot the prior meter reading now; background refetches never change it.
+    resetForTank(bulkTanks.find(tank => tank.id === tankId) ?? null);
+  }, [bulkTanks, resetForTank]);
 
   useEffect(() => {
     idempotencyKey.current = `${inspectionType}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -100,6 +106,9 @@ export default function PreTripScreen() {
     gallons,
     fuelCost,
     bulkFuelTankId,
+    meterReading,
+    expectedMeterReading,
+    meterMode,
     readingType,
     reading,
     concerns,
@@ -117,6 +126,19 @@ export default function PreTripScreen() {
       Alert.alert('Complete required checks', missing.map(item => item.label).join('\n'));
       return;
     }
+    const selectedTank = bulkTanks.find(tank => tank.id === bulkFuelTankId);
+    const meterActive = isMeterActive(fuelSource, meter) && !!selectedTank;
+    if (meterActive && meterReading.trim()) {
+      const meterError = meterValidationError(meter);
+      if (meterError) {
+        Alert.alert('Check the line meter reading', meterError);
+        return;
+      }
+      if (isMeterStale(selectedTank, meter)) {
+        Alert.alert('Previous reading changed', 'Fuel was recorded from this tank since you selected it. Review your reading and confirm the new previous reading before saving.');
+        return;
+      }
+    }
     if (gallons && (Number.isNaN(Number(gallons)) || Number(gallons) <= 0)) {
       Alert.alert('Invalid fuel amount', 'Enter a positive number of gallons or leave it blank.');
       return;
@@ -131,7 +153,6 @@ export default function PreTripScreen() {
     }
     const hasFuel = !!gallons;
     const parsedGallons = Number(gallons);
-    const selectedTank = bulkTanks.find(tank => tank.id === bulkFuelTankId);
     if (hasFuel && fuelSource === 'bulk_tank' && (bulkFuelTankId == null || !selectedTank)) {
       Alert.alert('Choose a bulk tank', 'Select the tank supplying this fuel, or switch to Purchased.');
       return;
@@ -156,7 +177,7 @@ export default function PreTripScreen() {
     try {
       const fuelFields = hasFuel
         ? fuelSource === 'bulk_tank' && selectedTank
-          ? { fuelGallons: parsedGallons, fuelSource, bulkFuelTankId: selectedTank.id }
+          ? { fuelGallons: parsedGallons, fuelSource, bulkFuelTankId: selectedTank.id, ...meterPayload(fuelSource, meter) }
           : {
               fuelGallons: parsedGallons,
               fuelSource,
@@ -180,6 +201,7 @@ export default function PreTripScreen() {
       setFuelCost('');
       setFuelSource('purchased');
       setBulkFuelTankId(null);
+      resetForTank(null);
       setReading('');
       setConcerns('');
       setCondition('good');
@@ -198,14 +220,16 @@ export default function PreTripScreen() {
         ? ` Fuel recorded on ${selected.name}${serverCost != null ? ` for $${serverCost.toFixed(2)}` : ''}${result.fuelCostPerGallon != null ? ` ($${result.fuelCostPerGallon.toFixed(2)}/gal)` : ''}${result.fuelSource === 'bulk_tank' && result.bulkFuelTankName ? ` from ${result.bulkFuelTankName}` : ''}.`
         : '';
       Alert.alert(
-        `${inspectionType === 'end_of_day' ? 'End-of-day' : 'Pre-trip'} check saved`,
+        `${inspectionType === 'end_of_day' ? 'End-of-day' : checklistName} check saved`,
         `Inspection saved.${fuelConfirmation} You can now attach photos or videos below.`,
       );
     } catch {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('Could not confirm pre-trip save', 'Check your connection, then retry this entry without changing it. If it already saved, the retry will not record the fuel twice.');
+      // Keep the entry intact; refresh tanks so a stale meter snapshot is surfaced for explicit reconfirmation.
+      void bulkTanksQuery.refetch();
+      Alert.alert(`Could not confirm ${checklistName.toLowerCase()} save`, 'Your entry is kept. Check your connection, then retry without changing it. If it already saved, the retry will not record the fuel twice. If the tank meter changed, confirm the new previous reading first.');
     }
-  }, [selected, gallons, fuelCost, fuelSource, bulkFuelTankId, bulkTanks, reading, readingType, condition, concerns, checklist, answers, inspectionType, createPreTrip, queryClient]);
+  }, [selected, gallons, fuelCost, fuelSource, bulkFuelTankId, bulkTanks, meter, meterReading, resetForTank, bulkTanksQuery, checklistName, reading, readingType, condition, concerns, checklist, answers, inspectionType, createPreTrip, queryClient]);
 
   if (isLoading) {
     return <View style={[styles.centered, { backgroundColor: colors.background }]}><ActivityIndicator color={colors.primary} size="large" /></View>;
@@ -213,11 +237,12 @@ export default function PreTripScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <Stack.Screen options={{ title: `${checklistName} Check` }} />
       <KeyboardAwareScrollViewCompat contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + (Platform.OS === 'web' ? 34 : 0) + 92 }} keyboardShouldPersistTaps="handled" bottomOffset={70}>
         <Text style={[styles.intro, { color: colors.mutedForeground }]}>Complete one check for each piece of equipment. Fuel and meter entries use the existing equipment history.</Text>
         {endOfDayChecklist.length > 0 && (
           <View style={styles.choices}>
-            <TouchableOpacity onPress={() => setInspectionType('pre_trip')} style={[styles.choice, { backgroundColor: inspectionType === 'pre_trip' ? colors.primary : colors.muted }]}><Text style={[styles.choiceText, { color: inspectionType === 'pre_trip' ? '#fff' : colors.mutedForeground }]}>Pre-trip</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => setInspectionType('pre_trip')} style={[styles.choice, { backgroundColor: inspectionType === 'pre_trip' ? colors.primary : colors.muted }]}><Text style={[styles.choiceText, { color: inspectionType === 'pre_trip' ? '#fff' : colors.mutedForeground }]}>{checklistName}</Text></TouchableOpacity>
             <TouchableOpacity onPress={() => setInspectionType('end_of_day')} style={[styles.choice, { backgroundColor: inspectionType === 'end_of_day' ? colors.primary : colors.muted }]}><Text style={[styles.choiceText, { color: inspectionType === 'end_of_day' ? '#fff' : colors.mutedForeground }]}>End of day</Text></TouchableOpacity>
           </View>
         )}
@@ -247,17 +272,19 @@ export default function PreTripScreen() {
             ))}
           </View>
         </>}
-        <Text style={[styles.small, { color: colors.mutedForeground, marginTop: 8 }]}>Office staff can change these questions in Settings → Equipment → {inspectionType === 'end_of_day' ? 'Optional End-of-Day Checklist' : 'Pre-Trip Checklist'}.</Text>
+        <Text style={[styles.small, { color: colors.mutedForeground, marginTop: 8 }]}>Office staff can change these questions in Settings → Equipment → {inspectionType === 'end_of_day' ? 'Optional End-of-Day Checklist' : `${checklistName} Checklist`}.</Text>
          <Text style={[styles.label, { color: colors.foreground }]}>Fuel added (optional)</Text>
          <FuelSourceFields
            source={fuelSource}
            onSourceChange={handleFuelSourceChange}
            gallons={gallons}
-           onGallonsChange={handleGallonsChange}
+           onGallonsChange={setGallons}
            cost={fuelCost}
            onCostChange={setFuelCost}
            bulkFuelTankId={bulkFuelTankId}
-           onBulkFuelTankChange={setBulkFuelTankId}
+           onBulkFuelTankChange={handleTankChange}
+           meter={meter}
+           onRefreshTanks={() => void bulkTanksQuery.refetch()}
            tanks={bulkTanks}
            tanksLoading={bulkTanksQuery.isLoading}
            tanksError={!!bulkTanksQuery.error}
@@ -280,7 +307,7 @@ export default function PreTripScreen() {
           />
         </>}
       </KeyboardAwareScrollViewCompat>
-      <View style={[styles.footer, { backgroundColor: colors.background, borderTopColor: colors.border, paddingBottom: insets.bottom + (Platform.OS === 'web' ? 34 : 0) + 12 }]}><TouchableOpacity disabled={isSaving} onPress={handleSave} style={[styles.save, { backgroundColor: colors.primary, opacity: isSaving ? .65 : 1 }]} testID="save-pre-trip-button">{isSaving ? <ActivityIndicator color="#fff" /> : <><Ionicons name="checkmark-circle-outline" size={20} color="#fff" /><Text style={styles.saveText}>Save {inspectionType === 'end_of_day' ? 'End-of-Day' : 'Pre-trip'} Check</Text></>}</TouchableOpacity></View>
+      <View style={[styles.footer, { backgroundColor: colors.background, borderTopColor: colors.border, paddingBottom: insets.bottom + (Platform.OS === 'web' ? 34 : 0) + 12 }]}><TouchableOpacity disabled={isSaving} onPress={handleSave} style={[styles.save, { backgroundColor: colors.primary, opacity: isSaving ? .65 : 1 }]} testID="save-pre-trip-button">{isSaving ? <ActivityIndicator color="#fff" /> : <><Ionicons name="checkmark-circle-outline" size={20} color="#fff" /><Text style={styles.saveText}>Save {inspectionType === 'end_of_day' ? 'End-of-Day' : checklistName} Check</Text></>}</TouchableOpacity></View>
     </View>
   );
 }

@@ -142,6 +142,7 @@ export const bulkFuelTanksTable = pgTable("bulk_fuel_tanks", {
   capacityThousandths: integer("capacity_thousandths"),
   availableThousandths: integer("available_thousandths").notNull().default(0),
   inventoryValueCents: integer("inventory_value_cents").notNull().default(0),
+  meterThousandths: integer("meter_thousandths"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, table => [
@@ -168,6 +169,8 @@ export const bulkFuelTransactionsTable = pgTable("bulk_fuel_transactions", {
   beforeValueCents: integer("before_value_cents"),
   afterValueCents: integer("after_value_cents"),
   expectedMovementId: integer("expected_movement_id"),
+  meterBeforeThousandths: integer("meter_before_thousandths"),
+  meterAfterThousandths: integer("meter_after_thousandths"),
   equipmentId: integer("equipment_id").references(() => equipmentTable.id, { onDelete: "set null" }),
   /** Equipment label at movement time; retained even after an equipment rename. */
   equipmentName: text("equipment_name"),

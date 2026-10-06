@@ -4,7 +4,7 @@ import request from "supertest";
 import { createHash, randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { db, tenantsTable, usersTable, staffSessionsTable, equipmentTable, equipmentFuelLogsTable,
-  bulkFuelTanksTable, bulkFuelTransactionsTable, expenseEntriesTable } from "@workspace/db";
+  bulkFuelTanksTable, bulkFuelTransactionsTable, expenseEntriesTable, internalTasksTable } from "@workspace/db";
 import router from "./equipment";
 import { dispenseBulkFuel } from "../lib/bulkFuel";
 import { reconcileBulkFuel } from "../lib/bulkFuelAdjustment";
@@ -77,6 +77,7 @@ describe("bulk tank reconciliation — real PostgreSQL and verified HTTP", () =>
   });
   afterAll(async () => {
     for (const tenantId of [tenant, foreignTenant].filter(Boolean)) {
+      await db.delete(internalTasksTable).where(eq(internalTasksTable.tenantId, tenantId));
       await db.delete(bulkFuelTransactionsTable).where(eq(bulkFuelTransactionsTable.tenantId, tenantId));
       await db.delete(equipmentFuelLogsTable).where(eq(equipmentFuelLogsTable.tenantId, tenantId));
       await db.delete(bulkFuelTanksTable).where(eq(bulkFuelTanksTable.tenantId, tenantId));
@@ -85,6 +86,67 @@ describe("bulk tank reconciliation — real PostgreSQL and verified HTTP", () =>
       await db.delete(usersTable).where(eq(usersTable.tenantId, tenantId));
       await db.delete(tenantsTable).where(eq(tenantsTable.id, tenantId));
     }
+  });
+
+  it("sets a one-time meter baseline without changing inventory and restricts it to managers", async () => {
+    const id = await tank();
+    expect((await request(app).patch(`/api/bulk-fuel/tanks/${id}`).set({ "x-staff-session": employeeToken }).send({ currentMeterReading: 1000 })).status).toBe(403);
+    expect((await request(app).patch(`/api/bulk-fuel/tanks/${foreignTank}`).set(auth()).send({ currentMeterReading: 1000 })).status).toBe(404);
+    const saved = await request(app).patch(`/api/bulk-fuel/tanks/${id}`).set(auth()).send({ currentMeterReading: 1000.125 });
+    expect(saved.status).toBe(200);
+    expect(saved.body).toMatchObject({ currentMeterReading: 1000.125, availableGallons: 100, inventoryValue: 300 });
+    expect((await request(app).patch(`/api/bulk-fuel/tanks/${id}`).set(auth()).send({ currentMeterReading: 0 })).status).toBe(400);
+  });
+
+  it("calculates metered fill cost, snapshots both readings and replays without a second draw", async () => {
+    const id = await tank();
+    await request(app).patch(`/api/bulk-fuel/tanks/${id}`).set(auth()).send({ currentMeterReading: 1000 });
+    const data = { date, gallons: 5.125, fuelSource: "bulk_tank", bulkFuelTankId: id, meterReading: 1005.125, expectedMeterReading: 1000, idempotencyKey: randomUUID() };
+    const fill = () => request(app).post(`/api/equipment/${equipment.id}/fuel-logs`).set(auth()).send(data);
+    const first = await fill();
+    expect(first.status, JSON.stringify(first.body)).toBe(201);
+    expect(first.body).toMatchObject({ gallons: 5.125, cost: 15.38 });
+    expect((await fill()).status).toBe(200);
+    const row = await stock(id);
+    expect(row.meterThousandths).toBe(1005125);
+    expect(row.availableThousandths).toBe(94875);
+    const history = await request(app).get(`/api/bulk-fuel/tanks/${id}/transactions`).set(auth());
+    expect(history.body.data.find((x: any) => x.type === "dispense")).toMatchObject({ meterReadingBefore: 1000, meterReadingAfter: 1005.125 });
+    expect((await request(app).post(`/api/equipment/${equipment.id}/fuel-logs`).set(auth()).send({ ...data, meterReading: 2005.125, expectedMeterReading: 2000 })).status).toBe(409);
+  });
+
+  it("rejects stale, decreasing and mismatched readings without changing stock; serializes concurrent fills", async () => {
+    const id = await tank();
+    await request(app).patch(`/api/bulk-fuel/tanks/${id}`).set(auth()).send({ currentMeterReading: 500 });
+    const data = { date, gallons: 5, fuelSource: "bulk_tank", bulkFuelTankId: id, expectedMeterReading: 500, meterReading: 505 };
+    const fill = (extra: object) => request(app).post(`/api/equipment/${equipment.id}/fuel-logs`).set(auth()).send({ ...data, idempotencyKey: randomUUID(), ...extra });
+    expect((await fill({ meterReading: 499 })).status).toBe(400);
+    expect((await fill({ meterReading: 506 })).status).toBe(409);
+    expect((await fill({ expectedMeterReading: 499 })).status).toBe(409);
+    expect((await stock(id)).availableThousandths).toBe(100000);
+    const simultaneous = await Promise.all([fill({}), fill({})]);
+    expect(simultaneous.map(x => x.status).sort()).toEqual([201, 409]);
+    expect((await stock(id)).meterThousandths).toBe(505000);
+    expect((await stock(id)).availableThousandths).toBe(95000);
+  });
+
+  it("saves a renamed morning inspection and meter fuel atomically with repeat-safe retry", async () => {
+    await db.update(tenantsTable).set({ preTripChecklistName: "Morning readiness", preTripChecklist: [] }).where(eq(tenantsTable.id, tenant));
+    const id = await tank();
+    await request(app).patch(`/api/bulk-fuel/tanks/${id}`).set(auth()).send({ currentMeterReading: 800 });
+    const data = { equipmentId: equipment.id, condition: "good", inspectionType: "pre_trip", fuelGallons: 4,
+      fuelSource: "bulk_tank", bulkFuelTankId: id, meterReading: 804, expectedMeterReading: 800, idempotencyKey: randomUUID() };
+    const first = await request(app).post("/api/equipment/pre-trip").set(auth()).send(data);
+    expect(first.status, JSON.stringify(first.body)).toBe(201);
+    expect(first.body).toMatchObject({ fuelCost: 12, duplicate: false });
+    expect((await request(app).post("/api/equipment/pre-trip").set(auth()).send(data)).body.duplicate).toBe(true);
+    const [task] = await db.select().from(internalTasksTable).where(eq(internalTasksTable.id, first.body.taskId));
+    expect(task.title).toBe(`Morning readiness inspection: ${equipment.name}`);
+    expect((await stock(id)).meterThousandths).toBe(804000);
+    expect((await stock(id)).availableThousandths).toBe(96000);
+    const stale = await request(app).post("/api/equipment/pre-trip").set(auth()).send({ ...data, idempotencyKey: randomUUID() });
+    expect(stale.status).toBe(409);
+    expect((await stock(id)).availableThousandths).toBe(96000);
   });
 
   it("rejects spoofed identities, field staff, portal and cross-tenant requests", async () => {

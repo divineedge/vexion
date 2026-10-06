@@ -66,6 +66,22 @@ export function dollarsToCents(value: unknown, label = "totalCost"): number {
   return result;
 }
 
+export function meterToThousandths(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 ||
+    value * 1000 > MAX_INVENTORY_INT || Math.abs(value * 1000 - Math.round(value * 1000)) > 0.00001) {
+    throw new Error("Meter reading must be between 0 and 2,000,000 gallons with up to 3 decimal places");
+  }
+  return Math.round(value * 1000);
+}
+
+export function validateMeterInput(meterReading: unknown, expectedMeterReading: unknown, isBulk: boolean): void {
+  if (meterReading === undefined && expectedMeterReading === undefined) return;
+  if (!isBulk) throw new Error("Tank meter readings require bulk tank fuel");
+  const end = meterToThousandths(meterReading);
+  const start = meterToThousandths(expectedMeterReading);
+  if (end <= start) throw new Error("New tank meter reading must be greater than the previous reading");
+}
+
 export function tenantDateKey(date: Date, timezone: string): string {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit",
@@ -97,6 +113,7 @@ export function formatTank(tank: typeof bulkFuelTanksTable.$inferSelect) {
     capacityGallons: tank.capacityThousandths == null ? null : tank.capacityThousandths / 1000,
     isActive: tank.isActive, availableGallons: tank.availableThousandths / 1000,
     inventoryValue: tank.inventoryValueCents / 100,
+    currentMeterReading: tank.meterThousandths == null ? null : tank.meterThousandths / 1000,
     unitCostPerGallon: tank.availableThousandths > 0
       ? Math.round((tank.inventoryValueCents / tank.availableThousandths) * 1_000_000) / 100_000
       : 0,
@@ -119,6 +136,8 @@ export function formatTransaction(
     supplier: row.supplier ?? null, reference: row.reference ?? null, notes: row.notes ?? null,
     equipmentId: row.equipmentId ?? null, equipmentName: row.equipmentName ?? null,
     fuelLogId: row.fuelLogId ?? null, createdAt: row.createdAt.toISOString(),
+    meterReadingBefore: row.meterBeforeThousandths == null ? null : row.meterBeforeThousandths / 1000,
+    meterReadingAfter: row.meterAfterThousandths == null ? null : row.meterAfterThousandths / 1000,
   };
 }
 
@@ -140,12 +159,26 @@ export async function dispenseBulkFuel(tx: Tx, args: {
   tenantId: number; equipment: typeof equipmentTable.$inferSelect; tankId: number;
   date: string; gallonsThousandths: number; jobId: number | null; odometerReading: number | null;
   idempotencyKey: string;
+  meterReading?: number; expectedMeterReading?: number;
 }) {
   const [tank] = await tx.select().from(bulkFuelTanksTable).where(and(
     eq(bulkFuelTanksTable.id, args.tankId), eq(bulkFuelTanksTable.tenantId, args.tenantId),
   )).for("update");
   if (!tank) throw new Error("Bulk fuel tank not found");
   if (!tank.isActive) throw new Error("Bulk fuel tank is inactive");
+  validateMeterInput(args.meterReading, args.expectedMeterReading, true);
+  let meterAfter: number | null = tank.meterThousandths == null ? null : tank.meterThousandths + args.gallonsThousandths;
+  if (args.meterReading !== undefined) {
+    if (tank.meterThousandths == null) throw new Error("Set the tank's starting meter reading before recording meter-based fills");
+    if (meterToThousandths(args.expectedMeterReading) !== tank.meterThousandths) {
+      throw new Error("Tank meter reading changed. Refresh the tank and reconfirm this fill before saving.");
+    }
+    meterAfter = meterToThousandths(args.meterReading);
+    const dispensed = meterAfter - tank.meterThousandths;
+    if (dispensed <= 0 || dispensed !== args.gallonsThousandths) throw new Error("Gallons must match the change in tank meter reading");
+    args = { ...args, gallonsThousandths: dispensed };
+  }
+  if (meterAfter != null && meterAfter > MAX_INVENTORY_INT) throw new Error("Tank meter reading exceeds its supported range");
   if (tank.availableThousandths < args.gallonsThousandths) throw new Error("Insufficient bulk fuel inventory");
 
   // This allocation preserves all cents on the final draw.  Earlier log prices
@@ -166,12 +199,15 @@ export async function dispenseBulkFuel(tx: Tx, args: {
   }).returning();
   await tx.update(bulkFuelTanksTable).set({
     availableThousandths: remainingGallons, inventoryValueCents: remainingValue,
+    meterThousandths: meterAfter,
   }).where(eq(bulkFuelTanksTable.id, tank.id));
   const [movement] = await tx.insert(bulkFuelTransactionsTable).values({
     tankId: tank.id, tenantId: args.tenantId, type: "dispense", date: args.date,
     gallonsThousandths: -args.gallonsThousandths, totalCostCents: -allocatedCents,
     equipmentId: args.equipment.id, equipmentName: args.equipment.name, fuelLogId: fuel.id,
     idempotencyKey: args.idempotencyKey,
+    meterBeforeThousandths: tank.meterThousandths,
+    meterAfterThousandths: meterAfter,
   }).returning();
   return { fuel, movement, tank, cost, costPerGallon };
 }

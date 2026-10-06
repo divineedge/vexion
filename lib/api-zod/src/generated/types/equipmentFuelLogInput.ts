@@ -8,6 +8,10 @@
 import type { EquipmentFuelLogInputFuelSource } from './equipmentFuelLogInputFuelSource';
 
 export interface EquipmentFuelLogInput {
+  /** @minimum 0 */
+  meterReading?: number;
+  /** @minimum 0 */
+  expectedMeterReading?: number;
   date: string;
   gallons: number;
   cost?: number;

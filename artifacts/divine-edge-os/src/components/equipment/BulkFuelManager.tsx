@@ -48,6 +48,8 @@ export function BulkFuelManager() {
   const [fuelType, setFuelType] = useState('diesel');
   const [capacityGallons, setCapacityGallons] = useState('');
   const [isActive, setIsActive] = useState(true);
+  const [startingMeter, setStartingMeter] = useState('');
+  const fmtMeter = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 3 });
 
   const createTank = useCreateBulkFuelTank();
   const updateTank = useUpdateBulkFuelTank();
@@ -58,6 +60,7 @@ export function BulkFuelManager() {
     setFuelType('diesel');
     setCapacityGallons('');
     setIsActive(true);
+    setStartingMeter('');
     setFormOpen(true);
   };
 
@@ -67,6 +70,7 @@ export function BulkFuelManager() {
     setFuelType(tank.fuelType);
     setCapacityGallons(tank.capacityGallons ? String(tank.capacityGallons) : '');
     setIsActive(tank.isActive);
+    setStartingMeter('');
     setFormOpen(true);
   };
 
@@ -75,11 +79,18 @@ export function BulkFuelManager() {
       toast.error('Tank name is required');
       return;
     }
+    const canSetBaseline = !editingTank || editingTank.currentMeterReading == null;
+    const parsedMeter = startingMeter.trim() ? parseFloat(startingMeter) : null;
+    if (canSetBaseline && parsedMeter != null && (isNaN(parsedMeter) || parsedMeter < 0)) {
+      toast.error('Starting meter reading must be zero or more');
+      return;
+    }
     const data = {
       name: name.trim(),
       fuelType,
       capacityGallons: capacityGallons ? parseFloat(capacityGallons) : null,
       isActive,
+      ...(canSetBaseline && parsedMeter != null ? { currentMeterReading: parsedMeter } : {}),
     };
 
     if (editingTank) {
@@ -89,7 +100,7 @@ export function BulkFuelManager() {
           qc.invalidateQueries({ predicate: q => q.queryKey[0] === getListBulkFuelTanksQueryKey()[0] });
           setFormOpen(false);
         },
-        onError: () => toast.error('Failed to update tank'),
+        onError: (err: any) => toast.error(err?.data?.message || err?.response?.data?.message || 'Failed to update tank'),
       });
     } else {
       createTank.mutate({ data }, {
@@ -178,6 +189,14 @@ export function BulkFuelManager() {
                     <p className="text-muted-foreground text-[11px] uppercase font-semibold">Blended Cost</p>
                     <p className="font-medium font-mono mt-0.5">{fmt$(tank.unitCostPerGallon)}<span className="text-xs text-muted-foreground">/gal</span></p>
                   </div>
+                  <div className="col-span-2">
+                    <p className="text-muted-foreground text-[11px] uppercase font-semibold">Line Meter</p>
+                    {tank.currentMeterReading != null ? (
+                      <p className="font-medium font-mono mt-0.5" data-testid={`text-tank-meter-${tank.id}`}>{fmtMeter(tank.currentMeterReading)}</p>
+                    ) : (
+                      <button type="button" className="text-xs text-primary hover:underline mt-0.5" onClick={() => openEdit(tank)}>Set starting reading to enable crew meter entry</button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap gap-2 pt-1">
@@ -248,6 +267,21 @@ export function BulkFuelManager() {
                 <Input type="number" placeholder="Optional" value={capacityGallons} onChange={e => setCapacityGallons(e.target.value)} />
               </div>
             </div>
+            {!editingTank || editingTank.currentMeterReading == null ? (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Starting Line Meter Reading</label>
+                <Input type="number" step="0.001" min="0" placeholder="Optional, e.g. 104382.6" value={startingMeter} onChange={e => setStartingMeter(e.target.value)} data-testid="input-tank-starting-meter" />
+                <p className="text-xs text-muted-foreground">
+                  The cumulative reading on the dispenser line meter right now. Crews then enter each new reading and gallons are calculated from the difference. This is a one-time baseline, not a fuel expense, and cannot be changed once set.
+                </p>
+              </div>
+            ) : (
+              <div className="text-sm rounded-md border bg-muted/30 p-2.5">
+                <span className="text-muted-foreground">Line meter: </span>
+                <span className="font-mono font-medium">{fmtMeter(editingTank.currentMeterReading)}</span>
+                <p className="text-xs text-muted-foreground mt-1">Set by fills and the original baseline. It cannot be edited here.</p>
+              </div>
+            )}
             {editingTank && (
               <div className="flex items-center gap-2 pt-2 border-t mt-4">
                 <input
@@ -509,13 +543,14 @@ function BulkFuelHistoryDialog({ tank, open, onOpenChange }: { tank: BulkFuelTan
                   <TableHead className="text-right">Gallons</TableHead>
                   <TableHead className="text-right">Unit Cost</TableHead>
                   <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">Line Meter</TableHead>
                   <TableHead>Source / Destination</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody className="bg-card">
                 {page?.data?.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-16">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-16">
                       <div className="flex flex-col items-center">
                         <History className="w-8 h-8 text-muted/30 mb-3" />
                         No transactions found.
@@ -544,6 +579,13 @@ function BulkFuelHistoryDialog({ tank, open, onOpenChange }: { tank: BulkFuelTan
                     </TableCell>
                     <TableCell className="text-right font-mono font-medium text-sm">
                       {fmt$(Math.abs(tx.totalCost))}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs whitespace-nowrap text-muted-foreground">
+                      {tx.meterReadingBefore != null && tx.meterReadingAfter != null
+                        ? `${tx.meterReadingBefore.toLocaleString(undefined, { maximumFractionDigits: 3 })} → ${tx.meterReadingAfter.toLocaleString(undefined, { maximumFractionDigits: 3 })}`
+                        : tx.meterReadingAfter != null
+                          ? tx.meterReadingAfter.toLocaleString(undefined, { maximumFractionDigits: 3 })
+                          : '—'}
                     </TableCell>
                     <TableCell className="text-xs">
                        {tx.type === 'adjustment' ? (

@@ -17,7 +17,7 @@ import {
   type ImportExportEntityConfig,
 } from "../lib/importExport";
 import { hasEquipmentVisibility } from "../lib/equipmentVisibility";
-import { bulkFuelLossExceedsThreshold, dollarsToCents, dispenseBulkFuel, formatFuelLog, formatTank, formatTransaction, gallonsToThousandths, isDateKey, MAX_INVENTORY_INT, normalizeFuelDate, parseBulkFuelLossAlertSettings, tenantDateKey, type BulkFuelLossAlertSettings } from "../lib/bulkFuel";
+import { bulkFuelLossExceedsThreshold, dollarsToCents, dispenseBulkFuel, formatFuelLog, formatTank, formatTransaction, gallonsToThousandths, isDateKey, MAX_INVENTORY_INT, meterToThousandths, validateMeterInput, normalizeFuelDate, parseBulkFuelLossAlertSettings, tenantDateKey, type BulkFuelLossAlertSettings } from "../lib/bulkFuel";
 import { invalidateTenantReportCache } from "../lib/reportsCache";
 import { AdjustmentError, reconcileBulkFuel } from "../lib/bulkFuelAdjustment";
 
@@ -434,16 +434,18 @@ router.get("/bulk-fuel/tanks", async (req, res): Promise<void> => {
 router.post("/bulk-fuel/tanks", async (req, res): Promise<void> => {
   if (!(await requireTankManager(req, res))) return;
   const tenantId = getTenantId(req);
-  const { name, fuelType, capacityGallons } = req.body;
+  const { name, fuelType, capacityGallons, currentMeterReading } = req.body;
   if (typeof name !== "string" || !name.trim() || typeof fuelType !== "string" || !fuelType.trim()) {
     res.status(400).json({ error: "name and fuelType are required" }); return;
   }
   let capacityThousandths: number | null = null;
+  let meterThousandths: number | null = null;
   try {
     if (capacityGallons != null) capacityThousandths = gallonsToThousandths(capacityGallons, "capacityGallons");
+    if (currentMeterReading !== undefined) meterThousandths = meterToThousandths(currentMeterReading);
   } catch (error: any) { res.status(400).json({ error: error.message }); return; }
   const [tank] = await db.insert(bulkFuelTanksTable).values({
-    tenantId, name: name.trim(), fuelType: fuelType.trim(), capacityThousandths,
+    tenantId, name: name.trim(), fuelType: fuelType.trim(), capacityThousandths, meterThousandths,
   }).returning();
   res.status(201).json(formatTank(tank));
 });
@@ -452,13 +454,17 @@ router.patch("/bulk-fuel/tanks/:id", async (req, res): Promise<void> => {
   if (!(await requireTankManager(req, res))) return;
   const id = parsedId(req.params.id); const tenantId = getTenantId(req);
   if (!id) { res.status(400).json({ error: "Invalid tank id" }); return; }
-  const { name, fuelType, capacityGallons, isActive } = req.body;
-  if (![name, fuelType, capacityGallons, isActive].some(v => v !== undefined)) { res.status(400).json({ error: "Nothing to update" }); return; }
+  const { name, fuelType, capacityGallons, isActive, currentMeterReading } = req.body;
+  if (![name, fuelType, capacityGallons, isActive, currentMeterReading].some(v => v !== undefined)) { res.status(400).json({ error: "Nothing to update" }); return; }
   try {
     const updated = await db.transaction(async tx => {
       const [tank] = await tx.select().from(bulkFuelTanksTable).where(and(eq(bulkFuelTanksTable.id, id), eq(bulkFuelTanksTable.tenantId, tenantId))).for("update");
       if (!tank) throw new Error("Bulk fuel tank not found");
       const updates: Partial<typeof bulkFuelTanksTable.$inferInsert> = {};
+      if (currentMeterReading !== undefined) {
+        if (tank.meterThousandths != null) throw new Error("Starting meter reading is already set; record fills to advance it");
+        updates.meterThousandths = meterToThousandths(currentMeterReading);
+      }
       if (name !== undefined) { if (typeof name !== "string" || !name.trim()) throw new Error("name must be non-empty"); updates.name = name.trim(); }
       if (fuelType !== undefined) { if (typeof fuelType !== "string" || !fuelType.trim()) throw new Error("fuelType must be non-empty"); updates.fuelType = fuelType.trim(); }
       if (capacityGallons !== undefined) {
@@ -1218,7 +1224,9 @@ router.post("/equipment/:id/fuel-logs", async (req, res): Promise<void> => {
     return;
   }
 
-  const { date, gallons, cost, costPerGallon, odometerReading, jobId, fuelSource = "purchased", bulkFuelTankId, idempotencyKey } = req.body;
+  const { date, gallons, cost, costPerGallon, odometerReading, jobId, fuelSource = "purchased", bulkFuelTankId, idempotencyKey, meterReading, expectedMeterReading } = req.body;
+  try { validateMeterInput(meterReading, expectedMeterReading, fuelSource === "bulk_tank"); }
+  catch (error: any) { res.status(400).json({ error: error.message }); return; }
   if (date == null || gallons == null) { res.status(400).json({ error: "date and gallons are required" }); return; }
   if (!["purchased", "bulk_tank"].includes(fuelSource)) { res.status(400).json({ error: "fuelSource must be purchased or bulk_tank" }); return; }
   if (fuelSource === "bulk_tank" && (!Number.isInteger(bulkFuelTankId) || typeof idempotencyKey !== "string" || !idempotencyKey.trim())) {
@@ -1260,6 +1268,17 @@ router.post("/equipment/:id/fuel-logs", async (req, res): Promise<void> => {
         const [prior] = await tx.select().from(equipmentFuelLogsTable).where(and(eq(equipmentFuelLogsTable.tenantId, tenantId), eq(equipmentFuelLogsTable.idempotencyKey, key))).limit(1);
         if (prior) {
           if (prior.equipmentId !== equipmentId || prior.bulkFuelTankId !== bulkFuelTankId || prior.gallons !== parsedGallons || prior.date !== fuelDate || prior.jobId !== parsedJobId || prior.odometerReading !== parsedOdometer) throw new Error("Idempotency key was already used with different fuel details");
+          if (meterReading !== undefined) {
+            const [movement] = await tx.select().from(bulkFuelTransactionsTable).where(and(
+              eq(bulkFuelTransactionsTable.tenantId, tenantId),
+              eq(bulkFuelTransactionsTable.fuelLogId, prior.id),
+              eq(bulkFuelTransactionsTable.type, "dispense"),
+            )).limit(1);
+            if (!movement || movement.meterBeforeThousandths !== meterToThousandths(expectedMeterReading) ||
+              movement.meterAfterThousandths !== meterToThousandths(meterReading)) {
+              throw new Error("Idempotency key was already used with different meter readings");
+            }
+          }
           return { row: prior, duplicate: true };
         }
         // A deleted log deliberately leaves its dispense movement in history.
@@ -1270,7 +1289,7 @@ router.post("/equipment/:id/fuel-logs", async (req, res): Promise<void> => {
           eq(bulkFuelTransactionsTable.type, "dispense"),
         )).limit(1);
         if (historicDispense) throw new Error("This idempotency key belongs to a deleted fuel log and cannot be replayed");
-        const bulk = await dispenseBulkFuel(tx, { tenantId, equipment: lockedEquipment, tankId: bulkFuelTankId, date: fuelDate, gallonsThousandths: Math.round(parsedGallons * 1000), jobId: parsedJobId, odometerReading: parsedOdometer, idempotencyKey: key });
+        const bulk = await dispenseBulkFuel(tx, { tenantId, equipment: lockedEquipment, tankId: bulkFuelTankId, date: fuelDate, gallonsThousandths: Math.round(parsedGallons * 1000), jobId: parsedJobId, odometerReading: parsedOdometer, idempotencyKey: key, meterReading, expectedMeterReading });
         const [total] = await tx.select({ total: sum(equipmentFuelLogsTable.cost) }).from(equipmentFuelLogsTable).where(and(eq(equipmentFuelLogsTable.equipmentId, equipmentId), eq(equipmentFuelLogsTable.tenantId, tenantId)));
         await tx.update(equipmentTable).set({ totalFuelCost: Number(total?.total ?? 0), ...(parsedOdometer != null && parsedOdometer > lockedEquipment.currentHours ? { currentHours: parsedOdometer } : {}) }).where(eq(equipmentTable.id, equipmentId));
         return { row: bulk.fuel, duplicate: false };
@@ -1383,7 +1402,9 @@ router.post("/equipment/:id/reading-logs", async (req, res): Promise<void> => {
 router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
-  const { idempotencyKey, equipmentId, condition, fuelGallons, fuelCost, fuelSource = "purchased", bulkFuelTankId, readingType, readingValue, concerns, checklistResponses, inspectionType = "pre_trip" } = req.body;
+  const { idempotencyKey, equipmentId, condition, fuelGallons, fuelCost, fuelSource = "purchased", bulkFuelTankId, readingType, readingValue, concerns, checklistResponses, inspectionType = "pre_trip", meterReading, expectedMeterReading } = req.body;
+  try { validateMeterInput(meterReading, expectedMeterReading, fuelSource === "bulk_tank" && fuelGallons != null); }
+  catch (error: any) { res.status(400).json({ error: error.message }); return; }
   if (!["pre_trip", "end_of_day"].includes(inspectionType)) { res.status(400).json({ error: "inspectionType must be pre_trip or end_of_day" }); return; }
   if (typeof idempotencyKey !== "string" || !idempotencyKey.trim()) { res.status(400).json({ error: "idempotencyKey is required" }); return; }
   const normalizedIdempotencyKey = idempotencyKey.trim();
@@ -1408,7 +1429,7 @@ router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
   const accessibleEquipment = await requireEquipmentOwnership(equipmentId, tenantId, userId, res);
   if (!accessibleEquipment) return;
   const [[tenant], [equipment]] = await Promise.all([
-    db.select({ preTripChecklist: tenantsTable.preTripChecklist, endOfDayChecklist: tenantsTable.endOfDayChecklist, timezone: tenantsTable.timezone }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
+    db.select({ preTripChecklist: tenantsTable.preTripChecklist, preTripChecklistName: tenantsTable.preTripChecklistName, endOfDayChecklist: tenantsTable.endOfDayChecklist, timezone: tenantsTable.timezone }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1),
     db.select({ type: equipmentTable.type, archivedAt: equipmentTable.archivedAt }).from(equipmentTable).where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId))).limit(1),
   ]);
   if (!equipment) { res.status(404).json({ error: "Equipment not found" }); return; }
@@ -1427,6 +1448,7 @@ router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
   const today = tenantDateKey(new Date(), tenant?.timezone ?? "UTC");
   const requestFingerprint = JSON.stringify({
     equipmentId, condition, inspectionType,
+    ...(meterReading !== undefined ? { meterReading, expectedMeterReading } : {}),
     fuelGallons: fuelThousandths,
     fuelSource: gallons == null ? null : fuelSource,
     bulkFuelTankId: gallons != null && fuelSource === "bulk_tank" ? bulkFuelTankId : null,
@@ -1458,7 +1480,7 @@ router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
       let readingLogId: number | null = null;
       if (gallons != null) {
         if (fuelSource === "bulk_tank") {
-          const bulk = await dispenseBulkFuel(tx, { tenantId, equipment: owned, tankId: bulkFuelTankId, date: today, gallonsThousandths: fuelThousandths!, jobId: null, odometerReading: null, idempotencyKey: normalizedIdempotencyKey });
+          const bulk = await dispenseBulkFuel(tx, { tenantId, equipment: owned, tankId: bulkFuelTankId, date: today, gallonsThousandths: fuelThousandths!, jobId: null, odometerReading: null, idempotencyKey: normalizedIdempotencyKey, meterReading, expectedMeterReading });
           recordedFuel = bulk.fuel; fuelLogId = bulk.fuel.id;
         } else {
           const [fuel] = await tx.insert(equipmentFuelLogsTable).values({ equipmentId, tenantId, date: today, gallons, cost: cost ?? 0, costPerGallon: gallons ? (cost ?? 0) / gallons : 0, odometerReading: null, fuelSource: "purchased", bulkFuelTankId: null, bulkFuelTankName: null }).returning();
@@ -1479,7 +1501,7 @@ router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
       if (Object.keys(updates).length) await tx.update(equipmentTable).set(updates).where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId)));
       const isEndOfDay = inspectionType === "end_of_day";
       const fuelDescription = recordedFuel ? `\nFuel: ${recordedFuel.fuelSource === "bulk_tank" ? `Bulk tank ${recordedFuel.bulkFuelTankName}` : "Purchased"} — ${recordedFuel.gallons} gal at $${(recordedFuel.costPerGallon ?? 0).toFixed(2)}/gal ($${recordedFuel.cost.toFixed(2)}).` : "";
-      const [task] = await tx.insert(internalTasksTable).values({ tenantId, title: `${isEndOfDay ? "End-of-day" : "Pre-trip"} inspection: ${owned.name}`, description: `Condition: ${condition.replace("_", " ")}.${fuelDescription}${typeof concerns === "string" && concerns.trim() ? `\nConcerns: ${concerns.trim()}` : ""}`, taskType: isEndOfDay ? "end_of_day_inspection" : "pre_trip_inspection", createdById: userId, assignedToRole: "admin_office", priority: condition === "unsafe" ? "urgent" : condition === "needs_attention" ? "high" : "normal", status: "open", contextType: "equipment", contextId: equipmentId, idempotencyKey: normalizedIdempotencyKey, preTripRequestFingerprint: requestFingerprint, preTripFuelLogId: fuelLogId, preTripReadingLogId: readingLogId, preTripChecklistSnapshot: checklist }).returning();
+      const [task] = await tx.insert(internalTasksTable).values({ tenantId, title: `${isEndOfDay ? "End-of-day" : tenant?.preTripChecklistName ?? "Pre-trip"} inspection: ${owned.name}`, description: `Condition: ${condition.replace("_", " ")}.${fuelDescription}${typeof concerns === "string" && concerns.trim() ? `\nConcerns: ${concerns.trim()}` : ""}`, taskType: isEndOfDay ? "end_of_day_inspection" : "pre_trip_inspection", createdById: userId, assignedToRole: "admin_office", priority: condition === "unsafe" ? "urgent" : condition === "needs_attention" ? "high" : "normal", status: "open", contextType: "equipment", contextId: equipmentId, idempotencyKey: normalizedIdempotencyKey, preTripRequestFingerprint: requestFingerprint, preTripFuelLogId: fuelLogId, preTripReadingLogId: readingLogId, preTripChecklistSnapshot: checklist }).returning();
       return { taskId: task.id, ...(fuelLogId != null ? { fuelLogId } : {}), ...(readingLogId != null ? { readingLogId } : {}), ...(recordedFuel ? { fuelCost: recordedFuel.cost, fuelCostPerGallon: recordedFuel.costPerGallon, fuelSource: recordedFuel.fuelSource, bulkFuelTankName: recordedFuel.bulkFuelTankName } : {}), duplicate: false };
     });
     invalidateTenantReportCache(tenantId);
@@ -1493,7 +1515,7 @@ router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
       res.json({ taskId: duplicate.id, ...(duplicate.preTripFuelLogId != null ? { fuelLogId: duplicate.preTripFuelLogId } : {}), ...(duplicate.preTripReadingLogId != null ? { readingLogId: duplicate.preTripReadingLogId } : {}), ...(fuel ? { fuelCost: fuel.cost, fuelCostPerGallon: fuel.costPerGallon, fuelSource: fuel.fuelSource, bulkFuelTankName: fuel.bulkFuelTankName } : {}), duplicate: true }); return;
     }
     const message = error?.message ?? "Unable to save pre-trip";
-    res.status(message === "Equipment not found" ? 404 : 400).json({ error: message });
+    res.status(message === "Equipment not found" ? 404 : message.startsWith("Tank meter reading changed.") ? 409 : 400).json({ error: message });
   }
 });
 

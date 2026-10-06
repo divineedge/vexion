@@ -8,6 +8,10 @@
 import type { BulkFuelTransactionType } from './bulkFuelTransactionType';
 
 export interface BulkFuelTransaction {
+  /** @nullable */
+  meterReadingBefore?: number | null;
+  /** @nullable */
+  meterReadingAfter?: number | null;
   id: number;
   tankId: number;
   type: BulkFuelTransactionType;

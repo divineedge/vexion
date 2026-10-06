@@ -28,7 +28,7 @@ import {
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
-import { FuelSourceFields, type FuelSource } from '@/components/FuelSourceFields';
+import { FuelSourceFields, type FuelSource, useBulkMeterEntry, isMeterActive, isMeterStale, meterValidationError, meterPayload } from '@/components/FuelSourceFields';
 import { tenantDateKey } from '@/utils/schedule';
 
 type Equipment = { id: number; name: string; currentHours: number };
@@ -109,28 +109,38 @@ export default function LogFuelFillScreen() {
   const [fuelSource, setFuelSource] = useState<FuelSource>('purchased');
   const [bulkFuelTankId, setBulkFuelTankId] = useState<number | null>(null);
   const [hoursReading, setHoursReading] = useState('');
+  const meter = useBulkMeterEntry();
+  const { resetForTank, meterReading, expectedMeterReading, meterMode } = meter;
   const [errors, setErrors] = useState<Record<string, string>>({});
   const idempotencyKey = useRef(`fuel-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
   useEffect(() => {
     idempotencyKey.current = `fuel-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  }, [gallons, cost, fuelSource, bulkFuelTankId, hoursReading, linkedJobId]);
+  }, [gallons, cost, fuelSource, bulkFuelTankId, meterReading, expectedMeterReading, meterMode, hoursReading, linkedJobId]);
 
   const handleFuelSourceChange = useCallback((source: FuelSource) => {
     setFuelSource(source);
     setBulkFuelTankId(null);
+    setGallons('');
+    resetForTank(null);
     if (source === 'bulk_tank') setCost('');
-  }, []);
+  }, [resetForTank]);
 
-  const handleGallonsChange = useCallback((value: string) => {
-    setGallons(value);
-    if (!value || !Number.isFinite(Number(value)) || Number(value) <= 0) {
-      setBulkFuelTankId(null);
-    }
-  }, []);
+  const handleTankChange = useCallback((tankId: number | null) => {
+    setBulkFuelTankId(tankId);
+    setGallons('');
+    // Snapshot the prior meter reading at selection; refetches never silently replace it.
+    resetForTank(bulkTanks.find(tank => tank.id === tankId) ?? null);
+  }, [bulkTanks, resetForTank]);
 
   const validate = useCallback((): boolean => {
     const e: Record<string, string> = {};
+    const meterTank = bulkTanks.find(tank => tank.id === bulkFuelTankId);
+    if (isMeterActive(fuelSource, meter) && meterTank) {
+      const meterError = meterValidationError(meter);
+      if (meterError) e.meter = meterError;
+      else if (isMeterStale(meterTank, meter)) e.meter = 'The previous reading changed. Confirm the new previous reading before saving.';
+    }
     if (!gallons || isNaN(Number(gallons)) || Number(gallons) <= 0) {
       e.gallons = 'Enter a valid amount of gallons';
     }
@@ -157,7 +167,7 @@ export default function LogFuelFillScreen() {
     }
     setErrors(e);
     return Object.keys(e).length === 0;
-  }, [gallons, cost, hoursReading, eq, fuelSource, bulkFuelTankId, bulkTanks]);
+  }, [gallons, cost, hoursReading, eq, fuelSource, bulkFuelTankId, bulkTanks, meter]);
 
   const handleSubmit = useCallback(async () => {
     if (!validate()) {
@@ -177,6 +187,7 @@ export default function LogFuelFillScreen() {
         if (!selectedTank) return;
         body.bulkFuelTankId = selectedTank.id;
         body.idempotencyKey = idempotencyKey.current;
+        Object.assign(body, meterPayload(fuelSource, meter));
       } else if (cost.trim()) {
         body.cost = Number(cost);
       }
@@ -202,9 +213,11 @@ export default function LogFuelFillScreen() {
       );
     } catch {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('Error', 'Failed to log fuel fill. Please try again.');
+      // Keep the entry; refresh tanks so a changed previous reading is surfaced for explicit confirmation.
+      void bulkTanksQuery.refetch();
+      Alert.alert('Could not confirm fuel fill', 'Your entry is kept. Retry without changing it; a repeat will not record fuel twice. If the tank meter changed, confirm the new previous reading first.');
     }
-  }, [validate, gallons, cost, fuelSource, bulkFuelTankId, hoursReading, createMutation, equipmentId, linkedJobId, queryClient, submissionDate]);
+  }, [validate, gallons, cost, fuelSource, bulkFuelTankId, bulkTanks, meter, bulkTanksQuery, hoursReading, createMutation, equipmentId, linkedJobId, queryClient, submissionDate]);
 
   const bottomPad = insets.bottom + (Platform.OS === 'web' ? 34 : 0) + 100;
 
@@ -234,11 +247,14 @@ export default function LogFuelFillScreen() {
             source={fuelSource}
             onSourceChange={handleFuelSourceChange}
             gallons={gallons}
-            onGallonsChange={handleGallonsChange}
+            onGallonsChange={setGallons}
             cost={cost}
             onCostChange={setCost}
             bulkFuelTankId={bulkFuelTankId}
-            onBulkFuelTankChange={setBulkFuelTankId}
+            onBulkFuelTankChange={handleTankChange}
+            meter={meter}
+            onRefreshTanks={() => void bulkTanksQuery.refetch()}
+            meterError={errors.meter}
             tanks={bulkTanks}
             tanksLoading={bulkTanksQuery.isLoading}
             tanksError={!!bulkTanksQuery.error}

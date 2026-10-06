@@ -7,6 +7,8 @@
  */
 
 export interface BulkFuelTankInput {
+  /** @minimum 0 */
+  currentMeterReading?: number;
   name: string;
   fuelType: string;
   /** @nullable */

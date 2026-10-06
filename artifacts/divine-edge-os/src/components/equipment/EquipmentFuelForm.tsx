@@ -28,9 +28,9 @@ export function EquipmentFuelForm({
   const qc = useQueryClient();
   const createFuelLog = useCreateEquipmentFuelLog();
 
-  const { data: tanks = [] } = useListBulkFuelTanks(
+  const { data: tanks = [], refetch: refetchTanks } = useListBulkFuelTanks(
     { includeInactive: false },
-    { query: { queryKey: getListBulkFuelTanksQueryKey({ includeInactive: false }), enabled: open } }
+    { query: { queryKey: getListBulkFuelTanksQueryKey({ includeInactive: false }), enabled: open, refetchInterval: open ? 30_000 : false } }
   );
 
   const { data: recentJobs = [] } = useListJobs(
@@ -50,6 +50,10 @@ export function EquipmentFuelForm({
   
   const [odometerReading, setOdometerReading] = useState('');
   const [jobId, setJobId] = useState('');
+  // Line meter entry: prior reading is snapshotted on tank selection and only replaced by explicit confirmation.
+  const [meterMode, setMeterMode] = useState<'meter' | 'manual'>('meter');
+  const [meterReading, setMeterReading] = useState('');
+  const [expectedMeterReading, setExpectedMeterReading] = useState<number | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState('');
 
   // Reset idempotency when form opens or core fields change
@@ -63,6 +67,9 @@ export function EquipmentFuelForm({
       setJobId('');
       setFuelSource('purchased');
       setBulkFuelTankId('');
+      setMeterMode('meter');
+      setMeterReading('');
+      setExpectedMeterReading(null);
       setIdempotencyKey(crypto.randomUUID());
     }
   }, [open, todayStr]);
@@ -74,10 +81,67 @@ export function EquipmentFuelForm({
 
   const selectedTank = tanks.find(t => t.id === Number(bulkFuelTankId));
   const isBulk = fuelSource === 'bulk_tank';
+  const meterActive = isBulk && !!selectedTank && meterMode === 'meter' && expectedMeterReading != null;
+  const meterStale = meterActive && selectedTank?.currentMeterReading != null && selectedTank.currentMeterReading !== expectedMeterReading;
+  const meterValue = parseFloat(meterReading);
+  const meterTooLow = meterActive && meterReading !== '' && !isNaN(meterValue) && meterValue <= (expectedMeterReading as number);
+  const meterGallons = meterActive && meterReading !== '' && !isNaN(meterValue) && !meterTooLow
+    ? Math.round((meterValue - (expectedMeterReading as number)) * 1000) / 1000
+    : null;
+  const fmtMeter = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 3 });
+
+  const resetMeterForTank = (tankIdStr: string) => {
+    const tank = tanks.find(t => t.id === Number(tankIdStr));
+    setMeterReading('');
+    setGallons('');
+    setExpectedMeterReading(tank?.currentMeterReading ?? null);
+    setMeterMode(tank && tank.currentMeterReading != null ? 'meter' : 'manual');
+  };
+
+  const handleSourceChange = (v: 'purchased' | 'bulk_tank') => {
+    handleFieldChange(setFuelSource, v);
+    setBulkFuelTankId('');
+    resetMeterForTank('');
+  };
+
+  const handleTankChange = (v: string) => {
+    handleFieldChange(setBulkFuelTankId, v);
+    resetMeterForTank(v);
+  };
+
+  const handleMeterChange = (v: string) => {
+    handleFieldChange(setMeterReading, v);
+    const n = parseFloat(v);
+    const delta = expectedMeterReading != null && !isNaN(n) ? Math.round((n - expectedMeterReading) * 1000) / 1000 : 0;
+    setGallons(delta > 0 ? String(delta) : '');
+  };
+
+  const confirmLatestReading = () => {
+    if (selectedTank?.currentMeterReading == null) return;
+    const latest = selectedTank.currentMeterReading;
+    setExpectedMeterReading(latest);
+    setIdempotencyKey(crypto.randomUUID());
+    const n = parseFloat(meterReading);
+    const delta = !isNaN(n) ? Math.round((n - latest) * 1000) / 1000 : 0;
+    setGallons(delta > 0 ? String(delta) : '');
+  };
+
+  const switchMeterMode = (mode: 'meter' | 'manual') => {
+    setMeterMode(mode);
+    setMeterReading('');
+    setGallons('');
+    if (mode === 'meter') setExpectedMeterReading(selectedTank?.currentMeterReading ?? null);
+    setIdempotencyKey(crypto.randomUUID());
+  };
 
   const handleSave = () => {
     if (!date) { toast.error('Date is required'); return; }
     
+    if (meterActive) {
+      if (!meterReading || isNaN(meterValue)) { toast.error('Enter the current line meter reading'); return; }
+      if (meterTooLow) { toast.error(`Meter reading must be greater than the previous reading (${fmtMeter(expectedMeterReading as number)})`); return; }
+      if (meterStale) { toast.error('The previous meter reading changed. Confirm the new previous reading before saving.'); return; }
+    }
     const parsedGallons = parseFloat(gallons);
     if (isNaN(parsedGallons) || parsedGallons <= 0) {
       toast.error('Valid positive gallons required');
@@ -117,6 +181,7 @@ export function EquipmentFuelForm({
         jobId: jobId ? parseInt(jobId, 10) : undefined,
         fuelSource: fuelSource as EquipmentFuelLogInputFuelSource,
         bulkFuelTankId: isBulk ? Number(bulkFuelTankId) : undefined,
+        ...(meterActive ? { meterReading: meterValue, expectedMeterReading: expectedMeterReading as number } : {}),
         idempotencyKey,
       },
     }, {
@@ -130,7 +195,9 @@ export function EquipmentFuelForm({
         onOpenChange(false);
       },
       onError: (err: any) => {
-        toast.error(err?.response?.data?.message || 'Failed to add fuel log');
+        // Keep the entry; refresh tanks so a changed previous reading surfaces for explicit confirmation.
+        void refetchTanks();
+        toast.error(err?.response?.data?.message || err?.data?.message || 'Failed to add fuel log. Your entry is kept.');
       }
     });
   };
@@ -149,7 +216,7 @@ export function EquipmentFuelForm({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Source</label>
-              <Select value={fuelSource} onValueChange={(v: 'purchased' | 'bulk_tank') => handleFieldChange(setFuelSource, v)}>
+              <Select value={fuelSource} onValueChange={handleSourceChange}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="purchased">Station / Purchased</SelectItem>
@@ -167,7 +234,7 @@ export function EquipmentFuelForm({
           {isBulk && (
             <div className="space-y-1.5 p-3 border rounded-lg bg-muted/20">
               <label className="text-sm font-medium">Bulk Tank</label>
-              <Select value={bulkFuelTankId} onValueChange={v => handleFieldChange(setBulkFuelTankId, v)}>
+              <Select value={bulkFuelTankId} onValueChange={handleTankChange}>
                 <SelectTrigger><SelectValue placeholder="Select active tank..." /></SelectTrigger>
                 <SelectContent>
                   {tanks.length === 0 && <SelectItem value="none" disabled>No active tanks available</SelectItem>}
@@ -182,7 +249,47 @@ export function EquipmentFuelForm({
               {selectedTank && (
                 <p className="text-xs text-muted-foreground mt-1">
                   Current blended cost: ${(selectedTank.unitCostPerGallon).toFixed(2)}/gal
+                  {selectedTank.currentMeterReading != null && <> · Line meter {fmtMeter(selectedTank.currentMeterReading)}</>}
                 </p>
+              )}
+              {selectedTank && selectedTank.currentMeterReading == null && expectedMeterReading == null && (
+                <p className="text-xs text-muted-foreground mt-2 border-t pt-2">
+                  No starting line meter reading is set for this tank. Set one in Bulk Fuel tank settings to enable meter entry. Enter gallons manually for now.
+                </p>
+              )}
+              {meterActive && (
+                <div className="space-y-2 mt-2 border-t pt-3">
+                  <label className="text-sm font-medium">Line Meter Reading Now *</label>
+                  <Input
+                    type="number" step="0.001"
+                    placeholder={`More than ${fmtMeter(expectedMeterReading as number)}`}
+                    value={meterReading}
+                    onChange={e => handleMeterChange(e.target.value)}
+                    aria-invalid={meterTooLow}
+                    data-testid="input-fuel-meter-reading"
+                  />
+                  {meterTooLow && (
+                    <p className="text-xs text-destructive">Must be greater than the previous reading ({fmtMeter(expectedMeterReading as number)}).</p>
+                  )}
+                  <div className="grid grid-cols-3 gap-2 text-xs rounded-md border bg-card p-2">
+                    <div><p className="text-muted-foreground uppercase text-[10px] font-semibold">Previous</p><p className="font-mono">{fmtMeter(expectedMeterReading as number)}</p></div>
+                    <div><p className="text-muted-foreground uppercase text-[10px] font-semibold">Gallons</p><p className="font-mono text-primary">{meterGallons != null ? fmtMeter(meterGallons) : '—'}</p></div>
+                    <div><p className="text-muted-foreground uppercase text-[10px] font-semibold">Est. Cost</p><p className="font-mono">{meterGallons != null ? `$${(meterGallons * selectedTank!.unitCostPerGallon).toFixed(2)}` : '—'}</p></div>
+                  </div>
+                  {meterStale && (
+                    <div className="text-xs rounded-md border border-destructive/40 bg-destructive/5 p-2 space-y-1.5">
+                      <p>Fuel was recorded from this tank since you selected it. The line meter is now {fmtMeter(selectedTank!.currentMeterReading as number)}, not {fmtMeter(expectedMeterReading as number)}.</p>
+                      <Button type="button" size="sm" variant="outline" className="h-7" onClick={confirmLatestReading}>Use {fmtMeter(selectedTank!.currentMeterReading as number)} as previous</Button>
+                    </div>
+                  )}
+                  <div className="flex gap-3">
+                    {!meterStale && <button type="button" className="text-[11px] text-primary hover:underline" onClick={() => void refetchTanks()}>Check for newer reading</button>}
+                    <button type="button" className="text-[11px] text-muted-foreground hover:underline" onClick={() => switchMeterMode('manual')}>Enter gallons manually instead</button>
+                  </div>
+                </div>
+              )}
+              {isBulk && selectedTank && meterMode === 'manual' && selectedTank.currentMeterReading != null && (
+                <button type="button" className="text-[11px] text-primary hover:underline mt-1" onClick={() => switchMeterMode('meter')}>Use line meter reading instead</button>
               )}
             </div>
           )}
@@ -190,7 +297,7 @@ export function EquipmentFuelForm({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Gallons Added *</label>
-              <Input type="number" step="0.001" min="0.001" placeholder="e.g. 15.5" value={gallons} onChange={e => handleFieldChange(setGallons, e.target.value)} />
+              <Input type="number" step="0.001" min="0.001" placeholder={meterActive ? 'From meter' : 'e.g. 15.5'} value={gallons} readOnly={meterActive} className={meterActive ? 'bg-muted/30' : undefined} onChange={e => handleFieldChange(setGallons, e.target.value)} />
             </div>
             
             {isBulk ? (
@@ -199,7 +306,7 @@ export function EquipmentFuelForm({
                 <div className="h-9 px-3 py-1 border rounded-md bg-muted/30 flex items-center font-mono">
                   {gallons && selectedTank ? `$${(parseFloat(gallons) * selectedTank.unitCostPerGallon).toFixed(2)}` : '—'}
                 </div>
-                <p className="text-[10px] text-muted-foreground italic">Finalized on save</p>
+                <p className="text-[10px] text-muted-foreground italic">Client estimate. Server confirms final cost.</p>
               </div>
             ) : (
               <div className="space-y-1.5">
@@ -218,7 +325,7 @@ export function EquipmentFuelForm({
 
           <div className="grid grid-cols-2 gap-4 pt-2">
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-muted-foreground">Meter Reading</label>
+              <label className="text-sm font-medium text-muted-foreground">Hours / Odometer</label>
               <Input type="number" placeholder="Optional" value={odometerReading} onChange={e => handleFieldChange(setOdometerReading, e.target.value)} />
             </div>
             <div className="space-y-1.5">

@@ -107,12 +107,15 @@ export function EquipmentSettingsPanel() {
   const [equipRepairPct, setEquipRepairPct] = useState('50');
   const [equipResalePct, setEquipResalePct] = useState('20');
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+  const [checklistName, setChecklistName] = useState('Pre-trip');
+  const savedChecklistName = settings?.preTripChecklistName?.trim() || 'Pre-trip';
   const [endOfDayChecklist, setEndOfDayChecklist] = useState<ChecklistItem[]>([]);
 
   useEffect(() => {
     if (!settings) return;
     setEquipRepairPct(String((settings as any).equipmentRepairThresholdPct ?? 50));
     setEquipResalePct(String((settings as any).equipmentResaleThresholdPct ?? 20));
+    setChecklistName(settings.preTripChecklistName?.trim() || 'Pre-trip');
     setChecklist(((settings as any).preTripChecklist ?? []) as ChecklistItem[]);
     setEndOfDayChecklist(((settings as any).endOfDayChecklist ?? []) as ChecklistItem[]);
   }, [settings]);
@@ -129,9 +132,12 @@ export function EquipmentSettingsPanel() {
 
   const saveChecklist = () => {
     if (checklist.some(item => !item.label.trim())) { toast.error('Every checklist item needs a label'); return; }
-    updateSettings.mutate({ data: { preTripChecklist: checklist } }, {
-      onSuccess: () => { toast.success('Pre-trip checklist saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
-      onError: () => toast.error('Failed to save pre-trip checklist'),
+    const name = checklistName.trim();
+    if (!name) { toast.error('Give the checklist a name'); return; }
+    if (name.length > 40) { toast.error('Keep the checklist name to 40 characters or fewer'); return; }
+    updateSettings.mutate({ data: { preTripChecklist: checklist, preTripChecklistName: name } }, {
+      onSuccess: () => { toast.success(`${name} checklist saved`); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
+      onError: () => toast.error(`Failed to save ${savedChecklistName.toLowerCase()} checklist`),
     });
   };
   const saveEndOfDayChecklist = () => {
@@ -242,10 +248,23 @@ export function EquipmentSettingsPanel() {
       {/* Equipment Types */}
       <Card>
         <CardHeader>
-          <CardTitle>Pre-Trip Checklist</CardTitle>
-          <CardDescription>Choose which equipment types see each question. Questions set to all equipment preserve the tenant-wide checklist behavior. Completed inspections keep the wording that was used that day.</CardDescription>
+          <CardTitle>{savedChecklistName} Checklist</CardTitle>
+          <CardDescription>Name the morning equipment check the way your crews say it. The name shows on the field app button, screen title, and save button. Choose which equipment types see each question. Questions set to all equipment preserve the tenant-wide checklist behavior. Completed inspections keep the wording that was used that day.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
+          <div className="space-y-1.5 pb-2">
+            <label className="text-sm font-medium" htmlFor="pre-trip-checklist-name">Checklist name</label>
+            <Input
+              id="pre-trip-checklist-name"
+              className="max-w-xs"
+              maxLength={40}
+              placeholder="Pre-trip"
+              value={checklistName}
+              onChange={e => setChecklistName(e.target.value)}
+              data-testid="input-pre-trip-checklist-name"
+            />
+            <p className="text-xs text-muted-foreground">Examples: Morning Check, Truck Walkaround. Saved with the checklist below.</p>
+          </div>
           <ChecklistEditor items={checklist} equipmentTypes={equipmentTypes} onChange={setChecklist} />
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setChecklist(current => [...current, { id: `item-${Date.now()}`, label: '', required: true, equipmentTypes: [] }])} data-testid="button-add-pre-trip-question"><Plus className="w-4 h-4 mr-1" /> Add Question</Button>

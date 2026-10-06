@@ -5540,6 +5540,8 @@ export const CreateEmployeeHistoryEntryResponse = zod.object({
  */
 export const getTenantSettingsResponseDefaultOffSeasonStartRegExp = new RegExp('^\\d{2}-\\d{2}$');
 export const getTenantSettingsResponseDefaultOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
+export const getTenantSettingsResponsePreTripChecklistNameMax = 80;
+
 
 
 export const GetTenantSettingsResponse = zod.object({
@@ -5659,6 +5661,7 @@ export const GetTenantSettingsResponse = zod.object({
   "required": zod.boolean(),
   "equipmentTypes": zod.array(zod.string()).optional().describe('Equipment type labels this question applies to. Missing or empty applies to all equipment.')
 })).optional(),
+  "preTripChecklistName": zod.string().min(1).max(getTenantSettingsResponsePreTripChecklistNameMax).optional(),
   "endOfDayChecklist": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string(),
@@ -5677,6 +5680,8 @@ export const GetTenantSettingsResponse = zod.object({
  */
 export const updateTenantSettingsBodyDefaultOffSeasonStartRegExp = new RegExp('^\\d{2}-\\d{2}$');
 export const updateTenantSettingsBodyDefaultOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
+export const updateTenantSettingsBodyPreTripChecklistNameMax = 80;
+
 
 
 export const UpdateTenantSettingsBody = zod.object({
@@ -5767,6 +5772,7 @@ export const UpdateTenantSettingsBody = zod.object({
   "reviewCustomLink2Label": zod.string().optional(),
   "reviewCustomLink2Url": zod.string().optional(),
   "routeExceptionFee": zod.number().optional(),
+  "preTripChecklistName": zod.string().min(1).max(updateTenantSettingsBodyPreTripChecklistNameMax).optional(),
   "preTripChecklist": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string(),
@@ -5786,6 +5792,8 @@ export const UpdateTenantSettingsBody = zod.object({
 
 export const updateTenantSettingsResponseDefaultOffSeasonStartRegExp = new RegExp('^\\d{2}-\\d{2}$');
 export const updateTenantSettingsResponseDefaultOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
+export const updateTenantSettingsResponsePreTripChecklistNameMax = 80;
+
 
 
 export const UpdateTenantSettingsResponse = zod.object({
@@ -5905,6 +5913,7 @@ export const UpdateTenantSettingsResponse = zod.object({
   "required": zod.boolean(),
   "equipmentTypes": zod.array(zod.string()).optional().describe('Equipment type labels this question applies to. Missing or empty applies to all equipment.')
 })).optional(),
+  "preTripChecklistName": zod.string().min(1).max(updateTenantSettingsResponsePreTripChecklistNameMax).optional(),
   "endOfDayChecklist": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string(),
@@ -6935,7 +6944,15 @@ export const CreateEquipmentFuelLogParams = zod.object({
   "id": zod.coerce.number()
 })
 
+export const createEquipmentFuelLogBodyMeterReadingMin = 0;
+
+export const createEquipmentFuelLogBodyExpectedMeterReadingMin = 0;
+
+
+
 export const CreateEquipmentFuelLogBody = zod.object({
+  "meterReading": zod.number().min(createEquipmentFuelLogBodyMeterReadingMin).optional(),
+  "expectedMeterReading": zod.number().min(createEquipmentFuelLogBodyExpectedMeterReadingMin).optional(),
   "date": zod.string(),
   "gallons": zod.number(),
   "cost": zod.number().optional(),
@@ -7029,6 +7046,7 @@ export const CreateBulkFuelAdjustmentBody = zod.object({
 
 export const CreateBulkFuelAdjustmentResponse = zod.object({
   "tank": zod.object({
+  "currentMeterReading": zod.number().nullish(),
   "id": zod.number(),
   "name": zod.string(),
   "fuelType": zod.string(),
@@ -7040,6 +7058,8 @@ export const CreateBulkFuelAdjustmentResponse = zod.object({
   "createdAt": zod.string()
 }),
   "transaction": zod.object({
+  "meterReadingBefore": zod.number().nullish(),
+  "meterReadingAfter": zod.number().nullish(),
   "id": zod.number(),
   "tankId": zod.number(),
   "type": zod.enum(['delivery', 'opening_balance', 'dispense', 'reversal', 'adjustment']),
@@ -7071,6 +7091,7 @@ export const ListBulkFuelTanksQueryParams = zod.object({
 })
 
 export const ListBulkFuelTanksResponseItem = zod.object({
+  "currentMeterReading": zod.number().nullish(),
   "id": zod.number(),
   "name": zod.string(),
   "fuelType": zod.string(),
@@ -7084,13 +7105,19 @@ export const ListBulkFuelTanksResponseItem = zod.object({
 export const ListBulkFuelTanksResponse = zod.array(ListBulkFuelTanksResponseItem)
 
 
+export const createBulkFuelTankBodyCurrentMeterReadingMin = 0;
+
+
+
 export const CreateBulkFuelTankBody = zod.object({
+  "currentMeterReading": zod.number().min(createBulkFuelTankBodyCurrentMeterReadingMin).optional(),
   "name": zod.string(),
   "fuelType": zod.string(),
   "capacityGallons": zod.number().nullish()
 })
 
 export const CreateBulkFuelTankResponse = zod.object({
+  "currentMeterReading": zod.number().nullish(),
   "id": zod.number(),
   "name": zod.string(),
   "fuelType": zod.string(),
@@ -7107,7 +7134,12 @@ export const UpdateBulkFuelTankParams = zod.object({
   "id": zod.coerce.number()
 })
 
+export const updateBulkFuelTankBodyCurrentMeterReadingMin = 0;
+
+
+
 export const UpdateBulkFuelTankBody = zod.object({
+  "currentMeterReading": zod.number().min(updateBulkFuelTankBodyCurrentMeterReadingMin).optional(),
   "name": zod.string().optional(),
   "fuelType": zod.string().optional(),
   "capacityGallons": zod.number().nullish(),
@@ -7115,6 +7147,7 @@ export const UpdateBulkFuelTankBody = zod.object({
 })
 
 export const UpdateBulkFuelTankResponse = zod.object({
+  "currentMeterReading": zod.number().nullish(),
   "id": zod.number(),
   "name": zod.string(),
   "fuelType": zod.string(),
@@ -7142,6 +7175,8 @@ export const ListBulkFuelTransactionsQueryParams = zod.object({
 
 export const ListBulkFuelTransactionsResponse = zod.object({
   "data": zod.array(zod.object({
+  "meterReadingBefore": zod.number().nullish(),
+  "meterReadingAfter": zod.number().nullish(),
   "id": zod.number(),
   "tankId": zod.number(),
   "type": zod.enum(['delivery', 'opening_balance', 'dispense', 'reversal', 'adjustment']),
@@ -7188,6 +7223,7 @@ export const CreateBulkFuelIntakeBody = zod.object({
 
 export const CreateBulkFuelIntakeResponse = zod.object({
   "tank": zod.object({
+  "currentMeterReading": zod.number().nullish(),
   "id": zod.number(),
   "name": zod.string(),
   "fuelType": zod.string(),
@@ -7199,6 +7235,8 @@ export const CreateBulkFuelIntakeResponse = zod.object({
   "createdAt": zod.string()
 }),
   "transaction": zod.object({
+  "meterReadingBefore": zod.number().nullish(),
+  "meterReadingAfter": zod.number().nullish(),
   "id": zod.number(),
   "tankId": zod.number(),
   "type": zod.enum(['delivery', 'opening_balance', 'dispense', 'reversal', 'adjustment']),
@@ -7254,7 +7292,15 @@ export const CreateEquipmentReadingLogResponse = zod.object({
 /**
  * @summary Atomically save an idempotent pre-trip equipment inspection
  */
+export const createEquipmentPreTripBodyMeterReadingMin = 0;
+
+export const createEquipmentPreTripBodyExpectedMeterReadingMin = 0;
+
+
+
 export const CreateEquipmentPreTripBody = zod.object({
+  "meterReading": zod.number().min(createEquipmentPreTripBodyMeterReadingMin).optional(),
+  "expectedMeterReading": zod.number().min(createEquipmentPreTripBodyExpectedMeterReadingMin).optional(),
   "idempotencyKey": zod.string(),
   "equipmentId": zod.number(),
   "condition": zod.enum(['good', 'needs_attention', 'unsafe']),

@@ -3586,6 +3586,11 @@ export interface TenantSettings {
   reviewCustomLink2Url?: string | null;
   routeExceptionFee?: number;
   preTripChecklist?: PreTripChecklistItem[];
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  preTripChecklistName?: string;
   /** Trip charge auto-appended to a job's invoice when it uses a one-time reschedule */
   endOfDayChecklist?: PreTripChecklistItem[];
   /** $/hour flat rate applied to daily task / compliance time for payroll. 0 = display-only. */
@@ -3994,6 +3999,11 @@ export interface TenantSettingsUpdate {
   reviewCustomLink2Label?: string;
   reviewCustomLink2Url?: string;
   routeExceptionFee?: number;
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  preTripChecklistName?: string;
   preTripChecklist?: PreTripChecklistItem[];
   endOfDayChecklist?: PreTripChecklistItem[];
   /** $/hour flat rate applied to daily task / compliance time for payroll. 0 = display-only. */
@@ -4675,6 +4685,10 @@ export const EquipmentFuelLogInputFuelSource = {
 } as const;
 
 export interface EquipmentFuelLogInput {
+  /** @minimum 0 */
+  meterReading?: number;
+  /** @minimum 0 */
+  expectedMeterReading?: number;
   date: string;
   gallons: number;
   cost?: number;
@@ -4749,6 +4763,10 @@ export interface PreTripChecklistResponse {
 }
 
 export interface EquipmentPreTripInput {
+  /** @minimum 0 */
+  meterReading?: number;
+  /** @minimum 0 */
+  expectedMeterReading?: number;
   idempotencyKey: string;
   equipmentId: number;
   condition: EquipmentPreTripInputCondition;
@@ -4813,6 +4831,8 @@ export interface BulkFuelAdjustmentPreview {
 }
 
 export interface BulkFuelTank {
+  /** @nullable */
+  currentMeterReading?: number | null;
   id: number;
   name: string;
   fuelType: string;
@@ -4826,6 +4846,8 @@ export interface BulkFuelTank {
 }
 
 export interface BulkFuelTankInput {
+  /** @minimum 0 */
+  currentMeterReading?: number;
   name: string;
   fuelType: string;
   /** @nullable */
@@ -4833,6 +4855,8 @@ export interface BulkFuelTankInput {
 }
 
 export interface BulkFuelTankUpdate {
+  /** @minimum 0 */
+  currentMeterReading?: number;
   name?: string;
   fuelType?: string;
   /** @nullable */
@@ -4852,6 +4876,10 @@ export const BulkFuelTransactionType = {
 } as const;
 
 export interface BulkFuelTransaction {
+  /** @nullable */
+  meterReadingBefore?: number | null;
+  /** @nullable */
+  meterReadingAfter?: number | null;
   id: number;
   tankId: number;
   type: BulkFuelTransactionType;

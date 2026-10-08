@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { billableItems } from '@/lib/estimateSelection';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -136,7 +137,7 @@ function EstimatePreviewDialog({ estimate, settings, open, onClose }: {
   const items = (estimate?.lineItems ?? []) as LineItem[];
   const required = items.filter(i => !i.isOptional);
   const optional = items.filter(i => i.isOptional);
-  const total = items.reduce((s, i) => s + calcItem(i), 0);
+  const total = billableItems(items).reduce((s, i) => s + calcItem(i), 0);
 
   // Build category groups for preview breakdown
   const previewCatGroups = (['labor', 'parts', 'other'] as const)
@@ -458,7 +459,7 @@ export default function EstimatesPage() {
     setForm(f => ({ ...f, templateId }));
   }
 
-  const subtotal = lineItems.reduce((sum, i) => sum + calcItem(i), 0);
+  const subtotal = billableItems(lineItems).reduce((sum, i) => sum + calcItem(i), 0);
 
   function handleCreate() {
     createEstimate.mutate({
@@ -609,7 +610,7 @@ export default function EstimatesPage() {
   function cancelEditLineItems() { setEditingLineItems(false); setEditLineItemsList([]); }
   function saveEditLineItems() {
     if (!selectedEstimate) return;
-    const total = editLineItemsList.reduce((s, i) => s + calcItem(i), 0);
+    const total = billableItems(editLineItemsList).reduce((s, i) => s + calcItem(i), 0);
     updateEstimate.mutate(
       { id: selectedEstimate.id, data: { lineItems: editLineItemsList, totalAmount: total } as any },
       {
@@ -1730,10 +1731,11 @@ export default function EstimatesPage() {
                   )}
                 </div>
 
-                {selectedEstimate.declineReason && (
+                {(selectedEstimate.declineReason || selectedEstimate.declineReasonChoice) && (
                   <div className="rounded-lg bg-red-50 border border-red-200 p-3">
                     <p className="text-xs text-red-600 font-semibold mb-1 flex items-center gap-1"><XCircle className="w-3.5 h-3.5" /> Decline Reason</p>
-                    <p className="text-sm text-red-700">{selectedEstimate.declineReason}</p>
+                    {selectedEstimate.declineReasonChoice && <p className="text-sm font-medium text-red-800">{selectedEstimate.declineReasonChoice}</p>}
+                    {selectedEstimate.declineReason && <p className="text-sm text-red-700">{selectedEstimate.declineReason}</p>}
                   </div>
                 )}
 
@@ -1807,7 +1809,7 @@ export default function EstimatesPage() {
                     <Separator />
                     <div className="flex justify-between text-sm font-semibold">
                       <span>Estimated Total</span>
-                      <span>${editLineItemsList.reduce((s, i) => s + (i.qty || 0) * (i.unitPrice || 0), 0).toFixed(2)}</span>
+                      <span>${billableItems(editLineItemsList).reduce((s, i) => s + calcItem(i), 0).toFixed(2)}</span>
                     </div>
                   </div>
                 ) : (
@@ -1817,8 +1819,7 @@ export default function EstimatesPage() {
                     const required = items.filter(i => !i.isOptional);
                     const optional = items.filter(i => i.isOptional);
                     const grandTotal = selectedEstimate.total ?? 0;
-                    const acceptedSubtotal = items
-                      .filter(i => !i.isOptional || i.acceptedByCustomer)
+                    const acceptedSubtotal = billableItems(items)
                       .reduce((s, i) => s + calcItem(i), 0);
                     const taxAmt = Math.max(0, grandTotal - acceptedSubtotal);
 

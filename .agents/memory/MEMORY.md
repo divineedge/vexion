@@ -56,3 +56,4 @@
 - [Field App session unlock](field-app-session-unlock.md) — password once per 30-day session; biometric/PIN only at cold launch or explicit lock, never per job action
 - [External service grants](external-service-grants.md) — owner-delegated business-wide categories are separate from staff roles; MCP client authentication limits must remain explicit
 - [Bulk fuel costing](bulk-fuel-costing.md) — blended tank costs are snapshotted per fill; receipts and allocated equipment fuel must not become duplicate expenses
+- [Estimate declines and campaign consent](estimate-declines-campaign-consent.md) — snapshot feedback; not-now campaign routing is separate from acquisition and never overrides unsubscribe

@@ -5662,6 +5662,7 @@ export const GetTenantSettingsResponse = zod.object({
   "equipmentTypes": zod.array(zod.string()).optional().describe('Equipment type labels this question applies to. Missing or empty applies to all equipment.')
 })).optional(),
   "preTripChecklistName": zod.string().min(1).max(getTenantSettingsResponsePreTripChecklistNameMax).optional(),
+  "estimateDeclineReasons": zod.array(zod.string()).optional(),
   "endOfDayChecklist": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string(),
@@ -5773,6 +5774,7 @@ export const UpdateTenantSettingsBody = zod.object({
   "reviewCustomLink2Url": zod.string().optional(),
   "routeExceptionFee": zod.number().optional(),
   "preTripChecklistName": zod.string().min(1).max(updateTenantSettingsBodyPreTripChecklistNameMax).optional(),
+  "estimateDeclineReasons": zod.array(zod.string()).optional(),
   "preTripChecklist": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string(),
@@ -5914,6 +5916,7 @@ export const UpdateTenantSettingsResponse = zod.object({
   "equipmentTypes": zod.array(zod.string()).optional().describe('Equipment type labels this question applies to. Missing or empty applies to all equipment.')
 })).optional(),
   "preTripChecklistName": zod.string().min(1).max(updateTenantSettingsResponsePreTripChecklistNameMax).optional(),
+  "estimateDeclineReasons": zod.array(zod.string()).optional(),
   "endOfDayChecklist": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string(),
@@ -9660,6 +9663,7 @@ export const ListEstimatesResponseItem = zod.object({
   "approvedAt": zod.string().nullish(),
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
+  "declineReasonChoice": zod.string().nullish(),
   "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
   "suppliesNeeded": zod.array(zod.object({
   "inventoryItemId": zod.number(),
@@ -9754,6 +9758,7 @@ export const CreateEstimateResponse = zod.object({
   "approvedAt": zod.string().nullish(),
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
+  "declineReasonChoice": zod.string().nullish(),
   "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
   "suppliesNeeded": zod.array(zod.object({
   "inventoryItemId": zod.number(),
@@ -9827,6 +9832,7 @@ export const GetEstimateResponse = zod.object({
   "approvedAt": zod.string().nullish(),
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
+  "declineReasonChoice": zod.string().nullish(),
   "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
   "suppliesNeeded": zod.array(zod.object({
   "inventoryItemId": zod.number(),
@@ -9923,6 +9929,7 @@ export const UpdateEstimateResponse = zod.object({
   "approvedAt": zod.string().nullish(),
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
+  "declineReasonChoice": zod.string().nullish(),
   "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
   "suppliesNeeded": zod.array(zod.object({
   "inventoryItemId": zod.number(),
@@ -10001,6 +10008,7 @@ export const ArchiveEstimateResponse = zod.object({
   "approvedAt": zod.string().nullish(),
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
+  "declineReasonChoice": zod.string().nullish(),
   "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
   "suppliesNeeded": zod.array(zod.object({
   "inventoryItemId": zod.number(),
@@ -10065,6 +10073,7 @@ export const RestoreEstimateResponse = zod.object({
   "approvedAt": zod.string().nullish(),
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
+  "declineReasonChoice": zod.string().nullish(),
   "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
   "suppliesNeeded": zod.array(zod.object({
   "inventoryItemId": zod.number(),
@@ -10129,6 +10138,7 @@ export const SendEstimateResponse = zod.object({
   "approvedAt": zod.string().nullish(),
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
+  "declineReasonChoice": zod.string().nullish(),
   "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
   "suppliesNeeded": zod.array(zod.object({
   "inventoryItemId": zod.number(),
@@ -10272,6 +10282,7 @@ export const GetPublicEstimateResponse = zod.object({
   "approvedAt": zod.string().nullish(),
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
+  "declineReasonChoice": zod.string().nullish(),
   "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
   "suppliesNeeded": zod.array(zod.object({
   "inventoryItemId": zod.number(),
@@ -10295,6 +10306,7 @@ export const GetPublicEstimateResponse = zod.object({
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 }).and(zod.object({
+  "declineReasonOptions": zod.array(zod.string()).optional(),
   "required": zod.array(zod.object({
   "id": zod.string(),
   "serviceId": zod.number().nullish(),
@@ -10345,6 +10357,7 @@ export const RespondToEstimateBody = zod.object({
   "action": zod.enum(['approve', 'decline']),
   "acceptedOptionalItemIds": zod.array(zod.string()).optional(),
   "declineReason": zod.string().optional(),
+  "declineReasonChoice": zod.string().optional(),
   "paymentMethodId": zod.string().optional().describe('Stripe PaymentMethod ID (pm_xxx) — required when Stripe is enabled and action is approve')
 })
 
@@ -10380,6 +10393,7 @@ export const RespondToEstimateResponse = zod.object({
   "approvedAt": zod.string().nullish(),
   "declinedAt": zod.string().nullish(),
   "declineReason": zod.string().nullish(),
+  "declineReasonChoice": zod.string().nullish(),
   "estimatedDurationMin": zod.number().nullish().describe('Expected job duration in minutes'),
   "suppliesNeeded": zod.array(zod.object({
   "inventoryItemId": zod.number(),
@@ -11873,6 +11887,7 @@ export const PreviewBroadcastResponse = zod.object({
  * @summary Dispatch a broadcast to a filtered customer segment
  */
 export const SendBroadcastBody = zod.object({
+  "notInterestedCampaignId": zod.number().optional(),
   "channel": zod.enum(['sms', 'email']),
   "subject": zod.string().optional(),
   "body": zod.string(),
@@ -11890,6 +11905,7 @@ export const SendBroadcastBody = zod.object({
 })
 
 export const SendBroadcastResponse = zod.object({
+  "notInterestedCampaignId": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "channel": zod.enum(['sms', 'email']),
@@ -11923,6 +11939,7 @@ export const SendBroadcastResponse = zod.object({
  * @summary List broadcast history
  */
 export const ListBroadcastsResponseItem = zod.object({
+  "notInterestedCampaignId": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "channel": zod.enum(['sms', 'email']),
@@ -11961,6 +11978,7 @@ export const GetBroadcastParams = zod.object({
 })
 
 export const GetBroadcastResponse = zod.object({
+  "notInterestedCampaignId": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "channel": zod.enum(['sms', 'email']),
@@ -12008,12 +12026,14 @@ export const UpdateBroadcastParams = zod.object({
 })
 
 export const UpdateBroadcastBody = zod.object({
+  "notInterestedCampaignId": zod.number().optional(),
   "body": zod.string().optional(),
   "subject": zod.string().optional(),
   "scheduledFor": zod.string().optional().describe('ISO date-time string for the new send time.')
 })
 
 export const UpdateBroadcastResponse = zod.object({
+  "notInterestedCampaignId": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "channel": zod.enum(['sms', 'email']),
@@ -12051,6 +12071,7 @@ export const CancelBroadcastParams = zod.object({
 })
 
 export const CancelBroadcastResponse = zod.object({
+  "notInterestedCampaignId": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "channel": zod.enum(['sms', 'email']),

@@ -542,6 +542,7 @@ router.patch("/estimates/:id", async (req, res): Promise<void> => {
       return;
     }
     updateData.status = status;
+    if (status === "declined") updateData.declinedAt = new Date();
   }
   if (estimatedDurationMin !== undefined) updateData.estimatedDurationMin = estimatedDurationMin != null ? parseInt(String(estimatedDurationMin), 10) : null;
   if (suppliesNeeded !== undefined) (updateData as any).suppliesNeeded = normaliseSupplies(suppliesNeeded);
@@ -1185,6 +1186,7 @@ router.get("/public/estimates/:token", async (req, res): Promise<void> => {
   res.json({
     ...formatEstimate(row.estimate, { customerName: row.customerName, propertyAddress: row.propertyAddress }),
     approvalToken: undefined, // don't expose token in response
+    declineReasonOptions: tenant?.estimateDeclineReasons ?? [],
     required,
     optional,
     expired: !!expired,
@@ -1263,7 +1265,7 @@ router.post("/public/estimates/:token/setup-intent", async (req, res): Promise<v
 // ── PUBLIC: RESPOND (APPROVE / DECLINE) ───────────────────────────────────────
 router.post("/public/estimates/:token/respond", async (req, res): Promise<void> => {
   const { token } = req.params;
-  const { action, acceptedOptionalItemIds, declineReason, paymentMethodId } = req.body;
+  const { action, acceptedOptionalItemIds, declineReason, declineReasonChoice, paymentMethodId } = req.body;
 
   if (!["approve", "decline"].includes(action)) {
     res.status(400).json({ error: "action must be 'approve' or 'decline'" });
@@ -1272,6 +1274,15 @@ router.post("/public/estimates/:token/respond", async (req, res): Promise<void> 
 
   const [estimate] = await db.select().from(estimatesTable).where(eq(estimatesTable.approvalToken, token));
   if (!estimate) { res.status(404).json({ error: "Estimate not found" }); return; }
+  if (action === "decline") {
+    const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, estimate.tenantId));
+    if ((declineReason != null && (typeof declineReason !== "string" || declineReason.length > 2000)) ||
+      (declineReasonChoice != null && (typeof declineReasonChoice !== "string" ||
+        ![...(tenant?.estimateDeclineReasons ?? []), "Other"].includes(declineReasonChoice))) ||
+      (declineReasonChoice === "Other" && !declineReason?.trim())) {
+      res.status(400).json({ error: "Choose a configured reason, or choose Other and explain (up to 2,000 characters)." }); return;
+    }
+  }
   if (!["sent"].includes(estimate.status)) {
     res.status(409).json({ error: `Estimate already ${estimate.status}` });
     return;
@@ -1419,9 +1430,11 @@ router.post("/public/estimates/:token/respond", async (req, res): Promise<void> 
       approvedAt: isApproved ? now : null,
       declinedAt: isApproved ? null : now,
       declineReason: isApproved ? null : (declineReason ?? null),
+      declineReasonChoice: isApproved ? null : (declineReasonChoice ?? null),
     })
-    .where(eq(estimatesTable.approvalToken, token))
+    .where(and(eq(estimatesTable.approvalToken, token), eq(estimatesTable.status, "sent")))
     .returning();
+  if (!updated) { res.status(409).json({ error: "This estimate has already been responded to. Refresh to see its status." }); return; }
 
   // A declined estimate means the design it was built around isn't going forward — archive the
   // linked blueprint so it drops out of the main Blueprints list but stays reachable from the property.

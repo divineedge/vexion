@@ -146,6 +146,7 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     // Routing
     routeExceptionFee: tenant.routeExceptionFee ?? 0,
     preTripChecklistName: tenant.preTripChecklistName,
+    estimateDeclineReasons: tenant.estimateDeclineReasons,
     preTripChecklist: (tenant.preTripChecklist as Array<{ id: string; label: string; required: boolean; equipmentTypes?: string[] }> | null) ?? [],
     endOfDayChecklist: (tenant.endOfDayChecklist as Array<{ id: string; label: string; required: boolean; equipmentTypes?: string[] }> | null) ?? [],
     // Equipment Cost Ledger
@@ -224,7 +225,7 @@ router.patch("/settings", async (req, res): Promise<void> => {
     reviewCustomLink1Label, reviewCustomLink1Url,
     reviewCustomLink2Label, reviewCustomLink2Url,
     // Routing
-    routeExceptionFee, preTripChecklist, preTripChecklistName, endOfDayChecklist,
+    routeExceptionFee, preTripChecklist, preTripChecklistName, endOfDayChecklist, estimateDeclineReasons,
     // Equipment Cost Ledger
     fuelPricePerGallon, equipmentRuntimeHourlyRate, equipmentDowntimeHourlyRate,
     // Payroll
@@ -428,6 +429,14 @@ router.patch("/settings", async (req, res): Promise<void> => {
       res.status(400).json({ error: "Checklist name must be 1–80 characters" }); return;
     }
     updates.preTripChecklistName = preTripChecklistName.trim();
+  }
+  if (estimateDeclineReasons !== undefined) {
+    if (!Array.isArray(estimateDeclineReasons) || estimateDeclineReasons.length > 20 ||
+      estimateDeclineReasons.some(r => typeof r !== "string" || !r.trim() || r.trim().length > 100 || r.trim().toLowerCase() === "other") ||
+      new Set(estimateDeclineReasons.map(r => r.trim().toLowerCase())).size !== estimateDeclineReasons.length) {
+      res.status(400).json({ error: "Use up to 20 unique reasons (1–100 characters). Other is included automatically." }); return;
+    }
+    updates.estimateDeclineReasons = estimateDeclineReasons.map(r => r.trim());
   }
   if (preTripChecklist !== undefined) {
     if (!Array.isArray(preTripChecklist) || preTripChecklist.some(item =>

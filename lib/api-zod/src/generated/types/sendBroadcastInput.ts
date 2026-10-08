@@ -9,6 +9,7 @@ import type { BroadcastFilter } from './broadcastFilter';
 import type { SendBroadcastInputChannel } from './sendBroadcastInputChannel';
 
 export interface SendBroadcastInput {
+  notInterestedCampaignId?: number;
   channel: SendBroadcastInputChannel;
   subject?: string;
   body: string;

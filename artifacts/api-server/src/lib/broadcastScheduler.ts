@@ -13,6 +13,7 @@ import { resolveRecipients } from "../routes/broadcasts";
 import { logger } from "./logger";
 import { sendSms, type SmsProviderConfig } from "./smsProvider";
 import { sendEmail, type EmailProviderConfig } from "./emailProvider";
+import { campaignEmail, marketingEmailAllowed } from "./campaignPreferences";
 
 /**
  * Sends an alert email to the tenant owner when a scheduled broadcast lands in 'failed' status.
@@ -107,6 +108,7 @@ async function dispatchBroadcast(
 ) {
   const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
   let sent = 0;
+  let optedOut = 0;
   let failed = 0;
 
   for (const customer of recipients) {
@@ -132,7 +134,14 @@ async function dispatchBroadcast(
           config: (tenant?.emailProviderConfig as Record<string, string>) ?? {},
           fromAddress: (tenant?.emailProviderConfig as Record<string, string>)?.["fromAddress"] ?? null,
         };
-        const result = await sendEmail(emailConfig, customer.email, subject ?? "", personalized);
+        const [current] = await db.select().from(broadcastsTable).where(eq(broadcastsTable.id, broadcastId));
+        if (!(await marketingEmailAllowed(tenantId, customer.id, (current?.recipientFilter as { campaignId?: number })?.campaignId))) {
+          optedOut++;
+          await db.insert(broadcastRecipientsTable).values({ tenantId, broadcastId, customerId: customer.id, status: "skipped_opt_out" });
+          continue;
+        }
+        const email = await campaignEmail(tenantId, broadcastId, customer.id, personalized);
+        const result = await sendEmail(emailConfig, customer.email, subject ?? "", email.text, email.html);
         await db.insert(communicationsLogTable).values({
           tenantId, customerId: customer.id, direction: "outbound", channel: "email",
           toAddress: customer.email, subject: subject ?? "", body: personalized,
@@ -150,7 +159,7 @@ async function dispatchBroadcast(
 
   const finalStatus = failed > 0 && sent === 0 ? "failed" : "completed";
   await db.update(broadcastsTable)
-    .set({ status: finalStatus, sentAt: new Date(), stats: { sent, failed, optedOut: 0 } })
+    .set({ status: finalStatus, sentAt: new Date(), stats: { sent, failed, optedOut } })
     .where(eq(broadcastsTable.id, broadcastId));
 
   // Notify staff on full failure OR partial failure (some sent, some failed)

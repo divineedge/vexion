@@ -44,6 +44,8 @@ export interface Estimate {
   declinedAt?: string | null;
   /** @nullable */
   declineReason?: string | null;
+  /** @nullable */
+  declineReasonChoice?: string | null;
   /**
      * Expected job duration in minutes
      * @nullable

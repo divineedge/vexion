@@ -24,6 +24,8 @@ interface LineItem {
   discount: number;
   isOptional: boolean;
   optionalPitchLine: string;
+  /** Optional items sharing a group name are offered as pick-one choices */
+  groupId: string;
 }
 
 function emptyItem(): LineItem {
@@ -36,6 +38,7 @@ function emptyItem(): LineItem {
     discount: 0,
     isOptional: false,
     optionalPitchLine: '',
+    groupId: '',
   };
 }
 
@@ -103,6 +106,7 @@ export default function EstimateTemplatesSettings() {
       discount: i.discount ?? 0,
       isOptional: i.isOptional ?? false,
       optionalPitchLine: i.optionalPitchLine ?? '',
+      groupId: (i as { groupId?: string | null }).groupId ?? '',
     }));
     setLineItems(items.length > 0 ? items : [emptyItem()]);
     setSheetMode('edit');
@@ -124,7 +128,7 @@ export default function EstimateTemplatesSettings() {
     setLineItems(items => items.map((item, i) => (i === idx ? { ...item, ...patch } : item)));
   };
 
-  const subtotal = lineItems.reduce((sum, i) => sum + calcItem(i), 0);
+  const subtotal = lineItems.filter(i => !i.isOptional).reduce((sum, i) => sum + calcItem(i), 0);
 
   const handleSave = () => {
     if (!form.name.trim()) {
@@ -155,6 +159,7 @@ export default function EstimateTemplatesSettings() {
           discount: i.discount,
           isOptional: i.isOptional,
           optionalPitchLine: i.optionalPitchLine || null,
+          groupId: i.isOptional && i.groupId.trim() ? i.groupId.trim() : null,
           acceptedByCustomer: !i.isOptional,
         })),
       ],
@@ -246,8 +251,10 @@ export default function EstimateTemplatesSettings() {
                   discount: i.discount ?? 0,
                   isOptional: i.isOptional ?? false,
                   optionalPitchLine: i.optionalPitchLine ?? '',
+                  groupId: i.groupId ?? '',
                 }));
-                const total = items.reduce((sum, i) => sum + calcItem(i), 0);
+                // Base total = required items only; optional add-ons are chosen by the customer.
+                const total = items.filter(i => !i.isOptional).reduce((sum, i) => sum + calcItem(i), 0);
                 const optionalCount = items.filter(i => i.isOptional).length;
                 return (
                   <TableRow
@@ -474,12 +481,21 @@ export default function EstimateTemplatesSettings() {
                       className="text-sm"
                     />
                   )}
+                  {item.isOptional && (
+                    <Input
+                      placeholder="Choice group (optional) - items with the same group name are pick-one, e.g. Mulch color"
+                      title="Optional items sharing a group name let the customer pick only one"
+                      value={item.groupId}
+                      onChange={e => updateLineItem(idx, { groupId: e.target.value })}
+                      className="text-sm"
+                    />
+                  )}
                 </div>
               ))}
 
               <div className="flex justify-end pt-1">
                 <div className="text-right">
-                  <p className="text-xs text-muted-foreground">Template Subtotal</p>
+                  <p className="text-xs text-muted-foreground">Template Subtotal (required items)</p>
                   <p className="text-lg font-bold">${subtotal.toFixed(2)}</p>
                 </div>
               </div>

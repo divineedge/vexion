@@ -1991,6 +1991,7 @@ router.get("/portal/estimates/:id", requirePortalAuth, async (req: any, res): Pr
   res.json({
     id: estimate.id,
     title: `Estimate #${estimate.id}`,
+    declineReasonOptions: (await db.select({ reasons: tenantsTable.estimateDeclineReasons }).from(tenantsTable).where(eq(tenantsTable.id, estimate.tenantId)))[0]?.reasons ?? [],
     status: estimate.status,
     description: null,
     subtotal: estimate.subtotal,

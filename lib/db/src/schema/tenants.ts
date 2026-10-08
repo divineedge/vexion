@@ -147,6 +147,7 @@ export const tenantsTable = pgTable("tenants", {
   routeExceptionFee: real("route_exception_fee").notNull().default(0),
   /** Editable pre-trip questions. Shape: Array<{id,label,required,equipmentTypes?: string[]}>; missing/empty equipmentTypes applies to all. */
   preTripChecklistName: text("pre_trip_checklist_name").notNull().default("Pre-trip"),
+  estimateDeclineReasons: jsonb("estimate_decline_reasons").$type<string[]>().notNull().default(["Price", "Timing", "Chose another provider", "Service no longer needed"]),
   preTripChecklist: jsonb("pre_trip_checklist").default(
     '[{"id":"tires","label":"Tires and wheels are safe","required":true},{"id":"fluids","label":"Fluids and leaks checked","required":true},{"id":"guards","label":"Guards and safety equipment are secure","required":true},{"id":"controls","label":"Controls, lights, and brakes operate correctly","required":true}]',
   ),

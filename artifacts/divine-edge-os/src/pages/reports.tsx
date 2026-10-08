@@ -23,10 +23,11 @@ import { Badge } from '@/components/ui/badge';
 import {
   Briefcase, Users, ScrollText, Clock3, Percent, Download, Printer, Settings,
   RefreshCw, ShieldAlert, Package, Search, X, ShoppingCart, Building2, CheckSquare, Square, AlertTriangle,
-  TrendingUp, Gauge,
+  TrendingUp, Gauge, ThumbsDown,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { downloadCsv } from '@/lib/csvExport';
+import EstimateDeclinesReport from '@/components/reports/EstimateDeclinesReport';
 
 function defaultRange() {
   const now = new Date();
@@ -166,6 +167,7 @@ const REPORTS = [
   { id: 'inventory-sales', label: 'Inventory Sales', icon: Package, description: 'Units sold, margin, and commission per inventory item.' },
   { id: 'reorder-list', label: 'Reorder List', icon: ShoppingCart, description: 'Low-stock items grouped by supplier, ready to export as a purchase order.' },
   { id: 'hourly-productivity', label: 'Revenue / Hour', icon: Gauge, description: 'Revenue per billable hour by service, crew, and employee — compare to your budget target.' },
+  { id: 'estimate-declines', label: 'Estimate Declines', icon: ThumbsDown, description: 'Why customers decline estimates, counted by reason with comments.' },
 ] as const;
 
 export default function ReportsPage() {
@@ -221,6 +223,7 @@ export default function ReportsPage() {
         <TabsContent value="inventory-sales"><InventorySalesReport /></TabsContent>
         <TabsContent value="reorder-list"><ReorderListReportPanel /></TabsContent>
         <TabsContent value="hourly-productivity"><HourlyProductivityReport /></TabsContent>
+        <TabsContent value="estimate-declines"><EstimateDeclinesReport /></TabsContent>
       </Tabs>
     </div>
   );

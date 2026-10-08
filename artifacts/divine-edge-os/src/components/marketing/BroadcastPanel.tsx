@@ -33,6 +33,30 @@ function statusBadgeVariant(status: string) {
   return 'outline';
 }
 
+function NotInterestedSelector({ campaigns, value, onChange, sourceCampaignId }: {
+  campaigns: Campaign[]; value: string; onChange: (v: string) => void; sourceCampaignId?: number | null;
+}) {
+  const options = campaigns.filter(c => c.id !== sourceCampaignId);
+  return (
+    <div className="space-y-1.5 rounded-lg border p-3 bg-muted/20">
+      <label className="text-sm font-medium">"Not interested right now" destination <span className="text-destructive">*</span></label>
+      <Select value={value || 'none'} onValueChange={v => onChange(v === 'none' ? '' : v)}>
+        <SelectTrigger title="Campaign that recipients move to when they click Not interested right now"><SelectValue placeholder="Choose a destination campaign" /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="none" disabled>Choose a destination campaign</SelectItem>
+          {options.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
+        </SelectContent>
+      </Select>
+      {options.length === 0 && <p className="text-xs text-destructive">Create another marketing campaign first; it must be different from the campaign you're sending to.</p>}
+      <div className="text-xs text-muted-foreground space-y-1 pt-1">
+        <p>Every email ends with two buttons:</p>
+        <p><strong>Not interested right now</strong> moves the customer to the campaign you pick above and stops this campaign's emails to them. They still get your other emails.</p>
+        <p><strong>Unsubscribe</strong> stops all marketing emails to that customer.</p>
+      </div>
+    </div>
+  );
+}
+
 export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] }) {
   const qc = useQueryClient();
   const [channel, setChannel] = useState<'sms' | 'email'>('email');
@@ -56,6 +80,8 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
   const [editBody, setEditBody] = useState('');
   const [editSubject, setEditSubject] = useState('');
   const [editScheduledFor, setEditScheduledFor] = useState('');
+  const [notInterestedId, setNotInterestedId] = useState('');
+  const [editNotInterestedId, setEditNotInterestedId] = useState('');
 
   const filter = {
     ...(allCustomers ? { allCustomers: true } : {
@@ -131,6 +157,8 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
   const handleSendClick = () => {
     if (!body.trim()) { toast.error('Message body is required'); return; }
     if (channel === 'email' && !subject.trim()) { toast.error('Subject is required for email'); return; }
+    if (channel === 'email' && !notInterestedId) { toast.error('Choose a "Not interested right now" destination campaign'); return; }
+    if (channel === 'email' && campaignId && notInterestedId === campaignId) { toast.error('Destination campaign must differ from the source campaign'); return; }
     if (sendMode === 'later') {
       if (!scheduledFor) { toast.error('Please pick a date and time to schedule'); return; }
       if (new Date(scheduledFor) <= new Date()) { toast.error('Scheduled time must be in the future'); return; }
@@ -140,10 +168,14 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
   };
 
   const handleConfirmSend = () => {
+    // Close before resetting composer state so the drawer never flashes
+    // an immediate-send confirmation after scheduling successfully.
+    setConfirmOpen(false);
     sendMutation.mutate({
       data: {
         channel,
         subject: channel === 'email' ? subject : undefined,
+        ...(channel === 'email' ? { notInterestedCampaignId: parseInt(notInterestedId, 10) } : {}),
         body,
         filter,
         ...(sendMode === 'later' && scheduledFor ? { scheduledFor: new Date(scheduledFor).toISOString() } : {}),
@@ -184,6 +216,14 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
                 <label className="text-sm font-medium">Subject</label>
                 <Input title="Email subject line for this broadcast" placeholder="e.g. Spring lawn care specials" value={subject} onChange={e => setSubject(e.target.value)} />
               </div>
+            )}
+            {channel === 'email' && (
+              <NotInterestedSelector
+                campaigns={campaigns}
+                value={notInterestedId}
+                onChange={setNotInterestedId}
+                sourceCampaignId={!allCustomers && campaignId ? parseInt(campaignId, 10) : null}
+              />
             )}
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Message</label>
@@ -448,6 +488,7 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
                           onClick={() => {
                             setEditBody(detail.body ?? '');
                             setEditSubject(detail.subject ?? '');
+                            setEditNotInterestedId(detail.notInterestedCampaignId != null ? String(detail.notInterestedCampaignId) : '');
                             setEditScheduledFor(
                               detail.scheduledFor
                                 ? toDatetimeLocal(new Date(detail.scheduledFor))
@@ -484,6 +525,14 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
                         <Input title="Updated email subject line for this broadcast" value={editSubject} onChange={e => setEditSubject(e.target.value)} placeholder="Subject" />
                       </div>
                     )}
+                    {detail.channel === 'email' && (
+                      <NotInterestedSelector
+                        campaigns={campaigns}
+                        value={editNotInterestedId}
+                        onChange={setEditNotInterestedId}
+                        sourceCampaignId={(detail.recipientFilter as { campaignId?: number } | null | undefined)?.campaignId ?? null}
+                      />
+                    )}
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-muted-foreground">Message</label>
                       <Textarea
@@ -514,6 +563,9 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
                         disabled={updateMutation.isPending}
                         onClick={() => {
                           if (!editBody.trim()) { toast.error('Message body is required'); return; }
+                          if (detail.channel === 'email' && !editNotInterestedId) { toast.error('Choose a "Not interested right now" destination campaign'); return; }
+                          const srcId = (detail.recipientFilter as { campaignId?: number } | null | undefined)?.campaignId;
+                          if (detail.channel === 'email' && srcId != null && Number(editNotInterestedId) === srcId) { toast.error('Destination campaign must differ from the source campaign'); return; }
                           if (editScheduledFor && new Date(editScheduledFor) <= new Date()) {
                             toast.error('Scheduled time must be in the future'); return;
                           }
@@ -521,7 +573,7 @@ export default function BroadcastPanel({ campaigns }: { campaigns: Campaign[] })
                             id: detail.id,
                             data: {
                               body: editBody,
-                              ...(detail.channel === 'email' ? { subject: editSubject } : {}),
+                              ...(detail.channel === 'email' ? { subject: editSubject, notInterestedCampaignId: parseInt(editNotInterestedId, 10) } : {}),
                               ...(editScheduledFor ? { scheduledFor: new Date(editScheduledFor).toISOString() } : {}),
                             },
                           });

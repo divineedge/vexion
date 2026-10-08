@@ -105,6 +105,7 @@ export interface TenantSettingsUpdate {
      * @maxLength 80
      */
   preTripChecklistName?: string;
+  estimateDeclineReasons?: string[];
   preTripChecklist?: PreTripChecklistItem[];
   endOfDayChecklist?: PreTripChecklistItem[];
   /** $/hour flat rate applied to daily task / compliance time for payroll. 0 = display-only. */

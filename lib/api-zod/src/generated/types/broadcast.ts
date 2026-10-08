@@ -11,6 +11,8 @@ import type { BroadcastStats } from './broadcastStats';
 import type { BroadcastStatus } from './broadcastStatus';
 
 export interface Broadcast {
+  /** @nullable */
+  notInterestedCampaignId?: number | null;
   id: number;
   tenantId: number;
   channel: BroadcastChannel;

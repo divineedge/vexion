@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'wouter';
 import { useGetPublicEstimate, useRespondToEstimate } from '@workspace/api-client-react';
+import DeclineReasonPicker, { validateDeclineChoice } from '@/components/estimates/DeclineReasonPicker';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { CheckCircle2, XCircle, MapPin, Clock, AlertTriangle, Phone, Mail, Globe, Building2, CreditCard, Lock, ChevronDown } from 'lucide-react';
 import { loadStripe, type Stripe as StripeInstance } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+
+import { billableItems, toggleOptionalSelection } from '@/lib/estimateSelection';
 
 interface LineItem {
   id: string;
@@ -20,6 +22,7 @@ interface LineItem {
   markup: number;
   discount: number;
   isOptional: boolean;
+  groupId?: string | null;
   optionalPitchLine?: string | null;
   acceptedByCustomer: boolean;
   /** Cost category for breakdown view. Defaults to 'labor'. */
@@ -162,6 +165,7 @@ export default function EstimatePublicPage() {
   const { token } = useParams<{ token: string }>();
   const [accepted, setAccepted] = useState<Set<string>>(new Set());
   const [declineReason, setDeclineReason] = useState('');
+  const [declineChoice, setDeclineChoice] = useState('');
   const [responded, setResponded] = useState<'approved' | 'declined' | null>(null);
   const [showDeclineForm, setShowDeclineForm] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
@@ -185,7 +189,7 @@ export default function EstimatePublicPage() {
   useEffect(() => {
     if (estimate) {
       const optional = (estimate.lineItems as LineItem[]).filter(i => i.isOptional && i.acceptedByCustomer);
-      setAccepted(new Set(optional.map(i => i.id)));
+      setAccepted(new Set(billableItems(optional).map(i => i.id)));
     }
   }, [estimate]);
 
@@ -230,18 +234,13 @@ export default function EstimatePublicPage() {
   const optional = allItems.filter(i => i.isOptional);
 
   const requiredTotal = required.reduce((sum, i) => sum + calcItem(i), 0);
-  const optionalTotal = optional.filter(i => accepted.has(i.id)).reduce((sum, i) => sum + calcItem(i), 0);
+  const optionalTotal = billableItems(optional.map(i => ({ ...i, acceptedByCustomer: accepted.has(i.id) }))).reduce((sum, i) => sum + calcItem(i), 0);
   const grandTotal = requiredTotal + optionalTotal;
 
   const stripeEnabled = !!(estimate as any).stripeEnabled; // stripeEnabled is in the generated schema but estimate type is allOf — access via any until stricter type is applied
 
   function toggleOptional(id: string) {
-    setAccepted(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    setAccepted(prev => toggleOptionalSelection(id, prev, optional));
   }
 
   function handleApproveNoStripe() {
@@ -258,11 +257,14 @@ export default function EstimatePublicPage() {
   }
 
   function handleDecline() {
+    const err = validateDeclineChoice(declineChoice, declineReason);
+    if (err) { toast.error(err); return; }
     respond.mutate({
       token: token!,
       data: {
         action: 'decline',
-        declineReason: declineReason || undefined,
+        declineReason: declineReason.trim() || undefined,
+        ...(declineChoice ? { declineReasonChoice: declineChoice } : {}),
       },
     }, {
       onSuccess: () => { setResponded('declined'); },
@@ -565,7 +567,7 @@ export default function EstimatePublicPage() {
               <Card>
                 <CardContent className="pt-5 space-y-3">
                   <p className="text-sm font-medium">Reason for declining (optional)</p>
-                  <Textarea rows={3} placeholder="Let us know if there's anything we can improve..." value={declineReason} onChange={e => setDeclineReason(e.target.value)} />
+                  <DeclineReasonPicker options={estimate.declineReasonOptions} choice={declineChoice} onChoice={setDeclineChoice} comment={declineReason} onComment={setDeclineReason} />
                   <div className="flex gap-3">
                     <Button variant="outline" onClick={() => setShowDeclineForm(false)}>Back</Button>
                     <Button variant="destructive" onClick={handleDecline} disabled={respond.isPending}>

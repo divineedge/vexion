@@ -24,6 +24,30 @@ import { getCachedReport } from "../lib/reportsCache";
 
 const router: IRouter = Router();
 
+router.get("/reports/estimate-declines", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  if (!(await requireAdmin(tenantId, getUserId(req), res))) return;
+  const { from, to } = req.query;
+  const dateValid = (v: unknown) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v)) && new Date(v).toISOString().slice(0, 10) === v;
+  if ((from !== undefined && !dateValid(from)) || (to !== undefined && !dateValid(to)) || (from && to && String(from) > String(to))) {
+    res.status(400).json({ error: "Use a valid date range (YYYY-MM-DD)" }); return;
+  }
+  const result = await db.execute(sql`
+    SELECT e.id, e.id::text AS "estimateNumber", c.name AS "customerName",
+      e.declined_at AS "declinedAt", COALESCE(e.decline_reason_choice, CASE WHEN NULLIF(e.decline_reason,'') IS NOT NULL THEN 'Other' ELSE 'No reason given' END) AS reason,
+      e.decline_reason AS comment, e.total
+    FROM estimates e LEFT JOIN customers c ON c.id=e.customer_id AND c.tenant_id=e.tenant_id
+    JOIN tenants t ON t.id=e.tenant_id
+    WHERE e.tenant_id=${tenantId} AND e.status='declined'
+      ${from ? sql`AND (e.declined_at AT TIME ZONE COALESCE(t.timezone,'UTC'))::date >= ${String(from)}::date` : sql``}
+      ${to ? sql`AND (e.declined_at AT TIME ZONE COALESCE(t.timezone,'UTC'))::date <= ${String(to)}::date` : sql``}
+    ORDER BY e.declined_at DESC NULLS LAST, e.id DESC`);
+  const estimates = result.rows;
+  const counts = new Map<string, number>();
+  for (const e of estimates) counts.set(String(e.reason), (counts.get(String(e.reason)) ?? 0) + 1);
+  res.json({ total: estimates.length, byReason: Array.from(counts, ([reason, count]) => ({ reason, count })).sort((a,b) => b.count-a.count), estimates });
+});
+
 function requireAdmin(tenantId: number, userId: number, res: import("express").Response): Promise<boolean> {
   return isAdminRole(tenantId, userId).then(ok => {
     if (!ok) res.status(403).json({ error: "Reports are restricted to owner/admin roles" });

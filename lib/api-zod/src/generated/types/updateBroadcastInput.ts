@@ -7,6 +7,7 @@
  */
 
 export interface UpdateBroadcastInput {
+  notInterestedCampaignId?: number;
   body?: string;
   subject?: string;
   /** ISO date-time string for the new send time. */

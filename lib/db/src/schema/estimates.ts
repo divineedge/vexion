@@ -54,6 +54,7 @@ export const estimatesTable = pgTable("estimates", {
   approvedAt: timestamp("approved_at", { withTimezone: true }),
   declinedAt: timestamp("declined_at", { withTimezone: true }),
   declineReason: text("decline_reason"),
+  declineReasonChoice: text("decline_reason_choice"),
   /** Expected job duration in minutes, set by the estimator */
   estimatedDurationMin: integer("estimated_duration_min"),
   /** Supplies the crew will need on site: [{inventoryItemId, name, quantity, unit}] */

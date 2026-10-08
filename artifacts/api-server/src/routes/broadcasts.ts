@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import {
   db, customersTable, campaignCustomersTable, jobsTable, tenantsTable,
-  broadcastsTable, broadcastRecipientsTable, communicationsLogTable,
+  broadcastsTable, broadcastRecipientsTable, communicationsLogTable, campaignResponsesTable,
 } from "@workspace/db";
 import { eq, and, or, ilike, inArray, sql, desc, isNull } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
@@ -10,6 +10,7 @@ import { sendSms, type SmsProviderConfig } from "../lib/smsProvider";
 import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
 import { logger } from "../lib/logger";
 import { notifyBroadcastFailed } from "../lib/broadcastScheduler";
+import { campaignEmail, marketingEmailAllowed, validateCampaignDestination } from "../lib/campaignPreferences";
 
 const router: IRouter = Router();
 
@@ -43,6 +44,12 @@ export async function resolveRecipients(tenantId: number, channel: "sms" | "emai
         .from(campaignCustomersTable)
         .where(and(eq(campaignCustomersTable.tenantId, tenantId), eq(campaignCustomersTable.campaignId, filter.campaignId)));
       const ids = memberIds.map(m => m.customerId);
+      const followUps = await db.select({ customerId: campaignResponsesTable.customerId }).from(campaignResponsesTable).where(and(
+        eq(campaignResponsesTable.tenantId, tenantId),
+        eq(campaignResponsesTable.destinationCampaignId, filter.campaignId),
+        eq(campaignResponsesTable.action, "not_interested"),
+      ));
+      ids.push(...followUps.map(r => r.customerId));
       conditions.push(ids.length > 0 ? inArray(customersTable.id, ids) : sql`false`);
     }
 
@@ -72,7 +79,10 @@ export async function resolveRecipients(tenantId: number, channel: "sms" | "emai
     conditions.push(sql`${customersTable.email} IS NOT NULL AND ${customersTable.email} != ''`);
   }
 
-  return db.select().from(customersTable).where(and(...conditions));
+  const rows = await db.select().from(customersTable).where(and(...conditions));
+  if (channel !== "email" || !filter.campaignId) return rows;
+  const eligible = await Promise.all(rows.map(c => marketingEmailAllowed(tenantId, c.id, filter.campaignId)));
+  return rows.filter((_, i) => eligible[i]);
 }
 
 function formatBroadcast(b: typeof broadcastsTable.$inferSelect) {
@@ -104,12 +114,16 @@ router.post("/broadcasts/send", async (req, res): Promise<void> => {
   const userId = getUserId(req);
   if (!(await isAdminRole(tenantId, userId))) { res.status(403).json({ error: "Restricted to owner/admin roles" }); return; }
 
-  const { channel, subject, body, filter, scheduledFor } = req.body as {
-    channel: "sms" | "email"; subject?: string; body: string; filter: BroadcastFilter; scheduledFor?: string;
+  const { channel, subject, body, filter, scheduledFor, notInterestedCampaignId } = req.body as {
+    channel: "sms" | "email"; subject?: string; body: string; filter: BroadcastFilter; scheduledFor?: string; notInterestedCampaignId?: number;
   };
   if (channel !== "sms" && channel !== "email") { res.status(400).json({ error: "channel must be 'sms' or 'email'" }); return; }
   if (!body?.trim()) { res.status(400).json({ error: "body is required" }); return; }
   if (channel === "email" && !subject?.trim()) { res.status(400).json({ error: "subject is required for email broadcasts" }); return; }
+  if (channel === "email") {
+    try { await validateCampaignDestination(tenantId, notInterestedCampaignId, filter?.campaignId); }
+    catch (error: any) { res.status(400).json({ error: error.message }); return; }
+  }
 
   // Validate scheduledFor if provided
   let scheduledDate: Date | null = null;
@@ -125,6 +139,7 @@ router.post("/broadcasts/send", async (req, res): Promise<void> => {
     // Store as scheduled — the broadcast scheduler will pick it up when the time comes
     const [broadcast] = await db.insert(broadcastsTable).values({
       tenantId, channel, subject: subject ?? null, body,
+      notInterestedCampaignId: channel === "email" ? notInterestedCampaignId : null,
       recipientFilter: filter ?? {}, recipientCount: recipients.length,
       status: "scheduled", scheduledFor: scheduledDate, createdBy: userId,
     }).returning();
@@ -134,6 +149,7 @@ router.post("/broadcasts/send", async (req, res): Promise<void> => {
 
   const [broadcast] = await db.insert(broadcastsTable).values({
     tenantId, channel, subject: subject ?? null, body,
+    notInterestedCampaignId: channel === "email" ? notInterestedCampaignId : null,
     recipientFilter: filter ?? {}, recipientCount: recipients.length,
     status: "sending", createdBy: userId,
   }).returning();
@@ -156,6 +172,7 @@ async function dispatchBroadcast(
 ) {
   const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
   let sent = 0;
+  let optedOut = 0;
   let failed = 0;
 
   for (const customer of recipients) {
@@ -181,7 +198,14 @@ async function dispatchBroadcast(
           config: (tenant?.emailProviderConfig as Record<string, string>) ?? {},
           fromAddress: (tenant?.emailProviderConfig as Record<string, string>)?.["fromAddress"] ?? null,
         };
-        const result = await sendEmail(emailConfig, customer.email, subject ?? "", personalized);
+        const [current] = await db.select().from(broadcastsTable).where(eq(broadcastsTable.id, broadcastId));
+        if (!(await marketingEmailAllowed(tenantId, customer.id, (current?.recipientFilter as BroadcastFilter)?.campaignId))) {
+          optedOut++;
+          await db.insert(broadcastRecipientsTable).values({ tenantId, broadcastId, customerId: customer.id, status: "skipped_opt_out" });
+          continue;
+        }
+        const email = await campaignEmail(tenantId, broadcastId, customer.id, personalized);
+        const result = await sendEmail(emailConfig, customer.email, subject ?? "", email.text, email.html);
         await db.insert(communicationsLogTable).values({
           tenantId, customerId: customer.id, direction: "outbound", channel: "email",
           toAddress: customer.email, subject: subject ?? "", body: personalized,
@@ -198,7 +222,7 @@ async function dispatchBroadcast(
   }
 
   await db.update(broadcastsTable)
-    .set({ status: failed > 0 && sent === 0 ? "failed" : "completed", sentAt: new Date(), stats: { sent, failed, optedOut: 0 } })
+    .set({ status: failed > 0 && sent === 0 ? "failed" : "completed", sentAt: new Date(), stats: { sent, failed, optedOut } })
     .where(eq(broadcastsTable.id, broadcastId));
 
   // Notify staff on full OR partial failure (mirrors scheduled broadcast behaviour)
@@ -250,6 +274,12 @@ router.patch("/broadcasts/:id", async (req, res): Promise<void> => {
   const { body, subject, scheduledFor } = req.body as { body?: string; subject?: string; scheduledFor?: string };
 
   const updates: Partial<typeof broadcastsTable.$inferInsert> = {};
+  if (row.channel === "email") {
+    const destination = req.body.notInterestedCampaignId ?? row.notInterestedCampaignId;
+    try { await validateCampaignDestination(tenantId, destination, (row.recipientFilter as BroadcastFilter)?.campaignId); }
+    catch (error: any) { res.status(400).json({ error: error.message }); return; }
+    updates.notInterestedCampaignId = destination;
+  }
   if (body !== undefined) {
     if (!body.trim()) { res.status(400).json({ error: "body cannot be empty" }); return; }
     updates.body = body;

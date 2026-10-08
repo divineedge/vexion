@@ -49,6 +49,7 @@ import { BUILT_IN_CUSTOMER_FIELDS, CORE_FIELD_KEYS, getActiveCustomerFields, typ
 import IntegrationsGrid from '@/components/settings/IntegrationsGrid';
 import DevToolsPanel from '@/components/settings/DevToolsPanel';
 import RoutingSettings from '@/components/settings/RoutingSettings';
+import DeclineReasonsSettings from '@/components/settings/DeclineReasonsSettings';
 import { AddressAutocomplete, type AddressSuggestion } from '@/components/shared/AddressAutocomplete';
 import ExternalAccessSettings from '@/components/settings/ExternalAccessSettings';
 
@@ -2087,8 +2088,9 @@ export default function SettingsPage() {
         )}
 
         {/* ── Estimate Templates ── */}
-        <TabsContent value="estimate-templates" className="focus-visible:outline-none">
+        <TabsContent value="estimate-templates" className="space-y-6 focus-visible:outline-none">
           <EstimateTemplatesSettings />
+          <DeclineReasonsSettings />
         </TabsContent>
 
         {/* ── Invoice Templates ── */}

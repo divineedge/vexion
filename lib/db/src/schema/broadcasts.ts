@@ -12,6 +12,7 @@ export const broadcastsTable = pgTable("broadcasts", {
   /** 'sms' | 'email' */
   channel: text("channel").notNull(),
   subject: text("subject"),
+  notInterestedCampaignId: integer("not_interested_campaign_id"),
   body: text("body").notNull(),
   /** Segment filter used to resolve recipients: { tag, city, state, customerType, lastServiceBefore, lastServiceAfter, campaignId, allCustomers } */
   recipientFilter: jsonb("recipient_filter").notNull().default("{}"),
@@ -41,6 +42,18 @@ export const broadcastRecipientsTable = pgTable("broadcast_recipients", {
 }, (t) => [
   index("idx_broadcast_recipients_broadcast").on(t.broadcastId),
 ]);
+
+export const campaignResponsesTable = pgTable("campaign_responses", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
+  broadcastId: integer("broadcast_id").notNull().references(() => broadcastsTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  sourceCampaignId: integer("source_campaign_id"),
+  destinationCampaignId: integer("destination_campaign_id"),
+  action: text("action"),
+  respondedAt: timestamp("responded_at", { withTimezone: true }),
+}, t => [index("campaign_responses_customer").on(t.tenantId, t.customerId)]);
 
 export const insertBroadcastSchema = createInsertSchema(broadcastsTable).omit({ id: true, createdAt: true });
 export const insertBroadcastRecipientSchema = createInsertSchema(broadcastRecipientsTable).omit({ id: true, createdAt: true });

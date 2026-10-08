@@ -8796,6 +8796,8 @@ components:
           type: ["string", "null"]
         declineReason:
           type: ["string", "null"]
+        declineReasonChoice:
+          type: ["string", "null"]
         estimatedDurationMin:
           type: ["integer", "null"]
           description: Expected job duration in minutes
@@ -8890,6 +8892,9 @@ components:
       allOf:
         - $ref: "#/components/schemas/Estimate"
       properties:
+        declineReasonOptions:
+          type: array
+          items: { type: string }
         required:
           type: array
           items:
@@ -9035,6 +9040,8 @@ components:
           items:
             type: string
         declineReason:
+          type: string
+        declineReasonChoice:
           type: string
         paymentMethodId:
           type: string
@@ -11492,6 +11499,7 @@ components:
       type: object
       required: [channel, body]
       properties:
+        notInterestedCampaignId: { type: integer }
         channel:
           type: string
           enum: [sms, email]
@@ -11508,6 +11516,7 @@ components:
     UpdateBroadcastInput:
       type: object
       properties:
+        notInterestedCampaignId: { type: integer }
         body:
           type: string
         subject:
@@ -11530,6 +11539,7 @@ components:
       type: object
       required: [id, tenantId, channel, body, recipientCount, status, createdAt]
       properties:
+        notInterestedCampaignId: { type: ["integer", "null"] }
         id:
           type: integer
         tenantId:
@@ -12713,6 +12723,9 @@ components:
           type: string
           minLength: 1
           maxLength: 80
+        estimateDeclineReasons:
+          type: array
+          items: { type: string }
         endOfDayChecklist:
           type: array
           items:
@@ -13232,6 +13245,9 @@ components:
           type: string
           minLength: 1
           maxLength: 80
+        estimateDeclineReasons:
+          type: array
+          items: { type: string }
         preTripChecklist:
           type: array
           items:

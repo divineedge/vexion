@@ -10,6 +10,7 @@ import type { EstimateLineItem } from './estimateLineItem';
 import type { PublicEstimateBusinessProfile } from './publicEstimateBusinessProfile';
 
 export type PublicEstimate = Estimate & ({
+  declineReasonOptions?: string[];
   required?: EstimateLineItem[];
   optional?: EstimateLineItem[];
   expired?: boolean;

@@ -150,6 +150,8 @@ export interface Estimate {
   declinedAt?: string | null;
   /** @nullable */
   declineReason?: string | null;
+  /** @nullable */
+  declineReasonChoice?: string | null;
   /**
      * Expected job duration in minutes
      * @nullable
@@ -316,6 +318,7 @@ export interface PublicEstimateBusinessProfile {
 }
 
 export type PublicEstimate = Estimate & ({
+  declineReasonOptions?: string[];
   required?: EstimateLineItem[];
   optional?: EstimateLineItem[];
   expired?: boolean;
@@ -467,6 +470,7 @@ export interface EstimateRespondInput {
   action: EstimateRespondInputAction;
   acceptedOptionalItemIds?: string[];
   declineReason?: string;
+  declineReasonChoice?: string;
   /** Stripe PaymentMethod ID (pm_xxx) — required when Stripe is enabled and action is approve */
   paymentMethodId?: string;
 }
@@ -2448,6 +2452,7 @@ export const SendBroadcastInputChannel = {
 } as const;
 
 export interface SendBroadcastInput {
+  notInterestedCampaignId?: number;
   channel: SendBroadcastInputChannel;
   subject?: string;
   body: string;
@@ -2457,6 +2462,7 @@ export interface SendBroadcastInput {
 }
 
 export interface UpdateBroadcastInput {
+  notInterestedCampaignId?: number;
   body?: string;
   subject?: string;
   /** ISO date-time string for the new send time. */
@@ -2489,6 +2495,8 @@ export const BroadcastStatus = {
 } as const;
 
 export interface Broadcast {
+  /** @nullable */
+  notInterestedCampaignId?: number | null;
   id: number;
   tenantId: number;
   channel: BroadcastChannel;
@@ -3591,6 +3599,7 @@ export interface TenantSettings {
      * @maxLength 80
      */
   preTripChecklistName?: string;
+  estimateDeclineReasons?: string[];
   /** Trip charge auto-appended to a job's invoice when it uses a one-time reschedule */
   endOfDayChecklist?: PreTripChecklistItem[];
   /** $/hour flat rate applied to daily task / compliance time for payroll. 0 = display-only. */
@@ -4004,6 +4013,7 @@ export interface TenantSettingsUpdate {
      * @maxLength 80
      */
   preTripChecklistName?: string;
+  estimateDeclineReasons?: string[];
   preTripChecklist?: PreTripChecklistItem[];
   endOfDayChecklist?: PreTripChecklistItem[];
   /** $/hour flat rate applied to daily task / compliance time for payroll. 0 = display-only. */

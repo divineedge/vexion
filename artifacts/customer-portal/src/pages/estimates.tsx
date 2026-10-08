@@ -81,6 +81,7 @@ interface EstimateDetail {
   depositPaidAt?: string | null;
   depositAmount?: number;
   depositChargedAmount?: number | null;
+  declineReasonOptions?: string[];
 }
 
 /** Inline card form — receives a pre-created setup intent clientSecret */
@@ -167,6 +168,9 @@ export default function Estimates() {
   const [detail, setDetail] = useState<EstimateDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [acting, setActing] = useState<"approve" | "decline" | null>(null);
+  const [declineOpen, setDeclineOpen] = useState(false);
+  const [declineReason, setDeclineReason] = useState("");
+  const [declineChoice, setDeclineChoice] = useState("");
   // Track optional item selections: key = item.idx, value = accepted boolean
   const [optionalSelections, setOptionalSelections] = useState<Record<number, boolean>>({});
 
@@ -388,6 +392,10 @@ export default function Estimates() {
 
   const respond = async (action: "approve" | "decline") => {
     if (!reviewToken) return;
+    if (action === "decline" && declineChoice === "Other" && !declineReason.trim()) {
+      toast.error("Please tell us a bit more when choosing Other.");
+      return;
+    }
     setActing(action);
     try {
       // Await any in-flight selection PATCH so it cannot race against the
@@ -406,13 +414,16 @@ export default function Estimates() {
       await customFetch(`/api/public/estimates/${reviewToken}/respond`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, acceptedOptionalItemIds }),
+        body: JSON.stringify({ action, acceptedOptionalItemIds, ...(action === "decline" ? { ...(declineChoice ? { declineReasonChoice: declineChoice } : {}), ...(declineReason.trim() ? { declineReason: declineReason.trim() } : {}) } : {}) }),
       });
       toast.success(action === "approve" ? "Estimate approved!" : "Estimate declined.");
       queryClient.invalidateQueries({ queryKey: ["portal-estimates"] });
       setReviewEstimateId(null);
       setReviewToken(null);
       setDetail(null);
+      setDeclineOpen(false);
+      setDeclineReason("");
+      setDeclineChoice("");
     } catch (err: any) {
       toast.error(err?.message ?? "Something went wrong. Please try again.");
     } finally {
@@ -799,13 +810,50 @@ export default function Estimates() {
             </div>
           )}
 
-          {detail?.status === "sent" && !payStep && (
+          {detail?.status === "sent" && !payStep && declineOpen && (
+            <div className="space-y-2 rounded-lg border border-red-200 bg-red-50/50 p-3 mt-2">
+              <label htmlFor="decline-reason" className="text-sm font-medium">Decline this estimate?</label>
+              <p className="text-xs text-muted-foreground">Optionally tell us why so we can follow up with a better fit.</p>
+              <div role="radiogroup" aria-label="Reason for declining" className="flex flex-wrap gap-2">
+                {[...(detail.declineReasonOptions ?? []).filter(o => o !== "Other"), "Other"].map(o => (
+                  <button
+                    key={o}
+                    type="button"
+                    role="radio"
+                    aria-checked={declineChoice === o}
+                    onClick={() => setDeclineChoice(declineChoice === o ? "" : o)}
+                    className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${declineChoice === o ? "border-primary bg-primary text-primary-foreground" : "bg-background hover:bg-muted"}`}
+                  >
+                    {o}
+                  </button>
+                ))}
+              </div>
+              <textarea
+                id="decline-reason"
+                rows={3}
+                maxLength={1000}
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                placeholder={declineChoice === "Other" ? "Please describe your reason (required)" : "Anything else we should know? (optional)"}
+                value={declineReason}
+                onChange={e => setDeclineReason(e.target.value)}
+              />
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" size="sm" disabled={!!acting} onClick={() => { setDeclineOpen(false); setDeclineReason(""); setDeclineChoice(""); }}>Keep Reviewing</Button>
+                <Button size="sm" className="gap-2 bg-red-600 hover:bg-red-700 text-white" disabled={!!acting} onClick={() => respond("decline")}>
+                  {acting === "decline" ? <Loader2 className="w-4 h-4 animate-spin" /> : <ThumbsDown className="w-4 h-4" />}
+                  Confirm Decline
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {detail?.status === "sent" && !payStep && !declineOpen && (
             <DialogFooter className="flex-col sm:flex-row gap-2 mt-2">
               <Button
                 variant="outline"
                 className="gap-2 border-red-200 text-red-700 hover:bg-red-50"
                 disabled={!!acting || payingDeposit}
-                onClick={() => respond("decline")}
+                onClick={() => setDeclineOpen(true)}
               >
                 {acting === "decline" ? <Loader2 className="w-4 h-4 animate-spin" /> : <ThumbsDown className="w-4 h-4" />}
                 Decline

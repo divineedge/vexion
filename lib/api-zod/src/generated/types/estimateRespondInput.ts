@@ -11,6 +11,7 @@ export interface EstimateRespondInput {
   action: EstimateRespondInputAction;
   acceptedOptionalItemIds?: string[];
   declineReason?: string;
+  declineReasonChoice?: string;
   /** Stripe PaymentMethod ID (pm_xxx) — required when Stripe is enabled and action is approve */
   paymentMethodId?: string;
 }

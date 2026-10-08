@@ -33,6 +33,7 @@ import { enqueueInvoiceEmail } from "../lib/billingScheduler";
 import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
 import { sendSms, type SmsProviderConfig } from "../lib/smsProvider";
 import { checkRainBeforeWindow } from "../lib/weatherCheck";
+import { datedJobInvoiceItems } from "../lib/invoiceServiceDate";
 import { chemicalCompletionError, normalizeFieldRequirements } from "../lib/serviceFieldRequirements";
 import { resolveJobAssignmentRecipientIds, sendStaffPush } from "../lib/pushNotifications";
 import { canAccessJobMessages } from "../lib/jobMessageAccess";
@@ -1379,7 +1380,7 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
     try {
       const [tenant] = await db.select({ taxRate: tenantsTable.taxRate }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
       const taxRate = tenant?.taxRate ?? 0;
-      const lineItems = (updated.lineItems as unknown[]) ?? [];
+      const lineItems = await datedJobInvoiceItems(tenantId, updated);
       const subtotal = updated.totalAmount ?? 0;
       const tax = Math.round(subtotal * (taxRate / 100) * 100) / 100;
       const total = subtotal + tax;
@@ -1437,7 +1438,7 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
       try {
         const [tenant] = await db.select({ taxRate: tenantsTable.taxRate }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
         const taxRate = tenant?.taxRate ?? 0;
-        const lineItems = (updated.lineItems as unknown[]) ?? [];
+        const lineItems = await datedJobInvoiceItems(tenantId, updated);
         const subtotal = updated.totalAmount ?? 0;
         const tax = subtotal * (taxRate / 100);
         const total = subtotal + tax;
@@ -1511,12 +1512,13 @@ router.post("/jobs/:id/complete-and-invoice", async (req, res): Promise<void> =>
   if (job.invoiceId) { res.status(409).json({ error: "An invoice already exists for this job" }); return; }
 
   const taxRate = tenantRow?.taxRate ?? 0;
-  const lineItems = (job.lineItems as unknown[]) ?? [];
+  const completionTime = job.completedAt ?? new Date();
+  const lineItems = await datedJobInvoiceItems(tenantId, { ...job, completedAt: completionTime });
   const subtotal = job.totalAmount ?? 0;
   const tax = Math.round(subtotal * (taxRate / 100) * 100) / 100;
   const total = subtotal + tax;
   const invoiceNum = `INV-${Date.now().toString().slice(-8)}`;
-  const now = new Date();
+  const now = completionTime;
 
   let invoice!: typeof invoicesTable.$inferSelect;
   let wasAlreadyCompleted = job.status === "completed";

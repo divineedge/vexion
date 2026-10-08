@@ -43,7 +43,7 @@ interface Service {
   linkedZoneTypeId: string | null;
   offSeasonStart: string | null;
   offSeasonEnd: string | null;
-  fieldRequirements?: { requiresChemicalApplication?: boolean; showMaterialsOrParts?: boolean } | null;
+  fieldRequirements?: { requiresChemicalApplication?: boolean; showMaterialsOrParts?: boolean; invoiceDateBasis?: "completed" | "scheduled" } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -65,6 +65,7 @@ type ServiceForm = {
   offSeasonEndMonth: string;
   offSeasonEndDay: string;
   requiresChemicalApplication: boolean;
+  invoiceDateBasis: "completed" | "scheduled";
   showMaterialsOrParts: boolean;
 };
 
@@ -85,6 +86,7 @@ const EMPTY_FORM: ServiceForm = {
   offSeasonEndMonth: '03',
   offSeasonEndDay: '14',
   requiresChemicalApplication: false,
+  invoiceDateBasis: "completed",
   showMaterialsOrParts: false,
 };
 
@@ -412,6 +414,7 @@ export default function ServicesPage() {
       offSeasonEndMonth: endMonth,
       offSeasonEndDay: endDay,
       requiresChemicalApplication: s.fieldRequirements?.requiresChemicalApplication === true,
+      invoiceDateBasis: s.fieldRequirements?.invoiceDateBasis ?? "completed",
       showMaterialsOrParts: s.fieldRequirements?.showMaterialsOrParts === true,
     });
     setSelectedId(s.id);
@@ -446,6 +449,7 @@ export default function ServicesPage() {
       offSeasonStart,
       offSeasonEnd,
       fieldRequirements: {
+        invoiceDateBasis: form.invoiceDateBasis,
         requiresChemicalApplication: form.requiresChemicalApplication,
         showMaterialsOrParts: form.showMaterialsOrParts,
       },
@@ -760,6 +764,14 @@ export default function ServicesPage() {
                   <p className="text-xs text-muted-foreground">Show this collection section in the Field App.</p>
                 </div>
                 <Switch checked={form.showMaterialsOrParts} onCheckedChange={checked => setForm(f => ({ ...f, showMaterialsOrParts: checked }))} />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="invoice-date-basis" className="text-sm font-medium">Service date on invoices</label>
+                <select id="invoice-date-basis" className="w-full rounded-md border bg-background p-2 text-sm" value={form.invoiceDateBasis} onChange={e => setForm(f => ({ ...f, invoiceDateBasis: e.target.value as ServiceForm['invoiceDateBasis'] }))}>
+                  <option value="completed">Actual completion date (recommended)</option>
+                  <option value="scheduled">Scheduled date</option>
+                </select>
+                <p className="text-xs text-muted-foreground">Applies when new invoices are created. Existing invoices and their issue dates do not change. Chemical logs always use the actual application time.</p>
               </div>
             </div>
 

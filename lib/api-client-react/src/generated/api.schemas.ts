@@ -1684,7 +1684,20 @@ export const JobPriority = {
   urgent: 'urgent',
 } as const;
 
+/**
+ * Date to display for service work on newly generated invoices. Defaults to actual completion.
+ */
+export type ServiceFieldRequirementsInvoiceDateBasis = typeof ServiceFieldRequirementsInvoiceDateBasis[keyof typeof ServiceFieldRequirementsInvoiceDateBasis];
+
+
+export const ServiceFieldRequirementsInvoiceDateBasis = {
+  completed: 'completed',
+  scheduled: 'scheduled',
+} as const;
+
 export interface ServiceFieldRequirements {
+  /** Date to display for service work on newly generated invoices. Defaults to actual completion. */
+  invoiceDateBasis?: ServiceFieldRequirementsInvoiceDateBasis;
   /** A chemical application must be logged before completing a linked job. */
   requiresChemicalApplication: boolean;
   /** Show materials, parts, and supplies collection in the Field App. */
@@ -6856,6 +6869,14 @@ endDate?: string;
 propertyId?: number;
 applicatorId?: number;
 jobId?: number;
+};
+
+export type GetJobChemicalWeather200 = {
+  observedAt: string;
+  temperature: number;
+  windSpeed: number;
+  windDirection: string;
+  source: string;
 };
 
 export type ListEquipmentParams = {

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import {
   useListChemicalMixtures,
+  getJobChemicalWeather,
   useListChemicalProducts,
   useListChemicalDocuments,
   useGetChemicalDocumentReadUrl,
@@ -458,6 +459,33 @@ export default function LogApplicationScreen() {
   const [applicatorName, setApplicatorName] = useState('');
   const [licenseNumber, setLicenseNumber] = useState('');
   const [notes, setNotes] = useState('');
+  const [weatherBusy, setWeatherBusy] = useState(false);
+  const [weatherError, setWeatherError] = useState('');
+  const [weatherObservedAt, setWeatherObservedAt] = useState<string | null>(null);
+  const applicationTimeEdited = useRef(false);
+
+  const loadCurrentWeather = useCallback(async (replace = true) => {
+    setWeatherBusy(true);
+    setWeatherError('');
+    try {
+      const current = await getJobChemicalWeather(numJobId);
+      // A slow initial fetch must not attach today's conditions to a time
+      // the applicator has already backdated while waiting.
+      if (!replace && applicationTimeEdited.current) return;
+      if (replace) applicationTimeEdited.current = false;
+      setTemperature(previous => replace ? String(current.temperature) : previous || String(current.temperature));
+      setWindSpeed(previous => replace ? String(current.windSpeed) : previous || String(current.windSpeed));
+      setWindDirection(previous => replace ? current.windDirection : previous || current.windDirection);
+      if (replace) setAppliedAt(localDateTimeValue());
+      setWeatherObservedAt(current.observedAt);
+    } catch {
+      setWeatherError('Current weather unavailable. Check connectivity and the property map pin, or enter observed conditions manually.');
+    } finally {
+      setWeatherBusy(false);
+    }
+  }, [numJobId]);
+
+  useEffect(() => { void loadCurrentWeather(false); }, [loadCurrentWeather]);
 
   // Pre-fill treated area from property size when it loads (only if still blank)
   useEffect(() => {
@@ -546,6 +574,10 @@ export default function LogApplicationScreen() {
   ]);
 
   const handleSubmit = useCallback(async () => {
+    if (weatherObservedAt && Date.now() - new Date(weatherObservedAt).getTime() > 60 * 60 * 1000) {
+      Alert.alert('Weather needs refreshing', 'These weather readings are more than an hour old. Refresh weather and application time, or change the application time and enter observed conditions manually.');
+      return;
+    }
     if (!validate()) {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
@@ -572,7 +604,8 @@ export default function LogApplicationScreen() {
       if (temperature && !isNaN(Number(temperature))) body.temperature = Number(temperature);
       if (applicatorName.trim()) body.applicatorName = applicatorName.trim();
       if (licenseNumber.trim()) body.applicatorLicenseNumber = licenseNumber.trim();
-      if (notes.trim()) body.notes = notes.trim();
+      const weatherReference = weatherObservedAt ? `Weather reference: Open-Meteo estimated conditions at ${weatherObservedAt}; readings may be adjusted by the applicator.` : '';
+      if (notes.trim() || weatherReference) body.notes = [notes.trim(), weatherReference].filter(Boolean).join('\n');
 
       const created = await createMutation.mutateAsync({
         id: numJobId,
@@ -588,7 +621,7 @@ export default function LogApplicationScreen() {
     }
   }, [validate, volumeApplied, volumeUnit, appliedAt, treatedArea, areaUnit, mode, selectedMixture, selectedProduct,
       treatedZoneName, targetPest, applicationMethod, windSpeed, windDirection, temperature, applicatorName,
-      licenseNumber, notes, numJobId, createMutation]);
+      licenseNumber, notes, numJobId, createMutation, weatherObservedAt]);
 
   const handleDone = useCallback(() => {
     router.back();
@@ -707,7 +740,17 @@ export default function LogApplicationScreen() {
           <Field label="Applied At (YYYY-MM-DDTHH:MM)" required colors={colors}>
             <StyledInput
               value={appliedAt}
-              onChangeText={setAppliedAt}
+              onChangeText={value => {
+                applicationTimeEdited.current = true;
+                setAppliedAt(value);
+                if (weatherObservedAt) {
+                  setTemperature('');
+                  setWindSpeed('');
+                  setWindDirection('');
+                  setWeatherObservedAt(null);
+                  setWeatherError('Application time changed. Enter conditions observed at that time, or refresh to log an application now.');
+                }
+              }}
               placeholder="2026-08-29T14:30"
               colors={colors}
               error={!!errors.appliedAt}
@@ -846,6 +889,14 @@ export default function LogApplicationScreen() {
               Environmental Conditions
             </Text>
           </View>
+          <TouchableOpacity onPress={() => void loadCurrentWeather()} disabled={weatherBusy} accessibilityRole="button">
+            <Text style={{ color: colors.primary, marginBottom: 8 }}>{weatherBusy ? 'Loading current weather…' : 'Refresh weather & application time to now'}</Text>
+          </TouchableOpacity>
+          <Text style={{ color: colors.mutedForeground, marginBottom: 12 }}>
+            {weatherError || (weatherObservedAt
+              ? `Open-Meteo estimated conditions as of ${new Date(weatherObservedAt).toLocaleString()}. Verify on site; you can edit these readings. Not based on the scheduled day.`
+              : 'Enter conditions observed at the actual application time.')}
+          </Text>
 
           <View style={styles.splitRow}>
             <View style={{ flex: 1 }}>

@@ -263,6 +263,7 @@ export const ListServicesResponseItem = zod.object({
   "linkedZoneTypeId": zod.string().nullish(),
   "isActive": zod.boolean(),
   "fieldRequirements": zod.object({
+  "invoiceDateBasis": zod.enum(['completed', 'scheduled']).optional().describe('Date to display for service work on newly generated invoices. Defaults to actual completion.'),
   "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
   "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
 }),
@@ -1632,6 +1633,7 @@ export const ListJobsResponseItem = zod.object({
   "serviceId": zod.number().nullish(),
   "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
   "fieldRequirements": zod.object({
+  "invoiceDateBasis": zod.enum(['completed', 'scheduled']).optional().describe('Date to display for service work on newly generated invoices. Defaults to actual completion.'),
   "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
   "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
 }).optional(),
@@ -1775,6 +1777,7 @@ export const CreateJobResponse = zod.object({
   "serviceId": zod.number().nullish(),
   "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
   "fieldRequirements": zod.object({
+  "invoiceDateBasis": zod.enum(['completed', 'scheduled']).optional().describe('Date to display for service work on newly generated invoices. Defaults to actual completion.'),
   "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
   "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
 }).optional(),
@@ -1873,6 +1876,7 @@ export const GetJobResponse = zod.object({
   "serviceId": zod.number().nullish(),
   "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
   "fieldRequirements": zod.object({
+  "invoiceDateBasis": zod.enum(['completed', 'scheduled']).optional().describe('Date to display for service work on newly generated invoices. Defaults to actual completion.'),
   "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
   "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
 }).optional(),
@@ -2009,6 +2013,7 @@ export const UpdateJobResponse = zod.object({
   "serviceId": zod.number().nullish(),
   "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
   "fieldRequirements": zod.object({
+  "invoiceDateBasis": zod.enum(['completed', 'scheduled']).optional().describe('Date to display for service work on newly generated invoices. Defaults to actual completion.'),
   "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
   "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
 }).optional(),
@@ -2154,6 +2159,7 @@ export const SkipNextOccurrenceResponse = zod.object({
   "serviceId": zod.number().nullish(),
   "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
   "fieldRequirements": zod.object({
+  "invoiceDateBasis": zod.enum(['completed', 'scheduled']).optional().describe('Date to display for service work on newly generated invoices. Defaults to actual completion.'),
   "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
   "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
 }).optional(),
@@ -2257,6 +2263,7 @@ export const PauseRecurringSeriesResponse = zod.object({
   "serviceId": zod.number().nullish(),
   "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
   "fieldRequirements": zod.object({
+  "invoiceDateBasis": zod.enum(['completed', 'scheduled']).optional().describe('Date to display for service work on newly generated invoices. Defaults to actual completion.'),
   "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
   "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
 }).optional(),
@@ -2369,6 +2376,7 @@ export const CompleteJobResponse = zod.object({
   "serviceId": zod.number().nullish(),
   "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
   "fieldRequirements": zod.object({
+  "invoiceDateBasis": zod.enum(['completed', 'scheduled']).optional().describe('Date to display for service work on newly generated invoices. Defaults to actual completion.'),
   "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
   "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
 }).optional(),
@@ -2467,6 +2475,7 @@ export const ReopenJobResponse = zod.object({
   "serviceId": zod.number().nullish(),
   "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
   "fieldRequirements": zod.object({
+  "invoiceDateBasis": zod.enum(['completed', 'scheduled']).optional().describe('Date to display for service work on newly generated invoices. Defaults to actual completion.'),
   "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
   "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
 }).optional(),
@@ -2629,6 +2638,7 @@ export const AddJobPartResponse = zod.object({
   "serviceId": zod.number().nullish(),
   "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
   "fieldRequirements": zod.object({
+  "invoiceDateBasis": zod.enum(['completed', 'scheduled']).optional().describe('Date to display for service work on newly generated invoices. Defaults to actual completion.'),
   "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
   "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
 }).optional(),
@@ -2728,6 +2738,7 @@ export const RemoveJobPartResponse = zod.object({
   "serviceId": zod.number().nullish(),
   "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
   "fieldRequirements": zod.object({
+  "invoiceDateBasis": zod.enum(['completed', 'scheduled']).optional().describe('Date to display for service work on newly generated invoices. Defaults to actual completion.'),
   "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
   "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
 }).optional(),
@@ -6343,6 +6354,22 @@ export const ListChemicalApplicationsResponse = zod.array(ListChemicalApplicatio
 
 
 /**
+ * @summary Current weather at the job property, never the scheduled-day forecast
+ */
+export const GetJobChemicalWeatherParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetJobChemicalWeatherResponse = zod.object({
+  "observedAt": zod.coerce.date(),
+  "temperature": zod.number(),
+  "windSpeed": zod.number(),
+  "windDirection": zod.string(),
+  "source": zod.string()
+})
+
+
+/**
  * @summary List chemical applications on a job
  */
 export const ListJobChemicalApplicationsParams = zod.object({
@@ -8390,6 +8417,7 @@ export const DismissJobRescheduleRequestResponse = zod.object({
   "serviceId": zod.number().nullish(),
   "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
   "fieldRequirements": zod.object({
+  "invoiceDateBasis": zod.enum(['completed', 'scheduled']).optional().describe('Date to display for service work on newly generated invoices. Defaults to actual completion.'),
   "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
   "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
 }).optional(),
@@ -8488,6 +8516,7 @@ export const ApproveJobCancellationResponse = zod.object({
   "serviceId": zod.number().nullish(),
   "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
   "fieldRequirements": zod.object({
+  "invoiceDateBasis": zod.enum(['completed', 'scheduled']).optional().describe('Date to display for service work on newly generated invoices. Defaults to actual completion.'),
   "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
   "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
 }).optional(),
@@ -8590,6 +8619,7 @@ export const DenyJobCancellationResponse = zod.object({
   "serviceId": zod.number().nullish(),
   "serviceName": zod.string().nullish().describe('Name of the linked tenant service, when one is linked'),
   "fieldRequirements": zod.object({
+  "invoiceDateBasis": zod.enum(['completed', 'scheduled']).optional().describe('Date to display for service work on newly generated invoices. Defaults to actual completion.'),
   "requiresChemicalApplication": zod.boolean().describe('A chemical application must be logged before completing a linked job.'),
   "showMaterialsOrParts": zod.boolean().describe('Show materials, parts, and supplies collection in the Field App.')
 }).optional(),

@@ -1,4 +1,5 @@
 export type ServiceFieldRequirements = {
+  invoiceDateBasis: "completed" | "scheduled";
   requiresChemicalApplication: boolean;
   showMaterialsOrParts: boolean;
 };
@@ -9,6 +10,7 @@ export function normalizeFieldRequirements(value: unknown): ServiceFieldRequirem
     ? value as Record<string, unknown>
     : {};
   return {
+    invoiceDateBasis: source.invoiceDateBasis === "scheduled" ? "scheduled" : "completed",
     requiresChemicalApplication: source.requiresChemicalApplication === true,
     showMaterialsOrParts: source.showMaterialsOrParts === true,
   };

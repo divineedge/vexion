@@ -6,6 +6,26 @@ import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { normalizeChemicalRecordRequirements, parseStrictChemicalAppliedAt, validateChemicalRecordRequirements, validateSuppliedChemicalApplicationFields } from "../lib/chemicalRequirements";
 
 const router: IRouter = Router();
+import { parseCurrentChemicalWeather } from "../lib/chemicalWeather";
+
+router.get("/jobs/:id/chemical-weather", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req);
+  res.setHeader("Cache-Control", "no-store");
+  const [row] = await db.select({ lat: propertiesTable.lat, lng: propertiesTable.lng })
+    .from(jobsTable).innerJoin(propertiesTable, and(eq(propertiesTable.id, jobsTable.propertyId), eq(propertiesTable.tenantId, tenantId)))
+    .where(and(eq(jobsTable.id, Number(req.params.id)), eq(jobsTable.tenantId, tenantId)));
+  if (row?.lat == null || row.lng == null) {
+    res.status(422).json({ error: "Set the job property's map location to load current weather, or enter observed conditions manually." }); return;
+  }
+  try {
+    const params = new URLSearchParams({ latitude: String(row.lat), longitude: String(row.lng), current: "temperature_2m,wind_speed_10m,wind_direction_10m", temperature_unit: "fahrenheit", wind_speed_unit: "mph", timezone: "UTC" });
+    const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`, { signal: AbortSignal.timeout(10000), cache: "no-store" });
+    if (!response.ok) throw new Error("Weather provider is unavailable. Enter observed conditions manually.");
+    res.json(parseCurrentChemicalWeather(await response.json()));
+  } catch (err) {
+    res.status(503).json({ error: err instanceof Error ? err.message : "Weather is unavailable. Enter observed conditions manually." });
+  }
+});
 
 // ─── Auth helpers ──────────────────────────────────────────────────────────────
 

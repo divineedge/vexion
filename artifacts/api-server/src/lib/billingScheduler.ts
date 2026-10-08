@@ -9,7 +9,8 @@
  *   2. Email Queue — send pending billing emails with retry logic (max 3 attempts).
  */
 
-import { db, recurringInvoiceTemplatesTable, billingEmailQueueTable, invoicesTable, customersTable, tenantsTable, jobsTable, activityLogTable, invoiceTemplatesTable } from "@workspace/db";
+import { db, recurringInvoiceTemplatesTable, billingEmailQueueTable, invoicesTable, customersTable, tenantsTable, jobsTable, activityLogTable, invoiceTemplatesTable, servicesTable } from "@workspace/db";
+import { invoiceServiceDate, datedJobInvoiceItems } from "./invoiceServiceDate";
 import type { RecurringInvoiceTemplate } from "@workspace/db";
 import { eq, and, lte, sql, inArray, notInArray, isNull, asc, min, lt, isNotNull } from "drizzle-orm";
 import { logger } from "./logger";
@@ -145,10 +146,11 @@ async function collectCompletedWorkForCustomer(
       ),
     );
 
+  const [tenant] = await tx.select({ timezone: tenantsTable.timezone }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  const services = await tx.select({ id: servicesTable.id, requirements: servicesTable.fieldRequirements }).from(servicesTable).where(eq(servicesTable.tenantId, tenantId));
+  const serviceRequirements = new Map(services.map(s => [s.id, s.requirements]));
   const lineItems: BillingLineItem[] = jobs.map(job => ({
-    description: showJobCompletionDate && job.completedAt
-      ? `${job.title} — Completed ${job.completedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
-      : job.title,
+    description: `${job.title} — ${invoiceServiceDate(job, serviceRequirements.get(job.serviceId ?? 0), tenant?.timezone ?? "America/New_York")}`,
     quantity: 1,
     unitPrice: job.totalAmount,
     total: job.totalAmount,
@@ -525,7 +527,7 @@ async function processWeeklyNonRecurringInvoices() {
     try {
       const [tenant] = await db.select({ taxRate: tenantsTable.taxRate }).from(tenantsTable).where(eq(tenantsTable.id, job.tenantId));
       const taxRate = tenant?.taxRate ?? 0;
-      const lineItems = (job.lineItems as unknown[]) ?? [];
+      const lineItems = await datedJobInvoiceItems(job.tenantId, job);
       const subtotal = job.totalAmount ?? 0;
       const tax = subtotal * (taxRate / 100);
       const total = subtotal + tax;

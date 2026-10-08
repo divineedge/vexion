@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, invoicesTable, customersTable, jobsTable, activityLogTable, tenantsTable, integrationSyncLogsTable, customerPlansTable, stopServiceFlagsTable, invoiceTemplatesTable, propertiesTable } from "@workspace/db";
+import { db, invoicesTable, customersTable, jobsTable, activityLogTable, tenantsTable, integrationSyncLogsTable, customerPlansTable, stopServiceFlagsTable, invoiceTemplatesTable, propertiesTable, servicesTable } from "@workspace/db";
+import { invoiceServiceDate } from "../lib/invoiceServiceDate";
 import { eq, and, sql, inArray, ne, isNull } from "drizzle-orm";
 import crypto from "crypto";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
@@ -268,7 +269,7 @@ router.post("/invoices/from-job/:jobId", async (req, res): Promise<void> => {
   if (!job) { res.status(404).json({ error: "Job not found" }); return; }
 
   // Resolve tenant default invoice template (from-job always uses tenant default)
-  const [tenant] = await db.select({ defaultInvoiceTemplateId: tenantsTable.defaultInvoiceTemplateId }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  const [tenant] = await db.select({ defaultInvoiceTemplateId: tenantsTable.defaultInvoiceTemplateId, timezone: tenantsTable.timezone }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
   const resolvedTemplateId = tenant?.defaultInvoiceTemplateId ?? null;
 
   let templateFields = {
@@ -299,7 +300,11 @@ router.post("/invoices/from-job/:jobId", async (req, res): Promise<void> => {
   }
 
   const invoiceNum = `INV-${Date.now().toString().slice(-6)}`;
-  const lineItems = (job.lineItems as unknown[]) ?? [];
+  const [service] = job.serviceId ? await db.select().from(servicesTable).where(and(eq(servicesTable.id, job.serviceId), eq(servicesTable.tenantId, tenantId))) : [];
+  const serviceDate = invoiceServiceDate(job, service?.fieldRequirements, tenant?.timezone ?? "America/New_York");
+  const sourceItems = (job.lineItems as Array<Record<string, unknown>>) ?? [];
+  const lineItems = (sourceItems.length ? sourceItems : [{ description: job.title, quantity: 1, unitPrice: job.totalAmount, total: job.totalAmount }])
+    .map(item => ({ ...item, description: `${item.description || job.title}${serviceDate ? ` — ${serviceDate}` : ""}` }));
   const subtotal = job.totalAmount;
   const tax = subtotal * 0.085;
   const total = subtotal + tax;

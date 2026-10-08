@@ -3751,6 +3751,30 @@ paths:
                 items:
                   $ref: "#/components/schemas/ChemicalApplication"
 
+  /jobs/{id}/chemical-weather:
+    get:
+      operationId: getJobChemicalWeather
+      tags: [chemicals]
+      summary: Current weather at the job property, never the scheduled-day forecast
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Current estimated conditions; confirm on site
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [observedAt, temperature, windSpeed, windDirection, source]
+                properties:
+                  observedAt: { type: string, format: date-time }
+                  temperature: { type: number }
+                  windSpeed: { type: number }
+                  windDirection: { type: string }
+                  source: { type: string }
   /jobs/{id}/chemical-applications:
     get:
       operationId: listJobChemicalApplications
@@ -10639,6 +10663,10 @@ components:
       type: object
       required: [requiresChemicalApplication, showMaterialsOrParts]
       properties:
+        invoiceDateBasis:
+          type: string
+          enum: [completed, scheduled]
+          description: Date to display for service work on newly generated invoices. Defaults to actual completion.
         requiresChemicalApplication:
           type: boolean
           description: "A chemical application must be logged before completing a linked job."

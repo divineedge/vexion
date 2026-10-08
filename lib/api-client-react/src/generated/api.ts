@@ -158,6 +158,7 @@ import type {
   GetEquipmentLedgerParams,
   GetGmailAuthorizeUrl200,
   GetInventorySalesReportParams,
+  GetJobChemicalWeather200,
   GetJobMessageUnreadCount200,
   GetJobProfitabilityReportParams,
   GetPlStatementReportParams,
@@ -13563,6 +13564,83 @@ export function useListChemicalApplications<TData = Awaited<ReturnType<typeof li
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListChemicalApplicationsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetJobChemicalWeatherUrl = (id: number,) => {
+
+
+
+
+  return `/api/jobs/${id}/chemical-weather`
+}
+
+/**
+ * @summary Current weather at the job property, never the scheduled-day forecast
+ */
+export const getJobChemicalWeather = async (id: number, options?: RequestInit): Promise<GetJobChemicalWeather200> => {
+
+  return customFetch<GetJobChemicalWeather200>(getGetJobChemicalWeatherUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetJobChemicalWeatherQueryKey = (id: number,) => {
+    return [
+    `/api/jobs/${id}/chemical-weather`
+    ] as const;
+    }
+
+
+export const getGetJobChemicalWeatherQueryOptions = <TData = Awaited<ReturnType<typeof getJobChemicalWeather>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getJobChemicalWeather>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetJobChemicalWeatherQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getJobChemicalWeather>>> = ({ signal }) => getJobChemicalWeather(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getJobChemicalWeather>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetJobChemicalWeatherQueryResult = NonNullable<Awaited<ReturnType<typeof getJobChemicalWeather>>>
+export type GetJobChemicalWeatherQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Current weather at the job property, never the scheduled-day forecast
+ */
+
+export function useGetJobChemicalWeather<TData = Awaited<ReturnType<typeof getJobChemicalWeather>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getJobChemicalWeather>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetJobChemicalWeatherQueryOptions(id,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

@@ -5,8 +5,11 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { ServiceFieldRequirementsInvoiceDateBasis } from './serviceFieldRequirementsInvoiceDateBasis';
 
 export interface ServiceFieldRequirements {
+  /** Date to display for service work on newly generated invoices. Defaults to actual completion. */
+  invoiceDateBasis?: ServiceFieldRequirementsInvoiceDateBasis;
   /** A chemical application must be logged before completing a linked job. */
   requiresChemicalApplication: boolean;
   /** Show materials, parts, and supplies collection in the Field App. */

@@ -3,11 +3,11 @@ import { chemicalCompletionError, normalizeFieldRequirements } from "./serviceFi
 
 describe("service field requirements", () => {
   it("normalizes legacy, malformed, and unknown configurations safely", () => {
-    expect(normalizeFieldRequirements(null)).toEqual({ requiresChemicalApplication: false, showMaterialsOrParts: false });
+    expect(normalizeFieldRequirements(null)).toEqual({ requiresChemicalApplication: false, showMaterialsOrParts: false, invoiceDateBasis: "completed" });
     expect(normalizeFieldRequirements({ requiresChemicalApplication: true, futureRequirement: true })).toEqual({
-      requiresChemicalApplication: true, showMaterialsOrParts: false,
+      requiresChemicalApplication: true, showMaterialsOrParts: false, invoiceDateBasis: "completed",
     });
-    expect(normalizeFieldRequirements(["invalid"])).toEqual({ requiresChemicalApplication: false, showMaterialsOrParts: false });
+    expect(normalizeFieldRequirements(["invalid"])).toEqual({ requiresChemicalApplication: false, showMaterialsOrParts: false, invoiceDateBasis: "completed" });
   });
 
   it("blocks completion only for required chemical work without an application", () => {

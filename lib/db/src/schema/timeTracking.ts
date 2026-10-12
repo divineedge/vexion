@@ -50,6 +50,7 @@ export const subTimersTable = pgTable("sub_timers", {
   label: text("label").notNull(),
   type: text("type").notNull().default("other"),
   jobId: integer("job_id").references(() => jobsTable.id),
+  visitId:integer("visit_id").references(()=>visitsTable.id),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
   stoppedAt: timestamp("stopped_at", { withTimezone: true }),
   elapsedSeconds: integer("elapsed_seconds").notNull().default(0),

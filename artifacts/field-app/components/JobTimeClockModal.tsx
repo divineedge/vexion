@@ -323,7 +323,7 @@ export function JobTimeClockModal({
                     {item.propertyAddress ? (
                       <TouchableOpacity
                         style={styles.addressRow}
-                        onPress={() => void openDirections(item.propertyAddress!)}
+                        onPress={() => void openDirections(item.propertyAddress!, (item as any).propertyLat, (item as any).propertyLng)}
                         accessibilityRole="link"
                         accessibilityLabel={`Get directions to ${item.propertyAddress}`}
                       >

@@ -1,3 +1,4 @@
+import { sendDocumentEmail } from "./documentDelivery";
 import { auditAllBilling } from "./billingCoverage";
 import { creditedInvoiceInsert } from "./customerCredit";
 /**
@@ -676,7 +677,7 @@ export async function processEmailQueue(tenantId?: number) {
       row.tenantName ?? "Your Service Provider",
     ].join("\n");
 
-    const result = await sendEmail(providerConfig, row.customerEmail!, subject, body)
+    const result = await sendDocumentEmail(providerConfig, row.customerEmail!, subject, body,undefined,{tenantId:row.queue.tenantId,documentType:"invoice",documentId:row.queue.invoiceId})
       .catch(err => ({ success: false, error: err instanceof Error ? err.message : "Email delivery failed" }));
 
     // Provider rejections and transport errors are deliberately NOT auto-retried.

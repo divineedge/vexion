@@ -1,3 +1,4 @@
+import { formsGuardedJobUpdate,FormError,assertCompletedJobCreationAllowed } from "../lib/jobForms";
 import { paymentGuardedJobInsert, ensureScheduledJobPayment } from "../lib/paymentPolicy";
 import { creditedInvoiceInsert } from "../lib/customerCredit";
 import { Router, type IRouter } from "express";
@@ -61,6 +62,10 @@ import {
 } from "../lib/importExport";
 
 const router: IRouter = Router();
+router.use(async(req,_res,next)=>{
+ if(req.method==="POST"&&req.path==="/jobs"&&req.body?.status==="completed")await assertCompletedJobCreationAllowed(getTenantId(req),req.body.serviceId);
+ next();
+});
 
 type JobMeasurementPolygon = {
   zoneTypeId?: string | null;
@@ -431,7 +436,7 @@ router.post("/jobs/import/commit", requireVerifiedStaff, importUpload.single("fi
 
 function formatJob(
   j: typeof jobsTable.$inferSelect,
-  extras?: { customerName?: string | null; customerPhone?: string | null; customerNotes?: string | null; assigneeName?: string | null; propertyAddress?: string | null; propertyNotes?: string | null; crewName?: string | null; planName?: string | null; routeName?: string | null; serviceName?: string | null; fieldRequirements?: unknown }
+  extras?: { customerName?: string | null; customerPhone?: string | null; customerNotes?: string | null; assigneeName?: string | null; propertyAddress?: string | null; propertyLat?:number|null; propertyLng?:number|null; propertyNotes?: string | null; crewName?: string | null; planName?: string | null; routeName?: string | null; serviceName?: string | null; fieldRequirements?: unknown }
 ) {
   const rule = j.recurrenceRule as unknown as RecurrenceRule | null;
   return {
@@ -448,6 +453,8 @@ function formatJob(
     assigneeName: extras?.assigneeName ?? null,
     crewName: extras?.crewName ?? null,
     propertyAddress: extras?.propertyAddress ?? null,
+    propertyLat:extras?.propertyLat ?? null,
+    propertyLng:extras?.propertyLng ?? null,
     propertyNotes: extras?.propertyNotes ?? null,
     invoiceId: j.invoiceId ?? null,
     blueprintId: j.blueprintId ?? null,
@@ -538,6 +545,8 @@ router.get("/jobs", async (req, res): Promise<void> => {
       customerNotes: customersTable.notes,
       assigneeName: usersTable.name,
       propertyAddress: propertiesTable.address,
+      propertyLat:propertiesTable.lat,
+      propertyLng:propertiesTable.lng,
       propertyNotes: propertiesTable.notes,
       crewName: crewsTable.name,
       planName: customerPlansTable.templateName,
@@ -556,7 +565,7 @@ router.get("/jobs", async (req, res): Promise<void> => {
     .where(where)
     .orderBy(jobsTable.scheduledAt);
 
-  res.json(rows.map(r => formatJob(r.job, { customerName: r.customerName, customerPhone: r.customerPhone, customerNotes: r.customerNotes, assigneeName: r.assigneeName, propertyAddress: r.propertyAddress, propertyNotes: r.propertyNotes, crewName: r.crewName, planName: r.planName, routeName: r.routeName, serviceName: r.serviceName, fieldRequirements: r.fieldRequirements })));
+  res.json(rows.map(r => formatJob(r.job, { customerName: r.customerName, customerPhone: r.customerPhone, customerNotes: r.customerNotes, assigneeName: r.assigneeName, propertyAddress: r.propertyAddress, propertyLat:r.propertyLat,propertyLng:r.propertyLng,propertyNotes: r.propertyNotes, crewName: r.crewName, planName: r.planName, routeName: r.routeName, serviceName: r.serviceName, fieldRequirements: r.fieldRequirements })));
 });
 
 // ── Recurring series list ────────────────────────────────────────────────────
@@ -808,7 +817,7 @@ router.get("/jobs/:id", requireVerifiedStaff, async (req, res): Promise<void> =>
   }
 
   const [row] = await db
-    .select({ job: jobsTable, customerName: customersTable.name, customerPhone: customersTable.phone, customerNotes: customersTable.notes, assigneeName: usersTable.name, propertyAddress: propertiesTable.address, propertyNotes: propertiesTable.notes, crewName: crewsTable.name, planName: customerPlansTable.templateName, routeName: routeTemplatesTable.name, serviceName: servicesTable.name, fieldRequirements: servicesTable.fieldRequirements })
+    .select({ job: jobsTable, customerName: customersTable.name, customerPhone: customersTable.phone, customerNotes: customersTable.notes, assigneeName: usersTable.name, propertyAddress: propertiesTable.address, propertyLat:propertiesTable.lat,propertyLng:propertiesTable.lng,propertyNotes: propertiesTable.notes, crewName: crewsTable.name, planName: customerPlansTable.templateName, routeName: routeTemplatesTable.name, serviceName: servicesTable.name, fieldRequirements: servicesTable.fieldRequirements })
     .from(jobsTable)
     .leftJoin(customersTable, eq(jobsTable.customerId, customersTable.id))
     .leftJoin(usersTable, eq(jobsTable.assigneeId, usersTable.id))
@@ -820,7 +829,7 @@ router.get("/jobs/:id", requireVerifiedStaff, async (req, res): Promise<void> =>
     .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
 
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
-  res.json(formatJob(row.job, { customerName: row.customerName, customerPhone: row.customerPhone, customerNotes: row.customerNotes, assigneeName: row.assigneeName, propertyAddress: row.propertyAddress, propertyNotes: row.propertyNotes, crewName: row.crewName, planName: row.planName, routeName: row.routeName, serviceName: row.serviceName, fieldRequirements: row.fieldRequirements }));
+  res.json(formatJob(row.job, { customerName: row.customerName, customerPhone: row.customerPhone, customerNotes: row.customerNotes, assigneeName: row.assigneeName, propertyAddress: row.propertyAddress, propertyLat:row.propertyLat,propertyLng:row.propertyLng,propertyNotes: row.propertyNotes, crewName: row.crewName, planName: row.planName, routeName: row.routeName, serviceName: row.serviceName, fieldRequirements: row.fieldRequirements }));
 });
 
 router.patch("/jobs/:id", async (req, res): Promise<void> => {
@@ -1018,7 +1027,7 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
     baseUpdate.recurrenceRule = recurrenceRule;
   }
 
-  const [updated] = await db.update(jobsTable)
+  const [updated] = await formsGuardedJobUpdate(db)
     .set(baseUpdate)
     .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId), eq(jobsTable.scheduledAt, currentJob.scheduledAt)))
     .returning();
@@ -1381,7 +1390,7 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
     ? `${existing}\n\nService completed: ${dateStr}`
     : `Service completed: ${dateStr}`;
 
-  const [updated] = await db.update(jobsTable)
+  const [updated] = await formsGuardedJobUpdate(db)
     .set({ status: "completed", completedAt: now, description: newDescription })
     .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
     .returning();
@@ -1575,7 +1584,7 @@ router.post("/jobs/:id/complete-and-invoice", async (req, res): Promise<void> =>
         const dateStr = now.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
         const existing = job.description ?? "";
         const newDescription = existing ? `${existing}\n\nService completed: ${dateStr}` : `Service completed: ${dateStr}`;
-        await tx.update(jobsTable)
+        await formsGuardedJobUpdate(tx)
           .set({ status: "completed", completedAt: now, description: newDescription })
           .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)));
       }
@@ -2730,4 +2739,7 @@ router.post("/jobs/:id/resend-reminder", async (req, res): Promise<void> => {
   res.json(result);
 });
 
+router.use((error:unknown,_req:import("express").Request,res:import("express").Response,next:import("express").NextFunction)=>{
+ if(error instanceof FormError){res.status(error.status).json({error:error.message,missing:error.missing});return;}next(error);
+});
 export default router;

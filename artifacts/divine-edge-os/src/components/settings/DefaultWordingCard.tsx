@@ -2,8 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useGetTenantSettings, getGetTenantSettingsQueryKey, useUpdateTenantSettings } from '@workspace/api-client-react';
 import { Textarea } from '@/components/ui/textarea';
-import { Button } from '@/components/ui/button';
-import { toast } from 'sonner';
+import { useSettingsAutosave, useAutosaveFields } from '@/hooks/use-settings-autosave';
+import { AutosaveIndicator } from '@/components/settings/AutosaveIndicator';
 
 /**
  * Company-wide default terms + notes for invoices or estimates, with its own save.
@@ -30,21 +30,16 @@ export function DefaultWordingCard({ kind }: { kind: 'invoice' | 'estimate' }) {
     }
   }, [settings, termsKey, notesKey]);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const s = (settings ?? {}) as any;
-  const dirty = terms !== (s[termsKey] ?? '') || notes !== (s[notesKey] ?? '');
   const label = kind === 'invoice' ? 'invoice' : 'estimate';
-
-  const save = () => {
-    update.mutate(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      { data: { [termsKey]: terms.trim() === '' ? '' : terms, [notesKey]: notes.trim() === '' ? '' : notes } as any },
-      {
-        onSuccess: () => { toast.success(`Default ${label} wording saved`); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
-        onError: () => toast.error(`Failed to save default ${label} wording`),
-      },
-    );
-  };
+  const mutateAsyncRef = useRef(update.mutateAsync); mutateAsyncRef.current = update.mutateAsync;
+  const autosave = useSettingsAutosave(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    patch => mutateAsyncRef.current({ data: patch as any }),
+    { onSaved: () => qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }) },
+  );
+  const [ready, setReady] = useState(false);
+  useEffect(() => { if (initialized.current) setReady(true); }, [terms, notes, settings]);
+  useAutosaveFields({ [termsKey]: terms.trim() === '' ? '' : terms, [notesKey]: notes.trim() === '' ? '' : notes }, ready, autosave.queue);
 
   return (
     <div className="space-y-3 rounded-lg border p-4" data-testid={`default-wording-${kind}`}>
@@ -60,12 +55,7 @@ export function DefaultWordingCard({ kind }: { kind: 'invoice' | 'estimate' }) {
         <label className="text-sm font-medium" htmlFor={`def-${kind}-notes`}>Default notes</label>
         <Textarea id={`def-${kind}-notes`} rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Leave blank for no default notes" />
       </div>
-      <div className="flex items-center gap-2">
-        <Button size="sm" onClick={save} disabled={update.isPending || !dirty} data-testid={`button-save-default-wording-${kind}`}>
-          {update.isPending ? 'Saving…' : 'Save wording'}
-        </Button>
-        {dirty && <span className="text-xs text-amber-700">Unsaved changes</span>}
-      </div>
+      <AutosaveIndicator status={autosave.status} hasUnsaved={autosave.hasUnsaved} onRetry={() => { void autosave.retry(); }} />
     </div>
   );
 }

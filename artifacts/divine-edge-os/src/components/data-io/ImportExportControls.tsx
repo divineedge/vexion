@@ -1,8 +1,8 @@
 import React, { useRef, useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import {
   exportEntity,
-  usePreviewEntityImport,
-  useCommitEntityImport,
+  customFetch,
   type ImportExportEntity,
   type ImportPreviewResult,
   type ImportCommitResult,
@@ -37,6 +37,22 @@ interface ImportExportControlsProps {
   onImportComplete?: () => void;
 }
 
+export type PropertyAddressSource = 'require_physical' | 'mailing_if_missing';
+
+async function previewImportRequest(entity: ImportExportEntity, file: File, addressSource?: PropertyAddressSource) {
+  const form = new FormData();
+  form.append('file', file);
+  if (addressSource) form.append('propertyAddressSource', addressSource);
+  return customFetch<ImportPreviewResult>(`/api/${entity}/import/preview`, { method: 'POST', body: form });
+}
+async function commitImportRequest(entity: ImportExportEntity, file: File, mapping: Record<string, string | null>, addressSource?: PropertyAddressSource) {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('mapping', JSON.stringify(mapping));
+  if (addressSource) form.append('propertyAddressSource', addressSource);
+  return customFetch<ImportCommitResult>(`/api/${entity}/import/commit`, { method: 'POST', body: form });
+}
+
 type WizardStep = 'upload' | 'mapping' | 'result';
 const columnKey = (index: number) => `__column_${index}`;
 
@@ -51,8 +67,15 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
   const [historyOpen, setHistoryOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const previewImport = usePreviewEntityImport();
-  const commitImport = useCommitEntityImport();
+  const [addressSource, setAddressSource] = useState<PropertyAddressSource>('require_physical');
+  const isProperties = entity === 'properties';
+  const sourceParam = isProperties ? addressSource : undefined;
+  const previewImport = useMutation({
+    mutationFn: ({ entity: e, file: f, source }: { entity: ImportExportEntity; file: File; source?: PropertyAddressSource }) => previewImportRequest(e, f, source),
+  });
+  const commitImport = useMutation({
+    mutationFn: ({ entity: e, file: f, mapping: m, source }: { entity: ImportExportEntity; file: File; mapping: Record<string, string | null>; source?: PropertyAddressSource }) => commitImportRequest(e, f, m, source),
+  });
 
   const handleExport = async (format: 'csv' | 'xlsx') => {
     setExporting(true);
@@ -83,7 +106,7 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
   const handleFileSelected = (selected: File) => {
     setFile(selected);
     previewImport.mutate(
-      { entity, file: selected },
+      { entity, file: selected, source: sourceParam },
       {
         onSuccess: (data) => {
           setPreview(data);
@@ -103,7 +126,7 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
   const handleCommit = () => {
     if (!file) return;
     commitImport.mutate(
-      { entity, file, mapping },
+      { entity, file, mapping, source: sourceParam },
       {
         onSuccess: (data) => {
           setResult(data);
@@ -213,6 +236,19 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
               </div>
             )}
 
+            {step === 'upload' && isProperties && (
+              <div className="px-8 pt-6 max-w-3xl mx-auto w-full" data-testid="property-address-source">
+                <label className="text-sm font-medium">Property address source</label>
+                <Select value={addressSource} onValueChange={v => setAddressSource(v as PropertyAddressSource)}>
+                  <SelectTrigger className="mt-1.5" data-testid="select-property-address-source"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="require_physical">Require a physical service address (default)</SelectItem>
+                    <SelectItem value="mailing_if_missing">Use customer mailing address only if physical is missing</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1.5">Mailing fallback only applies when the row has no physical address and the customer has no existing property. PO boxes are rejected, and the address still needs a physical map pin. Choose this before uploading; the same choice is sent for preview and import.</p>
+              </div>
+            )}
             {step === 'mapping' && preview && (
               <div className="p-8 max-w-6xl mx-auto w-full">
                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between bg-background p-5 rounded-xl border shadow-sm mb-6 gap-4" data-testid="mapping-summary">
@@ -225,6 +261,7 @@ export function ImportExportControls({ entity, entityLabel, exportQuery = {}, on
                       <p className="text-sm text-muted-foreground flex items-center gap-1.5 mt-1">
                         <span className="font-medium text-foreground">{preview.totalRows.toLocaleString()}</span> records detected
                       </p>
+                      {isProperties && <p className="text-xs text-muted-foreground mt-1" data-testid="text-address-source">Address source: {addressSource === 'mailing_if_missing' ? 'Mailing if physical missing' : 'Physical required'}</p>}
                     </div>
                   </div>
                   <div className="flex items-center gap-6 md:text-right">

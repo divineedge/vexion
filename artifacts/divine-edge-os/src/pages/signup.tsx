@@ -30,6 +30,11 @@ export default function SignupPage() {
     e.preventDefault();
     setError('');
 
+    const companyName = form.companyName.trim();
+    const ownerName = form.ownerName.trim();
+    if (!companyName) { setError('Business name is required.'); return; }
+    if (companyName.length > 120) { setError('Business name must be 120 characters or fewer.'); return; }
+    if (!ownerName) { setError('Your name is required.'); return; }
     if (form.password.length < 8) {
       setError('Password must be at least 8 characters.');
       return;
@@ -45,9 +50,9 @@ export default function SignupPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          companyName: form.companyName,
-          ownerName: form.ownerName,
-          email: form.email,
+          companyName,
+          ownerName,
+          email: form.email.trim(),
           password: form.password,
         }),
       });
@@ -119,10 +124,13 @@ export default function SignupPage() {
 
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium flex items-center gap-1.5">
-                    <Building2 className="w-3.5 h-3.5 text-muted-foreground" /> Company Name
+                    <Building2 className="w-3.5 h-3.5 text-muted-foreground" /> Business Name <span className="text-destructive">*</span>
                   </label>
                   <Input
                     title="Your company or business name"
+                    data-testid="input-business-name"
+                    aria-required="true"
+                    maxLength={120}
                     value={form.companyName}
                     onChange={set('companyName')}
                     placeholder="Torres Field Services"
@@ -139,6 +147,7 @@ export default function SignupPage() {
                     onChange={set('ownerName')}
                     placeholder="Mike Torres"
                     required
+                    data-testid="input-owner-name"
                   />
                 </div>
 

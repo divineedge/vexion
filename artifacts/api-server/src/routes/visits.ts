@@ -1,6 +1,7 @@
 import { paymentGuardedJobInsert } from "../lib/paymentPolicy";
 import { Router, type IRouter } from "express";
-import { db, visitsTable, estimatesTable, jobsTable, customersTable, propertiesTable, usersTable } from "@workspace/db";
+import { db, visitsTable, estimatesTable, jobsTable, customersTable, propertiesTable, usersTable,subTimersTable } from "@workspace/db";
+import { readVisitClock,startVisitClock,stopVisitClock } from "../lib/visitClock";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { getCallerRole } from "../lib/roles";
@@ -9,6 +10,27 @@ import { resolveJobAssignmentRecipientIds, resolveVisitAssignmentRecipientIds, s
 import { canAccessVisit } from "../lib/visitAccess";
 
 const router: IRouter = Router();
+router.get("/visits/clock-active",requireVerifiedStaff,async(req,res):Promise<void>=>{
+ const tenantId=getTenantId(req),userId=getUserId(req);
+ const entries=await db.select({visitId:subTimersTable.visitId,entryId:subTimersTable.id,clockedInAt:subTimersTable.startedAt}).from(subTimersTable)
+ .where(and(eq(subTimersTable.tenantId,tenantId),eq(subTimersTable.userId,userId),eq(subTimersTable.isActive,true),sql`${subTimersTable.visitId} IS NOT NULL`));
+ res.json({entries});
+});
+for(const action of ["clock","clock-in","clock-out"] as const){
+ const handler=async(req:import("express").Request,res:import("express").Response):Promise<void>=>{
+  const tenantId=getTenantId(req),userId=getUserId(req),visitId=Number(req.params.id);
+  if(!Number.isInteger(visitId)||visitId<=0){res.status(400).json({error:"Invalid visit"});return;}
+  if(!(await canAccessVisit(tenantId,userId,visitId))){res.status(403).json({error:"You are not assigned to this visit"});return;}
+  const position={lat:req.body?.lat==null?null:Number(req.body.lat),lng:req.body?.lng==null?null:Number(req.body.lng)};
+  if((position.lat===null)!==(position.lng===null)||(position.lat!==null&&(!Number.isFinite(position.lat)||Math.abs(position.lat)>90))||(position.lng!==null&&(!Number.isFinite(position.lng)||Math.abs(position.lng)>180))){
+    res.status(400).json({error:"Invalid clock location"});return;
+  }
+  try{res.json(await (action==="clock"?readVisitClock(tenantId,userId,visitId):action==="clock-in"?startVisitClock(tenantId,userId,visitId,db,position):stopVisitClock(tenantId,userId,visitId,db,position)));}
+  catch(error){const failure=error as Error&{status?:number};if(failure.status){res.status(failure.status).json({error:failure.message});return;}throw error;}
+ };
+ if(action==="clock")router.get(`/visits/:id/${action}`,requireVerifiedStaff,handler);
+ else router.post(`/visits/:id/${action}`,requireVerifiedStaff,handler);
+}
 
 function notifyVisitAssignment(
   tenantId: number, visit: { id: number; purpose: string; assigneeId: number | null },
@@ -25,7 +47,7 @@ function notifyVisitAssignment(
 
 function formatVisit(
   v: typeof visitsTable.$inferSelect,
-  extras?: { customerName?: string | null; assigneeName?: string | null; propertyAddress?: string | null }
+  extras?: { customerName?: string | null; assigneeName?: string | null; propertyAddress?: string | null;propertyLat?:number|null;propertyLng?:number|null }
 ) {
   return {
     ...v,
@@ -36,6 +58,7 @@ function formatVisit(
     customerName: extras?.customerName ?? null,
     assigneeName: extras?.assigneeName ?? null,
     propertyAddress: extras?.propertyAddress ?? null,
+    propertyLat:extras?.propertyLat??null,propertyLng:extras?.propertyLng??null,
   };
 }
 
@@ -54,12 +77,11 @@ router.get("/visits", requireVerifiedStaff, async (req, res): Promise<void> => {
   }
   if (customerId) where = and(where, eq(visitsTable.customerId, parseInt(customerId, 10))) as typeof where;
   if (date) {
-    const start = new Date(date);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(date);
-    end.setHours(23, 59, 59, 999);
-    where = and(where, sql`${visitsTable.scheduledAt} >= ${start.toISOString()}::timestamptz`) as typeof where;
-    where = and(where, sql`${visitsTable.scheduledAt} <= ${end.toISOString()}::timestamptz`) as typeof where;
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||Number.isNaN(Date.parse(date+"T12:00:00Z"))||new Date(date+"T12:00:00Z").toISOString().slice(0,10)!==date){res.status(400).json({error:"Choose a valid calendar day"});return;}
+    const company=await db.execute(sql`SELECT timezone FROM tenants WHERE id=${tenantId}`);
+    const zone=String(company.rows[0]?.timezone||"UTC");
+    where=and(where,sql`${visitsTable.scheduledAt} >= (${date}::date::timestamp AT TIME ZONE ${zone})`,
+      sql`${visitsTable.scheduledAt} < ((${date}::date+1)::timestamp AT TIME ZONE ${zone})`) as typeof where;
   }
 
   const rows = await db
@@ -68,6 +90,7 @@ router.get("/visits", requireVerifiedStaff, async (req, res): Promise<void> => {
       customerName: customersTable.name,
       assigneeName: usersTable.name,
       propertyAddress: propertiesTable.address,
+      propertyLat:propertiesTable.lat,propertyLng:propertiesTable.lng,
     })
     .from(visitsTable)
     .leftJoin(customersTable, eq(visitsTable.customerId, customersTable.id))
@@ -80,6 +103,7 @@ router.get("/visits", requireVerifiedStaff, async (req, res): Promise<void> => {
     customerName: r.customerName,
     assigneeName: r.assigneeName,
     propertyAddress: r.propertyAddress,
+    propertyLat:r.propertyLat,propertyLng:r.propertyLng,
   })));
 });
 
@@ -137,6 +161,7 @@ router.get("/visits/:id", requireVerifiedStaff, async (req, res): Promise<void> 
       customerName: customersTable.name,
       assigneeName: usersTable.name,
       propertyAddress: propertiesTable.address,
+      propertyLat:propertiesTable.lat,propertyLng:propertiesTable.lng,
     })
     .from(visitsTable)
     .leftJoin(customersTable, eq(visitsTable.customerId, customersTable.id))
@@ -145,7 +170,7 @@ router.get("/visits/:id", requireVerifiedStaff, async (req, res): Promise<void> 
     .where(and(eq(visitsTable.id, id), eq(visitsTable.tenantId, tenantId)));
 
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
-  res.json(formatVisit(row.visit, { customerName: row.customerName, assigneeName: row.assigneeName, propertyAddress: row.propertyAddress }));
+  res.json(formatVisit(row.visit, { customerName: row.customerName, assigneeName: row.assigneeName, propertyAddress: row.propertyAddress,propertyLat:row.propertyLat,propertyLng:row.propertyLng }));
 });
 
 // ── UPDATE ────────────────────────────────────────────────────────────────────
@@ -195,6 +220,7 @@ router.post("/visits/:id/complete", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const id = parseInt(req.params.id, 10);
   const { outcomeNotes } = req.body;
+  if(!Number.isInteger(id)||!(await canAccessVisit(tenantId,getUserId(req),id))){res.status(403).json({error:"You are not assigned to this visit"});return;}
 
   const [updated] = await db.update(visitsTable)
     .set({ completedAt: new Date(), outcomeNotes: outcomeNotes ?? null })
@@ -202,6 +228,10 @@ router.post("/visits/:id/complete", async (req, res): Promise<void> => {
     .returning();
 
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  const stoppedAt=new Date();
+  await db.update(subTimersTable).set({isActive:false,stoppedAt,
+    elapsedSeconds:sql`GREATEST(0,FLOOR(EXTRACT(EPOCH FROM(${stoppedAt.toISOString()}::timestamptz-${subTimersTable.startedAt}))))::integer`})
+    .where(and(eq(subTimersTable.tenantId,tenantId),eq(subTimersTable.visitId,id),eq(subTimersTable.isActive,true)));
   res.json(formatVisit(updated));
 });
 

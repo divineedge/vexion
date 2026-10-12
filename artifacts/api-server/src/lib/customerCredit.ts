@@ -40,6 +40,7 @@ export function creditedInvoiceInsert(handle: Tx | typeof db, claimJob = false) 
       if (claimJob && input.jobId) {
         const [job] = await tx.select().from(jobsTable).where(and(eq(jobsTable.id, input.jobId), eq(jobsTable.tenantId, input.tenantId))).for("update");
         if (!job) throw new Error("Job not found");
+         if(job.customerId!==input.customerId)throw new Error("Invoice customer does not match the linked job");
         if (job.invoiceId) {
           const [prior] = await tx.select({ status: invoicesTable.status }).from(invoicesTable).where(and(eq(invoicesTable.id, job.invoiceId), eq(invoicesTable.tenantId, input.tenantId)));
           if (!prior || !["void", "cancelled"].includes(prior.status)) throw new Error("Job already invoiced; refresh to view its invoice");

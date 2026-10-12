@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { directionsUrl } from '@/lib/directions';
 import {
   useListProperties, getListPropertiesQueryKey,
   useCreateProperty,
@@ -193,7 +194,7 @@ export default function PropertiesPage() {
                         <PropertyThumbnail profilePhotoUrl={(property as any).profilePhotoUrl} />
                         <div>
                           <a
-                            href={`https://maps.google.com/?q=${encodeURIComponent(property.address + ', ' + property.city + ', ' + property.state)}`}
+                            href={directionsUrl({ lat: (property as any).lat, lng: (property as any).lng, address: property.address, city: property.city, state: property.state }) ?? undefined}
                             target="_blank"
                             rel="noopener noreferrer"
                             title="Open in Google Maps"

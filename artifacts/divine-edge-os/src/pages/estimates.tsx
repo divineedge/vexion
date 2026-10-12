@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { DeliveryHistory } from '@/components/billing/DeliveryHistory';
 import { serverErrorMessage } from '@/lib/serverError';
 import { PreviewActions } from '@/components/documents/PreviewActions';
 import { WordingField } from '@/components/documents/WordingField';
@@ -601,12 +602,12 @@ export default function EstimatesPage() {
         </TemplatesSheetContent>
       </TemplatesSheet>
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Estimates</h1>
-          <p className="text-muted-foreground mt-1">Manage price proposals and convert them to jobs.{Array.isArray(estimates) && (estimates as any[]).length > 0 ? ` · ${(estimates as any[]).length} total` : ''}</p>
+          <p className="text-muted-foreground mt-1">Send price proposals and convert approvals into jobs.{Array.isArray(estimates) && (estimates as any[]).length > 0 ? ` · ${(estimates as any[]).length} total` : ''}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button size="sm" variant="outline" onClick={() => setTemplatesOpen(true)} data-testid="button-estimate-templates">Estimate Templates</Button>
           <div className="flex rounded-md border p-0.5" aria-label="Estimate lifecycle view">
             <Button size="sm" variant={!showArchivedEstimates ? 'default' : 'ghost'} onClick={() => setShowArchivedEstimates(false)}>Active Estimates</Button>
@@ -619,7 +620,7 @@ export default function EstimatesPage() {
             onImportComplete={() => qc.invalidateQueries({ queryKey: getListEstimatesQueryKey() })}
           />
           {canManageOffice && (
-            <Button title="Create a new estimate" onClick={() => setCreateOpen(true)} className="gap-2">
+            <Button title="Create a new estimate" onClick={() => setCreateOpen(true)} className="gap-2" data-testid="button-new-estimate">
               <Plus className="w-4 h-4" /> New Estimate
             </Button>
           )}
@@ -677,20 +678,20 @@ export default function EstimatesPage() {
       )}
 
       {/* Filters */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
           <Input
             value={estimateSearch}
             onChange={e => setEstimateSearch(e.target.value)}
             placeholder="Search estimates…"
             title="Search by customer name, property address, or estimate number"
-            className="h-9 text-sm pl-7 w-52"
+            className="h-9 pl-8"
           />
           {estimateSearch && <button onClick={() => setEstimateSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><X className="w-3.5 h-3.5" /></button>}
         </div>
         <Select value={statusFilter || 'all'} onValueChange={v => setStatusFilter(v === 'all' ? '' : v)}>
-          <SelectTrigger className="w-44" title="Filter by estimate status">
+          <SelectTrigger className="h-9 w-36" title="Filter by estimate status">
             <SelectValue placeholder="All statuses" />
           </SelectTrigger>
           <SelectContent>
@@ -1914,6 +1915,8 @@ export default function EstimatesPage() {
                   })()
                 )}
               </div>
+              <Separator className="my-6" />
+              <DeliveryHistory type="estimate" id={selectedEstimate.id} />
             </>
           )}
         </SheetContent>

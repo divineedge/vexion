@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { JobFormPanel, useMissingRequiredForms } from '@/components/forms/JobFormPanel';
+import { directionsUrl } from '@/lib/directions';
 import { serverErrorMessage } from '@/lib/serverError';
 import { RescheduleFeeDialog, defaultRescheduleFee, moveToDay, apiErrorMessage, type RescheduleFeeChoice } from '@/components/schedule/RescheduleFeeDialog';
 import { useLocation, Link } from 'wouter';
@@ -257,6 +259,7 @@ export default function SchedulePage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<'week' | 'month' | 'series'>('week');
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
+  const missingJobForms = useMissingRequiredForms(selectedJobId);
   const [createOpen, setCreateOpen] = useState(false);
   const [newJob, setNewJob] = useState<NewJobForm>(EMPTY_JOB);
   const [newJobCustomerSearch, setNewJobCustomerSearch] = useState('');
@@ -890,6 +893,7 @@ export default function SchedulePage() {
 
   const handleStatusChange = (status: string) => {
     if (!selectedJobId) return;
+    if (status === 'completed' && missingJobForms.length) { toast.error(`Submit required forms first: ${missingJobForms.join(', ')}`); return; }
     if (status === 'completed' && !window.confirm('Mark this job as Completed?')) return;
     if (status === 'cancelled' && !window.confirm('Cancel this job? This cannot be undone.')) return;
     updateJob.mutate(
@@ -1800,6 +1804,7 @@ export default function SchedulePage() {
                     </Button>
                   )}
                 </div>
+                {selectedJobId && <JobFormPanel jobId={selectedJobId} jobStatus={selectedJob?.status} />}
 
                 {/* Total logged time + budget gauge */}
                 {(() => {
@@ -2013,7 +2018,7 @@ export default function SchedulePage() {
                       </SelectContent>
                     </Select>
                     {selectedJob.status !== 'completed' && selectedJob.status !== 'cancelled' && (
-                      <Button size="sm" variant="outline" className="w-full gap-2 text-emerald-700 border-emerald-200 hover:bg-emerald-50" title="Mark this job as completed" disabled={updateJob.isPending} onClick={() => handleStatusChange('completed')}>
+                      <Button size="sm" variant="outline" className="w-full gap-2 text-emerald-700 border-emerald-200 hover:bg-emerald-50" title="Mark this job as completed" disabled={updateJob.isPending || missingJobForms.length > 0} onClick={() => handleStatusChange('completed')}>
                         <CheckCircle className="w-4 h-4" /> {updateJob.isPending ? 'Saving…' : 'Mark Complete'}
                       </Button>
                     )}
@@ -2257,7 +2262,7 @@ export default function SchedulePage() {
                           ? <Link href={`/properties/${(selectedJob as any).propertyId}`} title="View property details" className="hover:underline text-primary">{selectedJob.propertyAddress}</Link>
                           : <span title={selectedJob.propertyAddress ?? undefined}>{selectedJob.propertyAddress}</span>}
                         <a
-                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedJob.propertyAddress)}`}
+                          href={directionsUrl({ lat: (selectedJob as any).propertyLat, lng: (selectedJob as any).propertyLng, address: selectedJob.propertyAddress }) ?? undefined}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-xs text-muted-foreground hover:text-primary hover:underline shrink-0"
@@ -2426,6 +2431,7 @@ export default function SchedulePage() {
                       <Button
                         size="sm"
                         className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white h-7 text-xs"
+                        disabled={selectedJob.status !== 'completed' && missingJobForms.length > 0}
                         title={selectedJob.status === 'completed' ? 'Create an invoice for this job' : 'Mark this job complete and create an invoice'}
                         onClick={() => {
                           setCompleteInvoiceStep('review');
@@ -3488,6 +3494,7 @@ export default function SchedulePage() {
             <Button variant="outline" title="Clock out without marking the job complete" onClick={() => { toast.success('Clocked out'); setClockOutJobId(null); }}>Not yet</Button>
             <Button title="Clock out and mark this job as completed" onClick={() => {
               if (!clockOutJobId) return;
+              if (clockOutJobId === selectedJobId && missingJobForms.length) { toast.error(`Submit required forms first: ${missingJobForms.join(', ')}`); return; }
               updateJob.mutate({ id: clockOutJobId, data: { status: 'completed' } }, {
                 onSuccess: () => {
                   toast.success('Job marked complete');

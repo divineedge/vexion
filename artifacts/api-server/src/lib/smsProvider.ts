@@ -5,6 +5,9 @@
  */
 
 import { logger } from "./logger";
+import { db } from "@workspace/db";
+import { sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 
 export interface SmsProviderConfig {
   platform: "openphone" | "grasshopper" | "twilio" | "quo" | null;
@@ -105,7 +108,24 @@ export async function sendSms(
   providerConfig: SmsProviderConfig,
   to: string,
   body: string,
+  context?:{tenantId:number;documentType?:"invoice"|"estimate";documentId?:number},
 ): Promise<SendSmsResult> {
+  if(context){
+    const matched=await db.execute(sql`SELECT id,'invoice' AS type FROM invoices WHERE tenant_id=${context.tenantId}
+      AND public_token IS NOT NULL AND length(public_token)>15 AND position(public_token in ${body})>0
+      UNION ALL SELECT id,'estimate' AS type FROM estimates WHERE tenant_id=${context.tenantId}
+      AND approval_token IS NOT NULL AND length(approval_token)>15 AND position(approval_token in ${body})>0 LIMIT 1`);
+    const document= context.documentId&&context.documentType?{id:context.documentId,type:context.documentType}:matched.rows[0];
+    if(document){
+      const created=await db.execute(sql`INSERT INTO document_deliveries(tenant_id,document_type,document_id,channel,recipient,subject,provider,open_token)
+        VALUES(${context.tenantId},${document.type},${Number(document.id)},'sms',${to},'Document text message',${providerConfig.platform??"none"},${randomUUID()}) RETURNING id`);
+      const result=await sendSms(providerConfig,to,body);
+      const state=!providerConfig.platform||!providerConfig.fromNumber?"dev_only":result.success?"accepted":"uncertain";
+      await db.execute(sql`UPDATE document_deliveries SET status=${state},provider_message_id=${result.externalId??null},
+        error=${result.error??null},completed_at=now() WHERE id=${Number(created.rows[0].id)}`);
+      return result;
+    }
+  }
   const { platform, config, fromNumber } = providerConfig;
   const from = fromNumber ?? "";
 

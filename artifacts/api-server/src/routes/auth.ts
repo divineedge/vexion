@@ -1,3 +1,4 @@
+import { ensureTenantSlug } from "../lib/tenantSlug";
 import { Router, type IRouter } from "express";
 import { db, usersTable, tenantsTable, staffSessionsTable } from "@workspace/db";
 import { eq, and, gt, sql } from "drizzle-orm";
@@ -17,6 +18,9 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 // Business registration — creates a new tenant + company_owner user
 router.post("/auth/register", async (req, res): Promise<void> => {
   const { companyName, ownerName, email, password } = req.body;
+  if(typeof companyName!=="string"||!companyName.trim()||companyName.trim().length>120){
+    res.status(400).json({error:"Business name is required and must be at most 120 characters"});return;
+  }
   if (!companyName || !ownerName || !email || !password) {
     res.status(400).json({ error: "companyName, ownerName, email, and password are required" });
     return;
@@ -40,23 +44,13 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     return;
   }
 
-  // Generate a unique URL-safe slug from the company name
-  const baseSlug = companyName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  const existingSlugs = await db.select({ slug: tenantsTable.slug }).from(tenantsTable);
-  const takenSlugs = new Set(existingSlugs.map(r => r.slug).filter((s): s is string => s != null && s.startsWith(baseSlug)));
-  let slug = baseSlug;
-  let counter = 1;
-  while (takenSlugs.has(slug)) { slug = `${baseSlug}-${counter++}`; }
-
-  const [tenant] = await db.insert(tenantsTable).values({ name: companyName, slug }).returning();
   const passwordHash = await bcrypt.hash(password, 10);
-  const [user] = await db.insert(usersTable).values({
-    tenantId: tenant.id,
-    email: normalizedEmail,
-    name: ownerName,
-    role: "company_owner",
-    passwordHash,
-  }).returning();
+  const {tenant,user}=await db.transaction(async tx=>{
+    const [created]=await tx.insert(tenantsTable).values({name:companyName.trim()}).returning();
+    const slug=await ensureTenantSlug(created.id,tx);
+    const [user]=await tx.insert(usersTable).values({tenantId:created.id,email:normalizedEmail,name:ownerName,role:"company_owner",passwordHash}).returning();
+    return {tenant:{...created,slug},user};
+  });
 
   // Create a server-side staff session for the newly registered user
   const rawToken = randomBytes(32).toString("hex");

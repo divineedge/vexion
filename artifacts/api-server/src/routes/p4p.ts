@@ -1,3 +1,4 @@
+import { processAcquisitionRewards } from "../lib/acquisitionRewards";
 /**
  * P4P Payroll Engine — Service-level percentage adjustments & customer sell-price material stripping.
  *
@@ -266,6 +267,7 @@ router.get("/p4p/summary", async (req, res): Promise<void> => {
 
   // Reuse jobs endpoint logic via a sub-call is messy; re-derive here for clarity.
   const range = requestRange(req.query);
+  await processAcquisitionRewards(tenantId);
   res.json(await calculatePayrollSummary(db, tenantId, range, period));
 });
 
@@ -398,8 +400,12 @@ export async function calculatePayrollSummary(db: PayrollDb, tenantId: number, {
     FROM users WHERE tenant_id=${tenantId}
   `);
   const rateByUser = new Map(endRates.rows.map(r => [Number(r.id), r.rate == null ? null : Number(r.rate)]));
+  const bonuses = await db.execute(sql`SELECT recipient_user_id,SUM(amount)::float AS amount FROM acquisition_rewards
+    WHERE tenant_id=${tenantId} AND kind='employee_bonus' AND payroll_at >= ${rangeStart.toISOString()}::timestamptz
+    AND payroll_at <= ${rangeEnd.toISOString()}::timestamptz GROUP BY recipient_user_id`);
+  const acquisitionBonusMap = new Map(bonuses.rows.map(row => [Number(row.recipient_user_id), Number(row.amount)]));
   const users = allUsers.filter(u => u.role === "technician" || u.role === "crew_manager"
-    || (u.role === "company_owner" && eligibility?.ownersSchedulable));
+    || (u.role === "company_owner" && eligibility?.ownersSchedulable) || acquisitionBonusMap.has(u.id));
 
   const technicians = users.map(u => {
     const stats = userEarnings.get(u.id) ?? { p4pEarnings: 0, jobCount: 0, totalRevenue: 0, totalMaterialCost: 0, netLaborRevenue: 0 };
@@ -415,7 +421,8 @@ export async function calculatePayrollSummary(db: PayrollDb, tenantId: number, {
       rateSegments,
       clockHours: Math.round(clockHours * 100) / 100,
       basePay: basePay == null ? null : Math.round(basePay * 100) / 100,
-      grossPay: basePay == null ? null : Math.round(Math.max(basePay, stats.p4pEarnings) * 100) / 100,
+      acquisitionBonusPay: acquisitionBonusMap.get(u.id) ?? 0,
+      grossPay: basePay == null ? null : Math.round((Math.max(basePay, stats.p4pEarnings) + (acquisitionBonusMap.get(u.id) ?? 0)) * 100) / 100,
       p4pEarnings: Math.round(stats.p4pEarnings * 100) / 100,
       jobCount: stats.jobCount,
       totalRevenue: Math.round(stats.totalRevenue * 100) / 100,

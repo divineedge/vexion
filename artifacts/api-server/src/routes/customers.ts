@@ -1,3 +1,4 @@
+import { saveAcquisitionAttribution } from "../lib/acquisitionRewards";
 import { Router, type IRouter } from "express";
 import { db, customersTable, propertiesTable, jobsTable, invoicesTable, estimatesTable, activityLogTable, propertyOwnershipHistoryTable, customerOtpSessionsTable, stopServiceFlagsTable, communicationsLogTable, tenantsTable } from "@workspace/db";
 import { eq, and, or, ilike, sql, desc, isNull, isNotNull, ne, inArray } from "drizzle-orm";
@@ -395,6 +396,8 @@ function formatCustomer(
     customerType: c.customerType ?? null,
     referralSource: c.referralSource ?? null,
     referringCustomerId: c.referringCustomerId ?? null,
+    acquiredByEmployeeId:c.acquiredByEmployeeId??null,
+    doorHangerVisitId:c.doorHangerVisitId??null,
     referringCustomerName: extras?.referringCustomerName ?? null,
     billingAddress: c.billingAddress ?? null,
     billingCity: c.billingCity ?? null,
@@ -651,6 +654,9 @@ router.post("/customers", async (req, res): Promise<void> => {
       notes: notes ?? null, tags: tags ?? [], customFieldValues: customFieldValues ?? {},
       acquiredFromCampaignId: acquiredFromCampaignId ? parseInt(acquiredFromCampaignId, 10) : null,
     }).returning();
+    await saveAcquisitionAttribution(tenantId,createdCustomer.id,{acquiredByEmployeeId:req.body.acquiredByEmployeeId,doorHangerVisitId:req.body.doorHangerVisitId},tx);
+    createdCustomer.acquiredByEmployeeId=req.body.acquiredByEmployeeId??null;
+    createdCustomer.doorHangerVisitId=req.body.doorHangerVisitId??null;
     if (!physicalAddress) return { customer: createdCustomer, createdPropertyId: undefined };
     const [property] = await tx.insert(propertiesTable).values({
       tenantId, customerId: createdCustomer.id, address: physicalAddress.trim(),
@@ -855,6 +861,9 @@ router.patch("/customers/:id", async (req, res): Promise<void> => {
       }
     }
 
+    if("acquiredByEmployeeId" in req.body || "doorHangerVisitId" in req.body){
+      await saveAcquisitionAttribution(tenantId,id,Object.fromEntries(["acquiredByEmployeeId","doorHangerVisitId"].filter(key=>key in req.body).map(key=>[key,req.body[key]])),tx);
+    }
     if (Object.keys(updates).length === 0) {
       return tx.select()
         .from(customersTable)
@@ -951,7 +960,7 @@ router.post("/customers/:id/send-card-link", async (req, res): Promise<void> => 
     fromNumber: tenant?.mainPhoneNumber ?? null,
   };
 
-  const result = await sendSms(smsConfig, customer.phone, message);
+  const result = await sendSms(smsConfig, customer.phone, message,{tenantId});
   if (!result.success) {
     res.status(500).json({ error: result.error ?? "Failed to send SMS" });
     return;
@@ -1187,7 +1196,7 @@ router.post("/customers/:id/send-expiry-reminder", async (req, res): Promise<voi
       fromNumber: tenant?.mainPhoneNumber ?? null,
     };
     const msg = `Hi ${firstName}! Your payment card${expLabel} on file with ${businessName} is expiring soon. Please update it here: ${portalUrl}`;
-    const result = await sendSms(smsConfig, customer.phone, msg);
+    const result = await sendSms(smsConfig, customer.phone, msg,{tenantId});
     if (result.success) sent.push("sms");
     else logger.warn({ error: result.error, customerId: id }, "Card expiry SMS failed");
   }

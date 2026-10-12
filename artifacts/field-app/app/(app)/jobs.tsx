@@ -32,6 +32,7 @@ import {
 } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
+import { useVisitClockEntry } from '@/components/VisitClock';
 import { useOffline } from '@/contexts/OfflineContext';
 import { JobTimeClockModal } from '@/components/JobTimeClockModal';
 import { messagePollInterval } from '@/utils/messages';
@@ -183,7 +184,7 @@ function JobCard({
                 style={styles.metaRow}
                 onPress={(event) => {
                   event.stopPropagation();
-                  void openDirections(job.propertyAddress!);
+                  void openDirections(job.propertyAddress!, (job as any).propertyLat, (job as any).propertyLng);
                 }}
                 accessibilityRole="link"
                 accessibilityLabel={`Get directions to ${job.propertyAddress}`}
@@ -232,7 +233,8 @@ function VisitCard({
   colors: ReturnType<typeof useColors>;
 }) {
   const completed = Boolean(visit.completedAt);
-  const status = completed ? colors.statusCompleted : colors.statusScheduled;
+  const clockedIn = useVisitClockEntry(visit.id).entry != null;
+  const status = completed ? colors.statusCompleted : clockedIn ? colors.statusInProgress : colors.statusScheduled;
   return (
     <TouchableOpacity
       style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
@@ -258,10 +260,11 @@ function VisitCard({
               </View>
             ) : null}
             {visit.propertyAddress ? (
-              <View style={styles.metaRow}>
+              <TouchableOpacity style={styles.metaRow} testID={`visit-directions-${visit.id}`} accessibilityRole="link" accessibilityLabel={`Directions to ${visit.propertyAddress}`}
+                onPress={() => { const v = visit as typeof visit & { propertyLat?: number | null; propertyLng?: number | null }; openDirections(visit.propertyAddress ?? '', v.propertyLat, v.propertyLng); }}>
                 <Ionicons name="location-outline" size={13} color={colors.mutedForeground} />
                 <Text style={[styles.metaText, { color: colors.mutedForeground }]}>{visit.propertyAddress}</Text>
-              </View>
+              </TouchableOpacity>
             ) : null}
             {visit.scheduledAt ? (
               <View style={styles.metaRow}>
@@ -272,7 +275,7 @@ function VisitCard({
           </View>
         </View>
         <View style={styles.cardRight}>
-          <Text style={[styles.statusText, { color: status }]}>{completed ? 'Completed' : 'Scheduled'}</Text>
+          <Text style={[styles.statusText, { color: status }]}>{completed ? 'Completed' : clockedIn ? 'Clocked in' : 'Scheduled'}</Text>
           <Ionicons name="chevron-forward" size={18} color={colors.mutedForeground} />
         </View>
       </View>

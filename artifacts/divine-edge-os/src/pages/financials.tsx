@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { DeliveryHistory } from '@/components/billing/DeliveryHistory';
 import { BillingEmailDeliveries } from '@/components/financials/BillingEmailDeliveries';
 import { SendDocumentDialog } from '@/components/shared/SendDocumentDialog';
 import {
@@ -66,7 +67,6 @@ import {
 import { format } from 'date-fns';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
-import VendorExpenseLedger from '@/components/financials/VendorExpenseLedger';
 import { RecurringTemplateSheet } from '@/components/financials/RecurringTemplateSheet';
 import { BillingCoveragePanel } from '@/components/financials/BillingCoveragePanel';
 
@@ -1040,6 +1040,7 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
             )}
           </div>
         )}
+        {invoiceId != null && invoice && <div className="px-6 pb-6"><Separator className="my-4" /><DeliveryHistory type="invoice" id={invoiceId} /></div>}
       </SheetContent>
       <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
         <DialogContent>
@@ -1102,7 +1103,11 @@ export default function FinancialsPage() {
   const { user, canManageOffice } = useAuth();
 
   // State
-  const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') ?? 'invoices');
+  const initialTab = new URLSearchParams(window.location.search).get('tab');
+  const [tab, setTab] = useState(() => (initialTab && initialTab !== 'invoice-templates' && initialTab !== 'vendors' ? initialTab : 'invoices'));
+  const [invoiceTemplatesOpen, setInvoiceTemplatesOpen] = useState(initialTab === 'invoice-templates');
+  // Vendor expenses moved to their own page; keep old deep links working.
+  useEffect(() => { if (initialTab === 'vendors') setLocation('/vendors'); }, [initialTab, setLocation]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [showArchivedInvoices, setShowArchivedInvoices] = useState(false);
@@ -1186,13 +1191,23 @@ export default function FinancialsPage() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
+      <Sheet open={invoiceTemplatesOpen} onOpenChange={setInvoiceTemplatesOpen}>
+        <SheetContent className="w-full sm:max-w-3xl overflow-y-auto">
+          <SheetHeader className="pb-4">
+            <SheetTitle>Invoice Templates</SheetTitle>
+            <SheetDescription>Layouts, terms and late fees applied when an invoice is created from a template. Invoices already issued keep their wording.</SheetDescription>
+          </SheetHeader>
+          <InvoiceTemplatesSettings />
+        </SheetContent>
+      </Sheet>
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Invoices</h1>
-          <p className="text-muted-foreground mt-1">Invoicing, payments, and revenue tracking.</p>
+          <p className="text-muted-foreground mt-1">Bill customers, collect payments, and track revenue.{(invoices ?? []).length > 0 ? ` · ${(invoices ?? []).length} total` : ''}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button size="sm" variant="outline" onClick={() => setInvoiceTemplatesOpen(true)} data-testid="button-invoice-templates">Invoice Templates</Button>
           <div className="flex rounded-md border p-0.5" aria-label="Invoice lifecycle view">
             <Button size="sm" variant={!showArchivedInvoices ? 'default' : 'ghost'} onClick={() => setShowArchivedInvoices(false)}>Active Invoices</Button>
             <Button size="sm" variant={showArchivedInvoices ? 'default' : 'ghost'} onClick={() => setShowArchivedInvoices(true)}>Archived History</Button>
@@ -1202,7 +1217,7 @@ export default function FinancialsPage() {
             entityLabel="Invoices"
             onImportComplete={() => qc.invalidateQueries({ queryKey: getListInvoicesQueryKey() })}
           />
-          <Button className="gap-2" title="Create a new invoice" onClick={() => setCreateInvoiceOpen(true)}><Plus className="w-4 h-4" /> Create Invoice</Button>
+          <Button className="gap-2" title="Create a new invoice" onClick={() => setCreateInvoiceOpen(true)}><Plus className="w-4 h-4" /> New Invoice</Button>
         </div>
       </div>
 
@@ -1287,14 +1302,8 @@ export default function FinancialsPage() {
               <Badge variant="destructive" className="ml-1.5 text-[10px] px-1.5 py-0">{pendingCancelRequests.length}</Badge>
             </TabsTrigger>
           )}
-          <TabsTrigger value="vendors">Vendor Expenses</TabsTrigger>
-          <TabsTrigger value="invoice-templates">Invoice Templates</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="invoice-templates" className="space-y-3 focus-visible:outline-none">
-          <p className="text-sm text-muted-foreground">Layouts, terms and late fees applied when an invoice is created from a template. Existing invoices keep the wording they were issued with. Open any invoice and choose Preview to see the customer view and printed copy.</p>
-          <InvoiceTemplatesSettings />
-        </TabsContent>
 
         {/* Invoices Tab */}
         <TabsContent value="invoices" className="space-y-4 focus-visible:outline-none">
@@ -1523,9 +1532,6 @@ export default function FinancialsPage() {
         )}
 
         {/* Vendor Expenses Tab */}
-        <TabsContent value="vendors" className="focus-visible:outline-none">
-          <VendorExpenseLedger canEdit={user?.role !== 'technician'} />
-        </TabsContent>
       </Tabs>
 
       {/* Sheets & Dialogs */}

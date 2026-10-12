@@ -1,3 +1,6 @@
+- [Acquisition reward policy](acquisition-reward-policy.md) — first paid invoice earns rewards; business portal links survive company renames.
+- [Update and fixture safety](update-and-fixture-safety.md) — preserve production records during updates; roll back payroll-related test fixtures instead of deleting them.
+- [Job form policy](job-form-policy.md) — required forms block completion, not clock-in; template edits must preserve existing job questions and responses.
 - [Payment requirements](payment-requirements.md) — customer → service → company deposit priority; deposits, general prepaid credit, and saved-card requirements are separate.
 - [Billing coverage and credits](billing-coverage-credits.md) — completed work needs invoice coverage or admin attention; prepaid funds never replace the invoice or reduce gross revenue.
 - [Drizzle update typing](drizzle-update-typing.md) — use `Partial<typeof table.$inferInsert>` for update payloads, never `Record<string, unknown>` cast

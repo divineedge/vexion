@@ -303,7 +303,7 @@ router.post("/time-tracking/sub-timers", requireVerifiedStaff, async (req, res):
     const now = new Date();
     // Share the master-clock advisory lock and transaction: never start a job
     // without its day clock, and preserve an already-running day clock.
-    if (type === "job") {
+    if (type === "job" || jobIdNum !== null) {
       const [master] = await tx.select().from(timeEntriesTable).where(and(
         eq(timeEntriesTable.tenantId, tenantId),
         eq(timeEntriesTable.userId, userId),

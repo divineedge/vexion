@@ -27,6 +27,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { TimezoneSelect } from '@/components/settings/TimezoneSelect';
+import { AutosaveIndicator } from '@/components/settings/AutosaveIndicator';
+import { useSettingsAutosave, useAutosaveFields } from '@/hooks/use-settings-autosave';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -47,11 +50,13 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { BUILT_IN_CUSTOMER_FIELDS, CORE_FIELD_KEYS, getActiveCustomerFields, type CustomerFieldConfig } from '@/lib/fieldConfig';
 import IntegrationsGrid from '@/components/settings/IntegrationsGrid';
+import WidgetEmbedPanel from '@/components/settings/WidgetEmbedPanel';
 import DevToolsPanel from '@/components/settings/DevToolsPanel';
 import RoutingSettings from '@/components/settings/RoutingSettings';
 import DeclineReasonsSettings from '@/components/settings/DeclineReasonsSettings';
 import { AddressAutocomplete, type AddressSuggestion } from '@/components/shared/AddressAutocomplete';
 import ExternalAccessSettings from '@/components/settings/ExternalAccessSettings';
+import GrowthProgramsSettings from '@/components/settings/GrowthProgramsSettings';
 
 export default function SettingsPage() {
   const { isSuperAdmin, isOwner, user, canManageOffice } = useAuth();
@@ -235,6 +240,20 @@ export default function SettingsPage() {
   };
   const [followupConfig, setFollowupConfig] = useState<FollowupTriggerConfig>(DEFAULT_FOLLOWUP_CONFIG);
   const updateFollowupTriggerConfig = useUpdateFollowupTriggerConfig();
+  // ── Autosave ──
+  const hydratedRef = useRef(false);
+  const [hydrated, setHydrated] = useState(false);
+  const updateSettingsAsyncRef = useRef(updateSettings.mutateAsync);
+  updateSettingsAsyncRef.current = updateSettings.mutateAsync;
+  const followupAsyncRef = useRef(updateFollowupTriggerConfig.mutateAsync);
+  followupAsyncRef.current = updateFollowupTriggerConfig.mutateAsync;
+  const autosave = useSettingsAutosave(
+    patch => updateSettingsAsyncRef.current({ data: patch as Parameters<typeof updateSettings.mutate>[0]['data'] }),
+    { onSaved: () => qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }) },
+  );
+  const followupAutosave = useSettingsAutosave(
+    patch => followupAsyncRef.current({ data: patch.followupConfig as FollowupTriggerConfig }),
+  );
   const [stopServiceThresholdDays, setStopServiceThresholdDays] = useState('30');
 
   // Reviews
@@ -249,7 +268,7 @@ export default function SettingsPage() {
 
 
   useEffect(() => {
-    if (settings) {
+    if (settings && !hydratedRef.current) {
       setCompanyName(settings.companyName ?? '');
       setTimezone(settings.timezone ?? 'America/Los_Angeles');
       setTaxRate(String(settings.taxRate ?? 8.5));
@@ -330,6 +349,15 @@ export default function SettingsPage() {
       setReviewCustomLink2Label((settings as any).reviewCustomLink2Label ?? '');
       setReviewCustomLink2Url((settings as any).reviewCustomLink2Url ?? '');
 
+      const sf = settings as any;
+      if (sf.followupTriggerConfig) {
+        setFollowupConfig({ ...DEFAULT_FOLLOWUP_CONFIG, ...sf.followupTriggerConfig });
+      }
+      hydratedRef.current = true;
+      setHydrated(true);
+    }
+    // Credentials / provider connection status always mirror the server (explicit actions).
+    if (settings) {
       // Communications
       const s = settings as any;
       setMainPhoneNumber(s.mainPhoneNumber ?? '');
@@ -351,10 +379,6 @@ export default function SettingsPage() {
       setGmailEmail(s.emailProviderConfig?.gmailEmail ?? '');
       setGmailSenderName((s.emailProviderConfig as any)?.gmailSenderName ?? '');
 
-      // Follow-Up Queue triggers
-      if (s.followupTriggerConfig) {
-        setFollowupConfig({ ...DEFAULT_FOLLOWUP_CONFIG, ...s.followupTriggerConfig });
-      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings]);
@@ -413,148 +437,35 @@ export default function SettingsPage() {
     setBusinessMailingZip(item.zip ?? '');
   };
 
-  const saveBranding = () => {
-    const mailingAddress = businessMailingSameAsPhysical ? businessAddress : businessMailingAddress;
-    const mailingCity = businessMailingSameAsPhysical ? businessCity : businessMailingCity;
-    const mailingState = businessMailingSameAsPhysical ? businessState : businessMailingState;
-    const mailingZip = businessMailingSameAsPhysical ? businessZip : businessMailingZip;
-    updateSettings.mutate(
-      { data: {
-        businessPhone: businessPhone || null,
-        businessEmail: businessEmail || null,
-        businessWebsite: businessWebsite || null,
-        businessAddress: businessAddress || null,
-        businessCity: businessCity || null,
-        businessState: businessState || null,
-        businessZip: businessZip || null,
-        businessLat,
-        businessLng,
-        businessMailingSameAsPhysical,
-        businessMailingAddress: mailingAddress || null,
-        businessMailingCity: mailingCity || null,
-        businessMailingState: mailingState || null,
-        businessMailingZip: mailingZip || null,
-        businessLicenseNumber: businessLicenseNumber || undefined,
-        businessTagline: businessTagline || undefined,
-        invoiceFooterText: invoiceFooterText || undefined,
-      } as Parameters<typeof updateSettings.mutate>[0]['data'] },
-      {
-        onSuccess: () => { toast.success('Branding saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
-        onError: () => toast.error('Failed to save branding'),
-      },
-    );
-  };
+  const saveBranding = () => { void autosave.flush(); };
 
-  const savePaymentReminders = () => {
-    updateSettings.mutate(
-      { data: { paymentRemindersEnabled, paymentReminderSchedule, paymentReminderChannels, stopServiceRuleEnabled, stopServiceThresholdDays: parseInt(stopServiceThresholdDays, 10) || 30 } as Parameters<typeof updateSettings.mutate>[0]['data'] },
-      {
-        onSuccess: () => { toast.success('Payment reminder settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
-        onError: () => toast.error('Failed to save'),
-      },
-    );
-  };
+  const savePaymentReminders = () => { void autosave.flush(); };
 
-  const saveNotificationTemplates = () => {
-    updateSettings.mutate(
-      { data: { notificationTemplates } as Parameters<typeof updateSettings.mutate>[0]['data'] },
-      {
-        onSuccess: () => { toast.success('Notification templates saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
-        onError: () => toast.error('Failed to save templates'),
-      },
-    );
-  };
+  const saveNotificationTemplates = () => { void autosave.flush(); };
 
-  const saveFollowupConfig = () => {
-    updateFollowupTriggerConfig.mutate(
-      { data: followupConfig },
-      {
-        onSuccess: () => { toast.success('Follow-up automation settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
-        onError: () => toast.error('Failed to save'),
-      },
-    );
-  };
+  const saveFollowupConfig = () => { void followupAutosave.flush(); };
 
-  const saveReviews = () => {
-    updateSettings.mutate(
-      { data: { reviewRequestOnInvoicePaid, reviewRequestOnEstimateApproved, reviewGoogleUrl: reviewGoogleUrl || undefined, reviewFacebookUrl: reviewFacebookUrl || undefined, reviewCustomLink1Label: reviewCustomLink1Label || undefined, reviewCustomLink1Url: reviewCustomLink1Url || undefined, reviewCustomLink2Label: reviewCustomLink2Label || undefined, reviewCustomLink2Url: reviewCustomLink2Url || undefined } as Parameters<typeof updateSettings.mutate>[0]['data'] },
-      {
-        onSuccess: () => { toast.success('Review settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
-        onError: () => toast.error('Failed to save'),
-      },
-    );
-  };
+  const saveReviews = () => { void autosave.flush(); };
 
-  const saveGeneral = () => {
-    updateSettings.mutate(
-      { data: { companyName, timezone, taxRate: parseFloat(taxRate), overageMaterialBuffer: parseFloat(buffer), taxEnabled, callbackDueHoursHigh: parseInt(callbackDueHoursHigh, 10) || 4, callbackDueHoursNormal: parseInt(callbackDueHoursNormal, 10) || 24, callbackDueHoursLow: parseInt(callbackDueHoursLow, 10) || 72, renewalWarningDays: parseInt(renewalWarningDays, 10) || 30, callbackWarningThresholdPct: parseInt(callbackWarningThresholdPct, 10) || 10, cancellationFeeEnabled, cancellationFeeAmount: parseFloat(cancellationFeeAmount) || 0 } as Parameters<typeof updateSettings.mutate>[0]['data'] },
-      {
-        onSuccess: () => { toast.success('Settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
-        onError: () => toast.error('Failed to save settings'),
-      },
-    );
-  };
+  const saveGeneral = () => { void autosave.flush(); };
 
-  const saveInvoicingDefaults = () => {
-    updateSettings.mutate(
-      { data: { invoiceDueDays: parseInt(invoiceDueDays, 10) || 0, invoiceDeliveryMode, autoInvoiceFrequency, nonRecurringInvoiceCadence } as Parameters<typeof updateSettings.mutate>[0]['data'] },
-      {
-        onSuccess: () => { toast.success('Invoicing settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
-        onError: () => toast.error('Failed to save invoicing settings'),
-      },
-    );
-  };
+  const saveInvoicingDefaults = () => { void autosave.flush(); };
 
-  const saveEstimateDefaults = () => {
-    updateSettings.mutate(
-      { data: { estimateExpiryDays: parseInt(estimateExpiryDays, 10) || 0 } as Parameters<typeof updateSettings.mutate>[0]['data'] },
-      {
-        onSuccess: () => { toast.success('Estimate defaults saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
-        onError: () => toast.error('Failed to save estimate defaults'),
-      },
-    );
-  };
+  const saveEstimateDefaults = () => { void autosave.flush(); };
 
-  const saveInventoryPricing = () => {
-    updateSettings.mutate(
-      { data: { defaultMarkupPct: parseFloat(markupPct) || 20, showCostPriceToTech: showCostToTech } },
-      {
-        onSuccess: () => { toast.success('Pricing settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
-        onError: () => toast.error('Failed to save pricing settings'),
-      },
-    );
-  };
+  const saveInventoryPricing = () => { void autosave.flush(); };
 
-  const saveOperational = () => {
-    updateSettings.mutate(
-      { data: { durationUnit, ownersSchedulable, maxClockInHours: maxClockInHours ? parseFloat(maxClockInHours) : null, dailyTaskHourlyRate: parseFloat(dailyTaskHourlyRate) || 0, defaultOffSeasonStart: defaultOffSeasonStart || null, defaultOffSeasonEnd: defaultOffSeasonEnd || null } as Parameters<typeof updateSettings.mutate>[0]['data'] },
-      {
-        onSuccess: () => { toast.success('Operational settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
-        onError: () => toast.error('Failed to save settings'),
-      },
-    );
-  };
+  const saveOperational = () => { void autosave.flush(); };
 
-  const saveCustomerFields = (fields: CustomerFieldConfig[]) => {
-    updateSettings.mutate(
-      { data: { customerFields: fields } },
-      {
-        onSuccess: () => { toast.success('Customer fields updated'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
-        onError: () => toast.error('Failed to save customer fields'),
-      },
-    );
-  };
 
   const toggleFieldProp = (key: string, prop: 'visible' | 'required') => {
     const next = customerFields.map(f => f.key === key ? { ...f, [prop]: !f[prop] } : f);
     setCustomerFields(next);
-    saveCustomerFields(next);
   };
 
   const removeCustomField = (key: string) => {
     const next = customerFields.filter(f => f.key !== key);
     setCustomerFields(next);
-    saveCustomerFields(next);
   };
 
   const addCustomField = () => {
@@ -572,7 +483,6 @@ export default function SettingsPage() {
     if (customerFields.some(f => f.key === field.key)) { toast.error('A field with this key already exists'); return; }
     const next = [...customerFields, field];
     setCustomerFields(next);
-    saveCustomerFields(next);
     setAddFieldOpen(false);
     setNewField({ type: 'text', visible: true, required: false, isBuiltIn: false });
     setNewOptions('');
@@ -653,6 +563,54 @@ export default function SettingsPage() {
     setDeleteUserPending({ id, name });
   };
 
+  const numOrSkip = (v: string, int = false): number | undefined => {
+    if (v.trim() === '') return undefined;
+    const n = int ? parseInt(v, 10) : parseFloat(v);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const mailingSame = businessMailingSameAsPhysical;
+  const autosaveFields: Record<string, unknown> = Object.fromEntries(Object.entries({
+    // General
+    companyName: companyName.trim() ? companyName : undefined, timezone: timezone || undefined,
+    taxRate: numOrSkip(taxRate), overageMaterialBuffer: numOrSkip(buffer), taxEnabled,
+    callbackDueHoursHigh: numOrSkip(callbackDueHoursHigh, true), callbackDueHoursNormal: numOrSkip(callbackDueHoursNormal, true),
+    callbackDueHoursLow: numOrSkip(callbackDueHoursLow, true), renewalWarningDays: numOrSkip(renewalWarningDays, true),
+    callbackWarningThresholdPct: numOrSkip(callbackWarningThresholdPct, true), cancellationFeeEnabled,
+    cancellationFeeAmount: numOrSkip(cancellationFeeAmount),
+    // Branding text (logo upload stays explicit)
+    businessPhone: businessPhone || null, businessEmail: businessEmail || null, businessWebsite: businessWebsite || null,
+    businessAddress: businessAddress || null, businessCity: businessCity || null, businessState: businessState || null,
+    businessZip: businessZip || null, businessLat, businessLng, businessMailingSameAsPhysical,
+    businessMailingAddress: (mailingSame ? businessAddress : businessMailingAddress) || null,
+    businessMailingCity: (mailingSame ? businessCity : businessMailingCity) || null,
+    businessMailingState: (mailingSame ? businessState : businessMailingState) || null,
+    businessMailingZip: (mailingSame ? businessZip : businessMailingZip) || null,
+    businessLicenseNumber, businessTagline, invoiceFooterText,
+    // Invoicing / estimates
+    paymentRemindersEnabled, paymentReminderSchedule, paymentReminderChannels, stopServiceRuleEnabled,
+    stopServiceThresholdDays: numOrSkip(stopServiceThresholdDays, true),
+    invoiceDueDays: numOrSkip(invoiceDueDays, true), invoiceDeliveryMode, autoInvoiceFrequency, nonRecurringInvoiceCadence,
+    estimateExpiryDays: numOrSkip(estimateExpiryDays, true),
+    // Templates text & reviews
+    notificationTemplates,
+    reviewRequestOnInvoicePaid, reviewRequestOnEstimateApproved,
+    reviewGoogleUrl, reviewFacebookUrl, reviewCustomLink1Label, reviewCustomLink1Url, reviewCustomLink2Label, reviewCustomLink2Url,
+    // Inventory / operational
+    defaultMarkupPct: numOrSkip(markupPct), showCostPriceToTech: showCostToTech,
+    durationUnit, ownersSchedulable, maxClockInHours: maxClockInHours.trim() ? numOrSkip(maxClockInHours) : null,
+    dailyTaskHourlyRate: numOrSkip(dailyTaskHourlyRate), defaultOffSeasonStart: defaultOffSeasonStart || null, defaultOffSeasonEnd: defaultOffSeasonEnd || null,
+    // Maps
+    defaultGeofenceRadius: numOrSkip(defaultGeofenceRadius, true), defaultGeofenceUnit, autoCreateGeofence,
+    preferredAreaUnit, measurementZoneTypes: zoneTypes.filter(z => z.name.trim()).map(z => ({ ...z, mode: z.mode ?? 'area' as const })),
+    // Customer fields
+    customerFields,
+  }).filter(([, v]) => v !== undefined));
+  useAutosaveFields(autosaveFields, hydrated, autosave.queue);
+  useAutosaveFields({ followupConfig }, hydrated, followupAutosave.queue);
+
+  const portalUrl: string = (settings as { portalUrl?: string | null } | undefined)?.portalUrl
+    || (settings?.slug ? `${window.location.origin}/portal/business/${settings.slug}` : '');
+
   const initialSettingsTab = (() => {
     const t = new URLSearchParams(window.location.search).get('tab') ?? 'general';
     if (t === 'payment-reminders') return 'invoicing';
@@ -678,30 +636,43 @@ export default function SettingsPage() {
     <div className="space-y-6 max-w-5xl mx-auto animate-in fade-in duration-500">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground mt-1">Manage company profile, integrations, and team access.</p>
+        <p className="text-muted-foreground mt-1">Changes save automatically. Credentials, connections, uploads and automation runs still use their own buttons.</p>
+      </div>
+      <div className="sticky top-0 z-20 -mt-3 flex flex-wrap items-center gap-4 rounded-md bg-background/90 backdrop-blur py-1.5" data-testid="settings-autosave-bar">
+        {!hydrated ? <span className="text-sm text-muted-foreground">Loading settings…</span> : <>
+          <AutosaveIndicator status={autosave.status} hasUnsaved={autosave.hasUnsaved} onRetry={() => { void autosave.retry(); }} />
+          {followupAutosave.status !== 'idle' && <AutosaveIndicator label="follow-up rules" status={followupAutosave.status} hasUnsaved={followupAutosave.hasUnsaved} onRetry={() => { void followupAutosave.retry(); }} />}
+        </>}
       </div>
 
       <Tabs defaultValue={initialSettingsTab} className="w-full">
-        <TabsList className="flex flex-wrap gap-1 h-auto mb-6">
+        <TabsList className="flex flex-wrap gap-1 h-auto mb-6 justify-start p-2">
+          <p className="w-full text-[11px] font-semibold uppercase tracking-wide text-muted-foreground px-2 pt-3 first:pt-1">Company</p>
           <TabsTrigger value="general"><Building className="w-4 h-4 mr-2" />General</TabsTrigger>
-          <TabsTrigger value="customer-fields"><SettingsIcon className="w-4 h-4 mr-2" />Customer Fields</TabsTrigger>
-          <TabsTrigger value="payments"><CreditCard className="w-4 h-4 mr-2" />Integrations</TabsTrigger>
-          <TabsTrigger value="communications"><MessageSquare className="w-4 h-4 mr-2" />Communications</TabsTrigger>
+          <TabsTrigger value="branding"><ImageIcon className="w-4 h-4 mr-2" />Branding</TabsTrigger>
           <TabsTrigger value="users"><Users className="w-4 h-4 mr-2" />Team</TabsTrigger>
-          {isOwner && <TabsTrigger value="api-access"><Zap className="w-4 h-4 mr-2" />API & AI Access</TabsTrigger>}
-          {isSuperAdmin && <TabsTrigger value="plans"><Shield className="w-4 h-4 mr-2" />Plans</TabsTrigger>}
+          {isOwner && <TabsTrigger value="roles"><Shield className="w-4 h-4 mr-2" />Roles</TabsTrigger>}
+          <p className="w-full text-[11px] font-semibold uppercase tracking-wide text-muted-foreground px-2 pt-3 first:pt-1">Customers</p>
+          <TabsTrigger value="customer-fields" data-testid="tab-customer-fields"><SettingsIcon className="w-4 h-4 mr-2" />Customer Fields</TabsTrigger>
+          <TabsTrigger value="tags"><Tag className="w-4 h-4 mr-2" />Tags</TabsTrigger>
+          <TabsTrigger value="reviews"><StarIcon className="w-4 h-4 mr-2" />Reviews</TabsTrigger>
+          <TabsTrigger value="followups"><PhoneMissedIcon className="w-4 h-4 mr-2" />Follow-Ups</TabsTrigger>
+          {canManageOffice && <TabsTrigger value="growth" data-testid="tab-growth"><TrendingUp className="w-4 h-4 mr-2" />Growth Programs</TabsTrigger>}
+          <p className="w-full text-[11px] font-semibold uppercase tracking-wide text-muted-foreground px-2 pt-3 first:pt-1">Billing & estimates</p>
           <TabsTrigger value="invoicing"><CreditCard className="w-4 h-4 mr-2" />Invoicing</TabsTrigger>
           <TabsTrigger value="estimates"><FileText className="w-4 h-4 mr-2" />Estimates</TabsTrigger>
+          <p className="w-full text-[11px] font-semibold uppercase tracking-wide text-muted-foreground px-2 pt-3 first:pt-1">Field operations</p>
           <TabsTrigger value="operational"><SettingsIcon className="w-4 h-4 mr-2" />Operational</TabsTrigger>
           <TabsTrigger value="measurements"><MapPin className="w-4 h-4 mr-2" />Maps & Quotes</TabsTrigger>
-          <TabsTrigger value="branding"><ImageIcon className="w-4 h-4 mr-2" />Branding</TabsTrigger>
-          <TabsTrigger value="followups"><PhoneMissedIcon className="w-4 h-4 mr-2" />Follow-Ups</TabsTrigger>
-          <TabsTrigger value="notification-templates"><MessageSquare className="w-4 h-4 mr-2" />Msg Templates</TabsTrigger>
-          <TabsTrigger value="reviews"><StarIcon className="w-4 h-4 mr-2" />Reviews</TabsTrigger>
-          <TabsTrigger value="tags"><Tag className="w-4 h-4 mr-2" />Tags</TabsTrigger>
           <TabsTrigger value="skip-reasons"><SkipForward className="w-4 h-4 mr-2" />Skip Reasons</TabsTrigger>
-          {isOwner && <TabsTrigger value="roles"><Shield className="w-4 h-4 mr-2" />Roles</TabsTrigger>}
-          {isOwner && <TabsTrigger value="advanced"><Shield className="w-4 h-4 mr-2" />Advanced</TabsTrigger>}
+          <p className="w-full text-[11px] font-semibold uppercase tracking-wide text-muted-foreground px-2 pt-3 first:pt-1">Messaging</p>
+          <TabsTrigger value="communications"><MessageSquare className="w-4 h-4 mr-2" />Email & SMS</TabsTrigger>
+          <TabsTrigger value="notification-templates"><MessageSquare className="w-4 h-4 mr-2" />Message Templates</TabsTrigger>
+          <p className="w-full text-[11px] font-semibold uppercase tracking-wide text-muted-foreground px-2 pt-3 first:pt-1">Integrations & developer</p>
+          <TabsTrigger value="payments"><CreditCard className="w-4 h-4 mr-2" />Payments & Integrations</TabsTrigger>
+          {isOwner && <TabsTrigger value="api-access"><Zap className="w-4 h-4 mr-2" />API & AI Access</TabsTrigger>}
+          {isOwner && <TabsTrigger value="advanced" data-testid="tab-run-automations"><Shield className="w-4 h-4 mr-2" />Run Automations Manually</TabsTrigger>}
+          {isSuperAdmin && <TabsTrigger value="plans"><Shield className="w-4 h-4 mr-2" />Plans</TabsTrigger>}
         </TabsList>
 
         {/* ── General ── */}
@@ -719,7 +690,7 @@ export default function SettingsPage() {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Timezone</label>
-                  <Input title="Timezone used for scheduling and date display (e.g. America/New_York)" value={timezone} onChange={e => setTimezone(e.target.value)} />
+                  <TimezoneSelect value={timezone} onChange={setTimezone} />
                 </div>
               </div>
               <Button onClick={saveGeneral} disabled={updateSettings.isPending}>
@@ -732,7 +703,7 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle>Customer Portal</CardTitle>
               <CardDescription>
-                Share this link with your customers so they can view invoices, jobs, and account details.
+                Share this link with your customers so they can view invoices, jobs, and account details. It uses your business name, not an internal ID.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -740,7 +711,8 @@ export default function SettingsPage() {
                 <div className="flex-1 relative">
                   <Input
                     readOnly
-                    value={`${window.location.origin}/portal/?tenant=${settings?.slug ?? user?.tenantId ?? 1}`}
+                    value={portalUrl}
+                    placeholder="Portal link will appear once your business link is set up"
                     className="pr-10 font-mono text-sm bg-muted"
                   />
                 </div>
@@ -748,8 +720,9 @@ export default function SettingsPage() {
                   variant="outline"
                   size="sm"
                   className="shrink-0"
+                  disabled={!portalUrl}
                   onClick={() => {
-                    navigator.clipboard.writeText(`${window.location.origin}/portal/?tenant=${settings?.slug ?? user?.tenantId ?? 1}`);
+                    navigator.clipboard.writeText(portalUrl);
                     toast.success('Portal link copied to clipboard');
                   }}
                 >
@@ -760,7 +733,8 @@ export default function SettingsPage() {
                   variant="outline"
                   size="sm"
                   className="shrink-0"
-                  onClick={() => window.open(`/portal/?tenant=${settings?.slug ?? user?.tenantId ?? 1}`, '_blank')}
+                  disabled={!portalUrl}
+                  onClick={() => window.open(portalUrl, '_blank')}
                 >
                   <ExternalLink className="w-4 h-4 mr-1.5" />
                   Open
@@ -980,11 +954,11 @@ export default function SettingsPage() {
                           title={isCore ? 'Core fields are always visible and cannot be hidden' : (field.visible ? 'Field is visible on customer records' : 'Field is hidden from customer records')}
                         >
                           {field.visible ? <Eye className="w-3.5 h-3.5 text-muted-foreground" /> : <EyeOff className="w-3.5 h-3.5 text-muted-foreground/40" />}
-                          <Switch checked={field.visible} disabled={isCore} onCheckedChange={() => !isCore && toggleFieldProp(field.key, 'visible')} />
+                          <Switch checked={field.visible} disabled={isCore || !hydrated} onCheckedChange={() => !isCore && toggleFieldProp(field.key, 'visible')} />
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0" title={field.required ? 'Field is required when creating customers' : 'Field is optional — staff can leave it blank'}>
                           <Star className={`w-3.5 h-3.5 ${field.required ? 'text-amber-500' : 'text-muted-foreground/40'}`} />
-                          <Switch checked={field.required} disabled={!field.visible} onCheckedChange={() => toggleFieldProp(field.key, 'required')} />
+                          <Switch checked={field.required} disabled={!field.visible || !hydrated} onCheckedChange={() => toggleFieldProp(field.key, 'required')} />
                         </div>
                         {!field.isBuiltIn ? (
                           <Button variant="ghost" size="icon" className="w-8 h-8 text-muted-foreground hover:text-destructive" title="Delete this custom field" onClick={() => removeCustomField(field.key)}>
@@ -1109,10 +1083,7 @@ export default function SettingsPage() {
                 <Switch checked={autoCreateGeofence} onCheckedChange={setAutoCreateGeofence} />
               </div>
               <Button
-                onClick={() => updateSettings.mutate(
-                  { data: { defaultGeofenceRadius: parseInt(defaultGeofenceRadius, 10) || 100, defaultGeofenceUnit, autoCreateGeofence } as Parameters<typeof updateSettings.mutate>[0]['data'] },
-                  { onSuccess: () => toast.success('Geofence defaults saved'), onError: () => toast.error('Failed to save') }
-                )}
+                onClick={() => { void autosave.flush(); }}
                 disabled={updateSettings.isPending}
                 variant="outline"
               >
@@ -1252,13 +1223,7 @@ export default function SettingsPage() {
 
               <Button
                 title="Save measurement settings and zone type definitions"
-                onClick={() => {
-                  const validZoneTypes = zoneTypes.filter(z => z.name.trim()).map(z => ({ ...z, mode: z.mode ?? 'area' as const }));
-                  updateSettings.mutate(
-                    { data: { preferredAreaUnit, measurementZoneTypes: validZoneTypes } as Parameters<typeof updateSettings.mutate>[0]['data'] },
-                    { onSuccess: () => toast.success('Measurement settings saved'), onError: () => toast.error('Failed to save') }
-                  );
-                }}
+                onClick={() => { void autosave.flush(); }}
                 disabled={updateSettings.isPending}
                 variant="outline"
               >
@@ -1277,30 +1242,7 @@ export default function SettingsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="rounded-md bg-muted/50 border p-3 font-mono text-xs overflow-x-auto whitespace-nowrap">
-                {`<iframe src="${window.location.origin}${import.meta.env.BASE_URL?.replace(/\/$/, '') ?? ''}/widget/quote" width="420" height="600" frameborder="0" style="border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.12)"></iframe>`}
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-2 text-xs"
-                  onClick={() => {
-                    const snippet = `<iframe src="${window.location.origin}${import.meta.env.BASE_URL?.replace(/\/$/, '') ?? ''}/widget/quote" width="420" height="600" frameborder="0" style="border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.12)"></iframe>`;
-                    navigator.clipboard.writeText(snippet).then(() => toast.success('Widget code copied!'));
-                  }}
-                >
-                  Copy Widget Code
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-2 text-xs"
-                  onClick={() => window.open(`${import.meta.env.BASE_URL?.replace(/\/$/, '') ?? ''}/widget/quote`, '_blank')}
-                >
-                  Preview Widget
-                </Button>
-              </div>
+              <WidgetEmbedPanel tenantId={user?.tenantId ?? null} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -2902,6 +2844,7 @@ export default function SettingsPage() {
         </TabsContent>
 
         {/* ── Reviews ── */}
+        {canManageOffice && <TabsContent value="growth" className="space-y-6 focus-visible:outline-none"><GrowthProgramsSettings /></TabsContent>}
         <TabsContent value="reviews" className="space-y-6 focus-visible:outline-none">
           <Card>
             <CardHeader>

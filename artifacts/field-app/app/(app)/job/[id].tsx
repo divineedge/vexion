@@ -36,6 +36,7 @@ import { useColors } from '@/hooks/useColors';
 import { useOffline } from '@/contexts/OfflineContext';
 import { messagePollInterval } from '@/utils/messages';
 import { MediaAttachments } from '@/components/MediaAttachments';
+import { JobFormsSection, useMissingRequiredForms } from '@/components/JobFormsSection';
 import { openDirections } from '@/utils/directions';
 import { getClockLocation } from '@/utils/timeTracking';
 
@@ -625,6 +626,7 @@ export default function JobDetailScreen() {
   const stopMasterClock = useStopMasterClock();
   const updateJob = useUpdateJob();
   const completeJob = useCompleteJob();
+  const missingForms = useMissingRequiredForms(jobId, !isOffline);
   const skipOccurrence = useSkipNextOccurrence();
   const activeJobTimer = subTimers?.find(t => t.isActive && t.jobId === jobId) ?? null;
   const [liveSeconds, setLiveSeconds] = useState(0);
@@ -756,7 +758,7 @@ export default function JobDetailScreen() {
           {(displayJob as { propertyAddress?: string | null }).propertyAddress ? (
             <TouchableOpacity
               style={styles.infoRow}
-              onPress={() => void openDirections((displayJob as { propertyAddress: string }).propertyAddress)}
+              onPress={() => void openDirections((displayJob as { propertyAddress: string }).propertyAddress, (displayJob as any).propertyLat, (displayJob as any).propertyLng)}
               accessibilityRole="link"
               accessibilityLabel={`Get directions to ${(displayJob as { propertyAddress: string }).propertyAddress}`}
             >
@@ -809,6 +811,24 @@ export default function JobDetailScreen() {
             </Text>
           </View>
         </View>
+
+        <TouchableOpacity
+          style={[styles.messagesCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={() => router.push(`/(app)/door-hangers/${jobId}` as any)}
+          activeOpacity={0.8}
+          testID="job-door-hangers-button"
+        >
+          <View style={styles.messagesCardLeft}>
+            <Ionicons name="pricetags-outline" size={21} color={colors.primary} />
+            <View>
+              <Text style={[styles.messagesCardTitle, { color: colors.foreground }]}>Door Hangers</Text>
+              <Text style={[styles.messagesCardHint, { color: colors.mutedForeground }]}>Record nearby houses you left a hanger at</Text>
+            </View>
+          </View>
+          <View style={styles.messagesCardRight}>
+            <Ionicons name="chevron-forward" size={18} color={colors.mutedForeground} />
+          </View>
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.messagesCard, { backgroundColor: colors.card, borderColor: colors.border }]}
@@ -929,17 +949,36 @@ export default function JobDetailScreen() {
                             {
                               text: 'Mark Complete',
                               onPress: () => {
+                                if (missingForms.known && missingForms.missing.length) {
+                                  Alert.alert('Forms required', `Submit before completing: ${missingForms.missing.join(', ')}`);
+                                  return;
+                                }
                                 if (requiresChemicalApplication && displayApps.length === 0) {
                                   Alert.alert('Chemical application required', 'Log a chemical application before marking this job complete.');
                                   return;
                                 }
-                                completeJob.mutate(
+                                const doComplete = () => completeJob.mutate(
                                   { id: jobId },
                                   {
                                     onSuccess: () => refetchJob(),
-                                    onError: (error: any) => Alert.alert('Unable to complete job', error?.message ?? 'A chemical application must be logged before completing this job.'),
+                                    onError: (error: any) => {
+                                      const missing: string[] | undefined = error?.data?.missing;
+                                      Alert.alert(
+                                        missing?.length ? 'Forms required' : 'Unable to complete job',
+                                        missing?.length ? `The server rejected completion. Submit first: ${missing.join(', ')}` : (error?.data?.error ?? error?.message ?? 'The server rejected completion. The job is not marked complete.'),
+                                      );
+                                    },
                                   },
                                 );
+                                if (!missingForms.known) {
+                                  Alert.alert(
+                                    'Required forms not checked',
+                                    `${isOffline ? 'You are offline, so' : 'Forms could not be loaded, so'} required forms for this job could not be checked. The server will verify when this reaches it and will reject completion if a required form is missing — the job stays incomplete until then.`,
+                                    [{ text: 'Cancel', style: 'cancel' }, { text: 'Complete anyway', onPress: doComplete }],
+                                  );
+                                  return;
+                                }
+                                doComplete();
                               },
                             },
                           ],
@@ -1024,6 +1063,8 @@ export default function JobDetailScreen() {
         {!isOffline && (
           <JobNotesSection jobId={jobId} job={displayJob as any} colors={colors} />
         )}
+
+        {!isOffline && <JobFormsSection jobId={jobId} jobStatus={(displayJob as any)?.status} />}
 
         <MediaAttachments
           media={jobMedia}

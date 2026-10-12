@@ -10,6 +10,10 @@ import type { PaymentStanding } from './paymentStanding';
 import type { ReminderFailure } from './reminderFailure';
 
 export interface Customer {
+  /** @nullable */
+  acquiredByEmployeeId?: number | null;
+  /** @nullable */
+  doorHangerVisitId?: number | null;
   id: number;
   tenantId: number;
   name: string;

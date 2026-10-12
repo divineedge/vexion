@@ -432,6 +432,7 @@ export async function handleImportCommit(
     }
 
     try {
+      raw.__propertyAddressSource = String(req.body.propertyAddressSource ?? "require_physical");
       const parsed = await config.parseRow(tenantId, raw, rowNumber);
       if (!parsed.ok) {
         result.failed++;

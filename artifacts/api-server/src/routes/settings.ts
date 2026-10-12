@@ -1,3 +1,5 @@
+import { ensureTenantSlug } from "../lib/tenantSlug";
+import { publicAppUrl } from "../lib/publicSite";
 import { Router, type IRouter } from "express";
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
@@ -45,6 +47,7 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     id: tenant.id,
     tenantId: tenant.id,
     companyName: tenant.name,
+    portalUrl:tenant.slug?`${publicAppUrl}/portal/business/${encodeURIComponent(tenant.slug)}`:null,
     logoUrl: tenant.logoUrl ?? null,
     timezone: tenant.timezone,
     workdayCutoffTime: tenant.workdayCutoffTime,
@@ -194,6 +197,7 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
 }
 
 router.get("/settings", async (req, res): Promise<void> => {
+  await ensureTenantSlug(getTenantId(req));
   const tenantId = getTenantId(req);
   const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
   if (!tenant) { res.status(404).json({ error: "Tenant not found" }); return; }
@@ -270,7 +274,11 @@ router.patch("/settings", async (req, res): Promise<void> => {
       updates[field] = req.body[field];
     }
   }
-  if (timezone) updates.timezone = timezone;
+  if (timezone !== undefined) {
+    try { if(typeof timezone!=="string"||!timezone)throw new Error();new Intl.DateTimeFormat("en-US",{timeZone:timezone}); }
+    catch {res.status(400).json({error:"Choose a valid timezone"});return;}
+    updates.timezone=timezone;
+  }
   if (workdayCutoffTime) updates.workdayCutoffTime = workdayCutoffTime;
   if (overageMaterialBuffer !== undefined) updates.overageMaterialBuffer = overageMaterialBuffer;
   if (stripeEnabled !== undefined) updates.stripeEnabled = stripeEnabled;

@@ -18,6 +18,7 @@ import ServicePlans from '@/pages/service-plans';
 import Estimates from '@/pages/estimates';
 import Profile from '@/pages/profile';
 import Messages from '@/pages/messages';
+import Referrals from '@/pages/referrals';
 
 function NotFound() {
   return (
@@ -42,6 +43,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Login} />
+      <Route path="/business/:slug" component={Login} />
       
       {/* Protected Routes inside AppShell */}
       <Route path="/home">
@@ -82,6 +84,9 @@ function Router() {
       </Route>
       <Route path="/profile">
         <AppShell><Profile /></AppShell>
+      </Route>
+      <Route path="/referrals">
+        <AppShell><Referrals /></AppShell>
       </Route>
       <Route path="/messages">
         <AppShell><Messages /></AppShell>

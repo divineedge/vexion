@@ -3,6 +3,9 @@ import type { Request, Response, NextFunction } from "express";
 import { SchedulingPaymentError } from "../lib/paymentPolicy";
 import healthRouter from "./health";
 import paymentPolicyRouter from "./paymentPolicy";
+import acquisitionRouter from "./acquisition";
+import jobFormsRouter from "./jobForms";
+import documentDeliveriesRouter from "./documentDeliveries";
 import billingSafetyRouter from "./billingSafety";
 import authRouter from "./auth";
 import storageRouter from "./storage";
@@ -76,6 +79,7 @@ router.use(healthRouter);
 router.use(authRouter);
 router.use(publicQuotesRouter);
 router.use(widgetRouter);
+router.use(documentDeliveriesRouter);
 router.use(portalRouter);
 // These routes define their own opaque-token/provider authentication. They must
 // remain outside the staff-session boundary and never inherit staff identity.
@@ -109,6 +113,8 @@ router.use(dashboardRouter);
 router.use(customersRouter);
 router.use(propertiesRouter);
 router.use(paymentPolicyRouter);
+router.use(acquisitionRouter);
+router.use(jobFormsRouter);
 router.use(jobsRouter);
 router.use(jobRequestsRouter);
 router.use(crewsRouter);

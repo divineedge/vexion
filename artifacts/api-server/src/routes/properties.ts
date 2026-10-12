@@ -49,7 +49,7 @@ const propertiesImportExportConfig: ImportExportEntityConfig = {
   entityKey: "properties",
   fields: [
     { key: "customerEmail", header: "Customer Email", required: true, hint: "Looked up against existing customers" },
-    { key: "address", header: "Address", required: true },
+    { key: "address", header: "Address", hint: "Physical address, or use the selected customer-address fallback" },
     { key: "city", header: "City" },
     { key: "state", header: "State" },
     { key: "zip", header: "Zip" },
@@ -105,15 +105,25 @@ const propertiesImportExportConfig: ImportExportEntityConfig = {
   parseRow: async (tenantId, raw) => {
     const errors: string[] = [];
     const customerEmail = requireString(raw.customerEmail, "Customer Email", errors);
-    const address = requireString(raw.address, "Address", errors);
-    if (errors.length > 0 || !customerEmail || !address) return { ok: false, errors };
+    let address = optionalString(raw.address);
+    if (errors.length > 0 || !customerEmail) return { ok: false, errors };
 
     const [customer] = await db
-      .select({ id: customersTable.id })
+      .select({ id: customersTable.id, billingAddress:customersTable.billingAddress, billingCity:customersTable.billingCity,
+        billingState:customersTable.billingState,billingZip:customersTable.billingZip,physicalAddress:customersTable.physicalAddress,
+        physicalCity:customersTable.physicalCity,physicalState:customersTable.physicalState,physicalZip:customersTable.physicalZip })
       .from(customersTable)
       .where(and(eq(customersTable.tenantId, tenantId), sql`lower(${customersTable.email}) = lower(${customerEmail})`))
       .limit(1);
     if (!customer) return { ok: false, errors: [`No customer found with email "${customerEmail}"`] };
+    let fromCustomer = false;
+    if (!address && customer.physicalAddress) {address=customer.physicalAddress;fromCustomer=true;}
+    if (!address && raw.__propertyAddressSource==="mailing_if_missing") {
+      const [existingProperty]=await db.select({id:propertiesTable.id}).from(propertiesTable).where(and(eq(propertiesTable.tenantId,tenantId),eq(propertiesTable.customerId,customer.id))).limit(1);
+      if (existingProperty) return {ok:false,errors:["Customer already has a property; supply its physical address instead of creating one from mailing details"]};
+      address=customer.billingAddress??undefined;fromCustomer=true;
+    }
+    if (!address || /\bP\.?\s*O\.?\s*(?:BOX|B)\b/i.test(address)) return {ok:false,errors:["A physical service address is required. Mailing fallback must be selected explicitly and cannot use a PO box"]};
 
     const size = optionalNumber(raw.size, "Size", errors);
     if (errors.length > 0) return { ok: false, errors };
@@ -123,9 +133,9 @@ const propertiesImportExportConfig: ImportExportEntityConfig = {
       values: {
         customerId: customer.id,
         address,
-        city: optionalString(raw.city) ?? null,
-        state: optionalString(raw.state) ?? null,
-        zip: optionalString(raw.zip) ?? null,
+        city: optionalString(raw.city) ?? (fromCustomer ? customer.physicalAddress ? customer.physicalCity : customer.billingCity : null),
+        state: optionalString(raw.state) ?? (fromCustomer ? customer.physicalAddress ? customer.physicalState : customer.billingState : null),
+        zip: optionalString(raw.zip) ?? (fromCustomer ? customer.physicalAddress ? customer.physicalZip : customer.billingZip : null),
         type: optionalString(raw.type) ?? null,
         size: size ?? null,
         sizeUnit: optionalString(raw.sizeUnit) ?? "sqft",

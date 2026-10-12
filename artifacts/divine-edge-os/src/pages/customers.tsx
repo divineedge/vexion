@@ -30,6 +30,8 @@ import { getActiveCustomerFields, isCustomerFieldVisible } from '@/lib/fieldConf
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
 import { AddressAutocomplete, type AddressSuggestion } from '@/components/shared/AddressAutocomplete';
 import { CUSTOMER_REFERRAL_SOURCE, ReferringCustomerPicker } from '@/components/customer/ReferringCustomerPicker';
+import { AcquisitionAttributionFields } from '@/components/customer/AcquisitionAttributionFields';
+import { EMPLOYEE_ACQUISITION_SOURCE, DOOR_HANGER_SOURCE, sourceLabel } from '@/lib/acquisition';
 
 /** A single address suggestion returned by the Photon geocoder (fallback). */
 interface PhotonFeature {
@@ -251,7 +253,7 @@ const CardSetupSectionInner = forwardRef<CardSetupSectionHandle, object>(
 
 const BLANK: FormData = {
   name: '', email: '', phone: '', secondaryPhone: '',
-  company: '', customerType: '', referralSource: '', referringCustomerId: '', referringCustomerName: '',
+  company: '', customerType: '', referralSource: '', referringCustomerId: '', referringCustomerName: '', acquiredByEmployeeId: '', doorHangerVisitId: '',
   billingAddress: '', billingCity: '', billingState: '', billingZip: '',
   physicalAddress: '', physicalCity: '', physicalState: '', physicalZip: '', physicalLat: '', physicalLng: '',
   notes: '', tags: [],
@@ -348,6 +350,8 @@ export default function CustomersPage() {
       ? referralSourceField.options
       : ['Google', 'Word of Mouth', 'Flyer', 'Repeat Customer', 'Social Media', 'Referral', 'Other']),
     CUSTOMER_REFERRAL_SOURCE,
+    EMPLOYEE_ACQUISITION_SOURCE,
+    DOOR_HANGER_SOURCE,
   ]));
 
   useEffect(() => {
@@ -456,6 +460,8 @@ export default function CustomersPage() {
     body.customFieldValues = customFieldValues;
     body.referringCustomerId = form.referringCustomerId ? Number(form.referringCustomerId) : undefined;
     delete body.referringCustomerName;
+    body.acquiredByEmployeeId = form.acquiredByEmployeeId ? Number(form.acquiredByEmployeeId) : undefined;
+    body.doorHangerVisitId = form.doorHangerVisitId ? Number(form.doorHangerVisitId) : undefined;
     if (createCampaignId) body.acquiredFromCampaignId = parseInt(createCampaignId, 10);
 
     setCreatingBusy(true);
@@ -904,12 +910,14 @@ export default function CustomersPage() {
                     if (v !== CUSTOMER_REFERRAL_SOURCE) {
                       setForm(f => ({ ...f, referringCustomerId: '', referringCustomerName: '' }));
                     }
+                    if (v !== EMPLOYEE_ACQUISITION_SOURCE && v !== DOOR_HANGER_SOURCE) setForm(f => ({ ...f, acquiredByEmployeeId: '', doorHangerVisitId: '' }));
+                    else if (v !== DOOR_HANGER_SOURCE) setForm(f => ({ ...f, doorHangerVisitId: '' }));
                   }}>
                     <SelectTrigger title="How this customer found the business"><SelectValue placeholder="Select source..." /></SelectTrigger>
                     <SelectContent>
                       {referralSourceOptions.map(source => (
                         <SelectItem key={source} value={source}>
-                          {source === CUSTOMER_REFERRAL_SOURCE ? 'Customer Referral' : source}
+                          {source === CUSTOMER_REFERRAL_SOURCE ? 'Customer Referral' : sourceLabel(source)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -927,6 +935,14 @@ export default function CustomersPage() {
                     }))}
                   />
                 </Field>
+              )}
+              {showReferralSource && (
+                <AcquisitionAttributionFields
+                  source={form.referralSource as string}
+                  employeeId={(form.acquiredByEmployeeId as string) ?? ''}
+                  visitId={(form.doorHangerVisitId as string) ?? ''}
+                  onChange={p => setForm(f => ({ ...f, ...p }))}
+                />
               )}
               {availableCampaigns.length > 0 && (
                 <Field label="Acquired from Campaign">

@@ -1,3 +1,5 @@
+import { acquisitionSettings, processAcquisitionRewards } from "../lib/acquisitionRewards";
+import { publicAppUrl } from "../lib/publicSite";
 import { paymentGuardedJobInsert } from "../lib/paymentPolicy";
 import { invoiceBalance } from "../lib/customerCredit";
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
@@ -153,6 +155,13 @@ router.get("/portal/tenant-info", async (req, res): Promise<void> => {
   });
 });
 
+router.get("/portal/business/:slug",async(req,res):Promise<void>=>{
+ const [tenant]=await db.select({id:tenantsTable.id,name:tenantsTable.name,slug:tenantsTable.slug,logoUrl:tenantsTable.logoUrl})
+  .from(tenantsTable).where(eq(tenantsTable.slug,String(req.params.slug))).limit(1);
+ if(!tenant){res.status(404).json({error:"Business not found"});return;}
+ res.json({tenantId:tenant.id,companyName:tenant.name,logoUrl:tenant.logoUrl,
+  portalUrl:`${publicAppUrl}/portal/business/${encodeURIComponent(tenant.slug!)}`});
+});
 // POST /portal/auth/login  (email + last 4 digits of phone on file)
 // ---------------------------------------------------------------------------
 router.post("/portal/auth/login", async (req, res): Promise<void> => {
@@ -163,6 +172,12 @@ router.post("/portal/auth/login", async (req, res): Promise<void> => {
   if (tenantId === null) {
     res.status(400).json({ error: "A valid tenant is required" });
     return;
+  }
+  if(req.body?.businessSlug!==undefined){
+    const [business]=await db.select({id:tenantsTable.id}).from(tenantsTable).where(eq(tenantsTable.slug,String(req.body.businessSlug))).limit(1);
+    if(!business||business.id!==tenantId||(req.body.tenantId!==undefined&&Number(req.body.tenantId)!==tenantId)){
+      res.status(400).json({error:"Business link does not match this sign-in"});return;
+    }
   }
   const { email, last4Phone } = req.body as { email?: string; last4Phone?: string };
 
@@ -465,6 +480,22 @@ router.get("/portal/me", requirePortalAuth, async (req: any, res): Promise<void>
     company: customer.company ?? null,
     profilePhotoUrl: null,
   });
+});
+
+router.get("/portal/referrals",requirePortalAuth,async(req:any,res)=>{
+  const {portalCustomerId,portalTenantId}=req.portalLocals as PortalLocals;
+  const [tenant]=await db.select().from(tenantsTable).where(eq(tenantsTable.id,portalTenantId));
+  const settings=acquisitionSettings(tenant?.acquisitionSettings);
+  if(!settings.customerReferralsEnabled){res.json({enabled:false});return;}
+  await processAcquisitionRewards(portalTenantId);
+  const tokenResult=await db.execute(sql`UPDATE customers SET referral_share_token=COALESCE(referral_share_token,gen_random_uuid()::text)
+    WHERE id=${portalCustomerId} AND tenant_id=${portalTenantId} RETURNING referral_share_token`);
+  const rewards=await db.execute(sql`SELECT id,amount::float AS amount,earned_at AS "earnedAt" FROM acquisition_rewards
+    WHERE tenant_id=${portalTenantId} AND recipient_customer_id=${portalCustomerId} AND kind='referral_credit' ORDER BY id DESC`);
+  const counts=await db.execute(sql`SELECT count(*)::int AS count FROM customers WHERE tenant_id=${portalTenantId} AND referring_customer_id=${portalCustomerId}`);
+  const balance=await db.execute(sql`SELECT COALESCE(SUM(amount),0)::float AS amount FROM customer_credits WHERE tenant_id=${portalTenantId} AND customer_id=${portalCustomerId}`);
+  res.json({enabled:true,tenantId:portalTenantId,shareToken:tokenResult.rows[0]?.referral_share_token,rewardType:settings.referralRewardType,
+    rewardValue:settings.referralRewardValue,creditBalance:Number(balance.rows[0]?.amount??0),referralCount:Number(counts.rows[0]?.count??0),rewards:rewards.rows,publicAppUrl});
 });
 
 // ---------------------------------------------------------------------------

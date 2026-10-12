@@ -1,3 +1,4 @@
+import { processAcquisitionRewards } from "../lib/acquisitionRewards";
 import { Router, type ErrorRequestHandler } from "express";
 import { createHash } from "node:crypto";
 import { db, payrollPeriodsTable, payrollAdjustmentsTable, usersTable, tenantsTable } from "@workspace/db";
@@ -68,6 +69,7 @@ payrollRouter.post("/p4p/payroll/preview", async (req, res): Promise<void> => {
   const parsed = rangeInput.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0].message }); return; }
   const range = await resolveRange(getTenantId(req), parsed.data);
+  await processAcquisitionRewards(getTenantId(req));
   const data = await db.transaction(tx => snapshot(tx, getTenantId(req), range), { isolationLevel: "repeatable read", accessMode: "read only" });
   res.json(PreviewFinalPayrollResponse.parse({ snapshot: data, digest: digest(data) }));
 });
@@ -80,7 +82,9 @@ payrollRouter.post("/p4p/payroll/periods", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const range = await resolveRange(tenantId, parsed.data);
   try {
+    await processAcquisitionRewards(tenantId);
     const period = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT id FROM tenants WHERE id=${tenantId} FOR NO KEY UPDATE`);
       const overlapping = await tx.execute(sql`
         SELECT id FROM payroll_periods WHERE tenant_id=${tenantId}
         AND range_start <= ${range.rangeEnd}::timestamptz

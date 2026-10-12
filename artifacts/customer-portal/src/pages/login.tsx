@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useParams } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -28,6 +28,8 @@ export default function Login() {
   const [tenantLogoUrl, setTenantLogoUrl] = useState<string | null>(null);
   const [tenantName, setTenantName] = useState<string>("");
   const [isPending, setIsPending] = useState(false);
+  const { slug: businessSlug } = useParams<{ slug?: string }>();
+  const [businessState, setBusinessState] = useState<"none" | "loading" | "ready" | "notfound">(businessSlug ? "loading" : "none");
 
   const form = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -41,6 +43,23 @@ export default function Login() {
     const tenantParam = params.get("tenant");
 
     if (emailParam) form.setValue("email", emailParam);
+
+    // Business-named URL: tenant comes ONLY from the server's slug lookup.
+    if (businessSlug) {
+      localStorage.setItem("portal_business_slug", businessSlug);
+      fetch(`/api/portal/business/${encodeURIComponent(businessSlug)}`)
+        .then(r => (r.ok ? r.json() : null))
+        .then((d: { tenantId?: number; companyName?: string; logoUrl?: string } | null) => {
+          if (!d?.tenantId) { setBusinessState("notfound"); return; }
+          setTenantId(d.tenantId);
+          setTenantName(d.companyName ?? "");
+          if (d.logoUrl) setTenantLogoUrl(d.logoUrl);
+          setBusinessState("ready");
+        })
+        .catch(() => setBusinessState("notfound"));
+      return;
+    }
+    localStorage.removeItem("portal_business_slug");
 
     // Support both numeric tenant IDs (?tenant=11) and slugs (?tenant=divine-edge)
     const isSlug = tenantParam && isNaN(Number(tenantParam));
@@ -87,16 +106,26 @@ export default function Login() {
       // Pass slug as query param so server can resolve it even if tenantId is still defaulting
       const params = new URLSearchParams(window.location.search);
       const tenantParam = params.get("tenant");
-      const loginUrl = tenantParam
-        ? `/api/portal/auth/login?tenant=${encodeURIComponent(tenantParam)}`
-        : "/api/portal/auth/login";
+      if (businessSlug && businessState !== "ready") {
+        toast.error("This business link couldn't be verified.");
+        return;
+      }
+      const loginUrl = businessSlug
+        ? "/api/portal/auth/login"
+        : tenantParam
+          ? `/api/portal/auth/login?tenant=${encodeURIComponent(tenantParam)}`
+          : "/api/portal/auth/login";
       const res = await fetch(loginUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-tenant-id": tenantId.toString(),
         },
-        body: JSON.stringify({ email: values.email, last4Phone: values.last4Phone }),
+        body: JSON.stringify({
+          email: values.email.trim(),
+          last4Phone: values.last4Phone,
+          ...(businessSlug ? { tenantId, businessSlug } : {}),
+        }),
       });
 
       if (!res.ok) {
@@ -149,6 +178,11 @@ export default function Login() {
           </p>
         </div>
 
+        {businessState === "notfound" && (
+          <div className="mb-4 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive" data-testid="text-business-notfound">
+            We couldn't find this business. Check the link your service company sent you.
+          </div>
+        )}
         {/* Login card */}
         <Card className="border-border/50 shadow-2xl shadow-black/5">
           <CardHeader>

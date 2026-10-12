@@ -1,3 +1,4 @@
+import { sendDocumentEmail } from "../lib/documentDelivery";
 import { paymentGuardedJobInsert, effectivePaymentPolicy } from "../lib/paymentPolicy";
 import { creditedInvoiceInsert } from "../lib/customerCredit";
 import { Router, type IRouter } from "express";
@@ -870,7 +871,7 @@ router.post("/estimates/:id/send", async (req, res): Promise<void> => {
           fromAddress: tenant.businessEmail ?? (tenant.emailProviderConfig as Record<string, string>)?.["fromAddress"] ?? null,
         };
 
-        const result = await sendEmail(emailProviderConfig, customer.email, subject, body, html);
+        const result = await sendDocumentEmail(emailProviderConfig, customer.email, subject, body, html,{tenantId,documentType:"estimate",documentId:updated.id});
         emailSent = result.success;
         emailError = result.error;
 

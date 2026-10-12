@@ -89,6 +89,7 @@ export interface PayrollEmployee {
   basePay: number | null;
   /** @nullable */
   grossPay: number | null;
+  acquisitionBonusPay?: number;
   p4pEarnings: number;
   jobCount: number;
   totalRevenue: number;
@@ -1362,6 +1363,10 @@ export interface ReminderFailure {
 }
 
 export interface Customer {
+  /** @nullable */
+  acquiredByEmployeeId?: number | null;
+  /** @nullable */
+  doorHangerVisitId?: number | null;
   id: number;
   tenantId: number;
   name: string;
@@ -1938,6 +1943,10 @@ export interface JobPart {
 }
 
 export interface Job {
+  /** @nullable */
+  propertyLat?: number | null;
+  /** @nullable */
+  propertyLng?: number | null;
   id: number;
   tenantId: number;
   title: string;
@@ -3041,6 +3050,7 @@ export const SubTimerType = {
   job: 'job',
   routine: 'routine',
   other: 'other',
+  visit: 'visit',
 } as const;
 
 export interface SubTimer {
@@ -7563,3 +7573,4 @@ export type GetEfficiencyJobs200 = {
   rangeEnd?: string;
   jobs?: GetEfficiencyJobs200JobsItem[];
 };
+

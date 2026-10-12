@@ -18,6 +18,7 @@ export interface PayrollEmployee {
   basePay: number | null;
   /** @nullable */
   grossPay: number | null;
+  acquisitionBonusPay?: number;
   p4pEarnings: number;
   jobCount: number;
   totalRevenue: number;

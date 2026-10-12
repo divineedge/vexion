@@ -30,6 +30,8 @@ interface TechSummary {
   basePay?: number | null;
   /** max(basePay, p4pEarnings): hourly guarantee OR P4P, never the sum. */
   grossPay?: number | null;
+  /** Earned acquisition rewards (first paid invoice), separate from P4P; included in grossPay. */
+  acquisitionBonusPay?: number | null;
 }
 
 interface TechSplitRow {
@@ -581,7 +583,8 @@ export default function PayrollPage() {
             { label: 'Clock Hours', value: myStats?.clockHours != null ? `${myStats.clockHours.toFixed(2)}h` : '—', accent: '' },
             { label: 'Base Guaranteed Pay', value: myStats ? (myStats.basePay == null ? 'Not configured' : fmt(myStats.basePay)) : '—', accent: '' },
             { label: 'P4P Earnings', value: myStats ? fmt(myStats.p4pEarnings) : '—', accent: 'text-emerald-700' },
-            { label: 'Gross Pay (greater of)', value: myStats ? (myStats.grossPay == null ? fmt(myStats.p4pEarnings) : fmt(myStats.grossPay)) : '—', accent: 'text-primary' },
+            { label: 'Acquisition Bonus (earned, separate)', value: myStats ? fmt(myStats.acquisitionBonusPay ?? 0) : '—', accent: 'text-violet-700' },
+            { label: 'Gross Pay (greater of + bonus)', value: myStats ? (myStats.grossPay == null ? fmt(myStats.p4pEarnings) : fmt(myStats.grossPay)) : '—', accent: 'text-primary' },
             { label: 'Net Labor Revenue', value: myStats ? fmt(myStats.netLaborRevenue) : '—', accent: '' },
             { label: 'Customer Sell-Price Materials Deducted', value: myStats ? fmt(myStats.totalMaterialCost) : '—', accent: 'text-amber-600' },
             { label: 'Jobs Counted', value: myStats?.jobCount ?? '—', accent: '' },
@@ -628,6 +631,7 @@ export default function PayrollPage() {
                   <TableHead className="text-right">Base Rate</TableHead>
                   <TableHead className="text-right">Clock Hrs</TableHead>
                   <TableHead className="text-right">Base Pay</TableHead>
+                  <TableHead className="text-right" title="Earned employee acquisition rewards, separate from P4P">Acq. Bonus</TableHead>
                   <TableHead className="text-right">Gross Pay</TableHead>
                   <TableHead className="text-right">
                     <span className="flex items-center justify-end gap-1">
@@ -639,7 +643,7 @@ export default function PayrollPage() {
               </TableHeader>
               <TableBody>
                 {summaryLoading ? (
-                  <TableRow><TableCell colSpan={11} className="py-8 text-center text-muted-foreground">Loading...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={12} className="py-8 text-center text-muted-foreground">Loading...</TableCell></TableRow>
                 ) : (
                   summary?.technicians.map(t => {
                     const taskData = taskHoursMap.get(t.userId);
@@ -668,12 +672,15 @@ export default function PayrollPage() {
                         </TableCell>
                         <TableCell className="text-right text-sm tabular-nums">{t.clockHours != null ? t.clockHours.toFixed(2) : '—'}</TableCell>
                         <TableCell className="text-right text-sm">{t.basePay == null ? <span className="text-muted-foreground">—</span> : fmt(t.basePay)}</TableCell>
+                        <TableCell className="text-right text-sm" data-testid={`text-acq-bonus-${t.userId}`}>
+                          {(t.acquisitionBonusPay ?? 0) > 0 ? <span className="font-medium text-violet-700" title="Earned acquisition reward, not part of P4P">{fmt(t.acquisitionBonusPay ?? 0)}</span> : <span className="text-muted-foreground">—</span>}
+                        </TableCell>
                         <TableCell className="text-right">
                           {(() => {
                             const gross = t.grossPay ?? t.p4pEarnings;
                             const source = t.basePay == null ? 'P4P (no base rate)' : (t.basePay >= t.p4pEarnings ? 'Hourly guarantee' : 'P4P');
                             return (
-                              <span title={`Greater of base ${t.basePay == null ? 'n/a' : fmt(t.basePay)} or P4P ${fmt(t.p4pEarnings)}`}>
+                              <span title={`Greater of base ${t.basePay == null ? 'n/a' : fmt(t.basePay)} or P4P ${fmt(t.p4pEarnings)}${(t.acquisitionBonusPay ?? 0) > 0 ? `, plus acquisition bonus ${fmt(t.acquisitionBonusPay ?? 0)}` : ''}`}>
                                 <span className="font-bold">{fmt(gross)}</span>
                                 <span className="block text-[10px] text-muted-foreground">{source}</span>
                               </span>

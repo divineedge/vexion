@@ -9044,6 +9044,7 @@ components:
         clockHours: { type: number }
         basePay: { type: [number, 'null'] }
         grossPay: { type: [number, 'null'] }
+        acquisitionBonusPay: { type: number }
         p4pEarnings: { type: number }
         jobCount: { type: integer }
         totalRevenue: { type: number }
@@ -10265,6 +10266,10 @@ components:
       type: object
       required: [id, tenantId, name, email, phone, createdAt]
       properties:
+        acquiredByEmployeeId:
+          type: [integer, "null"]
+        doorHangerVisitId:
+          type: [integer, "null"]
         id:
           type: integer
         tenantId:
@@ -10953,6 +10958,10 @@ components:
       type: object
       required: [id, tenantId, title, status, scheduledAt, createdAt]
       properties:
+        propertyLat:
+          type: [number, "null"]
+        propertyLng:
+          type: [number, "null"]
         id:
           type: integer
         tenantId:
@@ -12427,7 +12436,7 @@ components:
           type: string
         type:
           type: string
-          enum: [job, routine, other]
+          enum: [job, routine, other, visit]
         jobId:
           type: ["integer", "null"]
         startedAt:

@@ -31,6 +31,8 @@ import EquipmentPage from '@/pages/equipment';
 import QuotePublicPage from '@/pages/quote-public';
 import QuoteWidgetPage from '@/pages/quote-widget';
 import EstimatesPage from '@/pages/estimates';
+import VendorsPage from '@/pages/vendors';
+import FormsPage from '@/pages/forms';
 import VisitsPage from '@/pages/visits';
 import EstimatePublicPage from '@/pages/estimate-public';
 import InvoicePublicPage from '@/pages/invoice-public';
@@ -95,6 +97,8 @@ function ProtectedRoutes() {
         <Route path="/chemicals" component={ChemicalsPage} />
         <Route path="/equipment" component={EquipmentPage} />
         <Route path="/estimates" component={EstimatesPage} />
+        <Route path="/vendors" component={VendorsPage} />
+        <Route path="/forms" component={FormsPage} />
         <Route path="/visits" component={VisitsPage} />
         <Route path="/reviews" component={ReviewsPage} />
         <Route path="/plans/:id" component={PlanDetailPage} />
@@ -116,6 +120,7 @@ function Router() {
       {/* Public routes — no auth required */}
       <Route path="/quote/:token" component={QuotePublicPage} />
       <Route path="/widget/quote" component={QuoteWidgetPage} />
+      <Route path="/quote-widget" component={QuoteWidgetPage} />
       <Route path="/estimate/:token" component={EstimatePublicPage} />
       <Route path="/invoice/:token" component={InvoicePublicPage} />
       <Route path="/review/:token" component={ReviewPublicPage} />

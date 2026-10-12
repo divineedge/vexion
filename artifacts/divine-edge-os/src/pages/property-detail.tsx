@@ -1,4 +1,5 @@
 import React, { useState, lazy, Suspense } from 'react';
+import { directionsUrl } from '@/lib/directions';
 import {
   useGetProperty, getGetPropertyQueryKey,
   useUpdateProperty,
@@ -483,7 +484,7 @@ export default function PropertyDetailPage() {
           <div className="flex items-center gap-3">
             <MapPin className="w-6 h-6 text-primary shrink-0" />
             <a
-              href={`https://maps.google.com/?q=${encodeURIComponent([property.address, property.city, property.state, property.zip].filter(Boolean).join(', '))}`}
+              href={directionsUrl({ lat: (property as any).lat, lng: (property as any).lng, address: property.address, city: property.city, state: property.state, zip: property.zip }) ?? undefined}
               target="_blank"
               rel="noopener noreferrer"
               title="Open in Google Maps"
@@ -531,7 +532,7 @@ export default function PropertyDetailPage() {
               size="sm"
               title="Open property address in Google Maps"
               className="gap-2"
-              onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(property.address)}`, '_blank')}
+              onClick={() => { const u = directionsUrl({ lat: (property as any).lat, lng: (property as any).lng, address: property.address, city: property.city, state: property.state, zip: property.zip }); if (u) window.open(u, '_blank'); }}
             >
               <MapPin className="w-4 h-4" /> Map
             </Button>
@@ -702,7 +703,7 @@ export default function PropertyDetailPage() {
             <Card>
               <CardHeader><CardTitle>Property Information</CardTitle></CardHeader>
               <CardContent className="space-y-3 text-sm">
-                <Row label="Address" value={property.address} href={`https://maps.google.com/?q=${encodeURIComponent([property.address, property.city, property.state, property.zip].filter(Boolean).join(', '))}`} />
+                <Row label="Address" value={property.address} href={directionsUrl({ lat: (property as any).lat, lng: (property as any).lng, address: property.address, city: property.city, state: property.state, zip: property.zip }) ?? undefined} />
                 <Row label="City" value={property.city} />
                 <Row label="State" value={property.state} />
                 <Row label="ZIP" value={property.zip} />

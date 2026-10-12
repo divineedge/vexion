@@ -97,7 +97,7 @@ router.post("/communications/send", async (req, res): Promise<void> => {
       config: (tenant.phonePlatformConfig as Record<string, string>) ?? {},
       fromNumber: tenant.mainPhoneNumber ?? null,
     };
-    result = await sendSms(smsConfig, toAddress, body);
+    result = await sendSms(smsConfig, toAddress, body,{tenantId});
   } else {
     toAddress = customer.email;
     const emailConfig: EmailProviderConfig = {

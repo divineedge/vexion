@@ -13,4 +13,5 @@ export const SubTimerType = {
   job: 'job',
   routine: 'routine',
   other: 'other',
+  visit: 'visit',
 } as const;

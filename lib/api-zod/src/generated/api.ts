@@ -42,6 +42,7 @@ export const ListJobRequestsResponse = zod.array(ListJobRequestsResponseItem)
  */
 
 
+
 export const CreateJobRequestBody = zod.object({
   "customerId": zod.number().nullish(),
   "propertyId": zod.number().nullish(),
@@ -122,6 +123,9 @@ export const RejectJobRequestParams = zod.object({
 })
 
 
+
+
+
 export const RejectJobRequestBody = zod.object({
   "adminResponse": zod.string().min(1),
   "idempotencyKey": zod.string().min(1)
@@ -160,6 +164,9 @@ export const RequestJobRequestClarificationParams = zod.object({
 })
 
 
+
+
+
 export const RequestJobRequestClarificationBody = zod.object({
   "adminResponse": zod.string().min(1),
   "idempotencyKey": zod.string().min(1)
@@ -196,6 +203,8 @@ export const RequestJobRequestClarificationResponse = zod.object({
 export const AmendJobRequestParams = zod.object({
   "id": zod.coerce.number()
 })
+
+
 
 
 export const AmendJobRequestBody = zod.object({
@@ -657,6 +666,8 @@ export const ListCustomersQueryParams = zod.object({
 
 export const ListCustomersResponse = zod.object({
   "items": zod.array(zod.object({
+  "acquiredByEmployeeId": zod.number().nullish(),
+  "doorHangerVisitId": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
@@ -745,6 +756,8 @@ export const CreateCustomerBody = zod.object({
 })
 
 export const CreateCustomerResponse = zod.object({
+  "acquiredByEmployeeId": zod.number().nullish(),
+  "doorHangerVisitId": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
@@ -806,6 +819,8 @@ export const GetCustomerParams = zod.object({
 })
 
 export const GetCustomerResponse = zod.object({
+  "acquiredByEmployeeId": zod.number().nullish(),
+  "doorHangerVisitId": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
@@ -894,6 +909,8 @@ export const UpdateCustomerBody = zod.object({
 })
 
 export const UpdateCustomerResponse = zod.object({
+  "acquiredByEmployeeId": zod.number().nullish(),
+  "doorHangerVisitId": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
@@ -963,11 +980,13 @@ export const DeleteCustomerResponse = zod.void()
 export const getAddressSuggestionsQueryQMin = 2;
 
 
+
 export const GetAddressSuggestionsQueryParams = zod.object({
   "q": zod.coerce.string().min(getAddressSuggestionsQueryQMin)
 })
 
 export const getAddressSuggestionsResponseItemsMax = 10;
+
 
 
 export const GetAddressSuggestionsResponse = zod.object({
@@ -1015,6 +1034,8 @@ export const AttachCustomerPaymentMethodBody = zod.object({
 })
 
 export const AttachCustomerPaymentMethodResponse = zod.object({
+  "acquiredByEmployeeId": zod.number().nullish(),
+  "doorHangerVisitId": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
@@ -1600,6 +1621,8 @@ export const listJobsResponseOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
 
 
 export const ListJobsResponseItem = zod.object({
+  "propertyLat": zod.number().nullish(),
+  "propertyLng": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "title": zod.string(),
@@ -1744,6 +1767,8 @@ export const createJobResponseOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$')
 
 
 export const CreateJobResponse = zod.object({
+  "propertyLat": zod.number().nullish(),
+  "propertyLng": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "title": zod.string(),
@@ -1843,6 +1868,8 @@ export const getJobResponseOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
 
 
 export const GetJobResponse = zod.object({
+  "propertyLat": zod.number().nullish(),
+  "propertyLng": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "title": zod.string(),
@@ -1984,6 +2011,8 @@ export const updateJobResponseOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$')
 
 
 export const UpdateJobResponse = zod.object({
+  "propertyLat": zod.number().nullish(),
+  "propertyLng": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "title": zod.string(),
@@ -2130,6 +2159,8 @@ export const skipNextOccurrenceResponseOffSeasonEndRegExp = new RegExp('^\\d{2}-
 
 
 export const SkipNextOccurrenceResponse = zod.object({
+  "propertyLat": zod.number().nullish(),
+  "propertyLng": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "title": zod.string(),
@@ -2234,6 +2265,8 @@ export const pauseRecurringSeriesResponseOffSeasonEndRegExp = new RegExp('^\\d{2
 
 
 export const PauseRecurringSeriesResponse = zod.object({
+  "propertyLat": zod.number().nullish(),
+  "propertyLng": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "title": zod.string(),
@@ -2347,6 +2380,8 @@ export const completeJobResponseOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$
 
 
 export const CompleteJobResponse = zod.object({
+  "propertyLat": zod.number().nullish(),
+  "propertyLng": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "title": zod.string(),
@@ -2446,6 +2481,8 @@ export const reopenJobResponseOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$')
 
 
 export const ReopenJobResponse = zod.object({
+  "propertyLat": zod.number().nullish(),
+  "propertyLng": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "title": zod.string(),
@@ -2620,6 +2657,8 @@ export const addJobPartResponseOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$'
 
 
 export const AddJobPartResponse = zod.object({
+  "propertyLat": zod.number().nullish(),
+  "propertyLng": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "title": zod.string(),
@@ -2720,6 +2759,8 @@ export const removeJobPartResponseOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2
 
 
 export const RemoveJobPartResponse = zod.object({
+  "propertyLat": zod.number().nullish(),
+  "propertyLng": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "title": zod.string(),
@@ -2906,6 +2947,8 @@ export const listJobMessagesQueryLimitDefault = 100;
 export const listJobMessagesQueryLimitMax = 100;
 
 
+
+
 export const ListJobMessagesQueryParams = zod.object({
   "limit": zod.coerce.number().min(1).max(listJobMessagesQueryLimitMax).default(listJobMessagesQueryLimitDefault),
   "beforeId": zod.coerce.number().min(1).optional().describe('Return messages with IDs lower than this cursor')
@@ -2939,6 +2982,7 @@ export const createJobMessageBodyBodyMax = 4000;
 
 export const createJobMessageBodyClientMessageIdMin = 8;
 export const createJobMessageBodyClientMessageIdMax = 100;
+
 
 
 export const CreateJobMessageBody = zod.object({
@@ -3015,6 +3059,7 @@ export const sendStaffMessageToAudienceBodyOneClientMessageIdMin = 8;
 export const sendStaffMessageToAudienceBodyOneClientMessageIdMax = 100;
 
 
+
 export const SendStaffMessageToAudienceBody = zod.object({
   "body": zod.string().min(1).max(sendStaffMessageToAudienceBodyOneBodyMax),
   "clientMessageId": zod.string().min(sendStaffMessageToAudienceBodyOneClientMessageIdMin).max(sendStaffMessageToAudienceBodyOneClientMessageIdMax)
@@ -3061,6 +3106,8 @@ export const listStaffConversationMessagesQueryLimitDefault = 100;
 export const listStaffConversationMessagesQueryLimitMax = 100;
 
 
+
+
 export const ListStaffConversationMessagesQueryParams = zod.object({
   "limit": zod.coerce.number().min(1).max(listStaffConversationMessagesQueryLimitMax).default(listStaffConversationMessagesQueryLimitDefault),
   "beforeId": zod.coerce.number().min(1).optional().describe('Return messages with IDs lower than this cursor')
@@ -3097,6 +3144,7 @@ export const createStaffConversationMessageBodyClientMessageIdMin = 8;
 export const createStaffConversationMessageBodyClientMessageIdMax = 100;
 
 
+
 export const CreateStaffConversationMessageBody = zod.object({
   "body": zod.string().min(1).max(createStaffConversationMessageBodyBodyMax),
   "clientMessageId": zod.string().min(createStaffConversationMessageBodyClientMessageIdMin).max(createStaffConversationMessageBodyClientMessageIdMax)
@@ -3128,6 +3176,8 @@ export const ListStaffMessagesParams = zod.object({
 
 export const listStaffMessagesQueryLimitDefault = 100;
 export const listStaffMessagesQueryLimitMax = 100;
+
+
 
 
 export const ListStaffMessagesQueryParams = zod.object({
@@ -3164,6 +3214,7 @@ export const createStaffMessageBodyBodyMax = 4000;
 
 export const createStaffMessageBodyClientMessageIdMin = 8;
 export const createStaffMessageBodyClientMessageIdMax = 100;
+
 
 
 export const CreateStaffMessageBody = zod.object({
@@ -4460,6 +4511,7 @@ export const SubmitReviewRatingParams = zod.object({
 export const submitReviewRatingBodyRatingMax = 5;
 
 
+
 export const SubmitReviewRatingBody = zod.object({
   "rating": zod.number().min(1).max(submitReviewRatingBodyRatingMax)
 })
@@ -4640,6 +4692,7 @@ export const createGeofenceEntryBodyLngMin = -180;
 export const createGeofenceEntryBodyLngMax = 180;
 
 
+
 export const CreateGeofenceEntryBody = zod.object({
   "propertyId": zod.number(),
   "jobId": zod.number().optional(),
@@ -4739,7 +4792,7 @@ export const ListSubTimersResponseItem = zod.object({
   "id": zod.number(),
   "userId": zod.number(),
   "label": zod.string(),
-  "type": zod.enum(['job', 'routine', 'other']),
+  "type": zod.enum(['job', 'routine', 'other', 'visit']),
   "jobId": zod.number().nullish(),
   "startedAt": zod.string(),
   "stoppedAt": zod.string().nullish(),
@@ -4773,7 +4826,7 @@ export const StartSubTimerResponse = zod.object({
   "id": zod.number(),
   "userId": zod.number(),
   "label": zod.string(),
-  "type": zod.enum(['job', 'routine', 'other']),
+  "type": zod.enum(['job', 'routine', 'other', 'visit']),
   "jobId": zod.number().nullish(),
   "startedAt": zod.string(),
   "stoppedAt": zod.string().nullish(),
@@ -4807,7 +4860,7 @@ export const StopSubTimerResponse = zod.object({
   "id": zod.number(),
   "userId": zod.number(),
   "label": zod.string(),
-  "type": zod.enum(['job', 'routine', 'other']),
+  "type": zod.enum(['job', 'routine', 'other', 'visit']),
   "jobId": zod.number().nullish(),
   "startedAt": zod.string(),
   "stoppedAt": zod.string().nullish(),
@@ -4841,7 +4894,7 @@ export const AdjustSubTimerResponse = zod.object({
   "id": zod.number(),
   "userId": zod.number(),
   "label": zod.string(),
-  "type": zod.enum(['job', 'routine', 'other']),
+  "type": zod.enum(['job', 'routine', 'other', 'visit']),
   "jobId": zod.number().nullish(),
   "startedAt": zod.string(),
   "stoppedAt": zod.string().nullish(),
@@ -4919,6 +4972,8 @@ export const ListTimeEntriesResponse = zod.array(ListTimeEntriesResponseItem)
 export const AdjustTimeEntryParams = zod.object({
   "id": zod.coerce.number()
 })
+
+
 
 
 export const AdjustTimeEntryBody = zod.object({
@@ -5343,6 +5398,7 @@ export const GenerateBlueprintAiZonesParams = zod.object({
 export const generateBlueprintAiZonesBodyZonesItemPolygonMin = 3;
 
 
+
 export const GenerateBlueprintAiZonesBody = zod.object({
   "zones": zod.array(zod.object({
   "id": zod.string(),
@@ -5634,6 +5690,7 @@ export const getTenantSettingsResponseDefaultOffSeasonEndRegExp = new RegExp('^\
 export const getTenantSettingsResponsePreTripChecklistNameMax = 80;
 
 
+
 export const GetTenantSettingsResponse = zod.object({
   "defaultInvoiceTerms": zod.string().nullish(),
   "defaultInvoiceNotes": zod.string().nullish(),
@@ -5779,6 +5836,7 @@ export const updateTenantSettingsBodyDefaultOffSeasonEndRegExp = new RegExp('^\\
 export const updateTenantSettingsBodyPreTripChecklistNameMax = 80;
 
 
+
 export const UpdateTenantSettingsBody = zod.object({
   "defaultInvoiceTerms": zod.string().nullish(),
   "defaultInvoiceNotes": zod.string().nullish(),
@@ -5894,6 +5952,7 @@ export const UpdateTenantSettingsBody = zod.object({
 export const updateTenantSettingsResponseDefaultOffSeasonStartRegExp = new RegExp('^\\d{2}-\\d{2}$');
 export const updateTenantSettingsResponseDefaultOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
 export const updateTenantSettingsResponsePreTripChecklistNameMax = 80;
+
 
 
 export const UpdateTenantSettingsResponse = zod.object({
@@ -7071,6 +7130,7 @@ export const createEquipmentFuelLogBodyMeterReadingMin = 0;
 export const createEquipmentFuelLogBodyExpectedMeterReadingMin = 0;
 
 
+
 export const CreateEquipmentFuelLogBody = zod.object({
   "meterReading": zod.number().min(createEquipmentFuelLogBodyMeterReadingMin).optional(),
   "expectedMeterReading": zod.number().min(createEquipmentFuelLogBodyExpectedMeterReadingMin).optional(),
@@ -7155,6 +7215,7 @@ export const createBulkFuelAdjustmentBodyTwoIdempotencyKeyMax = 200;
 export const createBulkFuelAdjustmentBodyTwoExpectedMovementIdMin = 0;
 
 
+
 export const CreateBulkFuelAdjustmentBody = zod.object({
   "measuredGallons": zod.number().min(createBulkFuelAdjustmentBodyOneMeasuredGallonsMin),
   "reason": zod.string().min(1).max(createBulkFuelAdjustmentBodyOneReasonMax),
@@ -7228,6 +7289,7 @@ export const ListBulkFuelTanksResponse = zod.array(ListBulkFuelTanksResponseItem
 export const createBulkFuelTankBodyCurrentMeterReadingMin = 0;
 
 
+
 export const CreateBulkFuelTankBody = zod.object({
   "currentMeterReading": zod.number().min(createBulkFuelTankBodyCurrentMeterReadingMin).optional(),
   "name": zod.string(),
@@ -7254,6 +7316,7 @@ export const UpdateBulkFuelTankParams = zod.object({
 })
 
 export const updateBulkFuelTankBodyCurrentMeterReadingMin = 0;
+
 
 
 export const UpdateBulkFuelTankBody = zod.object({
@@ -7283,6 +7346,7 @@ export const ListBulkFuelTransactionsParams = zod.object({
 })
 
 export const listBulkFuelTransactionsQueryLimitMax = 100;
+
 
 
 export const ListBulkFuelTransactionsQueryParams = zod.object({
@@ -7412,6 +7476,7 @@ export const CreateEquipmentReadingLogResponse = zod.object({
 export const createEquipmentPreTripBodyMeterReadingMin = 0;
 
 export const createEquipmentPreTripBodyExpectedMeterReadingMin = 0;
+
 
 
 export const CreateEquipmentPreTripBody = zod.object({
@@ -8484,6 +8549,8 @@ export const dismissJobRescheduleRequestResponseOffSeasonEndRegExp = new RegExp(
 
 
 export const DismissJobRescheduleRequestResponse = zod.object({
+  "propertyLat": zod.number().nullish(),
+  "propertyLng": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "title": zod.string(),
@@ -8583,6 +8650,8 @@ export const approveJobCancellationResponseOffSeasonEndRegExp = new RegExp('^\\d
 
 
 export const ApproveJobCancellationResponse = zod.object({
+  "propertyLat": zod.number().nullish(),
+  "propertyLng": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "title": zod.string(),
@@ -8686,6 +8755,8 @@ export const denyJobCancellationResponseOffSeasonEndRegExp = new RegExp('^\\d{2}
 
 
 export const DenyJobCancellationResponse = zod.object({
+  "propertyLat": zod.number().nullish(),
+  "propertyLng": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "title": zod.string(),
@@ -9063,6 +9134,8 @@ export const ResumeCustomerServiceParams = zod.object({
 })
 
 export const ResumeCustomerServiceResponse = zod.object({
+  "acquiredByEmployeeId": zod.number().nullish(),
+  "doorHangerVisitId": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
@@ -9119,6 +9192,9 @@ export const ResumeCustomerServiceResponse = zod.object({
 /**
  * @summary Request a presigned URL for file upload
  */
+
+
+
 
 
 export const RequestUploadUrlBody = zod.object({
@@ -9723,6 +9799,9 @@ export const DismissPlanCancelRequestResponse = zod.object({
 /**
  * @summary Request a presigned upload URL (portal customers)
  */
+
+
+
 
 
 export const PortalRequestUploadUrlBody = zod.object({
@@ -11634,6 +11713,7 @@ export const ReschedulePlanVisitParams = zod.object({
 export const reschedulePlanVisitBodyRescheduleFeeAmountMin = 0;
 
 
+
 export const ReschedulePlanVisitBody = zod.object({
   "chargeRescheduleFee": zod.boolean().optional(),
   "rescheduleFeeAmount": zod.number().min(reschedulePlanVisitBodyRescheduleFeeAmountMin).optional(),
@@ -11977,6 +12057,7 @@ export const RetryBillingEmailParams = zod.object({
 
 export const retryBillingEmailBodyEvidenceMin = 10;
 export const retryBillingEmailBodyEvidenceMax = 2000;
+
 
 
 export const RetryBillingEmailBody = zod.object({
@@ -13594,6 +13675,7 @@ export const RescheduleJobOnceParams = zod.object({
 export const rescheduleJobOnceBodyRescheduleFeeAmountMin = 0;
 
 
+
 export const RescheduleJobOnceBody = zod.object({
   "chargeRescheduleFee": zod.boolean().optional(),
   "rescheduleFeeAmount": zod.number().min(rescheduleJobOnceBodyRescheduleFeeAmountMin).optional(),
@@ -14058,6 +14140,7 @@ export const createExternalConnectionBodyNameMax = 100;
 export const createExternalConnectionBodyDescriptionMax = 1000;
 
 
+
 export const CreateExternalConnectionBody = zod.object({
   "name": zod.string().min(1).max(createExternalConnectionBodyNameMax),
   "description": zod.string().max(createExternalConnectionBodyDescriptionMax).optional(),
@@ -14106,6 +14189,7 @@ export const UpdateExternalConnectionParams = zod.object({
 export const updateExternalConnectionBodyNameMax = 100;
 
 export const updateExternalConnectionBodyDescriptionMax = 1000;
+
 
 
 export const UpdateExternalConnectionBody = zod.object({
@@ -14220,6 +14304,7 @@ export const setExternalWebhookSecretBodySecretMin = 8;
 export const setExternalWebhookSecretBodySecretMax = 4096;
 
 
+
 export const SetExternalWebhookSecretBody = zod.object({
   "secret": zod.string().min(setExternalWebhookSecretBodySecretMin).max(setExternalWebhookSecretBodySecretMax)
 })
@@ -14250,6 +14335,7 @@ export const SetExternalWebhookSecretResponse = zod.object({
  */
 export const listExternalAuditQueryConnectionIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const listExternalAuditQueryLimitMax = 100;
+
 
 
 export const ListExternalAuditQueryParams = zod.object({
@@ -14371,6 +14457,7 @@ export const PreviewFinalPayrollResponse = zod.object({
   "clockHours": zod.number(),
   "basePay": zod.number().nullable(),
   "grossPay": zod.number().nullable(),
+  "acquisitionBonusPay": zod.number().optional(),
   "p4pEarnings": zod.number(),
   "jobCount": zod.number(),
   "totalRevenue": zod.number(),
@@ -14425,6 +14512,7 @@ export const approveFinalPayrollBodyOneDateToRegExp = new RegExp('^\\d{4}-\\d{2}
 export const approveFinalPayrollBodyTwoP4pOnlyReasonMax = 2000;
 
 
+
 export const ApproveFinalPayrollBody = zod.object({
   "dateFrom": zod.string().regex(approveFinalPayrollBodyOneDateFromRegExp),
   "dateTo": zod.string().regex(approveFinalPayrollBodyOneDateToRegExp)
@@ -14438,6 +14526,7 @@ export const approveFinalPayrollResponseTwoAdjustmentsItemOneAmountMin = -100000
 export const approveFinalPayrollResponseTwoAdjustmentsItemOneAmountMax = 1000000;
 
 export const approveFinalPayrollResponseTwoAdjustmentsItemOneReasonMax = 2000;
+
 
 
 export const ApproveFinalPayrollResponse = zod.object({
@@ -14472,6 +14561,7 @@ export const ApproveFinalPayrollResponse = zod.object({
   "clockHours": zod.number(),
   "basePay": zod.number().nullable(),
   "grossPay": zod.number().nullable(),
+  "acquisitionBonusPay": zod.number().optional(),
   "p4pEarnings": zod.number(),
   "jobCount": zod.number(),
   "totalRevenue": zod.number(),
@@ -14519,6 +14609,9 @@ export const ApproveFinalPayrollResponse = zod.object({
 }))
 
 
+
+
+
 export const GetFinalPayrollParams = zod.object({
   "id": zod.coerce.number().min(1)
 })
@@ -14528,6 +14621,7 @@ export const getFinalPayrollResponseTwoAdjustmentsItemOneAmountMin = -1000000;
 export const getFinalPayrollResponseTwoAdjustmentsItemOneAmountMax = 1000000;
 
 export const getFinalPayrollResponseTwoAdjustmentsItemOneReasonMax = 2000;
+
 
 
 export const GetFinalPayrollResponse = zod.object({
@@ -14562,6 +14656,7 @@ export const GetFinalPayrollResponse = zod.object({
   "clockHours": zod.number(),
   "basePay": zod.number().nullable(),
   "grossPay": zod.number().nullable(),
+  "acquisitionBonusPay": zod.number().optional(),
   "p4pEarnings": zod.number(),
   "jobCount": zod.number(),
   "totalRevenue": zod.number(),
@@ -14609,6 +14704,9 @@ export const GetFinalPayrollResponse = zod.object({
 }))
 
 
+
+
+
 export const AddFinalPayrollAdjustmentParams = zod.object({
   "id": zod.coerce.number().min(1)
 })
@@ -14618,6 +14716,7 @@ export const addFinalPayrollAdjustmentBodyAmountMin = -1000000;
 export const addFinalPayrollAdjustmentBodyAmountMax = 1000000;
 
 export const addFinalPayrollAdjustmentBodyReasonMax = 2000;
+
 
 
 export const AddFinalPayrollAdjustmentBody = zod.object({
@@ -14631,6 +14730,7 @@ export const addFinalPayrollAdjustmentResponseOneAmountMin = -1000000;
 export const addFinalPayrollAdjustmentResponseOneAmountMax = 1000000;
 
 export const addFinalPayrollAdjustmentResponseOneReasonMax = 2000;
+
 
 
 export const AddFinalPayrollAdjustmentResponse = zod.object({
@@ -14726,4 +14826,5 @@ export const GetEfficiencyJobsResponse = zod.object({
   "crewName": zod.string().nullish()
 })).optional()
 })
+
 

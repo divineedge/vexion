@@ -49,9 +49,9 @@ export default function DevToolsPanel() {
     <div className="space-y-6">
       <Card className="border-amber-300 bg-amber-50/40 dark:bg-amber-950/10">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2"><FlaskConical className="w-4 h-4" /> Dev/Test Panel</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2"><FlaskConical className="w-4 h-4" /> Run Automations Manually</CardTitle>
           <CardDescription>
-            Manually run the automations that normally fire on a schedule. Dry-run first to see what would happen before executing.
+            These buttons run the same background automations that normally happen on a schedule — recurring invoice generation, 7-day reminders, job-completion auto-invoicing, and the recurring job scheduler. Use them for troubleshooting or to catch up after a change. Dry-run first to see what would happen; executing affects real customers and invoices.
           </CardDescription>
         </CardHeader>
         <CardContent>

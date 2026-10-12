@@ -18,6 +18,8 @@ import { Plus, Trash2, TrendingUp, DollarSign, Users, Trophy, Target, UserPlus, 
 import { format } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import BroadcastPanel from '@/components/marketing/BroadcastPanel';
+import DoorHangersPanel from '@/components/marketing/DoorHangersPanel';
+import AcquisitionRewardsPanel from '@/components/marketing/AcquisitionRewardsPanel';
 
 interface Campaign {
   id: number;
@@ -246,8 +248,12 @@ export default function MarketingPage() {
         <TabsList>
           <TabsTrigger value="campaigns" className="gap-1.5" title="View and manage marketing campaigns"><Target className="w-3.5 h-3.5" /> Campaigns</TabsTrigger>
           <TabsTrigger value="broadcast" className="gap-1.5" title="Send and schedule SMS/email broadcasts"><Send className="w-3.5 h-3.5" /> Broadcast</TabsTrigger>
+          <TabsTrigger value="door-hangers" className="gap-1.5" data-testid="tab-door-hangers"><MapPin className="w-3.5 h-3.5" /> Door Hangers</TabsTrigger>
+          {canManageOffice && <TabsTrigger value="rewards" className="gap-1.5" data-testid="tab-rewards"><Trophy className="w-3.5 h-3.5" /> Rewards</TabsTrigger>}
         </TabsList>
 
+        <TabsContent value="door-hangers" className="mt-4"><DoorHangersPanel /></TabsContent>
+        {canManageOffice && <TabsContent value="rewards" className="mt-4"><AcquisitionRewardsPanel /></TabsContent>}
         <TabsContent value="broadcast" className="mt-4">
           <BroadcastPanel campaigns={(campaigns ?? []).map(c => ({ id: c.id, name: c.name }))} />
         </TabsContent>

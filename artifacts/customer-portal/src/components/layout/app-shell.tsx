@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, useLocation } from "wouter";
 import { usePortalGetMe, usePortalGetSummary } from "@workspace/api-client-react";
-import { MapPin, Briefcase, FileText, Bell, LayoutDashboard, Menu, X, LogOut, Loader2, CalendarDays, ClipboardList, ClipboardCheck, MessageSquare } from "lucide-react";
+import { MapPin, Briefcase, FileText, Bell, LayoutDashboard, Menu, X, LogOut, Loader2, CalendarDays, ClipboardList, ClipboardCheck, MessageSquare, Gift } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -14,6 +14,7 @@ const navItems = [
   { name: "Properties", path: "/properties", icon: MapPin },
   { name: "Plans", path: "/plans", icon: CalendarDays },
   { name: "Messages", path: "/messages", icon: MessageSquare },
+  { name: "Referrals", path: "/referrals", icon: Gift },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -37,15 +38,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   });
 
   React.useEffect(() => {
-    if (!token && location !== "/") {
-      setLocation("/");
+    if (!token && location !== "/" && !location.startsWith("/business/")) {
+      const slug = localStorage.getItem("portal_business_slug");
+      setLocation(slug ? `/business/${encodeURIComponent(slug)}` : "/");
     }
   }, [token, location, setLocation]);
 
   const handleLogout = () => {
     localStorage.removeItem("portal_token");
-    // Navigate to the portal login page (within this app's base path)
-    setLocation("/");
+    // Return to the same business's login page so shared-email customers keep context
+    const slug = localStorage.getItem("portal_business_slug");
+    setLocation(slug ? `/business/${encodeURIComponent(slug)}` : "/");
   };
 
   if (!token) return <>{children}</>;

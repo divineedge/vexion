@@ -1,11 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useGetTenantSettings, getGetTenantSettingsQueryKey, useUpdateTenantSettings } from '@workspace/api-client-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { Plus, Trash2, ArrowUp, ArrowDown, Loader2 } from 'lucide-react';
+import { useSettingsAutosave, useAutosaveFields } from '@/hooks/use-settings-autosave';
+import { AutosaveIndicator } from '@/components/settings/AutosaveIndicator';
+import { Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
 
 const MAX_REASONS = 20;
 const MAX_LEN = 100;
@@ -38,13 +40,12 @@ export default function DeclineReasonsSettings() {
     const j = i + d; if (j < 0 || j >= items.length) return;
     const next = [...items]; [next[i], next[j]] = [next[j], next[i]]; setItems(next);
   };
-  const save = () => {
-    const cleaned = items.map(i => i.trim()).filter(Boolean);
-    update.mutate({ data: { estimateDeclineReasons: cleaned } }, {
-      onSuccess: () => { toast.success('Decline reasons saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
-      onError: (e: unknown) => toast.error(e instanceof Error ? e.message : 'Could not save decline reasons'),
-    });
-  };
+  const mutateAsyncRef = useRef(update.mutateAsync); mutateAsyncRef.current = update.mutateAsync;
+  const autosave = useSettingsAutosave(
+    patch => mutateAsyncRef.current({ data: patch as { estimateDeclineReasons: string[] } }),
+    { onSaved: () => qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }) },
+  );
+  useAutosaveFields({ estimateDeclineReasons: items.map(i => i.trim()).filter(Boolean) }, loadedOnce, autosave.queue);
 
   return (
     <Card>
@@ -72,7 +73,7 @@ export default function DeclineReasonsSettings() {
             </div>
             <div className="flex items-center justify-between pt-1">
               <span className="text-xs text-muted-foreground">{items.length}/{MAX_REASONS} reasons, plus Other</span>
-              <Button onClick={save} disabled={update.isPending} className="gap-1.5">{update.isPending && <Loader2 className="w-4 h-4 animate-spin" />}Save Reasons</Button>
+              <AutosaveIndicator status={autosave.status} hasUnsaved={autosave.hasUnsaved} onRetry={() => { void autosave.retry(); }} />
             </div>
           </>
         )}

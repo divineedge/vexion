@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { directionsUrl } from '@/lib/directions';
+import { VisitClockControl } from '@/components/visits/VisitClockControl';
 import { serverErrorMessage } from '@/lib/serverError';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
@@ -268,10 +270,20 @@ export default function VisitsPage() {
                                   <User className="w-3 h-3" />{visit.customerName}
                                 </button>
                               )}
+                              {(() => {
+                                const v = visit as typeof visit & { propertyAddress?: string | null; propertyLat?: number | null; propertyLng?: number | null };
+                                const url = directionsUrl({ lat: v.propertyLat, lng: v.propertyLng, address: v.propertyAddress });
+                                return v.propertyAddress && url ? (
+                                  <a href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:text-primary hover:underline" onClick={e => e.stopPropagation()} data-testid={`link-visit-directions-${visit.id}`}>
+                                    <MapPin className="w-3 h-3" />{v.propertyAddress}
+                                  </a>
+                                ) : null;
+                              })()}
                               {visit.assigneeName && <span className="flex items-center gap-1"><User className="w-3 h-3" />{visit.assigneeName}</span>}
                               {visit.scheduledAt && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{format(new Date(visit.scheduledAt), 'MMM d, h:mm a')}</span>}
                             </div>
                           </div>
+                          {!isUnscheduled && <VisitClockControl visitId={visit.id} compact />}
                           <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
                         </div>
                       );
@@ -401,6 +413,7 @@ export default function VisitsPage() {
               </SheetHeader>
 
               <div className="space-y-5">
+                <VisitClockControl visitId={selectedVisit.id} completed={!!selectedVisit.completedAt} />
                 {/* Actions */}
                 {!selectedVisit.completedAt && (
                   <div className="flex flex-wrap gap-2">

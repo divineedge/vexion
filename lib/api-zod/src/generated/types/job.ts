@@ -14,6 +14,10 @@ import type { ServiceFieldRequirements } from './serviceFieldRequirements';
 import type { SupplyItem } from './supplyItem';
 
 export interface Job {
+  /** @nullable */
+  propertyLat?: number | null;
+  /** @nullable */
+  propertyLng?: number | null;
   id: number;
   tenantId: number;
   title: string;

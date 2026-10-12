@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
@@ -20,6 +21,8 @@ import {
 import { useColors } from '@/hooks/useColors';
 import { useOffline } from '@/contexts/OfflineContext';
 import { MediaAttachments } from '@/components/MediaAttachments';
+import { VisitClockCard } from '@/components/VisitClock';
+import { openDirections } from '@/utils/directions';
 
 function formatVisitMode(mode: string): string {
   if (mode === 'drop_by') return 'Drop-by';
@@ -91,10 +94,11 @@ export default function VisitDetailScreen() {
           </View>
         </View>
         {visit.propertyAddress ? (
-          <View style={styles.infoRow}>
+          <TouchableOpacity style={styles.infoRow} testID="visit-directions" accessibilityRole="link" accessibilityLabel={`Directions to ${visit.propertyAddress}`}
+            onPress={() => { const v = visit as typeof visit & { propertyLat?: number | null; propertyLng?: number | null }; openDirections(visit.propertyAddress ?? '', v.propertyLat, v.propertyLng); }}>
             <Ionicons name="location-outline" size={16} color={colors.mutedForeground} />
             <Text style={[styles.infoText, { color: colors.mutedForeground }]}>{visit.propertyAddress}</Text>
-          </View>
+          </TouchableOpacity>
         ) : null}
         {visit.customerName ? (
           <View style={styles.infoRow}>
@@ -123,6 +127,7 @@ export default function VisitDetailScreen() {
           </View>
         ) : null}
       </View>
+      <VisitClockCard visitId={visitId} completed={Boolean(visit.completedAt)} offline={isOffline} />
 
       {visit.notes ? (
         <View style={styles.notesSection}>

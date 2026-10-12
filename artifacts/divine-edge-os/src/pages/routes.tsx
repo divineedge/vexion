@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { directionsUrl, routeDirectionsUrl } from '@/lib/directions';
 import { serverErrorMessage } from '@/lib/serverError';
 import { useLocation } from 'wouter';
 import {
@@ -588,9 +589,9 @@ export default function RoutesDashboardPage() {
                         {(() => { const done = detail.stops.filter((s: any) => s.status === 'completed').length; return done > 0 ? ` · ${done}/${detail.stops.length} done` : null; })()}
                       </p>
                     )}
-                    {detail.stops.filter((s: any) => s.propertyAddress).length > 0 && (
+                    {routeDirectionsUrl(detail.stops.map((s: any) => ({ lat: s.propertyLat, lng: s.propertyLng, address: s.propertyAddress }))) && (
                       <a
-                        href={`https://www.google.com/maps/dir/${detail.stops.filter((s: any) => s.propertyAddress).map((s: any) => encodeURIComponent(s.propertyAddress)).join('/')}`}
+                        href={routeDirectionsUrl(detail.stops.map((s: any) => ({ lat: s.propertyLat, lng: s.propertyLng, address: s.propertyAddress }))) ?? undefined}
                         target="_blank"
                         rel="noopener noreferrer"
                         title="Open turn-by-turn directions for all stops"
@@ -680,7 +681,7 @@ export default function RoutesDashboardPage() {
                         <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground pl-8">
                           {stop.propertyAddress && (
                             <a
-                              href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(stop.propertyAddress)}`}
+                              href={directionsUrl({ lat: (stop as any).propertyLat, lng: (stop as any).propertyLng, address: stop.propertyAddress }) ?? undefined}
                               target="_blank"
                               rel="noopener noreferrer"
                               title="Get directions in Google Maps"

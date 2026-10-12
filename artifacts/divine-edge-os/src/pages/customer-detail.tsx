@@ -57,6 +57,8 @@ import { getActiveCustomerFields, isCustomerFieldVisible } from '@/lib/fieldConf
 import { useDebounce } from '@/hooks/use-debounce';
 import { AddressAutocomplete } from '@/components/shared/AddressAutocomplete';
 import { CUSTOMER_REFERRAL_SOURCE, ReferringCustomerPicker } from '@/components/customer/ReferringCustomerPicker';
+import { AcquisitionAttributionFields } from '@/components/customer/AcquisitionAttributionFields';
+import { EMPLOYEE_ACQUISITION_SOURCE, DOOR_HANGER_SOURCE, sourceLabel } from '@/lib/acquisition';
 
 interface CardSetupInlineHandle {
   setupCard: (customerId: number) => Promise<void>;
@@ -498,6 +500,8 @@ export default function CustomerDetailPage() {
       ? referralSourceField.options
       : ['Google', 'Word of Mouth', 'Flyer', 'Repeat Customer', 'Social Media', 'Referral', 'Other']),
     CUSTOMER_REFERRAL_SOURCE,
+    EMPLOYEE_ACQUISITION_SOURCE,
+    DOOR_HANGER_SOURCE,
     ...((customer as any)?.referralSource ? [(customer as any).referralSource] : []),
   ]));
   const { data: portalLink } = useGetCustomerPortalLink(id, {
@@ -536,6 +540,8 @@ export default function CustomerDetailPage() {
       referralSource: customer.referralSource ?? '',
       referringCustomerId: String((customer as any).referringCustomerId ?? ''),
       referringCustomerName: (customer as any).referringCustomerName ?? '',
+      acquiredByEmployeeId: String((customer as any).acquiredByEmployeeId ?? ''),
+      doorHangerVisitId: String((customer as any).doorHangerVisitId ?? ''),
       billingAddress: customer.billingAddress ?? '',
       billingCity: customer.billingCity ?? '',
       billingState: customer.billingState ?? '',
@@ -564,6 +570,8 @@ export default function CustomerDetailPage() {
     body.customFieldValues = customFieldValues;
     body.referringCustomerId = form.referringCustomerId ? Number(form.referringCustomerId) : null;
     delete body.referringCustomerName;
+    body.acquiredByEmployeeId = form.acquiredByEmployeeId ? Number(form.acquiredByEmployeeId) : null;
+    body.doorHangerVisitId = form.doorHangerVisitId ? Number(form.doorHangerVisitId) : null;
     updateCustomer.mutate(
       { id, data: body as Parameters<typeof updateCustomer.mutate>[0]['data'] },
       {
@@ -990,9 +998,11 @@ export default function CustomerDetailPage() {
                 {customer.referralSource && (
                   <Row
                     label="Referral Source"
-                    value={customer.referralSource === CUSTOMER_REFERRAL_SOURCE ? 'Customer Referral' : customer.referralSource}
+                    value={customer.referralSource === CUSTOMER_REFERRAL_SOURCE ? 'Customer Referral' : sourceLabel(customer.referralSource)}
                   />
                 )}
+                {(customer as any).acquiredByEmployeeId != null && <Row label="Acquired By Employee" value={`Employee #${(customer as any).acquiredByEmployeeId}`} />}
+                {(customer as any).doorHangerVisitId != null && <Row label="Door Hanger Visit" value={`Visit #${(customer as any).doorHangerVisitId}`} />}
                 {(customer as any).referringCustomerId && (
                   <div className="flex justify-between gap-4">
                     <span className="text-muted-foreground">Referred By</span>
@@ -2206,12 +2216,14 @@ export default function CustomerDetailPage() {
                     if (v !== CUSTOMER_REFERRAL_SOURCE) {
                       setForm(f => ({ ...f, referringCustomerId: '', referringCustomerName: '' }));
                     }
+                    if (v !== EMPLOYEE_ACQUISITION_SOURCE && v !== DOOR_HANGER_SOURCE) setForm(f => ({ ...f, acquiredByEmployeeId: '', doorHangerVisitId: '' }));
+                    else if (v !== DOOR_HANGER_SOURCE) setForm(f => ({ ...f, doorHangerVisitId: '' }));
                   }}>
                     <SelectTrigger title="How this customer originally found you"><SelectValue placeholder="Select source..." /></SelectTrigger>
                     <SelectContent>
                       {referralSourceOptions.map(source => (
                         <SelectItem key={source} value={source}>
-                          {source === CUSTOMER_REFERRAL_SOURCE ? 'Customer Referral' : source}
+                          {source === CUSTOMER_REFERRAL_SOURCE ? 'Customer Referral' : sourceLabel(source)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -2230,6 +2242,14 @@ export default function CustomerDetailPage() {
                     }))}
                   />
                 </Field>
+              )}
+              {showReferralSource && (
+                <AcquisitionAttributionFields
+                  source={form.referralSource as string}
+                  employeeId={(form.acquiredByEmployeeId as string) ?? ''}
+                  visitId={(form.doorHangerVisitId as string) ?? ''}
+                  onChange={p => setForm(f => ({ ...f, ...p }))}
+                />
               )}
             </Section>
 

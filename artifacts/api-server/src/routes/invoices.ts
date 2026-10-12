@@ -1,3 +1,4 @@
+import { sendDocumentEmail } from "../lib/documentDelivery";
 import { creditedInvoiceInsert, invoiceBalance, voidCreditedInvoice } from "../lib/customerCredit";
 import { Router, type IRouter } from "express";
 import { db, invoicesTable, customersTable, jobsTable, activityLogTable, tenantsTable, integrationSyncLogsTable, customerPlansTable, stopServiceFlagsTable, invoiceTemplatesTable, propertiesTable, servicesTable, billingEmailQueueTable } from "@workspace/db";
@@ -678,7 +679,7 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
                     planTenant?.name ?? "Your Service Provider",
                   ].join("\n");
 
-                  await sendEmail(providerConfig, customer.email, subject, body).catch((err) =>
+                  await sendDocumentEmail(providerConfig, customer.email, subject, body,undefined,{tenantId,documentType:"invoice",documentId:id}).catch((err) =>
                     logger.warn({ err, planId: plan.id }, "Plan auto-resume notification email failed"),
                   );
                 }

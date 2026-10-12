@@ -6,7 +6,7 @@ import {
   Megaphone, FlaskConical,
   Settings, FileText, Footprints, BarChart3, Star, Repeat, ListTodo, Calculator,
   Map, ClipboardList, PhoneMissed, PhoneIncoming, Inbox, Layers,
-  MessageSquare,
+  MessageSquare, Store, ClipboardCheck,
   LucideIcon,
 } from 'lucide-react';
 
@@ -40,6 +40,7 @@ export const techNavItems: NavItem[] = [
   { name: 'Tasks',        href: '/tasks',        icon: ListTodo },
   { name: 'Callbacks',    href: '/callbacks',    icon: PhoneCall },
   { name: 'Daily Tasks',  href: '/daily-tasks',  icon: ClipboardList },
+  { name: 'Forms',        href: '/forms',        icon: ClipboardCheck },
   { name: 'Messages',     href: '/staff-messages', icon: MessageSquare },
 ];
 
@@ -61,6 +62,7 @@ export const pinnedNavItems: PinnedNavItem[] = [
   { name: 'Schedule',  href: '/schedule',  icon: CalendarDays, roles: ['canManageOffice', 'isCrewManager'] },
   { name: 'Invoices',  href: '/invoices',  icon: DollarSign,   roles: ['canManageOffice'], permissionKey: 'pages.billing', aliases: ['/financials'] },
   { name: 'Estimates', href: '/estimates', icon: FileText,     roles: ['canManageOffice', 'isCrewManager'] },
+  { name: 'Vendors',   href: '/vendors',   icon: Store,        roles: ['canManageOffice'], permissionKey: 'pages.billing' },
 ];
 
 /** Sectioned nav for admin / office / crew-manager roles */
@@ -82,6 +84,7 @@ export const adminNavSections: NavSection[] = [
       { name: 'Schedule',      href: '/schedule',      icon: CalendarDays },
       { name: 'Visits',        href: '/visits',        icon: Footprints },
       { name: 'Daily Tasks',   href: '/daily-tasks',   icon: ClipboardList },
+      { name: 'Forms',         href: '/forms',         icon: ClipboardCheck },
       { name: 'Crews',         href: '/crews',         icon: UserCheck },
       { name: 'Routes',        href: '/routes',        icon: Map },
       { name: 'Blueprints',    href: '/blueprints',    icon: DraftingCompass },

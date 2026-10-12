@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import healthRouter from "./health";
+import billingSafetyRouter from "./billingSafety";
 import authRouter from "./auth";
 import storageRouter from "./storage";
 import mediaRouter from "./media";
@@ -150,6 +151,7 @@ router.use(importBatchesRouter);
 router.use(employeeHistoryRouter);
 router.use(repairLogsRouter);
 router.use(planCancelRequestsRouter);
+router.use(billingSafetyRouter);
 router.use(tagsRouter);
 router.use(skipReasonsRouter);
 router.use(portalMessagesRouter);

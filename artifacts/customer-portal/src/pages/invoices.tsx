@@ -166,7 +166,10 @@ export default function Invoices() {
               <div className="p-6 bg-muted/10 flex flex-col justify-center items-center sm:items-end w-full sm:w-48 gap-4">
                 <div className="text-center sm:text-right">
                   <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">Total</p>
-                  <p className="text-3xl font-bold text-foreground">{formatCurrency(invoice.total)}</p>
+                  <p className="text-3xl font-bold text-foreground">{formatCurrency((invoice as any).balanceDue ?? invoice.total)}</p>
+                  {((invoice as any).creditApplied ?? 0) > 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">of {formatCurrency(invoice.total)} after {formatCurrency((invoice as any).creditApplied)} prepaid credit</p>
+                  )}
                 </div>
 
                 {isPayable ? (
@@ -217,7 +220,7 @@ export default function Invoices() {
         <div className="bg-card border rounded-lg px-4 py-2 flex items-center gap-4">
           <div className="text-sm text-muted-foreground">Total Balance Due</div>
           <div className="text-2xl font-bold text-destructive">
-            {formatCurrency(pendingInvoices.reduce((sum, inv) => sum + inv.total, 0))}
+            {formatCurrency(pendingInvoices.reduce((sum, inv) => sum + ((inv as any).balanceDue ?? inv.total), 0))}
           </div>
         </div>
       </div>

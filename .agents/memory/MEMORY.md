@@ -1,3 +1,4 @@
+- [Billing coverage and credits](billing-coverage-credits.md) — completed work needs invoice coverage or admin attention; prepaid funds never replace the invoice or reduce gross revenue.
 - [Drizzle update typing](drizzle-update-typing.md) — use `Partial<typeof table.$inferInsert>` for update payloads, never `Record<string, unknown>` cast
 - [Orval email format](orval-email-format.md) — `format: email` in OpenAPI generates `zod.email()` (Zod v4), which breaks typecheck on Zod v3 workspace; strip email format from spec
 - [Inventory pricing contract](inventory-pricing-contract.md) — DB unitPrice=buy/cost, markedUpPrice=sell; API costPrice=buy (role-gated), unitPrice=sell; markupPct derived from stored values not tenant default

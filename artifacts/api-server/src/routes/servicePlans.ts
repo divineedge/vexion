@@ -1,3 +1,4 @@
+import { creditedInvoiceInsert } from "../lib/customerCredit";
 import { Router, type IRouter } from "express";
 import crypto from "crypto";
 import {
@@ -1021,7 +1022,7 @@ export async function billPlanPeriod(
 
   let invoiceId!: number;
   await db.transaction(async tx => {
-    const [invoice] = await tx.insert(invoicesTable).values({
+    const [invoice] = await creditedInvoiceInsert(tx).values({
       tenantId,
       invoiceNumber: invoiceNum,
       customerId: plan.customerId,

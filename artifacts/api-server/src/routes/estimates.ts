@@ -1,3 +1,4 @@
+import { creditedInvoiceInsert } from "../lib/customerCredit";
 import { Router, type IRouter } from "express";
 import { db, estimatesTable, visitsTable, jobsTable, customersTable, propertiesTable, usersTable, tenantsTable, blueprintsTable, communicationsLogTable, estimateTemplatesTable, invoicesTable } from "@workspace/db";
 import { eq, and, sql, desc, isNull } from "drizzle-orm";
@@ -1116,7 +1117,7 @@ router.post("/estimates/:id/convert", requireVerifiedStaff, async (req, res): Pr
             : `Deposit of $${depositCharged.toFixed(2)} collected at estimate acceptance — balance due: $${remainingBalance.toFixed(2)} (Stripe PI: ${(estimate as any).depositPaymentIntentId ?? "unknown"}).`)
         : null;
 
-      const [invoice] = await db.insert(invoicesTable).values({
+      const [invoice] = await creditedInvoiceInsert(db).values({
         tenantId,
         invoiceNumber: invoiceNum,
         customerId: estimate.customerId,

@@ -8697,8 +8697,95 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/ExternalAccessAuditRow" }
 
+  /billing/coverage:
+    get:
+      operationId: getBillingCoverage
+      responses:
+        "200":
+          description: Completed work billing coverage
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BillingCoverage' }
+  /billing/coverage/check:
+    post:
+      operationId: checkBillingCoverage
+      responses:
+        "200":
+          description: Recovery and admin alert results
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BillingCoverage' }
+  /customers/{id}/credits:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer }
+    get:
+      operationId: getCustomerCredits
+      responses:
+        "200":
+          description: Available credit and immutable money movements
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CustomerCredits' }
+    post:
+      operationId: recordCustomerPrepayment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, reference, requestId]
+              properties:
+                amount: { type: number }
+                reference: { type: string }
+                requestId: { type: string }
+      responses:
+        "200":
+          description: Updated available credit
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  balance: { type: number }
 components:
   schemas:
+    BillingCoverage:
+      type: object
+      properties:
+        checkedAt: { type: string }
+        jobs:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              title: { type: string }
+              customerId: { type: integer, nullable: true }
+              customerName: { type: string, nullable: true }
+              completedAt: { type: string, nullable: true }
+              totalAmount: { type: number }
+              invoiceId: { type: integer, nullable: true }
+              reason: { type: string }
+              needsAttention: { type: boolean }
+    CustomerCredits:
+      type: object
+      properties:
+        balance: { type: number }
+        entries:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              amount: { type: number }
+              kind: { type: string }
+              reference: { type: string }
+              invoiceId: { type: integer, nullable: true }
+              createdAt: { type: string }
     JobRequestInput:
       type: object
       required: [requestedStartDate, idempotencyKey]
@@ -11423,6 +11510,8 @@ components:
       type: object
       required: [id, tenantId, invoiceNumber, customerId, status, subtotal, tax, total, createdAt]
       properties:
+        creditApplied: { type: number }
+        balanceDue: { type: number }
         termsText:
           type: ["string", "null"]
         layout:
@@ -14945,6 +15034,8 @@ components:
       type: object
       required: [id, invoiceNumber, status, total, createdAt]
       properties:
+        creditApplied: { type: number }
+        balanceDue: { type: number }
         id:
           type: integer
         invoiceNumber:

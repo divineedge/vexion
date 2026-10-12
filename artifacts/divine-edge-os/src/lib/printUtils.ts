@@ -121,6 +121,8 @@ export function buildInvoicePrintDocument(invoice: Record<string, unknown>, sett
   const subtotal = (invoice.subtotal as number) ?? 0;
   const tax = (invoice.tax as number) ?? 0;
   const total = (invoice.total as number) ?? 0;
+  const creditApplied = typeof invoice.creditApplied === 'number' ? invoice.creditApplied : 0;
+  const balanceDue = typeof invoice.balanceDue === 'number' ? invoice.balanceDue : total;
   const fmt$ = (n: number) => `$${n.toFixed(2)}`;
   const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
@@ -158,6 +160,7 @@ export function buildInvoicePrintDocument(invoice: Record<string, unknown>, sett
         <tr><td>Subtotal</td><td class="right">${fmt$(subtotal)}</td></tr>
         ${tax > 0 ? `<tr><td>Tax</td><td class="right">${fmt$(tax)}</td></tr>` : ''}
         <tr style="font-weight:700;font-size:15px;"><td>Total</td><td class="right">${fmt$(total)}</td></tr>
+        ${creditApplied > 0 ? `<tr style="color:#047857;"><td>Prepaid credit applied</td><td class="right">-${fmt$(creditApplied)}</td></tr><tr style="font-weight:700;font-size:15px;"><td>Balance due</td><td class="right">${fmt$(balanceDue)}</td></tr>` : ''}
       </tbody>
     </table>
     ${(invoice.termsText as string) ? `<div class="section" style="margin-top:16px;"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;font-weight:600;margin-bottom:4px;">Terms &amp; Conditions</div><div style="white-space:pre-wrap;color:#4b5563;font-size:12px;">${escapeHtml(invoice.termsText as string)}</div></div>` : ''}

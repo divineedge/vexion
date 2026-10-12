@@ -1,3 +1,4 @@
+import { creditedInvoiceInsert, invoiceBalance, voidCreditedInvoice } from "../lib/customerCredit";
 import { Router, type IRouter } from "express";
 import { db, invoicesTable, customersTable, jobsTable, activityLogTable, tenantsTable, integrationSyncLogsTable, customerPlansTable, stopServiceFlagsTable, invoiceTemplatesTable, propertiesTable, servicesTable, billingEmailQueueTable } from "@workspace/db";
 import { invoiceServiceDate } from "../lib/invoiceServiceDate";
@@ -169,6 +170,7 @@ router.post("/invoices/import/commit", importUpload.single("file"), async (req, 
 
 function formatInvoice(i: typeof invoicesTable.$inferSelect, customerName?: string | null, propertyAddress?: string | null) {
   return {
+    balanceDue: invoiceBalance(i),
     ...i,
     lineItems: (i.lineItems as unknown[]) ?? [],
     customerName: customerName ?? null,
@@ -213,8 +215,8 @@ router.get("/invoices/financials-summary", async (req, res): Promise<void> => {
   );
 
   const [paid] = await db.select({ total: sql<number>`COALESCE(sum(total),0)::float` }).from(invoicesTable).innerJoin(customersTable, activeInvoiceJoin).where(activeInvoiceWhere(eq(invoicesTable.status, "paid")));
-  const [outstanding] = await db.select({ total: sql<number>`COALESCE(sum(total),0)::float` }).from(invoicesTable).innerJoin(customersTable, activeInvoiceJoin).where(activeInvoiceWhere(sql`${invoicesTable.status} IN ('draft','sent')`));
-  const [overdue] = await db.select({ total: sql<number>`COALESCE(sum(total),0)::float` }).from(invoicesTable).innerJoin(customersTable, activeInvoiceJoin).where(activeInvoiceWhere(eq(invoicesTable.status, "overdue")));
+  const [outstanding] = await db.select({ total: sql<number>`COALESCE(sum(total - credit_applied),0)::float` }).from(invoicesTable).innerJoin(customersTable, activeInvoiceJoin).where(activeInvoiceWhere(sql`${invoicesTable.status} IN ('draft','sent')`));
+  const [overdue] = await db.select({ total: sql<number>`COALESCE(sum(total - credit_applied),0)::float` }).from(invoicesTable).innerJoin(customersTable, activeInvoiceJoin).where(activeInvoiceWhere(eq(invoicesTable.status, "overdue")));
 
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -310,7 +312,7 @@ router.post("/invoices/from-job/:jobId", async (req, res): Promise<void> => {
   const tax = subtotal * 0.085;
   const total = subtotal + tax;
 
-  const [invoice] = await db.insert(invoicesTable).values({
+  const [invoice] = await creditedInvoiceInsert(db, true).values({
     tenantId,
     invoiceNumber: invoiceNum,
     customerId: job.customerId!,
@@ -406,7 +408,7 @@ router.post("/invoices", async (req, res): Promise<void> => {
   const tax = subtotal * 0.085;
   const total = subtotal + tax;
 
-  const [invoice] = await db.insert(invoicesTable).values({
+  const [invoice] = await creditedInvoiceInsert(db, true).values({
     tenantId,
     invoiceNumber: invoiceNum,
     customerId: parseInt(customerId, 10),
@@ -463,6 +465,16 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
   const id = parseInt(rawId, 10);
 
   const { status, notes, dueDate, lineItems } = req.body;
+  const [creditCheck] = await db.select().from(invoicesTable).where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId)));
+  if (creditCheck?.creditApplied > 0 && ["void", "cancelled"].includes(status)) {
+    if (!await isAdminRole(tenantId, userId)) { res.status(403).json({ error: "Admin access required" }); return; }
+    try { res.json(formatInvoice(await voidCreditedInvoice(tenantId, id, userId))); }
+    catch (error) { res.status(409).json({ error: error instanceof Error ? error.message : "Credit reversal failed" }); }
+    return;
+  }
+  if (creditCheck?.creditApplied > 0 && (lineItems !== undefined || creditCheck.status === "paid" && status && status !== "paid")) {
+    res.status(409).json({ error: "To change this credited invoice, void it to restore its prepaid credit, then create a replacement. Payment history cannot be overwritten." }); return;
+  }
   if (status && !(await isAdminRole(tenantId, userId))) {
     res.status(403).json({ error: "Restricted to owner/admin/office roles" });
     return;
@@ -514,7 +526,7 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
       if (!((updates.total ?? existing.total) > 0)) return { error: "Add a positive price before sending.", code: 422 };
       const [customer] = await tx.select().from(customersTable).where(and(eq(customersTable.id, existing.customerId), eq(customersTable.tenantId, tenantId)));
       if (!customer?.email || customer.archivedAt) return { error: "An active customer with an email address is required.", code: 422 };
-      const [invoice] = await tx.update(invoicesTable).set({ ...updates, publicToken: existing.publicToken ?? generateInvoiceToken() }).where(eq(invoicesTable.id, id)).returning();
+      const [invoice] = await tx.update(invoicesTable).set({ ...updates, ...(existing.creditApplied > 0 && invoiceBalance(existing) === 0 ? { status: "paid", paidAt: new Date(), paymentMethod: "prepaid_credit" } : {}), publicToken: existing.publicToken ?? generateInvoiceToken() }).where(eq(invoicesTable.id, id)).returning();
       if (existing.status === "draft") await tx.insert(billingEmailQueueTable).values({ tenantId, invoiceId: id, status: "pending", attempts: 0 });
       return { invoice, name: customer.name };
     });
@@ -824,11 +836,12 @@ router.delete("/invoices/:id", async (req, res): Promise<void> => {
     id: invoicesTable.id,
     status: invoicesTable.status,
     jobId: invoicesTable.jobId,
+    creditApplied: invoicesTable.creditApplied,
     planId: invoicesTable.planId,
     generatedFromTemplateId: invoicesTable.generatedFromTemplateId,
   }).from(invoicesTable).where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId)));
   if (!invoice) { res.status(404).json({ error: "Not found" }); return; }
-  if (invoice.status === "paid") {
+  if (invoice.status === "paid" || invoice.creditApplied > 0) {
     res.status(409).json({ error: "Paid invoices must be archived so financial history is preserved" });
     return;
   }
@@ -956,6 +969,7 @@ router.post("/invoices/:id/print-mail", async (req, res): Promise<void> => {
         ${lineItems.map(li => `<tr><td>${li.description}</td><td style="text-align:right;">${li.quantity} x ${li.unitPrice.toFixed(2)}</td></tr>`).join("")}
       </table>
       <p style="text-align:right; font-size: 1.2em;"><strong>Total: ${row.invoice.total.toFixed(2)}</strong></p>
+      <p>Prepaid credit: ${row.invoice.creditApplied.toFixed(2)} — Balance due: ${invoiceBalance(row.invoice).toFixed(2)}</p>
     </body></html>
   `;
 

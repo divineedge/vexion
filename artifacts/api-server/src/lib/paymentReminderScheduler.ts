@@ -1,3 +1,4 @@
+import { invoiceBalance } from "./customerCredit";
 /**
  * Payment Reminder & Stop-Service Scheduler
  * Runs daily (and once on startup). For each tenant with paymentRemindersEnabled:
@@ -141,7 +142,7 @@ export async function sendPaymentReminder(params: {
     firstName,
     companyName,
     invoiceNumber: invoice.invoiceNumber,
-    amount: invoice.total.toFixed(2),
+    amount: invoiceBalance(invoice).toFixed(2),
     dueMessage: isOverdue ? "is now overdue" : "is due soon",
   };
 
@@ -153,8 +154,8 @@ export async function sendPaymentReminder(params: {
       `Hi ${firstName},`,
       "",
       isOverdue
-        ? `Invoice ${invoice.invoiceNumber} for $${invoice.total.toFixed(2)} is now overdue (${rule.label}).`
-        : `This is a reminder that invoice ${invoice.invoiceNumber} for $${invoice.total.toFixed(2)} is due soon (${rule.label}).`,
+        ? `Invoice ${invoice.invoiceNumber} balance $${invoiceBalance(invoice).toFixed(2)} is now overdue (${rule.label}).`
+        : `This is a reminder that invoice ${invoice.invoiceNumber} balance $${invoiceBalance(invoice).toFixed(2)} is due soon (${rule.label}).`,
       "",
       "Please arrange payment at your earliest convenience.",
       "",
@@ -182,8 +183,8 @@ export async function sendPaymentReminder(params: {
 
   if (channels.includes("sms") && customer.phone && !customer.smsOptOut) {
     const defaultSms = isOverdue
-      ? `Hi ${firstName}, invoice ${invoice.invoiceNumber} ($${invoice.total.toFixed(2)}) from ${companyName} is overdue. Please arrange payment. Reply STOP to opt out.`
-      : `Hi ${firstName}, reminder: invoice ${invoice.invoiceNumber} ($${invoice.total.toFixed(2)}) from ${companyName} is due soon. Reply STOP to opt out.`;
+      ? `Hi ${firstName}, invoice ${invoice.invoiceNumber} balance ($${invoiceBalance(invoice).toFixed(2)}) from ${companyName} is overdue. Please arrange payment. Reply STOP to opt out.`
+      : `Hi ${firstName}, reminder: invoice ${invoice.invoiceNumber} balance ($${invoiceBalance(invoice).toFixed(2)}) from ${companyName} is due soon. Reply STOP to opt out.`;
     const smsBody = notifTemplates.paymentReminderSms ? applyTemplate(notifTemplates.paymentReminderSms, templateVars) : defaultSms;
 
     const smsProviderConfig: SmsProviderConfig = {

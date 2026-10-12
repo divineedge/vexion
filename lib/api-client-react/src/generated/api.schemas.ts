@@ -5,6 +5,37 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+export type BillingCoverageJobsItem = {
+  id?: number;
+  title?: string;
+  customerId?: number | null;
+  customerName?: string | null;
+  completedAt?: string | null;
+  totalAmount?: number;
+  invoiceId?: number | null;
+  reason?: string;
+  needsAttention?: boolean;
+};
+
+export interface BillingCoverage {
+  checkedAt?: string;
+  jobs?: BillingCoverageJobsItem[];
+}
+
+export type CustomerCreditsEntriesItem = {
+  id?: number;
+  amount?: number;
+  kind?: string;
+  reference?: string;
+  invoiceId?: number | null;
+  createdAt?: string;
+};
+
+export interface CustomerCredits {
+  balance?: number;
+  entries?: CustomerCreditsEntriesItem[];
+}
+
 export interface JobRequestInput {
   customerId?: number | null;
   propertyId?: number | null;
@@ -253,6 +284,8 @@ export interface InvoiceLineItem {
 }
 
 export interface Invoice {
+  creditApplied?: number;
+  balanceDue?: number;
   /** @nullable */
   termsText?: string | null;
   layout?: string;
@@ -5424,6 +5457,8 @@ export interface PortalJob {
 }
 
 export interface PortalInvoice {
+  creditApplied?: number;
+  balanceDue?: number;
   id: number;
   invoiceNumber: string;
   status: string;
@@ -7285,5 +7320,15 @@ connectionId?: string;
  * @maximum 100
  */
 limit?: number;
+};
+
+export type RecordCustomerPrepaymentBody = {
+  amount: number;
+  reference: string;
+  requestId: string;
+};
+
+export type RecordCustomerPrepayment200 = {
+  balance?: number;
 };
 

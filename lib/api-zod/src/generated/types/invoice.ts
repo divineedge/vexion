@@ -10,6 +10,8 @@ import type { InvoicePaymentMethod } from './invoicePaymentMethod';
 import type { InvoiceStatus } from './invoiceStatus';
 
 export interface Invoice {
+  creditApplied?: number;
+  balanceDue?: number;
   /** @nullable */
   termsText?: string | null;
   layout?: string;

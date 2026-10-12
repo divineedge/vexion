@@ -1,3 +1,5 @@
+import { auditAllBilling } from "./billingCoverage";
+import { creditedInvoiceInsert } from "./customerCredit";
 /**
  * Billing Scheduler
  * Runs daily and handles two automation pipelines:
@@ -139,9 +141,9 @@ async function collectCompletedWorkForCustomer(
         eq(jobsTable.tenantId, tenantId),
         eq(jobsTable.customerId, customerId),
         eq(jobsTable.status, "completed"),
+        isNull(jobsTable.planId),
         sql`${jobsTable.totalAmount} > 0`,
         sql`${jobsTable.completedAt} IS NOT NULL`,
-        sql`${jobsTable.completedAt} > ${periodStart}`,
         sql`${jobsTable.completedAt} <= ${periodEnd}`,
         sql`${jobsTable.invoiceId} IS NULL`,
         serviceId != null ? eq(jobsTable.serviceId, serviceId) : sql`true`,
@@ -185,8 +187,8 @@ async function findCustomersWithCompletedWork(
         eq(jobsTable.tenantId, tenantId),
         serviceId != null ? eq(jobsTable.serviceId, serviceId) : sql`true`,
         eq(jobsTable.status, "completed"),
+        isNull(jobsTable.planId),
         sql`${jobsTable.completedAt} IS NOT NULL`,
-        sql`${jobsTable.completedAt} > ${periodStart}`,
         sql`${jobsTable.completedAt} <= ${periodEnd}`,
         sql`${jobsTable.invoiceId} IS NULL`,
         sql`${jobsTable.customerId} IS NOT NULL`,
@@ -328,8 +330,7 @@ async function generateInvoiceForCustomer(
   const invoiceNum = generateInvoiceNumber();
   const sendAutomatically = total > 0 && await automaticInvoiceSending(template.tenantId);
 
-  const [invoice] = await tx
-    .insert(invoicesTable)
+  const [invoice] = await creditedInvoiceInsert(tx)
     .values({
       tenantId: template.tenantId,
       ...documentDefaults,
@@ -575,7 +576,7 @@ async function processWeeklyNonRecurringInvoices() {
           return;
         }
 
-        const [invoice] = await tx.insert(invoicesTable).values({
+        const [invoice] = await creditedInvoiceInsert(tx).values({
           ...await invoiceDocumentDefaults(job.tenantId),
           tenantId: job.tenantId,
           invoiceNumber: invoiceNum,
@@ -618,7 +619,7 @@ export async function processEmailQueue() {
     .select({
       queue: billingEmailQueueTable,
       invoiceNumber: invoicesTable.invoiceNumber,
-      invoiceTotal: invoicesTable.total,
+      invoiceTotal: sql<number>`${invoicesTable.total} - ${invoicesTable.creditApplied}`,
       invoiceToken: invoicesTable.publicToken,
       invoiceStatus: invoicesTable.status,
       customerId: invoicesTable.customerId,
@@ -742,6 +743,7 @@ async function runBillingCycle() {
   await processRecurringJobBatches();
   await processWeeklyNonRecurringInvoices();
   await processEmailQueue();
+  await auditAllBilling();
   logger.info("Billing scheduler: daily cycle complete");
 }
 
@@ -791,6 +793,9 @@ export async function runAllDueTemplatesNow(tenantId: number) {
 }
 
 export function startBillingScheduler() {
+  const coverageInterval = setInterval(() => void auditAllBilling().catch(console.error), 15 * 60 * 1000);
+  coverageInterval.unref();
+  void auditAllBilling().catch(console.error);
   logger.info("Starting billing scheduler (runs every 24 hours)");
 
   // Run immediately on startup (catches up any missed runs)

@@ -1,3 +1,4 @@
+import { creditedInvoiceInsert } from "./customerCredit";
 import { db, tenantsTable, customersTable, jobsTable, servicesTable, recurringInvoiceTemplatesTable, invoicesTable, billingEmailQueueTable } from "@workspace/db";
 import { and, eq, isNull, sql, inArray } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
@@ -10,7 +11,7 @@ export async function processRecurringJobBatches(now = new Date(), onlyTenantId?
   const tenants = await db.select().from(tenantsTable).where(onlyTenantId ? eq(tenantsTable.id, onlyTenantId) : sql`true`);
   for (const tenant of tenants) {
     if (!recurringBillingDue(tenant.autoInvoiceFrequency, tenant.timezone, now)) continue;
-    const customers = await db.select().from(customersTable).where(and(eq(customersTable.tenantId, tenant.id), eq(customersTable.autoInvoiceOnCompletion, true), isNull(customersTable.archivedAt)));
+    const customers = await db.select().from(customersTable).where(and(eq(customersTable.tenantId, tenant.id), isNull(customersTable.archivedAt)));
     for (const customer of customers) await db.transaction(async tx => {
       const templates = await tx.select().from(recurringInvoiceTemplatesTable).where(and(eq(recurringInvoiceTemplatesTable.tenantId, tenant.id), eq(recurringInvoiceTemplatesTable.isActive, true)));
       const rows = await tx.select().from(jobsTable).where(and(
@@ -20,7 +21,7 @@ export async function processRecurringJobBatches(now = new Date(), onlyTenantId?
         sql`${jobsTable.totalAmount} > 0`, sql`${jobsTable.completedAt} IS NOT NULL`,
         sql`(${jobsTable.recurrenceRule} IS NOT NULL OR ${jobsTable.recurrenceParentId} IS NOT NULL)`,
       )).for("update", { skipLocked: true });
-      const jobs = rows.filter(job => !templates.some(template =>
+      const jobs = rows.filter(job => !templates.some(template => template.billingMode === "completed_work" &&
         (template.customerId === customer.id || template.customerId == null) &&
         (template.serviceId == null || template.serviceId === job.serviceId)));
       if (!jobs.length) return;
@@ -33,7 +34,7 @@ export async function processRecurringJobBatches(now = new Date(), onlyTenantId?
       const subtotal = lineItems.reduce((sum, line) => sum + line.total, 0);
       const tax = Math.round(subtotal * (tenant.taxRate / 100) * 100) / 100;
       const send = tenant.invoiceDeliveryMode === "automatic" && !!customer.email;
-      const [invoice] = await tx.insert(invoicesTable).values({
+      const [invoice] = await creditedInvoiceInsert(tx).values({
         ...await invoiceDocumentDefaults(tenant.id),
         tenantId: tenant.id, customerId: customer.id, invoiceNumber: `INV-${randomBytes(6).toString("hex").toUpperCase()}`,
         status: send ? "sent" : "draft", publicToken: send ? randomBytes(32).toString("hex") : null,

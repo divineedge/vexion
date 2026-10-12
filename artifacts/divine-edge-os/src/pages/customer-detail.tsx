@@ -46,6 +46,7 @@ import { Link } from 'wouter';
 import CustomerAvatar from '@/components/media/CustomerAvatar';
 import PropertyThumbnail from '@/components/media/PropertyThumbnail';
 import CustomerPlansTab from '@/components/customer/CustomerPlansTab';
+import { CustomerCreditsCard } from '@/components/customer/CustomerCreditsCard';
 import { StaffNotesPanel } from '@/components/StaffNotesPanel';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -220,6 +221,7 @@ function InlineNotesEditor({ customerId, initialNotes }: { customerId: number; i
 
 export default function CustomerDetailPage() {
   const params = useParams();
+  const customerIdForCredits = Number((params as Record<string, string | undefined>).id);
   const id = Number(params.id);
   const [, setLocation] = useLocation();
   const { user, canManageOffice } = useAuth();
@@ -1722,7 +1724,8 @@ export default function CustomerDetailPage() {
         </TabsContent>
 
         {/* Invoices tab */}
-        <TabsContent value="invoices" className="focus-visible:outline-none">
+        <TabsContent value="invoices" className="space-y-4 focus-visible:outline-none">
+          <CustomerCreditsCard customerId={customerIdForCredits} canRecord={!!canManageOffice} />
           {(() => {
             const INVOICE_STATUS_COLORS: Record<string, string> = {
               paid: 'bg-emerald-100 text-emerald-700 border-transparent',

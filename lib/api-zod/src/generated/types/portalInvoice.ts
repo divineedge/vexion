@@ -9,6 +9,8 @@ import type { JobLineItem } from './jobLineItem';
 import type { JobPart } from './jobPart';
 
 export interface PortalInvoice {
+  creditApplied?: number;
+  balanceDue?: number;
   id: number;
   invoiceNumber: string;
   status: string;

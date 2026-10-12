@@ -5,8 +5,8 @@ description: Design decisions behind completed-work recurring invoice templates 
 
 # Recurring billing "completed work" mode
 
-**Period window is time-based, not a stored "period" field:** a completed-work template bills whatever qualifying work finished strictly after its last run (or its creation, if it's never run) up to now. No separate period-start/period-end columns were added — reuse the existing "last run" timestamp as the cutoff.
-**Why:** avoids a second source of truth that could drift from the last invoice actually generated; keeps the static-mode template's existing columns untouched for backward compatibility.
+**Completed-work templates must include older unbilled work**, not only jobs completed after their last run or creation.
+**Why:** A timestamp cutoff can permanently strand backdated, late-entered, or previously held jobs. Invoice linkage is the authority for whether work was billed; the billing date still controls when a cycle runs.
 
 **Double-billing guard reuses the existing "already invoiced" flag on the underlying work item**, the same one the older static/weekly billing path already sets.
 **Why:** two billing paths must never both think the same completed work is still unbilled — one shared flag, not a second bookkeeping table.

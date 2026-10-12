@@ -2552,6 +2552,8 @@ export const CompleteAndInvoiceJobParams = zod.object({
 })
 
 export const CompleteAndInvoiceJobResponse = zod.object({
+  "creditApplied": zod.number().optional(),
+  "balanceDue": zod.number().optional(),
   "termsText": zod.string().nullish(),
   "layout": zod.string().optional(),
   "lateFeeEnabled": zod.boolean().optional(),
@@ -3853,6 +3855,8 @@ export const ListInvoicesQueryParams = zod.object({
 })
 
 export const ListInvoicesResponseItem = zod.object({
+  "creditApplied": zod.number().optional(),
+  "balanceDue": zod.number().optional(),
   "termsText": zod.string().nullish(),
   "layout": zod.string().optional(),
   "lateFeeEnabled": zod.boolean().optional(),
@@ -3913,6 +3917,8 @@ export const CreateInvoiceBody = zod.object({
 })
 
 export const CreateInvoiceResponse = zod.object({
+  "creditApplied": zod.number().optional(),
+  "balanceDue": zod.number().optional(),
   "termsText": zod.string().nullish(),
   "layout": zod.string().optional(),
   "lateFeeEnabled": zod.boolean().optional(),
@@ -3963,6 +3969,8 @@ export const GetInvoiceParams = zod.object({
 })
 
 export const GetInvoiceResponse = zod.object({
+  "creditApplied": zod.number().optional(),
+  "balanceDue": zod.number().optional(),
   "termsText": zod.string().nullish(),
   "layout": zod.string().optional(),
   "lateFeeEnabled": zod.boolean().optional(),
@@ -4021,6 +4029,8 @@ export const UpdateInvoiceBody = zod.object({
 })
 
 export const UpdateInvoiceResponse = zod.object({
+  "creditApplied": zod.number().optional(),
+  "balanceDue": zod.number().optional(),
   "termsText": zod.string().nullish(),
   "layout": zod.string().optional(),
   "lateFeeEnabled": zod.boolean().optional(),
@@ -4099,6 +4109,8 @@ export const MarkInvoicePaidBody = zod.object({
 })
 
 export const MarkInvoicePaidResponse = zod.object({
+  "creditApplied": zod.number().optional(),
+  "balanceDue": zod.number().optional(),
   "termsText": zod.string().nullish(),
   "layout": zod.string().optional(),
   "lateFeeEnabled": zod.boolean().optional(),
@@ -4149,6 +4161,8 @@ export const ArchiveInvoiceParams = zod.object({
 })
 
 export const ArchiveInvoiceResponse = zod.object({
+  "creditApplied": zod.number().optional(),
+  "balanceDue": zod.number().optional(),
   "termsText": zod.string().nullish(),
   "layout": zod.string().optional(),
   "lateFeeEnabled": zod.boolean().optional(),
@@ -4199,6 +4213,8 @@ export const RestoreInvoiceParams = zod.object({
 })
 
 export const RestoreInvoiceResponse = zod.object({
+  "creditApplied": zod.number().optional(),
+  "balanceDue": zod.number().optional(),
   "termsText": zod.string().nullish(),
   "layout": zod.string().optional(),
   "lateFeeEnabled": zod.boolean().optional(),
@@ -4249,6 +4265,8 @@ export const CreateInvoiceFromJobParams = zod.object({
 })
 
 export const CreateInvoiceFromJobResponse = zod.object({
+  "creditApplied": zod.number().optional(),
+  "balanceDue": zod.number().optional(),
   "termsText": zod.string().nullish(),
   "layout": zod.string().optional(),
   "lateFeeEnabled": zod.boolean().optional(),
@@ -8388,6 +8406,8 @@ export const PortalGetSummaryResponse = zod.object({
   "reschedulePreferredDate": zod.string().nullish().describe('Customer\'s preferred new date (YYYY-MM-DD), if provided')
 })),
   "recentInvoices": zod.array(zod.object({
+  "creditApplied": zod.number().optional(),
+  "balanceDue": zod.number().optional(),
   "id": zod.number(),
   "invoiceNumber": zod.string(),
   "status": zod.string(),
@@ -8782,6 +8802,8 @@ export const DenyJobCancellationResponse = zod.object({
  * @summary List all invoices for the portal customer
  */
 export const PortalListInvoicesResponseItem = zod.object({
+  "creditApplied": zod.number().optional(),
+  "balanceDue": zod.number().optional(),
   "id": zod.number(),
   "invoiceNumber": zod.string(),
   "status": zod.string(),
@@ -8822,6 +8844,8 @@ export const PortalGetInvoiceParams = zod.object({
 })
 
 export const PortalGetInvoiceResponse = zod.object({
+  "creditApplied": zod.number().optional(),
+  "balanceDue": zod.number().optional(),
   "id": zod.number(),
   "invoiceNumber": zod.string(),
   "status": zod.string(),
@@ -10331,6 +10355,8 @@ export const GetPublicInvoiceParams = zod.object({
 })
 
 export const GetPublicInvoiceResponse = zod.object({
+  "creditApplied": zod.number().optional(),
+  "balanceDue": zod.number().optional(),
   "termsText": zod.string().nullish(),
   "layout": zod.string().optional(),
   "lateFeeEnabled": zod.boolean().optional(),
@@ -12505,6 +12531,8 @@ export const PrintMailInvoiceParams = zod.object({
 })
 
 export const PrintMailInvoiceResponse = zod.object({
+  "creditApplied": zod.number().optional(),
+  "balanceDue": zod.number().optional(),
   "termsText": zod.string().nullish(),
   "layout": zod.string().optional(),
   "lateFeeEnabled": zod.boolean().optional(),
@@ -14262,5 +14290,69 @@ export const ListExternalAuditResponseItem = zod.object({
   "createdAt": zod.coerce.date()
 })
 export const ListExternalAuditResponse = zod.array(ListExternalAuditResponseItem)
+
+
+export const GetBillingCoverageResponse = zod.object({
+  "checkedAt": zod.string().optional(),
+  "jobs": zod.array(zod.object({
+  "id": zod.number().optional(),
+  "title": zod.string().optional(),
+  "customerId": zod.number().nullish(),
+  "customerName": zod.string().nullish(),
+  "completedAt": zod.string().nullish(),
+  "totalAmount": zod.number().optional(),
+  "invoiceId": zod.number().nullish(),
+  "reason": zod.string().optional(),
+  "needsAttention": zod.boolean().optional()
+})).optional()
+})
+
+
+export const CheckBillingCoverageResponse = zod.object({
+  "checkedAt": zod.string().optional(),
+  "jobs": zod.array(zod.object({
+  "id": zod.number().optional(),
+  "title": zod.string().optional(),
+  "customerId": zod.number().nullish(),
+  "customerName": zod.string().nullish(),
+  "completedAt": zod.string().nullish(),
+  "totalAmount": zod.number().optional(),
+  "invoiceId": zod.number().nullish(),
+  "reason": zod.string().optional(),
+  "needsAttention": zod.boolean().optional()
+})).optional()
+})
+
+
+export const GetCustomerCreditsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetCustomerCreditsResponse = zod.object({
+  "balance": zod.number().optional(),
+  "entries": zod.array(zod.object({
+  "id": zod.number().optional(),
+  "amount": zod.number().optional(),
+  "kind": zod.string().optional(),
+  "reference": zod.string().optional(),
+  "invoiceId": zod.number().nullish(),
+  "createdAt": zod.string().optional()
+})).optional()
+})
+
+
+export const RecordCustomerPrepaymentParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RecordCustomerPrepaymentBody = zod.object({
+  "amount": zod.number(),
+  "reference": zod.string(),
+  "requestId": zod.string()
+})
+
+export const RecordCustomerPrepaymentResponse = zod.object({
+  "balance": zod.number().optional()
+})
 
 

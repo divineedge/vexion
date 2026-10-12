@@ -33,6 +33,7 @@ import type {
   BackfillGeocodesResult,
   BankTransaction,
   BillingAutomationStatus,
+  BillingCoverage,
   BillingPreview,
   Blueprint,
   BlueprintEstimate,
@@ -92,6 +93,7 @@ import type {
   Customer,
   CustomerAlert,
   CustomerAlertInput,
+  CustomerCredits,
   CustomerInput,
   CustomerListResponse,
   CustomerPaymentMethod,
@@ -289,6 +291,8 @@ import type {
   QuoteInput,
   QuoteRespondInput,
   QuoteWithProperty,
+  RecordCustomerPrepayment200,
+  RecordCustomerPrepaymentBody,
   RecurringInvoiceTemplate,
   RecurringSeries,
   ReorderListReport,
@@ -32111,4 +32115,277 @@ export function useListExternalAudit<TData = Awaited<ReturnType<typeof listExter
 
 
 
+
+export const getGetBillingCoverageUrl = () => {
+
+
+
+
+  return `/api/billing/coverage`
+}
+
+export const getBillingCoverage = async ( options?: RequestInit): Promise<BillingCoverage> => {
+
+  return customFetch<BillingCoverage>(getGetBillingCoverageUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetBillingCoverageQueryKey = () => {
+    return [
+    `/api/billing/coverage`
+    ] as const;
+    }
+
+
+export const getGetBillingCoverageQueryOptions = <TData = Awaited<ReturnType<typeof getBillingCoverage>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBillingCoverage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetBillingCoverageQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBillingCoverage>>> = ({ signal }) => getBillingCoverage({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBillingCoverage>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetBillingCoverageQueryResult = NonNullable<Awaited<ReturnType<typeof getBillingCoverage>>>
+export type GetBillingCoverageQueryError = ErrorType<unknown>
+
+
+
+export function useGetBillingCoverage<TData = Awaited<ReturnType<typeof getBillingCoverage>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBillingCoverage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetBillingCoverageQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCheckBillingCoverageUrl = () => {
+
+
+
+
+  return `/api/billing/coverage/check`
+}
+
+export const checkBillingCoverage = async ( options?: RequestInit): Promise<BillingCoverage> => {
+
+  return customFetch<BillingCoverage>(getCheckBillingCoverageUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCheckBillingCoverageMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof checkBillingCoverage>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof checkBillingCoverage>>, TError,void, TContext> => {
+
+const mutationKey = ['checkBillingCoverage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof checkBillingCoverage>>, void> = () => {
+
+
+          return  checkBillingCoverage(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CheckBillingCoverageMutationResult = NonNullable<Awaited<ReturnType<typeof checkBillingCoverage>>>
+
+    export type CheckBillingCoverageMutationError = ErrorType<unknown>
+
+    export const useCheckBillingCoverage = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof checkBillingCoverage>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof checkBillingCoverage>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getCheckBillingCoverageMutationOptions(options));
+    }
+
+export const getGetCustomerCreditsUrl = (id: number,) => {
+
+
+
+
+  return `/api/customers/${id}/credits`
+}
+
+export const getCustomerCredits = async (id: number, options?: RequestInit): Promise<CustomerCredits> => {
+
+  return customFetch<CustomerCredits>(getGetCustomerCreditsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCustomerCreditsQueryKey = (id: number,) => {
+    return [
+    `/api/customers/${id}/credits`
+    ] as const;
+    }
+
+
+export const getGetCustomerCreditsQueryOptions = <TData = Awaited<ReturnType<typeof getCustomerCredits>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCustomerCredits>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCustomerCreditsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCustomerCredits>>> = ({ signal }) => getCustomerCredits(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCustomerCredits>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCustomerCreditsQueryResult = NonNullable<Awaited<ReturnType<typeof getCustomerCredits>>>
+export type GetCustomerCreditsQueryError = ErrorType<unknown>
+
+
+
+export function useGetCustomerCredits<TData = Awaited<ReturnType<typeof getCustomerCredits>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCustomerCredits>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCustomerCreditsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRecordCustomerPrepaymentUrl = (id: number,) => {
+
+
+
+
+  return `/api/customers/${id}/credits`
+}
+
+export const recordCustomerPrepayment = async (id: number,
+    recordCustomerPrepaymentBody: RecordCustomerPrepaymentBody, options?: RequestInit): Promise<RecordCustomerPrepayment200> => {
+
+  return customFetch<RecordCustomerPrepayment200>(getRecordCustomerPrepaymentUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(recordCustomerPrepaymentBody)
+  }
+);}
+
+
+
+
+
+export const getRecordCustomerPrepaymentMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordCustomerPrepayment>>, TError,{id: number;data: BodyType<RecordCustomerPrepaymentBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof recordCustomerPrepayment>>, TError,{id: number;data: BodyType<RecordCustomerPrepaymentBody>}, TContext> => {
+
+const mutationKey = ['recordCustomerPrepayment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof recordCustomerPrepayment>>, {id: number;data: BodyType<RecordCustomerPrepaymentBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  recordCustomerPrepayment(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RecordCustomerPrepaymentMutationResult = NonNullable<Awaited<ReturnType<typeof recordCustomerPrepayment>>>
+    export type RecordCustomerPrepaymentMutationBody = BodyType<RecordCustomerPrepaymentBody>
+    export type RecordCustomerPrepaymentMutationError = ErrorType<unknown>
+
+    export const useRecordCustomerPrepayment = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordCustomerPrepayment>>, TError,{id: number;data: BodyType<RecordCustomerPrepaymentBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof recordCustomerPrepayment>>,
+        TError,
+        {id: number;data: BodyType<RecordCustomerPrepaymentBody>},
+        TContext
+      > => {
+      return useMutation(getRecordCustomerPrepaymentMutationOptions(options));
+    }
 

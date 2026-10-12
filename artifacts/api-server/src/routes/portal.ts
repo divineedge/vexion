@@ -1,3 +1,4 @@
+import { invoiceBalance } from "../lib/customerCredit";
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable, mediaAttachmentsTable, tenantsTable, communicationsLogTable, customerPlansTable, usersTable, planCancelRequestsTable, estimatesTable, taskNotificationsTable, portalMessagesTable, internalTasksTable, chemicalApplicationsTable } from "@workspace/db";
 import { eq, and, gt, desc, lte, isNotNull, ne, sql, isNull, inArray, or } from "drizzle-orm";
@@ -1058,6 +1059,9 @@ router.get("/portal/invoices/:id/pdf", requirePortalAuth, async (req: any, res):
   const subtotal = invoice.subtotal ?? 0;
   const tax = invoice.tax ?? 0;
   const total = invoice.total ?? 0;
+  if (invoice.creditApplied > 0) {
+    doc.text(`Prepaid credit: $${invoice.creditApplied.toFixed(2)} — Balance due: $${invoiceBalance(invoice).toFixed(2)}`, 50, rowY, { width: 320 });
+  }
 
   doc.fontSize(9).fillColor("#555555").font("Helvetica");
   doc.text("Subtotal", totalsX, rowY, { width: 80 });
@@ -1770,7 +1774,7 @@ router.post("/portal/invoices/:id/pay-session", requirePortalAuth, async (req: a
     return;
   }
 
-  const amountCents = Math.round(invoice.total * 100);
+  const amountCents = Math.round(invoiceBalance(invoice) * 100);
   if (amountCents <= 0) {
     res.status(400).json({ error: "Invoice total must be greater than zero" });
     return;
@@ -2741,6 +2745,8 @@ function formatPortalJob(j: typeof jobsTable.$inferSelect, propertyAddress: stri
 
 function formatPortalInvoice(inv: typeof invoicesTable.$inferSelect) {
   return {
+    creditApplied: inv.creditApplied,
+    balanceDue: invoiceBalance(inv),
     id: inv.id,
     invoiceNumber: inv.invoiceNumber,
     status: inv.status,

@@ -1,3 +1,4 @@
+import { creditedInvoiceInsert } from "../lib/customerCredit";
 import { Router, type IRouter } from "express";
 import { getStripeClient } from "../lib/stripeClient";
 import { logger } from "../lib/logger";
@@ -1424,7 +1425,7 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
       let createdInvoiceId: number | null = null;
 
       await db.transaction(async tx => {
-        const [invoice] = await tx.insert(invoicesTable).values({
+        const [invoice] = await creditedInvoiceInsert(tx, true).values({
           ...await invoiceDocumentDefaults(tenantId),
           tenantId,
           invoiceNumber: invoiceNum,
@@ -1487,7 +1488,7 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
 
         let invoiceId!: number;
         await db.transaction(async tx => {
-          const [invoice] = await tx.insert(invoicesTable).values({
+          const [invoice] = await creditedInvoiceInsert(tx, true).values({
             ...await invoiceDocumentDefaults(tenantId),
             tenantId,
             invoiceNumber: invoiceNum,
@@ -1579,7 +1580,7 @@ router.post("/jobs/:id/complete-and-invoice", async (req, res): Promise<void> =>
       }
 
       // Create the invoice
-      const [created] = await tx.insert(invoicesTable).values({
+      const [created] = await creditedInvoiceInsert(tx, true).values({
         ...await invoiceDocumentDefaults(tenantId),
         tenantId,
         invoiceNumber: invoiceNum,
@@ -1745,7 +1746,7 @@ router.post("/jobs/:id/skip-next", async (req, res): Promise<void> => {
           }
           if (lineItems.length > 0) {
             const total = lineItems.reduce((s, li) => s + li.total, 0);
-            await db.insert(invoicesTable).values({
+            await creditedInvoiceInsert(db).values({
               tenantId,
               customerId: updated.customerId!,
               jobId: updated.id,
@@ -2165,7 +2166,7 @@ router.post("/jobs/:id/approve-cancellation", async (req, res): Promise<void> =>
         // Pre-create the invoice as "draft" before calling Stripe so a durable
         // local record always exists, even if the process dies after Stripe
         // collects the payment but before the DB update completes.
-        const [chargeInvoice] = await db.insert(invoicesTable).values({
+        const [chargeInvoice] = await creditedInvoiceInsert(db).values({
           tenantId,
           invoiceNumber,
           customerId: claimedJob.customerId!,

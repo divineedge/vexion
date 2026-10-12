@@ -67,6 +67,7 @@ import { useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import VendorExpenseLedger from '@/components/financials/VendorExpenseLedger';
 import { RecurringTemplateSheet } from '@/components/financials/RecurringTemplateSheet';
+import { BillingCoveragePanel } from '@/components/financials/BillingCoveragePanel';
 
 const STATUS_COLORS: Record<string, string> = {
   paid:      'bg-emerald-100 text-emerald-800 border-transparent',
@@ -216,6 +217,7 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
       {
         onSuccess: (data: any) => {
           toast.success('Invoice created');
+          qc.invalidateQueries({ queryKey: ['customer-credits'] });
           qc.invalidateQueries({ queryKey: getListInvoicesQueryKey() });
           qc.invalidateQueries({ queryKey: getGetFinancialsSummaryQueryKey() });
           onClose();
@@ -578,6 +580,7 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
 
   const invalidateInvoice = () => {
     qc.invalidateQueries({ queryKey: getGetInvoiceQueryKey(invoiceId ?? 0) });
+    qc.invalidateQueries({ queryKey: ['customer-credits'] });
     qc.invalidateQueries({ queryKey: getListInvoicesQueryKey() });
     qc.invalidateQueries({ queryKey: getGetFinancialsSummaryQueryKey() });
   };
@@ -939,6 +942,18 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
                       <td className="px-4 py-2" colSpan={3}><span className="font-bold">Total</span></td>
                       <td className="px-4 py-2 text-right font-bold text-primary">${(invoice as any).total?.toFixed(2)}</td>
                     </tr>
+                    {typeof (invoice as any).creditApplied === 'number' && (invoice as any).creditApplied > 0 && (
+                      <>
+                        <tr>
+                          <td className="px-4 py-1" colSpan={3}><span className="text-xs text-emerald-700">Prepaid credit applied</span></td>
+                          <td className="px-4 py-1 text-right text-xs text-emerald-700" data-testid="text-credit-applied">-${(invoice as any).creditApplied.toFixed(2)}</td>
+                        </tr>
+                        <tr className="border-t">
+                          <td className="px-4 py-2" colSpan={3}><span className="font-bold">Balance due</span></td>
+                          <td className="px-4 py-2 text-right font-bold" data-testid="text-balance-due">${Number((invoice as any).balanceDue ?? (invoice as any).total).toFixed(2)}</td>
+                        </tr>
+                      </>
+                    )}
                   </tfoot>
                 </Table>
               )}
@@ -1075,7 +1090,7 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
 export default function FinancialsPage() {
   const [, setLocation] = useLocation();
   const qc = useQueryClient();
-  const { user } = useAuth();
+  const { user, canManageOffice } = useAuth();
 
   // State
   const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') ?? 'invoices');
@@ -1273,6 +1288,7 @@ export default function FinancialsPage() {
 
         {/* Invoices Tab */}
         <TabsContent value="invoices" className="space-y-4 focus-visible:outline-none">
+          <BillingCoveragePanel enabled={!!canManageOffice} />
           <div className="flex items-center gap-2 flex-wrap">
             <div className="relative flex-1 min-w-[200px]">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -1332,7 +1348,12 @@ export default function FinancialsPage() {
                         <TableCell className="text-sm text-muted-foreground">
                           {invAny.dueDate ? new Date(invAny.dueDate).toLocaleDateString() : '—'}
                         </TableCell>
-                        <TableCell className="text-right font-semibold">${inv.total.toFixed(2)}</TableCell>
+                        <TableCell className="text-right font-semibold">
+                          ${inv.total.toFixed(2)}
+                          {typeof invAny.creditApplied === 'number' && invAny.creditApplied > 0 && (
+                            <div className="text-[11px] font-normal text-emerald-700">due ${Number(invAny.balanceDue ?? inv.total).toFixed(2)}</div>
+                          )}
+                        </TableCell>
                         <TableCell className="w-8">
                           <Eye className="w-4 h-4 text-muted-foreground" />
                         </TableCell>

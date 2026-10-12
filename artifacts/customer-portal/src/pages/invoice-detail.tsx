@@ -121,7 +121,7 @@ export default function InvoiceDetail() {
         </div>
         <div className="text-right">
           <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-1">Total</p>
-          <p className="text-4xl font-bold text-foreground">{formatCurrency(invoice.total)}</p>
+          <p className="text-4xl font-bold text-foreground">{formatCurrency((invoice as any).balanceDue ?? invoice.total)}</p>
         </div>
       </div>
 
@@ -199,6 +199,18 @@ export default function InvoiceDetail() {
               <span className="text-foreground">Total</span>
               <span className="text-foreground">{formatCurrency(invoice.total)}</span>
             </div>
+            {((invoice as any).creditApplied ?? 0) > 0 && (
+              <>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Prepaid credit applied</span>
+                  <span className="text-emerald-700">-{formatCurrency((invoice as any).creditApplied)}</span>
+                </div>
+                <div className="flex justify-between text-base font-bold pt-2 border-t border-border">
+                  <span className="text-foreground">Balance due</span>
+                  <span className="text-foreground">{formatCurrency((invoice as any).balanceDue ?? invoice.total)}</span>
+                </div>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -218,7 +230,7 @@ export default function InvoiceDetail() {
               </p>
             </div>
             <Button size="lg" className="w-full sm:w-auto shrink-0">
-              Pay Now — {formatCurrency(invoice.total)}
+              Pay Now — {formatCurrency((invoice as any).balanceDue ?? invoice.total)}
             </Button>
           </CardContent>
         </Card>

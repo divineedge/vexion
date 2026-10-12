@@ -5927,6 +5927,8 @@ export interface BillingTodayInvoice {
 }
 
 export interface BillingQueueStats {
+  interrupted: number;
+  processing: number;
   pending: number;
   sent: number;
   failed: number;
@@ -6103,13 +6105,32 @@ export interface UpdateRecurringTemplateInput {
   notes?: string;
 }
 
+export type BillingEmailVerificationBodyOutcome = typeof BillingEmailVerificationBodyOutcome[keyof typeof BillingEmailVerificationBodyOutcome];
+
+
+export const BillingEmailVerificationBodyOutcome = {
+  sent: 'sent',
+  not_sent: 'not_sent',
+} as const;
+
+export interface BillingEmailVerificationBody {
+  outcome: BillingEmailVerificationBodyOutcome;
+  /**
+     * @minLength 10
+     * @maxLength 2000
+     */
+  evidence: string;
+}
+
 export type BillingEmailQueueEntryStatus = typeof BillingEmailQueueEntryStatus[keyof typeof BillingEmailQueueEntryStatus];
 
 
 export const BillingEmailQueueEntryStatus = {
   pending: 'pending',
+  processing: 'processing',
   sent: 'sent',
   failed: 'failed',
+  interrupted: 'interrupted',
 } as const;
 
 export interface BillingEmailQueueEntry {
@@ -6119,6 +6140,13 @@ export interface BillingEmailQueueEntry {
   /** @nullable */
   invoiceNumber?: string | null;
   status: BillingEmailQueueEntryStatus;
+  /** @nullable */
+  deliveryProvider?: string | null;
+  /** @nullable */
+  deliveryRecipient?: string | null;
+  /** @nullable */
+  providerMessageId?: string | null;
+  verificationInstructions?: string;
   attempts: number;
   /** @nullable */
   lastAttemptAt?: string | null;

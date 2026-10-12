@@ -16,6 +16,8 @@ export interface EmailProviderConfig {
 
 export interface SendEmailResult {
   success: boolean;
+  /** Only true when it is known that the provider did not accept the message. */
+  definitiveFailure?: boolean;
   externalId?: string;
   error?: string;
   /** True when no real email provider is configured — message was only logged to console. */
@@ -48,7 +50,7 @@ async function sendViaSendGrid(
     });
     if (!resp.ok) {
       const err = await resp.text();
-      return { success: false, error: `SendGrid error ${resp.status}: ${err}` };
+      return { success: false, definitiveFailure: resp.status >= 400 && resp.status < 500 && resp.status !== 408, error: `SendGrid error ${resp.status}: ${err}` };
     }
     const messageId = resp.headers.get("X-Message-Id") ?? undefined;
     return { success: true, externalId: messageId };
@@ -76,7 +78,7 @@ async function sendViaResend(
     });
     if (!resp.ok) {
       const err = await resp.text();
-      return { success: false, error: `Resend error ${resp.status}: ${err}` };
+      return { success: false, definitiveFailure: resp.status >= 400 && resp.status < 500 && resp.status !== 408, error: `Resend error ${resp.status}: ${err}` };
     }
     const data = await resp.json() as { id?: string };
     return { success: true, externalId: data?.id };
@@ -108,7 +110,7 @@ async function sendViaMailgun(
     });
     if (!resp.ok) {
       const err = await resp.text();
-      return { success: false, error: `Mailgun error ${resp.status}: ${err}` };
+      return { success: false, definitiveFailure: resp.status >= 400 && resp.status < 500 && resp.status !== 408, error: `Mailgun error ${resp.status}: ${err}` };
     }
     const data = await resp.json() as { id?: string };
     return { success: true, externalId: data?.id };
@@ -134,20 +136,20 @@ export async function sendEmail(
 
   if (provider === "sendgrid") {
     const apiKey = config["apiKey"] ?? "";
-    if (!apiKey) return { success: false, error: "SendGrid API key not configured" };
+    if (!apiKey) return { success: false, definitiveFailure: true, error: "SendGrid API key not configured" };
     return sendViaSendGrid(apiKey, from, to, subject, body, html);
   }
 
   if (provider === "resend") {
     const apiKey = config["apiKey"] ?? "";
-    if (!apiKey) return { success: false, error: "Resend API key not configured" };
+    if (!apiKey) return { success: false, definitiveFailure: true, error: "Resend API key not configured" };
     return sendViaResend(apiKey, from, to, subject, body, html);
   }
 
   if (provider === "mailgun") {
     const apiKey = config["apiKey"] ?? "";
     const domain = config["domain"] ?? "";
-    if (!apiKey || !domain) return { success: false, error: "Mailgun API key and domain required" };
+    if (!apiKey || !domain) return { success: false, definitiveFailure: true, error: "Mailgun API key and domain required" };
     return sendViaMailgun(apiKey, domain, from, to, subject, body, html);
   }
 
@@ -155,7 +157,7 @@ export async function sendEmail(
     const refreshToken = config["gmailRefreshToken"] ?? "";
     const gmailEmail = config["gmailEmail"] ?? "";
     const gmailSenderName = config["gmailSenderName"] ?? "";
-    if (!refreshToken || !gmailEmail) return { success: false, error: "Gmail is not connected — connect a Google account in Settings" };
+    if (!refreshToken || !gmailEmail) return { success: false, definitiveFailure: true, error: "Gmail is not connected — connect a Google account in Settings" };
     return sendViaGmail(refreshToken, gmailEmail, to, subject, body, gmailSenderName || undefined, html);
   }
 
@@ -168,7 +170,7 @@ export async function sendEmail(
     const pass = config["smtpPass"] ?? config["pass"];
 
     if (!host) {
-      return { success: false, error: "SMTP host not configured — set smtpHost in email provider config" };
+      return { success: false, definitiveFailure: true, error: "SMTP host not configured — set smtpHost in email provider config" };
     }
 
     try {
@@ -193,7 +195,7 @@ export async function sendEmail(
     }
   }
 
-  return { success: false, error: `Unknown email provider: ${provider}` };
+  return { success: false, definitiveFailure: true, error: `Unknown email provider: ${provider}` };
 }
 
 /**

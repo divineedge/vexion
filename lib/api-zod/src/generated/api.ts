@@ -12011,10 +12011,20 @@ export const PreviewRecurringTemplateBillingResponse = zod.object({
 
 
 /**
- * @summary Retry a failed billing email queue entry
+ * @summary Resolve an interrupted or failed email after staff verification with the original provider
  */
 export const RetryBillingEmailParams = zod.object({
   "id": zod.coerce.number()
+})
+
+export const retryBillingEmailBodyEvidenceMin = 10;
+export const retryBillingEmailBodyEvidenceMax = 2000;
+
+
+
+export const RetryBillingEmailBody = zod.object({
+  "outcome": zod.enum(['sent', 'not_sent']),
+  "evidence": zod.string().min(retryBillingEmailBodyEvidenceMin).max(retryBillingEmailBodyEvidenceMax)
 })
 
 export const RetryBillingEmailResponse = zod.unknown()
@@ -12064,7 +12074,11 @@ export const GetBillingAutomationStatusResponse = zod.object({
   "tenantId": zod.number(),
   "invoiceId": zod.number(),
   "invoiceNumber": zod.string().nullish(),
-  "status": zod.enum(['pending', 'sent', 'failed']),
+  "status": zod.enum(['pending', 'processing', 'sent', 'failed', 'interrupted']),
+  "deliveryProvider": zod.string().nullish(),
+  "deliveryRecipient": zod.string().nullish(),
+  "providerMessageId": zod.string().nullish(),
+  "verificationInstructions": zod.string().optional(),
   "attempts": zod.number(),
   "lastAttemptAt": zod.string().nullish(),
   "errorMsg": zod.string().nullish(),
@@ -12072,6 +12086,8 @@ export const GetBillingAutomationStatusResponse = zod.object({
   "updatedAt": zod.string()
 })),
   "queueStats": zod.object({
+  "interrupted": zod.number(),
+  "processing": zod.number(),
   "pending": zod.number(),
   "sent": zod.number(),
   "failed": zod.number()

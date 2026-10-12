@@ -11,6 +11,8 @@ export type BillingEmailQueueEntryStatus = typeof BillingEmailQueueEntryStatus[k
 
 export const BillingEmailQueueEntryStatus = {
   pending: 'pending',
+  processing: 'processing',
   sent: 'sent',
   failed: 'failed',
+  interrupted: 'interrupted',
 } as const;

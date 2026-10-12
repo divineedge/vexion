@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { BillingEmailDeliveries } from '@/components/financials/BillingEmailDeliveries';
 import { SendDocumentDialog } from '@/components/shared/SendDocumentDialog';
 import {
   useListInvoices, getListInvoicesQueryKey,
@@ -679,8 +680,8 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
   const handleSendInvoiceEmail = useCallback((): Promise<void> => {
     setIsSendingEmail(true);
     return customFetch(`/api/invoices/${invoiceId}/resend-email`, { method: 'POST' })
-      .then(() => { toast.success('Invoice email sent'); })
-      .catch(() => { toast.error('Failed to send invoice'); throw new Error('Failed'); })
+      .then(() => { toast.success('Invoice email processed. Check Email deliveries for its status.'); })
+      .catch((err) => { toast.error(err?.data?.error ?? 'Unable to resend. Check Email deliveries for unresolved attempts.'); throw new Error('Failed'); })
       .finally(() => setIsSendingEmail(false));
   }, [invoiceId]);
 
@@ -1259,6 +1260,7 @@ export default function FinancialsPage() {
         </Card>
       )}
 
+      <BillingEmailDeliveries />
       {/* Automation status */}
       {(automationStatus as any)?.lastRunAt && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">

@@ -12,6 +12,11 @@ if (!process.env.DATABASE_URL) {
 
 export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
+/** Dedicated session for long-lived advisory locks; never borrows the query pool. */
+export function createDedicatedDbSession() {
+  return new pg.Client({ connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 10_000 });
+}
+
 // pg emits idle-client connection failures on the Pool itself. Without a
 // listener Node treats the event as unhandled and terminates the whole API,
 // making healthy persistent data briefly appear missing after a reconnect.

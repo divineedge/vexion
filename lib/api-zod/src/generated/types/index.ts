@@ -34,6 +34,8 @@ export * from './billingCoverage';
 export * from './billingCoverageJobsItem';
 export * from './billingEmailQueueEntry';
 export * from './billingEmailQueueEntryStatus';
+export * from './billingEmailVerificationBody';
+export * from './billingEmailVerificationBodyOutcome';
 export * from './billingLineItem';
 export * from './billingPreview';
 export * from './billingPreviewBillingMode';

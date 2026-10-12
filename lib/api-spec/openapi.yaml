@@ -7267,7 +7267,13 @@ paths:
     post:
       operationId: retryBillingEmail
       tags: [billing]
-      summary: Retry a failed billing email queue entry
+      summary: Resolve an interrupted or failed email after staff verification with the original provider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingEmailVerificationBody"
       parameters:
         - name: id
           in: path
@@ -7276,7 +7282,13 @@ paths:
             type: integer
       responses:
         "200":
-          description: Queued for retry
+          description: Marked sent or queued for retry after provider verification
+        "400":
+          description: Invalid verification evidence
+        "403":
+          description: Staff role not permitted
+        "409":
+          description: Delivery is active, already resolved, or cannot safely be retried
 
   /billing/automation-status:
     get:
@@ -15634,8 +15646,12 @@ components:
 
     BillingQueueStats:
       type: object
-      required: [pending, sent, failed]
+      required: [pending, sent, failed, interrupted, processing]
       properties:
+        interrupted:
+          type: integer
+        processing:
+          type: integer
         pending:
           type: integer
         sent:
@@ -15828,6 +15844,18 @@ components:
         notes:
           type: string
 
+    BillingEmailVerificationBody:
+      type: object
+      required: [outcome, evidence]
+      properties:
+        outcome:
+          type: string
+          enum: [sent, not_sent]
+        evidence:
+          type: string
+          minLength: 10
+          maxLength: 2000
+
     BillingEmailQueueEntry:
       type: object
       required: [id, tenantId, invoiceId, status, attempts, createdAt, updatedAt]
@@ -15842,7 +15870,15 @@ components:
           type: ["string", "null"]
         status:
           type: string
-          enum: [pending, sent, failed]
+          enum: [pending, processing, sent, failed, interrupted]
+        deliveryProvider:
+          type: ["string", "null"]
+        deliveryRecipient:
+          type: ["string", "null"]
+        providerMessageId:
+          type: ["string", "null"]
+        verificationInstructions:
+          type: string
         attempts:
           type: integer
         lastAttemptAt:

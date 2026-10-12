@@ -14,6 +14,13 @@ export interface BillingEmailQueueEntry {
   /** @nullable */
   invoiceNumber?: string | null;
   status: BillingEmailQueueEntryStatus;
+  /** @nullable */
+  deliveryProvider?: string | null;
+  /** @nullable */
+  deliveryRecipient?: string | null;
+  /** @nullable */
+  providerMessageId?: string | null;
+  verificationInstructions?: string;
   attempts: number;
   /** @nullable */
   lastAttemptAt?: string | null;

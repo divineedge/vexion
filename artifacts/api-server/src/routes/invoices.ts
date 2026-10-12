@@ -1029,7 +1029,12 @@ router.post("/invoices/:id/resend-email", async (req, res): Promise<void> => {
   if (!row.customerEmail) { res.status(400).json({ error: "Customer has no email address on file" }); return; }
   if (row.invoice.status === "draft") { res.status(409).json({ error: "Review and send the draft invoice before using Resend Email." }); return; }
 
-  await enqueueInvoiceEmail(tenantId, id);
+  try {
+    await enqueueInvoiceEmail(tenantId, id);
+  } catch (err) {
+    res.status(409).json({ error: err instanceof Error ? err.message : "Email delivery could not be queued" });
+    return;
+  }
   await db.insert(activityLogTable).values({
     tenantId,
     userId,

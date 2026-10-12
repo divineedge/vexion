@@ -21,13 +21,12 @@ import { logger } from "./logger";
 import { invoiceDocumentDefaults } from "./invoiceDocumentDefaults";
 import { sendEmail } from "./emailProvider";
 import crypto from "crypto";
+import { detectInterruptedBillingEmails } from "./billingEmailRecovery";
+import { withBillingEmailWorkerGuard } from "./billingEmailWorkerGuard";
 
 function generatePublicToken(): string {
   return crypto.randomBytes(32).toString("hex");
 }
-
-const MAX_EMAIL_ATTEMPTS = 3;
-
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 /** Either an active transaction or the plain db handle — read helpers below accept both so previews can run outside a transaction. */
 type Queryable = Tx | typeof db;
@@ -614,7 +613,8 @@ async function processWeeklyNonRecurringInvoices() {
 
 // ── 2. Process email queue ───────────────────────────────────────────────────
 
-export async function processEmailQueue() {
+export async function processEmailQueue(tenantId?: number) {
+  await detectInterruptedBillingEmails(tenantId);
   const pending = await db
     .select({
       queue: billingEmailQueueTable,
@@ -636,7 +636,8 @@ export async function processEmailQueue() {
     .where(
       and(
         eq(billingEmailQueueTable.status, "pending"),
-        sql`${billingEmailQueueTable.attempts} < ${MAX_EMAIL_ATTEMPTS}`,
+        tenantId === undefined ? undefined : eq(billingEmailQueueTable.tenantId, tenantId),
+        eq(billingEmailQueueTable.attempts, 0),
       ),
     );
 
@@ -644,10 +645,17 @@ export async function processEmailQueue() {
     if (!row.customerEmail) continue;
     // Queuing is not approval: a draft or voided invoice must never be delivered.
     if (!["sent", "overdue", "paid"].includes(row.invoiceStatus ?? "") || !row.invoiceToken) continue;
-    const [claimed] = await db.update(billingEmailQueueTable).set({ status: "processing", lastAttemptAt: new Date() })
-      .where(and(eq(billingEmailQueueTable.id, row.queue.id), eq(billingEmailQueueTable.status, "pending")))
+    await withBillingEmailWorkerGuard(row.queue.id, async () => {
+    const [claimed] = await db.update(billingEmailQueueTable).set({
+      status: "processing", lastAttemptAt: new Date(),
+      attempts: sql`${billingEmailQueueTable.attempts} + 1`,
+      deliveryProvider: row.emailProvider ?? "none", deliveryRecipient: row.customerEmail,
+      providerMessageId: null,
+    })
+      .where(and(eq(billingEmailQueueTable.id, row.queue.id), eq(billingEmailQueueTable.status, "pending"),
+        eq(billingEmailQueueTable.attempts, 0)))
       .returning({ id: billingEmailQueueTable.id });
-    if (!claimed) continue;
+    if (!claimed) return;
 
     const providerConfig = {
       provider: row.emailProvider as "smtp" | "sendgrid" | "mailgun" | "resend" | null,
@@ -668,34 +676,36 @@ export async function processEmailQueue() {
       row.tenantName ?? "Your Service Provider",
     ].join("\n");
 
-    const result = await sendEmail(providerConfig, row.customerEmail, subject, body)
+    const result = await sendEmail(providerConfig, row.customerEmail!, subject, body)
       .catch(err => ({ success: false, error: err instanceof Error ? err.message : "Email delivery failed" }));
 
+    // Provider rejections and transport errors are deliberately NOT auto-retried.
+    // A dropped response may hide a successful acceptance.
+    const realSuccess = result.success && !("devOnly" in result && result.devOnly);
     await db
       .update(billingEmailQueueTable)
       .set({
-        attempts: sql`${billingEmailQueueTable.attempts} + 1`,
-        lastAttemptAt: new Date(),
-        status: result.success ? "sent" : (row.queue.attempts + 1 >= MAX_EMAIL_ATTEMPTS ? "failed" : "pending"),
-        errorMsg: result.error ?? null,
+        status: realSuccess ? "sent" : result.success || ("definitiveFailure" in result && result.definitiveFailure) ? "failed" : "interrupted",
+        providerMessageId: "externalId" in result ? result.externalId ?? null : null,
+        errorMsg: realSuccess ? null : result.error ?? "No real email provider configured; email was not delivered.",
       })
       .where(eq(billingEmailQueueTable.id, row.queue.id));
 
-    if (result.success) {
+    if (realSuccess) {
       logger.info({ queueId: row.queue.id, invoiceId: row.queue.invoiceId }, "Billing email sent");
     } else {
       logger.warn({ queueId: row.queue.id, error: result.error }, "Billing email failed");
-      // If this attempt exhausts all retries, write a durable activity log entry so staff can see it
-      if (row.queue.attempts + 1 >= MAX_EMAIL_ATTEMPTS && row.queue.invoiceId) {
+      if (row.queue.invoiceId) {
         await db.insert(activityLogTable).values({
           tenantId: row.queue.tenantId,
           userId: null,
           type: "auto_invoice_email_failed",
-          message: `Invoice email permanently failed after ${MAX_EMAIL_ATTEMPTS} attempts: ${result.error ?? "unknown error"}`,
+          message: `Invoice email needs staff verification before retry: ${result.error ?? "No real provider configured"}`,
           entityId: row.queue.invoiceId,
         }).catch(() => { /* best-effort */ });
       }
     }
+    });
   }
 }
 
@@ -870,7 +880,7 @@ export async function runTemplateNow(templateId: number, tenantId: number, exclu
   }
 
   // Process email queue immediately for these invoices
-  await processEmailQueue();
+  await processEmailQueue(tenantId);
 
   return { invoiceId: invoiceIds[0], invoiceIds };
 }
@@ -1001,12 +1011,20 @@ export async function previewTemplateBilling(templateId: number, tenantId: numbe
 
 /** Enqueue an auto-invoice email for immediate delivery. */
 export async function enqueueInvoiceEmail(tenantId: number, invoiceId: number): Promise<void> {
-  await db.insert(billingEmailQueueTable).values({
+  await db.transaction(async tx => {
+  await tx.select({ id: invoicesTable.id }).from(invoicesTable)
+    .where(and(eq(invoicesTable.id, invoiceId), eq(invoicesTable.tenantId, tenantId))).for("update");
+  const [unresolved] = await tx.select({ id: billingEmailQueueTable.id }).from(billingEmailQueueTable)
+    .where(and(eq(billingEmailQueueTable.tenantId, tenantId), eq(billingEmailQueueTable.invoiceId, invoiceId),
+      sql`${billingEmailQueueTable.status} <> 'sent'`)).limit(1);
+  if (unresolved) throw new Error("An invoice email is pending or unresolved. Check Email deliveries in Financials before resending.");
+  await tx.insert(billingEmailQueueTable).values({
     tenantId,
     invoiceId,
     status: "pending",
     attempts: 0,
   });
+  });
   // Attempt delivery immediately
-  await processEmailQueue();
+  await processEmailQueue(tenantId);
 }

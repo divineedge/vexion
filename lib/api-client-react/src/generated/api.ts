@@ -34,6 +34,7 @@ import type {
   BankTransaction,
   BillingAutomationStatus,
   BillingCoverage,
+  BillingEmailVerificationBody,
   BillingPreview,
   Blueprint,
   BlueprintEstimate,
@@ -26050,16 +26051,17 @@ export const getRetryBillingEmailUrl = (id: number,) => {
 }
 
 /**
- * @summary Retry a failed billing email queue entry
+ * @summary Resolve an interrupted or failed email after staff verification with the original provider
  */
-export const retryBillingEmail = async (id: number, options?: RequestInit): Promise<void> => {
+export const retryBillingEmail = async (id: number,
+    billingEmailVerificationBody: BillingEmailVerificationBody, options?: RequestInit): Promise<void> => {
 
   return customFetch<void>(getRetryBillingEmailUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(billingEmailVerificationBody)
   }
 );}
 
@@ -26067,9 +26069,9 @@ export const retryBillingEmail = async (id: number, options?: RequestInit): Prom
 
 
 
-export const getRetryBillingEmailMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryBillingEmail>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof retryBillingEmail>>, TError,{id: number}, TContext> => {
+export const getRetryBillingEmailMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryBillingEmail>>, TError,{id: number;data: BodyType<BillingEmailVerificationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof retryBillingEmail>>, TError,{id: number;data: BodyType<BillingEmailVerificationBody>}, TContext> => {
 
 const mutationKey = ['retryBillingEmail'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -26081,10 +26083,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof retryBillingEmail>>, {id: number}> = (props) => {
-          const {id} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof retryBillingEmail>>, {id: number;data: BodyType<BillingEmailVerificationBody>}> = (props) => {
+          const {id,data} = props ?? {};
 
-          return  retryBillingEmail(id,requestOptions)
+          return  retryBillingEmail(id,data,requestOptions)
         }
 
 
@@ -26095,18 +26097,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type RetryBillingEmailMutationResult = NonNullable<Awaited<ReturnType<typeof retryBillingEmail>>>
-
-    export type RetryBillingEmailMutationError = ErrorType<unknown>
+    export type RetryBillingEmailMutationBody = BodyType<BillingEmailVerificationBody>
+    export type RetryBillingEmailMutationError = ErrorType<void>
 
     /**
- * @summary Retry a failed billing email queue entry
+ * @summary Resolve an interrupted or failed email after staff verification with the original provider
  */
-export const useRetryBillingEmail = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryBillingEmail>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+export const useRetryBillingEmail = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryBillingEmail>>, TError,{id: number;data: BodyType<BillingEmailVerificationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof retryBillingEmail>>,
         TError,
-        {id: number},
+        {id: number;data: BodyType<BillingEmailVerificationBody>},
         TContext
       > => {
       return useMutation(getRetryBillingEmailMutationOptions(options));

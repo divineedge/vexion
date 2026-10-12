@@ -7,6 +7,8 @@
  */
 
 export interface BillingQueueStats {
+  interrupted: number;
+  processing: number;
   pending: number;
   sent: number;
   failed: number;

@@ -8,8 +8,11 @@ export const billingEmailQueueTable = pgTable("billing_email_queue", {
   id: serial("id").primaryKey(),
   tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
   invoiceId: integer("invoice_id").notNull().references(() => invoicesTable.id),
-  /** 'pending' | 'sent' | 'failed' */
+  /** 'pending' | 'processing' | 'sent' | 'failed' | 'interrupted' */
   status: text("status").notNull().default("pending"),
+  deliveryProvider: text("delivery_provider"),
+  deliveryRecipient: text("delivery_recipient"),
+  providerMessageId: text("provider_message_id"),
   attempts: integer("attempts").notNull().default(0),
   lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
   errorMsg: text("error_msg"),

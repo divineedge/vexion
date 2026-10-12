@@ -1,8 +1,11 @@
 import { Router, type IRouter } from "express";
 import { db, recurringInvoiceTemplatesTable, billingEmailQueueTable, invoicesTable, customersTable, servicesTable, invoiceTemplatesTable } from "@workspace/db";
 import { eq, and, desc, sql } from "drizzle-orm";
-import { getTenantId } from "../lib/tenantHelper";
-import { runTemplateNow, previewTemplateBilling } from "../lib/billingScheduler";
+import { getTenantId, getUserId } from "../lib/tenantHelper";
+import { isAdminRole } from "../lib/roles";
+import { detectInterruptedBillingEmails, resolveBillingEmail, providerVerificationInstructions } from "../lib/billingEmailRecovery";
+import { RetryBillingEmailBody } from "@workspace/api-zod";
+import { runTemplateNow, previewTemplateBilling, processEmailQueue } from "../lib/billingScheduler";
 
 const router: IRouter = Router();
 
@@ -30,6 +33,7 @@ function formatQueueEntry(q: typeof billingEmailQueueTable.$inferSelect, invoice
     createdAt: q.createdAt.toISOString(),
     updatedAt: q.updatedAt.toISOString(),
     invoiceNumber: invoiceNumber ?? null,
+    verificationInstructions: providerVerificationInstructions(q.deliveryProvider),
   };
 }
 
@@ -311,27 +315,31 @@ router.get("/billing/recurring-templates/:id/preview", async (req, res): Promise
 
 router.post("/billing/email-queue/:id/retry", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
-  const id = parseInt(req.params.id, 10);
-
-  const [entry] = await db
-    .select()
-    .from(billingEmailQueueTable)
-    .where(and(eq(billingEmailQueueTable.id, id), eq(billingEmailQueueTable.tenantId, tenantId)));
-
-  if (!entry) { res.status(404).json({ error: "Not found" }); return; }
-
-  await db
-    .update(billingEmailQueueTable)
-    .set({ status: "pending", attempts: 0, errorMsg: null })
-    .where(eq(billingEmailQueueTable.id, id));
-
-  res.json({ success: true });
+  const userId = getUserId(req);
+  if (!(await isAdminRole(tenantId, userId))) { res.status(403).json({ error: "Restricted to owner/admin/office roles" }); return; }
+  const id = Number(req.params.id);
+  const parsed = RetryBillingEmailBody.safeParse(req.body);
+  if (!Number.isSafeInteger(id) || id <= 0 || !parsed.success) {
+    res.status(400).json({ error: "A valid queue ID and provider verification evidence are required." }); return;
+  }
+  await detectInterruptedBillingEmails(tenantId);
+  try {
+    const status = await resolveBillingEmail(tenantId, userId, id, parsed.data);
+    res.json({ success: true, status });
+    if (status === "pending") {
+      void processEmailQueue(tenantId).catch(err => req.log.error({ err }, "Verified invoice email retry failed"));
+    }
+  } catch (err) {
+    res.status(409).json({ error: err instanceof Error ? err.message : "Unable to resolve delivery" });
+  }
 });
 
 // ── Billing automation status ─────────────────────────────────────────────────
 
 router.get("/billing/automation-status", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
+  if (!(await isAdminRole(tenantId, getUserId(req)))) { res.status(403).json({ error: "Restricted to owner/admin/office roles" }); return; }
+  await detectInterruptedBillingEmails(tenantId);
 
   // Today's generated invoices (via templates)
   const todayStart = new Date();
@@ -375,7 +383,7 @@ router.get("/billing/automation-status", async (req, res): Promise<void> => {
     .from(billingEmailQueueTable)
     .leftJoin(invoicesTable, eq(billingEmailQueueTable.invoiceId, invoicesTable.id))
     .where(eq(billingEmailQueueTable.tenantId, tenantId))
-    .orderBy(desc(billingEmailQueueTable.createdAt))
+    .orderBy(sql`case when ${billingEmailQueueTable.status} in ('interrupted', 'failed') then 0 else 1 end`, desc(billingEmailQueueTable.createdAt))
     .limit(100);
 
   // Queue stats
@@ -384,6 +392,8 @@ router.get("/billing/automation-status", async (req, res): Promise<void> => {
       pending: sql<number>`COUNT(*) FILTER (WHERE status = 'pending')::int`,
       sent: sql<number>`COUNT(*) FILTER (WHERE status = 'sent')::int`,
       failed: sql<number>`COUNT(*) FILTER (WHERE status = 'failed')::int`,
+      interrupted: sql<number>`COUNT(*) FILTER (WHERE status = 'interrupted')::int`,
+      processing: sql<number>`COUNT(*) FILTER (WHERE status = 'processing')::int`,
     })
     .from(billingEmailQueueTable)
     .where(eq(billingEmailQueueTable.tenantId, tenantId));

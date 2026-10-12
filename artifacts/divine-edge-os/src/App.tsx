@@ -45,7 +45,10 @@ import FollowupQueuePage from '@/pages/followup-queue';
 import CallsPage from '@/pages/calls';
 import RoutesDashboardPage from '@/pages/routes';
 import TaskBundlesPage from '@/pages/task-bundles';
-import EmployeeDetailPage from '@/pages/employee-detail';
+import EmployeesPage from '@/pages/employees';
+import EmployeeFilePage from '@/pages/employee-file';
+import HrHiringPage from '@/pages/hr-hiring';
+import CareersPage from '@/pages/careers';
 import PortalInboxPage from '@/pages/portal-inbox';
 import BudgetPage from '@/pages/budget';
 import StaffMessagesPage from '@/pages/staff-messages';
@@ -103,7 +106,11 @@ function ProtectedRoutes() {
         <Route path="/reviews" component={ReviewsPage} />
         <Route path="/plans/:id" component={PlanDetailPage} />
         <Route path="/plans" component={PlansDashboardPage} />
-        <Route path="/team/:id" component={EmployeeDetailPage} />
+        <Route path="/employees/:id" component={EmployeeFilePage} />
+        <Route path="/employees" component={EmployeesPage} />
+        <Route path="/my-record" component={EmployeeFilePage} />
+        <Route path="/hiring" component={HrHiringPage} />
+        <Route path="/team/:id">{(p: { id: string }) => <Redirect to={`/employees/${p.id}`} />}</Route>
         <Route path="/portal-inbox/:customerId" component={PortalInboxPage} />
         <Route path="/portal-inbox" component={PortalInboxPage} />
         <Route path="/budget" component={BudgetPage} />
@@ -124,6 +131,7 @@ function Router() {
       <Route path="/estimate/:token" component={EstimatePublicPage} />
       <Route path="/invoice/:token" component={InvoicePublicPage} />
       <Route path="/review/:token" component={ReviewPublicPage} />
+      <Route path="/careers/:slug" component={CareersPage} />
       <Route path="/login" component={LoginPage} />
       <Route path="/signup" component={SignupPage} />
       <Route path="/" component={HomeRoute} />

@@ -1,3 +1,4 @@
+- [Employee records policy](employee-record-policy.md) — owner/designated-HR privacy, website and staff hiring intake, and human-reviewed employment evidence.
 - [Acquisition reward policy](acquisition-reward-policy.md) — first paid invoice earns rewards; business portal links survive company renames.
 - [Update and fixture safety](update-and-fixture-safety.md) — preserve production records during updates; roll back payroll-related test fixtures instead of deleting them.
 - [Job form policy](job-form-policy.md) — required forms block completion, not clock-in; template edits must preserve existing job questions and responses.

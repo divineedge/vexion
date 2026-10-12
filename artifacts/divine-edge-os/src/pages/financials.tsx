@@ -31,6 +31,7 @@ import {
   useDismissPlanCancelRequest,
   useGetTenantSettings, getGetTenantSettingsQueryKey,
   useCreateInvoice,
+  useListJobs, getListJobsQueryKey,
   useUpdateJob,
   useListInvoiceTemplates, getListInvoiceTemplatesQueryKey,
   customFetch,
@@ -104,6 +105,16 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
   const [templateId, setTemplateId] = useState('');
   const [termsText, setTermsText] = useState<string | null>(null);
   const [lineItems, setLineItems] = useState<LineItemRow[]>([{ description: '', quantity: 1, unitPrice: 0, total: 0 }]);
+  const [linkedJobId, setLinkedJobId] = useState('');
+  const custNum = customerId ? parseInt(customerId, 10) : undefined;
+  const { data: customerJobs, isLoading: jobsLoading } = useListJobs(custNum ? { customerId: custNum } : undefined, {
+    query: { enabled: open && !!custNum, queryKey: getListJobsQueryKey(custNum ? { customerId: custNum } : undefined) },
+  });
+  // Only jobs for this customer that are not already billed.
+  const unbilledJobs = React.useMemo(
+    () => (customerJobs ?? []).filter(j => j.customerId === custNum && !j.invoiceId && j.status !== 'cancelled'),
+    [customerJobs, custNum],
+  );
   const { data: createSettings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
 
   // Fetch invoice templates for the template selector
@@ -132,9 +143,25 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
       setTemplateId('');
       setTermsText(null);
       setLineItems([{ description: '', quantity: 1, unitPrice: 0, total: 0 }]);
+      setLinkedJobId('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, invoiceDueDays]);
+
+  // A linked job belongs to one customer; changing customer always clears it.
+  React.useEffect(() => { setLinkedJobId(''); }, [customerId]);
+
+  const handleLinkJob = (val: string) => {
+    const id = val === '__none__' ? '' : val;
+    setLinkedJobId(id);
+    if (!id) return;
+    const job = unbilledJobs.find(j => String(j.id) === id);
+    // Only prefill when no line item has been typed — never overwrite manual edits.
+    if (job && lineItems.every(li => !li.description.trim() && !li.unitPrice)) {
+      const price = Number(job.totalAmount ?? 0);
+      setLineItems([{ description: job.title, quantity: 1, unitPrice: price, total: price }]);
+    }
+  };
 
   // Pre-fill customer from external event (e.g. from customer detail page)
   React.useEffect(() => {
@@ -207,6 +234,7 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
       {
         data: {
           customerId: parseInt(customerId, 10),
+          ...(linkedJobId ? { jobId: parseInt(linkedJobId, 10) } : {}),
           notes: notes || undefined,
           invoiceDate: invoiceDate || undefined,
           dueDate: dueDate || undefined,
@@ -224,7 +252,10 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
           onClose();
           if (andSend && data?.id && onSaveAndSend) onSaveAndSend(data.id);
         },
-        onError: () => toast.error('Failed to create invoice'),
+        onError: (e: unknown) => {
+          const d = (e as { data?: { error?: string; message?: string } })?.data;
+          toast.error(d?.error || d?.message || 'Failed to create invoice');
+        },
       },
     );
   };
@@ -269,6 +300,29 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
                   .map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Linked job (optional) */}
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium flex items-center gap-1.5"><Briefcase className="w-3.5 h-3.5 text-muted-foreground" /> Link to job <span className="text-xs font-normal text-muted-foreground">(optional)</span></label>
+            <Select value={linkedJobId || '__none__'} onValueChange={handleLinkJob} disabled={!customerId}>
+              <SelectTrigger title="Associate this invoice with an unbilled job for this customer" data-testid="select-invoice-linked-job">
+                <SelectValue placeholder={customerId ? 'No linked job' : 'Pick a customer first'} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">— No linked job —</SelectItem>
+                {unbilledJobs.map(j => (
+                  <SelectItem key={j.id} value={String(j.id)}>
+                    {j.title} <span className="text-muted-foreground text-xs ml-1">{j.scheduledAt ? new Date(j.scheduledAt).toLocaleDateString() : ''} · ${Number(j.totalAmount ?? 0).toFixed(2)}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {customerId && !jobsLoading && unbilledJobs.length === 0 && <p className="text-xs text-muted-foreground">No unbilled jobs for this customer.</p>}
+            {linkedJobId && Number(unbilledJobs.find(j => String(j.id) === linkedJobId)?.totalAmount ?? 0) === 0 && (
+              <p className="text-xs text-amber-700">This job has no price. Zero-dollar jobs go to admin review instead of being billed automatically — set a price on the job if it should be billed.</p>
+            )}
+            {linkedJobId && <p className="text-xs text-muted-foreground">The server checks the job isn't already invoiced. Line items you typed are kept.</p>}
           </div>
 
           {/* Template selector */}

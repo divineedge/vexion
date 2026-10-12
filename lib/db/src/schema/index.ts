@@ -1,3 +1,4 @@
+export * from "./hr";
 export * from "./jobForms";
 export * from "./acquisition";
 export * from "./customerCredits";

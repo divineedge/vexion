@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, jsonb,boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -26,6 +26,11 @@ export const employeeFormTemplatesTable = pgTable("employee_form_templates", {
  * "original" employee record, only adds to the employee's file.
  */
 export const employeeHistoryEntriesTable = pgTable("employee_history_entries", {
+  sharedWithEmployee:boolean("shared_with_employee").notNull().default(false),
+  occurredOn:text("occurred_on"),
+  formSnapshot:jsonb("form_snapshot"),
+  evidence:jsonb("evidence"),
+  acknowledgedAt:timestamp("acknowledged_at",{withTimezone:true}),
   id: serial("id").primaryKey(),
   tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
   userId: integer("user_id").notNull().references(() => usersTable.id),

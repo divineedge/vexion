@@ -93,6 +93,7 @@ export class ObjectStorageService {
     cacheTtlSec: number = 3600,
   ): Promise<Response> {
     const [metadata] = await file.getMetadata();
+    if(file.name.split("/").includes("hr-documents")||metadata.metadata?.hrPrivate==="true")throw new Error("HR files require the private personnel download endpoint");
     const aclPolicy = await getObjectAclPolicy(file);
     const isPublic = aclPolicy?.visibility === 'public';
 
@@ -142,6 +143,13 @@ export class ObjectStorageService {
       resumable: false,
       metadata: { contentType: 'application/pdf', cacheControl: 'private, no-store' },
     });
+    return `/objects/${key}`;
+  }
+  async saveHrDocument(bytes:Buffer,mimeType:string):Promise<string>{
+    const key=`hr-documents/${randomUUID()}`;
+    const {bucketName,objectName}=parseObjectPath(`${this.getPrivateObjectDir()}/${key}`);
+    await objectStorageClient.bucket(bucketName).file(objectName).save(bytes,{resumable:false,
+      metadata:{contentType:mimeType,cacheControl:"private, no-store",metadata:{hrPrivate:"true"}}});
     return `/objects/${key}`;
   }
 
@@ -269,6 +277,8 @@ export class ObjectStorageService {
     objectFile: File;
     requestedPermission?: ObjectPermission;
   }): Promise<boolean> {
+    const [metadata]=await objectFile.getMetadata();
+    if(objectFile.name.split("/").includes("hr-documents")||metadata.metadata?.hrPrivate==="true")return false;
     return canAccessObject({
       userId,
       objectFile,
@@ -287,6 +297,7 @@ export class ObjectStorageService {
    * @param ttlSec URL lifetime in seconds (default 3600 = 1 hour)
    */
   async generateSignedReadUrl(objectPath: string, ttlSec = 3600): Promise<string> {
+    if(objectPath.startsWith("/objects/hr-documents/"))throw new Error("HR files cannot use generic signed URLs");
     const { bucketName, objectName } = parseObjectPath(
       `${this.getPrivateObjectDir()}/${objectPath.replace(/^\/objects\//, '')}`,
     );

@@ -2,9 +2,22 @@ import { Router, type IRouter } from "express";
 import { db, employeeFormTemplatesTable, employeeHistoryEntriesTable, usersTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
-import { isAdminRole } from "../lib/roles";
+import { hrAccess,requireHr,HrError } from "../lib/hrAccess";
+import { createEmployeeRecord,employeeFields } from "../lib/employeeRecords";
+import { requireVerifiedStaff } from "../lib/verifiedStaff";
+import { FormError } from "../lib/jobForms";
 
 const router: IRouter = Router();
+router.use(requireVerifiedStaff,async(req,res,next)=>{
+ const tenantId=getTenantId(req),actorId=getUserId(req);
+ const match=req.path.match(/^\/users\/(\d+)\/history$/);
+ if(req.method==="GET"&&match){
+  const access=await hrAccess(tenantId,actorId);
+  if(!access.hasHrAccess&&Number(match[1])!==actorId)throw new HrError("Private employee history requires HR access",403);
+  res.locals.employeeHistorySharedOnly=!access.hasHrAccess;
+ }else await requireHr(tenantId,actorId);
+ next();
+});
 
 // GET /employee-form-templates — list all active form templates for tenant
 router.get("/employee-form-templates", async (req, res): Promise<void> => {
@@ -14,8 +27,7 @@ router.get("/employee-form-templates", async (req, res): Promise<void> => {
     .from(employeeFormTemplatesTable)
     .where(
       and(
-        eq(employeeFormTemplatesTable.tenantId, tenantId),
-        eq(employeeFormTemplatesTable.isActive, "true")
+        eq(employeeFormTemplatesTable.tenantId, tenantId)
       )
     )
     .orderBy(desc(employeeFormTemplatesTable.createdAt));
@@ -34,7 +46,7 @@ router.post("/employee-form-templates", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
 
-  const admin = await isAdminRole(tenantId, userId);
+  const admin = (await hrAccess(tenantId,userId)).hasHrAccess;
   if (!admin) {
     res.status(403).json({ error: "Only managers and owners can create form templates" });
     return;
@@ -52,7 +64,7 @@ router.post("/employee-form-templates", async (req, res): Promise<void> => {
       tenantId,
       name,
       description: description ?? null,
-      fields: fields ?? [],
+      fields: employeeFields(fields),
       isActive: "true",
     })
     .returning();
@@ -108,7 +120,8 @@ router.get("/users/:userId/history", async (req, res): Promise<void> => {
     .where(
       and(
         eq(employeeHistoryEntriesTable.tenantId, tenantId),
-        eq(employeeHistoryEntriesTable.userId, userId)
+        eq(employeeHistoryEntriesTable.userId, userId),
+        res.locals.employeeHistorySharedOnly?eq(employeeHistoryEntriesTable.sharedWithEmployee,true):undefined
       )
     )
     .orderBy(desc(employeeHistoryEntriesTable.createdAt));
@@ -139,82 +152,11 @@ router.post("/users/:userId/history", async (req, res): Promise<void> => {
     return;
   }
 
-  const { type, title, notes, formTemplateId, formData } = req.body;
-
-  if (!type || !title) {
-    res.status(400).json({ error: "type and title are required" });
-    return;
-  }
-
-  const validTypes = ["review", "complaint", "callback", "custom_form"];
-  if (!validTypes.includes(type)) {
-    res.status(400).json({ error: `type must be one of: ${validTypes.join(", ")}` });
-    return;
-  }
-
-  // Verify target user belongs to tenant
-  const [targetUser] = await db
-    .select({ id: usersTable.id })
-    .from(usersTable)
-    .where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId)));
-  if (!targetUser) {
-    res.status(404).json({ error: "User not found" });
-    return;
-  }
-
-  // If custom_form, validate template belongs to tenant
-  if (type === "custom_form" && formTemplateId) {
-    const [tmpl] = await db
-      .select({ id: employeeFormTemplatesTable.id })
-      .from(employeeFormTemplatesTable)
-      .where(
-        and(
-          eq(employeeFormTemplatesTable.id, parseInt(formTemplateId, 10)),
-          eq(employeeFormTemplatesTable.tenantId, tenantId)
-        )
-      );
-    if (!tmpl) {
-      res.status(404).json({ error: "Form template not found" });
-      return;
-    }
-  }
-
-  const [created] = await db
-    .insert(employeeHistoryEntriesTable)
-    .values({
-      tenantId,
-      userId,
-      type,
-      title,
-      notes: notes ?? null,
-      formTemplateId: formTemplateId ? parseInt(formTemplateId, 10) : null,
-      formData: formData ?? {},
-      createdById: callerId,
-    })
-    .returning();
-
-  // Fetch creator name and template name for response
-  const [creatorRow] = await db
-    .select({ name: usersTable.name })
-    .from(usersTable)
-    .where(eq(usersTable.id, callerId));
-
-  let formTemplateName: string | null = null;
-  if (created.formTemplateId) {
-    const [tmplRow] = await db
-      .select({ name: employeeFormTemplatesTable.name })
-      .from(employeeFormTemplatesTable)
-      .where(eq(employeeFormTemplatesTable.id, created.formTemplateId));
-    formTemplateName = tmplRow?.name ?? null;
-  }
-
-  res.status(201).json({
-    ...created,
-    formData: created.formData ?? {},
-    createdByName: creatorRow?.name ?? null,
-    formTemplateName,
-    createdAt: created.createdAt.toISOString(),
-  });
+  const recorded=await createEmployeeRecord(tenantId,callerId,userId,req.body);
+  res.status(201).json(recorded);
 });
 
+router.use((error:unknown,_req:import("express").Request,res:import("express").Response,next:import("express").NextFunction)=>{
+ if(error instanceof HrError||error instanceof FormError){res.status(error.status).json({error:error.message});return;}next(error);
+});
 export default router;

@@ -5,7 +5,8 @@ import { cn } from '@/lib/utils';
 import { LogOut, Menu, X, LayoutDashboard, Settings, Bookmark, BookmarkCheck, Star } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { adminNavSections, pinnedNavItems, techNavItems, type NavItem } from './navConfig';
+import { adminNavSections, pinnedNavItems, techNavItems as baseTechNavItems, hrNavItems, myRecordNavItem, type NavItem } from './navConfig';
+import { useHrMeta } from '@/lib/hr';
 import { SidebarSection } from './SidebarSection';
 import { usePermissions } from '@/hooks/usePermissions';
 import { Breadcrumb } from './Breadcrumb';
@@ -73,6 +74,9 @@ function StandaloneLink({
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, logout, isTechnician, isCrewManager, canManageOffice } = useAuth();
+  const hrMeta = useHrMeta();
+  const hasHrAccess = !!hrMeta.data?.hasHrAccess;
+  const techNavItems: NavItem[] = [...baseTechNavItems, ...(hasHrAccess ? hrNavItems : hrMeta.data ? [myRecordNavItem] : [])];
   const [location, setLocation] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const { bookmarks, toggleBookmark } = useBookmarks();
@@ -145,6 +149,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const roleMap: Record<string, boolean> = {
     isCrewManager,
     canManageOffice,
+    hasHrAccess,
     isOwner: canManageOffice,
     isManager: canManageOffice,
     isDepartmentManager: canManageOffice,
@@ -161,6 +166,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       items: section.items.filter(item => !item.permissionKey || can(item.permissionKey as any)),
     }))
     .filter(section => section.items.length > 0);
+  // Non-HR office staff get a direct link to their own record (no directory fallback).
+  if (!hasHrAccess && hrMeta.data) {
+    const admin = visibleSections.find(s => s.id === 'admin') ?? visibleSections[visibleSections.length - 1];
+    if (admin) admin.items = [...admin.items, myRecordNavItem];
+  }
 
   const visiblePinned = pinnedNavItems.filter(item =>
     item.roles.some(r => roleMap[r]) && (!item.permissionKey || can(item.permissionKey as any)),

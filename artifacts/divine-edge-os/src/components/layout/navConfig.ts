@@ -6,7 +6,7 @@ import {
   Megaphone, FlaskConical,
   Settings, FileText, Footprints, BarChart3, Star, Repeat, ListTodo, Calculator,
   Map, ClipboardList, PhoneMissed, PhoneIncoming, Inbox, Layers,
-  MessageSquare, Store, ClipboardCheck,
+  MessageSquare, Store, ClipboardCheck, IdCard, UserPlus,
   LucideIcon,
 } from 'lucide-react';
 
@@ -28,7 +28,7 @@ export interface NavSection {
   id: string;
   label: string;
   /** If set, only roles whose key is true in AuthContext can see this section */
-  roles?: Array<'isOwner' | 'isManager' | 'isDepartmentManager' | 'isCrewManager' | 'canManageOffice' | 'canManageJobs'>;
+  roles?: Array<'hasHrAccess' | 'isOwner' | 'isManager' | 'isDepartmentManager' | 'isCrewManager' | 'canManageOffice' | 'canManageJobs'>;
   items: NavItem[];
 }
 
@@ -64,6 +64,14 @@ export const pinnedNavItems: PinnedNavItem[] = [
   { name: 'Estimates', href: '/estimates', icon: FileText,     roles: ['canManageOffice', 'isCrewManager'] },
   { name: 'Vendors',   href: '/vendors',   icon: Store,        roles: ['canManageOffice'], permissionKey: 'pages.billing' },
 ];
+
+/** HR nav — shown only when GET /api/hr/meta says hasHrAccess (owner + designated HR). */
+export const hrNavItems: NavItem[] = [
+  { name: 'Employees', href: '/employees', icon: IdCard },
+  { name: 'Hiring',    href: '/hiring',    icon: UserPlus },
+];
+/** Shown instead of HR nav for everyone without HR access. */
+export const myRecordNavItem: NavItem = { name: 'My Record', href: '/my-record', icon: IdCard };
 
 /** Sectioned nav for admin / office / crew-manager roles */
 export const adminNavSections: NavSection[] = [
@@ -131,6 +139,12 @@ export const adminNavSections: NavSection[] = [
     ],
   },
   {
+    id: 'people',
+    label: 'People',
+    roles: ['hasHrAccess'],
+    items: hrNavItems,
+  },
+  {
     id: 'admin',
     label: 'Admin',
     roles: ['canManageOffice'],
@@ -160,5 +174,7 @@ export function buildNavIndex(sections: NavSection[]) {
   // Include standalone items so breadcrumbs resolve them
   map['/dashboard'] = { sectionLabel: '', itemName: 'Dashboard' };
   map['/settings']  = { sectionLabel: '', itemName: 'Settings' };
+  for (const item of hrNavItems) map[item.href] = { sectionLabel: 'People', itemName: item.name };
+  map[myRecordNavItem.href] = { sectionLabel: '', itemName: myRecordNavItem.name };
   return map;
 }

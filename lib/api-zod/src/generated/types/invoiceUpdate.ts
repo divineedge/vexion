@@ -5,9 +5,13 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { InvoiceUpdateLayout } from './invoiceUpdateLayout';
 import type { InvoiceUpdateStatus } from './invoiceUpdateStatus';
 
 export interface InvoiceUpdate {
+  /** @nullable */
+  termsText?: string | null;
+  layout?: InvoiceUpdateLayout;
   status?: InvoiceUpdateStatus;
   notes?: string;
   dueDate?: string;

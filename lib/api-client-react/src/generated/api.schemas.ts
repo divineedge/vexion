@@ -118,6 +118,8 @@ export interface SupplyItem {
 }
 
 export interface Estimate {
+  /** @nullable */
+  termsText?: string | null;
   id: number;
   tenantId: number;
   /** @nullable */
@@ -251,6 +253,18 @@ export interface InvoiceLineItem {
 }
 
 export interface Invoice {
+  /** @nullable */
+  termsText?: string | null;
+  layout?: string;
+  lateFeeEnabled?: boolean;
+  /** @nullable */
+  lateFeeType?: string | null;
+  /** @nullable */
+  lateFeeAmount?: number | null;
+  lateFeeDaysGrace?: number;
+  showJobCompletionDate?: boolean;
+  /** @nullable */
+  jobCompletedAt?: string | null;
   id: number;
   tenantId: number;
   invoiceNumber: string;
@@ -353,6 +367,8 @@ export const CreateEstimateInputPaymentRequirement = {
 } as const;
 
 export interface CreateEstimateInput {
+  /** @nullable */
+  termsText?: string | null;
   customerId?: number;
   propertyId?: number;
   blueprintId?: number;
@@ -403,6 +419,8 @@ export const UpdateEstimateInputPaymentRequirement = {
 } as const;
 
 export interface UpdateEstimateInput {
+  /** @nullable */
+  termsText?: string | null;
   customerId?: number;
   propertyId?: number;
   assigneeId?: number;
@@ -608,6 +626,8 @@ export const InvoiceTemplateLateFeeType = {
 } as const;
 
 export interface InvoiceTemplate {
+  /** @nullable */
+  notes?: string | null;
   id: number;
   tenantId: number;
   name: string;
@@ -654,6 +674,8 @@ export const CreateInvoiceTemplateInputLateFeeType = {
 } as const;
 
 export interface CreateInvoiceTemplateInput {
+  /** @nullable */
+  notes?: string | null;
   name: string;
   layout?: CreateInvoiceTemplateInputLayout;
   lineItems?: CreateInvoiceTemplateInputLineItemsItem[];
@@ -665,6 +687,10 @@ export interface CreateInvoiceTemplateInput {
 }
 
 export interface EstimateTemplate {
+  /** @nullable */
+  notes?: string | null;
+  /** @nullable */
+  termsText?: string | null;
   id: number;
   tenantId: number;
   name: string;
@@ -676,6 +702,10 @@ export interface EstimateTemplate {
 }
 
 export interface CreateEstimateTemplateInput {
+  /** @nullable */
+  notes?: string | null;
+  /** @nullable */
+  termsText?: string | null;
   name: string;
   description?: string;
   lineItems?: EstimateLineItem[];
@@ -2158,6 +2188,9 @@ export const JobUpdateEditScope = {
 } as const;
 
 export interface JobUpdate {
+  chargeRescheduleFee?: boolean;
+  /** @minimum 0 */
+  rescheduleFeeAmount?: number;
   title?: string;
   description?: string;
   status?: JobUpdateStatus;
@@ -2688,12 +2721,23 @@ export interface InvoiceLineItemInput {
 }
 
 export interface InvoiceInput {
+  /** @nullable */
+  termsText?: string | null;
   customerId: number;
   jobId?: number;
   notes?: string;
   dueDate?: string;
   lineItems?: InvoiceLineItemInput[];
 }
+
+export type InvoiceUpdateLayout = typeof InvoiceUpdateLayout[keyof typeof InvoiceUpdateLayout];
+
+
+export const InvoiceUpdateLayout = {
+  clean: 'clean',
+  detailed: 'detailed',
+  compact: 'compact',
+} as const;
 
 export type InvoiceUpdateStatus = typeof InvoiceUpdateStatus[keyof typeof InvoiceUpdateStatus];
 
@@ -2707,6 +2751,9 @@ export const InvoiceUpdateStatus = {
 } as const;
 
 export interface InvoiceUpdate {
+  /** @nullable */
+  termsText?: string | null;
+  layout?: InvoiceUpdateLayout;
   status?: InvoiceUpdateStatus;
   notes?: string;
   dueDate?: string;
@@ -3494,6 +3541,14 @@ export interface PreTripChecklistItem {
 }
 
 export interface TenantSettings {
+  /** @nullable */
+  defaultInvoiceTerms?: string | null;
+  /** @nullable */
+  defaultInvoiceNotes?: string | null;
+  /** @nullable */
+  defaultEstimateTerms?: string | null;
+  /** @nullable */
+  defaultEstimateNotes?: string | null;
   id: number;
   tenantId: number;
   companyName?: string;
@@ -3667,6 +3722,9 @@ export const CancelSeriesScope = {
 } as const;
 
 export interface ReschedulePlanVisitInput {
+  chargeRescheduleFee?: boolean;
+  /** @minimum 0 */
+  rescheduleFeeAmount?: number;
   newScheduledAt: string;
   /** @nullable */
   assigneeId?: number | null;
@@ -3866,6 +3924,9 @@ export interface JobRouteAssignment {
 }
 
 export interface RescheduleOnceInput {
+  chargeRescheduleFee?: boolean;
+  /** @minimum 0 */
+  rescheduleFeeAmount?: number;
   newScheduledAt: string;
 }
 
@@ -3957,6 +4018,14 @@ export const TenantSettingsUpdatePaymentReminderChannelsItem = {
 } as const;
 
 export interface TenantSettingsUpdate {
+  /** @nullable */
+  defaultInvoiceTerms?: string | null;
+  /** @nullable */
+  defaultInvoiceNotes?: string | null;
+  /** @nullable */
+  defaultEstimateTerms?: string | null;
+  /** @nullable */
+  defaultEstimateNotes?: string | null;
   companyName?: string;
   timezone?: string;
   workdayCutoffTime?: string;
@@ -5879,6 +5948,10 @@ export const RecurringInvoiceTemplateBillingCycleType = {
 } as const;
 
 export interface RecurringInvoiceTemplate {
+  /** @nullable */
+  termsText?: string | null;
+  /** @nullable */
+  invoiceTemplateId?: number | null;
   id: number;
   tenantId: number;
   /** @nullable */
@@ -5923,6 +5996,10 @@ export const CreateRecurringTemplateInputBillingCycleType = {
 } as const;
 
 export interface CreateRecurringTemplateInput {
+  /** @nullable */
+  termsText?: string | null;
+  /** @nullable */
+  invoiceTemplateId?: number | null;
   customerId?: number;
   serviceId?: number;
   name: string;
@@ -5954,6 +6031,10 @@ export const UpdateRecurringTemplateInputBillingCycleType = {
 } as const;
 
 export interface UpdateRecurringTemplateInput {
+  /** @nullable */
+  termsText?: string | null;
+  /** @nullable */
+  invoiceTemplateId?: number | null;
   /** @nullable */
   customerId?: number | null;
   /** @nullable */

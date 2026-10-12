@@ -10,6 +10,8 @@ import type { CreateInvoiceTemplateInputLayout } from './createInvoiceTemplateIn
 import type { CreateInvoiceTemplateInputLineItemsItem } from './createInvoiceTemplateInputLineItemsItem';
 
 export interface CreateInvoiceTemplateInput {
+  /** @nullable */
+  notes?: string | null;
   name: string;
   layout?: CreateInvoiceTemplateInputLayout;
   lineItems?: CreateInvoiceTemplateInputLineItemsItem[];

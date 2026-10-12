@@ -12,6 +12,8 @@ import type { EstimateVisitMode } from './estimateVisitMode';
 import type { SupplyItem } from './supplyItem';
 
 export interface Estimate {
+  /** @nullable */
+  termsText?: string | null;
   id: number;
   tenantId: number;
   /** @nullable */

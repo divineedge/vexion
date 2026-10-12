@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { DefaultWordingCard } from '@/components/settings/DefaultWordingCard';
 import { useLocation } from 'wouter';
 import {
   useGetTenantSettings, getGetTenantSettingsQueryKey,
@@ -2120,6 +2121,7 @@ export default function SettingsPage() {
                 <p className="text-xs text-muted-foreground">Auto-sets expiry date on new estimates. 0 = no expiry.</p>
                 <Input type="number" min={0} value={estimateExpiryDays} onChange={e => setEstimateExpiryDays(e.target.value)} className="w-28" data-testid="input-estimate-expiry-days" />
               </div>
+              <DefaultWordingCard kind="estimate" />
               <div className="flex flex-wrap items-center gap-2 pt-2 border-t">
                 <Button onClick={saveEstimateDefaults} disabled={updateSettings.isPending}>Save Estimate Defaults</Button>
                 <Button variant="outline" onClick={() => setLocation('/estimates?tab=templates')} className="gap-1.5">
@@ -2190,6 +2192,7 @@ export default function SettingsPage() {
                     <p className="text-xs text-muted-foreground">Non-recurring jobs are billed on this cadence, independent of recurring batching.</p>
                   </div>
                 </div>
+              <DefaultWordingCard kind="invoice" />
               <div className="flex flex-wrap items-center gap-2 pt-2 border-t">
                 <Button onClick={saveInvoicingDefaults} disabled={updateSettings.isPending} data-testid="button-save-invoicing">Save Invoicing</Button>
                 <Button variant="outline" onClick={() => setLocation('/financials?tab=invoice-templates')} className="gap-1.5">

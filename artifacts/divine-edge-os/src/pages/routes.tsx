@@ -32,6 +32,7 @@ import { Input } from '@/components/ui/input';
 import { useDebounce } from '@/hooks/use-debounce';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { RescheduleFeeDialog, defaultRescheduleFee, apiErrorMessage, type RescheduleFeeChoice } from '@/components/schedule/RescheduleFeeDialog';
 import {
   ChevronLeft, ChevronRight, MapPinned, Route as RouteIcon, ArrowUp, ArrowDown,
   Wand2, Clock, User, Building, CalendarClock, Plus, Play, Square, Timer,
@@ -86,6 +87,8 @@ export default function RoutesDashboardPage() {
   }, [location]);
   const [rescheduleJobId, setRescheduleJobId] = useState<number | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState('');
+  const [feeAskOpen, setFeeAskOpen] = useState(false);
+  const [feeError, setFeeError] = useState<string | null>(null);
   const [addStopOpen, setAddStopOpen] = useState(false);
   const [addStopJobId, setAddStopJobId] = useState<string>('');
   const [newJobOpen, setNewJobOpen] = useState(false);
@@ -224,16 +227,27 @@ export default function RoutesDashboardPage() {
 
   const handleReschedule = () => {
     if (!rescheduleJobId || !rescheduleDate) return;
-    rescheduleOnce.mutate({ id: rescheduleJobId, data: { newScheduledAt: new Date(rescheduleDate).toISOString() } }, {
+    setFeeError(null);
+    setFeeAskOpen(true);
+  };
+
+  const confirmReschedule = (choice: RescheduleFeeChoice) => {
+    if (!rescheduleJobId || !rescheduleDate) return;
+    // Keep the stop's original time of day on the new date.
+    const original = (detail as any)?.stops?.find((st: any) => (st.jobId ?? st.id) === rescheduleJobId)?.scheduledAt as string | undefined;
+    const target = new Date(`${rescheduleDate}T00:00:00`);
+    if (original) { const o = new Date(original); target.setHours(o.getHours(), o.getMinutes(), 0, 0); }
+    rescheduleOnce.mutate({ id: rescheduleJobId, data: { newScheduledAt: target.toISOString(), ...choice } as any }, {
       onSuccess: (result) => {
         toast.success(result.exceptionFeeCharged > 0
-          ? `Job rescheduled — $${result.exceptionFeeCharged.toFixed(2)} trip fee added`
-          : 'Job rescheduled');
+          ? `Job rescheduled, $${result.exceptionFeeCharged.toFixed(2)} fee added`
+          : 'Job rescheduled, no fee');
+        setFeeAskOpen(false);
         setRescheduleJobId(null);
         setRescheduleDate('');
         invalidateDetail();
       },
-      onError: (err: any) => toast.error(err?.data?.error ?? 'Failed to reschedule job'),
+      onError: (err: any) => setFeeError(apiErrorMessage(err, 'Failed to reschedule job.')),
     });
   };
 
@@ -742,7 +756,7 @@ export default function RoutesDashboardPage() {
           <DialogHeader>
             <DialogTitle>Reschedule This Visit Only</DialogTitle>
             <DialogDescription>
-              This moves just this one occurrence off its regular route to a new date. The tenant's route exception trip fee (or the route's override) will be added to this job's invoice.
+              This moves just this one occurrence off its regular route to a new date. You will choose whether to charge a rescheduling fee before anything is saved.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
@@ -751,12 +765,21 @@ export default function RoutesDashboardPage() {
           </div>
           <div className="flex gap-3 justify-end pt-2">
             <Button variant="outline" title="Cancel rescheduling this stop" onClick={() => setRescheduleJobId(null)}>Cancel</Button>
-            <Button title="Reschedule this stop and apply the route exception fee" onClick={handleReschedule} disabled={!rescheduleDate || rescheduleOnce.isPending}>
-              {rescheduleOnce.isPending ? 'Rescheduling...' : 'Reschedule & Apply Fee'}
+            <Button title="Continue to the rescheduling fee choice" onClick={handleReschedule} disabled={!rescheduleDate || rescheduleOnce.isPending}>
+              Continue
             </Button>
           </div>
         </DialogContent>
       </Dialog>
+      <RescheduleFeeDialog
+        open={feeAskOpen}
+        toLabel={rescheduleDate}
+        defaultAmount={(detail as any)?.exceptionFeeOverride ?? defaultRescheduleFee(settings)}
+        pending={rescheduleOnce.isPending}
+        error={feeError}
+        onConfirm={confirmReschedule}
+        onCancel={() => { setFeeAskOpen(false); setFeeError(null); }}
+      />
 
       {/* Mark complete after clock-out */}
       <Dialog open={clockOutJobId !== null} onOpenChange={open => { if (!open) setClockOutJobId(null); }}>

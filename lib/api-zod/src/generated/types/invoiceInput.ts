@@ -8,6 +8,8 @@
 import type { InvoiceLineItemInput } from './invoiceLineItemInput';
 
 export interface InvoiceInput {
+  /** @nullable */
+  termsText?: string | null;
   customerId: number;
   jobId?: number;
   notes?: string;

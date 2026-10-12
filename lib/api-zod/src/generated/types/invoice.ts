@@ -10,6 +10,18 @@ import type { InvoicePaymentMethod } from './invoicePaymentMethod';
 import type { InvoiceStatus } from './invoiceStatus';
 
 export interface Invoice {
+  /** @nullable */
+  termsText?: string | null;
+  layout?: string;
+  lateFeeEnabled?: boolean;
+  /** @nullable */
+  lateFeeType?: string | null;
+  /** @nullable */
+  lateFeeAmount?: number | null;
+  lateFeeDaysGrace?: number;
+  showJobCompletionDate?: boolean;
+  /** @nullable */
+  jobCompletedAt?: string | null;
   id: number;
   tenantId: number;
   invoiceNumber: string;

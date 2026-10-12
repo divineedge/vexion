@@ -58,3 +58,4 @@
 - [Bulk fuel costing](bulk-fuel-costing.md) — blended tank costs are snapshotted per fill; receipts and allocated equipment fuel must not become duplicate expenses
 - [Estimate declines and campaign consent](estimate-declines-campaign-consent.md) — snapshot feedback; not-now campaign routing is separate from acquisition and never overrides unsubscribe
 - [Service dates and weather](service-dates-and-weather.md) — invoice service dates are configurable; chemical weather always follows actual application time, never the schedule
+- [Document and scheduling preferences](document-and-scheduling-preferences.md) — adjacent document navigation, shared recurring rules, wording snapshots, and explicit rescheduling-fee choices

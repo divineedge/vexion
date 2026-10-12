@@ -8776,6 +8776,8 @@ components:
       type: object
       required: [id, tenantId, status, visitMode, subtotal, tax, total, createdAt, updatedAt]
       properties:
+        termsText:
+          type: ["string", "null"]
         id:
           type: integer
         tenantId:
@@ -8948,6 +8950,8 @@ components:
     CreateEstimateInput:
       type: object
       properties:
+        termsText:
+          type: ["string", "null"]
         customerId:
           type: integer
         propertyId:
@@ -8989,6 +8993,8 @@ components:
     UpdateEstimateInput:
       type: object
       properties:
+        termsText:
+          type: ["string", "null"]
         customerId:
           type: integer
         propertyId:
@@ -9192,6 +9198,8 @@ components:
       type: object
       required: [id, tenantId, name, layout, lateFeeEnabled, lateFeeDaysGrace, createdAt, updatedAt]
       properties:
+        notes:
+          type: ["string", "null"]
         id:
           type: integer
         tenantId:
@@ -9235,6 +9243,8 @@ components:
       type: object
       required: [name]
       properties:
+        notes:
+          type: ["string", "null"]
         name:
           type: string
         layout:
@@ -9267,6 +9277,10 @@ components:
       type: object
       required: [id, tenantId, name, createdAt, updatedAt]
       properties:
+        notes:
+          type: ["string", "null"]
+        termsText:
+          type: ["string", "null"]
         id:
           type: integer
         tenantId:
@@ -9288,6 +9302,10 @@ components:
       type: object
       required: [name]
       properties:
+        notes:
+          type: ["string", "null"]
+        termsText:
+          type: ["string", "null"]
         name:
           type: string
         description:
@@ -11006,6 +11024,11 @@ components:
     JobUpdate:
       type: object
       properties:
+        chargeRescheduleFee:
+          type: boolean
+        rescheduleFeeAmount:
+          type: number
+          minimum: 0
         title:
           type: string
         description:
@@ -11400,6 +11423,22 @@ components:
       type: object
       required: [id, tenantId, invoiceNumber, customerId, status, subtotal, tax, total, createdAt]
       properties:
+        termsText:
+          type: ["string", "null"]
+        layout:
+          type: string
+        lateFeeEnabled:
+          type: boolean
+        lateFeeType:
+          type: ["string", "null"]
+        lateFeeAmount:
+          type: ["number", "null"]
+        lateFeeDaysGrace:
+          type: integer
+        showJobCompletionDate:
+          type: boolean
+        jobCompletedAt:
+          type: ["string", "null"]
         id:
           type: integer
         tenantId:
@@ -11801,6 +11840,8 @@ components:
       type: object
       required: [customerId]
       properties:
+        termsText:
+          type: ["string", "null"]
         customerId:
           type: integer
         jobId:
@@ -11828,6 +11869,11 @@ components:
     InvoiceUpdate:
       type: object
       properties:
+        termsText:
+          type: ["string", "null"]
+        layout:
+          type: string
+          enum: [clean, detailed, compact]
         status:
           type: string
           enum: [draft, sent, paid, overdue, cancelled]
@@ -12557,6 +12603,14 @@ components:
       type: object
       required: [id, tenantId]
       properties:
+        defaultInvoiceTerms:
+          type: ["string", "null"]
+        defaultInvoiceNotes:
+          type: ["string", "null"]
+        defaultEstimateTerms:
+          type: ["string", "null"]
+        defaultEstimateNotes:
+          type: ["string", "null"]
         id:
           type: integer
         tenantId:
@@ -12811,6 +12865,11 @@ components:
       type: object
       required: [newScheduledAt]
       properties:
+        chargeRescheduleFee:
+          type: boolean
+        rescheduleFeeAmount:
+          type: number
+          minimum: 0
         newScheduledAt:
           type: string
         assigneeId:
@@ -13076,6 +13135,11 @@ components:
       type: object
       required: [newScheduledAt]
       properties:
+        chargeRescheduleFee:
+          type: boolean
+        rescheduleFeeAmount:
+          type: number
+          minimum: 0
         newScheduledAt:
           type: string
 
@@ -13119,6 +13183,14 @@ components:
     TenantSettingsUpdate:
       type: object
       properties:
+        defaultInvoiceTerms:
+          type: ["string", "null"]
+        defaultInvoiceNotes:
+          type: ["string", "null"]
+        defaultEstimateTerms:
+          type: ["string", "null"]
+        defaultEstimateNotes:
+          type: ["string", "null"]
         companyName:
           type: string
         timezone:
@@ -15455,6 +15527,10 @@ components:
       type: object
       required: [id, tenantId, name, lineItems, billingMode, billingCycleDay, billingCycleType, nextBillingDate, isActive, createdAt, updatedAt]
       properties:
+        termsText:
+          type: ["string", "null"]
+        invoiceTemplateId:
+          type: ["integer", "null"]
         id:
           type: integer
         tenantId:
@@ -15498,6 +15574,10 @@ components:
       type: object
       required: [name, nextBillingDate]
       properties:
+        termsText:
+          type: ["string", "null"]
+        invoiceTemplateId:
+          type: ["integer", "null"]
         customerId:
           type: integer
         serviceId:
@@ -15526,6 +15606,10 @@ components:
     UpdateRecurringTemplateInput:
       type: object
       properties:
+        termsText:
+          type: ["string", "null"]
+        invoiceTemplateId:
+          type: ["integer", "null"]
         customerId:
           type: ["integer", "null"]
         serviceId:

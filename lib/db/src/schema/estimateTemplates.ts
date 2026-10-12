@@ -8,6 +8,8 @@ export const estimateTemplatesTable = pgTable("estimate_templates", {
   tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
   name: text("name").notNull(),
   description: text("description"),
+  termsText: text("terms_text"),
+  notes: text("notes"),
   /** Pre-filled line items including optional ones — same shape as estimates.lineItems */
   lineItems: jsonb("line_items").default("[]"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

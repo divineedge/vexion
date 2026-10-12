@@ -19,6 +19,10 @@ import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { Plus, Trash2, FileText, Copy, ChevronUp, ChevronDown, RefreshCw, Calendar } from 'lucide-react';
 import type { InvoiceTemplate } from '@workspace/api-client-react';
+import { PreviewActions, SAMPLE_NOTICE } from '@/components/documents/PreviewActions';
+import { InvoiceDocument, businessProfileFromSettings } from '@/components/documents/InvoiceDocument';
+import { buildInvoicePrintDocument } from '@/lib/printUtils';
+import { buildPreviewInvoice, settingsTaxRate } from '@/lib/documentPreview';
 
 type Layout = 'clean' | 'detailed' | 'compact';
 
@@ -58,6 +62,7 @@ const EMPTY_FORM = {
   name: '',
   layout: 'clean' as Layout,
   termsText: '',
+  notes: '',
   lateFeeEnabled: false,
   showJobCompletionDate: false,
 };
@@ -113,7 +118,7 @@ export default function InvoiceTemplatesSettings() {
     }]);
 
   const openCreate = () => {
-    setForm(EMPTY_FORM);
+    setForm({ ...EMPTY_FORM, termsText: settings?.defaultInvoiceTerms ?? '', notes: settings?.defaultInvoiceNotes ?? '' });
     setLineItems([emptyItem()]);
     setLateFeeSchedule([]);
     setSelectedId(null);
@@ -133,6 +138,7 @@ export default function InvoiceTemplatesSettings() {
       name: t.name,
       layout: (t.layout ?? 'clean') as Layout,
       termsText: t.termsText ?? '',
+      notes: t.notes ?? '',
       lateFeeEnabled: (t.lateFeeEnabled ?? false) || ((t as any).lateFeeSchedule ?? []).length > 0,
       showJobCompletionDate: (t as any).showJobCompletionDate ?? false,
     });
@@ -200,7 +206,8 @@ export default function InvoiceTemplatesSettings() {
         quantity: i.qty,
         unitPrice: i.unitPrice,
       })),
-      termsText: form.termsText.trim() || undefined,
+      termsText: form.termsText.trim() === '' ? '' : form.termsText,
+      notes: form.notes.trim() === '' ? '' : form.notes,
       showJobCompletionDate: form.showJobCompletionDate,
       lateFeeSchedule: form.lateFeeEnabled ? sortedSchedule : [],
       ...legacyFields,
@@ -245,6 +252,18 @@ export default function InvoiceTemplatesSettings() {
         onError: () => toast.error('Failed to update default template'),
       }
     );
+  };
+
+  const previewInvoice = () => {
+    const sched = [...lateFeeSchedule].sort((a, b) => a.daysAfterDue - b.daysAfterDue)[0];
+    return buildPreviewInvoice({
+      lines: lineItems.map(i => ({ description: i.description, quantity: i.qty, unitPrice: i.unitPrice })),
+      notes: form.notes, termsText: form.termsText, layout: form.layout,
+      lateFeeEnabled: form.lateFeeEnabled && !!sched, lateFeeType: sched?.type, lateFeeAmount: sched?.amount, lateFeeDaysGrace: sched?.daysAfterDue,
+      dueDays: (settings as any)?.invoiceDueDays ?? 30,
+      taxRatePct: settingsTaxRate(settings),
+      tenantId: (settings as any)?.tenantId ?? null,
+    });
   };
 
   const currentDefault = (settings as any)?.defaultInvoiceTemplateId ?? null;
@@ -378,6 +397,15 @@ export default function InvoiceTemplatesSettings() {
               Configure the layout, pre-filled items, terms, late-fee schedule, and recurring-job options.
             </SheetDescription>
           </SheetHeader>
+          <div className="sticky top-0 z-10 -mx-6 px-6 py-2 mb-3 bg-background/95 backdrop-blur border-b flex justify-end">
+            <PreviewActions
+              title={`Template preview: ${form.name || 'Untitled'}`}
+              sampleNotice={SAMPLE_NOTICE}
+              renderCustomerView={() => <InvoiceDocument invoice={previewInvoice()} businessProfile={businessProfileFromSettings(settings)} preview />}
+              buildPrintDocument={() => buildInvoicePrintDocument(previewInvoice() as any, (settings ?? {}) as Record<string, unknown>)}
+              testIdPrefix="invoice-template-preview"
+            />
+          </div>
 
           <div className="space-y-5 pb-8">
             {/* Name */}
@@ -475,13 +503,19 @@ export default function InvoiceTemplatesSettings() {
             {/* Terms & Conditions */}
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Terms &amp; Conditions</label>
-              <p className="text-xs text-muted-foreground">Shown at the bottom of every invoice using this template.</p>
+              <p className="text-xs text-muted-foreground">Shown at the bottom of every invoice using this template. New templates start from the company default (Settings, Invoicing). Blank prints no terms. Existing invoices are not changed.</p>
               <Textarea
                 rows={4}
                 placeholder="e.g. Payment due upon receipt. A 1.5% monthly late fee applies after 30 days…"
                 value={form.termsText}
                 onChange={e => setForm(f => ({ ...f, termsText: e.target.value }))}
               />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Notes</label>
+              <p className="text-xs text-muted-foreground">Printed on invoices that use this template. Starts from the company default; blank prints no notes.</p>
+              <Textarea rows={2} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
             </div>
 
             <Separator />

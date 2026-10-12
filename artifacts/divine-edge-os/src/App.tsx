@@ -75,6 +75,7 @@ function ProtectedRoutes() {
         <Route path="/schedule" component={SchedulePage} />
         <Route path="/inventory" component={InventoryPage} />
         <Route path="/financials" component={FinancialsPage} />
+        <Route path="/invoices" component={FinancialsPage} />
         <Route path="/reports" component={ReportsPage} />
         <Route path="/time-tracking" component={TimeTrackingPage} />
         <Route path="/blueprints/:id" component={BlueprintCanvasPage} />

@@ -11,7 +11,7 @@
  */
 
 import { Router, type IRouter } from "express";
-import { db, timeEntriesTable, subTimersTable, usersTable, crewsTable } from "@workspace/db";
+import { db, timeEntriesTable, subTimersTable, usersTable, crewsTable, tenantsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { getTenantId } from "../lib/tenantHelper";
 import { getCallbackRatioStats } from "../lib/callbackRatio";
@@ -134,8 +134,10 @@ router.get("/efficiency", async (req, res): Promise<void> => {
     });
   }
 
+  const [tenant] = await db.select({ ownersSchedulable: tenantsTable.ownersSchedulable }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  const ownerEligible = tenant?.ownersSchedulable === true;
   const technicianMetrics = users
-    .filter(u => u.role === "technician" || u.role === "crew_manager")
+    .filter(u => u.role === "technician" || u.role === "crew_manager" || (u.role === "company_owner" && ownerEligible))
     .map(u => {
       const clockMins = clockMap.get(u.id) ?? 0;
       const jobSeconds = subTimerMap.get(u.id) ?? 0;

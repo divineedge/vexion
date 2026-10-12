@@ -4,7 +4,12 @@ import {
   useListEstimateTemplates, getListEstimateTemplatesQueryKey,
   useCreateEstimateTemplate, useUpdateEstimateTemplate, useDeleteEstimateTemplate,
   useDuplicateEstimateTemplate,
+  useGetTenantSettings, getGetTenantSettingsQueryKey,
 } from '@workspace/api-client-react';
+import { PreviewActions, SAMPLE_NOTICE } from '@/components/documents/PreviewActions';
+import { EstimateDocument } from '@/components/documents/EstimateDocument';
+import { buildEstimatePrintDocument } from '@/lib/printUtils';
+import { buildPreviewEstimate } from '@/lib/documentPreview';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -77,8 +82,17 @@ export default function EstimateTemplatesSettings() {
   const deleteMutation = useDeleteEstimateTemplate();
   const duplicateMutation = useDuplicateEstimateTemplate();
 
+  const { data: settings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
+  const previewEstimate = () => buildPreviewEstimate({
+    lineItems: lineItems.filter(i => i.description.trim() || i.unitPrice),
+    notes: form.introText,
+    termsText: form.termsText,
+    expiryDays: (settings as any)?.estimateExpiryDays ?? 30,
+    tenantId: (settings as any)?.tenantId ?? null,
+  });
+
   const openCreate = () => {
-    setForm(EMPTY_FORM);
+    setForm({ ...EMPTY_FORM, termsText: settings?.defaultEstimateTerms ?? '' });
     setLineItems([emptyItem()]);
     setSelectedId(null);
     setSheetMode('create');
@@ -94,7 +108,7 @@ export default function EstimateTemplatesSettings() {
       name: t.name,
       description: t.description ?? '',
       introText: introItem?.content ?? '',
-      termsText: termsItem?.content ?? '',
+      termsText: t.termsText ?? termsItem?.content ?? '',
     });
     setSelectedId(t.id);
     const items: LineItem[] = regularItems.map((i: any) => ({
@@ -148,6 +162,8 @@ export default function EstimateTemplatesSettings() {
     const payload = {
       name: form.name.trim(),
       description: form.description.trim() || undefined,
+      // '' explicitly prints no terms; estimates created from this template snapshot it.
+      termsText: form.termsText.trim() === '' ? '' : form.termsText,
       lineItems: [
         ...textBlocks,
         ...lineItems.map(i => ({
@@ -305,6 +321,15 @@ export default function EstimateTemplatesSettings() {
               Define a reusable set of line items. Staff can apply this template when creating a new estimate.
             </SheetDescription>
           </SheetHeader>
+          <div className="sticky top-0 z-10 -mx-6 px-6 py-2 mb-3 bg-background/95 backdrop-blur border-b flex justify-end">
+            <PreviewActions
+              title={`Template preview: ${form.name || 'Untitled'}`}
+              sampleNotice={SAMPLE_NOTICE}
+              renderCustomerView={() => <EstimateDocument estimate={previewEstimate() as any} settings={settings as any} preview />}
+              buildPrintDocument={() => buildEstimatePrintDocument(previewEstimate() as Record<string, unknown>, (settings ?? {}) as Record<string, unknown>)}
+              testIdPrefix="estimate-template-preview"
+            />
+          </div>
 
           <div className="space-y-5 pb-8">
             {/* Name & description */}

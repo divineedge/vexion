@@ -39,6 +39,9 @@ import { ImportExportControls } from '@/components/data-io/ImportExportControls'
 import { Card, CardContent } from '@/components/ui/card';
 import { printInvoice, buildInvoicePrintDocument } from '@/lib/printUtils';
 import { DocumentPreviewDialog } from '@/components/documents/DocumentPreviewDialog';
+import { PreviewActions, SAMPLE_NOTICE } from '@/components/documents/PreviewActions';
+import { WordingField } from '@/components/documents/WordingField';
+import { buildPreviewInvoice, settingsTaxRate, normalizeWording } from '@/lib/documentPreview';
 import { InvoiceDocument, businessProfileFromSettings } from '@/components/documents/InvoiceDocument';
 import InvoiceTemplatesSettings from '@/components/settings/InvoiceTemplatesSettings';
 import { Button } from '@/components/ui/button';
@@ -63,6 +66,7 @@ import { format } from 'date-fns';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import VendorExpenseLedger from '@/components/financials/VendorExpenseLedger';
+import { RecurringTemplateSheet } from '@/components/financials/RecurringTemplateSheet';
 
 const STATUS_COLORS: Record<string, string> = {
   paid:      'bg-emerald-100 text-emerald-800 border-transparent',
@@ -73,148 +77,6 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 interface LineItemRow { description: string; quantity: number; unitPrice: number; total: number; }
-
-// ── Template Sheet (for recurring billing templates) ────────────────────────
-
-interface TemplateSheetProps {
-  open: boolean;
-  onClose: () => void;
-  editing: RecurringInvoiceTemplate | null;
-  customers: Array<{ id: number; name: string }>;
-}
-
-function TemplateSheet({ open, onClose, editing, customers }: TemplateSheetProps) {
-  const qc = useQueryClient();
-  const createTmpl = useCreateRecurringTemplate();
-  const updateTmpl = useUpdateRecurringTemplate();
-  const isPending = createTmpl.isPending || updateTmpl.isPending;
-
-  const [customerId, setCustomerId] = useState('');
-  const [customerSearch, setCustomerSearch] = useState('');
-  const [cycle, setCycle] = useState('monthly');
-  const [billingMode, setBillingMode] = useState('fixed');
-  const [notes, setNotes] = useState('');
-  const [isActive, setIsActive] = useState(true);
-  const [lineItems, setLineItems] = useState<LineItemRow[]>([{ description: '', quantity: 1, unitPrice: 0, total: 0 }]);
-
-  useEffect(() => {
-    if (open && editing) {
-      setCustomerId(String(editing.customerId ?? ''));
-      setCycle((editing as any).cycle ?? 'monthly');
-      setBillingMode((editing as any).billingMode ?? 'fixed');
-      setNotes((editing as any).notes ?? '');
-      setIsActive((editing as any).isActive ?? true);
-      const li: BillingLineItem[] = Array.isArray((editing as any).lineItems) ? (editing as any).lineItems : [];
-      setLineItems(li.length > 0 ? li.map(l => ({ ...l, total: l.quantity * l.unitPrice })) : [{ description: '', quantity: 1, unitPrice: 0, total: 0 }]);
-    } else if (open && !editing) {
-      setCustomerId(''); setCustomerSearch(''); setCycle('monthly'); setBillingMode('fixed'); setNotes(''); setIsActive(true);
-      setLineItems([{ description: '', quantity: 1, unitPrice: 0, total: 0 }]);
-    }
-  }, [open, editing]);
-
-  const updateLineItem = (index: number, field: keyof LineItemRow, value: string | number) => {
-    setLineItems(prev => prev.map((li, i) => {
-      if (i !== index) return li;
-      const updated = { ...li, [field]: value };
-      updated.total = updated.quantity * updated.unitPrice;
-      return updated;
-    }));
-  };
-
-  const handleSave = () => {
-    if (!customerId) { toast.error('Customer is required'); return; }
-    const validLineItems = lineItems.filter(li => li.description.trim() !== '');
-    const payload = { customerId: parseInt(customerId, 10), cycle, billingMode, notes, isActive, lineItems: validLineItems } as any;
-    if (editing) {
-      updateTmpl.mutate({ id: editing.id, data: payload }, {
-        onSuccess: () => { toast.success('Template updated'); qc.invalidateQueries({ queryKey: getListRecurringTemplatesQueryKey() }); onClose(); },
-        onError: () => toast.error('Failed to update template'),
-      });
-    } else {
-      createTmpl.mutate({ data: payload }, {
-        onSuccess: () => { toast.success('Template created'); qc.invalidateQueries({ queryKey: getListRecurringTemplatesQueryKey() }); onClose(); },
-        onError: () => toast.error('Failed to create template'),
-      });
-    }
-  };
-
-  const subtotal = lineItems.reduce((s, li) => s + li.total, 0);
-
-  return (
-    <Sheet open={open} onOpenChange={o => { if (!o) onClose(); }}>
-      <SheetContent className="w-full sm:max-w-[66vw] overflow-y-auto">
-        <SheetHeader className="pb-4">
-          <SheetTitle>{editing ? 'Edit Recurring Template' : 'New Recurring Template'}</SheetTitle>
-          <SheetDescription>Set up automatic billing for a customer.</SheetDescription>
-        </SheetHeader>
-        <div className="space-y-4 pb-6">
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Customer <span className="text-destructive">*</span></label>
-            <Select value={customerId} onValueChange={setCustomerId}>
-              <SelectTrigger title="Customer this recurring template bills"><SelectValue placeholder="Select customer" /></SelectTrigger>
-              <SelectContent>
-                <div className="px-2 pb-1"><input className="w-full text-sm border-b border-border bg-transparent py-1 outline-none placeholder:text-muted-foreground" placeholder="Search…" onChange={e => setCustomerSearch(e.target.value)} onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()} /></div>
-                {customers.filter(c => !customerSearch || c.name.toLowerCase().includes(customerSearch.toLowerCase())).map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Billing Cycle</label>
-              <Select value={cycle} onValueChange={setCycle}>
-                <SelectTrigger title="How often to generate an invoice"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {['weekly','biweekly','monthly','quarterly','annually'].map(c => <SelectItem key={c} value={c} className="capitalize">{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Billing Mode</label>
-              <Select value={billingMode} onValueChange={setBillingMode}>
-                <SelectTrigger title="When to generate the invoice relative to work"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="fixed">Fixed (scheduled)</SelectItem>
-                  <SelectItem value="completed_work">Completed Work</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <Separator />
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium">Line Items</label>
-              <Button variant="ghost" size="sm" className="text-xs gap-1" onClick={() => setLineItems(p => [...p, { description: '', quantity: 1, unitPrice: 0, total: 0 }])}>
-                <Plus className="w-3 h-3" /> Add Line
-              </Button>
-            </div>
-            {lineItems.map((li, i) => (
-              <div key={i} className="grid grid-cols-12 gap-1.5 items-center text-sm">
-                <Input className="col-span-5 h-8 text-xs" placeholder="Description" value={li.description} onChange={e => updateLineItem(i, 'description', e.target.value)} />
-                <Input className="col-span-2 h-8 text-xs" type="number" min={1} placeholder="Qty" value={li.quantity} onChange={e => updateLineItem(i, 'quantity', parseFloat(e.target.value) || 0)} />
-                <Input className="col-span-3 h-8 text-xs" type="number" min={0} step={0.01} placeholder="Unit price" value={li.unitPrice} onChange={e => updateLineItem(i, 'unitPrice', parseFloat(e.target.value) || 0)} />
-                <span className="col-span-1 text-xs text-right font-medium">${li.total.toFixed(0)}</span>
-                <Button variant="ghost" size="icon" className="col-span-1 h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => setLineItems(p => p.filter((_, j) => j !== i))} disabled={lineItems.length === 1}><Trash2 className="w-3 h-3" /></Button>
-              </div>
-            ))}
-            <div className="flex justify-end text-sm font-semibold pr-8">Subtotal: ${subtotal.toFixed(2)}</div>
-          </div>
-          <Separator />
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Notes</label>
-            <Input title="Optional notes printed at the bottom of invoices generated from this template" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional notes on invoice" />
-          </div>
-          <div className="flex items-center justify-between rounded-lg border p-3">
-            <div><p className="text-sm font-medium">Active</p><p className="text-xs text-muted-foreground">Paused templates are skipped by the scheduler</p></div>
-            <Switch title="Active templates run automatically; paused templates are skipped by the scheduler" checked={isActive} onCheckedChange={setIsActive} />
-          </div>
-          <Button title={editing ? 'Save changes to this recurring billing template' : 'Create this recurring billing template'} className="w-full" onClick={handleSave} disabled={isPending}>
-            {isPending ? 'Saving...' : editing ? 'Save Changes' : 'Create Template'}
-          </Button>
-        </div>
-      </SheetContent>
-    </Sheet>
-  );
-}
 
 // ── Create Invoice Sheet ────────────────────────────────────────────────────────
 
@@ -238,7 +100,9 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
   const [dueDate, setDueDate] = useState('');
   const [notes, setNotes] = useState('');
   const [templateId, setTemplateId] = useState('');
+  const [termsText, setTermsText] = useState<string | null>(null);
   const [lineItems, setLineItems] = useState<LineItemRow[]>([{ description: '', quantity: 1, unitPrice: 0, total: 0 }]);
+  const { data: createSettings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
 
   // Fetch invoice templates for the template selector
   const { data: invoiceTemplates } = useListInvoiceTemplates({
@@ -262,10 +126,12 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
       const due = new Date();
       due.setDate(due.getDate() + days);
       setDueDate(due.toISOString().slice(0, 10));
-      setNotes('');
+      setNotes((createSettings?.defaultInvoiceNotes as string | null) ?? '');
       setTemplateId('');
+      setTermsText(null);
       setLineItems([{ description: '', quantity: 1, unitPrice: 0, total: 0 }]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, invoiceDueDays]);
 
   // Pre-fill customer from external event (e.g. from customer detail page)
@@ -317,6 +183,21 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
 
   const subtotal = lineItems.reduce((s, li) => s + li.total, 0);
 
+  const chosenDesign = (invoiceTemplates ?? []).find(t => String(t.id) === templateId) as any;
+  const defaultTerms = (chosenDesign?.termsText ?? createSettings?.defaultInvoiceTerms ?? '') as string;
+  const buildDraftPreview = () => {
+    const cust = customers.find(c => String(c.id) === customerId);
+    const base = buildPreviewInvoice({
+      lines: lineItems, notes, termsText: termsText === null ? defaultTerms : termsText,
+      layout: chosenDesign?.layout ?? 'clean',
+      lateFeeEnabled: chosenDesign?.lateFeeEnabled, lateFeeType: chosenDesign?.lateFeeType, lateFeeAmount: chosenDesign?.lateFeeAmount, lateFeeDaysGrace: chosenDesign?.lateFeeDaysGrace,
+      customerName: cust?.name ?? null,
+      taxRatePct: settingsTaxRate(createSettings),
+      tenantId: (createSettings as any)?.tenantId ?? null,
+    });
+    return { ...base, createdAt: invoiceDate ? new Date(`${invoiceDate}T12:00:00`).toISOString() : base.createdAt, dueDate: dueDate ? new Date(`${dueDate}T12:00:00`).toISOString() : base.dueDate };
+  };
+
   const handleSave = (andSend = false) => {
     if (!customerId) { toast.error('Customer is required'); return; }
     const validLineItems = lineItems.filter(li => li.description.trim() !== '');
@@ -329,6 +210,7 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
           dueDate: dueDate || undefined,
           lineItems: validLineItems.length > 0 ? validLineItems : undefined,
           invoiceTemplateId: (templateId && templateId !== '__none__') ? parseInt(templateId, 10) : undefined,
+          ...(termsText !== null ? { termsText: normalizeWording(termsText) } : {}),
         } as any,
       },
       {
@@ -351,6 +233,15 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
           <SheetTitle>Create Invoice</SheetTitle>
           <SheetDescription>Create a one-off invoice for a customer.</SheetDescription>
         </SheetHeader>
+        <div className="sticky top-0 z-10 -mx-6 px-6 py-2 mb-3 bg-background/95 backdrop-blur border-b flex justify-end">
+          <PreviewActions
+            title="New invoice preview"
+            sampleNotice={customerId ? 'Preview of this unsaved invoice. Not saved and not sent.' : SAMPLE_NOTICE}
+            renderCustomerView={() => <InvoiceDocument invoice={buildDraftPreview()} businessProfile={businessProfileFromSettings(createSettings)} preview />}
+            buildPrintDocument={() => buildInvoicePrintDocument(buildDraftPreview() as any, (createSettings ?? {}) as Record<string, unknown>)}
+            testIdPrefix="create-invoice-preview"
+          />
+        </div>
 
         <div className="space-y-5 pb-6">
 
@@ -536,7 +427,11 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
           {/* Notes */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Notes</label>
-            <Input title="Optional notes printed at the bottom of this invoice" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional notes on invoice" />
+            <Textarea rows={2} title="Optional notes printed on this invoice" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional notes on invoice" />
+          </div>
+          <div>
+            <WordingField label="Terms" value={termsText} onChange={setTermsText} defaultText={defaultTerms}
+              defaultSource={chosenDesign ? `invoice template "${chosenDesign.name}"` : 'company default (Settings, Invoicing)'} />
           </div>
 
           <div className="flex gap-3">
@@ -649,7 +544,8 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
   });
   const { user } = useAuth();
   const { data: tenantSettings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const [termsDraft, setTermsDraft] = useState('');
+  const [layoutDraft, setLayoutDraft] = useState('clean');
 
   const [editingLineItems, setEditingLineItems] = useState(false);
   const [lineItems, setLineItems] = useState<LineItemRow[]>([]);
@@ -669,6 +565,8 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
       const li = ((invoice as any).lineItems ?? []) as LineItemRow[];
       setLineItems(li.map(l => ({ ...l, total: l.quantity * l.unitPrice })));
       setNotes((invoice as any).notes ?? '');
+      setTermsDraft((invoice as any).termsText ?? '');
+      setLayoutDraft((invoice as any).layout ?? 'clean');
       setDueDate((invoice as any).dueDate ? new Date((invoice as any).dueDate).toISOString().slice(0, 10) : '');
     }
   }, [invoice]);
@@ -714,6 +612,33 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
       onSuccess: () => { toast.success('Notes updated'); invalidateInvoice(); setEditingNotes(false); },
       onError: () => toast.error('Failed to update notes'),
     });
+  };
+
+  const handleSaveWording = () => {
+    if (!invoiceId) return;
+    updateInvoice.mutate({ id: invoiceId, data: { termsText: termsDraft.trim() === '' ? '' : termsDraft, layout: layoutDraft as 'clean' | 'detailed' | 'compact' } }, {
+      onSuccess: () => { toast.success('Terms and layout saved for this invoice'); invalidateInvoice(); },
+      onError: (err: any) => toast.error(err?.data?.error ?? err?.response?.data?.error ?? 'Failed to save terms and layout'),
+    });
+  };
+
+  /** Current on-screen state, including unsaved edits, for previews. */
+  const livePreviewInvoice = () => {
+    const inv = (invoice ?? {}) as any;
+    const li = editingLineItems ? lineItems.filter(l => l.description.trim() !== '') : (inv.lineItems ?? []);
+    const sub = editingLineItems ? li.reduce((s: number, l: LineItemRow) => s + l.quantity * l.unitPrice, 0) : inv.subtotal;
+    const tax = editingLineItems ? sub * 0.085 : inv.tax;
+    return {
+      ...inv,
+      lineItems: li,
+      subtotal: sub,
+      tax,
+      total: editingLineItems ? sub + tax : inv.total,
+      notes: editingNotes ? notes : inv.notes,
+      termsText: inv.status === 'draft' ? termsDraft : inv.termsText,
+      layout: inv.status === 'draft' ? layoutDraft : inv.layout,
+      dueDate: editingDueDate && dueDate ? new Date(`${dueDate}T12:00:00`).toISOString() : inv.dueDate,
+    };
   };
 
   const handleSaveDueDate = () => {
@@ -851,6 +776,19 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
               )}
             </div>
 
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 flex flex-wrap items-center justify-between gap-2" data-testid="invoice-preview-bar">
+              <div className="text-sm">
+                <p className="font-medium">See what the customer gets</p>
+                <p className="text-xs text-muted-foreground">{(invoice as any).status === 'draft' ? 'Includes unsaved edits on this screen. Nothing is sent.' : 'Shows this invoice as issued. Template changes do not alter it.'}</p>
+              </div>
+              <PreviewActions
+                title={`Preview ${(invoice as any).invoiceNumber ?? ''}`}
+                renderCustomerView={() => <InvoiceDocument invoice={livePreviewInvoice()} businessProfile={businessProfileFromSettings(tenantSettings)} preview />}
+                buildPrintDocument={() => buildInvoicePrintDocument(livePreviewInvoice() as Record<string, unknown>, (tenantSettings ?? {}) as unknown as Record<string, unknown>)}
+                testIdPrefix="invoice-preview"
+              />
+            </div>
+
             {(invoice as any).paidAt && (
               <div className="rounded-lg border bg-emerald-50/60 p-3 text-sm">
                 <p className="font-medium text-emerald-900">Paid {format(new Date((invoice as any).paidAt), 'MMM d, yyyy h:mm a')}</p>
@@ -874,9 +812,6 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
                 <Button size="sm" variant="default" className="gap-1.5"
                   onClick={() => setShowSendDialog(true)}>
                   <Send className="w-3.5 h-3.5" /> Send…
-                </Button>
-                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setPreviewOpen(true)} data-testid="button-preview-invoice">
-                  <Eye className="w-3.5 h-3.5" /> Preview
                 </Button>
                 <Button size="sm" variant="outline" className="gap-1.5" onClick={() => printInvoice((invoice ?? {}) as unknown as Record<string, unknown>, (tenantSettings ?? {}) as unknown as Record<string, unknown>)}>
                   <Printer className="w-3.5 h-3.5" /> Print
@@ -1028,6 +963,36 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
               )}
             </div>
 
+            {/* Per-invoice terms & layout (draft only) */}
+            <div className="space-y-2 rounded-lg border p-3">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium">Terms &amp; layout for this invoice</label>
+                {(invoice as any).status !== 'draft' && <Badge variant="outline" className="text-[10px]">Locked after sending</Badge>}
+              </div>
+              {(invoice as any).status === 'draft' && canSend ? (
+                <>
+                  <Select value={layoutDraft} onValueChange={setLayoutDraft}>
+                    <SelectTrigger className="h-8 w-48 text-xs" aria-label="Invoice layout"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="clean">Clean layout</SelectItem>
+                      <SelectItem value="detailed">Detailed layout</SelectItem>
+                      <SelectItem value="compact">Compact layout</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Textarea rows={3} value={termsDraft} onChange={e => setTermsDraft(e.target.value)} placeholder="Leave blank to print no terms on this invoice" aria-label="Invoice terms" />
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" onClick={handleSaveWording} disabled={updateInvoice.isPending || (termsDraft === ((invoice as any).termsText ?? '') && layoutDraft === ((invoice as any).layout ?? 'clean'))}>Save terms &amp; layout</Button>
+                    <span className="text-xs text-muted-foreground">Copied from the template when created. Editing here changes only this invoice.</span>
+                  </div>
+                </>
+              ) : (
+                <div className="text-sm text-muted-foreground space-y-1">
+                  <p className="capitalize">Layout: {(invoice as any).layout ?? 'clean'}</p>
+                  <p className="whitespace-pre-wrap">{(invoice as any).termsText || 'No terms.'}</p>
+                </div>
+              )}
+            </div>
+
             {/* Linked Job */}
             {job && (
               <>
@@ -1101,16 +1066,6 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      {invoice && (
-        <DocumentPreviewDialog
-          open={previewOpen}
-          onClose={() => setPreviewOpen(false)}
-          title={`Preview ${(invoice as any).invoiceNumber ?? ''}`}
-          description={(invoice as any).status === 'draft' ? 'Draft preview with current line items, tax and terms. Nothing is sent from here.' : 'Shows this invoice as issued. Template changes do not alter it.'}
-          customerView={<InvoiceDocument invoice={invoice} businessProfile={businessProfileFromSettings(tenantSettings)} preview />}
-          printDocument={buildInvoicePrintDocument(invoice as unknown as Record<string, unknown>, (tenantSettings ?? {}) as unknown as Record<string, unknown>)}
-        />
-      )}
     </Sheet>
   );
 }
@@ -1210,7 +1165,7 @@ export default function FinancialsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Financials</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Invoices</h1>
           <p className="text-muted-foreground mt-1">Invoicing, payments, and revenue tracking.</p>
         </div>
         <div className="flex items-center gap-2">
@@ -1232,11 +1187,13 @@ export default function FinancialsPage() {
         {(() => {
           const draftInvoices = (invoices ?? []).filter(inv => inv.status === 'draft');
           const draftTotal = draftInvoices.reduce((s, inv) => s + inv.total, 0);
-          const activeStaticTemplates = (templates ?? []).filter((t: any) => t.status === 'active' && t.billingMode !== 'completed_work');
+          const activeStaticTemplates = (templates ?? []).filter((t: any) => t.isActive && t.billingMode !== 'completed_work');
           const mrrValue = activeStaticTemplates.reduce((sum: number, t: any) => {
             const li: { quantity: number; unitPrice: number }[] = Array.isArray(t.lineItems) ? t.lineItems : [];
             const subtotal = li.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
-            if (t.cycle === 'weekly') return sum + subtotal * 4;
+            if (t.billingCycleType === 'daily') return sum + subtotal * 30;
+            if (t.billingCycleType === 'weekly' || t.cycle === 'weekly') return sum + subtotal * 4;
+            if (t.billingCycleType === 'bi_monthly') return sum + subtotal * 2;
             if (t.cycle === 'biweekly') return sum + subtotal * 2;
             if (t.cycle === 'monthly') return sum + subtotal;
             if (t.cycle === 'quarterly') return sum + subtotal / 3;
@@ -1400,7 +1357,7 @@ export default function FinancialsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Customer</TableHead>
+                    <TableHead>Template / Scope</TableHead>
                     <TableHead>Cycle</TableHead>
                     <TableHead>Mode</TableHead>
                     <TableHead>Status</TableHead>
@@ -1416,8 +1373,11 @@ export default function FinancialsPage() {
                     const subtotal = li.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
                     return (
                       <TableRow key={t.id} className="cursor-pointer hover:bg-muted/50">
-                        <TableCell className="font-medium">{customerOptions.find(c => c.id === t.customerId)?.name ?? `Customer #${t.customerId}`}</TableCell>
-                        <TableCell className="capitalize text-sm">{t.cycle}</TableCell>
+                        <TableCell>
+                          <div className="font-medium">{t.name}</div>
+                          <div className="text-xs text-muted-foreground">{t.customerId ? (t.customerName ?? customerOptions.find(c => c.id === t.customerId)?.name ?? `Customer #${t.customerId}`) : 'All customers'} · {t.serviceId ? (t.serviceName ?? 'Service') : 'All services'}</div>
+                        </TableCell>
+                        <TableCell className="text-sm">{({ daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', bi_monthly: 'Twice a month' } as Record<string, string>)[t.billingCycleType] ?? t.billingCycleType ?? t.cycle}</TableCell>
                         <TableCell className="capitalize text-sm">{t.billingMode === 'completed_work' ? 'Completed Work' : 'Fixed'}</TableCell>
                         <TableCell>
                           <Badge variant={t.isActive ? 'default' : 'secondary'} className="capitalize text-xs">{t.isActive ? 'Active' : 'Paused'}</Badge>
@@ -1545,7 +1505,7 @@ export default function FinancialsPage() {
         autoOpenSend={autoOpenSendForId != null && editInvoiceId == null}
       />
 
-      <TemplateSheet
+      <RecurringTemplateSheet
         open={templateSheetOpen}
         onClose={() => { setTemplateSheetOpen(false); setEditingTemplate(null); }}
         editing={editingTemplate}

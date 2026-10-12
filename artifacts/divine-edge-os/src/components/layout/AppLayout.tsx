@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { LogOut, Menu, X, LayoutDashboard, Settings, Bookmark, BookmarkCheck, Star } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { adminNavSections, techNavItems, type NavItem } from './navConfig';
+import { adminNavSections, pinnedNavItems, techNavItems, type NavItem } from './navConfig';
 import { SidebarSection } from './SidebarSection';
 import { usePermissions } from '@/hooks/usePermissions';
 import { Breadcrumb } from './Breadcrumb';
@@ -39,7 +39,7 @@ function StandaloneLink({
   item: NavItem; location: string; badgeCount?: number;
   bookmarked: boolean; onToggleBookmark: (href: string) => void; onNavClick?: () => void;
 }) {
-  const isActive = location === item.href || location.startsWith(item.href + '/');
+  const isActive = [item.href, ...(item.aliases ?? [])].some(h => location === h || location.startsWith(h + '/'));
   return (
     <div className="group relative flex items-center">
       <Link
@@ -125,6 +125,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     '/tasks': myOpenTaskCount,
     '/followup-queue': openFollowups.length,
     '/financials': pendingStopFlags.length,
+    '/invoices': pendingStopFlags.length,
     ...(sentEstimates.length > 0 ? { '/estimates': sentEstimates.length } : {}),
     ...(openCallbackCount > 0 ? { '/callbacks': openCallbackCount } : {}),
     ...((inventorySummary?.lowStockCount ?? 0) > 0 ? { '/inventory': inventorySummary!.lowStockCount } : {}),
@@ -161,10 +162,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     }))
     .filter(section => section.items.length > 0);
 
+  const visiblePinned = pinnedNavItems.filter(item =>
+    item.roles.some(r => roleMap[r]) && (!item.permissionKey || can(item.permissionKey as any)),
+  );
+
   // All nav items flat (for bookmark lookup)
   const allNavItems: NavItem[] = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Settings',  href: '/settings',  icon: Settings },
+    ...visiblePinned,
     ...visibleSections.flatMap(s => s.items),
     ...techNavItems,
   ];
@@ -172,7 +178,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   // Build bookmarked item objects from hrefs
   const bookmarkedItems = bookmarks
     .map(href => allNavItems.find(i => i.href === href))
-    .filter((i): i is NavItem => !!i);
+    .filter((i): i is NavItem => !!i)
+    .filter(i => !visiblePinned.some(p => p.href === i.href));
 
   const userInitials = user?.name.slice(0, 2).toUpperCase() ?? '??';
 
@@ -238,6 +245,23 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 onToggleBookmark={toggleBookmark}
                 onNavClick={onNavClick}
               />
+
+              {/* ── Pinned one-click links ── */}
+              {visiblePinned.length > 0 && (
+                <div className="space-y-0.5" data-testid="nav-pinned">
+                  {visiblePinned.map(item => (
+                    <StandaloneLink
+                      key={item.href}
+                      item={item}
+                      location={location}
+                      badgeCount={badgeCounts[item.href]}
+                      bookmarked={bookmarks.includes(item.href)}
+                      onToggleBookmark={toggleBookmark}
+                      onNavClick={onNavClick}
+                    />
+                  ))}
+                </div>
+              )}
 
               {/* ── Bookmarks (below Dashboard, no label) ── */}
               {bookmarkedItems.length > 0 && (

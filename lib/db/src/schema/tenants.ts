@@ -4,6 +4,10 @@ import { z } from "zod/v4";
 
 export const tenantsTable = pgTable("tenants", {
   invoiceDeliveryMode: text("invoice_delivery_mode").notNull().default("review"),
+  defaultInvoiceTerms: text("default_invoice_terms"),
+  defaultInvoiceNotes: text("default_invoice_notes"),
+  defaultEstimateTerms: text("default_estimate_terms"),
+  defaultEstimateNotes: text("default_estimate_notes"),
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   /** URL-safe slug used in the customer portal link, e.g. "divine-edge" → /portal/?tenant=divine-edge */

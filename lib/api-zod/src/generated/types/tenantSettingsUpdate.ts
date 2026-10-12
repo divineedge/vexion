@@ -20,6 +20,14 @@ import type { TenantSettingsUpdatePreferredAreaUnit } from './tenantSettingsUpda
 import type { TenantSettingsUpdateRolePermissions } from './tenantSettingsUpdateRolePermissions';
 
 export interface TenantSettingsUpdate {
+  /** @nullable */
+  defaultInvoiceTerms?: string | null;
+  /** @nullable */
+  defaultInvoiceNotes?: string | null;
+  /** @nullable */
+  defaultEstimateTerms?: string | null;
+  /** @nullable */
+  defaultEstimateNotes?: string | null;
   companyName?: string;
   timezone?: string;
   workdayCutoffTime?: string;

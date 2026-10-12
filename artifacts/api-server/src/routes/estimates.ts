@@ -424,6 +424,9 @@ router.post("/estimates", async (req, res): Promise<void> => {
 
   let items: EstimateLineItem[] = lineItems ?? [];
   let resolvedTemplateId: number | null = null;
+  const [wordingDefaults] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  let resolvedNotes = wordingDefaults?.defaultEstimateNotes ?? null;
+  let resolvedTerms = wordingDefaults?.defaultEstimateTerms ?? null;
 
   // If a templateId was provided, load template line items and record the reference
   if (templateId) {
@@ -432,6 +435,8 @@ router.post("/estimates", async (req, res): Promise<void> => {
     if (tmpl) {
       items = (tmpl.lineItems as EstimateLineItem[]) ?? [];
       resolvedTemplateId = tmpl.id;
+      resolvedNotes = tmpl.notes ?? resolvedNotes;
+      resolvedTerms = tmpl.termsText ?? resolvedTerms;
     }
   }
 
@@ -454,7 +459,8 @@ router.post("/estimates", async (req, res): Promise<void> => {
     visitMode: visitMode ?? "scheduled",
     scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
     expiresAt: expiresAt ? new Date(expiresAt) : defaultExpiry,
-    notes: notes ?? null,
+    notes: notes ?? resolvedNotes,
+    termsText: req.body.termsText ?? resolvedTerms,
     lineItems: items,
     subtotal,
     tax,
@@ -535,6 +541,7 @@ router.patch("/estimates/:id", async (req, res): Promise<void> => {
   if (scheduledAt !== undefined) updateData.scheduledAt = scheduledAt ? new Date(scheduledAt) : null;
   if (expiresAt !== undefined) updateData.expiresAt = expiresAt ? new Date(expiresAt) : null;
   if (notes !== undefined) updateData.notes = notes;
+  if (req.body.termsText !== undefined) updateData.termsText = req.body.termsText;
   if (status) {
     const allowed = ALLOWED_TRANSITIONS[current.status] ?? [];
     if (!allowed.includes(status)) {

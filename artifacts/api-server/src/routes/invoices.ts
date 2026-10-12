@@ -4,6 +4,7 @@ import { invoiceServiceDate } from "../lib/invoiceServiceDate";
 import { eq, and, sql, inArray, ne, isNull } from "drizzle-orm";
 import crypto from "crypto";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
+import { invoiceDocumentDefaults } from "../lib/invoiceDocumentDefaults";
 import { isAdminRole, isOwnerRole } from "../lib/roles";
 import { decryptSecretConfig } from "../lib/secretsCrypto";
 import { sendLobLetter, type LobConfig } from "../lib/lobProvider";
@@ -321,7 +322,8 @@ router.post("/invoices/from-job/:jobId", async (req, res): Promise<void> => {
     lineItems,
     invoiceTemplateId: resolvedTemplateId,
     layout: templateFields.layout,
-    termsText: templateFields.termsText,
+    notes: (await invoiceDocumentDefaults(tenantId, resolvedTemplateId)).notes,
+    termsText: templateFields.termsText ?? (await invoiceDocumentDefaults(tenantId, resolvedTemplateId)).termsText,
     lateFeeEnabled: templateFields.lateFeeEnabled,
     lateFeeType: templateFields.lateFeeType,
     lateFeeAmount: templateFields.lateFeeAmount,
@@ -413,13 +415,13 @@ router.post("/invoices", async (req, res): Promise<void> => {
     subtotal,
     tax,
     total,
-    notes: notes ?? null,
+    notes: notes ?? (await invoiceDocumentDefaults(tenantId, resolvedTemplateId)).notes,
     invoiceDate: invoiceDate ? invoiceDate : null,
     dueDate: dueDate ? new Date(dueDate) : null,
     lineItems,
     invoiceTemplateId: resolvedTemplateId,
     layout: templateFields.layout,
-    termsText: templateFields.termsText,
+    termsText: req.body.termsText ?? templateFields.termsText ?? (await invoiceDocumentDefaults(tenantId, resolvedTemplateId)).termsText,
     lateFeeEnabled: templateFields.lateFeeEnabled,
     lateFeeType: templateFields.lateFeeType,
     lateFeeAmount: templateFields.lateFeeAmount,
@@ -466,6 +468,17 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
     return;
   }
   const updates: Partial<typeof invoicesTable.$inferInsert> = {};
+  if (req.body.termsText !== undefined || req.body.layout !== undefined) {
+    if (!(await isAdminRole(tenantId, userId))) { res.status(403).json({ error: "Restricted to owner/admin/office roles" }); return; }
+    const [existing] = await db.select().from(invoicesTable).where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId)));
+    if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+    if (existing.status !== "draft") { res.status(409).json({ error: "Only draft invoice wording can be edited" }); return; }
+    if (req.body.termsText !== undefined) updates.termsText = req.body.termsText;
+    if (req.body.layout !== undefined) {
+      if (!["clean", "detailed", "compact"].includes(req.body.layout)) { res.status(400).json({ error: "Invalid invoice layout" }); return; }
+      updates.layout = req.body.layout;
+    }
+  }
   if (status) updates.status = status;
   if (notes !== undefined) updates.notes = notes;
   if (dueDate !== undefined) updates.dueDate = dueDate ? new Date(dueDate) : null;

@@ -1948,11 +1948,15 @@ export const UpdateJobParams = zod.object({
   "id": zod.coerce.number()
 })
 
+export const updateJobBodyRescheduleFeeAmountMin = 0;
+
 export const updateJobBodyOffSeasonStartRegExp = new RegExp('^\\d{2}-\\d{2}$');
 export const updateJobBodyOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
 
 
 export const UpdateJobBody = zod.object({
+  "chargeRescheduleFee": zod.boolean().optional(),
+  "rescheduleFeeAmount": zod.number().min(updateJobBodyRescheduleFeeAmountMin).optional(),
   "title": zod.string().optional(),
   "description": zod.string().optional(),
   "status": zod.enum(['scheduled', 'in_progress', 'completed', 'cancelled', 'on_hold']).optional(),
@@ -2548,6 +2552,14 @@ export const CompleteAndInvoiceJobParams = zod.object({
 })
 
 export const CompleteAndInvoiceJobResponse = zod.object({
+  "termsText": zod.string().nullish(),
+  "layout": zod.string().optional(),
+  "lateFeeEnabled": zod.boolean().optional(),
+  "lateFeeType": zod.string().nullish(),
+  "lateFeeAmount": zod.number().nullish(),
+  "lateFeeDaysGrace": zod.number().optional(),
+  "showJobCompletionDate": zod.boolean().optional(),
+  "jobCompletedAt": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "invoiceNumber": zod.string(),
@@ -3841,6 +3853,14 @@ export const ListInvoicesQueryParams = zod.object({
 })
 
 export const ListInvoicesResponseItem = zod.object({
+  "termsText": zod.string().nullish(),
+  "layout": zod.string().optional(),
+  "lateFeeEnabled": zod.boolean().optional(),
+  "lateFeeType": zod.string().nullish(),
+  "lateFeeAmount": zod.number().nullish(),
+  "lateFeeDaysGrace": zod.number().optional(),
+  "showJobCompletionDate": zod.boolean().optional(),
+  "jobCompletedAt": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "invoiceNumber": zod.string(),
@@ -3880,6 +3900,7 @@ export const ListInvoicesResponse = zod.array(ListInvoicesResponseItem)
  * @summary Create a new invoice
  */
 export const CreateInvoiceBody = zod.object({
+  "termsText": zod.string().nullish(),
   "customerId": zod.number(),
   "jobId": zod.number().optional(),
   "notes": zod.string().optional(),
@@ -3892,6 +3913,14 @@ export const CreateInvoiceBody = zod.object({
 })
 
 export const CreateInvoiceResponse = zod.object({
+  "termsText": zod.string().nullish(),
+  "layout": zod.string().optional(),
+  "lateFeeEnabled": zod.boolean().optional(),
+  "lateFeeType": zod.string().nullish(),
+  "lateFeeAmount": zod.number().nullish(),
+  "lateFeeDaysGrace": zod.number().optional(),
+  "showJobCompletionDate": zod.boolean().optional(),
+  "jobCompletedAt": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "invoiceNumber": zod.string(),
@@ -3934,6 +3963,14 @@ export const GetInvoiceParams = zod.object({
 })
 
 export const GetInvoiceResponse = zod.object({
+  "termsText": zod.string().nullish(),
+  "layout": zod.string().optional(),
+  "lateFeeEnabled": zod.boolean().optional(),
+  "lateFeeType": zod.string().nullish(),
+  "lateFeeAmount": zod.number().nullish(),
+  "lateFeeDaysGrace": zod.number().optional(),
+  "showJobCompletionDate": zod.boolean().optional(),
+  "jobCompletedAt": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "invoiceNumber": zod.string(),
@@ -3976,12 +4013,22 @@ export const UpdateInvoiceParams = zod.object({
 })
 
 export const UpdateInvoiceBody = zod.object({
+  "termsText": zod.string().nullish(),
+  "layout": zod.enum(['clean', 'detailed', 'compact']).optional(),
   "status": zod.enum(['draft', 'sent', 'paid', 'overdue', 'cancelled']).optional(),
   "notes": zod.string().optional(),
   "dueDate": zod.string().optional()
 })
 
 export const UpdateInvoiceResponse = zod.object({
+  "termsText": zod.string().nullish(),
+  "layout": zod.string().optional(),
+  "lateFeeEnabled": zod.boolean().optional(),
+  "lateFeeType": zod.string().nullish(),
+  "lateFeeAmount": zod.number().nullish(),
+  "lateFeeDaysGrace": zod.number().optional(),
+  "showJobCompletionDate": zod.boolean().optional(),
+  "jobCompletedAt": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "invoiceNumber": zod.string(),
@@ -4052,6 +4099,14 @@ export const MarkInvoicePaidBody = zod.object({
 })
 
 export const MarkInvoicePaidResponse = zod.object({
+  "termsText": zod.string().nullish(),
+  "layout": zod.string().optional(),
+  "lateFeeEnabled": zod.boolean().optional(),
+  "lateFeeType": zod.string().nullish(),
+  "lateFeeAmount": zod.number().nullish(),
+  "lateFeeDaysGrace": zod.number().optional(),
+  "showJobCompletionDate": zod.boolean().optional(),
+  "jobCompletedAt": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "invoiceNumber": zod.string(),
@@ -4094,6 +4149,14 @@ export const ArchiveInvoiceParams = zod.object({
 })
 
 export const ArchiveInvoiceResponse = zod.object({
+  "termsText": zod.string().nullish(),
+  "layout": zod.string().optional(),
+  "lateFeeEnabled": zod.boolean().optional(),
+  "lateFeeType": zod.string().nullish(),
+  "lateFeeAmount": zod.number().nullish(),
+  "lateFeeDaysGrace": zod.number().optional(),
+  "showJobCompletionDate": zod.boolean().optional(),
+  "jobCompletedAt": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "invoiceNumber": zod.string(),
@@ -4136,6 +4199,14 @@ export const RestoreInvoiceParams = zod.object({
 })
 
 export const RestoreInvoiceResponse = zod.object({
+  "termsText": zod.string().nullish(),
+  "layout": zod.string().optional(),
+  "lateFeeEnabled": zod.boolean().optional(),
+  "lateFeeType": zod.string().nullish(),
+  "lateFeeAmount": zod.number().nullish(),
+  "lateFeeDaysGrace": zod.number().optional(),
+  "showJobCompletionDate": zod.boolean().optional(),
+  "jobCompletedAt": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "invoiceNumber": zod.string(),
@@ -4178,6 +4249,14 @@ export const CreateInvoiceFromJobParams = zod.object({
 })
 
 export const CreateInvoiceFromJobResponse = zod.object({
+  "termsText": zod.string().nullish(),
+  "layout": zod.string().optional(),
+  "lateFeeEnabled": zod.boolean().optional(),
+  "lateFeeType": zod.string().nullish(),
+  "lateFeeAmount": zod.number().nullish(),
+  "lateFeeDaysGrace": zod.number().optional(),
+  "showJobCompletionDate": zod.boolean().optional(),
+  "jobCompletedAt": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "invoiceNumber": zod.string(),
@@ -5556,6 +5635,10 @@ export const getTenantSettingsResponsePreTripChecklistNameMax = 80;
 
 
 export const GetTenantSettingsResponse = zod.object({
+  "defaultInvoiceTerms": zod.string().nullish(),
+  "defaultInvoiceNotes": zod.string().nullish(),
+  "defaultEstimateTerms": zod.string().nullish(),
+  "defaultEstimateNotes": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "companyName": zod.string().optional(),
@@ -5698,6 +5781,10 @@ export const updateTenantSettingsBodyPreTripChecklistNameMax = 80;
 
 
 export const UpdateTenantSettingsBody = zod.object({
+  "defaultInvoiceTerms": zod.string().nullish(),
+  "defaultInvoiceNotes": zod.string().nullish(),
+  "defaultEstimateTerms": zod.string().nullish(),
+  "defaultEstimateNotes": zod.string().nullish(),
   "companyName": zod.string().optional(),
   "timezone": zod.string().optional(),
   "workdayCutoffTime": zod.string().optional(),
@@ -5812,6 +5899,10 @@ export const updateTenantSettingsResponsePreTripChecklistNameMax = 80;
 
 
 export const UpdateTenantSettingsResponse = zod.object({
+  "defaultInvoiceTerms": zod.string().nullish(),
+  "defaultInvoiceNotes": zod.string().nullish(),
+  "defaultEstimateTerms": zod.string().nullish(),
+  "defaultEstimateNotes": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "companyName": zod.string().optional(),
@@ -9665,6 +9756,7 @@ export const ListEstimatesQueryParams = zod.object({
 })
 
 export const ListEstimatesResponseItem = zod.object({
+  "termsText": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "customerId": zod.number().nullish(),
@@ -9727,6 +9819,7 @@ export const ListEstimatesResponse = zod.array(ListEstimatesResponseItem)
  * @summary Create a new estimate
  */
 export const CreateEstimateBody = zod.object({
+  "termsText": zod.string().nullish(),
   "customerId": zod.number().optional(),
   "propertyId": zod.number().optional(),
   "blueprintId": zod.number().optional(),
@@ -9760,6 +9853,7 @@ export const CreateEstimateBody = zod.object({
 })
 
 export const CreateEstimateResponse = zod.object({
+  "termsText": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "customerId": zod.number().nullish(),
@@ -9834,6 +9928,7 @@ export const GetEstimateParams = zod.object({
 })
 
 export const GetEstimateResponse = zod.object({
+  "termsText": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "customerId": zod.number().nullish(),
@@ -9899,6 +9994,7 @@ export const UpdateEstimateParams = zod.object({
 })
 
 export const UpdateEstimateBody = zod.object({
+  "termsText": zod.string().nullish(),
   "customerId": zod.number().optional(),
   "propertyId": zod.number().optional(),
   "assigneeId": zod.number().optional(),
@@ -9931,6 +10027,7 @@ export const UpdateEstimateBody = zod.object({
 })
 
 export const UpdateEstimateResponse = zod.object({
+  "termsText": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "customerId": zod.number().nullish(),
@@ -10010,6 +10107,7 @@ export const ArchiveEstimateParams = zod.object({
 })
 
 export const ArchiveEstimateResponse = zod.object({
+  "termsText": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "customerId": zod.number().nullish(),
@@ -10075,6 +10173,7 @@ export const RestoreEstimateParams = zod.object({
 })
 
 export const RestoreEstimateResponse = zod.object({
+  "termsText": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "customerId": zod.number().nullish(),
@@ -10140,6 +10239,7 @@ export const SendEstimateParams = zod.object({
 })
 
 export const SendEstimateResponse = zod.object({
+  "termsText": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "customerId": zod.number().nullish(),
@@ -10231,6 +10331,14 @@ export const GetPublicInvoiceParams = zod.object({
 })
 
 export const GetPublicInvoiceResponse = zod.object({
+  "termsText": zod.string().nullish(),
+  "layout": zod.string().optional(),
+  "lateFeeEnabled": zod.boolean().optional(),
+  "lateFeeType": zod.string().nullish(),
+  "lateFeeAmount": zod.number().nullish(),
+  "lateFeeDaysGrace": zod.number().optional(),
+  "showJobCompletionDate": zod.boolean().optional(),
+  "jobCompletedAt": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "invoiceNumber": zod.string(),
@@ -10284,6 +10392,7 @@ export const GetPublicEstimateParams = zod.object({
 })
 
 export const GetPublicEstimateResponse = zod.object({
+  "termsText": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "customerId": zod.number().nullish(),
@@ -10395,6 +10504,7 @@ export const RespondToEstimateBody = zod.object({
 })
 
 export const RespondToEstimateResponse = zod.object({
+  "termsText": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "customerId": zod.number().nullish(),
@@ -10676,6 +10786,8 @@ export const ConvertVisitToJobResponse = zod.object({
  * @summary List estimate templates
  */
 export const ListEstimateTemplatesResponseItem = zod.object({
+  "notes": zod.string().nullish(),
+  "termsText": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
@@ -10702,6 +10814,8 @@ export const ListEstimateTemplatesResponse = zod.array(ListEstimateTemplatesResp
  * @summary Create an estimate template
  */
 export const CreateEstimateTemplateBody = zod.object({
+  "notes": zod.string().nullish(),
+  "termsText": zod.string().nullish(),
   "name": zod.string(),
   "description": zod.string().optional(),
   "lineItems": zod.array(zod.object({
@@ -10719,6 +10833,8 @@ export const CreateEstimateTemplateBody = zod.object({
 })
 
 export const CreateEstimateTemplateResponse = zod.object({
+  "notes": zod.string().nullish(),
+  "termsText": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
@@ -10748,6 +10864,8 @@ export const GetEstimateTemplateParams = zod.object({
 })
 
 export const GetEstimateTemplateResponse = zod.object({
+  "notes": zod.string().nullish(),
+  "termsText": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
@@ -10777,6 +10895,8 @@ export const UpdateEstimateTemplateParams = zod.object({
 })
 
 export const UpdateEstimateTemplateBody = zod.object({
+  "notes": zod.string().nullish(),
+  "termsText": zod.string().nullish(),
   "name": zod.string(),
   "description": zod.string().optional(),
   "lineItems": zod.array(zod.object({
@@ -10794,6 +10914,8 @@ export const UpdateEstimateTemplateBody = zod.object({
 })
 
 export const UpdateEstimateTemplateResponse = zod.object({
+  "notes": zod.string().nullish(),
+  "termsText": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
@@ -10833,6 +10955,8 @@ export const DuplicateEstimateTemplateParams = zod.object({
 })
 
 export const DuplicateEstimateTemplateResponse = zod.object({
+  "notes": zod.string().nullish(),
+  "termsText": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
@@ -10858,6 +10982,7 @@ export const DuplicateEstimateTemplateResponse = zod.object({
  * @summary List invoice templates
  */
 export const ListInvoiceTemplatesResponseItem = zod.object({
+  "notes": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
@@ -10882,6 +11007,7 @@ export const ListInvoiceTemplatesResponse = zod.array(ListInvoiceTemplatesRespon
  * @summary Create an invoice template
  */
 export const CreateInvoiceTemplateBody = zod.object({
+  "notes": zod.string().nullish(),
   "name": zod.string(),
   "layout": zod.enum(['clean', 'detailed', 'compact']).optional(),
   "lineItems": zod.array(zod.object({
@@ -10897,6 +11023,7 @@ export const CreateInvoiceTemplateBody = zod.object({
 })
 
 export const CreateInvoiceTemplateResponse = zod.object({
+  "notes": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
@@ -10924,6 +11051,7 @@ export const GetInvoiceTemplateParams = zod.object({
 })
 
 export const GetInvoiceTemplateResponse = zod.object({
+  "notes": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
@@ -10951,6 +11079,7 @@ export const UpdateInvoiceTemplateParams = zod.object({
 })
 
 export const UpdateInvoiceTemplateBody = zod.object({
+  "notes": zod.string().nullish(),
   "name": zod.string(),
   "layout": zod.enum(['clean', 'detailed', 'compact']).optional(),
   "lineItems": zod.array(zod.object({
@@ -10966,6 +11095,7 @@ export const UpdateInvoiceTemplateBody = zod.object({
 })
 
 export const UpdateInvoiceTemplateResponse = zod.object({
+  "notes": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
@@ -11003,6 +11133,7 @@ export const DuplicateInvoiceTemplateParams = zod.object({
 })
 
 export const DuplicateInvoiceTemplateResponse = zod.object({
+  "notes": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "name": zod.string(),
@@ -11502,7 +11633,13 @@ export const ReschedulePlanVisitParams = zod.object({
   "jobId": zod.coerce.number()
 })
 
+export const reschedulePlanVisitBodyRescheduleFeeAmountMin = 0;
+
+
+
 export const ReschedulePlanVisitBody = zod.object({
+  "chargeRescheduleFee": zod.boolean().optional(),
+  "rescheduleFeeAmount": zod.number().min(reschedulePlanVisitBodyRescheduleFeeAmountMin).optional(),
   "newScheduledAt": zod.string(),
   "assigneeId": zod.number().nullish()
 })
@@ -11603,6 +11740,8 @@ export const GetPlansDashboardResponse = zod.object({
  * @summary List all recurring invoice templates
  */
 export const ListRecurringTemplatesResponseItem = zod.object({
+  "termsText": zod.string().nullish(),
+  "invoiceTemplateId": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "customerId": zod.number().nullish(),
@@ -11633,6 +11772,8 @@ export const ListRecurringTemplatesResponse = zod.array(ListRecurringTemplatesRe
  * @summary Create a recurring invoice template
  */
 export const CreateRecurringTemplateBody = zod.object({
+  "termsText": zod.string().nullish(),
+  "invoiceTemplateId": zod.number().nullish(),
   "customerId": zod.number().optional(),
   "serviceId": zod.number().optional(),
   "name": zod.string(),
@@ -11651,6 +11792,8 @@ export const CreateRecurringTemplateBody = zod.object({
 })
 
 export const CreateRecurringTemplateResponse = zod.object({
+  "termsText": zod.string().nullish(),
+  "invoiceTemplateId": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "customerId": zod.number().nullish(),
@@ -11684,6 +11827,8 @@ export const GetRecurringTemplateParams = zod.object({
 })
 
 export const GetRecurringTemplateResponse = zod.object({
+  "termsText": zod.string().nullish(),
+  "invoiceTemplateId": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "customerId": zod.number().nullish(),
@@ -11717,6 +11862,8 @@ export const UpdateRecurringTemplateParams = zod.object({
 })
 
 export const UpdateRecurringTemplateBody = zod.object({
+  "termsText": zod.string().nullish(),
+  "invoiceTemplateId": zod.number().nullish(),
   "customerId": zod.number().nullish(),
   "serviceId": zod.number().nullish(),
   "name": zod.string().optional(),
@@ -11735,6 +11882,8 @@ export const UpdateRecurringTemplateBody = zod.object({
 })
 
 export const UpdateRecurringTemplateResponse = zod.object({
+  "termsText": zod.string().nullish(),
+  "invoiceTemplateId": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "customerId": zod.number().nullish(),
@@ -11846,6 +11995,8 @@ export const GetBillingAutomationStatusResponse = zod.object({
   "createdAt": zod.string()
 })),
   "templates": zod.array(zod.object({
+  "termsText": zod.string().nullish(),
+  "invoiceTemplateId": zod.number().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "customerId": zod.number().nullish(),
@@ -12354,6 +12505,14 @@ export const PrintMailInvoiceParams = zod.object({
 })
 
 export const PrintMailInvoiceResponse = zod.object({
+  "termsText": zod.string().nullish(),
+  "layout": zod.string().optional(),
+  "lateFeeEnabled": zod.boolean().optional(),
+  "lateFeeType": zod.string().nullish(),
+  "lateFeeAmount": zod.number().nullish(),
+  "lateFeeDaysGrace": zod.number().optional(),
+  "showJobCompletionDate": zod.boolean().optional(),
+  "jobCompletedAt": zod.string().nullish(),
   "id": zod.number(),
   "tenantId": zod.number(),
   "invoiceNumber": zod.string(),
@@ -13417,7 +13576,13 @@ export const RescheduleJobOnceParams = zod.object({
   "id": zod.coerce.number()
 })
 
+export const rescheduleJobOnceBodyRescheduleFeeAmountMin = 0;
+
+
+
 export const RescheduleJobOnceBody = zod.object({
+  "chargeRescheduleFee": zod.boolean().optional(),
+  "rescheduleFeeAmount": zod.number().min(rescheduleJobOnceBodyRescheduleFeeAmountMin).optional(),
   "newScheduledAt": zod.string()
 })
 

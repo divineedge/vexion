@@ -16,6 +16,12 @@ export interface NavItem {
   icon: LucideIcon;
   /** If set, this item is hidden when the current user's can(permissionKey) returns false */
   permissionKey?: string;
+  /** Other paths that should highlight this item (e.g. legacy routes) */
+  aliases?: string[];
+}
+
+export interface PinnedNavItem extends NavItem {
+  roles: NonNullable<NavSection['roles']>;
 }
 
 export interface NavSection {
@@ -47,6 +53,16 @@ export const standaloneNavItems: NavItem[] = [
   { name: 'Settings',  href: '/settings',  icon: Settings },
 ];
 
+/**
+ * One-click links rendered directly under Dashboard (not inside a collapsible
+ * section). Each carries the same role / permission gate it had in its section.
+ */
+export const pinnedNavItems: PinnedNavItem[] = [
+  { name: 'Schedule',  href: '/schedule',  icon: CalendarDays, roles: ['canManageOffice', 'isCrewManager'] },
+  { name: 'Invoices',  href: '/invoices',  icon: DollarSign,   roles: ['canManageOffice'], permissionKey: 'pages.billing', aliases: ['/financials'] },
+  { name: 'Estimates', href: '/estimates', icon: FileText,     roles: ['canManageOffice', 'isCrewManager'] },
+];
+
 /** Sectioned nav for admin / office / crew-manager roles */
 export const adminNavSections: NavSection[] = [
   {
@@ -56,10 +72,6 @@ export const adminNavSections: NavSection[] = [
     items: [
       { name: 'Customers',       href: '/customers',     icon: Users },
       { name: 'Properties',      href: '/properties',    icon: Building },
-      { name: 'Schedule',        href: '/schedule',      icon: CalendarDays },
-      { name: 'Estimates',       href: '/estimates',     icon: FileText },
-      { name: 'Visits',          href: '/visits',        icon: Footprints },
-      { name: 'Daily Tasks',     href: '/daily-tasks',   icon: ClipboardList },
     ],
   },
   {
@@ -67,6 +79,9 @@ export const adminNavSections: NavSection[] = [
     label: 'Field Ops',
     roles: ['canManageOffice', 'isCrewManager'],
     items: [
+      { name: 'Schedule',      href: '/schedule',      icon: CalendarDays },
+      { name: 'Visits',        href: '/visits',        icon: Footprints },
+      { name: 'Daily Tasks',   href: '/daily-tasks',   icon: ClipboardList },
       { name: 'Crews',         href: '/crews',         icon: UserCheck },
       { name: 'Routes',        href: '/routes',        icon: Map },
       { name: 'Blueprints',    href: '/blueprints',    icon: DraftingCompass },
@@ -89,7 +104,6 @@ export const adminNavSections: NavSection[] = [
     label: 'Finance',
     roles: ['canManageOffice'],
     items: [
-      { name: 'Financials', href: '/financials', icon: DollarSign, permissionKey: 'pages.billing' },
       { name: 'Reports',    href: '/reports',    icon: BarChart3,  permissionKey: 'pages.reports' },
       { name: 'Budget',     href: '/budget',     icon: Calculator, permissionKey: 'pages.billing' },
     ],
@@ -135,6 +149,10 @@ export function buildNavIndex(sections: NavSection[]) {
     for (const item of section.items) {
       map[item.href] = { sectionLabel: section.label, itemName: item.name };
     }
+  }
+  for (const item of pinnedNavItems) {
+    map[item.href] = { sectionLabel: '', itemName: item.name };
+    for (const a of item.aliases ?? []) map[a] = { sectionLabel: '', itemName: item.name };
   }
   // Include standalone items so breadcrumbs resolve them
   map['/dashboard'] = { sectionLabel: '', itemName: 'Dashboard' };

@@ -7,5 +7,8 @@
  */
 
 export interface RescheduleOnceInput {
+  chargeRescheduleFee?: boolean;
+  /** @minimum 0 */
+  rescheduleFeeAmount?: number;
   newScheduledAt: string;
 }

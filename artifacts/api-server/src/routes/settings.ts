@@ -57,6 +57,10 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     ownersSchedulable: tenant.ownersSchedulable ?? false,
     durationUnit: (tenant.durationUnit ?? "minutes") as "minutes" | "hours",
     invoiceDeliveryMode: tenant.invoiceDeliveryMode,
+    defaultInvoiceTerms: tenant.defaultInvoiceTerms,
+    defaultInvoiceNotes: tenant.defaultInvoiceNotes,
+    defaultEstimateTerms: tenant.defaultEstimateTerms,
+    defaultEstimateNotes: tenant.defaultEstimateNotes,
     autoInvoiceFrequency: (tenant.autoInvoiceFrequency ?? "off") as "off" | "daily" | "weekly" | "bi_monthly" | "monthly",
     nonRecurringInvoiceCadence: (tenant.nonRecurringInvoiceCadence ?? "immediate") as "immediate" | "weekly",
     maxClockInHours: tenant.maxClockInHours ?? null,
@@ -258,6 +262,14 @@ router.patch("/settings", async (req, res): Promise<void> => {
     updates.invoiceDeliveryMode = req.body.invoiceDeliveryMode;
   }
   if (companyName) updates.name = companyName;
+  for (const field of ["defaultInvoiceTerms", "defaultInvoiceNotes", "defaultEstimateTerms", "defaultEstimateNotes"] as const) {
+    if (req.body[field] !== undefined) {
+      if (req.body[field] !== null && typeof req.body[field] !== "string") {
+        res.status(400).json({ error: `${field} must be text or null` }); return;
+      }
+      updates[field] = req.body[field];
+    }
+  }
   if (timezone) updates.timezone = timezone;
   if (workdayCutoffTime) updates.workdayCutoffTime = workdayCutoffTime;
   if (overageMaterialBuffer !== undefined) updates.overageMaterialBuffer = overageMaterialBuffer;

@@ -25,6 +25,8 @@ import crypto from "crypto";
 import { db, jobsTable, customersTable, usersTable, propertiesTable, activityLogTable, inventoryItemsTable, crewsTable, crewMembersTable, customerAlertsTable, invoicesTable, tenantsTable, blueprintsTable, chemicalApplicationsTable, chemicalProductsTable, chemicalMixtureItemsTable, customerPlansTable, equipmentFuelLogsTable, routeTemplatesTable, skipReasonsTable, taskNotificationsTable, internalTasksTable, portalMessagesTable, servicesTable } from "@workspace/db";
 import { eq, and, or, sql, desc, asc, isNotNull, isNull, ne, inArray, min, gt } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
+import { rescheduleFee } from "../lib/rescheduleFee";
+import { invoiceDocumentDefaults } from "../lib/invoiceDocumentDefaults";
 import { getCallerRole, isAdminRole } from "../lib/roles";
 import { requireVerifiedStaff } from "../lib/verifiedStaff";
 import { resendReminderForJob } from "../lib/reminderScheduler";
@@ -894,6 +896,21 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
   }
 
   // Auto-set clockInAt the first time a job is moved to in_progress
+  let feeUpdates: ReturnType<typeof rescheduleFee> = {};
+  if (scheduledAt !== undefined && new Date(scheduledAt).getTime() !== currentJob.scheduledAt.getTime()) {
+    const targetDate = new Date(scheduledAt);
+    if (Number.isNaN(targetDate.getTime())) { res.status(400).json({ error: "Invalid scheduled date" }); return; }
+    if (currentJob.planId) {
+      const [plan] = await db.select().from(customerPlansTable).where(and(eq(customerPlansTable.id, currentJob.planId), eq(customerPlansTable.tenantId, tenantId)));
+      if (!plan || (plan.startDate && targetDate < plan.startDate) || (plan.endDate && targetDate > plan.endDate)) {
+        res.status(400).json({ error: "The new date must fall within the plan's active period" }); return;
+      }
+    }
+    if (["completed", "cancelled"].includes(currentJob.status)) { res.status(409).json({ error: "Completed or cancelled jobs cannot be rescheduled" }); return; }
+    if (editScope === "all" || editScope === "forward") { res.status(400).json({ error: "Reschedule one occurrence at a time so each fee is confirmed separately" }); return; }
+    try { feeUpdates = rescheduleFee(currentJob, req.body); }
+    catch (error) { res.status(400).json({ error: (error as Error).message }); return; }
+  }
   const shouldSetClockIn =
     status === "in_progress" &&
     currentJob.status !== "in_progress" &&
@@ -994,13 +1011,14 @@ router.patch("/jobs/:id", async (req, res): Promise<void> => {
   }
 
   // Default: update only this occurrence
+  Object.assign(baseUpdate, feeUpdates);
   if (recurrenceRule !== undefined && !currentJob.recurrenceParentId) {
     baseUpdate.recurrenceRule = recurrenceRule;
   }
 
   const [updated] = await db.update(jobsTable)
     .set(baseUpdate)
-    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId)))
+    .where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId), eq(jobsTable.scheduledAt, currentJob.scheduledAt)))
     .returning();
 
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
@@ -1407,6 +1425,7 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
 
       await db.transaction(async tx => {
         const [invoice] = await tx.insert(invoicesTable).values({
+          ...await invoiceDocumentDefaults(tenantId),
           tenantId,
           invoiceNumber: invoiceNum,
           customerId: updated.customerId!,
@@ -1469,6 +1488,7 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
         let invoiceId!: number;
         await db.transaction(async tx => {
           const [invoice] = await tx.insert(invoicesTable).values({
+            ...await invoiceDocumentDefaults(tenantId),
             tenantId,
             invoiceNumber: invoiceNum,
             customerId: updated.customerId!,
@@ -1560,6 +1580,7 @@ router.post("/jobs/:id/complete-and-invoice", async (req, res): Promise<void> =>
 
       // Create the invoice
       const [created] = await tx.insert(invoicesTable).values({
+        ...await invoiceDocumentDefaults(tenantId),
         tenantId,
         invoiceNumber: invoiceNum,
         customerId: job.customerId!,
@@ -2355,9 +2376,13 @@ router.post("/jobs/:id/approve-reschedule", async (req, res): Promise<void> => {
   }
 
   // Atomic claim: only approves while still in the pending state.
+  let requestedFeeUpdates: ReturnType<typeof rescheduleFee>;
+  try { requestedFeeUpdates = rescheduleFee(job, req.body); }
+  catch (error) { res.status(400).json({ error: (error as Error).message }); return; }
   const [updated] = await db
     .update(jobsTable)
     .set({
+      ...requestedFeeUpdates,
       scheduledAt: newScheduled,
       rescheduleRequestStatus: "approved",
       rescheduleRequestReply: reply?.trim() || null,

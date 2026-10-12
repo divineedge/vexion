@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { EstimateNotesBlock, EstimateTermsBlock, estimateTerms } from '@/components/documents/EstimateDocument';
 import { useParams } from 'wouter';
 import { useGetPublicEstimate, useRespondToEstimate } from '@workspace/api-client-react';
 import DeclineReasonPicker, { validateDeclineChoice } from '@/components/estimates/DeclineReasonPicker';
@@ -508,32 +509,9 @@ export default function EstimatePublicPage() {
           </Card>
         )}
 
-        {estimate.notes && (
-          <Card>
-            <CardContent className="pt-5">
-              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-1">Notes from Us</p>
-              <p className="text-sm">{estimate.notes}</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Terms & Conditions — read from JSONB sentinel item */}
-        {(() => {
-          const termsItem = (estimate.lineItems as any[]).find(
-            (i: any) => i.type === 'text_block' && i.role === 'terms'
-          );
-          if (!termsItem?.content) return null;
-          return (
-            <Card>
-              <CardContent className="pt-5 pb-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Terms &amp; Conditions</p>
-                </div>
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{termsItem.content}</p>
-              </CardContent>
-            </Card>
-          );
-        })()}
+        {/* Shared with staff Customer Preview so both show identical notes/terms */}
+        <EstimateNotesBlock notes={estimate.notes} />
+        <EstimateTermsBlock terms={estimateTerms(estimate)} />
 
         {/* Actions */}
         {estimate.status === 'sent' && (

@@ -312,6 +312,7 @@ export * from './invoiceTemplateLateFeeType';
 export * from './invoiceTemplateLayout';
 export * from './invoiceTemplateLineItemsItem';
 export * from './invoiceUpdate';
+export * from './invoiceUpdateLayout';
 export * from './invoiceUpdateStatus';
 export * from './job';
 export * from './jobEquipmentUse';

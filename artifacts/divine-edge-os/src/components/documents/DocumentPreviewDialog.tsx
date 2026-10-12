@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -8,15 +8,21 @@ import { Monitor, Printer } from 'lucide-react';
  * Read-only preview of a document as the customer sees it online and as the
  * printed copy. Contains no send, approve or pay actions.
  */
-export function DocumentPreviewDialog({ open, onClose, title, description, customerView, printDocument }: {
+export type PreviewView = 'customer' | 'print';
+
+export function DocumentPreviewDialog({ open, onClose, title, description, customerView, printDocument, initialView = 'customer', sampleNotice }: {
   open: boolean;
+  initialView?: PreviewView;
+  /** When set, shows a prominent banner (e.g. "Sample customer. Not saved or sent."). */
+  sampleNotice?: string;
   onClose: () => void;
   title: string;
   description?: string;
   customerView: React.ReactNode;
   printDocument: string;
 }) {
-  const [view, setView] = useState<'customer' | 'print'>('customer');
+  const [view, setView] = useState<PreviewView>(initialView);
+  useEffect(() => { if (open) setView(initialView); }, [open, initialView]);
 
   const openPrint = () => {
     const win = window.open('', '_blank', 'width=860,height=750');
@@ -33,6 +39,11 @@ export function DocumentPreviewDialog({ open, onClose, title, description, custo
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description ?? 'Read-only preview. Nothing is sent from here.'}</DialogDescription>
         </DialogHeader>
+        {sampleNotice && (
+          <div className="mx-5 mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900" role="note" data-testid="preview-sample-notice">
+            {sampleNotice}
+          </div>
+        )}
         <Tabs value={view} onValueChange={v => setView(v as 'customer' | 'print')} className="flex-1 min-h-0 flex flex-col">
           <div className="flex items-center justify-between gap-2 px-5 py-2 border-b">
             <TabsList className="h-8">

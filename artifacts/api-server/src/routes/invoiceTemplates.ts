@@ -54,6 +54,7 @@ router.post("/invoice-templates", async (req, res): Promise<void> => {
     .values({
       tenantId, name, layout, lineItems,
       termsText: termsText ?? null,
+      notes: req.body.notes ?? null,
       lateFeeEnabled,
       lateFeeType: lateFeeEnabled ? (lateFeeType ?? null) : null,
       lateFeeAmount: lateFeeEnabled ? (lateFeeAmount ?? null) : null,
@@ -100,6 +101,7 @@ router.patch("/invoice-templates/:id", async (req, res): Promise<void> => {
   }
 
   const update: Partial<typeof invoiceTemplatesTable.$inferInsert> = {};
+  if (req.body.notes !== undefined) update.notes = req.body.notes;
   if (name) update.name = name;
   if (layout !== undefined) update.layout = layout;
   if (lineItems !== undefined) update.lineItems = lineItems;
@@ -173,6 +175,7 @@ router.post("/invoice-templates/:id/duplicate", async (req, res): Promise<void> 
       layout: source.layout,
       lineItems: source.lineItems,
       termsText: source.termsText ?? null,
+      notes: source.notes ?? null,
       lateFeeEnabled: source.lateFeeEnabled,
       lateFeeType: source.lateFeeType ?? null,
       lateFeeAmount: source.lateFeeAmount ?? null,

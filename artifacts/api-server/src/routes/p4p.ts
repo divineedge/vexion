@@ -4,7 +4,7 @@
  * Formula:
  *   materialSellAmount = SUM(jobParts[].total)        ← customer sell-price snapshot per part
  *   netLaborRevenue  = jobTotalAmount - materialSellAmount
- *   p4pPct           = blueprint.p4pPercentage ?? tenant.p4pMasterPercentage
+ *   p4pPct           = blueprint.p4pPercentage ?? service.p4pPercentage ?? tenant.p4pMasterPercentage
  *   p4pPool          = MAX(0, netLaborRevenue) × p4pPct / 100
  *
  * Multi-tech split (based on sub_timer contribution):
@@ -99,11 +99,12 @@ router.get("/p4p/jobs", async (req, res): Promise<void> => {
         SELECT SUM((part->>'total')::numeric)
         FROM jsonb_array_elements(COALESCE(j.job_parts, '[]'::jsonb)) AS part
       ), 0) AS material_sell_amount,
-      b.p4p_percentage AS blueprint_p4p_pct,
+      COALESCE(b.p4p_percentage, s.p4p_percentage) AS blueprint_p4p_pct,
       b.name AS blueprint_name,
       c.name AS customer_name
     FROM jobs j
     LEFT JOIN blueprints b ON b.id = j.blueprint_id AND b.tenant_id = j.tenant_id
+    LEFT JOIN services s ON s.id = j.service_id AND s.tenant_id = j.tenant_id
     LEFT JOIN customers c ON c.id = j.customer_id AND c.tenant_id = j.tenant_id
     WHERE j.tenant_id = ${tenantId}
       AND j.status = 'completed'
@@ -152,7 +153,7 @@ router.get("/p4p/jobs", async (req, res): Promise<void> => {
   }
 
   // User names
-  const userIds = Array.from(new Set(timerRows.map(r => Number(r.user_id))));
+  const userIds = Array.from(new Set([...timerRows.map(r => Number(r.user_id)), ...jobs.flatMap(j => j.assignee_id == null ? [] : [Number(j.assignee_id)])]));
   const users = userIds.length > 0
     ? await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable).where(and(inArray(usersTable.id, userIds), eq(usersTable.tenantId, tenantId)))
     : [];
@@ -252,9 +253,10 @@ router.get("/p4p/summary", async (req, res): Promise<void> => {
         SELECT SUM((part->>'total')::numeric)
         FROM jsonb_array_elements(COALESCE(j.job_parts, '[]'::jsonb)) AS part
       ), 0) AS material_sell_amount,
-      b.p4p_percentage AS blueprint_p4p_pct
+      COALESCE(b.p4p_percentage, s.p4p_percentage) AS blueprint_p4p_pct
     FROM jobs j
     LEFT JOIN blueprints b ON b.id = j.blueprint_id AND b.tenant_id = j.tenant_id
+    LEFT JOIN services s ON s.id = j.service_id AND s.tenant_id = j.tenant_id
     WHERE j.tenant_id = ${tenantId}
       AND j.status = 'completed'
       AND j.completed_at >= ${rangeStart.toISOString()}::timestamptz
@@ -263,16 +265,6 @@ router.get("/p4p/summary", async (req, res): Promise<void> => {
 
   type SumJobRow = { id: number; total_amount: string; assignee_id: number | null; material_sell_amount: string; blueprint_p4p_pct: number | null };
   const jobs = jobRows.rows as SumJobRow[];
-
-  if (jobs.length === 0) {
-    // Still return all techs with 0 earnings
-    const techs = await db.select({ id: usersTable.id, name: usersTable.name, role: usersTable.role }).from(usersTable).where(and(eq(usersTable.tenantId, tenantId)));
-    res.json({
-      period, rangeStart: rangeStart.toISOString(), rangeEnd: rangeEnd.toISOString(), globalP4pPct: globalPct,
-      technicians: techs.filter(t => t.role === "technician" || t.role === "crew_manager").map(t => ({ userId: t.id, name: t.name, p4pEarnings: 0, jobCount: 0, totalRevenue: 0, totalMaterialCost: 0, netLaborRevenue: 0 })),
-    });
-    return;
-  }
 
   const jobIds = jobs.map(j => Number(j.id));
   const subTimerRows = await db.execute(sql`
@@ -330,10 +322,22 @@ router.get("/p4p/summary", async (req, res): Promise<void> => {
     }
   }
 
-  const userIds = Array.from(userEarnings.keys());
-  const users = userIds.length > 0
-    ? await db.select({ id: usersTable.id, name: usersTable.name, role: usersTable.role }).from(usersTable).where(and(inArray(usersTable.id, userIds), eq(usersTable.tenantId, tenantId)))
-    : [];
+  const [eligibility] = await db.select({ ownersSchedulable: tenantsTable.ownersSchedulable }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  const allUsers = await db.select().from(usersTable).where(eq(usersTable.tenantId, tenantId));
+  const clockRows = await db.execute(sql`
+    SELECT user_id, SUM(GREATEST(0, EXTRACT(EPOCH FROM (
+      LEAST(COALESCE(adjusted_clocked_out_at, clocked_out_at), ${rangeEnd.toISOString()}::timestamptz)
+      - GREATEST(COALESCE(adjusted_clocked_in_at, clocked_in_at), ${rangeStart.toISOString()}::timestamptz)
+    )))) / 3600 AS hours FROM time_entries
+    WHERE tenant_id = ${tenantId} AND is_master_clock = true
+      AND COALESCE(adjusted_clocked_out_at, clocked_out_at) IS NOT NULL
+      AND COALESCE(adjusted_clocked_in_at, clocked_in_at) <= ${rangeEnd.toISOString()}::timestamptz
+      AND COALESCE(adjusted_clocked_out_at, clocked_out_at) >= ${rangeStart.toISOString()}::timestamptz
+    GROUP BY user_id
+  `);
+  const hoursByUser = new Map(clockRows.rows.map(r => [Number(r.user_id), Number(r.hours)]));
+  const users = allUsers.filter(u => u.role === "technician" || u.role === "crew_manager"
+    || (u.role === "company_owner" && eligibility?.ownersSchedulable));
 
   const technicians = users.map(u => {
     const stats = userEarnings.get(u.id) ?? { p4pEarnings: 0, jobCount: 0, totalRevenue: 0, totalMaterialCost: 0, netLaborRevenue: 0 };
@@ -341,6 +345,10 @@ router.get("/p4p/summary", async (req, res): Promise<void> => {
       userId: u.id,
       name: u.name,
       role: u.role,
+      baseHourlyRate: u.hourlyRate,
+      clockHours: Math.round((hoursByUser.get(u.id) ?? 0) * 100) / 100,
+      basePay: u.hourlyRate == null ? null : Math.round(u.hourlyRate * (hoursByUser.get(u.id) ?? 0) * 100) / 100,
+      grossPay: u.hourlyRate == null ? null : Math.round(Math.max(u.hourlyRate * (hoursByUser.get(u.id) ?? 0), stats.p4pEarnings) * 100) / 100,
       p4pEarnings: Math.round(stats.p4pEarnings * 100) / 100,
       jobCount: stats.jobCount,
       totalRevenue: Math.round(stats.totalRevenue * 100) / 100,

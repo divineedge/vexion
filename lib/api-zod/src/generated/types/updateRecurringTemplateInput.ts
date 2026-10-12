@@ -11,6 +11,10 @@ import type { UpdateRecurringTemplateInputBillingMode } from './updateRecurringT
 
 export interface UpdateRecurringTemplateInput {
   /** @nullable */
+  termsText?: string | null;
+  /** @nullable */
+  invoiceTemplateId?: number | null;
+  /** @nullable */
   customerId?: number | null;
   /** @nullable */
   serviceId?: number | null;

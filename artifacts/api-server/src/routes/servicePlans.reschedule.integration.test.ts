@@ -57,6 +57,11 @@ function buildApp() {
     }),
   );
   app.use(express.urlencoded({ extended: true }));
+  // Test-only authenticated identity; production ignores caller identity headers.
+  app.use((req, _res, next) => {
+    Object.assign(req, { verifiedTenantId: Number(req.headers["x-tenant-id"]), verifiedUserId: Number(req.headers["x-user-id"]) });
+    next();
+  });
   // Mount at /api to match the production app.use("/api", router) path
   app.use("/api", servicePlansRouter);
   return app;

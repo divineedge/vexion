@@ -2,6 +2,7 @@ import { db, tenantsTable, customersTable, jobsTable, servicesTable, recurringIn
 import { and, eq, isNull, sql, inArray } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { recurringBillingDue } from "./billingAutomation";
+import { invoiceDocumentDefaults } from "./invoiceDocumentDefaults";
 import { invoiceServiceDate } from "./invoiceServiceDate";
 
 /** Templates run first and own their scopes; standalone recurring visits are batched here. */
@@ -33,6 +34,7 @@ export async function processRecurringJobBatches(now = new Date(), onlyTenantId?
       const tax = Math.round(subtotal * (tenant.taxRate / 100) * 100) / 100;
       const send = tenant.invoiceDeliveryMode === "automatic" && !!customer.email;
       const [invoice] = await tx.insert(invoicesTable).values({
+        ...await invoiceDocumentDefaults(tenant.id),
         tenantId: tenant.id, customerId: customer.id, invoiceNumber: `INV-${randomBytes(6).toString("hex").toUpperCase()}`,
         status: send ? "sent" : "draft", publicToken: send ? randomBytes(32).toString("hex") : null,
         lineItems, subtotal, tax, total: subtotal + tax,

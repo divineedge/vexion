@@ -7,6 +7,7 @@ import {
 } from "@workspace/db";
 import { eq, and, sql, gt, ne, inArray, isNotNull, isNull } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
+import { rescheduleFee } from "../lib/rescheduleFee";
 import { isAdminRole } from "../lib/roles";
 import {
   generatePlanPreview, billingCycleDays, type PlanServiceRule,
@@ -830,12 +831,16 @@ router.post("/customer-plans/:id/visits/:jobId/reschedule", async (req, res): Pr
     scheduledAt: newDate,
     assigneeId: resolvedAssigneeId,
   };
+  try {
+    if (job.scheduledAt.getTime() !== newDate.getTime()) Object.assign(updatePayload, rescheduleFee(job, req.body));
+  } catch (error) { res.status(400).json({ error: (error as Error).message }); return; }
 
   const [updated] = await db
     .update(jobsTable)
     .set(updatePayload)
-    .where(and(eq(jobsTable.id, jobId), eq(jobsTable.planId, id), eq(jobsTable.tenantId, tenantId)))
+    .where(and(eq(jobsTable.id, jobId), eq(jobsTable.planId, id), eq(jobsTable.tenantId, tenantId), eq(jobsTable.scheduledAt, job.scheduledAt)))
     .returning();
+  if (!updated) { res.status(409).json({ error: "Visit changed; refresh before rescheduling" }); return; }
 
   // Advance the plan's serviceState cursor for this service if the new date is later,
   // so the background worker continues scheduling from the correct point.

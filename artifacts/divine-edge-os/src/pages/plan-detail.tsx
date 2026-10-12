@@ -20,6 +20,8 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { ArrowLeft, CalendarClock, MapPin, DollarSign, X, CalendarDays, Snowflake, Pencil, AlertTriangle, CheckCircle2, TrendingUp, Copy, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
+import { useGetTenantSettings, getGetTenantSettingsQueryKey } from '@workspace/api-client-react';
+import { RescheduleFeeDialog, defaultRescheduleFee, apiErrorMessage, moveToDay, type RescheduleFeeChoice } from '@/components/schedule/RescheduleFeeDialog';
 
 interface ServiceRecord {
   id: number;
@@ -118,6 +120,9 @@ export default function PlanDetailPage() {
   const renewMutation = useRenewCustomerPlan();
   const cancelVisitMutation = useCancelPlanVisit();
   const rescheduleVisitMutation = useReschedulePlanVisit();
+  const { data: tenantSettings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
+  const [visitFeeAskOpen, setVisitFeeAskOpen] = useState(false);
+  const [visitFeeError, setVisitFeeError] = useState<string | null>(null);
   const updateVisit = useUpdateVisit({ mutation: { onSuccess: invalidate, onError: () => toast.error('Failed to update visit') } });
 
   const setStatus = (status: 'active' | 'paused' | 'cancelled' | 'pending_renewal') => {
@@ -149,8 +154,10 @@ export default function PlanDetailPage() {
     });
   };
 
+  const [rescheduleOriginalAt, setRescheduleOriginalAt] = useState<string | null>(null);
   const openReschedule = (visitId: number, currentScheduledAt: string) => {
     setRescheduleVisitId(visitId);
+    setRescheduleOriginalAt(currentScheduledAt);
     setRescheduleDate(toDateInputValue(new Date(currentScheduledAt)));
     setRescheduleAssigneeId('_keep');
   };
@@ -166,9 +173,18 @@ export default function PlanDetailPage() {
       toast.error(`Date must be on or before the plan end date (${new Date(plan.endDate).toLocaleDateString()})`);
       return;
     }
-    // Build ISO timestamp from local date (noon UTC to avoid tz shift artifacts)
-    const newScheduledAt = `${rescheduleDate}T12:00:00.000Z`;
-    const data: { newScheduledAt: string; assigneeId?: number | null } = { newScheduledAt };
+    setVisitFeeError(null);
+    setVisitFeeAskOpen(true);
+  };
+
+  const submitRescheduleVisit = (choice: RescheduleFeeChoice) => {
+    if (!rescheduleVisitId || !rescheduleDate) return;
+    // Keep the visit's original time of day in the tenant timezone (DST-aware).
+    const tz = tenantSettings?.timezone ?? null;
+    const newScheduledAt = rescheduleOriginalAt
+      ? moveToDay(rescheduleOriginalAt, rescheduleDate, tz).toISOString()
+      : moveToDay(new Date().toISOString(), rescheduleDate, tz).toISOString();
+    const data: { newScheduledAt: string; assigneeId?: number | null } & RescheduleFeeChoice = { newScheduledAt, ...choice };
     if (rescheduleAssigneeId === '_unassign') {
       data.assigneeId = null;
     } else if (rescheduleAssigneeId !== '_keep') {
@@ -176,13 +192,14 @@ export default function PlanDetailPage() {
     }
     rescheduleVisitMutation.mutate({ id: planId, jobId: rescheduleVisitId, data }, {
       onSuccess: () => {
-        toast.success('Visit rescheduled');
+        toast.success(choice.chargeRescheduleFee ? `Visit rescheduled, $${choice.rescheduleFeeAmount.toFixed(2)} fee added` : 'Visit rescheduled, no fee');
+        setVisitFeeAskOpen(false);
         invalidate();
         setRescheduleVisitId(null);
         setRescheduleDate('');
         setRescheduleAssigneeId('_keep');
       },
-      onError: () => toast.error('Failed to reschedule visit'),
+      onError: (err) => setVisitFeeError(apiErrorMessage(err, 'Failed to reschedule visit.')),
     });
   };
 
@@ -603,11 +620,20 @@ export default function PlanDetailPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setRescheduleVisitId(null)}>Back</Button>
             <Button onClick={confirmRescheduleVisit} disabled={rescheduleVisitMutation.isPending || !rescheduleDate}>
-              {rescheduleVisitMutation.isPending ? 'Saving…' : 'Reschedule Visit'}
+              Continue
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <RescheduleFeeDialog
+        open={visitFeeAskOpen}
+        toLabel={rescheduleDate}
+        defaultAmount={defaultRescheduleFee(tenantSettings)}
+        pending={rescheduleVisitMutation.isPending}
+        error={visitFeeError}
+        onConfirm={submitRescheduleVisit}
+        onCancel={() => { setVisitFeeAskOpen(false); setVisitFeeError(null); }}
+      />
 
       {/* ── Cancel Visit Dialog ── */}
       <Dialog open={cancelVisitId !== null} onOpenChange={open => { if (!open) { setCancelVisitId(null); setCancelReason(''); } }}>

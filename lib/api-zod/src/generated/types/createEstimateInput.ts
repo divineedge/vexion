@@ -11,6 +11,8 @@ import type { EstimateLineItem } from './estimateLineItem';
 import type { SupplyItem } from './supplyItem';
 
 export interface CreateEstimateInput {
+  /** @nullable */
+  termsText?: string | null;
   customerId?: number;
   propertyId?: number;
   blueprintId?: number;

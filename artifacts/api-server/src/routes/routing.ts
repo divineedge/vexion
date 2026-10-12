@@ -13,6 +13,7 @@ import {
 } from "@workspace/db";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
+import { rescheduleFee } from "../lib/rescheduleFee";
 import {
   sequenceStops,
   recomputeDriveTimesForOrder,
@@ -526,6 +527,12 @@ router.post("/jobs/:id/reschedule-once", async (req, res): Promise<void> => {
     if (rt?.exceptionFeeOverride != null) fee = rt.exceptionFeeOverride;
   }
 
+  if (Number.isNaN(new Date(newScheduledAt).getTime())) { res.status(400).json({ error: "Invalid scheduled date" }); return; }
+  if (job.status !== "scheduled") { res.status(409).json({ error: "Only scheduled jobs may be rescheduled" }); return; }
+  let feeChanges: ReturnType<typeof rescheduleFee>;
+  try { feeChanges = rescheduleFee(job, req.body); }
+  catch (error) { res.status(400).json({ error: (error as Error).message }); return; }
+  fee = req.body.chargeRescheduleFee === true ? Number(req.body.rescheduleFeeAmount) : 0;
   const existingLineItems = (job.lineItems as { id: number; name: string; quantity: number; unitPrice: number; total: number }[]) ?? [];
   const nextLineItemId = existingLineItems.length > 0 ? Math.max(...existingLineItems.map(li => li.id)) + 1 : 1;
   const updatedLineItems = fee > 0
@@ -537,10 +544,10 @@ router.post("/jobs/:id/reschedule-once", async (req, res): Promise<void> => {
     scheduledAt: new Date(newScheduledAt),
     originalScheduledDate: job.originalScheduledDate ?? job.scheduledAt,
     isOneTimeReschedule: 1,
-    lineItems: updatedLineItems,
-    totalAmount: sql`${jobsTable.totalAmount} + ${feeTotal}`,
+    ...feeChanges,
     sequenceOrder: null,
-  }).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId))).returning();
+  }).where(and(eq(jobsTable.id, id), eq(jobsTable.tenantId, tenantId), eq(jobsTable.scheduledAt, job.scheduledAt))).returning();
+  if (!updated) { res.status(409).json({ error: "Job changed; refresh before rescheduling" }); return; }
 
   await db.insert(activityLogTable).values({
     tenantId,

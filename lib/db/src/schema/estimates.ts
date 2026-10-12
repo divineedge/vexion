@@ -43,6 +43,7 @@ export const estimatesTable = pgTable("estimates", {
   scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   notes: text("notes"),
+  termsText: text("terms_text"),
   /** Line items array — see JSDoc above for shape */
   lineItems: jsonb("line_items").default("[]"),
   subtotal: real("subtotal").notNull().default(0),

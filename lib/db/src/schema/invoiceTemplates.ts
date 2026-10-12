@@ -13,6 +13,7 @@ export const invoiceTemplatesTable = pgTable("invoice_templates", {
   lineItems: jsonb("line_items").notNull().default("[]"),
   /** Terms and conditions text shown at the bottom of invoices using this template */
   termsText: text("terms_text"),
+  notes: text("notes"),
   /** When true, a late-fee notice is shown on overdue public invoice pages */
   lateFeeEnabled: boolean("late_fee_enabled").notNull().default(false),
   /** 'percent' — percentage of total | 'flat' — fixed dollar amount */

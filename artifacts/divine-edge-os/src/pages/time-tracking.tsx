@@ -9,6 +9,7 @@ import {
   useUpdateJob,
   useUpdateVisit,
   useListUsers, getListUsersQueryKey,
+  useGetTenantSettings, getGetTenantSettingsQueryKey,
   customFetch,
   SubTimer,
 } from '@workspace/api-client-react';
@@ -82,7 +83,24 @@ function LiveTimer({ startedAt }: { startedAt: string }) {
 export default function TimeTrackingPage() {
   const { canManageOffice, user } = useAuth();
   const queryClient = useQueryClient();
-  const today = new Date().toISOString().split('T')[0];
+  const { data: tenantSettings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
+  // "Today" in the tenant's timezone (falls back to the browser's zone).
+  const today = (() => {
+    try {
+      return new Intl.DateTimeFormat('en-CA', { timeZone: tenantSettings?.timezone || undefined, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    } catch { return new Date().toLocaleDateString('en-CA'); }
+  })();
+  // Historical date for timesheet review / adjustments. Live clock controls always use today.
+  const [viewDateOverride, setViewDateOverride] = useState<string | null>(null);
+  const viewDate = viewDateOverride ?? today;
+  const isViewingToday = viewDate === today;
+  const shiftViewDate = (days: number) => {
+    const d = new Date(`${viewDate}T12:00:00`);
+    d.setDate(d.getDate() + days);
+    const next = d.toLocaleDateString('en-CA');
+    setViewDateOverride(next >= today ? null : next);
+  };
+  const viewDateLabel = isViewingToday ? 'Today' : new Date(`${viewDate}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
   const [selectedUserId, setSelectedUserId] = useState<number | undefined>(user?.id);
   const { data: staffUsers = [] } = useListUsers({ query: { queryKey: getListUsersQueryKey(), enabled: canManageOffice } });
 
@@ -91,16 +109,16 @@ export default function TimeTrackingPage() {
     query: { queryKey: getGetTodayScheduleQueryKey(), refetchInterval: 10000 },
   });
   const { data: todayEntries } = useListTimeEntries(
-    { date: today, ...(canManageOffice && selectedUserId ? { userId: selectedUserId } : {}) },
-    { query: { queryKey: getListTimeEntriesQueryKey({ date: today, ...(canManageOffice && selectedUserId ? { userId: selectedUserId } : {}) }) } }
+    { date: viewDate, ...(canManageOffice && selectedUserId ? { userId: selectedUserId } : {}) },
+    { query: { queryKey: getListTimeEntriesQueryKey({ date: viewDate, ...(canManageOffice && selectedUserId ? { userId: selectedUserId } : {}) }) } }
   );
   const { data: subTimers } = useListSubTimers({
     query: { queryKey: getListSubTimersQueryKey(), refetchInterval: 15000 },
   });
 
   const { data: dailyTaskHours } = useQuery<DailyTaskHoursResponse>({
-    queryKey: ['daily-task-hours', today],
-    queryFn: () => customFetch<DailyTaskHoursResponse>(`/api/time-tracking/daily-task-hours?date=${today}`),
+    queryKey: ['daily-task-hours', viewDate],
+    queryFn: () => customFetch<DailyTaskHoursResponse>(`/api/time-tracking/daily-task-hours?date=${viewDate}`),
   });
 
   const startMaster = useStartMasterClock();
@@ -150,7 +168,8 @@ export default function TimeTrackingPage() {
           reason: adjustmentReason.trim(),
         }),
       });
-      await queryClient.invalidateQueries({ queryKey: getListTimeEntriesQueryKey({ date: today, ...(canManageOffice && selectedUserId ? { userId: selectedUserId } : {}) }) });
+      await queryClient.invalidateQueries({ queryKey: getListTimeEntriesQueryKey({ date: viewDate, ...(canManageOffice && selectedUserId ? { userId: selectedUserId } : {}) }) });
+      await queryClient.invalidateQueries({ queryKey: ['daily-task-hours', viewDate] });
       await queryClient.invalidateQueries({ queryKey: getGetMasterClockQueryKey() });
       await queryClient.invalidateQueries({ queryKey: ['/api/time-tracking/clock-in-hours/summary'] });
       setAdjustingEntry(null);
@@ -459,7 +478,15 @@ export default function TimeTrackingPage() {
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <CardTitle className="flex items-center gap-2 text-lg"><History className="w-5 h-5" /> Today's Entries</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-lg"><History className="w-5 h-5" /> {isViewingToday ? "Today's Entries" : `Entries for ${viewDateLabel}`}</CardTitle>
+            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1" role="group" aria-label="Timesheet date">
+              <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => shiftViewDate(-1)} aria-label="Previous day" title="Previous day">&lsaquo;</Button>
+              <Input type="date" className="h-8 w-[150px]" value={viewDate} max={today} aria-label="Choose timesheet date"
+                onChange={e => { const v = e.target.value; if (!v) return; setViewDateOverride(v >= today ? null : v); }} data-testid="input-timesheet-date" />
+              <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => shiftViewDate(1)} disabled={isViewingToday} aria-label="Next day" title="Next day">&rsaquo;</Button>
+              {!isViewingToday && <Button variant="ghost" size="sm" className="h-8" onClick={() => setViewDateOverride(null)}>Today</Button>}
+            </div>
             {canManageOffice && (
               <Select value={String(selectedUserId ?? user?.id ?? '')} onValueChange={value => setSelectedUserId(Number(value))}>
                 <SelectTrigger className="w-[220px]"><SelectValue placeholder="Select staff member" /></SelectTrigger>
@@ -468,7 +495,13 @@ export default function TimeTrackingPage() {
                 </SelectContent>
               </Select>
             )}
+            </div>
           </div>
+          {!isViewingToday && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-2 w-fit">
+              Reviewing a past day. Adjustments keep the original punches and record an audit entry. Live clock controls above still act on today.
+            </p>
+          )}
         </CardHeader>
         <CardContent>
           <Table>
@@ -501,7 +534,7 @@ export default function TimeTrackingPage() {
               ))}
               {(!todayEntries || todayEntries.length === 0) && (
                 <TableRow>
-                  <TableCell colSpan={canManageOffice ? 4 : 3} className="text-center py-6 text-muted-foreground text-sm">No entries today.</TableCell>
+                  <TableCell colSpan={canManageOffice ? 4 : 3} className="text-center py-6 text-muted-foreground text-sm">{isViewingToday ? 'No entries today.' : `No entries on ${viewDateLabel}.`}</TableCell>
                 </TableRow>
               )}
             </TableBody>
@@ -544,7 +577,7 @@ export default function TimeTrackingPage() {
               <Timer className="w-5 h-5" /> Job / Visit Timers
             </CardTitle>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Individual clock-in records for each job or visit today.
+              Live: individual clock-in records for each job or visit today.
             </p>
           </CardHeader>
           <CardContent>
@@ -641,11 +674,11 @@ export default function TimeTrackingPage() {
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-lg">
-              <ClipboardList className="w-5 h-5" /> Daily Task Time
+              <ClipboardList className="w-5 h-5" /> Daily Task Time{!isViewingToday && <span className="text-sm font-normal text-muted-foreground"> · {viewDateLabel}</span>}
             </CardTitle>
             {(dailyTaskHours?.totalSeconds ?? 0) > 0 && (
               <span className="text-sm font-semibold text-primary">
-                {formatDuration(dailyTaskHours?.totalMinutes ?? 0)} today
+                {formatDuration(dailyTaskHours?.totalMinutes ?? 0)} {isViewingToday ? 'today' : `on ${viewDateLabel}`}
               </span>
             )}
           </div>
@@ -656,7 +689,7 @@ export default function TimeTrackingPage() {
         <CardContent>
           {(dailyTaskHours?.entries.length ?? 0) === 0 ? (
             <div className="text-center py-8 text-muted-foreground text-sm border rounded-lg border-dashed">
-              No daily task runs completed today.
+              {isViewingToday ? 'No daily task runs completed today.' : `No daily task runs on ${viewDateLabel}.`}
             </div>
           ) : (
             <Table>

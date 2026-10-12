@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, recurringInvoiceTemplatesTable, billingEmailQueueTable, invoicesTable, customersTable, servicesTable } from "@workspace/db";
+import { db, recurringInvoiceTemplatesTable, billingEmailQueueTable, invoicesTable, customersTable, servicesTable, invoiceTemplatesTable } from "@workspace/db";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { getTenantId } from "../lib/tenantHelper";
 import { runTemplateNow, previewTemplateBilling } from "../lib/billingScheduler";
@@ -64,9 +64,9 @@ router.post("/billing/recurring-templates", async (req, res): Promise<void> => {
     res.status(400).json({ error: "name and nextBillingDate are required" });
     return;
   }
-  if (!customerId && !serviceId) {
-    res.status(400).json({ error: "At least one of customerId or serviceId is required" });
-    return;
+  if (req.body.invoiceTemplateId != null) {
+    const [design] = await db.select().from(invoiceTemplatesTable).where(and(eq(invoiceTemplatesTable.id, req.body.invoiceTemplateId), eq(invoiceTemplatesTable.tenantId, tenantId)));
+    if (!design) { res.status(400).json({ error: "Invoice template not found" }); return; }
   }
   if (!BILLING_CYCLE_TYPES.has(billingCycleType)) {
     res.status(400).json({ error: `billingCycleType must be one of ${[...BILLING_CYCLE_TYPES].join(", ")}` });
@@ -127,6 +127,8 @@ router.post("/billing/recurring-templates", async (req, res): Promise<void> => {
       nextBillingDate,
       isActive,
       notes: notes ?? null,
+      termsText: req.body.termsText ?? null,
+      invoiceTemplateId: req.body.invoiceTemplateId ?? null,
     })
     .returning();
 
@@ -184,9 +186,9 @@ router.patch("/billing/recurring-templates/:id", async (req, res): Promise<void>
   const effectiveServiceId = serviceId !== undefined ? (serviceId != null ? parseInt(serviceId, 10) : null) : existing.serviceId;
   const effectiveBillingMode = billingMode ?? existing.billingMode;
 
-  if (!effectiveCustomerId && !effectiveServiceId) {
-    res.status(400).json({ error: "At least one of customerId or serviceId is required" });
-    return;
+  if (req.body.invoiceTemplateId != null) {
+    const [design] = await db.select().from(invoiceTemplatesTable).where(and(eq(invoiceTemplatesTable.id, req.body.invoiceTemplateId), eq(invoiceTemplatesTable.tenantId, tenantId)));
+    if (!design) { res.status(400).json({ error: "Invoice template not found" }); return; }
   }
   if (effectiveBillingMode === "static" && !effectiveCustomerId) {
     res.status(400).json({ error: "Static line-item templates require a customer" });
@@ -239,6 +241,8 @@ router.patch("/billing/recurring-templates/:id", async (req, res): Promise<void>
   if (nextBillingDate !== undefined) updates.nextBillingDate = nextBillingDate;
   if (isActive !== undefined) updates.isActive = isActive;
   if (notes !== undefined) updates.notes = notes;
+  if (req.body.termsText !== undefined) updates.termsText = req.body.termsText;
+  if (req.body.invoiceTemplateId !== undefined) updates.invoiceTemplateId = req.body.invoiceTemplateId;
 
   const [updated] = await db
     .update(recurringInvoiceTemplatesTable)

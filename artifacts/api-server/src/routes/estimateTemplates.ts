@@ -78,7 +78,7 @@ router.post("/estimate-templates", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const { name, description, lineItems } = req.body;
   if (!name) { res.status(400).json({ error: "name is required" }); return; }
-  const [t] = await db.insert(estimateTemplatesTable).values({ tenantId, name, description: description ?? null, lineItems: lineItems ?? [] }).returning();
+  const [t] = await db.insert(estimateTemplatesTable).values({ tenantId, name, description: description ?? null, lineItems: lineItems ?? [], notes: req.body.notes ?? null, termsText: req.body.termsText ?? null }).returning();
   res.status(201).json(fmt(t));
 });
 
@@ -95,6 +95,8 @@ router.patch("/estimate-templates/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   const { name, description, lineItems } = req.body;
   const update: Partial<typeof estimateTemplatesTable.$inferInsert> = {};
+  if (req.body.notes !== undefined) update.notes = req.body.notes;
+  if (req.body.termsText !== undefined) update.termsText = req.body.termsText;
   if (name) update.name = name;
   if (description !== undefined) update.description = description;
   if (lineItems !== undefined) update.lineItems = lineItems;
@@ -119,6 +121,8 @@ router.post("/estimate-templates/:id/duplicate", async (req, res): Promise<void>
     tenantId,
     name: `${source.name} (Copy)`,
     description: source.description,
+    notes: source.notes,
+    termsText: source.termsText,
     lineItems: source.lineItems,
   }).returning();
   res.status(201).json(fmt(copy));

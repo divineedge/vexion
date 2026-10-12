@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { RescheduleFeeDialog, defaultRescheduleFee, moveToDay, apiErrorMessage, type RescheduleFeeChoice } from '@/components/schedule/RescheduleFeeDialog';
 import { useLocation, Link } from 'wouter';
 import {
   useListJobs, getListJobsQueryKey,
@@ -518,9 +519,46 @@ export default function SchedulePage() {
   }, [selectedJobId]);
   const [cancelApproveReply, setCancelApproveReply] = useState('');
   const approveReschedule = useMutation({
-    mutationFn: ({ id, approvedDate, reply }: { id: number; approvedDate?: string; reply?: string }) =>
-      customFetch<void>(`/api/jobs/${id}/approve-reschedule`, { method: 'POST', body: JSON.stringify({ approvedDate, reply }) }),
+    mutationFn: ({ id, approvedDate, reply, chargeRescheduleFee, rescheduleFeeAmount }: { id: number; approvedDate?: string; reply?: string } & RescheduleFeeChoice) =>
+      customFetch<void>(`/api/jobs/${id}/approve-reschedule`, { method: 'POST', body: JSON.stringify({ approvedDate, reply, chargeRescheduleFee, rescheduleFeeAmount }) }),
   });
+
+  // ── Reschedule with explicit fee decision (drag/drop, +1 day, date picker, request approval) ──
+  type PendingMove =
+    | { kind: 'job'; jobId: number; title: string; from: string; to: Date }
+    | { kind: 'approve-request'; jobId: number; title: string; from: string; approvedDate: string; reply?: string };
+  const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
+  const [moveError, setMoveError] = useState<string | null>(null);
+  const [dragJobId, setDragJobId] = useState<number | null>(null);
+  const [dragOverDay, setDragOverDay] = useState<string | null>(null);
+  const isLockedStatus = (status?: string | null) => status === 'completed' || status === 'cancelled';
+  const requestMove = (job: { id: number; title: string; scheduledAt: string; status?: string | null }, to: Date) => {
+    if (isLockedStatus(job.status)) { toast.error('Completed or cancelled jobs cannot be rescheduled.'); return; }
+    if (new Date(job.scheduledAt).getTime() === to.getTime()) return;
+    setMoveError(null);
+    setPendingMove({ kind: 'job', jobId: job.id, title: job.title, from: job.scheduledAt, to });
+  };
+  const confirmMove = (choice: RescheduleFeeChoice) => {
+    if (!pendingMove) return;
+    const done = (msg: string) => {
+      toast.success(msg);
+      qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
+      qc.invalidateQueries({ queryKey: getGetJobQueryKey(pendingMove.jobId) });
+      setPendingMove(null);
+      setMoveError(null);
+    };
+    if (pendingMove.kind === 'approve-request') {
+      approveReschedule.mutate({ id: pendingMove.jobId, approvedDate: pendingMove.approvedDate, reply: pendingMove.reply, ...choice }, {
+        onSuccess: () => { setRescheduleApproveOpen(false); done(choice.chargeRescheduleFee ? `Reschedule approved, $${choice.rescheduleFeeAmount.toFixed(2)} fee added` : 'Reschedule approved, customer notified'); },
+        onError: (err) => setMoveError(apiErrorMessage(err, 'Failed to approve reschedule.')),
+      });
+      return;
+    }
+    updateJob.mutate({ id: pendingMove.jobId, data: { scheduledAt: pendingMove.to.toISOString(), ...choice } as Parameters<typeof updateJob.mutate>[0]['data'] }, {
+      onSuccess: () => done(choice.chargeRescheduleFee ? `Rescheduled, $${choice.rescheduleFeeAmount.toFixed(2)} fee added` : 'Rescheduled'),
+      onError: (err) => { setMoveError(apiErrorMessage(err, 'Failed to reschedule.')); qc.invalidateQueries({ queryKey: getListJobsQueryKey() }); },
+    });
+  };
   const [rescheduleApproveOpen, setRescheduleApproveOpen] = useState(false);
   const [rescheduleApproveDate, setRescheduleApproveDate] = useState('');
   const [rescheduleApproveReply, setRescheduleApproveReply] = useState('');
@@ -935,6 +973,18 @@ export default function SchedulePage() {
 
   return (
     <div className="space-y-6 h-full flex flex-col animate-in fade-in duration-500">
+      <RescheduleFeeDialog
+        open={!!pendingMove}
+        title={pendingMove?.title}
+        fromDate={pendingMove?.from || null}
+        toDate={pendingMove?.kind === 'job' ? pendingMove.to : null}
+        toLabel={pendingMove?.kind === 'approve-request' ? pendingMove.approvedDate : undefined}
+        defaultAmount={defaultRescheduleFee(settings)}
+        pending={updateJob.isPending || approveReschedule.isPending}
+        error={moveError}
+        onConfirm={confirmMove}
+        onCancel={() => { setPendingMove(null); setMoveError(null); }}
+      />
       {/* No-card warning */}
       <Dialog open={noCardJobWarning} onOpenChange={open => { if (!open) setNoCardJobWarning(false); }}>
         <DialogContent>
@@ -1376,7 +1426,20 @@ export default function SchedulePage() {
                 const isOtherMonth = view === 'month' && day.getMonth() !== currentDate.getMonth();
                 const totalCount = dayJobs.length + dayEstimates.length + dayVisits.length;
                 return (
-                  <div key={day.toISOString()} className={`border-r border-b p-2 flex flex-col ${isOtherMonth ? 'bg-muted/10' : ''}`}>
+                  <div
+                    key={day.toISOString()}
+                    className={`border-r border-b p-2 flex flex-col transition-colors ${isOtherMonth ? 'bg-muted/10' : ''} ${dragOverDay === day.toISOString() ? 'bg-primary/10 ring-2 ring-inset ring-primary/50' : ''}`}
+                    aria-label={dragJobId != null ? `Drop to move to ${format(day, 'EEEE, MMM d')}` : undefined}
+                    onDragOver={e => { if (dragJobId == null) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (dragOverDay !== day.toISOString()) setDragOverDay(day.toISOString()); }}
+                    onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverDay(d => d === day.toISOString() ? null : d); }}
+                    onDrop={e => {
+                      e.preventDefault();
+                      const id = Number(e.dataTransfer.getData('text/x-job-id') || dragJobId);
+                      setDragOverDay(null); setDragJobId(null);
+                      const j = (jobs ?? []).find(x => x.id === id);
+                      if (j) requestMove(j, moveToDay(j.scheduledAt, day, settings?.timezone));
+                    }}
+                  >
                     <div className="flex justify-between items-center mb-2">
                       <span
                         className={`text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full cursor-pointer hover:bg-muted transition-colors ${isToday ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'text-muted-foreground'}`}
@@ -1420,6 +1483,10 @@ export default function SchedulePage() {
                         <div
                           key={`job-${job.id}`}
                           onClick={() => setSelectedJobId(job.id)}
+                          draggable={canManageJobs && !isLockedStatus(job.status)}
+                          onDragStart={e => { e.dataTransfer.setData('text/x-job-id', String(job.id)); e.dataTransfer.effectAllowed = 'move'; setDragJobId(job.id); }}
+                          onDragEnd={() => { setDragJobId(null); setDragOverDay(null); }}
+                          aria-grabbed={dragJobId === job.id}
                           className={`p-2 rounded border text-xs cursor-pointer hover:shadow-md hover:brightness-95 transition-all ${STATUS_COLORS[job.status] ?? STATUS_COLORS.scheduled}`}
                         >
                           <div className="font-semibold truncate" title={job.title}>{job.title}</div>
@@ -2044,31 +2111,27 @@ export default function SchedulePage() {
                           <button
                             className="text-xs text-primary hover:underline disabled:opacity-50"
                             title="Move to next day"
-                            disabled={updateJob.isPending}
+                            disabled={updateJob.isPending || isLockedStatus(selectedJob.status)}
                             onClick={() => {
-                              const next = new Date(selectedJob.scheduledAt);
-                              next.setDate(next.getDate() + 1);
-                              updateJob.mutate({ id: selectedJob.id, data: { scheduledAt: next.toISOString() } as any }, {
-                                onSuccess: () => { toast.success('Rescheduled +1 day'); qc.invalidateQueries(); },
-                                onError: () => toast.error('Failed to reschedule'),
-                              });
+                              const day = new Date(selectedJob.scheduledAt);
+                              day.setDate(day.getDate() + 1);
+                              requestMove(selectedJob, moveToDay(selectedJob.scheduledAt, day, settings?.timezone));
                             }}
                           >
                             +1 Day
                           </button>
                           <input
+                            key={`${selectedJob.id}-${selectedJob.scheduledAt}-${pendingMove ? 'p' : 'i'}`}
                             type="datetime-local"
                             className="text-xs border rounded px-1 py-0.5 bg-background text-foreground cursor-pointer"
-                            defaultValue={new Date(selectedJob.scheduledAt).toISOString().slice(0, 16)}
-                            title="Reschedule to specific date & time"
-                            onChange={e => {
+                            defaultValue={format(new Date(selectedJob.scheduledAt), "yyyy-MM-dd'T'HH:mm")}
+                            aria-label="Reschedule to specific date and time"
+                            title="Reschedule to specific date & time (keyboard and touch friendly)"
+                            onBlur={e => {
                               if (!e.target.value) return;
-                              const iso = new Date(e.target.value).toISOString();
-                              updateJob.mutate({ id: selectedJob.id, data: { scheduledAt: iso } as any }, {
-                                onSuccess: () => { toast.success('Rescheduled'); qc.invalidateQueries(); },
-                                onError: () => toast.error('Failed to reschedule'),
-                              });
+                              requestMove(selectedJob, new Date(e.target.value));
                             }}
+                            onKeyDown={e => { if (e.key === 'Enter' && e.currentTarget.value) requestMove(selectedJob, new Date(e.currentTarget.value)); }}
                           />
                         </>
                       )}
@@ -3628,18 +3691,11 @@ export default function SchedulePage() {
             <Button
               disabled={approveReschedule.isPending || !rescheduleApproveDate}
               onClick={() => {
-                approveReschedule.mutate({ id: selectedJobId!, approvedDate: rescheduleApproveDate, reply: rescheduleApproveReply.trim() || undefined }, {
-                  onSuccess: () => {
-                    toast.success('Reschedule approved — customer notified');
-                    qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
-                    qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId!) });
-                    setRescheduleApproveOpen(false);
-                  },
-                  onError: () => toast.error('Failed to approve reschedule'),
-                });
+                setMoveError(null);
+                setPendingMove({ kind: 'approve-request', jobId: selectedJobId!, title: selectedJob?.title ?? 'Job', from: selectedJob?.scheduledAt ?? '', approvedDate: rescheduleApproveDate, reply: rescheduleApproveReply.trim() || undefined });
               }}
             >
-              {approveReschedule.isPending ? 'Saving…' : 'Approve'}
+              {approveReschedule.isPending ? 'Saving…' : 'Approve…'}
             </Button>
           </div>
         </DialogContent>

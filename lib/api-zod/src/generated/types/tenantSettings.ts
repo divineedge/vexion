@@ -22,6 +22,14 @@ import type { TenantSettingsPreferredAreaUnit } from './tenantSettingsPreferredA
 import type { TenantSettingsRolePermissions } from './tenantSettingsRolePermissions';
 
 export interface TenantSettings {
+  /** @nullable */
+  defaultInvoiceTerms?: string | null;
+  /** @nullable */
+  defaultInvoiceNotes?: string | null;
+  /** @nullable */
+  defaultEstimateTerms?: string | null;
+  /** @nullable */
+  defaultEstimateNotes?: string | null;
   id: number;
   tenantId: number;
   companyName?: string;

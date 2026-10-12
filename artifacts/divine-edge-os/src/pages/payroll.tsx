@@ -22,6 +22,13 @@ interface TechSummary {
   totalRevenue: number;
   totalMaterialCost: number;
   netLaborRevenue: number;
+  /** Configured users.hourlyRate; null = not configured (never treat as $0). */
+  baseHourlyRate?: number | null;
+  /** Closed effective master-clock hours clipped to the selected range. */
+  clockHours?: number;
+  basePay?: number | null;
+  /** max(basePay, p4pEarnings): hourly guarantee OR P4P, never the sum. */
+  grossPay?: number | null;
 }
 
 interface TechSplitRow {
@@ -485,8 +492,8 @@ export default function PayrollPage() {
         <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/40 px-3 py-2 rounded-lg border">
           <Info className="w-3.5 h-3.5 shrink-0" />
           Global P4P master rate: <span className="font-semibold text-foreground">{summary.globalP4pPct}%</span>.
-          Services with a blueprint-level override will use that rate instead.
-          {summary.globalP4pPct === 0 && <span className="text-amber-600 font-medium ml-1"> P4P is disabled — set a master % in Settings → Operational to activate.</span>}
+          Blueprint overrides take priority, followed by the service's P4P rate, then this company default.
+          {summary.globalP4pPct === 0 && <span className="text-amber-600 font-medium ml-1"> The company default is 0%. Service or blueprint overrides can still earn P4P; hourly base pay is separate.</span>}
         </div>
       )}
 
@@ -565,7 +572,11 @@ export default function PayrollPage() {
       {(myStats || isTechnician) && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           {[
+            { label: 'Base Hourly', value: myStats ? (myStats.baseHourlyRate == null ? 'Not configured' : `${fmt(myStats.baseHourlyRate)}/hr`) : '—', accent: '' },
+            { label: 'Clock Hours', value: myStats?.clockHours != null ? `${myStats.clockHours.toFixed(2)}h` : '—', accent: '' },
+            { label: 'Base Guaranteed Pay', value: myStats ? (myStats.basePay == null ? 'Not configured' : fmt(myStats.basePay)) : '—', accent: '' },
             { label: 'P4P Earnings', value: myStats ? fmt(myStats.p4pEarnings) : '—', accent: 'text-emerald-700' },
+            { label: 'Gross Pay (greater of)', value: myStats ? (myStats.grossPay == null ? fmt(myStats.p4pEarnings) : fmt(myStats.grossPay)) : '—', accent: 'text-primary' },
             { label: 'Net Labor Revenue', value: myStats ? fmt(myStats.netLaborRevenue) : '—', accent: '' },
             { label: 'Customer Sell-Price Materials Deducted', value: myStats ? fmt(myStats.totalMaterialCost) : '—', accent: 'text-amber-600' },
             { label: 'Jobs Counted', value: myStats?.jobCount ?? '—', accent: '' },
@@ -594,7 +605,10 @@ export default function PayrollPage() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Technician P4P Summary</CardTitle>
-            <CardDescription>Click a technician row to drill into their job-level breakdown. Daily Task Hours are compliance/admin time, not revenue-generating.</CardDescription>
+            <CardDescription>
+              Click a technician row to drill into their job-level breakdown. Gross pay is the <strong>greater of</strong> the hourly guarantee (base rate × clock hours) or P4P earnings, not the sum.
+              P4P earnings only build from completed jobs with a price; staff with no completed priced jobs show $0 P4P and are paid their base guarantee. Daily Task Hours are compliance/admin time, not revenue-generating.
+            </CardDescription>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
@@ -606,6 +620,10 @@ export default function PayrollPage() {
                   <TableHead className="text-right">Customer Sell-Price Materials</TableHead>
                   <TableHead className="text-right">Net Labor</TableHead>
                   <TableHead className="text-right">P4P Earnings</TableHead>
+                  <TableHead className="text-right">Base Rate</TableHead>
+                  <TableHead className="text-right">Clock Hrs</TableHead>
+                  <TableHead className="text-right">Base Pay</TableHead>
+                  <TableHead className="text-right">Gross Pay</TableHead>
                   <TableHead className="text-right">
                     <span className="flex items-center justify-end gap-1">
                       <ClipboardList className="w-3.5 h-3.5" />
@@ -616,7 +634,7 @@ export default function PayrollPage() {
               </TableHeader>
               <TableBody>
                 {summaryLoading ? (
-                  <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">Loading...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11} className="py-8 text-center text-muted-foreground">Loading...</TableCell></TableRow>
                 ) : (
                   summary?.technicians.map(t => {
                     const taskData = taskHoursMap.get(t.userId);
@@ -639,6 +657,23 @@ export default function PayrollPage() {
                           <span className={`font-bold ${t.p4pEarnings > 0 ? 'text-emerald-700' : 'text-muted-foreground'}`} title={`P4P earnings: ${fmt(t.p4pEarnings)}`}>
                             {fmt(t.p4pEarnings)}
                           </span>
+                        </TableCell>
+                        <TableCell className="text-right text-sm">
+                          {t.baseHourlyRate == null ? <span className="text-xs text-amber-700" title="No hourly rate set for this user (Team settings)">Not configured</span> : `${fmt(t.baseHourlyRate)}/hr`}
+                        </TableCell>
+                        <TableCell className="text-right text-sm tabular-nums">{t.clockHours != null ? t.clockHours.toFixed(2) : '—'}</TableCell>
+                        <TableCell className="text-right text-sm">{t.basePay == null ? <span className="text-muted-foreground">—</span> : fmt(t.basePay)}</TableCell>
+                        <TableCell className="text-right">
+                          {(() => {
+                            const gross = t.grossPay ?? t.p4pEarnings;
+                            const source = t.basePay == null ? 'P4P (no base rate)' : (t.basePay >= t.p4pEarnings ? 'Hourly guarantee' : 'P4P');
+                            return (
+                              <span title={`Greater of base ${t.basePay == null ? 'n/a' : fmt(t.basePay)} or P4P ${fmt(t.p4pEarnings)}`}>
+                                <span className="font-bold">{fmt(gross)}</span>
+                                <span className="block text-[10px] text-muted-foreground">{source}</span>
+                              </span>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell className="text-right">
                           {taskData ? (

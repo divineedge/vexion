@@ -10,6 +10,10 @@ import type { RecurringInvoiceTemplateBillingCycleType } from './recurringInvoic
 import type { RecurringInvoiceTemplateBillingMode } from './recurringInvoiceTemplateBillingMode';
 
 export interface RecurringInvoiceTemplate {
+  /** @nullable */
+  termsText?: string | null;
+  /** @nullable */
+  invoiceTemplateId?: number | null;
   id: number;
   tenantId: number;
   /** @nullable */

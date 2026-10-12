@@ -16,6 +16,7 @@ import { processRecurringJobBatches } from "./recurringJobBilling";
 import type { RecurringInvoiceTemplate } from "@workspace/db";
 import { eq, and, lte, sql, inArray, notInArray, isNull, asc, min, lt, isNotNull } from "drizzle-orm";
 import { logger } from "./logger";
+import { invoiceDocumentDefaults } from "./invoiceDocumentDefaults";
 import { sendEmail } from "./emailProvider";
 import crypto from "crypto";
 
@@ -171,7 +172,7 @@ async function collectCompletedWorkForCustomer(
 async function findCustomersWithCompletedWork(
   tx: Queryable,
   tenantId: number,
-  serviceId: number,
+  serviceId: number | null,
   periodStart: Date,
   periodEnd: Date,
   excludeHeld = true,
@@ -182,7 +183,7 @@ async function findCustomersWithCompletedWork(
     .where(
       and(
         eq(jobsTable.tenantId, tenantId),
-        eq(jobsTable.serviceId, serviceId),
+        serviceId != null ? eq(jobsTable.serviceId, serviceId) : sql`true`,
         eq(jobsTable.status, "completed"),
         sql`${jobsTable.completedAt} IS NOT NULL`,
         sql`${jobsTable.completedAt} > ${periodStart}`,
@@ -251,16 +252,17 @@ async function generateInvoiceForCustomer(
   // Used for showJobCompletionDate on line items and lateFeeSchedule on the invoice.
   let resolvedShowJobCompletionDate = false;
   let resolvedLateFeeSchedule: unknown[] = [];
+  const documentDefaults = await invoiceDocumentDefaults(template.tenantId, template.invoiceTemplateId);
   {
     const [tenant] = await tx
       .select({ defaultInvoiceTemplateId: tenantsTable.defaultInvoiceTemplateId })
       .from(tenantsTable)
       .where(eq(tenantsTable.id, template.tenantId));
-    if (tenant?.defaultInvoiceTemplateId) {
+    if (template.invoiceTemplateId ?? tenant?.defaultInvoiceTemplateId) {
       const [invTmpl] = await tx
         .select()
         .from(invoiceTemplatesTable)
-        .where(eq(invoiceTemplatesTable.id, tenant.defaultInvoiceTemplateId));
+        .where(and(eq(invoiceTemplatesTable.id, (template.invoiceTemplateId ?? tenant?.defaultInvoiceTemplateId)!), eq(invoiceTemplatesTable.tenantId, template.tenantId)));
       if (invTmpl) {
         resolvedShowJobCompletionDate = invTmpl.showJobCompletionDate ?? false;
         resolvedLateFeeSchedule = (invTmpl.lateFeeSchedule as unknown[]) ?? [];
@@ -330,6 +332,7 @@ async function generateInvoiceForCustomer(
     .insert(invoicesTable)
     .values({
       tenantId: template.tenantId,
+      ...documentDefaults,
       invoiceNumber: invoiceNum,
       customerId,
       status: sendAutomatically ? "sent" : "draft",
@@ -338,7 +341,8 @@ async function generateInvoiceForCustomer(
       tax,
       total,
       lineItems,
-      notes: template.notes ?? null,
+      notes: template.notes ?? documentDefaults.notes,
+      termsText: template.termsText ?? documentDefaults.termsText,
       generatedFromTemplateId: template.id,
       billingDate: billingDate ?? null,
       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // net-30
@@ -416,7 +420,7 @@ export async function generateDueTemplate(tx: Tx, template: RecurringInvoiceTemp
     // excludeHeld=true: the nightly run respects the per-job hold flag set by staff.
     const invoiceId = await generateInvoiceForCustomer(tx, template, template.customerId, taxRate, periodStart, periodEnd, [], today, true);
     if (invoiceId != null) invoiceIds.push(invoiceId);
-  } else if (template.serviceId != null) {
+  } else if (template.billingMode === "completed_work") {
     // Service-only scope: bill every customer who has qualifying completed work this period.
     // Each customer is checked individually so a partial prior run can continue
     // billing remaining customers without re-billing those already invoiced.
@@ -572,6 +576,7 @@ async function processWeeklyNonRecurringInvoices() {
         }
 
         const [invoice] = await tx.insert(invoicesTable).values({
+          ...await invoiceDocumentDefaults(job.tenantId),
           tenantId: job.tenantId,
           invoiceNumber: invoiceNum,
           customerId: job.customerId!,
@@ -834,7 +839,7 @@ export async function runTemplateNow(templateId: number, tenantId: number, exclu
       // a held job that staff leave checked in the preview should still be billed.
       const invoiceId = await generateInvoiceForCustomer(tx, template, template.customerId, taxRate, periodStart, periodEnd, excludeJobIds, undefined, false);
       if (invoiceId != null) invoiceIds.push(invoiceId);
-    } else if (template.serviceId != null) {
+    } else if (template.billingMode === "completed_work") {
       // excludeHeld=false so all customers with qualifying work appear; staff-selected excludeJobIds gate individual jobs.
       const customerIds = await findCustomersWithCompletedWork(tx, template.tenantId, template.serviceId, periodStart, periodEnd, false);
       for (const customerId of customerIds) {
@@ -893,7 +898,7 @@ export async function previewTemplateBilling(templateId: number, tenantId: numbe
 
   const customerIds: number[] = template.customerId != null
     ? [template.customerId]
-    : template.serviceId != null
+    : template.billingMode === "completed_work"
       ? await findCustomersWithCompletedWork(db, template.tenantId, template.serviceId, periodStart, periodEnd, false)
       : [];
 

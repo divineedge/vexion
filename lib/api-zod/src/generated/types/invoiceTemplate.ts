@@ -10,6 +10,8 @@ import type { InvoiceTemplateLayout } from './invoiceTemplateLayout';
 import type { InvoiceTemplateLineItemsItem } from './invoiceTemplateLineItemsItem';
 
 export interface InvoiceTemplate {
+  /** @nullable */
+  notes?: string | null;
   id: number;
   tenantId: number;
   name: string;

@@ -7,6 +7,9 @@
  */
 
 export interface ReschedulePlanVisitInput {
+  chargeRescheduleFee?: boolean;
+  /** @minimum 0 */
+  rescheduleFeeAmount?: number;
   newScheduledAt: string;
   /** @nullable */
   assigneeId?: number | null;

@@ -8,6 +8,10 @@
 import type { EstimateLineItem } from './estimateLineItem';
 
 export interface CreateEstimateTemplateInput {
+  /** @nullable */
+  notes?: string | null;
+  /** @nullable */
+  termsText?: string | null;
   name: string;
   description?: string;
   lineItems?: EstimateLineItem[];

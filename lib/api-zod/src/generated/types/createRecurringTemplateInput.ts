@@ -10,6 +10,10 @@ import type { CreateRecurringTemplateInputBillingCycleType } from './createRecur
 import type { CreateRecurringTemplateInputBillingMode } from './createRecurringTemplateInputBillingMode';
 
 export interface CreateRecurringTemplateInput {
+  /** @nullable */
+  termsText?: string | null;
+  /** @nullable */
+  invoiceTemplateId?: number | null;
   customerId?: number;
   serviceId?: number;
   name: string;

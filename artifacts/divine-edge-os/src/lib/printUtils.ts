@@ -8,9 +8,9 @@ function base64Logo(tenantId: number, apiBase: string): string {
 }
 
 function logoTag(logoUrl: string | null | undefined, tenantId: number | undefined, apiBase: string): string {
-  if (!logoUrl && !tenantId) return '';
+  if (!logoUrl) return '';
   const src = tenantId ? base64Logo(tenantId, apiBase) : (logoUrl ?? '');
-  return `<img src="${src}" alt="Logo" style="height:60px;width:auto;object-fit:contain;margin:0 auto 8px;display:block;" onerror="this.style.display='none'" />`;
+  return `<img src="${src}" alt="Logo" style="height:60px;width:auto;object-fit:contain;margin:0 auto 8px;display:block;" />`;
 }
 
 function brandingHeader(settings: Record<string, unknown>, apiBase: string): string {
@@ -64,6 +64,8 @@ function openPrintWindow(doc: string) {
 }
 
 export function buildEstimatePrintDocument(estimate: Record<string, unknown>, settings: Record<string, unknown>): string {
+  const legacyTerms = ((estimate.lineItems as Array<Record<string, unknown>> | undefined) ?? []).find(i => i?.type === 'text_block' && i?.role === 'terms');
+  const estTerms = typeof estimate.termsText === 'string' ? estimate.termsText : String(legacyTerms?.content ?? '');
   const apiBase = (import.meta.env.BASE_URL ?? '/').replace(/\/$/, '');
   const items = (estimate.lineItems ?? []) as Array<{ id: string; description: string; qty: number; unitPrice: number; markup: number; discount: number; isOptional: boolean; optionalPitchLine: string }>;
   const calcItem = (i: typeof items[0]) => i.qty * i.unitPrice * (1 + i.markup / 100) * (1 - i.discount / 100);
@@ -95,7 +97,7 @@ export function buildEstimatePrintDocument(estimate: Record<string, unknown>, se
     ${brandingHeader(settings, apiBase)}
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
       <div>
-        <h1>Estimate #${estimate.id}</h1>
+        <h1>${estimate.id === 'PREVIEW' ? 'Estimate (preview)' : `Estimate #${estimate.id}`}</h1>
         <div style="color:#6b7280;font-size:12px;">Prepared ${estimate.createdAt ? fmtDate(estimate.createdAt as string) : ''}</div>
       </div>
       <span class="badge">${String(estimate.status ?? '').toUpperCase()}</span>
@@ -107,6 +109,7 @@ export function buildEstimatePrintDocument(estimate: Record<string, unknown>, se
       <tbody>${requiredRows}${optionalRows}</tbody>
       <tfoot><tr><td colspan="2" class="right">Total</td><td class="right">${fmt$(total)}</td></tr></tfoot>
     </table>
+    ${estTerms.trim() ? `<div class="section" style="margin-top:16px;"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;font-weight:600;margin-bottom:4px;">Terms &amp; Conditions</div><div style="white-space:pre-wrap;color:#4b5563;font-size:12px;">${escapeHtml(estTerms)}</div></div>` : ''}
     ${(settings?.invoiceFooterText as string) ? `<div class="footer">${settings.invoiceFooterText}</div>` : ''}
   `;
   return printDocument(html);
@@ -157,7 +160,6 @@ export function buildInvoicePrintDocument(invoice: Record<string, unknown>, sett
         <tr style="font-weight:700;font-size:15px;"><td>Total</td><td class="right">${fmt$(total)}</td></tr>
       </tbody>
     </table>
-    ${(invoice.termsText as string) ? `<div class="section" style="margin-top:16px;"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;font-weight:600;margin-bottom:4px;">Terms &amp; Conditions</div><div style="white-space:pre-wrap;color:#4b5563;font-size:12px;">${escapeHtml(invoice.termsText as string)}</div></div>` : ''}
     ${(invoice.termsText as string) ? `<div class="section" style="margin-top:16px;"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;font-weight:600;margin-bottom:4px;">Terms &amp; Conditions</div><div style="white-space:pre-wrap;color:#4b5563;font-size:12px;">${escapeHtml(invoice.termsText as string)}</div></div>` : ''}
     ${(settings?.invoiceFooterText as string) ? `<div class="footer">${settings.invoiceFooterText}</div>` : ''}
   `;

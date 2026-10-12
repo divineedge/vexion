@@ -12,6 +12,8 @@ import type { UpdateEstimateInputStatus } from './updateEstimateInputStatus';
 import type { UpdateEstimateInputVisitMode } from './updateEstimateInputVisitMode';
 
 export interface UpdateEstimateInput {
+  /** @nullable */
+  termsText?: string | null;
   customerId?: number;
   propertyId?: number;
   assigneeId?: number;

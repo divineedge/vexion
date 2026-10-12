@@ -8,6 +8,10 @@
 import type { EstimateLineItem } from './estimateLineItem';
 
 export interface EstimateTemplate {
+  /** @nullable */
+  notes?: string | null;
+  /** @nullable */
+  termsText?: string | null;
   id: number;
   tenantId: number;
   name: string;

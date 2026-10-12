@@ -12,6 +12,9 @@ import type { RecurrenceRule } from './recurrenceRule';
 import type { SupplyItem } from './supplyItem';
 
 export interface JobUpdate {
+  chargeRescheduleFee?: boolean;
+  /** @minimum 0 */
+  rescheduleFeeAmount?: number;
   title?: string;
   description?: string;
   status?: JobUpdateStatus;

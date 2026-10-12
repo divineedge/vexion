@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { PreviewActions } from '@/components/documents/PreviewActions';
+import { WordingField } from '@/components/documents/WordingField';
+import { buildPreviewEstimate, normalizeWording } from '@/lib/documentPreview';
 import { billableItems } from '@/lib/estimateSelection';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -41,6 +44,8 @@ import {
 } from 'lucide-react';
 import { Link, useSearch, useLocation } from 'wouter';
 import { printEstimate, buildEstimatePrintDocument } from '@/lib/printUtils';
+import { DocumentPreviewDialog } from '@/components/documents/DocumentPreviewDialog';
+import { EstimateDocument } from '@/components/documents/EstimateDocument';
 import EstimateTemplatesSettings from '@/components/settings/EstimateTemplatesSettings';
 import { Sheet as TemplatesSheet, SheetContent as TemplatesSheetContent, SheetHeader as TemplatesSheetHeader, SheetTitle as TemplatesSheetTitle, SheetDescription as TemplatesSheetDescription } from '@/components/ui/sheet';
 import { SendDocumentDialog } from '@/components/shared/SendDocumentDialog';
@@ -135,166 +140,16 @@ function EstimatePreviewDialog({ estimate, settings, open, onClose }: {
   open: boolean;
   onClose: () => void;
 }) {
-  const [showPreviewBreakdown, setShowPreviewBreakdown] = useState(false);
-  const [showPrintedCopy, setShowPrintedCopy] = useState(false);
-  const items = (estimate?.lineItems ?? []) as LineItem[];
-  const required = items.filter(i => !i.isOptional);
-  const optional = items.filter(i => i.isOptional);
-  const total = billableItems(items).reduce((s, i) => s + calcItem(i), 0);
-
-  // Build category groups for preview breakdown
-  const previewCatGroups = (['labor', 'parts', 'other'] as const)
-    .map(key => ({ key, label: CATEGORY_LABELS[key], items: required.filter(i => getItemCategory(i) === key) }))
-    .filter(g => g.items.length > 0);
-  const apiBase = (() => {
-    const base = import.meta.env.BASE_URL ?? '/';
-    return base.endsWith('/') ? base.slice(0, -1) : base;
-  })();
-
   if (!estimate) return null;
-
   return (
-    <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0">
-        <div className="bg-muted/30 min-h-full">
-          <div className="max-w-2xl mx-auto p-6 space-y-5">
-            {/* Branding header */}
-            <div className="text-center space-y-2">
-              <img
-                src={`${apiBase}/api/public/tenants/${estimate.tenantId}/logo`}
-                alt="Company logo"
-                className="h-14 w-auto mx-auto object-contain"
-                onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-              />
-              {settings?.companyName && <h1 className="text-xl font-bold">{settings.companyName}</h1>}
-              {settings?.businessTagline && <p className="text-xs text-muted-foreground italic">{settings.businessTagline}</p>}
-              <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-                {settings?.businessPhone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{settings.businessPhone}</span>}
-                {settings?.businessEmail && <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{settings.businessEmail}</span>}
-                {settings?.businessWebsite && <span className="flex items-center gap-1"><Globe className="w-3 h-3" />{settings.businessWebsite}</span>}
-              </div>
-            </div>
-
-            {/* Estimate header */}
-            <div className="bg-white rounded-xl border p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-bold">Estimate #{estimate.id}</h2>
-                  <p className="text-sm text-muted-foreground" title={estimate.createdAt ? `Prepared on ${format(new Date(estimate.createdAt), 'EEEE, MMMM d, yyyy')}` : undefined}>Prepared {estimate.createdAt ? format(new Date(estimate.createdAt), 'MMMM d, yyyy') : ''}</p>
-                </div>
-                <span className={`px-3 py-1 rounded-full text-xs font-semibold capitalize ${STATUS_COLORS[estimate.status] ?? ''}`}>{estimate.status}</span>
-              </div>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                {estimate.customerName && (
-                  <div><p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-0.5">Customer</p>{(estimate as any).customerId ? <a href={`${import.meta.env.BASE_URL}customers/${(estimate as any).customerId}`} className="font-medium text-primary hover:underline">{estimate.customerName}</a> : <p className="font-medium">{estimate.customerName}</p>}</div>
-                )}
-                {estimate.propertyAddress && (
-                  <div><p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-0.5">Property</p>{(estimate as any).propertyId ? <a href={`${import.meta.env.BASE_URL}properties/${(estimate as any).propertyId}`} className="font-medium text-primary hover:underline">{estimate.propertyAddress}</a> : <p>{estimate.propertyAddress}</p>}</div>
-                )}
-                {estimate.scheduledAt && (
-                  <div><p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-0.5">Scheduled</p><p>{format(new Date(estimate.scheduledAt), 'MMM d, yyyy h:mm a')}</p></div>
-                )}
-                {estimate.expiresAt && (
-                  <div><p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-0.5">Expires</p><p>{format(new Date(estimate.expiresAt), 'MMM d, yyyy')}</p></div>
-                )}
-              </div>
-              {estimate.notes && <p className="text-sm text-muted-foreground italic border-t pt-3">{estimate.notes}</p>}
-            </div>
-
-            {/* Line items */}
-            <div className="bg-white rounded-xl border p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm">Services</h3>
-                <button
-                  className="text-xs text-primary hover:underline flex items-center gap-1"
-                  onClick={() => setShowPreviewBreakdown(v => !v)}
-                  title={showPreviewBreakdown ? 'Collapse to total only' : 'Expand to see cost breakdown by category'}
-                >
-                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showPreviewBreakdown ? 'rotate-180' : ''}`} />
-                  {showPreviewBreakdown ? 'Hide breakdown' : 'View breakdown'}
-                </button>
-              </div>
-
-              {showPreviewBreakdown ? (
-                <div className="space-y-3">
-                  {previewCatGroups.map(cat => {
-                    const catTotal = cat.items.reduce((s, i) => s + calcItem(i), 0);
-                    return (
-                      <div key={cat.key}>
-                        <div className="flex justify-between items-center mb-1.5">
-                          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{cat.label}</span>
-                          <span className="text-xs font-semibold text-muted-foreground">${catTotal.toFixed(2)}</span>
-                        </div>
-                        <div className="pl-3 border-l-2 border-muted space-y-2">
-                          {cat.items.map(item => (
-                            <div key={item.id} className="flex items-start justify-between gap-4 text-sm">
-                              <div className="flex-1">
-                                <p className="font-medium">{item.description || '—'}</p>
-                                {(item.markup > 0 || item.discount > 0) && (
-                                  <p className="text-xs text-muted-foreground">
-                                    ${item.unitPrice.toFixed(2)} each{item.markup > 0 && ` + ${item.markup}% markup`}{item.discount > 0 && ` − ${item.discount}% off`}
-                                  </p>
-                                )}
-                              </div>
-                              <span className="font-medium shrink-0">${calcItem(item).toFixed(2)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {optional.length > 0 && (
-                    <div className="pt-1">
-                      <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2">Optional Add-Ons</p>
-                      <div className="space-y-1">
-                        {optional.map(item => (
-                          <div key={item.id} className="flex items-start justify-between gap-4 text-sm bg-amber-50/40 rounded p-2">
-                            <div className="flex-1">
-                              <p className="font-medium">{item.description || '—'}</p>
-                              {item.optionalPitchLine && <p className="text-xs text-muted-foreground italic">{item.optionalPitchLine}</p>}
-                            </div>
-                            <span className="font-medium shrink-0">${calcItem(item).toFixed(2)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <div className="border-t pt-3 flex justify-between items-center font-bold">
-                    <span>Total</span>
-                    <span className="text-lg">${total.toFixed(2)}</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="border-t pt-3 flex justify-between items-center font-bold">
-                  <span>Total</span>
-                  <span className="text-lg">${total.toFixed(2)}</span>
-                </div>
-              )}
-            </div>
-
-            {showPrintedCopy && (
-              <iframe
-                title="Printed estimate preview"
-                srcDoc={buildEstimatePrintDocument(estimate as Record<string, unknown>, (settings ?? {}) as Record<string, unknown>)}
-                sandbox="allow-same-origin"
-                className="w-full h-[60vh] rounded-md border bg-card"
-              />
-            )}
-            <div className="flex justify-center gap-3 pb-4">
-              <Button variant="outline" size="sm" onClick={() => setShowPrintedCopy(v => !v)} data-testid="button-toggle-printed-estimate">
-                {showPrintedCopy ? 'Hide printed copy' : 'Show printed copy'}
-              </Button>
-              <Button variant="outline" size="sm" className="gap-2" onClick={() => printEstimate(estimate as Record<string, unknown>, settings as Record<string, unknown>)}>
-                <Printer className="w-3.5 h-3.5" /> Print / Save PDF
-              </Button>
-            </div>
-            <p className="text-center text-xs text-muted-foreground pb-2">
-              Staff preview — the customer sees this after you send the estimate.
-            </p>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <DocumentPreviewDialog
+      open={open}
+      onClose={onClose}
+      title={`Preview Estimate #${estimate.id}`}
+      description="Read-only. Approval happens on the customer link after you send. Nothing is sent from here."
+      customerView={<EstimateDocument estimate={estimate} settings={settings} />}
+      printDocument={buildEstimatePrintDocument(estimate as Record<string, unknown>, (settings ?? {}) as Record<string, unknown>)}
+    />
   );
 }
 
@@ -318,6 +173,9 @@ export default function EstimatesPage() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesVal, setNotesVal] = useState('');
+  const [createTerms, setCreateTerms] = useState<string | null>(null);
+  const [editingTerms, setEditingTerms] = useState(false);
+  const [termsVal, setTermsVal] = useState('');
 
   // Auto-select an estimate when navigated here with ?highlight=<id>
   // Also open create sheet when arriving via quick-add shortcut (?action=create)
@@ -431,6 +289,8 @@ export default function EstimatesPage() {
   useEffect(() => {
     setNotesVal(selectedEstimate?.notes ?? '');
     setEditingNotes(false);
+    setTermsVal(selectedEstimate?.termsText ?? '');
+    setEditingTerms(false);
     setEditingLineItems(false);
     setEditLineItemsList([]);
     setShowBreakdown(false); // collapse breakdown when switching estimates
@@ -474,6 +334,25 @@ export default function EstimatesPage() {
     setForm(f => ({ ...f, templateId }));
   }
 
+  const liveEstimatePreview = () => {
+    const e = (selectedEstimate ?? {}) as any;
+    return {
+      ...e,
+      notes: editingNotes ? notesVal : e.notes,
+      termsText: editingTerms ? termsVal : e.termsText,
+      lineItems: editingLineItems ? editLineItemsList : e.lineItems,
+    };
+  };
+
+  const createTemplateTerms = (templates?.find(t => String(t.id) === form.templateId) as any)?.termsText as string | null | undefined;
+  const createDefaultTerms = (createTemplateTerms ?? settings?.defaultEstimateTerms ?? '') as string;
+  const buildCreatePreview = () => buildPreviewEstimate({
+    lineItems,
+    termsText: createTerms === null ? createDefaultTerms : createTerms,
+    expiryDays: (settings as any)?.estimateExpiryDays ?? 30,
+    tenantId: (settings as any)?.tenantId ?? null,
+  });
+
   const subtotal = billableItems(lineItems).reduce((sum, i) => sum + calcItem(i), 0);
 
   function handleCreate() {
@@ -486,6 +365,7 @@ export default function EstimatesPage() {
         scheduledAt: form.scheduledAt || undefined,
         expiresAt: form.expiresAt || undefined,
         notes: form.notes || undefined,
+        ...(createTerms !== null ? { termsText: normalizeWording(createTerms) } : {}),
         templateId: form.templateId ? parseInt(form.templateId, 10) : undefined,
         lineItems: lineItems.map(i => ({
           id: i.id,
@@ -523,6 +403,7 @@ export default function EstimatesPage() {
         setCreateSupplies([]);
         setAddingCreateSupply(false);
         setCreateSupplySearch('');
+        setCreateTerms(null);
         setForm({ customerId: '', propertyId: '', assigneeId: '', visitMode: 'scheduled', scheduledAt: '', expiresAt: '', notes: '', templateId: '', estimatedDurationMin: '', paymentRequirement: 'none', depositValue: '' });
         setSelectedId(e.id);
       },
@@ -972,6 +853,15 @@ export default function EstimatesPage() {
             <SheetTitle>New Estimate</SheetTitle>
             <SheetDescription>Build a price proposal for a customer.</SheetDescription>
           </SheetHeader>
+          <div className="sticky top-0 z-10 -mx-6 px-6 py-2 mb-3 bg-background/95 backdrop-blur border-b flex justify-end">
+            <PreviewActions
+              title="New estimate preview"
+              sampleNotice="Preview of this unsaved estimate. Not saved and not sent."
+              renderCustomerView={() => <EstimateDocument estimate={buildCreatePreview() as any} settings={settings as any} preview />}
+              buildPrintDocument={() => buildEstimatePrintDocument(buildCreatePreview() as Record<string, unknown>, (settings ?? {}) as Record<string, unknown>)}
+              testIdPrefix="create-estimate-preview"
+            />
+          </div>
 
           <div className="space-y-5 pb-8">
             {/* Template picker */}
@@ -1156,6 +1046,8 @@ export default function EstimatesPage() {
               <label className="text-sm font-medium">Notes</label>
               <Textarea rows={2} title="Internal notes or scope of work (not shown on the customer-facing estimate)" placeholder="Internal notes or scope..." value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
             </div>
+            <WordingField label="Terms" value={createTerms} onChange={setCreateTerms} defaultText={createDefaultTerms}
+              defaultSource={createTemplateTerms != null ? 'estimate template' : 'company default (Settings, Estimates)'} />
 
             {/* Payment on acceptance */}
             <div className="rounded-lg border p-4 space-y-3">
@@ -1573,9 +1465,13 @@ export default function EstimatesPage() {
                       <Copy className="w-3.5 h-3.5" /> {createEstimate.isPending ? 'Duplicating…' : 'Duplicate'}
                     </Button>
                   )}
-                  <Button size="sm" variant="outline" className="gap-2" title="Preview how this estimate looks to the customer" onClick={() => setPreviewOpen(true)}>
-                    <Eye className="w-3.5 h-3.5" /> Preview
-                  </Button>
+                  <PreviewActions
+                    title={`Estimate #${selectedEstimate.id}`}
+                    sampleNotice={(editingTerms || editingNotes || editingLineItems) ? 'Includes unsaved edits on this screen. Nothing is saved or sent.' : undefined}
+                    renderCustomerView={() => <EstimateDocument estimate={liveEstimatePreview() as any} settings={settings as any} preview />}
+                    buildPrintDocument={() => buildEstimatePrintDocument(liveEstimatePreview() as Record<string, unknown>, (settings ?? {}) as Record<string, unknown>)}
+                    testIdPrefix="estimate-preview"
+                  />
                   {selectedEstimate.approvalToken && selectedEstimate.status === 'sent' && (
                     <Button size="sm" variant="outline" className="gap-2" title="Open the customer-facing estimate approval page" asChild>
                       <a href={`/estimate/${selectedEstimate.approvalToken}`} target="_blank" rel="noopener noreferrer">
@@ -1753,6 +1649,35 @@ export default function EstimatesPage() {
                     </div>
                   ) : (
                     <p className="text-sm">{selectedEstimate.notes || <span className="text-muted-foreground italic">No notes.</span>}</p>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Terms (customer-facing)</p>
+                    {canManageOffice && !editingTerms && (
+                      <Button variant="ghost" size="sm" className="h-6 text-xs gap-1" onClick={() => setEditingTerms(true)} data-testid="button-edit-estimate-terms">
+                        <Edit2 className="w-3 h-3" /> Edit
+                      </Button>
+                    )}
+                  </div>
+                  {editingTerms ? (
+                    <div className="space-y-2">
+                      <Textarea value={termsVal} onChange={e => setTermsVal(e.target.value)} rows={4} className="text-sm" placeholder="Leave blank to print no terms on this estimate" aria-label="Estimate terms" />
+                      <p className="text-[11px] text-muted-foreground">Changes only this estimate. Templates and company defaults are not affected.</p>
+                      <div className="flex gap-2">
+                        <Button size="sm" className="h-7 text-xs" disabled={updateEstimate.isPending} onClick={() => updateEstimate.mutate(
+                          { id: selectedEstimate.id, data: { termsText: termsVal.trim() === '' ? '' : termsVal } },
+                          {
+                            onSuccess: () => { toast.success('Terms saved'); setEditingTerms(false); invalidate(); },
+                            onError: (err: any) => toast.error(err?.data?.error ?? 'Failed to save terms'),
+                          },
+                        )} data-testid="button-save-estimate-terms">{updateEstimate.isPending ? 'Saving…' : 'Save terms'}</Button>
+                        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setEditingTerms(false); setTermsVal(selectedEstimate.termsText ?? ''); }}>Cancel</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm whitespace-pre-wrap">{selectedEstimate.termsText || <span className="text-muted-foreground italic">No terms.</span>}</p>
                   )}
                 </div>
 
@@ -1993,15 +1918,6 @@ export default function EstimatesPage() {
         </SheetContent>
       </Sheet>
 
-      {/* Estimate Preview */}
-      {selectedEstimate && (
-        <EstimatePreviewDialog
-          estimate={selectedEstimate}
-          settings={settings}
-          open={previewOpen}
-          onClose={() => setPreviewOpen(false)}
-        />
-      )}
 
       {/* Delete Confirm */}
       <Dialog open={deleteDialogId != null} onOpenChange={open => { if (!open) setDeleteDialogId(null); }}>

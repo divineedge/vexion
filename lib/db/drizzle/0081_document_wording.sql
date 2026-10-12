@@ -1,0 +1,10 @@
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS default_invoice_terms text;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS default_invoice_notes text;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS default_estimate_terms text;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS default_estimate_notes text;
+ALTER TABLE invoice_templates ADD COLUMN IF NOT EXISTS notes text;
+ALTER TABLE recurring_invoice_templates ADD COLUMN IF NOT EXISTS terms_text text;
+ALTER TABLE recurring_invoice_templates ADD COLUMN IF NOT EXISTS invoice_template_id integer;
+ALTER TABLE estimate_templates ADD COLUMN IF NOT EXISTS terms_text text;
+ALTER TABLE estimate_templates ADD COLUMN IF NOT EXISTS notes text;
+ALTER TABLE estimates ADD COLUMN IF NOT EXISTS terms_text text;

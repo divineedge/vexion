@@ -32,6 +32,8 @@ export const recurringInvoiceTemplatesTable = pgTable("recurring_invoice_templat
   isActive: boolean("is_active").notNull().default(true),
   lastGeneratedAt: timestamp("last_generated_at", { withTimezone: true }),
   notes: text("notes"),
+  termsText: text("terms_text"),
+  invoiceTemplateId: integer("invoice_template_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

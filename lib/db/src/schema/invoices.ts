@@ -20,6 +20,10 @@ export const invoicesTable = pgTable("invoices", {
   total: real("total").notNull().default(0),
   /** Prepaid money reserved for this invoice; never reduce the gross invoice total. */
   creditApplied: real("credit_applied").notNull().default(0),
+  depositApplied: real("deposit_applied").notNull().default(0),
+  depositEstimateId: integer("deposit_estimate_id"),
+  planPeriodStart: timestamp("plan_period_start", { withTimezone: true }),
+  planPeriodEnd: timestamp("plan_period_end", { withTimezone: true }),
   dueDate: timestamp("due_date", { withTimezone: true }),
   paidAt: timestamp("paid_at", { withTimezone: true }),
   /** Snapshot of how an offline/manual payment was received. */

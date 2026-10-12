@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DefaultWordingCard } from '@/components/settings/DefaultWordingCard';
+import { PaymentPolicyCard } from '@/components/billing/PaymentPolicyCard';
 import { useLocation } from 'wouter';
 import {
   useGetTenantSettings, getGetTenantSettingsQueryKey,
@@ -53,7 +54,7 @@ import { AddressAutocomplete, type AddressSuggestion } from '@/components/shared
 import ExternalAccessSettings from '@/components/settings/ExternalAccessSettings';
 
 export default function SettingsPage() {
-  const { isSuperAdmin, isOwner, user } = useAuth();
+  const { isSuperAdmin, isOwner, user, canManageOffice } = useAuth();
   const qc = useQueryClient();
   const [, setLocation] = useLocation();
 
@@ -2193,6 +2194,7 @@ export default function SettingsPage() {
                   </div>
                 </div>
               <DefaultWordingCard kind="invoice" />
+              <PaymentPolicyCard scope="company" id={0} canEdit={!!canManageOffice} title="Deposits and prepayment (company default)" />
               <div className="flex flex-wrap items-center gap-2 pt-2 border-t">
                 <Button onClick={saveInvoicingDefaults} disabled={updateSettings.isPending} data-testid="button-save-invoicing">Save Invoicing</Button>
                 <Button variant="outline" onClick={() => setLocation('/financials?tab=invoice-templates')} className="gap-1.5">

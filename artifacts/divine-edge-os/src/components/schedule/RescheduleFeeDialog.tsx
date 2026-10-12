@@ -136,7 +136,7 @@ export function moveToDay(originalIso: string, day: Date | string, tz?: string |
 export function apiErrorMessage(err: unknown, fallback: string): string {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const e = err as any;
-  const msg = e?.data?.error ?? e?.response?.data?.error ?? e?.data?.message;
+  const msg = e?.response?.data?.error ?? e?.data?.error ?? e?.data?.message;
   if (e?.status === 403) return msg ?? 'You do not have permission to reschedule this job.';
-  return msg ?? fallback;
+  return msg ?? (typeof e?.message === 'string' && e.message.trim() ? e.message : fallback);
 }

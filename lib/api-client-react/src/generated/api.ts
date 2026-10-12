@@ -154,7 +154,10 @@ import type {
   GeofencePinUpdate,
   GetAddressSuggestionsParams,
   GetChemicalDocumentReadUrl200,
+  GetCustomerDeposits200,
   GetDevToolsEnvironment200,
+  GetEfficiencyJobs200,
+  GetEfficiencyJobsParams,
   GetEmployeeRevenueReportParams,
   GetEquipmentFuelUsageParams,
   GetEquipmentLedgerParams,
@@ -163,6 +166,7 @@ import type {
   GetJobChemicalWeather200,
   GetJobMessageUnreadCount200,
   GetJobProfitabilityReportParams,
+  GetPaymentPolicy200,
   GetPlStatementReportParams,
   GetQuickBooksAuthorizeUrl200,
   GetRepairLogSummaryParams,
@@ -247,6 +251,7 @@ import type {
   MasterClockState,
   MediaAttachment,
   PauseSeriesInput,
+  PaymentPolicy,
   PlStatementReport,
   Plan,
   PlanCancelRequest,
@@ -320,6 +325,7 @@ import type {
   RunRecurringTemplateNow200,
   RunRecurringTemplateNowInput,
   SalesTaxReport,
+  SavePaymentPolicy200,
   ScheduleItem,
   SendBroadcastInput,
   SendInvoiceReminder200,
@@ -32388,4 +32394,297 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       > => {
       return useMutation(getRecordCustomerPrepaymentMutationOptions(options));
     }
+
+export const getGetPaymentPolicyUrl = (scope: 'company' | 'service' | 'customer',
+    id: number,) => {
+
+
+
+
+  return `/api/billing/payment-policy/${scope}/${id}`
+}
+
+export const getPaymentPolicy = async (scope: 'company' | 'service' | 'customer',
+    id: number, options?: RequestInit): Promise<GetPaymentPolicy200> => {
+
+  return customFetch<GetPaymentPolicy200>(getGetPaymentPolicyUrl(scope,id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPaymentPolicyQueryKey = (scope: 'company' | 'service' | 'customer',
+    id: number,) => {
+    return [
+    `/api/billing/payment-policy/${scope}/${id}`
+    ] as const;
+    }
+
+
+export const getGetPaymentPolicyQueryOptions = <TData = Awaited<ReturnType<typeof getPaymentPolicy>>, TError = ErrorType<unknown>>(scope: 'company' | 'service' | 'customer',
+    id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPaymentPolicy>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPaymentPolicyQueryKey(scope,id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPaymentPolicy>>> = ({ signal }) => getPaymentPolicy(scope,id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: scope !== null && scope !== undefined && id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPaymentPolicy>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPaymentPolicyQueryResult = NonNullable<Awaited<ReturnType<typeof getPaymentPolicy>>>
+export type GetPaymentPolicyQueryError = ErrorType<unknown>
+
+
+
+export function useGetPaymentPolicy<TData = Awaited<ReturnType<typeof getPaymentPolicy>>, TError = ErrorType<unknown>>(
+ scope: 'company' | 'service' | 'customer',
+    id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPaymentPolicy>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPaymentPolicyQueryOptions(scope,id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSavePaymentPolicyUrl = (scope: 'company' | 'service' | 'customer',
+    id: number,) => {
+
+
+
+
+  return `/api/billing/payment-policy/${scope}/${id}`
+}
+
+export const savePaymentPolicy = async (scope: 'company' | 'service' | 'customer',
+    id: number,
+    paymentPolicy: PaymentPolicy, options?: RequestInit): Promise<SavePaymentPolicy200> => {
+
+  return customFetch<SavePaymentPolicy200>(getSavePaymentPolicyUrl(scope,id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(paymentPolicy)
+  }
+);}
+
+
+
+
+
+export const getSavePaymentPolicyMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof savePaymentPolicy>>, TError,{scope: 'company' | 'service' | 'customer';id: number;data: BodyType<PaymentPolicy>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof savePaymentPolicy>>, TError,{scope: 'company' | 'service' | 'customer';id: number;data: BodyType<PaymentPolicy>}, TContext> => {
+
+const mutationKey = ['savePaymentPolicy'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof savePaymentPolicy>>, {scope: 'company' | 'service' | 'customer';id: number;data: BodyType<PaymentPolicy>}> = (props) => {
+          const {scope,id,data} = props ?? {};
+
+          return  savePaymentPolicy(scope,id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SavePaymentPolicyMutationResult = NonNullable<Awaited<ReturnType<typeof savePaymentPolicy>>>
+    export type SavePaymentPolicyMutationBody = BodyType<PaymentPolicy>
+    export type SavePaymentPolicyMutationError = ErrorType<unknown>
+
+    export const useSavePaymentPolicy = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof savePaymentPolicy>>, TError,{scope: 'company' | 'service' | 'customer';id: number;data: BodyType<PaymentPolicy>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof savePaymentPolicy>>,
+        TError,
+        {scope: 'company' | 'service' | 'customer';id: number;data: BodyType<PaymentPolicy>},
+        TContext
+      > => {
+      return useMutation(getSavePaymentPolicyMutationOptions(options));
+    }
+
+export const getGetCustomerDepositsUrl = (id: number,) => {
+
+
+
+
+  return `/api/customers/${id}/deposits`
+}
+
+export const getCustomerDeposits = async (id: number, options?: RequestInit): Promise<GetCustomerDeposits200> => {
+
+  return customFetch<GetCustomerDeposits200>(getGetCustomerDepositsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCustomerDepositsQueryKey = (id: number,) => {
+    return [
+    `/api/customers/${id}/deposits`
+    ] as const;
+    }
+
+
+export const getGetCustomerDepositsQueryOptions = <TData = Awaited<ReturnType<typeof getCustomerDeposits>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCustomerDeposits>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCustomerDepositsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCustomerDeposits>>> = ({ signal }) => getCustomerDeposits(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCustomerDeposits>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCustomerDepositsQueryResult = NonNullable<Awaited<ReturnType<typeof getCustomerDeposits>>>
+export type GetCustomerDepositsQueryError = ErrorType<unknown>
+
+
+
+export function useGetCustomerDeposits<TData = Awaited<ReturnType<typeof getCustomerDeposits>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCustomerDeposits>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCustomerDepositsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetEfficiencyJobsUrl = (params?: GetEfficiencyJobsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/efficiency/jobs?${stringifiedParams}` : `/api/efficiency/jobs`
+}
+
+export const getEfficiencyJobs = async (params?: GetEfficiencyJobsParams, options?: RequestInit): Promise<GetEfficiencyJobs200> => {
+
+  return customFetch<GetEfficiencyJobs200>(getGetEfficiencyJobsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetEfficiencyJobsQueryKey = (params?: GetEfficiencyJobsParams,) => {
+    return [
+    `/api/efficiency/jobs`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetEfficiencyJobsQueryOptions = <TData = Awaited<ReturnType<typeof getEfficiencyJobs>>, TError = ErrorType<unknown>>(params?: GetEfficiencyJobsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEfficiencyJobs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetEfficiencyJobsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getEfficiencyJobs>>> = ({ signal }) => getEfficiencyJobs(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getEfficiencyJobs>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetEfficiencyJobsQueryResult = NonNullable<Awaited<ReturnType<typeof getEfficiencyJobs>>>
+export type GetEfficiencyJobsQueryError = ErrorType<unknown>
+
+
+
+export function useGetEfficiencyJobs<TData = Awaited<ReturnType<typeof getEfficiencyJobs>>, TError = ErrorType<unknown>>(
+ params?: GetEfficiencyJobsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEfficiencyJobs>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetEfficiencyJobsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 

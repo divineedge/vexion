@@ -47,6 +47,8 @@ import CustomerAvatar from '@/components/media/CustomerAvatar';
 import PropertyThumbnail from '@/components/media/PropertyThumbnail';
 import CustomerPlansTab from '@/components/customer/CustomerPlansTab';
 import { CustomerCreditsCard } from '@/components/customer/CustomerCreditsCard';
+import { PaymentPolicyCard } from '@/components/billing/PaymentPolicyCard';
+import { CustomerDepositsCard } from '@/components/billing/CustomerDepositsCard';
 import { StaffNotesPanel } from '@/components/StaffNotesPanel';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -1725,6 +1727,8 @@ export default function CustomerDetailPage() {
 
         {/* Invoices tab */}
         <TabsContent value="invoices" className="space-y-4 focus-visible:outline-none">
+          <PaymentPolicyCard scope="customer" id={customerIdForCredits} canEdit={!!canManageOffice} />
+          <CustomerDepositsCard customerId={customerIdForCredits} />
           <CustomerCreditsCard customerId={customerIdForCredits} canRecord={!!canManageOffice} />
           {(() => {
             const INVOICE_STATUS_COLORS: Record<string, string> = {

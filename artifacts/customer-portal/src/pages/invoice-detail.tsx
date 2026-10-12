@@ -199,12 +199,20 @@ export default function InvoiceDetail() {
               <span className="text-foreground">Total</span>
               <span className="text-foreground">{formatCurrency(invoice.total)}</span>
             </div>
-            {((invoice as any).creditApplied ?? 0) > 0 && (
+            {(((invoice as any).creditApplied ?? 0) > 0 || ((invoice as any).depositApplied ?? 0) > 0) && (
               <>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Prepaid credit applied</span>
-                  <span className="text-emerald-700">-{formatCurrency((invoice as any).creditApplied)}</span>
-                </div>
+                {((invoice as any).creditApplied ?? 0) > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Prepaid credit applied</span>
+                    <span className="text-emerald-700">-{formatCurrency((invoice as any).creditApplied)}</span>
+                  </div>
+                )}
+                {((invoice as any).depositApplied ?? 0) > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Deposit received</span>
+                    <span className="text-emerald-700">-{formatCurrency((invoice as any).depositApplied)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-base font-bold pt-2 border-t border-border">
                   <span className="text-foreground">Balance due</span>
                   <span className="text-foreground">{formatCurrency((invoice as any).balanceDue ?? invoice.total)}</span>

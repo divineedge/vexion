@@ -1,3 +1,4 @@
+import { paymentGuardedJobInsert, effectivePaymentPolicy } from "../lib/paymentPolicy";
 import { creditedInvoiceInsert } from "../lib/customerCredit";
 import { Router, type IRouter } from "express";
 import { db, estimatesTable, visitsTable, jobsTable, customersTable, propertiesTable, usersTable, tenantsTable, blueprintsTable, communicationsLogTable, estimateTemplatesTable, invoicesTable } from "@workspace/db";
@@ -422,6 +423,8 @@ router.get("/estimates/pipeline", async (req, res): Promise<void> => {
 router.post("/estimates", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const { customerId, propertyId, blueprintId, assigneeId, visitMode, scheduledAt, expiresAt, notes, lineItems, templateId, estimatedDurationMin, suppliesNeeded, paymentRequirement, depositValue } = req.body;
+  const { policy: depositPolicy } = await effectivePaymentPolicy(db, tenantId, customerId, req.body.serviceId ?? lineItems?.find((item: EstimateLineItem) => !item.isOptional && item.serviceId)?.serviceId);
+  const policyRequirement = depositPolicy.depositType === "fixed" ? "deposit_fixed" : depositPolicy.depositType === "percent" ? "deposit_pct" : depositPolicy.depositType === "full" ? "full" : null;
 
   let items: EstimateLineItem[] = lineItems ?? [];
   let resolvedTemplateId: number | null = null;
@@ -468,8 +471,8 @@ router.post("/estimates", async (req, res): Promise<void> => {
     total,
     estimatedDurationMin: estimatedDurationMin != null ? parseInt(String(estimatedDurationMin), 10) : null,
     suppliesNeeded: normaliseSupplies(suppliesNeeded),
-    paymentRequirement: paymentRequirement ?? "none",
-    depositValue: depositValue != null ? parseFloat(String(depositValue)) : null,
+    paymentRequirement: policyRequirement ?? paymentRequirement ?? "none",
+    depositValue: policyRequirement ? depositPolicy.depositValue : depositValue != null ? parseFloat(String(depositValue)) : null,
     status: "draft",
   }).returning();
 
@@ -1070,7 +1073,7 @@ router.post("/estimates/:id/convert", requireVerifiedStaff, async (req, res): Pr
     ? new Date(scheduledAt)
     : (estimate.scheduledAt ?? new Date(Date.now() + 24 * 60 * 60 * 1000));
 
-  const [job] = await db.insert(jobsTable).values({
+  const [job] = await paymentGuardedJobInsert(db).values({
     tenantId,
     title: title?.trim() || `Job from Estimate #${estimate.id}`,
     description: estimate.notes ?? null,
@@ -1085,15 +1088,16 @@ router.post("/estimates/:id/convert", requireVerifiedStaff, async (req, res): Pr
     lineItems: jobItems,
     totalAmount: total,
     estimateId: estimate.id,
+    serviceId: req.body.serviceId ?? (estimate.lineItems as EstimateLineItem[] | null)?.find(item => !item.isOptional && item.serviceId)?.serviceId ?? null,
     estimatedDuration: estimate.estimatedDurationMin ?? undefined,
     suppliesNeeded: (estimate as any).suppliesNeeded ?? [],
     invoiceAfterJob: !invoiceNow,
   }).returning();
 
-  let invoiceId: number | null = null;
+  let invoiceId: number | null = job.invoiceId ?? null;
 
   // If "Invoice now" was chosen, create a draft invoice immediately so staff can review and send it
-  if (invoiceNow && estimate.customerId) {
+  if (invoiceNow && estimate.customerId && !job.invoiceId) {
     try {
       const [tenant] = await db.select({ taxRate: tenantsTable.taxRate }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
       const taxRate = tenant?.taxRate ?? 0;

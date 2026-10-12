@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { Search, Plus, Briefcase, DollarSign, Clock, Edit, Trash2, TrendingUp, Grid3X3, X, ChevronRight, Snowflake, Ruler } from 'lucide-react';
 import { useDebounce } from '@/hooks/use-debounce';
 import type { PricingTier } from '@/lib/pricingMatrix';
+import { PaymentPolicyCard } from '@/components/billing/PaymentPolicyCard';
 
 const mkKey = () => Math.random().toString(36).slice(2, 10);
 type TierWithKey = PricingTier & { _key: string };
@@ -1027,6 +1028,12 @@ export default function ServicesPage() {
                 onCheckedChange={v => setForm(f => ({ ...f, isActive: v }))}
               />
             </div>
+
+            {sheetMode === 'edit' && selectedId ? (
+              <PaymentPolicyCard scope="service" id={selectedId} canEdit={!!canManageOffice} />
+            ) : (
+              <p className="text-xs text-muted-foreground">Save this service first to set deposit and prepayment requirements.</p>
+            )}
 
             <Separator />
 

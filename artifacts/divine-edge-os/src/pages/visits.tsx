@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { serverErrorMessage } from '@/lib/serverError';
 import { useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
@@ -169,7 +170,7 @@ export default function VisitsPage() {
   function handleConvertToJob(id: number) {
     convertToJob.mutate({ id }, {
       onSuccess: (r) => { toast.success(`Job #${r.jobId} created`); invalidate(); },
-      onError: () => toast.error('Failed to convert to job'),
+      onError: (err: unknown) => toast.error(serverErrorMessage(err, 'Failed to convert to job')),
     });
   }
 

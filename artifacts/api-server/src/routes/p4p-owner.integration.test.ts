@@ -3,7 +3,7 @@ import request from "supertest";
 import express from "express";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { db, tenantsTable, usersTable, jobsTable, timeEntriesTable, servicesTable } from "@workspace/db";
+import { db, tenantsTable, usersTable, jobsTable, timeEntriesTable, servicesTable, crewsTable, subTimersTable } from "@workspace/db";
 import payroll from "./p4p";
 import efficiency from "./efficiency";
 
@@ -38,12 +38,26 @@ describe("owner payroll and efficiency", () => {
       const enabled = await request(app).get("/efficiency?period=30d");
       expect(enabled.status).toBe(200);
       expect(enabled.body.technicians.some((u: { userId: number }) => u.userId === owner.id)).toBe(true);
+      const [crew] = await db.insert(crewsTable).values({ tenantId:tenant.id, name:"Single owner crew" }).returning();
+      await db.update(jobsTable).set({ crewId:crew.id, assigneeId:null, estimatedDuration:120 }).where(eq(jobsTable.id,job.id));
+      await db.insert(subTimersTable).values({ tenantId:tenant.id, userId:owner.id, jobId:job.id, label:"Job", type:"job", startedAt:new Date(Date.now()-40*86400000), elapsedSeconds:3600, isActive:false });
+      const people = await request(app).get("/efficiency?period=30d");
+      const teams = await request(app).get("/efficiency/by-crew?period=30d");
+      expect(people.status).toBe(200); expect(teams.status).toBe(200);
+      expect(people.body.technicians.find((person: { userId:number }) => person.userId===owner.id).budgetEfficiency).toBe(200);
+      expect(teams.body.crews[0].budgetEfficiency).toBe(200);
+      await db.update(jobsTable).set({ serviceId:null }).where(eq(jobsTable.id,job.id));
+      const unspecified = await request(app).get("/efficiency/jobs?period=30d&serviceId=null");
+      expect(unspecified.status).toBe(200);
+      expect(unspecified.body.jobs[0]).toMatchObject({ id:job.id,serviceName:"Unspecified",actualSeconds:3600 });
       await db.update(tenantsTable).set({ ownersSchedulable: false }).where(eq(tenantsTable.id, tenant.id));
       expect((await request(app).get("/efficiency?period=30d")).body.technicians).toHaveLength(0);
       expect((await request(app).get("/p4p/summary?period=30d")).body.technicians).toHaveLength(0);
     } finally {
       await db.delete(timeEntriesTable).where(eq(timeEntriesTable.tenantId, tenant.id));
+      await db.delete(subTimersTable).where(eq(subTimersTable.tenantId, tenant.id));
       await db.delete(jobsTable).where(eq(jobsTable.tenantId, tenant.id));
+      await db.delete(crewsTable).where(eq(crewsTable.tenantId, tenant.id));
       await db.delete(servicesTable).where(eq(servicesTable.tenantId, tenant.id));
       await db.delete(usersTable).where(eq(usersTable.tenantId, tenant.id));
       await db.delete(tenantsTable).where(eq(tenantsTable.id, tenant.id));

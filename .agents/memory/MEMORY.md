@@ -1,3 +1,4 @@
+- [Payment requirements](payment-requirements.md) — customer → service → company deposit priority; deposits, general prepaid credit, and saved-card requirements are separate.
 - [Billing coverage and credits](billing-coverage-credits.md) — completed work needs invoice coverage or admin attention; prepaid funds never replace the invoice or reduce gross revenue.
 - [Drizzle update typing](drizzle-update-typing.md) — use `Partial<typeof table.$inferInsert>` for update payloads, never `Record<string, unknown>` cast
 - [Orval email format](orval-email-format.md) — `format: email` in OpenAPI generates `zod.email()` (Zod v4), which breaks typecheck on Zod v3 workspace; strip email format from spec
@@ -53,6 +54,7 @@
 - [Equipment assignment visibility](equipment-assignment-visibility.md) — field staff access equipment only by direct or current crew assignment; managers retain tenant-wide access
 - [Tenant identity boundary](tenant-identity-boundary.md) — private APIs must authorize tenant/user solely from a verified staff session, never caller identity headers
 - [Callback ratio definition](callback-ratio-definition.md) — count every callback ticket over completed jobs in the same selected period; keep original-work attribution stable
+- [Comparable budget efficiency](efficiency-budget-cohorts.md) — employee and crew budgets share a completed-job cohort; assign budgets to actual contributors.
 - [Android Expo Go push imports](android-expo-go-push-imports.md) — SDK 53+ can crash on expo-notifications push side effects; skip loading them in Android Expo Go
 - [Field App session unlock](field-app-session-unlock.md) — password once per 30-day session; biometric/PIN only at cold launch or explicit lock, never per job action
 - [External service grants](external-service-grants.md) — owner-delegated business-wide categories are separate from staff roles; MCP client authentication limits must remain explicit

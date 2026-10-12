@@ -1,3 +1,4 @@
+import { paymentGuardedJobInsert } from "../lib/paymentPolicy";
 import { invoiceBalance } from "../lib/customerCredit";
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db, customersTable, propertiesTable, jobsTable, invoicesTable, customerOtpSessionsTable, customerAlertsTable, mediaAttachmentsTable, tenantsTable, communicationsLogTable, customerPlansTable, usersTable, planCancelRequestsTable, estimatesTable, taskNotificationsTable, portalMessagesTable, internalTasksTable, chemicalApplicationsTable } from "@workspace/db";
@@ -1318,8 +1319,7 @@ router.post("/portal/service-requests", requirePortalAuth, async (req: any, res)
     ? new Date(preferredDateStart)
     : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
-  const [job] = await db
-    .insert(jobsTable)
+  const [job] = await paymentGuardedJobInsert(db)
     .values({
       tenantId: portalTenantId,
       title: "Service Request",
@@ -2746,6 +2746,7 @@ function formatPortalJob(j: typeof jobsTable.$inferSelect, propertyAddress: stri
 function formatPortalInvoice(inv: typeof invoicesTable.$inferSelect) {
   return {
     creditApplied: inv.creditApplied,
+    depositApplied: inv.depositApplied,
     balanceDue: invoiceBalance(inv),
     id: inv.id,
     invoiceNumber: inv.invoiceNumber,

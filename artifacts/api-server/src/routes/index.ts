@@ -1,5 +1,8 @@
 import { Router, type IRouter } from "express";
+import type { Request, Response, NextFunction } from "express";
+import { SchedulingPaymentError } from "../lib/paymentPolicy";
 import healthRouter from "./health";
+import paymentPolicyRouter from "./paymentPolicy";
 import billingSafetyRouter from "./billingSafety";
 import authRouter from "./auth";
 import storageRouter from "./storage";
@@ -105,6 +108,7 @@ router.use(mediaRouter);
 router.use(dashboardRouter);
 router.use(customersRouter);
 router.use(propertiesRouter);
+router.use(paymentPolicyRouter);
 router.use(jobsRouter);
 router.use(jobRequestsRouter);
 router.use(crewsRouter);
@@ -163,4 +167,8 @@ router.use(staffNotificationDevicesRouter);
 router.use(jobEquipmentUsesRouter);
 router.use(externalAccessRouter);
 
+router.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
+  if (error instanceof SchedulingPaymentError) { res.status(422).json({ error: error.message }); return; }
+  next(error);
+});
 export default router;

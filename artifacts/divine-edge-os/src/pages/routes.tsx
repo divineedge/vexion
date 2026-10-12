@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { serverErrorMessage } from '@/lib/serverError';
 import { useLocation } from 'wouter';
 import {
   useListDivisions, getListDivisionsQueryKey,
@@ -334,7 +335,7 @@ export default function RoutesDashboardPage() {
           onError: () => toast.error('Job was created but could not be assigned to the route'),
         });
       },
-      onError: () => toast.error('Failed to create job'),
+      onError: (err: unknown) => toast.error(serverErrorMessage(err, 'Failed to create job')),
     });
   };
 
@@ -799,7 +800,7 @@ export default function RoutesDashboardPage() {
                   qc.invalidateQueries({ queryKey: getJobsQueryKey() });
                   setClockOutJobId(null);
                 },
-                onError: () => toast.error('Failed to update job'),
+                onError: (err: unknown) => toast.error(serverErrorMessage(err, 'Failed to update job')),
               });
             }} disabled={updateJob.isPending}>
               {updateJob.isPending ? 'Saving…' : 'Mark Complete'}

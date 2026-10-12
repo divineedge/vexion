@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { downloadCsv } from '@/lib/csvExport';
+import { CrewLeaderboard } from '@/components/efficiency/CrewLeaderboard';
+import { JobDrilldown, type DrillTarget } from '@/components/efficiency/JobDrilldown';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -179,7 +181,7 @@ function effColor(rate: number | null) {
 
 function effLabel(rate: number | null) {
   if (rate == null) return 'No data';
-  if (rate >= 100) return 'Under Budget ✓';
+  if (rate >= 100) return 'Under Budget';
   if (rate >= 80) return 'Near Budget';
   return 'Over Budget';
 }
@@ -196,6 +198,7 @@ export default function EfficiencyPage() {
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [techSearch, setTechSearch] = useState('');
   const [view, setView] = useState<ViewTab>('employee');
+  const [drill, setDrill] = useState<DrillTarget | null>(null);
   const [techSort, setTechSort] = useState<'name' | 'budget' | 'clock' | 'completed' | 'callback'>('budget');
 
   const periodQuery = period === 'custom' && customFrom && customTo
@@ -681,52 +684,16 @@ export default function EfficiencyPage() {
                 </div>
               )
             : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {crewData.crews.map(crew => (
-                    <Card key={crew.crewId}>
-                      <CardContent className="p-4 space-y-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="font-semibold text-sm">{crew.name}</p>
-                          {crew.budgetEfficiency != null && (
-                            <Badge variant="outline" className="text-xs py-0.5" style={{ color: effColor(crew.budgetEfficiency), borderColor: effColor(crew.budgetEfficiency) + '60' }}>
-                              {crew.budgetEfficiency}%
-                            </Badge>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          <div className="text-center">
-                            <EfficiencyGauge value={crew.budgetEfficiency} size={64} />
-                            <p className="text-[10px] text-muted-foreground mt-0.5">Budget Eff.</p>
-                          </div>
-                          <div className="flex-1 space-y-1.5 text-xs">
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Jobs</span>
-                              <span className="font-medium">{crew.completedJobs}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground flex items-center gap-1"><Clock className="w-3 h-3" /> Actual</span>
-                              <span className="font-medium">{fmt(Math.round(crew.jobSeconds / 60))}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className={`flex items-center gap-1 ${crew.callbackRatio > cbThreshold ? 'text-destructive' : 'text-muted-foreground'}`}>
-                                <AlertTriangle className="w-3 h-3" /> Slips
-                              </span>
-                              <span className={`font-medium ${crew.callbackRatio > cbThreshold ? 'text-destructive' : ''}`}>
-                                {crew.callbacks} ({crew.callbackRatio}%)
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <BudgetBar
-                          budgetMinutes={crew.budgetMinutes}
-                          actualMinutes={Math.round(crew.jobSeconds / 60)}
-                        />
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+                <>
+                <p className="text-xs text-muted-foreground mb-3" data-testid="text-leaderboard-explainer">
+                  Budget efficiency compares actual time against budgeted time on completed jobs that had a budget. Crew rankings are contextual: job mix and workload vary between crews, so use them as a conversation starter, not a verdict. No worker payroll is shown here.
+                </p>
+                <CrewLeaderboard
+                  crews={crewData.crews}
+                  cbThreshold={cbThreshold}
+                  onOpen={c => setDrill({ kind: 'crew', crewId: c.crewId, label: c.name })}
+                />
+                </>
               )}
 
           {/* Crew comparison bar chart */}
@@ -831,8 +798,12 @@ export default function EfficiencyPage() {
                         </thead>
                         <tbody className="divide-y">
                           {serviceData.services.map(s => (
-                            <tr key={s.serviceId ?? 'none'} className="hover:bg-muted/40 transition-colors">
-                              <td className="px-4 py-2.5 font-medium">{s.serviceName}</td>
+                            <tr key={s.serviceId ?? 'none'} className="hover:bg-muted/40 transition-colors cursor-pointer group"
+                              onClick={() => setDrill({ kind: 'service', serviceId: s.serviceId, label: s.serviceName })}
+                              data-testid={`row-service-${s.serviceId ?? 'none'}`}>
+                              <td className="px-4 py-2.5 font-medium">
+                                <span className="group-hover:text-primary group-hover:underline underline-offset-2">{s.serviceName}</span>
+                              </td>
                               <td className="px-4 py-2.5 text-right tabular-nums">{s.completedJobs}</td>
                               <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{s.budgetMinutes > 0 ? fmt(s.budgetMinutes) : '—'}</td>
                               <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{s.jobSeconds > 0 ? fmt(Math.round(s.jobSeconds / 60)) : '—'}</td>
@@ -855,6 +826,13 @@ export default function EfficiencyPage() {
               )}
         </div>
       )}
+
+      <JobDrilldown
+        target={drill}
+        periodQuery={periodQuery}
+        enabled={enabled && !isTechnician}
+        onClose={() => setDrill(null)}
+      />
 
       {/* Budget hours note */}
       <p className="text-xs text-muted-foreground">

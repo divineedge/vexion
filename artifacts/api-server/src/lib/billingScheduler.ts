@@ -619,7 +619,7 @@ export async function processEmailQueue() {
     .select({
       queue: billingEmailQueueTable,
       invoiceNumber: invoicesTable.invoiceNumber,
-      invoiceTotal: sql<number>`${invoicesTable.total} - ${invoicesTable.creditApplied}`,
+      invoiceTotal: sql<number>`${invoicesTable.total} - ${invoicesTable.creditApplied} - ${invoicesTable.depositApplied}`,
       invoiceToken: invoicesTable.publicToken,
       invoiceStatus: invoicesTable.status,
       customerId: invoicesTable.customerId,

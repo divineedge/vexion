@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { serverErrorMessage } from '@/lib/serverError';
 import { RescheduleFeeDialog, defaultRescheduleFee, moveToDay, apiErrorMessage, type RescheduleFeeChoice } from '@/components/schedule/RescheduleFeeDialog';
 import { useLocation, Link } from 'wouter';
 import {
@@ -940,7 +941,7 @@ export default function SchedulePage() {
         setCreateOpen(false);
         setNewJob(EMPTY_JOB);
       },
-      onError: () => toast.error('Failed to create job'),
+      onError: (err: unknown) => toast.error(serverErrorMessage(err, 'Failed to create job')),
     });
   };
 
@@ -3494,7 +3495,7 @@ export default function SchedulePage() {
                   qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
                   setClockOutJobId(null);
                 },
-                onError: () => toast.error('Failed to update job'),
+                onError: (err: unknown) => toast.error(serverErrorMessage(err, 'Failed to update job')),
               });
             }} disabled={updateJob.isPending}>
               {updateJob.isPending ? 'Saving…' : 'Mark Complete'}

@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 
 export const customersTable = pgTable("customers", {
+  paymentPolicy: jsonb("payment_policy"),
   id: serial("id").primaryKey(),
   tenantId: integer("tenant_id").notNull().references(() => tenantsTable.id),
   name: text("name").notNull(),

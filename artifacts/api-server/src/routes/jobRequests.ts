@@ -1,3 +1,4 @@
+import { paymentGuardedJobInsert } from "../lib/paymentPolicy";
 import { Router, type IRouter } from "express";
 import {
   db, jobRequestsTable, jobsTable, customersTable, propertiesTable, servicesTable,
@@ -161,7 +162,7 @@ router.post("/job-requests/:id/approve", async (req, res): Promise<void> => {
     const relatedError = await validateRelated(tenantId, request.customerId, request.propertyId, request.serviceId);
     if (relatedError) return { error: relatedError, status: 409 };
     const [service] = request.serviceId == null ? [null] : await tx.select({ name: servicesTable.name }).from(servicesTable).where(and(eq(servicesTable.id, request.serviceId), eq(servicesTable.tenantId, tenantId))).limit(1);
-    const [job] = await tx.insert(jobsTable).values({
+    const [job] = await paymentGuardedJobInsert(tx).values({
       tenantId, title: service?.name ?? "Requested job", description: request.notes, status: "scheduled", priority: "normal",
       customerId: request.customerId, propertyId: request.propertyId, serviceId: request.serviceId,
       scheduledAt: scheduledAt ?? request.requestedStartDate, source: "staff",

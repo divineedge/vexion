@@ -179,6 +179,7 @@ export function InvoiceDocument({ invoice, businessProfile, preview = false }: {
   const tax: number = inv.tax ?? 0;
   const total: number = inv.total ?? 0;
   const creditApplied: number = typeof inv.creditApplied === 'number' ? inv.creditApplied : 0;
+  const depositApplied: number = typeof inv.depositApplied === 'number' ? inv.depositApplied : 0;
   const balanceDue: number = typeof inv.balanceDue === 'number' ? inv.balanceDue : total;
   const layout: string = inv.layout ?? 'detailed';
 
@@ -365,15 +366,22 @@ export function InvoiceDocument({ invoice, businessProfile, preview = false }: {
           <DetailedLineItems items={lineItems} subtotal={subtotal} tax={tax} total={total} />
         )}
 
-        {creditApplied > 0 && (
+        {(creditApplied > 0 || depositApplied > 0) && (
           <Card data-testid="invoice-credit-summary">
             <CardContent className="pt-5 pb-5 space-y-1.5">
               <div className="flex justify-between text-sm text-muted-foreground">
                 <span>Invoice total</span><span data-testid="text-invoice-gross">${total.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-sm text-emerald-700">
-                <span>Prepaid credit applied</span><span data-testid="text-invoice-credit">-${creditApplied.toFixed(2)}</span>
-              </div>
+              {creditApplied > 0 && (
+                <div className="flex justify-between text-sm text-emerald-700">
+                  <span>Prepaid credit applied</span><span data-testid="text-invoice-credit">-${creditApplied.toFixed(2)}</span>
+                </div>
+              )}
+              {depositApplied > 0 && (
+                <div className="flex justify-between text-sm text-emerald-700">
+                  <span>Deposit received</span><span data-testid="text-invoice-deposit">-${depositApplied.toFixed(2)}</span>
+                </div>
+              )}
               <Separator />
               <div className="flex justify-between items-center font-bold pt-1">
                 <span className="text-base">Balance due</span>

@@ -1,3 +1,4 @@
+import { paymentGuardedJobInsert } from "../lib/paymentPolicy";
 import { Router, type IRouter } from "express";
 import { db, quotesTable, propertiesTable, customersTable, servicesTable, jobsTable, blueprintsTable, tenantsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
@@ -332,7 +333,7 @@ publicQuotesRouter.post("/quotes/:token/respond", async (req, res): Promise<void
   if (action === "approved" && quote.propertyId) {
     const [property] = await db.select().from(propertiesTable).where(eq(propertiesTable.id, quote.propertyId));
     if (property) {
-      await db.insert(jobsTable).values({
+      await paymentGuardedJobInsert(db).values({
         tenantId: quote.tenantId,
         title: `Quote Estimate: ${quote.serviceName}`,
         description: `Approved instant quote. ${quote.totalAreaSqft ? `Area: ${quote.totalAreaSqft.toFixed(0)} sqft.` : ""} ${customerNote ? `Customer note: ${customerNote}` : ""}`.trim(),

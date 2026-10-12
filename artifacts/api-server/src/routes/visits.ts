@@ -1,3 +1,4 @@
+import { paymentGuardedJobInsert } from "../lib/paymentPolicy";
 import { Router, type IRouter } from "express";
 import { db, visitsTable, estimatesTable, jobsTable, customersTable, propertiesTable, usersTable } from "@workspace/db";
 import { eq, and, sql, desc } from "drizzle-orm";
@@ -247,7 +248,7 @@ router.post("/visits/:id/convert-to-job", requireVerifiedStaff, async (req, res)
   const [visit] = await db.select().from(visitsTable).where(and(eq(visitsTable.id, id), eq(visitsTable.tenantId, tenantId)));
   if (!visit) { res.status(404).json({ error: "Not found" }); return; }
 
-  const [job] = await db.insert(jobsTable).values({
+  const [job] = await paymentGuardedJobInsert(db).values({
     tenantId,
     title: visit.purpose,
     description: visit.notes ?? null,

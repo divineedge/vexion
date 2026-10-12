@@ -2552,6 +2552,7 @@ export const CompleteAndInvoiceJobParams = zod.object({
 })
 
 export const CompleteAndInvoiceJobResponse = zod.object({
+  "depositApplied": zod.number().optional(),
   "creditApplied": zod.number().optional(),
   "balanceDue": zod.number().optional(),
   "termsText": zod.string().nullish(),
@@ -3855,6 +3856,7 @@ export const ListInvoicesQueryParams = zod.object({
 })
 
 export const ListInvoicesResponseItem = zod.object({
+  "depositApplied": zod.number().optional(),
   "creditApplied": zod.number().optional(),
   "balanceDue": zod.number().optional(),
   "termsText": zod.string().nullish(),
@@ -3917,6 +3919,7 @@ export const CreateInvoiceBody = zod.object({
 })
 
 export const CreateInvoiceResponse = zod.object({
+  "depositApplied": zod.number().optional(),
   "creditApplied": zod.number().optional(),
   "balanceDue": zod.number().optional(),
   "termsText": zod.string().nullish(),
@@ -3969,6 +3972,7 @@ export const GetInvoiceParams = zod.object({
 })
 
 export const GetInvoiceResponse = zod.object({
+  "depositApplied": zod.number().optional(),
   "creditApplied": zod.number().optional(),
   "balanceDue": zod.number().optional(),
   "termsText": zod.string().nullish(),
@@ -4029,6 +4033,7 @@ export const UpdateInvoiceBody = zod.object({
 })
 
 export const UpdateInvoiceResponse = zod.object({
+  "depositApplied": zod.number().optional(),
   "creditApplied": zod.number().optional(),
   "balanceDue": zod.number().optional(),
   "termsText": zod.string().nullish(),
@@ -4109,6 +4114,7 @@ export const MarkInvoicePaidBody = zod.object({
 })
 
 export const MarkInvoicePaidResponse = zod.object({
+  "depositApplied": zod.number().optional(),
   "creditApplied": zod.number().optional(),
   "balanceDue": zod.number().optional(),
   "termsText": zod.string().nullish(),
@@ -4161,6 +4167,7 @@ export const ArchiveInvoiceParams = zod.object({
 })
 
 export const ArchiveInvoiceResponse = zod.object({
+  "depositApplied": zod.number().optional(),
   "creditApplied": zod.number().optional(),
   "balanceDue": zod.number().optional(),
   "termsText": zod.string().nullish(),
@@ -4213,6 +4220,7 @@ export const RestoreInvoiceParams = zod.object({
 })
 
 export const RestoreInvoiceResponse = zod.object({
+  "depositApplied": zod.number().optional(),
   "creditApplied": zod.number().optional(),
   "balanceDue": zod.number().optional(),
   "termsText": zod.string().nullish(),
@@ -4265,6 +4273,7 @@ export const CreateInvoiceFromJobParams = zod.object({
 })
 
 export const CreateInvoiceFromJobResponse = zod.object({
+  "depositApplied": zod.number().optional(),
   "creditApplied": zod.number().optional(),
   "balanceDue": zod.number().optional(),
   "termsText": zod.string().nullish(),
@@ -8406,6 +8415,7 @@ export const PortalGetSummaryResponse = zod.object({
   "reschedulePreferredDate": zod.string().nullish().describe('Customer\'s preferred new date (YYYY-MM-DD), if provided')
 })),
   "recentInvoices": zod.array(zod.object({
+  "depositApplied": zod.number().optional(),
   "creditApplied": zod.number().optional(),
   "balanceDue": zod.number().optional(),
   "id": zod.number(),
@@ -8802,6 +8812,7 @@ export const DenyJobCancellationResponse = zod.object({
  * @summary List all invoices for the portal customer
  */
 export const PortalListInvoicesResponseItem = zod.object({
+  "depositApplied": zod.number().optional(),
   "creditApplied": zod.number().optional(),
   "balanceDue": zod.number().optional(),
   "id": zod.number(),
@@ -8844,6 +8855,7 @@ export const PortalGetInvoiceParams = zod.object({
 })
 
 export const PortalGetInvoiceResponse = zod.object({
+  "depositApplied": zod.number().optional(),
   "creditApplied": zod.number().optional(),
   "balanceDue": zod.number().optional(),
   "id": zod.number(),
@@ -10355,6 +10367,7 @@ export const GetPublicInvoiceParams = zod.object({
 })
 
 export const GetPublicInvoiceResponse = zod.object({
+  "depositApplied": zod.number().optional(),
   "creditApplied": zod.number().optional(),
   "balanceDue": zod.number().optional(),
   "termsText": zod.string().nullish(),
@@ -12531,6 +12544,7 @@ export const PrintMailInvoiceParams = zod.object({
 })
 
 export const PrintMailInvoiceResponse = zod.object({
+  "depositApplied": zod.number().optional(),
   "creditApplied": zod.number().optional(),
   "balanceDue": zod.number().optional(),
   "termsText": zod.string().nullish(),
@@ -14353,6 +14367,88 @@ export const RecordCustomerPrepaymentBody = zod.object({
 
 export const RecordCustomerPrepaymentResponse = zod.object({
   "balance": zod.number().optional()
+})
+
+
+export const GetPaymentPolicyParams = zod.object({
+  "scope": zod.enum(['company', 'service', 'customer']),
+  "id": zod.coerce.number()
+})
+
+export const GetPaymentPolicyResponse = zod.object({
+  "policy": zod.object({
+  "depositType": zod.enum(['none', 'fixed', 'percent', 'full']).nullable(),
+  "depositValue": zod.number().nullable(),
+  "requirePrepay": zod.boolean().nullable(),
+  "requireCard": zod.boolean().nullable()
+}).optional()
+})
+
+
+export const SavePaymentPolicyParams = zod.object({
+  "scope": zod.enum(['company', 'service', 'customer']),
+  "id": zod.coerce.number()
+})
+
+export const SavePaymentPolicyBody = zod.object({
+  "depositType": zod.enum(['none', 'fixed', 'percent', 'full']).nullable(),
+  "depositValue": zod.number().nullable(),
+  "requirePrepay": zod.boolean().nullable(),
+  "requireCard": zod.boolean().nullable()
+})
+
+export const SavePaymentPolicyResponse = zod.object({
+  "policy": zod.object({
+  "depositType": zod.enum(['none', 'fixed', 'percent', 'full']).nullable(),
+  "depositValue": zod.number().nullable(),
+  "requirePrepay": zod.boolean().nullable(),
+  "requireCard": zod.boolean().nullable()
+}).optional()
+})
+
+
+export const GetCustomerDepositsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetCustomerDepositsResponse = zod.object({
+  "deposits": zod.array(zod.object({
+  "id": zod.number().optional(),
+  "estimateNumber": zod.number().optional(),
+  "total": zod.number().optional(),
+  "paymentRequirement": zod.string().optional(),
+  "depositValue": zod.number().nullish(),
+  "depositPaidAt": zod.string().nullish(),
+  "depositChargedAmount": zod.number().nullish(),
+  "convertedToJobId": zod.number().nullish(),
+  "invoiceId": zod.number().nullish()
+})).optional()
+})
+
+
+export const GetEfficiencyJobsQueryParams = zod.object({
+  "period": zod.coerce.string().optional(),
+  "startDate": zod.coerce.string().optional(),
+  "endDate": zod.coerce.string().optional(),
+  "serviceId": zod.coerce.string().optional(),
+  "crewId": zod.coerce.number().optional()
+})
+
+export const GetEfficiencyJobsResponse = zod.object({
+  "rangeStart": zod.string().optional(),
+  "rangeEnd": zod.string().optional(),
+  "jobs": zod.array(zod.object({
+  "id": zod.number().optional(),
+  "title": zod.string().optional(),
+  "status": zod.string().optional(),
+  "completedAt": zod.string().nullish(),
+  "estimatedDuration": zod.number().nullish(),
+  "actualSeconds": zod.number().optional(),
+  "customerName": zod.string().nullish(),
+  "propertyAddress": zod.string().nullish(),
+  "serviceName": zod.string().optional(),
+  "crewName": zod.string().nullish()
+})).optional()
 })
 
 

@@ -1,3 +1,4 @@
+import { paymentGuardedJobInsert, SchedulingPaymentError } from "../lib/paymentPolicy";
 import { creditedInvoiceInsert } from "../lib/customerCredit";
 import { Router, type IRouter } from "express";
 import crypto from "crypto";
@@ -538,7 +539,8 @@ router.post("/customer-plans", async (req, res): Promise<void> => {
     planId = plan.id;
 
     for (const v of finalVisits) {
-      await tx.insert(jobsTable).values({
+      try {
+        await paymentGuardedJobInsert(tx).values({
         tenantId,
         title: `${v.serviceName} — Plan Visit`,
         status: "scheduled",
@@ -549,7 +551,15 @@ router.post("/customer-plans", async (req, res): Promise<void> => {
         serviceId: v.serviceId,
         planId: plan.id,
         scheduledAt: v.date,
-      });
+        });
+      } catch (error) {
+        if (!(error instanceof SchedulingPaymentError)) throw error;
+        const state = serviceState.find(entry => entry.serviceId === v.serviceId);
+        if (state) state.lastScheduledAt = new Date(start.getTime() - state.frequencyDays * 86400000).toISOString();
+        await tx.update(customerPlansTable).set({ serviceState }).where(eq(customerPlansTable.id, plan.id));
+        await tx.insert(activityLogTable).values({ tenantId, userId, type:"scheduling_payment_required", entityId:plan.id,
+          message: `Plan visit not scheduled: ${error.message}` });
+      }
     }
 
     await tx.insert(activityLogTable).values({
@@ -989,7 +999,7 @@ export async function billPlanPeriod(
   tenantId: number,
   planId: number,
   userId: number,
-  options?: { resolvedPrice?: number; areaNote?: string | null },
+  options?: { resolvedPrice?: number; areaNote?: string | null; planPeriodStart?: Date; planPeriodEnd?: Date },
 ): Promise<{ invoiceId: number }> {
   const [plan] = await db.select().from(customerPlansTable).where(and(eq(customerPlansTable.id, planId), eq(customerPlansTable.tenantId, tenantId)));
   if (!plan) throw new Error("Plan not found");
@@ -1027,6 +1037,8 @@ export async function billPlanPeriod(
       invoiceNumber: invoiceNum,
       customerId: plan.customerId,
       planId: plan.id,
+      planPeriodStart: options?.planPeriodStart ?? new Date(plan.endDate.getTime() - billingCycleDays(plan.billingCycle, plan.customCycleDays) * 86400000),
+      planPeriodEnd: options?.planPeriodEnd ?? plan.endDate,
       status: customer?.email ? "sent" : "draft",
       publicToken: customer?.email ? crypto.randomBytes(32).toString("hex") : null,
       subtotal,
@@ -1077,7 +1089,7 @@ router.post("/customer-plans/:id/renew", async (req, res): Promise<void> => {
       .where(eq(customerPlansTable.id, id));
   }
 
-  const { invoiceId } = await billPlanPeriod(tenantId, id, userId, billingOptions);
+  const { invoiceId } = await billPlanPeriod(tenantId, id, userId, { ...billingOptions, planPeriodStart:plan.endDate, planPeriodEnd:newEndDate });
 
   const [updated] = await db.update(customerPlansTable)
     .set({ endDate: newEndDate, nextBillingDate: newNextBillingDate, status: "active", renewalReminderSentAt: null })

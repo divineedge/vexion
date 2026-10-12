@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { serverErrorMessage } from '@/lib/serverError';
 import { PreviewActions } from '@/components/documents/PreviewActions';
 import { WordingField } from '@/components/documents/WordingField';
 import { buildPreviewEstimate, normalizeWording } from '@/lib/documentPreview';
@@ -557,7 +558,7 @@ export default function EstimatesPage() {
       setScheduleDialogOpen(false);
       setScheduleEstimateId(null);
     } catch (err: any) {
-      toast.error(err?.message ?? 'Failed to schedule job');
+      toast.error(serverErrorMessage(err, 'Failed to schedule job'));
     } finally {
       setConverting(false);
     }

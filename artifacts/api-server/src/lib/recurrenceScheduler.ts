@@ -1,3 +1,4 @@
+import { paymentGuardedJobInsert } from "./paymentPolicy";
 /**
  * Recurrence Scheduler
  * Runs every hour and generates the next job instance for each active recurring
@@ -145,7 +146,7 @@ async function processRecurring() {
             throw new Error("CAS_MISS");
           }
 
-          await tx.insert(jobsTable).values({
+          await paymentGuardedJobInsert(tx).values({
             tenantId: root.tenantId,
             title: root.title,
             description: root.description,
@@ -272,7 +273,7 @@ export async function runRecurrenceForTenantNow(tenantId: number) {
         `);
         if ((claimed as unknown as { rowCount: number }).rowCount === 0) throw new Error("CAS_MISS");
 
-        const [inserted] = await tx.insert(jobsTable).values({
+        const [inserted] = await paymentGuardedJobInsert(tx).values({
           tenantId: root.tenantId,
           title: root.title,
           description: root.description,

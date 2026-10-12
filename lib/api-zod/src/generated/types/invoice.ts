@@ -10,6 +10,7 @@ import type { InvoicePaymentMethod } from './invoicePaymentMethod';
 import type { InvoiceStatus } from './invoiceStatus';
 
 export interface Invoice {
+  depositApplied?: number;
   creditApplied?: number;
   balanceDue?: number;
   /** @nullable */

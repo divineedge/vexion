@@ -8751,8 +8751,108 @@ paths:
                 type: object
                 properties:
                   balance: { type: number }
+  /billing/payment-policy/{scope}/{id}:
+    parameters:
+      - { name: scope, in: path, required: true, schema: { type: string, enum: [company, service, customer] } }
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      operationId: getPaymentPolicy
+      responses:
+        "200":
+          description: Stored scoped policy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policy: { $ref: '#/components/schemas/PaymentPolicy' }
+    patch:
+      operationId: savePaymentPolicy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PaymentPolicy' }
+      responses:
+        "200":
+          description: Saved scoped policy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policy: { $ref: '#/components/schemas/PaymentPolicy' }
+  /customers/{id}/deposits:
+    get:
+      operationId: getCustomerDeposits
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Estimate deposit receipts, not general account credits
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deposits:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        estimateNumber: { type: integer }
+                        total: { type: number }
+                        paymentRequirement: { type: string }
+                        depositValue: { type: number, nullable: true }
+                        depositPaidAt: { type: string, nullable: true }
+                        depositChargedAmount: { type: number, nullable: true }
+                        convertedToJobId: { type: integer, nullable: true }
+                        invoiceId: { type: integer, nullable: true }
+  /efficiency/jobs:
+    get:
+      operationId: getEfficiencyJobs
+      parameters:
+        - { name: period, in: query, schema: { type: string } }
+        - { name: startDate, in: query, schema: { type: string } }
+        - { name: endDate, in: query, schema: { type: string } }
+        - { name: serviceId, in: query, schema: { type: string } }
+        - { name: crewId, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: Jobs underlying the selected completed-work report
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rangeStart: { type: string }
+                  rangeEnd: { type: string }
+                  jobs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        title: { type: string }
+                        status: { type: string }
+                        completedAt: { type: string, nullable: true }
+                        estimatedDuration: { type: number, nullable: true }
+                        actualSeconds: { type: number }
+                        customerName: { type: string, nullable: true }
+                        propertyAddress: { type: string, nullable: true }
+                        serviceName: { type: string }
+                        crewName: { type: string, nullable: true }
 components:
   schemas:
+    PaymentPolicy:
+      type: object
+      required: [depositType, depositValue, requirePrepay, requireCard]
+      properties:
+        depositType: { type: string, nullable: true, enum: [none, fixed, percent, full] }
+        depositValue: { type: number, nullable: true }
+        requirePrepay: { type: boolean, nullable: true }
+        requireCard: { type: boolean, nullable: true }
     BillingCoverage:
       type: object
       properties:
@@ -11510,6 +11610,7 @@ components:
       type: object
       required: [id, tenantId, invoiceNumber, customerId, status, subtotal, tax, total, createdAt]
       properties:
+        depositApplied: { type: number }
         creditApplied: { type: number }
         balanceDue: { type: number }
         termsText:
@@ -15034,6 +15135,7 @@ components:
       type: object
       required: [id, invoiceNumber, status, total, createdAt]
       properties:
+        depositApplied: { type: number }
         creditApplied: { type: number }
         balanceDue: { type: number }
         id:

@@ -1,3 +1,4 @@
+import { paymentGuardedJobInsert } from "./paymentPolicy";
 /**
  * Plan Scheduler
  * Runs daily and handles two automation pipelines for customer_plans:
@@ -104,7 +105,7 @@ async function generateVisitsForPlan(plan: typeof customerPlansTable.$inferSelec
         .limit(1);
 
       if (!existing) {
-        await db.insert(jobsTable).values({
+        await paymentGuardedJobInsert(db).values({
           tenantId: plan.tenantId,
           title: `${svc.serviceName} — Plan Visit`,
           status: "scheduled",
@@ -167,7 +168,8 @@ export async function processRenewals() {
       const { resolvedPrice, areaNote, pricingMode } = await resolvePlanCurrentPrice(
         plan.tenantId, plan.templateId, plan.propertyId,
       );
-      const billingOptions = pricingMode !== "flat" ? { resolvedPrice, areaNote } : undefined;
+      const billingOptions = { ...(pricingMode !== "flat" ? { resolvedPrice, areaNote } : {}),
+        planPeriodStart:plan.endDate, planPeriodEnd:newEndDate };
 
       // Persist the updated billingPrice on the plan if it drifted.
       if (pricingMode !== "flat" && resolvedPrice !== plan.billingPrice) {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { db, tenantsTable, customersTable, customerCreditsTable, invoicesTable, jobsTable, taskNotificationsTable } from "@workspace/db";
+import { db, tenantsTable, customersTable, customerCreditsTable, invoicesTable, jobsTable, taskNotificationsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { creditedInvoiceInsert, creditBalance, invoiceBalance, voidCreditedInvoice } from "./customerCredit";
 import { billingCoverage } from "./billingCoverage";
@@ -24,8 +24,10 @@ describe("billing safety", () => {
       expect(saved.invoiceId).toBeTruthy();
       expect((await db.select().from(invoicesTable).where(eq(invoicesTable.jobId, job.id)))).toHaveLength(1);
       await db.insert(jobsTable).values({ tenantId: tenant.id, customerId: customer.id, title: "Unpriced", status: "completed", completedAt: new Date(), scheduledAt: new Date(), totalAmount: 0 });
+      await db.insert(usersTable).values({ tenantId:tenant.id, name:"QA admin", email:`billing-${tenant.id}@example.invalid`, role:"company_owner" });
       const report = await billingCoverage(tenant.id, true);
       expect(report.jobs.some(j => j.title === "Unpriced" && j.needsAttention)).toBe(true);
+      expect((await db.select().from(taskNotificationsTable).where(eq(taskNotificationsTable.tenantId,tenant.id))).some(n => n.type === "billing_review" && n.taskId === null)).toBe(true);
     } finally {
       await db.delete(taskNotificationsTable).where(eq(taskNotificationsTable.tenantId, tenant.id));
       await db.delete(customerCreditsTable).where(eq(customerCreditsTable.tenantId, tenant.id));
@@ -33,6 +35,7 @@ describe("billing safety", () => {
       await db.delete(invoicesTable).where(eq(invoicesTable.tenantId, tenant.id));
       await db.delete(jobsTable).where(eq(jobsTable.tenantId, tenant.id));
       await db.delete(customersTable).where(eq(customersTable.tenantId, tenant.id));
+      await db.delete(usersTable).where(eq(usersTable.tenantId,tenant.id));
       await db.delete(tenantsTable).where(eq(tenantsTable.id, tenant.id));
     }
   });

@@ -5,6 +5,23 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+export type PaymentPolicyDepositType = typeof PaymentPolicyDepositType[keyof typeof PaymentPolicyDepositType] | null;
+
+
+export const PaymentPolicyDepositType = {
+  none: 'none',
+  fixed: 'fixed',
+  percent: 'percent',
+  full: 'full',
+} as const;
+
+export interface PaymentPolicy {
+  depositType: PaymentPolicyDepositType;
+  depositValue: number | null;
+  requirePrepay: boolean | null;
+  requireCard: boolean | null;
+}
+
 export type BillingCoverageJobsItem = {
   id?: number;
   title?: string;
@@ -284,6 +301,7 @@ export interface InvoiceLineItem {
 }
 
 export interface Invoice {
+  depositApplied?: number;
   creditApplied?: number;
   balanceDue?: number;
   /** @nullable */
@@ -5457,6 +5475,7 @@ export interface PortalJob {
 }
 
 export interface PortalInvoice {
+  depositApplied?: number;
   creditApplied?: number;
   balanceDue?: number;
   id: number;
@@ -7330,5 +7349,56 @@ export type RecordCustomerPrepaymentBody = {
 
 export type RecordCustomerPrepayment200 = {
   balance?: number;
+};
+
+export type GetPaymentPolicy200 = {
+  policy?: PaymentPolicy;
+};
+
+export type SavePaymentPolicy200 = {
+  policy?: PaymentPolicy;
+};
+
+export type GetCustomerDeposits200DepositsItem = {
+  id?: number;
+  estimateNumber?: number;
+  total?: number;
+  paymentRequirement?: string;
+  depositValue?: number | null;
+  depositPaidAt?: string | null;
+  depositChargedAmount?: number | null;
+  convertedToJobId?: number | null;
+  invoiceId?: number | null;
+};
+
+export type GetCustomerDeposits200 = {
+  deposits?: GetCustomerDeposits200DepositsItem[];
+};
+
+export type GetEfficiencyJobsParams = {
+period?: string;
+startDate?: string;
+endDate?: string;
+serviceId?: string;
+crewId?: number;
+};
+
+export type GetEfficiencyJobs200JobsItem = {
+  id?: number;
+  title?: string;
+  status?: string;
+  completedAt?: string | null;
+  estimatedDuration?: number | null;
+  actualSeconds?: number;
+  customerName?: string | null;
+  propertyAddress?: string | null;
+  serviceName?: string;
+  crewName?: string | null;
+};
+
+export type GetEfficiencyJobs200 = {
+  rangeStart?: string;
+  rangeEnd?: string;
+  jobs?: GetEfficiencyJobs200JobsItem[];
 };
 

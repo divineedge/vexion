@@ -1,3 +1,4 @@
+import { paymentGuardedJobInsert, ensureScheduledJobPayment } from "../lib/paymentPolicy";
 import { creditedInvoiceInsert } from "../lib/customerCredit";
 import { Router, type IRouter } from "express";
 import { getStripeClient } from "../lib/stripeClient";
@@ -373,7 +374,7 @@ const jobsImportExportConfig: ImportExportEntityConfig = {
   },
   insert: async (tenantId, values) => {
     const { id: _ignoredId, ...rest } = values;
-    const [row] = await db.insert(jobsTable).values({ tenantId, ...rest } as typeof jobsTable.$inferInsert).returning({ id: jobsTable.id });
+    const [row] = await paymentGuardedJobInsert(db).values({ tenantId, ...rest } as typeof jobsTable.$inferInsert).returning({ id: jobsTable.id });
     return row.id;
   },
   update: async (tenantId, id, values) => {
@@ -695,7 +696,7 @@ router.post("/jobs", requireVerifiedStaff, async (req, res): Promise<void> => {
   const callerSuppliedLineItems = Array.isArray(lineItems);
   const callerSuppliedTotal = totalAmount !== undefined && totalAmount !== null && totalAmount !== "";
 
-  const [job] = await db.insert(jobsTable).values({
+  const [job] = await paymentGuardedJobInsert(db).values({
     tenantId,
     title,
     description: description ?? null,

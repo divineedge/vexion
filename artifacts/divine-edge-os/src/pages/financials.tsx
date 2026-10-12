@@ -942,12 +942,20 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
                       <td className="px-4 py-2" colSpan={3}><span className="font-bold">Total</span></td>
                       <td className="px-4 py-2 text-right font-bold text-primary">${(invoice as any).total?.toFixed(2)}</td>
                     </tr>
-                    {typeof (invoice as any).creditApplied === 'number' && (invoice as any).creditApplied > 0 && (
+                    {(Number((invoice as any).creditApplied ?? 0) > 0 || Number((invoice as any).depositApplied ?? 0) > 0) && (
                       <>
+                        {Number((invoice as any).creditApplied ?? 0) > 0 && (
                         <tr>
                           <td className="px-4 py-1" colSpan={3}><span className="text-xs text-emerald-700">Prepaid credit applied</span></td>
-                          <td className="px-4 py-1 text-right text-xs text-emerald-700" data-testid="text-credit-applied">-${(invoice as any).creditApplied.toFixed(2)}</td>
+                          <td className="px-4 py-1 text-right text-xs text-emerald-700" data-testid="text-credit-applied">-${Number((invoice as any).creditApplied).toFixed(2)}</td>
                         </tr>
+                        )}
+                        {Number((invoice as any).depositApplied ?? 0) > 0 && (
+                        <tr>
+                          <td className="px-4 py-1" colSpan={3}><span className="text-xs text-emerald-700">Deposit received</span></td>
+                          <td className="px-4 py-1 text-right text-xs text-emerald-700" data-testid="text-deposit-applied">-${Number((invoice as any).depositApplied).toFixed(2)}</td>
+                        </tr>
+                        )}
                         <tr className="border-t">
                           <td className="px-4 py-2" colSpan={3}><span className="font-bold">Balance due</span></td>
                           <td className="px-4 py-2 text-right font-bold" data-testid="text-balance-due">${Number((invoice as any).balanceDue ?? (invoice as any).total).toFixed(2)}</td>
@@ -1350,7 +1358,7 @@ export default function FinancialsPage() {
                         </TableCell>
                         <TableCell className="text-right font-semibold">
                           ${inv.total.toFixed(2)}
-                          {typeof invAny.creditApplied === 'number' && invAny.creditApplied > 0 && (
+                          {(Number(invAny.creditApplied ?? 0) > 0 || Number(invAny.depositApplied ?? 0) > 0) && (
                             <div className="text-[11px] font-normal text-emerald-700">due ${Number(invAny.balanceDue ?? inv.total).toFixed(2)}</div>
                           )}
                         </TableCell>

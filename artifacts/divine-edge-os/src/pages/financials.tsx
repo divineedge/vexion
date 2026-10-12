@@ -37,7 +37,10 @@ import type { RecurringInvoiceTemplate, BillingLineItem, StopServiceFlag, PlanCa
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { ImportExportControls } from '@/components/data-io/ImportExportControls';
 import { Card, CardContent } from '@/components/ui/card';
-import { printInvoice } from '@/lib/printUtils';
+import { printInvoice, buildInvoicePrintDocument } from '@/lib/printUtils';
+import { DocumentPreviewDialog } from '@/components/documents/DocumentPreviewDialog';
+import { InvoiceDocument, businessProfileFromSettings } from '@/components/documents/InvoiceDocument';
+import InvoiceTemplatesSettings from '@/components/settings/InvoiceTemplatesSettings';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -645,6 +648,8 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
     query: { queryKey: getGetJobQueryKey((invoice as any)?.jobId ?? 0), enabled: !!(invoice as any)?.jobId },
   });
   const { user } = useAuth();
+  const { data: tenantSettings } = useGetTenantSettings({ query: { queryKey: getGetTenantSettingsQueryKey() } });
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const [editingLineItems, setEditingLineItems] = useState(false);
   const [lineItems, setLineItems] = useState<LineItemRow[]>([]);
@@ -682,8 +687,12 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
   const handleStatusChange = (status: string) => {
     if (!invoiceId) return;
     updateInvoice.mutate({ id: invoiceId, data: { status } as any }, {
-      onSuccess: () => { toast.success(`Invoice marked ${status}`); invalidateInvoice(); },
-      onError: () => toast.error('Failed to update invoice status'),
+      onSuccess: () => { toast.success(status === 'sent' ? 'Invoice sent. Customer email queued.' : `Invoice marked ${status}`); invalidateInvoice(); },
+      onError: (err: any) => {
+        const msg = err?.data?.error ?? err?.response?.data?.error;
+        if (err?.status === 403) toast.error(msg ?? 'Only admins can send invoices');
+        else toast.error(msg ?? (status === 'sent' ? 'Invoice was not sent' : 'Failed to update invoice status'));
+      },
     });
   };
 
@@ -748,10 +757,10 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
   }, [invoiceId]);
 
   const STATUS_ACTIONS: Record<string, { label: string; variant: 'default' | 'outline' | 'destructive' }[]> = {
-    draft: [{ label: 'Mark Sent', variant: 'default' }],
+    draft: [{ label: 'Send Invoice', variant: 'default' }],
     sent: [{ label: 'Mark Paid', variant: 'default' }, { label: 'Mark Draft', variant: 'outline' }],
     overdue: [{ label: 'Mark Paid', variant: 'default' }],
-    paid: [{ label: 'Mark Sent', variant: 'outline' }],
+    paid: [],
   };
 
   const handleMarkPaid = () => {
@@ -816,7 +825,7 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
                   key={action.label}
                   size="sm"
                   variant={action.variant}
-                  onClick={() => action.label === 'Mark Paid' ? setPaymentDialogOpen(true) : handleStatusChange(action.label === 'Mark Sent' ? 'sent' : 'draft')}
+                  onClick={() => action.label === 'Mark Paid' ? setPaymentDialogOpen(true) : handleStatusChange(action.label === 'Mark Sent' || action.label === 'Send Invoice' ? 'sent' : 'draft')}
                   disabled={updateInvoice.isPending || markPaid.isPending}
                 >
                   {action.label}
@@ -866,7 +875,10 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
                   onClick={() => setShowSendDialog(true)}>
                   <Send className="w-3.5 h-3.5" /> Send…
                 </Button>
-                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => printInvoice((invoice ?? {}) as unknown as Record<string, unknown>, {})}>
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setPreviewOpen(true)} data-testid="button-preview-invoice">
+                  <Eye className="w-3.5 h-3.5" /> Preview
+                </Button>
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => printInvoice((invoice ?? {}) as unknown as Record<string, unknown>, (tenantSettings ?? {}) as unknown as Record<string, unknown>)}>
                   <Printer className="w-3.5 h-3.5" /> Print
                 </Button>
                 <Button size="sm" variant="outline" className="gap-1.5"
@@ -1089,6 +1101,16 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {invoice && (
+        <DocumentPreviewDialog
+          open={previewOpen}
+          onClose={() => setPreviewOpen(false)}
+          title={`Preview ${(invoice as any).invoiceNumber ?? ''}`}
+          description={(invoice as any).status === 'draft' ? 'Draft preview with current line items, tax and terms. Nothing is sent from here.' : 'Shows this invoice as issued. Template changes do not alter it.'}
+          customerView={<InvoiceDocument invoice={invoice} businessProfile={businessProfileFromSettings(tenantSettings)} preview />}
+          printDocument={buildInvoicePrintDocument(invoice as unknown as Record<string, unknown>, (tenantSettings ?? {}) as unknown as Record<string, unknown>)}
+        />
+      )}
     </Sheet>
   );
 }
@@ -1101,7 +1123,7 @@ export default function FinancialsPage() {
   const { user } = useAuth();
 
   // State
-  const [tab, setTab] = useState('invoices');
+  const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') ?? 'invoices');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [showArchivedInvoices, setShowArchivedInvoices] = useState(false);
@@ -1284,7 +1306,13 @@ export default function FinancialsPage() {
             </TabsTrigger>
           )}
           <TabsTrigger value="vendors">Vendor Expenses</TabsTrigger>
+          <TabsTrigger value="invoice-templates">Invoice Templates</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="invoice-templates" className="space-y-3 focus-visible:outline-none">
+          <p className="text-sm text-muted-foreground">Layouts, terms and late fees applied when an invoice is created from a template. Existing invoices keep the wording they were issued with. Open any invoice and choose Preview to see the customer view and printed copy.</p>
+          <InvoiceTemplatesSettings />
+        </TabsContent>
 
         {/* Invoices Tab */}
         <TabsContent value="invoices" className="space-y-4 focus-visible:outline-none">

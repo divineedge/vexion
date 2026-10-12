@@ -11,6 +11,8 @@
 
 import { db, recurringInvoiceTemplatesTable, billingEmailQueueTable, invoicesTable, customersTable, tenantsTable, jobsTable, activityLogTable, invoiceTemplatesTable, servicesTable } from "@workspace/db";
 import { invoiceServiceDate, datedJobInvoiceItems } from "./invoiceServiceDate";
+import { automaticInvoiceSending, holdUnpricedJobs, recurringBillingDue } from "./billingAutomation";
+import { processRecurringJobBatches } from "./recurringJobBilling";
 import type { RecurringInvoiceTemplate } from "@workspace/db";
 import { eq, and, lte, sql, inArray, notInArray, isNull, asc, min, lt, isNotNull } from "drizzle-orm";
 import { logger } from "./logger";
@@ -136,6 +138,7 @@ async function collectCompletedWorkForCustomer(
         eq(jobsTable.tenantId, tenantId),
         eq(jobsTable.customerId, customerId),
         eq(jobsTable.status, "completed"),
+        sql`${jobsTable.totalAmount} > 0`,
         sql`${jobsTable.completedAt} IS NOT NULL`,
         sql`${jobsTable.completedAt} > ${periodStart}`,
         sql`${jobsTable.completedAt} <= ${periodEnd}`,
@@ -321,6 +324,7 @@ async function generateInvoiceForCustomer(
   const tax = subtotal * (taxRate / 100);
   const total = subtotal + tax;
   const invoiceNum = generateInvoiceNumber();
+  const sendAutomatically = total > 0 && await automaticInvoiceSending(template.tenantId);
 
   const [invoice] = await tx
     .insert(invoicesTable)
@@ -328,8 +332,8 @@ async function generateInvoiceForCustomer(
       tenantId: template.tenantId,
       invoiceNumber: invoiceNum,
       customerId,
-      status: "sent",
-      publicToken: generatePublicToken(),
+      status: sendAutomatically ? "sent" : "draft",
+      publicToken: sendAutomatically ? generatePublicToken() : null,
       subtotal,
       tax,
       total,
@@ -357,7 +361,7 @@ async function generateInvoiceForCustomer(
       .where(inArray(jobsTable.id, jobIds));
   }
 
-  await tx.insert(billingEmailQueueTable).values({
+  if (sendAutomatically) await tx.insert(billingEmailQueueTable).values({
     tenantId: template.tenantId,
     invoiceId: invoice.id,
     status: "pending",
@@ -512,7 +516,6 @@ async function processRecurringTemplates() {
 async function processWeeklyNonRecurringInvoices() {
   // Batch runs once a week (Mondays); jobs accumulate the pendingWeeklyInvoice flag
   // between runs and are all invoiced together on the weekly sweep.
-  if (new Date().getUTCDay() !== 1) return;
 
   const flaggedJobs = await db
     .select({ job: jobsTable, customerEmail: customersTable.email, customerName: customersTable.name })
@@ -523,9 +526,11 @@ async function processWeeklyNonRecurringInvoices() {
   let generated = 0;
 
   for (const { job, customerEmail } of flaggedJobs) {
-    if (!job.customerId) continue;
+    if (!job.customerId || job.holdFromBilling || job.totalAmount <= 0 || job.recurrenceRule || job.recurrenceParentId) continue;
+    const sendAutomatically = await automaticInvoiceSending(job.tenantId);
     try {
-      const [tenant] = await db.select({ taxRate: tenantsTable.taxRate }).from(tenantsTable).where(eq(tenantsTable.id, job.tenantId));
+      const [tenant] = await db.select({ taxRate: tenantsTable.taxRate, timezone: tenantsTable.timezone }).from(tenantsTable).where(eq(tenantsTable.id, job.tenantId));
+      if (!tenant || !recurringBillingDue("weekly", tenant.timezone)) continue;
       const taxRate = tenant?.taxRate ?? 0;
       const lineItems = await datedJobInvoiceItems(job.tenantId, job);
       const subtotal = job.totalAmount ?? 0;
@@ -571,8 +576,8 @@ async function processWeeklyNonRecurringInvoices() {
           invoiceNumber: invoiceNum,
           customerId: job.customerId!,
           jobId: job.id,
-          status: customerEmail ? "sent" : "draft",
-          publicToken: customerEmail ? generatePublicToken() : null,
+          status: sendAutomatically && customerEmail ? "sent" : "draft",
+          publicToken: sendAutomatically && customerEmail ? generatePublicToken() : null,
           subtotal,
           tax,
           total,
@@ -588,7 +593,7 @@ async function processWeeklyNonRecurringInvoices() {
       });
       if (!claimed) continue;
 
-      if (customerEmail) await enqueueInvoiceEmail(job.tenantId, invoiceId);
+      if (sendAutomatically && customerEmail) await enqueueInvoiceEmail(job.tenantId, invoiceId);
       generated++;
       logger.info({ jobId: job.id, invoiceId }, "Generated weekly batch invoice for completed job");
     } catch (err) {
@@ -603,12 +608,14 @@ async function processWeeklyNonRecurringInvoices() {
 
 // ── 2. Process email queue ───────────────────────────────────────────────────
 
-async function processEmailQueue() {
+export async function processEmailQueue() {
   const pending = await db
     .select({
       queue: billingEmailQueueTable,
       invoiceNumber: invoicesTable.invoiceNumber,
       invoiceTotal: invoicesTable.total,
+      invoiceToken: invoicesTable.publicToken,
+      invoiceStatus: invoicesTable.status,
       customerId: invoicesTable.customerId,
       customerEmail: customersTable.email,
       customerName: customersTable.name,
@@ -629,6 +636,12 @@ async function processEmailQueue() {
 
   for (const row of pending) {
     if (!row.customerEmail) continue;
+    // Queuing is not approval: a draft or voided invoice must never be delivered.
+    if (!["sent", "overdue", "paid"].includes(row.invoiceStatus ?? "") || !row.invoiceToken) continue;
+    const [claimed] = await db.update(billingEmailQueueTable).set({ status: "processing", lastAttemptAt: new Date() })
+      .where(and(eq(billingEmailQueueTable.id, row.queue.id), eq(billingEmailQueueTable.status, "pending")))
+      .returning({ id: billingEmailQueueTable.id });
+    if (!claimed) continue;
 
     const providerConfig = {
       provider: row.emailProvider as "smtp" | "sendgrid" | "mailgun" | "resend" | null,
@@ -640,7 +653,8 @@ async function processEmailQueue() {
     const body = [
       `Dear ${row.customerName ?? "Valued Customer"},`,
       "",
-      `Please find your invoice ${row.invoiceNumber} for $${(row.invoiceTotal ?? 0).toFixed(2)} attached to your account.`,
+      `Your invoice ${row.invoiceNumber} is for $${(row.invoiceTotal ?? 0).toFixed(2)}.`,
+      `View your invoice: https://divine-edge--divineedgepm.replit.app/invoice/${row.invoiceToken}`,
       "",
       "Payment is due within 30 days.",
       "",
@@ -648,7 +662,8 @@ async function processEmailQueue() {
       row.tenantName ?? "Your Service Provider",
     ].join("\n");
 
-    const result = await sendEmail(providerConfig, row.customerEmail, subject, body);
+    const result = await sendEmail(providerConfig, row.customerEmail, subject, body)
+      .catch(err => ({ success: false, error: err instanceof Error ? err.message : "Email delivery failed" }));
 
     await db
       .update(billingEmailQueueTable)
@@ -717,7 +732,9 @@ async function runBillingCycle() {
   // Clear any stale claim locks left by a previous crashed process before
   // attempting new invoice generation, so those jobs re-enter the eligible pool.
   await resetStaleClaimLocks();
+  await holdUnpricedJobs();
   await processRecurringTemplates();
+  await processRecurringJobBatches();
   await processWeeklyNonRecurringInvoices();
   await processEmailQueue();
   logger.info("Billing scheduler: daily cycle complete");

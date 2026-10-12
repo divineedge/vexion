@@ -167,6 +167,10 @@ const EMPTY_CHEMICAL_FORM = {
   notes: '',
 };
 
+function jobNeedsPricing(j: any): boolean {
+  return j?.status === 'completed' && !j?.invoiceId && !j?.planId && !((j?.totalAmount ?? 0) > 0);
+}
+
 function JobDescriptionEditor({ jobId, initialDescription, canEdit }: { jobId: number; initialDescription: string; canEdit: boolean }) {
   const [editing, setEditing] = React.useState(false);
   const [value, setValue] = React.useState(initialDescription);
@@ -828,7 +832,7 @@ export default function SchedulePage() {
   const filteredJobs = (jobs ?? [])
     .filter(j => !propertyFilterLower || ((j as any).propertyAddress ?? '').toLowerCase().includes(propertyFilterLower))
     .filter(j => !jobSearch || j.title.toLowerCase().includes(jobSearchLower) || (j.customerName ?? '').toLowerCase().includes(jobSearchLower))
-    .filter(j => !holdFilter || (j as any).holdFromBilling)
+    .filter(j => !holdFilter || (j as any).holdFromBilling || jobNeedsPricing(j))
     .filter(j => !myJobsFilter || j.assigneeId === (user as any)?.id)
     .filter(j => !unassignedFilter || !j.assigneeId)
     .filter(j => crewFilter === 'all' || (j as any).crewName === crewFilter)
@@ -1054,9 +1058,9 @@ export default function SchedulePage() {
             size="sm"
             className="h-8 text-xs px-3 gap-1.5"
             onClick={() => setHoldFilter(v => !v)}
-            title="Show only jobs on billing hold"
+            title="Show jobs on billing hold and completed jobs with no price"
           >
-            <Pause className="w-3 h-3" /> Billing Hold
+            <Pause className="w-3 h-3" /> Billing Review
           </Button>
           <Button
             variant={unassignedFilter ? 'default' : 'outline'}
@@ -1446,6 +1450,11 @@ export default function SchedulePage() {
                           {(job as any).priority && (job as any).priority !== 'normal' && (
                             <div className={`mt-0.5 rounded px-1 py-0.5 w-fit text-[10px] font-medium ${PRIORITY_COLORS[(job as any).priority] ?? ''}`} title={`Priority: ${(job as any).priority}`}>
                               {(job as any).priority}
+                            </div>
+                          )}
+                          {jobNeedsPricing(job) && (
+                            <div className="mt-0.5 rounded px-1 py-0.5 w-fit text-[10px] font-medium text-amber-800 bg-amber-100" title="Completed with no price. Not invoiced automatically.">
+                              Needs pricing
                             </div>
                           )}
                           {(job as any).holdFromBilling && (
@@ -1973,6 +1982,12 @@ export default function SchedulePage() {
                   </div>
                 )}
 
+                {canManageJobs && jobNeedsPricing(selectedJob) && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-amber-900" data-testid="billing-review-unpriced">
+                    <p className="text-sm font-medium">Billing review: no price</p>
+                    <p className="text-xs mt-0.5">This completed job has a $0 total, so it will not be invoiced automatically. Add charges or line items to price it, then release the billing hold below or use Create Invoice. If the work is free or covered by a plan, leave it as is.</p>
+                  </div>
+                )}
                 {/* Hold from billing (non-tech) */}
                 {canManageJobs && (
                   <div className="rounded-lg border">
@@ -3890,9 +3905,12 @@ export default function SchedulePage() {
               )}
               <div className="flex gap-2 justify-end pt-1">
                 <Button variant="outline" size="sm" onClick={() => setCompleteInvoiceOpen(false)}>Cancel</Button>
+                {!(((selectedJob as any)?.totalAmount ?? 0) > 0) && (
+                  <p className="text-xs text-amber-700 mr-auto self-center">Add a price before invoicing. $0 jobs cannot be invoiced.</p>
+                )}
                 <Button
                   size="sm"
-                  disabled={completeAndInvoiceJob.isPending}
+                  disabled={completeAndInvoiceJob.isPending || !(((selectedJob as any)?.totalAmount ?? 0) > 0)}
                   onClick={async () => {
                     if (!selectedJobId) return;
                     try {
@@ -3908,7 +3926,7 @@ export default function SchedulePage() {
                         setCompleteInvoiceOpen(false);
                         qc.invalidateQueries({ queryKey: getGetJobQueryKey(selectedJobId) });
                       } else {
-                        toast.error('Failed to create invoice');
+                        toast.error(err?.data?.error ?? err?.response?.data?.error ?? 'Failed to create invoice');
                       }
                     }
                   }}

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, invoicesTable, customersTable, jobsTable, activityLogTable, tenantsTable, integrationSyncLogsTable, customerPlansTable, stopServiceFlagsTable, invoiceTemplatesTable, propertiesTable, servicesTable } from "@workspace/db";
+import { db, invoicesTable, customersTable, jobsTable, activityLogTable, tenantsTable, integrationSyncLogsTable, customerPlansTable, stopServiceFlagsTable, invoiceTemplatesTable, propertiesTable, servicesTable, billingEmailQueueTable } from "@workspace/db";
 import { invoiceServiceDate } from "../lib/invoiceServiceDate";
 import { eq, and, sql, inArray, ne, isNull } from "drizzle-orm";
 import crypto from "crypto";
@@ -8,7 +8,7 @@ import { isAdminRole, isOwnerRole } from "../lib/roles";
 import { decryptSecretConfig } from "../lib/secretsCrypto";
 import { sendLobLetter, type LobConfig } from "../lib/lobProvider";
 import { sendReviewRequest } from "../lib/reviewService";
-import { enqueueInvoiceEmail } from "../lib/billingScheduler";
+import { enqueueInvoiceEmail, processEmailQueue } from "../lib/billingScheduler";
 import { sendEmail } from "../lib/emailProvider";
 import { logger } from "../lib/logger";
 import { sendPaymentReminder, type ReminderRule } from "../lib/paymentReminderScheduler";
@@ -493,21 +493,27 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
     updates.total = newSubtotal + newTax;
   }
   // Generate a public token the first time an invoice is sent so customers can view it via a shareable link
-  let newlyMadeSent = false;
   if (status === "sent") {
-    const [existing] = await db.select({ publicToken: invoicesTable.publicToken, status: invoicesTable.status }).from(invoicesTable).where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId)));
-    if (!existing?.publicToken) {
-      updates.publicToken = generateInvoiceToken();
-    }
-    if (existing?.status !== "sent") newlyMadeSent = true;
+    const result = await db.transaction(async tx => {
+      const [existing] = await tx.select().from(invoicesTable).where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId))).for("update");
+      if (!existing) return { error: "Invoice not found", code: 404 };
+      if (!["draft", "sent"].includes(existing.status)) return { error: "Use Resend Email for an already paid or closed invoice.", code: 409 };
+      if (!((updates.total ?? existing.total) > 0)) return { error: "Add a positive price before sending.", code: 422 };
+      const [customer] = await tx.select().from(customersTable).where(and(eq(customersTable.id, existing.customerId), eq(customersTable.tenantId, tenantId)));
+      if (!customer?.email || customer.archivedAt) return { error: "An active customer with an email address is required.", code: 422 };
+      const [invoice] = await tx.update(invoicesTable).set({ ...updates, publicToken: existing.publicToken ?? generateInvoiceToken() }).where(eq(invoicesTable.id, id)).returning();
+      if (existing.status === "draft") await tx.insert(billingEmailQueueTable).values({ tenantId, invoiceId: id, status: "pending", attempts: 0 });
+      return { invoice, name: customer.name };
+    });
+    if ("error" in result) { res.status(result.code!).json({ error: result.error }); return; }
+    void processEmailQueue().catch(err => logger.error({ err }, "Invoice email delivery failed"));
+    res.json(formatInvoice(result.invoice!, result.name!));
+    return;
   }
 
   const [updated] = await db.update(invoicesTable).set(updates).where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId))).returning();
 
   // Auto-send the invoice email link when first marked as "sent"
-  if (newlyMadeSent && updated) {
-    await enqueueInvoiceEmail(tenantId, id).catch(err => logger.error({ err, invoiceId: id }, "Failed to auto-enqueue invoice email on status=sent"));
-  }
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
 
   if (status === "paid") {
@@ -994,6 +1000,7 @@ router.post("/invoices/:id/resend-email", async (req, res): Promise<void> => {
 
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
   if (!row.customerEmail) { res.status(400).json({ error: "Customer has no email address on file" }); return; }
+  if (row.invoice.status === "draft") { res.status(409).json({ error: "Review and send the draft invoice before using Resend Email." }); return; }
 
   await enqueueInvoiceEmail(tenantId, id);
   await db.insert(activityLogTable).values({

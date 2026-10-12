@@ -2405,7 +2405,7 @@ export default function CustomerDetailPage() {
                       Auto-Invoice on Job Completion
                     </p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Automatically create and email an invoice when a job is marked complete
+                      Include this customer in billing automation. Delivery (draft review or automatic send) and timing follow Settings, Invoicing.
                     </p>
                   </div>
                   <Switch

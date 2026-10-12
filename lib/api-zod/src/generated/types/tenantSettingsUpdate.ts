@@ -12,6 +12,7 @@ import type { PreTripChecklistItem } from './preTripChecklistItem';
 import type { TenantSettingsUpdateAutoInvoiceFrequency } from './tenantSettingsUpdateAutoInvoiceFrequency';
 import type { TenantSettingsUpdateDefaultGeofenceUnit } from './tenantSettingsUpdateDefaultGeofenceUnit';
 import type { TenantSettingsUpdateDurationUnit } from './tenantSettingsUpdateDurationUnit';
+import type { TenantSettingsUpdateInvoiceDeliveryMode } from './tenantSettingsUpdateInvoiceDeliveryMode';
 import type { TenantSettingsUpdateMeasurementZoneTypesItem } from './tenantSettingsUpdateMeasurementZoneTypesItem';
 import type { TenantSettingsUpdateNonRecurringInvoiceCadence } from './tenantSettingsUpdateNonRecurringInvoiceCadence';
 import type { TenantSettingsUpdatePaymentReminderChannelsItem } from './tenantSettingsUpdatePaymentReminderChannelsItem';
@@ -34,6 +35,7 @@ export interface TenantSettingsUpdate {
   nonRecurringInvoiceCadence?: TenantSettingsUpdateNonRecurringInvoiceCadence;
   /** @nullable */
   maxClockInHours?: number | null;
+  invoiceDeliveryMode?: TenantSettingsUpdateInvoiceDeliveryMode;
   rolePermissions?: TenantSettingsUpdateRolePermissions;
   customerFields?: CustomerFieldConfig[];
   chemicalRecordRequirements?: ChemicalRecordRequirements;

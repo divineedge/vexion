@@ -12590,6 +12590,9 @@ components:
           type: string
           enum: [minutes, hours]
           description: "Whether job duration is displayed/entered in minutes or hours"
+        invoiceDeliveryMode:
+          type: string
+          enum: [review, automatic]
         autoInvoiceFrequency:
           type: string
           enum: [off, daily, weekly, bi_monthly, monthly]
@@ -13147,6 +13150,9 @@ components:
           enum: [immediate, weekly]
         maxClockInHours:
           type: ["number", "null"]
+        invoiceDeliveryMode:
+          type: string
+          enum: [review, automatic]
         rolePermissions:
           type: object
           additionalProperties:

@@ -13,6 +13,7 @@ import type { PreTripChecklistItem } from './preTripChecklistItem';
 import type { TenantSettingsAutoInvoiceFrequency } from './tenantSettingsAutoInvoiceFrequency';
 import type { TenantSettingsDefaultGeofenceUnit } from './tenantSettingsDefaultGeofenceUnit';
 import type { TenantSettingsDurationUnit } from './tenantSettingsDurationUnit';
+import type { TenantSettingsInvoiceDeliveryMode } from './tenantSettingsInvoiceDeliveryMode';
 import type { TenantSettingsMeasurementZoneTypesItem } from './tenantSettingsMeasurementZoneTypesItem';
 import type { TenantSettingsNonRecurringInvoiceCadence } from './tenantSettingsNonRecurringInvoiceCadence';
 import type { TenantSettingsPaymentReminderChannelsItem } from './tenantSettingsPaymentReminderChannelsItem';
@@ -40,6 +41,7 @@ export interface TenantSettings {
   ownersSchedulable?: boolean;
   /** Whether job duration is displayed/entered in minutes or hours */
   durationUnit?: TenantSettingsDurationUnit;
+  invoiceDeliveryMode?: TenantSettingsInvoiceDeliveryMode;
   /** How often to auto-generate invoices */
   autoInvoiceFrequency?: TenantSettingsAutoInvoiceFrequency;
   /** How completed non-recurring jobs flagged for auto-invoicing get billed */

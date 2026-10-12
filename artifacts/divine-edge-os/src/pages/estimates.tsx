@@ -40,7 +40,9 @@ import {
   ChevronRight, ChevronDown, Eye, Clock, User, MapPin, CheckCircle2, XCircle, Phone, Mail, Globe, Building2, Printer, Search, Edit2, RefreshCw, Copy, X, Target, Package, Layers, Calendar, Loader2, Receipt,
 } from 'lucide-react';
 import { Link, useSearch, useLocation } from 'wouter';
-import { printEstimate } from '@/lib/printUtils';
+import { printEstimate, buildEstimatePrintDocument } from '@/lib/printUtils';
+import EstimateTemplatesSettings from '@/components/settings/EstimateTemplatesSettings';
+import { Sheet as TemplatesSheet, SheetContent as TemplatesSheetContent, SheetHeader as TemplatesSheetHeader, SheetTitle as TemplatesSheetTitle, SheetDescription as TemplatesSheetDescription } from '@/components/ui/sheet';
 import { SendDocumentDialog } from '@/components/shared/SendDocumentDialog';
 const STATUS_COLORS: Record<string, string> = {
   draft:    'bg-gray-100 text-gray-700 border-gray-200',
@@ -134,6 +136,7 @@ function EstimatePreviewDialog({ estimate, settings, open, onClose }: {
   onClose: () => void;
 }) {
   const [showPreviewBreakdown, setShowPreviewBreakdown] = useState(false);
+  const [showPrintedCopy, setShowPrintedCopy] = useState(false);
   const items = (estimate?.lineItems ?? []) as LineItem[];
   const required = items.filter(i => !i.isOptional);
   const optional = items.filter(i => i.isOptional);
@@ -269,7 +272,18 @@ function EstimatePreviewDialog({ estimate, settings, open, onClose }: {
               )}
             </div>
 
+            {showPrintedCopy && (
+              <iframe
+                title="Printed estimate preview"
+                srcDoc={buildEstimatePrintDocument(estimate as Record<string, unknown>, (settings ?? {}) as Record<string, unknown>)}
+                sandbox="allow-same-origin"
+                className="w-full h-[60vh] rounded-md border bg-card"
+              />
+            )}
             <div className="flex justify-center gap-3 pb-4">
+              <Button variant="outline" size="sm" onClick={() => setShowPrintedCopy(v => !v)} data-testid="button-toggle-printed-estimate">
+                {showPrintedCopy ? 'Hide printed copy' : 'Show printed copy'}
+              </Button>
               <Button variant="outline" size="sm" className="gap-2" onClick={() => printEstimate(estimate as Record<string, unknown>, settings as Record<string, unknown>)}>
                 <Printer className="w-3.5 h-3.5" /> Print / Save PDF
               </Button>
@@ -285,6 +299,7 @@ function EstimatePreviewDialog({ estimate, settings, open, onClose }: {
 }
 
 export default function EstimatesPage() {
+  const [templatesOpen, setTemplatesOpen] = useState(() => new URLSearchParams(window.location.search).get('tab') === 'templates');
   const { canManageOffice, user } = useAuth();
   const qc = useQueryClient();
   const search = useSearch();
@@ -694,6 +709,15 @@ export default function EstimatesPage() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
+      <TemplatesSheet open={templatesOpen} onOpenChange={setTemplatesOpen}>
+        <TemplatesSheetContent className="w-full sm:max-w-3xl overflow-y-auto">
+          <TemplatesSheetHeader className="pb-4">
+            <TemplatesSheetTitle>Estimate Templates</TemplatesSheetTitle>
+            <TemplatesSheetDescription>Reusable line items and wording for new estimates. Estimates already created or sent are not changed.</TemplatesSheetDescription>
+          </TemplatesSheetHeader>
+          <EstimateTemplatesSettings />
+        </TemplatesSheetContent>
+      </TemplatesSheet>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -701,6 +725,7 @@ export default function EstimatesPage() {
           <p className="text-muted-foreground mt-1">Manage price proposals and convert them to jobs.{Array.isArray(estimates) && (estimates as any[]).length > 0 ? ` · ${(estimates as any[]).length} total` : ''}</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => setTemplatesOpen(true)} data-testid="button-estimate-templates">Estimate Templates</Button>
           <div className="flex rounded-md border p-0.5" aria-label="Estimate lifecycle view">
             <Button size="sm" variant={!showArchivedEstimates ? 'default' : 'ghost'} onClick={() => setShowArchivedEstimates(false)}>Active Estimates</Button>
             <Button size="sm" variant={showArchivedEstimates ? 'default' : 'ghost'} onClick={() => setShowArchivedEstimates(true)}>Archived History</Button>

@@ -56,6 +56,7 @@ function formatTenant(tenant: typeof tenantsTable.$inferSelect) {
     showCostPriceToTech: tenant.showCostPriceToTech,
     ownersSchedulable: tenant.ownersSchedulable ?? false,
     durationUnit: (tenant.durationUnit ?? "minutes") as "minutes" | "hours",
+    invoiceDeliveryMode: tenant.invoiceDeliveryMode,
     autoInvoiceFrequency: (tenant.autoInvoiceFrequency ?? "off") as "off" | "daily" | "weekly" | "bi_monthly" | "monthly",
     nonRecurringInvoiceCadence: (tenant.nonRecurringInvoiceCadence ?? "immediate") as "immediate" | "weekly",
     maxClockInHours: tenant.maxClockInHours ?? null,
@@ -250,6 +251,12 @@ router.patch("/settings", async (req, res): Promise<void> => {
   } = req.body;
 
   const updates: Partial<typeof tenantsTable.$inferInsert> = {};
+  if (req.body.invoiceDeliveryMode !== undefined) {
+    if (!["review", "automatic"].includes(req.body.invoiceDeliveryMode)) {
+      res.status(400).json({ error: "Invalid invoice delivery mode" }); return;
+    }
+    updates.invoiceDeliveryMode = req.body.invoiceDeliveryMode;
+  }
   if (companyName) updates.name = companyName;
   if (timezone) updates.timezone = timezone;
   if (workdayCutoffTime) updates.workdayCutoffTime = workdayCutoffTime;

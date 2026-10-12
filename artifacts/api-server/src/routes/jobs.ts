@@ -34,6 +34,7 @@ import { sendEmail, type EmailProviderConfig } from "../lib/emailProvider";
 import { sendSms, type SmsProviderConfig } from "../lib/smsProvider";
 import { checkRainBeforeWindow } from "../lib/weatherCheck";
 import { datedJobInvoiceItems } from "../lib/invoiceServiceDate";
+import { automaticInvoiceSending, holdUnpricedJobs } from "../lib/billingAutomation";
 import { chemicalCompletionError, normalizeFieldRequirements } from "../lib/serviceFieldRequirements";
 import { resolveJobAssignmentRecipientIds, sendStaffPush } from "../lib/pushNotifications";
 import { canAccessJobMessages } from "../lib/jobMessageAccess";
@@ -1374,6 +1375,21 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
   await runJobCompletionSideEffects({ id, tenantId, userId, jobTitle: updated.title, propertyId: updated.propertyId, blueprintId: (updated as any).blueprintId ?? null, completedAt: now });
 
   // If this job was converted from an estimate with "Invoice after job" chosen, auto-create a draft invoice now.
+  await holdUnpricedJobs(tenantId);
+  if (updated.planId) {
+    res.json(formatJob(updated));
+    return;
+  }
+  if (updated.totalAmount <= 0 || updated.holdFromBilling) {
+    res.json(formatJob({ ...updated, holdFromBilling: true }));
+    return;
+  }
+  // Recurring visits belong to their billing cycle, never one invoice per completion.
+  if (updated.recurrenceRule || updated.recurrenceParentId) {
+    res.json(formatJob(updated));
+    return;
+  }
+  const sendAutomatically = await automaticInvoiceSending(tenantId);
   // On success → return early. On failure → flag the job for the weekly billing sweep so it is never permanently unbilled.
   if ((updated as any).invoiceAfterJob && (updated as any).estimateId && updated.customerId && !updated.invoiceId) {
     let deferredInvoiceCreated = false;
@@ -1385,6 +1401,9 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
       const tax = Math.round(subtotal * (taxRate / 100) * 100) / 100;
       const total = subtotal + tax;
       const invoiceNum = `INV-${Date.now().toString().slice(-8)}`;
+      const [billingCustomer] = await db.select({ email: customersTable.email }).from(customersTable)
+        .where(and(eq(customersTable.id, updated.customerId), eq(customersTable.tenantId, tenantId)));
+      let createdInvoiceId: number | null = null;
 
       await db.transaction(async tx => {
         const [invoice] = await tx.insert(invoicesTable).values({
@@ -1392,17 +1411,20 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
           invoiceNumber: invoiceNum,
           customerId: updated.customerId!,
           jobId: updated.id,
-          status: "draft",  // Always draft — staff reviews before sending
+          status: sendAutomatically && billingCustomer?.email ? "sent" : "draft",
+          publicToken: sendAutomatically && billingCustomer?.email ? crypto.randomBytes(32).toString("hex") : null,
           subtotal,
           tax,
           total,
           lineItems,
         }).returning();
+        createdInvoiceId = invoice.id;
         await tx.update(jobsTable).set({ invoiceId: invoice.id }).where(eq(jobsTable.id, id));
         // Activity log inside the same transaction for full atomicity
         await tx.insert(activityLogTable).values({ tenantId, userId, type: "invoice_created", message: `Draft invoice ${invoiceNum} auto-created on estimate-sourced job completion`, entityId: invoice.id });
       });
       deferredInvoiceCreated = true;
+      if (sendAutomatically && billingCustomer?.email && createdInvoiceId) await enqueueInvoiceEmail(tenantId, createdInvoiceId);
     } catch (err) {
       // Guarantee billing: flag this job for the weekly billing sweep regardless of whether
       // the customer has autoInvoiceOnCompletion enabled. Without this, an invoice failure for
@@ -1451,8 +1473,8 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
             invoiceNumber: invoiceNum,
             customerId: updated.customerId!,
             jobId: updated.id,
-            status: customer.email ? "sent" : "draft",
-            publicToken: customer.email ? crypto.randomBytes(32).toString("hex") : null,
+            status: sendAutomatically && customer.email ? "sent" : "draft",
+            publicToken: sendAutomatically && customer.email ? crypto.randomBytes(32).toString("hex") : null,
             subtotal,
             tax,
             total,
@@ -1464,7 +1486,7 @@ router.post("/jobs/:id/complete", async (req, res): Promise<void> => {
 
         await db.insert(activityLogTable).values({ tenantId, userId, type: "invoice_sent", message: `Auto-invoice ${invoiceNum} created on job completion`, entityId: invoiceId });
 
-        if (customer.email) {
+        if (sendAutomatically && customer.email) {
           await enqueueInvoiceEmail(tenantId, invoiceId);
         }
       } catch (err) {
@@ -1504,6 +1526,7 @@ router.post("/jobs/:id/complete-and-invoice", async (req, res): Promise<void> =>
 
   if (!job) { res.status(404).json({ error: "Job not found" }); return; }
   if (job.status === "cancelled") { res.status(422).json({ error: "Cannot invoice a cancelled job" }); return; }
+  if (!(job.totalAmount > 0)) { res.status(422).json({ error: "Add a customer price before creating an invoice. Free or plan-covered work can be completed without invoicing." }); return; }
   if (job.status !== "completed") {
     const blocker = await chemicalCompletionBlocker(tenantId, id);
     if (blocker) { res.status(422).json({ error: blocker, message: blocker }); return; }

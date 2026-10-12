@@ -18,8 +18,6 @@ import type { PaymentReminderRule } from '@workspace/api-client-react';
 import { Repeat as RepeatIcon, ClipboardList, Search } from 'lucide-react';
 import { format } from 'date-fns';
 import PlanTemplatesSettings from '@/components/settings/PlanTemplatesSettings';
-import EstimateTemplatesSettings from '@/components/settings/EstimateTemplatesSettings';
-import InvoiceTemplatesSettings from '@/components/settings/InvoiceTemplatesSettings';
 import RolePermissionsSettings from '@/components/settings/RolePermissionsSettings';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
@@ -103,8 +101,9 @@ export default function SettingsPage() {
   // Operational
   const [durationUnit, setDurationUnit] = useState<'minutes' | 'hours'>('minutes');
   const [ownersSchedulable, setOwnersSchedulable] = useState(false);
-  const [autoInvoiceFrequency, setAutoInvoiceFrequency] = useState<'off' | 'daily' | 'weekly' | 'bi_monthly' | 'monthly'>('off');
+  const [autoInvoiceFrequency, setAutoInvoiceFrequency] = useState<'off' | 'daily' | 'weekly' | 'bi_monthly' | 'monthly' | 'biweekly' | 'weekly_friday' | 'monthly_15'>('off');
   const [nonRecurringInvoiceCadence, setNonRecurringInvoiceCadence] = useState<'immediate' | 'weekly'>('immediate');
+  const [invoiceDeliveryMode, setInvoiceDeliveryMode] = useState<'review' | 'automatic'>('review');
   const [maxClockInHours, setMaxClockInHours] = useState('');
   const [dailyTaskHourlyRate, setDailyTaskHourlyRate] = useState('0');
   const [defaultOffSeasonStart, setDefaultOffSeasonStart] = useState('11-15');
@@ -257,8 +256,9 @@ export default function SettingsPage() {
       setShowCostToTech(settings.showCostPriceToTech ?? false);
       setDurationUnit((settings.durationUnit as 'minutes' | 'hours') ?? 'minutes');
       setOwnersSchedulable((settings as any).ownersSchedulable ?? false);
-      setAutoInvoiceFrequency((settings.autoInvoiceFrequency as 'off' | 'daily' | 'weekly' | 'bi_monthly' | 'monthly') ?? 'off');
+      setAutoInvoiceFrequency((settings.autoInvoiceFrequency as typeof autoInvoiceFrequency) ?? 'off');
       setNonRecurringInvoiceCadence(((settings as any).nonRecurringInvoiceCadence as 'immediate' | 'weekly') ?? 'immediate');
+      setInvoiceDeliveryMode(settings.invoiceDeliveryMode === 'automatic' ? 'automatic' : 'review');
       setMaxClockInHours((settings as any).maxClockInHours != null ? String((settings as any).maxClockInHours) : '');
       setDailyTaskHourlyRate(String(settings.dailyTaskHourlyRate ?? 0));
       setDefaultOffSeasonStart((settings as any).defaultOffSeasonStart ?? '11-15');
@@ -485,10 +485,30 @@ export default function SettingsPage() {
 
   const saveGeneral = () => {
     updateSettings.mutate(
-      { data: { companyName, timezone, taxRate: parseFloat(taxRate), overageMaterialBuffer: parseFloat(buffer), taxEnabled, estimateExpiryDays: parseInt(estimateExpiryDays, 10) || 30, invoiceDueDays: parseInt(invoiceDueDays, 10) || 30, callbackDueHoursHigh: parseInt(callbackDueHoursHigh, 10) || 4, callbackDueHoursNormal: parseInt(callbackDueHoursNormal, 10) || 24, callbackDueHoursLow: parseInt(callbackDueHoursLow, 10) || 72, renewalWarningDays: parseInt(renewalWarningDays, 10) || 30, callbackWarningThresholdPct: parseInt(callbackWarningThresholdPct, 10) || 10, cancellationFeeEnabled, cancellationFeeAmount: parseFloat(cancellationFeeAmount) || 0 } as Parameters<typeof updateSettings.mutate>[0]['data'] },
+      { data: { companyName, timezone, taxRate: parseFloat(taxRate), overageMaterialBuffer: parseFloat(buffer), taxEnabled, callbackDueHoursHigh: parseInt(callbackDueHoursHigh, 10) || 4, callbackDueHoursNormal: parseInt(callbackDueHoursNormal, 10) || 24, callbackDueHoursLow: parseInt(callbackDueHoursLow, 10) || 72, renewalWarningDays: parseInt(renewalWarningDays, 10) || 30, callbackWarningThresholdPct: parseInt(callbackWarningThresholdPct, 10) || 10, cancellationFeeEnabled, cancellationFeeAmount: parseFloat(cancellationFeeAmount) || 0 } as Parameters<typeof updateSettings.mutate>[0]['data'] },
       {
         onSuccess: () => { toast.success('Settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
         onError: () => toast.error('Failed to save settings'),
+      },
+    );
+  };
+
+  const saveInvoicingDefaults = () => {
+    updateSettings.mutate(
+      { data: { invoiceDueDays: parseInt(invoiceDueDays, 10) || 0, invoiceDeliveryMode, autoInvoiceFrequency, nonRecurringInvoiceCadence } as Parameters<typeof updateSettings.mutate>[0]['data'] },
+      {
+        onSuccess: () => { toast.success('Invoicing settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
+        onError: () => toast.error('Failed to save invoicing settings'),
+      },
+    );
+  };
+
+  const saveEstimateDefaults = () => {
+    updateSettings.mutate(
+      { data: { estimateExpiryDays: parseInt(estimateExpiryDays, 10) || 0 } as Parameters<typeof updateSettings.mutate>[0]['data'] },
+      {
+        onSuccess: () => { toast.success('Estimate defaults saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
+        onError: () => toast.error('Failed to save estimate defaults'),
       },
     );
   };
@@ -505,7 +525,7 @@ export default function SettingsPage() {
 
   const saveOperational = () => {
     updateSettings.mutate(
-      { data: { durationUnit, ownersSchedulable, autoInvoiceFrequency, nonRecurringInvoiceCadence, maxClockInHours: maxClockInHours ? parseFloat(maxClockInHours) : null, dailyTaskHourlyRate: parseFloat(dailyTaskHourlyRate) || 0, defaultOffSeasonStart: defaultOffSeasonStart || null, defaultOffSeasonEnd: defaultOffSeasonEnd || null } as Parameters<typeof updateSettings.mutate>[0]['data'] },
+      { data: { durationUnit, ownersSchedulable, maxClockInHours: maxClockInHours ? parseFloat(maxClockInHours) : null, dailyTaskHourlyRate: parseFloat(dailyTaskHourlyRate) || 0, defaultOffSeasonStart: defaultOffSeasonStart || null, defaultOffSeasonEnd: defaultOffSeasonEnd || null } as Parameters<typeof updateSettings.mutate>[0]['data'] },
       {
         onSuccess: () => { toast.success('Operational settings saved'); qc.invalidateQueries({ queryKey: getGetTenantSettingsQueryKey() }); },
         onError: () => toast.error('Failed to save settings'),
@@ -631,6 +651,19 @@ export default function SettingsPage() {
     setDeleteUserPending({ id, name });
   };
 
+  const initialSettingsTab = (() => {
+    const t = new URLSearchParams(window.location.search).get('tab') ?? 'general';
+    if (t === 'payment-reminders') return 'invoicing';
+    return t;
+  })();
+
+  // Legacy deep links to template tabs now open Finance
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get('tab');
+    if (t === 'invoice-templates') setLocation('/financials?tab=invoice-templates');
+    else if (t === 'estimate-templates') setLocation('/estimates?tab=templates');
+  }, [setLocation]);
+
   // Live sell price preview in inventory pricing card
   const sellPreview = (() => {
     const cost = 10; // example cost
@@ -646,7 +679,7 @@ export default function SettingsPage() {
         <p className="text-muted-foreground mt-1">Manage company profile, integrations, and team access.</p>
       </div>
 
-      <Tabs defaultValue={new URLSearchParams(window.location.search).get('tab') ?? 'general'} className="w-full">
+      <Tabs defaultValue={initialSettingsTab} className="w-full">
         <TabsList className="flex flex-wrap gap-1 h-auto mb-6">
           <TabsTrigger value="general"><Building className="w-4 h-4 mr-2" />General</TabsTrigger>
           <TabsTrigger value="customer-fields"><SettingsIcon className="w-4 h-4 mr-2" />Customer Fields</TabsTrigger>
@@ -655,12 +688,11 @@ export default function SettingsPage() {
           <TabsTrigger value="users"><Users className="w-4 h-4 mr-2" />Team</TabsTrigger>
           {isOwner && <TabsTrigger value="api-access"><Zap className="w-4 h-4 mr-2" />API & AI Access</TabsTrigger>}
           {isSuperAdmin && <TabsTrigger value="plans"><Shield className="w-4 h-4 mr-2" />Plans</TabsTrigger>}
-          <TabsTrigger value="estimate-templates"><FileText className="w-4 h-4 mr-2" />Estimate Templates</TabsTrigger>
-          <TabsTrigger value="invoice-templates"><FileText className="w-4 h-4 mr-2" />Invoice Templates</TabsTrigger>
+          <TabsTrigger value="invoicing"><CreditCard className="w-4 h-4 mr-2" />Invoicing</TabsTrigger>
+          <TabsTrigger value="estimates"><FileText className="w-4 h-4 mr-2" />Estimates</TabsTrigger>
           <TabsTrigger value="operational"><SettingsIcon className="w-4 h-4 mr-2" />Operational</TabsTrigger>
           <TabsTrigger value="measurements"><MapPin className="w-4 h-4 mr-2" />Maps & Quotes</TabsTrigger>
           <TabsTrigger value="branding"><ImageIcon className="w-4 h-4 mr-2" />Branding</TabsTrigger>
-          <TabsTrigger value="payment-reminders"><Bell className="w-4 h-4 mr-2" />Payment Reminders</TabsTrigger>
           <TabsTrigger value="followups"><PhoneMissedIcon className="w-4 h-4 mr-2" />Follow-Ups</TabsTrigger>
           <TabsTrigger value="notification-templates"><MessageSquare className="w-4 h-4 mr-2" />Msg Templates</TabsTrigger>
           <TabsTrigger value="reviews"><StarIcon className="w-4 h-4 mr-2" />Reviews</TabsTrigger>
@@ -757,18 +789,6 @@ export default function SettingsPage() {
                   <p className="text-xs text-muted-foreground mt-0.5">When off, tax is hidden from all estimates, invoices, and revenue reports.</p>
                 </div>
                 <Switch checked={taxEnabled} onCheckedChange={setTaxEnabled} />
-              </div>
-              <div className="grid grid-cols-2 gap-4 pt-2 border-t">
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Estimate Expiry (days)</label>
-                  <p className="text-xs text-muted-foreground">Auto-sets expiry date on new estimates. 0 = no expiry.</p>
-                  <Input type="number" min={0} title="Number of days before a new estimate expires automatically (0 = no expiry)" value={estimateExpiryDays} onChange={e => setEstimateExpiryDays(e.target.value)} className="w-28" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Invoice Net Terms (days)</label>
-                  <p className="text-xs text-muted-foreground">Default due date on new invoices. 0 = due on receipt.</p>
-                  <Input type="number" min={0} title="Default payment due date on new invoices in days (0 = due on receipt)" value={invoiceDueDays} onChange={e => setInvoiceDueDays(e.target.value)} className="w-28" />
-                </div>
               </div>
               <div className="grid grid-cols-2 gap-4 pt-2 border-t">
                 <div className="space-y-1.5">
@@ -2088,14 +2108,96 @@ export default function SettingsPage() {
         )}
 
         {/* ── Estimate Templates ── */}
-        <TabsContent value="estimate-templates" className="space-y-6 focus-visible:outline-none">
-          <EstimateTemplatesSettings />
+        <TabsContent value="estimates" className="space-y-6 focus-visible:outline-none">
+          <Card>
+            <CardHeader>
+              <CardTitle>Estimate Defaults</CardTitle>
+              <CardDescription>Company-wide defaults for new estimates. Templates and wording are edited in Finance, Estimates.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Estimate Expiry (days)</label>
+                <p className="text-xs text-muted-foreground">Auto-sets expiry date on new estimates. 0 = no expiry.</p>
+                <Input type="number" min={0} value={estimateExpiryDays} onChange={e => setEstimateExpiryDays(e.target.value)} className="w-28" data-testid="input-estimate-expiry-days" />
+              </div>
+              <div className="flex flex-wrap items-center gap-2 pt-2 border-t">
+                <Button onClick={saveEstimateDefaults} disabled={updateSettings.isPending}>Save Estimate Defaults</Button>
+                <Button variant="outline" onClick={() => setLocation('/estimates?tab=templates')} className="gap-1.5">
+                  Edit estimate templates <ArrowRight className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
           <DeclineReasonsSettings />
         </TabsContent>
 
         {/* ── Invoice Templates ── */}
-        <TabsContent value="invoice-templates" className="focus-visible:outline-none">
-          <InvoiceTemplatesSettings />
+        <TabsContent value="invoicing" className="space-y-6 focus-visible:outline-none">
+          <Card>
+            <CardHeader>
+              <CardTitle>Invoice Defaults and Automation</CardTitle>
+              <CardDescription>Company-wide invoice terms and billing automation. Templates and wording are edited in Finance, Invoice Templates.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Invoice Net Terms (days)</label>
+                <p className="text-xs text-muted-foreground">Default due date on new invoices. 0 = due on receipt.</p>
+                <Input type="number" min={0} value={invoiceDueDays} onChange={e => setInvoiceDueDays(e.target.value)} className="w-28" data-testid="input-invoice-due-days" />
+              </div>
+                {/* Billing automation */}
+                <div className="space-y-4 rounded-lg border bg-muted/30 p-4" data-testid="billing-automation-block">
+                  <div>
+                    <p className="text-sm font-semibold">Billing Automation</p>
+                    <p className="text-xs text-muted-foreground">Only jobs for customers with <span className="font-medium text-foreground">Auto-Invoice on Job Completion</span> enabled are invoiced by this automation. Turn it on per customer: Customers, open the customer, Edit. Jobs with no price are held for billing review (Schedule, Billing Review filter) and never invoiced automatically; free or plan-covered work can stay completed without an invoice. Recurring invoice templates and estimates set to invoice after the job keep their own timing, but use the delivery choice below.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Invoice Delivery</label>
+                    <Select value={invoiceDeliveryMode} onValueChange={v => setInvoiceDeliveryMode(v as 'review' | 'automatic')}>
+                      <SelectTrigger className="w-80" data-testid="select-invoice-delivery-mode"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="review">Create drafts for admin review</SelectItem>
+                        <SelectItem value="automatic">Create and send automatically</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">{invoiceDeliveryMode === 'review' ? 'Invoices are created as Draft. Staff review and edit them in Financials, then an admin uses Send Invoice to email the customer.' : 'Invoices are created and sent to the customer without review.'}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Recurring Job Batching</label>
+                    <Select value={autoInvoiceFrequency} onValueChange={v => setAutoInvoiceFrequency(v as typeof autoInvoiceFrequency)}>
+                      <SelectTrigger className="w-80" data-testid="select-auto-invoice-frequency"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="off">Off (manual only)</SelectItem>
+                        <SelectItem value="daily">Daily (next scheduled run)</SelectItem>
+                        <SelectItem value="weekly">Weekly (Mondays)</SelectItem>
+                        <SelectItem value="bi_monthly">Twice monthly (1st and 15th)</SelectItem>
+                        <SelectItem value="monthly">Monthly (1st of month)</SelectItem>
+                        <SelectItem value="biweekly">Every 2 weeks (legacy)</SelectItem>
+                        <SelectItem value="weekly_friday">Weekly, Fridays (legacy)</SelectItem>
+                        <SelectItem value="monthly_15">Monthly, 15th (legacy)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">Applies to completed recurring jobs only. Dates use the company timezone{timezone ? ` (${timezone})` : ''}.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">One-Off Job Invoicing</label>
+                    <Select value={nonRecurringInvoiceCadence} onValueChange={v => setNonRecurringInvoiceCadence(v as typeof nonRecurringInvoiceCadence)}>
+                      <SelectTrigger className="w-80" data-testid="select-nonrecurring-cadence"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="immediate">Immediately on completion</SelectItem>
+                        <SelectItem value="weekly">Batch weekly (Mondays)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">Non-recurring jobs are billed on this cadence, independent of recurring batching.</p>
+                  </div>
+                </div>
+              <div className="flex flex-wrap items-center gap-2 pt-2 border-t">
+                <Button onClick={saveInvoicingDefaults} disabled={updateSettings.isPending} data-testid="button-save-invoicing">Save Invoicing</Button>
+                <Button variant="outline" onClick={() => setLocation('/financials?tab=invoice-templates')} className="gap-1.5">
+                  Edit invoice templates <ArrowRight className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* ── Operational ── */}
@@ -2143,38 +2245,6 @@ export default function SettingsPage() {
                     />
                     <span className="text-sm text-muted-foreground">{ownersSchedulable ? 'Owners are available' : 'Owners are hidden'}</span>
                   </div>
-                </div>
-
-                {/* Auto-invoice frequency */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Auto-Invoice Frequency</label>
-                  <p className="text-xs text-muted-foreground">Automatically generate invoices for completed jobs on a schedule.</p>
-                  <Select value={autoInvoiceFrequency} onValueChange={v => setAutoInvoiceFrequency(v as typeof autoInvoiceFrequency)}>
-                    <SelectTrigger className="w-64" title="How often the system automatically generates invoices for completed jobs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="off">Off (manual only)</SelectItem>
-                      <SelectItem value="daily">Daily</SelectItem>
-                      <SelectItem value="weekly">Weekly (every Monday)</SelectItem>
-                      <SelectItem value="bi_monthly">Bi-monthly (every 2 months)</SelectItem>
-                      <SelectItem value="monthly">Monthly (1st of month)</SelectItem>
-                      <SelectItem value="biweekly">Bi-weekly (every 2 weeks)</SelectItem>
-                      <SelectItem value="weekly_friday">Weekly (every Friday)</SelectItem>
-                      <SelectItem value="monthly_15">Monthly (15th of month)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Non-recurring job invoicing cadence */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Invoicing for Completed (Non-Recurring) Jobs</label>
-                  <p className="text-xs text-muted-foreground">Controls when an invoice is generated after a one-off job with auto-invoicing is completed.</p>
-                  <Select value={nonRecurringInvoiceCadence} onValueChange={v => setNonRecurringInvoiceCadence(v as typeof nonRecurringInvoiceCadence)}>
-                    <SelectTrigger className="w-64" title="When to generate an invoice after a one-off job is completed with auto-invoicing enabled"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="immediate">Immediately on completion</SelectItem>
-                      <SelectItem value="weekly">Batch weekly (every Monday)</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
 
                 {/* Hard clock-out */}
@@ -2502,7 +2572,7 @@ export default function SettingsPage() {
         </TabsContent>
 
         {/* ── Payment Reminders ── */}
-        <TabsContent value="payment-reminders" className="space-y-6 focus-visible:outline-none">
+        <TabsContent value="invoicing" className="space-y-6 focus-visible:outline-none">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><Bell className="w-5 h-5" /> Payment Reminders</CardTitle>

@@ -3316,6 +3316,14 @@ export const TenantSettingsDurationUnit = {
   hours: 'hours',
 } as const;
 
+export type TenantSettingsInvoiceDeliveryMode = typeof TenantSettingsInvoiceDeliveryMode[keyof typeof TenantSettingsInvoiceDeliveryMode];
+
+
+export const TenantSettingsInvoiceDeliveryMode = {
+  review: 'review',
+  automatic: 'automatic',
+} as const;
+
 /**
  * How often to auto-generate invoices
  */
@@ -3505,6 +3513,7 @@ export interface TenantSettings {
   ownersSchedulable?: boolean;
   /** Whether job duration is displayed/entered in minutes or hours */
   durationUnit?: TenantSettingsDurationUnit;
+  invoiceDeliveryMode?: TenantSettingsInvoiceDeliveryMode;
   /** How often to auto-generate invoices */
   autoInvoiceFrequency?: TenantSettingsAutoInvoiceFrequency;
   /** How completed non-recurring jobs flagged for auto-invoicing get billed */
@@ -3898,6 +3907,14 @@ export const TenantSettingsUpdateNonRecurringInvoiceCadence = {
   weekly: 'weekly',
 } as const;
 
+export type TenantSettingsUpdateInvoiceDeliveryMode = typeof TenantSettingsUpdateInvoiceDeliveryMode[keyof typeof TenantSettingsUpdateInvoiceDeliveryMode];
+
+
+export const TenantSettingsUpdateInvoiceDeliveryMode = {
+  review: 'review',
+  automatic: 'automatic',
+} as const;
+
 export type TenantSettingsUpdateRolePermissions = {[key: string]: {[key: string]: boolean}};
 
 export type TenantSettingsUpdateDefaultGeofenceUnit = typeof TenantSettingsUpdateDefaultGeofenceUnit[keyof typeof TenantSettingsUpdateDefaultGeofenceUnit];
@@ -3955,6 +3972,7 @@ export interface TenantSettingsUpdate {
   nonRecurringInvoiceCadence?: TenantSettingsUpdateNonRecurringInvoiceCadence;
   /** @nullable */
   maxClockInHours?: number | null;
+  invoiceDeliveryMode?: TenantSettingsUpdateInvoiceDeliveryMode;
   rolePermissions?: TenantSettingsUpdateRolePermissions;
   customerFields?: CustomerFieldConfig[];
   chemicalRecordRequirements?: ChemicalRecordRequirements;

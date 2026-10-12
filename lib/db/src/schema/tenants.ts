@@ -3,6 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
 export const tenantsTable = pgTable("tenants", {
+  invoiceDeliveryMode: text("invoice_delivery_mode").notNull().default("review"),
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   /** URL-safe slug used in the customer portal link, e.g. "divine-edge" → /portal/?tenant=divine-edge */

@@ -15,10 +15,10 @@ function logoTag(logoUrl: string | null | undefined, tenantId: number | undefine
 
 function brandingHeader(settings: Record<string, unknown>, apiBase: string): string {
   const items: string[] = [];
-  if (settings?.businessPhone) items.push(`📞 ${settings.businessPhone}`);
-  if (settings?.businessEmail) items.push(`✉ ${settings.businessEmail}`);
-  if (settings?.businessWebsite) items.push(`🌐 ${settings.businessWebsite}`);
-  if (settings?.businessContactAddress || settings?.businessAddress) items.push(`📍 ${settings.businessContactAddress ?? settings.businessAddress}`);
+  if (settings?.businessPhone) items.push(`Phone: ${settings.businessPhone}`);
+  if (settings?.businessEmail) items.push(`Email: ${settings.businessEmail}`);
+  if (settings?.businessWebsite) items.push(`Web: ${settings.businessWebsite}`);
+  if (settings?.businessContactAddress || settings?.businessAddress) items.push(`settings.businessContactAddress ?? settings.businessAddress}`);
   return `
     <div style="text-align:center;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid #e5e7eb;">
       ${logoTag(settings?.logoUrl as string, settings?.tenantId as number, apiBase)}
@@ -51,15 +51,19 @@ const PRINT_CSS = `
   @media print { body { padding: 16px; } }
 `;
 
-function openPrintWindow(html: string) {
+function printDocument(html: string): string {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Print</title><style>${PRINT_CSS}</style></head><body>${html}</body></html>`;
+}
+
+function openPrintWindow(doc: string) {
   const win = window.open('', '_blank', 'width=860,height=750');
   if (!win) { alert('Please allow pop-ups to print.'); return; }
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Print</title><style>${PRINT_CSS}</style></head><body>${html}</body></html>`);
+  win.document.write(doc);
   win.document.close();
   win.onload = () => { win.focus(); win.print(); };
 }
 
-export function printEstimate(estimate: Record<string, unknown>, settings: Record<string, unknown>) {
+export function buildEstimatePrintDocument(estimate: Record<string, unknown>, settings: Record<string, unknown>): string {
   const apiBase = (import.meta.env.BASE_URL ?? '/').replace(/\/$/, '');
   const items = (estimate.lineItems ?? []) as Array<{ id: string; description: string; qty: number; unitPrice: number; markup: number; discount: number; isOptional: boolean; optionalPitchLine: string }>;
   const calcItem = (i: typeof items[0]) => i.qty * i.unitPrice * (1 + i.markup / 100) * (1 - i.discount / 100);
@@ -105,10 +109,10 @@ export function printEstimate(estimate: Record<string, unknown>, settings: Recor
     </table>
     ${(settings?.invoiceFooterText as string) ? `<div class="footer">${settings.invoiceFooterText}</div>` : ''}
   `;
-  openPrintWindow(html);
+  return printDocument(html);
 }
 
-export function printInvoice(invoice: Record<string, unknown>, settings: Record<string, unknown>) {
+export function buildInvoicePrintDocument(invoice: Record<string, unknown>, settings: Record<string, unknown>): string {
   const apiBase = (import.meta.env.BASE_URL ?? '/').replace(/\/$/, '');
   const lineItems = (invoice.lineItems ?? []) as Array<{ id: string | number; description: string; quantity: number; unitPrice: number; total: number }>;
   const subtotal = (invoice.subtotal as number) ?? 0;
@@ -153,7 +157,21 @@ export function printInvoice(invoice: Record<string, unknown>, settings: Record<
         <tr style="font-weight:700;font-size:15px;"><td>Total</td><td class="right">${fmt$(total)}</td></tr>
       </tbody>
     </table>
+    ${(invoice.termsText as string) ? `<div class="section" style="margin-top:16px;"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;font-weight:600;margin-bottom:4px;">Terms &amp; Conditions</div><div style="white-space:pre-wrap;color:#4b5563;font-size:12px;">${escapeHtml(invoice.termsText as string)}</div></div>` : ''}
+    ${(invoice.termsText as string) ? `<div class="section" style="margin-top:16px;"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;font-weight:600;margin-bottom:4px;">Terms &amp; Conditions</div><div style="white-space:pre-wrap;color:#4b5563;font-size:12px;">${escapeHtml(invoice.termsText as string)}</div></div>` : ''}
     ${(settings?.invoiceFooterText as string) ? `<div class="footer">${settings.invoiceFooterText}</div>` : ''}
   `;
-  openPrintWindow(html);
+  return printDocument(html);
+}
+
+function escapeHtml(v: string): string {
+  return v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+export function printEstimate(estimate: Record<string, unknown>, settings: Record<string, unknown>) {
+  openPrintWindow(buildEstimatePrintDocument(estimate, settings));
+}
+
+export function printInvoice(invoice: Record<string, unknown>, settings: Record<string, unknown>) {
+  openPrintWindow(buildInvoicePrintDocument(invoice, settings));
 }

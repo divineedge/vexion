@@ -5570,6 +5570,7 @@ export const GetTenantSettingsResponse = zod.object({
   "showCostPriceToTech": zod.boolean().optional().describe('When true, technicians can see the cost\/buy price of inventory items.'),
   "ownersSchedulable": zod.boolean().optional().describe('When true, company owners can be assigned jobs individually and added to crews.'),
   "durationUnit": zod.enum(['minutes', 'hours']).optional().describe('Whether job duration is displayed\/entered in minutes or hours'),
+  "invoiceDeliveryMode": zod.enum(['review', 'automatic']).optional(),
   "autoInvoiceFrequency": zod.enum(['off', 'daily', 'weekly', 'bi_monthly', 'monthly']).optional().describe('How often to auto-generate invoices'),
   "nonRecurringInvoiceCadence": zod.enum(['immediate', 'weekly']).optional().describe('How completed non-recurring jobs flagged for auto-invoicing get billed'),
   "maxClockInHours": zod.number().nullish().describe('Hard cap (hours) on a single master-clock shift before auto clock-out. Null = no cap.'),
@@ -5711,6 +5712,7 @@ export const UpdateTenantSettingsBody = zod.object({
   "autoInvoiceFrequency": zod.enum(['off', 'daily', 'weekly', 'bi_monthly', 'monthly']).optional(),
   "nonRecurringInvoiceCadence": zod.enum(['immediate', 'weekly']).optional(),
   "maxClockInHours": zod.number().nullish(),
+  "invoiceDeliveryMode": zod.enum(['review', 'automatic']).optional(),
   "rolePermissions": zod.record(zod.string(), zod.record(zod.string(), zod.boolean())).optional(),
   "customerFields": zod.array(zod.object({
   "key": zod.string(),
@@ -5824,6 +5826,7 @@ export const UpdateTenantSettingsResponse = zod.object({
   "showCostPriceToTech": zod.boolean().optional().describe('When true, technicians can see the cost\/buy price of inventory items.'),
   "ownersSchedulable": zod.boolean().optional().describe('When true, company owners can be assigned jobs individually and added to crews.'),
   "durationUnit": zod.enum(['minutes', 'hours']).optional().describe('Whether job duration is displayed\/entered in minutes or hours'),
+  "invoiceDeliveryMode": zod.enum(['review', 'automatic']).optional(),
   "autoInvoiceFrequency": zod.enum(['off', 'daily', 'weekly', 'bi_monthly', 'monthly']).optional().describe('How often to auto-generate invoices'),
   "nonRecurringInvoiceCadence": zod.enum(['immediate', 'weekly']).optional().describe('How completed non-recurring jobs flagged for auto-invoicing get billed'),
   "maxClockInHours": zod.number().nullish().describe('Hard cap (hours) on a single master-clock shift before auto clock-out. Null = no cap.'),

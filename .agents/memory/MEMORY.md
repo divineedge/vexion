@@ -63,3 +63,4 @@
 - [Service dates and weather](service-dates-and-weather.md) — invoice service dates are configurable; chemical weather always follows actual application time, never the schedule
 - [Document and scheduling preferences](document-and-scheduling-preferences.md) — adjacent document navigation, shared recurring rules, wording snapshots, and explicit rescheduling-fee choices
 - [Billing email recovery](billing-email-recovery.md) — uncertain sends require provider verification; missing receipts never justify automatic redelivery
+- [Payroll history boundary](payroll-history-boundary.md) — rates take effect when saved; approvals are immutable and corrections separate; legacy rates are baselines, not reconstructed history.

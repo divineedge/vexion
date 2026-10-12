@@ -22,6 +22,140 @@ export interface PaymentPolicy {
   requireCard: boolean | null;
 }
 
+export interface PayrollRangeInput {
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  dateFrom: string;
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  dateTo: string;
+}
+
+export type PayrollApprovalInput = PayrollRangeInput & {
+  digest: string;
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  p4pOnlyReason?: string;
+};
+
+export interface PayrollAdjustmentInput {
+  /** @minimum 1 */
+  userId: number;
+  /**
+     * @minimum -1000000
+     * @maximum 1000000
+     */
+  amount: number;
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  reason: string;
+}
+
+export type PayrollAdjustment = PayrollAdjustmentInput & {
+  id: number;
+  periodId: number;
+  createdBy: number;
+  createdByName: string;
+  createdAt: string;
+};
+
+export interface PayrollPeriodInfo {
+  id: number;
+  dateFrom?: string;
+  dateTo?: string;
+  timezone?: string;
+  rangeStart: string;
+  rangeEnd: string;
+  approvedAt: string;
+  approvedByName: string;
+}
+
+export type PayrollEmployeeRateSegmentsItem = {
+  /** @nullable */
+  rate: number | null;
+  hours: number;
+};
+
+export interface PayrollEmployee {
+  userId: number;
+  name: string;
+  role: string;
+  /** @nullable */
+  baseHourlyRate: number | null;
+  clockHours: number;
+  /** @nullable */
+  basePay: number | null;
+  /** @nullable */
+  grossPay: number | null;
+  p4pEarnings: number;
+  jobCount: number;
+  totalRevenue: number;
+  totalMaterialCost: number;
+  netLaborRevenue: number;
+  rateSegments: PayrollEmployeeRateSegmentsItem[];
+}
+
+export type PayrollJobSplitsItem = {
+  userId: number;
+  name: string;
+  techSeconds: number;
+  totalSeconds: number;
+  contributionPct: number;
+  earnings: number;
+};
+
+export interface PayrollJob {
+  jobId: number;
+  jobTitle: string;
+  /** @nullable */
+  customerName: string | null;
+  /** @nullable */
+  blueprintName: string | null;
+  completedAt: string;
+  totalAmount: number;
+  materialCost: number;
+  netLaborRevenue: number;
+  p4pPct: number;
+  p4pPool: number;
+  usingGlobalRate: boolean;
+  splits: PayrollJobSplitsItem[];
+}
+
+export type PayrollSnapshotP4pOnlyApproval = {
+  reason: string;
+  employeeIds: number[];
+};
+
+export type PayrollSnapshotSummary = {
+  period: string;
+  rangeStart: string;
+  rangeEnd: string;
+  globalP4pPct: number;
+  technicians: PayrollEmployee[];
+};
+
+export interface PayrollSnapshot {
+  version: number;
+  dateFrom: string;
+  dateTo: string;
+  timezone: string;
+  p4pOnlyApproval?: PayrollSnapshotP4pOnlyApproval;
+  summary: PayrollSnapshotSummary;
+  jobs: PayrollJob[];
+}
+
+export type PayrollPeriod = PayrollPeriodInfo & {
+  snapshot: PayrollSnapshot;
+  adjustments?: PayrollAdjustment[];
+};
+
+export interface PayrollPreview {
+  digest: string;
+  snapshot: PayrollSnapshot;
+}
+
 export type BillingCoverageJobsItem = {
   id?: number;
   title?: string;
@@ -7429,4 +7563,3 @@ export type GetEfficiencyJobs200 = {
   rangeEnd?: string;
   jobs?: GetEfficiencyJobs200JobsItem[];
 };
-

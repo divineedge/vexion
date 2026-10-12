@@ -8763,6 +8763,84 @@ paths:
                 type: object
                 properties:
                   balance: { type: number }
+  /p4p/payroll/preview:
+    post:
+      operationId: previewFinalPayroll
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PayrollRangeInput' }
+      responses:
+        '200':
+          description: Server-calculated payroll for review
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollPreview' }
+        '400': { description: Invalid or incomplete period }
+        '403': { description: Owner or office manager required }
+        '409': { description: Open clocks or job timers }
+  /p4p/payroll/periods:
+    get:
+      operationId: listFinalPayroll
+      responses:
+        '200':
+          description: Finalized payroll history
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PayrollPeriodInfo' }
+        '403': { description: Manager required }
+    post:
+      operationId: approveFinalPayroll
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PayrollApprovalInput' }
+      responses:
+        '201':
+          description: Immutable payroll snapshot
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollPeriod' }
+        '400': { description: Invalid period }
+        '403': { description: Owner or office manager required }
+        '409': { description: Overlapping approval or changed payroll }
+  /p4p/payroll/periods/{id}:
+    get:
+      operationId: getFinalPayroll
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200':
+          description: Original payroll and separate adjustments
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollPeriod' }
+        '400': { description: Invalid ID }
+        '403': { description: Manager required }
+        '404': { description: Not found }
+  /p4p/payroll/periods/{id}/adjustments:
+    post:
+      operationId: addFinalPayrollAdjustment
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer, minimum: 1 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PayrollAdjustmentInput' }
+      responses:
+        '201':
+          description: Audited correction; original payroll unchanged
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayrollAdjustment' }
+        '400': { description: "Invalid employee, amount, or reason" }
+        '403': { description: Owner or office manager required }
+        '404': { description: Not found }
   /billing/payment-policy/{scope}/{id}:
     parameters:
       - { name: scope, in: path, required: true, schema: { type: string, enum: [company, service, customer] } }
@@ -8865,6 +8943,147 @@ components:
         depositValue: { type: number, nullable: true }
         requirePrepay: { type: boolean, nullable: true }
         requireCard: { type: boolean, nullable: true }
+    PayrollRangeInput:
+      type: object
+      required: [dateFrom, dateTo]
+      properties:
+        dateFrom: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+        dateTo: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+    PayrollApprovalInput:
+      allOf:
+        - { $ref: '#/components/schemas/PayrollRangeInput' }
+        - type: object
+          required: [digest]
+          properties:
+            digest: { type: string }
+            p4pOnlyReason: { type: string, minLength: 1, maxLength: 2000 }
+    PayrollAdjustmentInput:
+      type: object
+      required: [userId, amount, reason]
+      properties:
+        userId: { type: integer, minimum: 1 }
+        amount: { type: number, minimum: -1000000, maximum: 1000000 }
+        reason: { type: string, minLength: 1, maxLength: 2000 }
+    PayrollAdjustment:
+      allOf:
+        - { $ref: '#/components/schemas/PayrollAdjustmentInput' }
+        - type: object
+          required: [id, periodId, createdBy, createdByName, createdAt]
+          properties:
+            id: { type: integer }
+            periodId: { type: integer }
+            createdBy: { type: integer }
+            createdByName: { type: string }
+            createdAt: { type: string, format: date-time }
+    PayrollPeriodInfo:
+      type: object
+      required: [id, rangeStart, rangeEnd, approvedAt, approvedByName]
+      properties:
+        id: { type: integer }
+        dateFrom: { type: string }
+        dateTo: { type: string }
+        timezone: { type: string }
+        rangeStart: { type: string, format: date-time }
+        rangeEnd: { type: string, format: date-time }
+        approvedAt: { type: string, format: date-time }
+        approvedByName: { type: string }
+    PayrollPeriod:
+      allOf:
+        - { $ref: '#/components/schemas/PayrollPeriodInfo' }
+        - type: object
+          required: [snapshot]
+          properties:
+            snapshot: { $ref: '#/components/schemas/PayrollSnapshot' }
+            adjustments:
+              type: array
+              items: { $ref: '#/components/schemas/PayrollAdjustment' }
+    PayrollPreview:
+      type: object
+      required: [digest, snapshot]
+      properties:
+        digest: { type: string }
+        snapshot: { $ref: '#/components/schemas/PayrollSnapshot' }
+    PayrollSnapshot:
+      type: object
+      required: [version, dateFrom, dateTo, timezone, summary, jobs]
+      properties:
+        version: { type: integer }
+        dateFrom: { type: string }
+        dateTo: { type: string }
+        timezone: { type: string }
+        p4pOnlyApproval:
+          type: object
+          required: [reason, employeeIds]
+          properties:
+            reason: { type: string }
+            employeeIds:
+              type: array
+              items: { type: integer }
+        summary:
+          type: object
+          required: [period, rangeStart, rangeEnd, globalP4pPct, technicians]
+          properties:
+            period: { type: string }
+            rangeStart: { type: string }
+            rangeEnd: { type: string }
+            globalP4pPct: { type: number }
+            technicians:
+              type: array
+              items: { $ref: '#/components/schemas/PayrollEmployee' }
+        jobs:
+          type: array
+          items: { $ref: '#/components/schemas/PayrollJob' }
+    PayrollEmployee:
+      type: object
+      required: [userId, name, role, baseHourlyRate, clockHours, basePay, grossPay, p4pEarnings, jobCount, totalRevenue, totalMaterialCost, netLaborRevenue, rateSegments]
+      properties:
+        userId: { type: integer }
+        name: { type: string }
+        role: { type: string }
+        baseHourlyRate: { type: [number, 'null'] }
+        clockHours: { type: number }
+        basePay: { type: [number, 'null'] }
+        grossPay: { type: [number, 'null'] }
+        p4pEarnings: { type: number }
+        jobCount: { type: integer }
+        totalRevenue: { type: number }
+        totalMaterialCost: { type: number }
+        netLaborRevenue: { type: number }
+        rateSegments:
+          type: array
+          items:
+            type: object
+            required: [rate, hours]
+            properties:
+              rate: { type: [number, 'null'] }
+              hours: { type: number }
+    PayrollJob:
+      type: object
+      required: [jobId, jobTitle, customerName, blueprintName, completedAt, totalAmount, materialCost, netLaborRevenue, p4pPct, p4pPool, usingGlobalRate, splits]
+      properties:
+        jobId: { type: integer }
+        jobTitle: { type: string }
+        customerName: { type: [string, 'null'] }
+        blueprintName: { type: [string, 'null'] }
+        completedAt: { type: string }
+        totalAmount: { type: number }
+        materialCost: { type: number }
+        netLaborRevenue: { type: number }
+        p4pPct: { type: number }
+        p4pPool: { type: number }
+        usingGlobalRate: { type: boolean }
+        splits:
+          type: array
+          items:
+            type: object
+            required: [userId, name, techSeconds, totalSeconds, contributionPct, earnings]
+            properties:
+              userId: { type: integer }
+              name: { type: string }
+              techSeconds: { type: number }
+              totalSeconds: { type: number }
+              contributionPct: { type: number }
+              earnings: { type: number }
     BillingCoverage:
       type: object
       properties:

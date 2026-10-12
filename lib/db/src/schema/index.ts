@@ -1,4 +1,5 @@
 export * from "./customerCredits";
+export * from "./payroll";
 export * from "./tenants";
 export * from "./users";
 export * from "./customers";

@@ -1,5 +1,17 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { pool } from "@workspace/db";
+import { readFile } from "node:fs/promises";
+
+// drizzle push handles tables but not rate-capture/immutability triggers.
+// Install the idempotent migration before this build begins serving requests.
+const payrollMigration = await readFile(new URL("./payroll-schema.sql", import.meta.url), "utf8");
+const migrationClient = await pool.connect();
+try {
+  await migrationClient.query(payrollMigration);
+} finally {
+  migrationClient.release();
+}
 
 const rawPort = process.env["PORT"];
 

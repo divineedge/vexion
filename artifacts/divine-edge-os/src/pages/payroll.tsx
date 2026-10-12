@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { PayrollApprovals } from '@/components/payroll-approvals';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { customFetch, useGetTenantSettings } from '@workspace/api-client-react';
@@ -339,6 +340,7 @@ function TimesheetSection({
 /* ─── Page ───────────────────────────────────────────────────────────────────── */
 export default function PayrollPage() {
   const { isTechnician, user, isOwner, canManageOffice } = useAuth();
+  const [approvalView, setApprovalView] = useState(false);
   const [period, setPeriod] = useState('30d');
   const [customDateFrom, setCustomDateFrom] = useState('');
   const [customDateTo, setCustomDateTo] = useState('');
@@ -432,6 +434,8 @@ export default function PayrollPage() {
 
   const displayJobs = jobs ?? [];
 
+  if (approvalView && !isTechnician) return <PayrollApprovals onBack={() => setApprovalView(false)} />;
+
   if (!isTechnician && summaryLoading && !summary) {
     return (
       <div className="space-y-6 animate-in fade-in duration-500">
@@ -457,6 +461,7 @@ export default function PayrollPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {!isTechnician && <Button variant="outline" onClick={() => setApprovalView(true)}>Finalize / history</Button>}
           {!isTechnician && (
             <Select value={selectedTechId ? String(selectedTechId) : '__all__'} onValueChange={v => setSelectedTechId(v === '__all__' ? null : parseInt(v, 10))}>
               <SelectTrigger className="w-44" title="Filter payroll by technician"><SelectValue /></SelectTrigger>
@@ -492,7 +497,7 @@ export default function PayrollPage() {
         <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/40 px-3 py-2 rounded-lg border">
           <Info className="w-3.5 h-3.5 shrink-0" />
           Global P4P master rate: <span className="font-semibold text-foreground">{summary.globalP4pPct}%</span>.
-          Blueprint overrides take priority, followed by the service's P4P rate, then this company default.
+          Live estimate only — open Finalize / history for locked approved payroll. Rates are applied as of the work date; changes take effect when saved.
           {summary.globalP4pPct === 0 && <span className="text-amber-600 font-medium ml-1"> The company default is 0%. Service or blueprint overrides can still earn P4P; hourly base pay is separate.</span>}
         </div>
       )}

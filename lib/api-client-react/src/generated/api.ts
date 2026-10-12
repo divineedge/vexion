@@ -253,6 +253,13 @@ import type {
   MediaAttachment,
   PauseSeriesInput,
   PaymentPolicy,
+  PayrollAdjustment,
+  PayrollAdjustmentInput,
+  PayrollApprovalInput,
+  PayrollPeriod,
+  PayrollPeriodInfo,
+  PayrollPreview,
+  PayrollRangeInput,
   PlStatementReport,
   Plan,
   PlanCancelRequest,
@@ -32395,6 +32402,344 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getRecordCustomerPrepaymentMutationOptions(options));
+    }
+
+export const getPreviewFinalPayrollUrl = () => {
+
+
+
+
+  return `/api/p4p/payroll/preview`
+}
+
+export const previewFinalPayroll = async (payrollRangeInput: PayrollRangeInput, options?: RequestInit): Promise<PayrollPreview> => {
+
+  return customFetch<PayrollPreview>(getPreviewFinalPayrollUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(payrollRangeInput)
+  }
+);}
+
+
+
+
+
+export const getPreviewFinalPayrollMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewFinalPayroll>>, TError,{data: BodyType<PayrollRangeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof previewFinalPayroll>>, TError,{data: BodyType<PayrollRangeInput>}, TContext> => {
+
+const mutationKey = ['previewFinalPayroll'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof previewFinalPayroll>>, {data: BodyType<PayrollRangeInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  previewFinalPayroll(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PreviewFinalPayrollMutationResult = NonNullable<Awaited<ReturnType<typeof previewFinalPayroll>>>
+    export type PreviewFinalPayrollMutationBody = BodyType<PayrollRangeInput>
+    export type PreviewFinalPayrollMutationError = ErrorType<void>
+
+    export const usePreviewFinalPayroll = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewFinalPayroll>>, TError,{data: BodyType<PayrollRangeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof previewFinalPayroll>>,
+        TError,
+        {data: BodyType<PayrollRangeInput>},
+        TContext
+      > => {
+      return useMutation(getPreviewFinalPayrollMutationOptions(options));
+    }
+
+export const getListFinalPayrollUrl = () => {
+
+
+
+
+  return `/api/p4p/payroll/periods`
+}
+
+export const listFinalPayroll = async ( options?: RequestInit): Promise<PayrollPeriodInfo[]> => {
+
+  return customFetch<PayrollPeriodInfo[]>(getListFinalPayrollUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListFinalPayrollQueryKey = () => {
+    return [
+    `/api/p4p/payroll/periods`
+    ] as const;
+    }
+
+
+export const getListFinalPayrollQueryOptions = <TData = Awaited<ReturnType<typeof listFinalPayroll>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listFinalPayroll>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListFinalPayrollQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listFinalPayroll>>> = ({ signal }) => listFinalPayroll({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listFinalPayroll>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListFinalPayrollQueryResult = NonNullable<Awaited<ReturnType<typeof listFinalPayroll>>>
+export type ListFinalPayrollQueryError = ErrorType<void>
+
+
+
+export function useListFinalPayroll<TData = Awaited<ReturnType<typeof listFinalPayroll>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listFinalPayroll>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListFinalPayrollQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getApproveFinalPayrollUrl = () => {
+
+
+
+
+  return `/api/p4p/payroll/periods`
+}
+
+export const approveFinalPayroll = async (payrollApprovalInput: PayrollApprovalInput, options?: RequestInit): Promise<PayrollPeriod> => {
+
+  return customFetch<PayrollPeriod>(getApproveFinalPayrollUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(payrollApprovalInput)
+  }
+);}
+
+
+
+
+
+export const getApproveFinalPayrollMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveFinalPayroll>>, TError,{data: BodyType<PayrollApprovalInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof approveFinalPayroll>>, TError,{data: BodyType<PayrollApprovalInput>}, TContext> => {
+
+const mutationKey = ['approveFinalPayroll'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof approveFinalPayroll>>, {data: BodyType<PayrollApprovalInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  approveFinalPayroll(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApproveFinalPayrollMutationResult = NonNullable<Awaited<ReturnType<typeof approveFinalPayroll>>>
+    export type ApproveFinalPayrollMutationBody = BodyType<PayrollApprovalInput>
+    export type ApproveFinalPayrollMutationError = ErrorType<void>
+
+    export const useApproveFinalPayroll = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveFinalPayroll>>, TError,{data: BodyType<PayrollApprovalInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof approveFinalPayroll>>,
+        TError,
+        {data: BodyType<PayrollApprovalInput>},
+        TContext
+      > => {
+      return useMutation(getApproveFinalPayrollMutationOptions(options));
+    }
+
+export const getGetFinalPayrollUrl = (id: number,) => {
+
+
+
+
+  return `/api/p4p/payroll/periods/${id}`
+}
+
+export const getFinalPayroll = async (id: number, options?: RequestInit): Promise<PayrollPeriod> => {
+
+  return customFetch<PayrollPeriod>(getGetFinalPayrollUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetFinalPayrollQueryKey = (id: number,) => {
+    return [
+    `/api/p4p/payroll/periods/${id}`
+    ] as const;
+    }
+
+
+export const getGetFinalPayrollQueryOptions = <TData = Awaited<ReturnType<typeof getFinalPayroll>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFinalPayroll>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetFinalPayrollQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getFinalPayroll>>> = ({ signal }) => getFinalPayroll(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getFinalPayroll>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetFinalPayrollQueryResult = NonNullable<Awaited<ReturnType<typeof getFinalPayroll>>>
+export type GetFinalPayrollQueryError = ErrorType<void>
+
+
+
+export function useGetFinalPayroll<TData = Awaited<ReturnType<typeof getFinalPayroll>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFinalPayroll>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetFinalPayrollQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getAddFinalPayrollAdjustmentUrl = (id: number,) => {
+
+
+
+
+  return `/api/p4p/payroll/periods/${id}/adjustments`
+}
+
+export const addFinalPayrollAdjustment = async (id: number,
+    payrollAdjustmentInput: PayrollAdjustmentInput, options?: RequestInit): Promise<PayrollAdjustment> => {
+
+  return customFetch<PayrollAdjustment>(getAddFinalPayrollAdjustmentUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(payrollAdjustmentInput)
+  }
+);}
+
+
+
+
+
+export const getAddFinalPayrollAdjustmentMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addFinalPayrollAdjustment>>, TError,{id: number;data: BodyType<PayrollAdjustmentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof addFinalPayrollAdjustment>>, TError,{id: number;data: BodyType<PayrollAdjustmentInput>}, TContext> => {
+
+const mutationKey = ['addFinalPayrollAdjustment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addFinalPayrollAdjustment>>, {id: number;data: BodyType<PayrollAdjustmentInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  addFinalPayrollAdjustment(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AddFinalPayrollAdjustmentMutationResult = NonNullable<Awaited<ReturnType<typeof addFinalPayrollAdjustment>>>
+    export type AddFinalPayrollAdjustmentMutationBody = BodyType<PayrollAdjustmentInput>
+    export type AddFinalPayrollAdjustmentMutationError = ErrorType<void>
+
+    export const useAddFinalPayrollAdjustment = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addFinalPayrollAdjustment>>, TError,{id: number;data: BodyType<PayrollAdjustmentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof addFinalPayrollAdjustment>>,
+        TError,
+        {id: number;data: BodyType<PayrollAdjustmentInput>},
+        TContext
+      > => {
+      return useMutation(getAddFinalPayrollAdjustmentMutationOptions(options));
     }
 
 export const getGetPaymentPolicyUrl = (scope: 'company' | 'service' | 'customer',

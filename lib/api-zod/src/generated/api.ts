@@ -42,7 +42,6 @@ export const ListJobRequestsResponse = zod.array(ListJobRequestsResponseItem)
  */
 
 
-
 export const CreateJobRequestBody = zod.object({
   "customerId": zod.number().nullish(),
   "propertyId": zod.number().nullish(),
@@ -123,9 +122,6 @@ export const RejectJobRequestParams = zod.object({
 })
 
 
-
-
-
 export const RejectJobRequestBody = zod.object({
   "adminResponse": zod.string().min(1),
   "idempotencyKey": zod.string().min(1)
@@ -164,9 +160,6 @@ export const RequestJobRequestClarificationParams = zod.object({
 })
 
 
-
-
-
 export const RequestJobRequestClarificationBody = zod.object({
   "adminResponse": zod.string().min(1),
   "idempotencyKey": zod.string().min(1)
@@ -203,8 +196,6 @@ export const RequestJobRequestClarificationResponse = zod.object({
 export const AmendJobRequestParams = zod.object({
   "id": zod.coerce.number()
 })
-
-
 
 
 export const AmendJobRequestBody = zod.object({
@@ -972,13 +963,11 @@ export const DeleteCustomerResponse = zod.void()
 export const getAddressSuggestionsQueryQMin = 2;
 
 
-
 export const GetAddressSuggestionsQueryParams = zod.object({
   "q": zod.coerce.string().min(getAddressSuggestionsQueryQMin)
 })
 
 export const getAddressSuggestionsResponseItemsMax = 10;
-
 
 
 export const GetAddressSuggestionsResponse = zod.object({
@@ -2917,8 +2906,6 @@ export const listJobMessagesQueryLimitDefault = 100;
 export const listJobMessagesQueryLimitMax = 100;
 
 
-
-
 export const ListJobMessagesQueryParams = zod.object({
   "limit": zod.coerce.number().min(1).max(listJobMessagesQueryLimitMax).default(listJobMessagesQueryLimitDefault),
   "beforeId": zod.coerce.number().min(1).optional().describe('Return messages with IDs lower than this cursor')
@@ -2952,7 +2939,6 @@ export const createJobMessageBodyBodyMax = 4000;
 
 export const createJobMessageBodyClientMessageIdMin = 8;
 export const createJobMessageBodyClientMessageIdMax = 100;
-
 
 
 export const CreateJobMessageBody = zod.object({
@@ -3029,7 +3015,6 @@ export const sendStaffMessageToAudienceBodyOneClientMessageIdMin = 8;
 export const sendStaffMessageToAudienceBodyOneClientMessageIdMax = 100;
 
 
-
 export const SendStaffMessageToAudienceBody = zod.object({
   "body": zod.string().min(1).max(sendStaffMessageToAudienceBodyOneBodyMax),
   "clientMessageId": zod.string().min(sendStaffMessageToAudienceBodyOneClientMessageIdMin).max(sendStaffMessageToAudienceBodyOneClientMessageIdMax)
@@ -3076,8 +3061,6 @@ export const listStaffConversationMessagesQueryLimitDefault = 100;
 export const listStaffConversationMessagesQueryLimitMax = 100;
 
 
-
-
 export const ListStaffConversationMessagesQueryParams = zod.object({
   "limit": zod.coerce.number().min(1).max(listStaffConversationMessagesQueryLimitMax).default(listStaffConversationMessagesQueryLimitDefault),
   "beforeId": zod.coerce.number().min(1).optional().describe('Return messages with IDs lower than this cursor')
@@ -3114,7 +3097,6 @@ export const createStaffConversationMessageBodyClientMessageIdMin = 8;
 export const createStaffConversationMessageBodyClientMessageIdMax = 100;
 
 
-
 export const CreateStaffConversationMessageBody = zod.object({
   "body": zod.string().min(1).max(createStaffConversationMessageBodyBodyMax),
   "clientMessageId": zod.string().min(createStaffConversationMessageBodyClientMessageIdMin).max(createStaffConversationMessageBodyClientMessageIdMax)
@@ -3146,8 +3128,6 @@ export const ListStaffMessagesParams = zod.object({
 
 export const listStaffMessagesQueryLimitDefault = 100;
 export const listStaffMessagesQueryLimitMax = 100;
-
-
 
 
 export const ListStaffMessagesQueryParams = zod.object({
@@ -3184,7 +3164,6 @@ export const createStaffMessageBodyBodyMax = 4000;
 
 export const createStaffMessageBodyClientMessageIdMin = 8;
 export const createStaffMessageBodyClientMessageIdMax = 100;
-
 
 
 export const CreateStaffMessageBody = zod.object({
@@ -4481,7 +4460,6 @@ export const SubmitReviewRatingParams = zod.object({
 export const submitReviewRatingBodyRatingMax = 5;
 
 
-
 export const SubmitReviewRatingBody = zod.object({
   "rating": zod.number().min(1).max(submitReviewRatingBodyRatingMax)
 })
@@ -4660,7 +4638,6 @@ export const createGeofenceEntryBodyLatMax = 90;
 
 export const createGeofenceEntryBodyLngMin = -180;
 export const createGeofenceEntryBodyLngMax = 180;
-
 
 
 export const CreateGeofenceEntryBody = zod.object({
@@ -4942,8 +4919,6 @@ export const ListTimeEntriesResponse = zod.array(ListTimeEntriesResponseItem)
 export const AdjustTimeEntryParams = zod.object({
   "id": zod.coerce.number()
 })
-
-
 
 
 export const AdjustTimeEntryBody = zod.object({
@@ -5368,7 +5343,6 @@ export const GenerateBlueprintAiZonesParams = zod.object({
 export const generateBlueprintAiZonesBodyZonesItemPolygonMin = 3;
 
 
-
 export const GenerateBlueprintAiZonesBody = zod.object({
   "zones": zod.array(zod.object({
   "id": zod.string(),
@@ -5660,7 +5634,6 @@ export const getTenantSettingsResponseDefaultOffSeasonEndRegExp = new RegExp('^\
 export const getTenantSettingsResponsePreTripChecklistNameMax = 80;
 
 
-
 export const GetTenantSettingsResponse = zod.object({
   "defaultInvoiceTerms": zod.string().nullish(),
   "defaultInvoiceNotes": zod.string().nullish(),
@@ -5806,7 +5779,6 @@ export const updateTenantSettingsBodyDefaultOffSeasonEndRegExp = new RegExp('^\\
 export const updateTenantSettingsBodyPreTripChecklistNameMax = 80;
 
 
-
 export const UpdateTenantSettingsBody = zod.object({
   "defaultInvoiceTerms": zod.string().nullish(),
   "defaultInvoiceNotes": zod.string().nullish(),
@@ -5922,7 +5894,6 @@ export const UpdateTenantSettingsBody = zod.object({
 export const updateTenantSettingsResponseDefaultOffSeasonStartRegExp = new RegExp('^\\d{2}-\\d{2}$');
 export const updateTenantSettingsResponseDefaultOffSeasonEndRegExp = new RegExp('^\\d{2}-\\d{2}$');
 export const updateTenantSettingsResponsePreTripChecklistNameMax = 80;
-
 
 
 export const UpdateTenantSettingsResponse = zod.object({
@@ -7100,7 +7071,6 @@ export const createEquipmentFuelLogBodyMeterReadingMin = 0;
 export const createEquipmentFuelLogBodyExpectedMeterReadingMin = 0;
 
 
-
 export const CreateEquipmentFuelLogBody = zod.object({
   "meterReading": zod.number().min(createEquipmentFuelLogBodyMeterReadingMin).optional(),
   "expectedMeterReading": zod.number().min(createEquipmentFuelLogBodyExpectedMeterReadingMin).optional(),
@@ -7185,7 +7155,6 @@ export const createBulkFuelAdjustmentBodyTwoIdempotencyKeyMax = 200;
 export const createBulkFuelAdjustmentBodyTwoExpectedMovementIdMin = 0;
 
 
-
 export const CreateBulkFuelAdjustmentBody = zod.object({
   "measuredGallons": zod.number().min(createBulkFuelAdjustmentBodyOneMeasuredGallonsMin),
   "reason": zod.string().min(1).max(createBulkFuelAdjustmentBodyOneReasonMax),
@@ -7259,7 +7228,6 @@ export const ListBulkFuelTanksResponse = zod.array(ListBulkFuelTanksResponseItem
 export const createBulkFuelTankBodyCurrentMeterReadingMin = 0;
 
 
-
 export const CreateBulkFuelTankBody = zod.object({
   "currentMeterReading": zod.number().min(createBulkFuelTankBodyCurrentMeterReadingMin).optional(),
   "name": zod.string(),
@@ -7286,7 +7254,6 @@ export const UpdateBulkFuelTankParams = zod.object({
 })
 
 export const updateBulkFuelTankBodyCurrentMeterReadingMin = 0;
-
 
 
 export const UpdateBulkFuelTankBody = zod.object({
@@ -7316,7 +7283,6 @@ export const ListBulkFuelTransactionsParams = zod.object({
 })
 
 export const listBulkFuelTransactionsQueryLimitMax = 100;
-
 
 
 export const ListBulkFuelTransactionsQueryParams = zod.object({
@@ -7446,7 +7412,6 @@ export const CreateEquipmentReadingLogResponse = zod.object({
 export const createEquipmentPreTripBodyMeterReadingMin = 0;
 
 export const createEquipmentPreTripBodyExpectedMeterReadingMin = 0;
-
 
 
 export const CreateEquipmentPreTripBody = zod.object({
@@ -9156,9 +9121,6 @@ export const ResumeCustomerServiceResponse = zod.object({
  */
 
 
-
-
-
 export const RequestUploadUrlBody = zod.object({
   "name": zod.string().min(1),
   "size": zod.number().min(1),
@@ -9761,9 +9723,6 @@ export const DismissPlanCancelRequestResponse = zod.object({
 /**
  * @summary Request a presigned upload URL (portal customers)
  */
-
-
-
 
 
 export const PortalRequestUploadUrlBody = zod.object({
@@ -11675,7 +11634,6 @@ export const ReschedulePlanVisitParams = zod.object({
 export const reschedulePlanVisitBodyRescheduleFeeAmountMin = 0;
 
 
-
 export const ReschedulePlanVisitBody = zod.object({
   "chargeRescheduleFee": zod.boolean().optional(),
   "rescheduleFeeAmount": zod.number().min(reschedulePlanVisitBodyRescheduleFeeAmountMin).optional(),
@@ -12019,7 +11977,6 @@ export const RetryBillingEmailParams = zod.object({
 
 export const retryBillingEmailBodyEvidenceMin = 10;
 export const retryBillingEmailBodyEvidenceMax = 2000;
-
 
 
 export const RetryBillingEmailBody = zod.object({
@@ -13637,7 +13594,6 @@ export const RescheduleJobOnceParams = zod.object({
 export const rescheduleJobOnceBodyRescheduleFeeAmountMin = 0;
 
 
-
 export const RescheduleJobOnceBody = zod.object({
   "chargeRescheduleFee": zod.boolean().optional(),
   "rescheduleFeeAmount": zod.number().min(rescheduleJobOnceBodyRescheduleFeeAmountMin).optional(),
@@ -14102,7 +14058,6 @@ export const createExternalConnectionBodyNameMax = 100;
 export const createExternalConnectionBodyDescriptionMax = 1000;
 
 
-
 export const CreateExternalConnectionBody = zod.object({
   "name": zod.string().min(1).max(createExternalConnectionBodyNameMax),
   "description": zod.string().max(createExternalConnectionBodyDescriptionMax).optional(),
@@ -14151,7 +14106,6 @@ export const UpdateExternalConnectionParams = zod.object({
 export const updateExternalConnectionBodyNameMax = 100;
 
 export const updateExternalConnectionBodyDescriptionMax = 1000;
-
 
 
 export const UpdateExternalConnectionBody = zod.object({
@@ -14266,7 +14220,6 @@ export const setExternalWebhookSecretBodySecretMin = 8;
 export const setExternalWebhookSecretBodySecretMax = 4096;
 
 
-
 export const SetExternalWebhookSecretBody = zod.object({
   "secret": zod.string().min(setExternalWebhookSecretBodySecretMin).max(setExternalWebhookSecretBodySecretMax)
 })
@@ -14297,7 +14250,6 @@ export const SetExternalWebhookSecretResponse = zod.object({
  */
 export const listExternalAuditQueryConnectionIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
 export const listExternalAuditQueryLimitMax = 100;
-
 
 
 export const ListExternalAuditQueryParams = zod.object({
@@ -14386,6 +14338,314 @@ export const RecordCustomerPrepaymentResponse = zod.object({
 })
 
 
+export const previewFinalPayrollBodyDateFromRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const previewFinalPayrollBodyDateToRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+
+
+export const PreviewFinalPayrollBody = zod.object({
+  "dateFrom": zod.string().regex(previewFinalPayrollBodyDateFromRegExp),
+  "dateTo": zod.string().regex(previewFinalPayrollBodyDateToRegExp)
+})
+
+export const PreviewFinalPayrollResponse = zod.object({
+  "digest": zod.string(),
+  "snapshot": zod.object({
+  "version": zod.number(),
+  "dateFrom": zod.string(),
+  "dateTo": zod.string(),
+  "timezone": zod.string(),
+  "p4pOnlyApproval": zod.object({
+  "reason": zod.string(),
+  "employeeIds": zod.array(zod.number())
+}).optional(),
+  "summary": zod.object({
+  "period": zod.string(),
+  "rangeStart": zod.string(),
+  "rangeEnd": zod.string(),
+  "globalP4pPct": zod.number(),
+  "technicians": zod.array(zod.object({
+  "userId": zod.number(),
+  "name": zod.string(),
+  "role": zod.string(),
+  "baseHourlyRate": zod.number().nullable(),
+  "clockHours": zod.number(),
+  "basePay": zod.number().nullable(),
+  "grossPay": zod.number().nullable(),
+  "p4pEarnings": zod.number(),
+  "jobCount": zod.number(),
+  "totalRevenue": zod.number(),
+  "totalMaterialCost": zod.number(),
+  "netLaborRevenue": zod.number(),
+  "rateSegments": zod.array(zod.object({
+  "rate": zod.number().nullable(),
+  "hours": zod.number()
+}))
+}))
+}),
+  "jobs": zod.array(zod.object({
+  "jobId": zod.number(),
+  "jobTitle": zod.string(),
+  "customerName": zod.string().nullable(),
+  "blueprintName": zod.string().nullable(),
+  "completedAt": zod.string(),
+  "totalAmount": zod.number(),
+  "materialCost": zod.number(),
+  "netLaborRevenue": zod.number(),
+  "p4pPct": zod.number(),
+  "p4pPool": zod.number(),
+  "usingGlobalRate": zod.boolean(),
+  "splits": zod.array(zod.object({
+  "userId": zod.number(),
+  "name": zod.string(),
+  "techSeconds": zod.number(),
+  "totalSeconds": zod.number(),
+  "contributionPct": zod.number(),
+  "earnings": zod.number()
+}))
+}))
+})
+})
+
+
+export const ListFinalPayrollResponseItem = zod.object({
+  "id": zod.number(),
+  "dateFrom": zod.string().optional(),
+  "dateTo": zod.string().optional(),
+  "timezone": zod.string().optional(),
+  "rangeStart": zod.coerce.date(),
+  "rangeEnd": zod.coerce.date(),
+  "approvedAt": zod.coerce.date(),
+  "approvedByName": zod.string()
+})
+export const ListFinalPayrollResponse = zod.array(ListFinalPayrollResponseItem)
+
+
+export const approveFinalPayrollBodyOneDateFromRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const approveFinalPayrollBodyOneDateToRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const approveFinalPayrollBodyTwoP4pOnlyReasonMax = 2000;
+
+
+export const ApproveFinalPayrollBody = zod.object({
+  "dateFrom": zod.string().regex(approveFinalPayrollBodyOneDateFromRegExp),
+  "dateTo": zod.string().regex(approveFinalPayrollBodyOneDateToRegExp)
+}).and(zod.object({
+  "digest": zod.string(),
+  "p4pOnlyReason": zod.string().min(1).max(approveFinalPayrollBodyTwoP4pOnlyReasonMax).optional()
+}))
+
+
+export const approveFinalPayrollResponseTwoAdjustmentsItemOneAmountMin = -1000000;
+export const approveFinalPayrollResponseTwoAdjustmentsItemOneAmountMax = 1000000;
+
+export const approveFinalPayrollResponseTwoAdjustmentsItemOneReasonMax = 2000;
+
+
+export const ApproveFinalPayrollResponse = zod.object({
+  "id": zod.number(),
+  "dateFrom": zod.string().optional(),
+  "dateTo": zod.string().optional(),
+  "timezone": zod.string().optional(),
+  "rangeStart": zod.coerce.date(),
+  "rangeEnd": zod.coerce.date(),
+  "approvedAt": zod.coerce.date(),
+  "approvedByName": zod.string()
+}).and(zod.object({
+  "snapshot": zod.object({
+  "version": zod.number(),
+  "dateFrom": zod.string(),
+  "dateTo": zod.string(),
+  "timezone": zod.string(),
+  "p4pOnlyApproval": zod.object({
+  "reason": zod.string(),
+  "employeeIds": zod.array(zod.number())
+}).optional(),
+  "summary": zod.object({
+  "period": zod.string(),
+  "rangeStart": zod.string(),
+  "rangeEnd": zod.string(),
+  "globalP4pPct": zod.number(),
+  "technicians": zod.array(zod.object({
+  "userId": zod.number(),
+  "name": zod.string(),
+  "role": zod.string(),
+  "baseHourlyRate": zod.number().nullable(),
+  "clockHours": zod.number(),
+  "basePay": zod.number().nullable(),
+  "grossPay": zod.number().nullable(),
+  "p4pEarnings": zod.number(),
+  "jobCount": zod.number(),
+  "totalRevenue": zod.number(),
+  "totalMaterialCost": zod.number(),
+  "netLaborRevenue": zod.number(),
+  "rateSegments": zod.array(zod.object({
+  "rate": zod.number().nullable(),
+  "hours": zod.number()
+}))
+}))
+}),
+  "jobs": zod.array(zod.object({
+  "jobId": zod.number(),
+  "jobTitle": zod.string(),
+  "customerName": zod.string().nullable(),
+  "blueprintName": zod.string().nullable(),
+  "completedAt": zod.string(),
+  "totalAmount": zod.number(),
+  "materialCost": zod.number(),
+  "netLaborRevenue": zod.number(),
+  "p4pPct": zod.number(),
+  "p4pPool": zod.number(),
+  "usingGlobalRate": zod.boolean(),
+  "splits": zod.array(zod.object({
+  "userId": zod.number(),
+  "name": zod.string(),
+  "techSeconds": zod.number(),
+  "totalSeconds": zod.number(),
+  "contributionPct": zod.number(),
+  "earnings": zod.number()
+}))
+}))
+}),
+  "adjustments": zod.array(zod.object({
+  "userId": zod.number().min(1),
+  "amount": zod.number().min(approveFinalPayrollResponseTwoAdjustmentsItemOneAmountMin).max(approveFinalPayrollResponseTwoAdjustmentsItemOneAmountMax),
+  "reason": zod.string().min(1).max(approveFinalPayrollResponseTwoAdjustmentsItemOneReasonMax)
+}).and(zod.object({
+  "id": zod.number(),
+  "periodId": zod.number(),
+  "createdBy": zod.number(),
+  "createdByName": zod.string(),
+  "createdAt": zod.coerce.date()
+}))).optional()
+}))
+
+
+export const GetFinalPayrollParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+
+export const getFinalPayrollResponseTwoAdjustmentsItemOneAmountMin = -1000000;
+export const getFinalPayrollResponseTwoAdjustmentsItemOneAmountMax = 1000000;
+
+export const getFinalPayrollResponseTwoAdjustmentsItemOneReasonMax = 2000;
+
+
+export const GetFinalPayrollResponse = zod.object({
+  "id": zod.number(),
+  "dateFrom": zod.string().optional(),
+  "dateTo": zod.string().optional(),
+  "timezone": zod.string().optional(),
+  "rangeStart": zod.coerce.date(),
+  "rangeEnd": zod.coerce.date(),
+  "approvedAt": zod.coerce.date(),
+  "approvedByName": zod.string()
+}).and(zod.object({
+  "snapshot": zod.object({
+  "version": zod.number(),
+  "dateFrom": zod.string(),
+  "dateTo": zod.string(),
+  "timezone": zod.string(),
+  "p4pOnlyApproval": zod.object({
+  "reason": zod.string(),
+  "employeeIds": zod.array(zod.number())
+}).optional(),
+  "summary": zod.object({
+  "period": zod.string(),
+  "rangeStart": zod.string(),
+  "rangeEnd": zod.string(),
+  "globalP4pPct": zod.number(),
+  "technicians": zod.array(zod.object({
+  "userId": zod.number(),
+  "name": zod.string(),
+  "role": zod.string(),
+  "baseHourlyRate": zod.number().nullable(),
+  "clockHours": zod.number(),
+  "basePay": zod.number().nullable(),
+  "grossPay": zod.number().nullable(),
+  "p4pEarnings": zod.number(),
+  "jobCount": zod.number(),
+  "totalRevenue": zod.number(),
+  "totalMaterialCost": zod.number(),
+  "netLaborRevenue": zod.number(),
+  "rateSegments": zod.array(zod.object({
+  "rate": zod.number().nullable(),
+  "hours": zod.number()
+}))
+}))
+}),
+  "jobs": zod.array(zod.object({
+  "jobId": zod.number(),
+  "jobTitle": zod.string(),
+  "customerName": zod.string().nullable(),
+  "blueprintName": zod.string().nullable(),
+  "completedAt": zod.string(),
+  "totalAmount": zod.number(),
+  "materialCost": zod.number(),
+  "netLaborRevenue": zod.number(),
+  "p4pPct": zod.number(),
+  "p4pPool": zod.number(),
+  "usingGlobalRate": zod.boolean(),
+  "splits": zod.array(zod.object({
+  "userId": zod.number(),
+  "name": zod.string(),
+  "techSeconds": zod.number(),
+  "totalSeconds": zod.number(),
+  "contributionPct": zod.number(),
+  "earnings": zod.number()
+}))
+}))
+}),
+  "adjustments": zod.array(zod.object({
+  "userId": zod.number().min(1),
+  "amount": zod.number().min(getFinalPayrollResponseTwoAdjustmentsItemOneAmountMin).max(getFinalPayrollResponseTwoAdjustmentsItemOneAmountMax),
+  "reason": zod.string().min(1).max(getFinalPayrollResponseTwoAdjustmentsItemOneReasonMax)
+}).and(zod.object({
+  "id": zod.number(),
+  "periodId": zod.number(),
+  "createdBy": zod.number(),
+  "createdByName": zod.string(),
+  "createdAt": zod.coerce.date()
+}))).optional()
+}))
+
+
+export const AddFinalPayrollAdjustmentParams = zod.object({
+  "id": zod.coerce.number().min(1)
+})
+
+
+export const addFinalPayrollAdjustmentBodyAmountMin = -1000000;
+export const addFinalPayrollAdjustmentBodyAmountMax = 1000000;
+
+export const addFinalPayrollAdjustmentBodyReasonMax = 2000;
+
+
+export const AddFinalPayrollAdjustmentBody = zod.object({
+  "userId": zod.number().min(1),
+  "amount": zod.number().min(addFinalPayrollAdjustmentBodyAmountMin).max(addFinalPayrollAdjustmentBodyAmountMax),
+  "reason": zod.string().min(1).max(addFinalPayrollAdjustmentBodyReasonMax)
+})
+
+
+export const addFinalPayrollAdjustmentResponseOneAmountMin = -1000000;
+export const addFinalPayrollAdjustmentResponseOneAmountMax = 1000000;
+
+export const addFinalPayrollAdjustmentResponseOneReasonMax = 2000;
+
+
+export const AddFinalPayrollAdjustmentResponse = zod.object({
+  "userId": zod.number().min(1),
+  "amount": zod.number().min(addFinalPayrollAdjustmentResponseOneAmountMin).max(addFinalPayrollAdjustmentResponseOneAmountMax),
+  "reason": zod.string().min(1).max(addFinalPayrollAdjustmentResponseOneReasonMax)
+}).and(zod.object({
+  "id": zod.number(),
+  "periodId": zod.number(),
+  "createdBy": zod.number(),
+  "createdByName": zod.string(),
+  "createdAt": zod.coerce.date()
+}))
+
+
 export const GetPaymentPolicyParams = zod.object({
   "scope": zod.enum(['company', 'service', 'customer']),
   "id": zod.coerce.number()
@@ -14466,5 +14726,4 @@ export const GetEfficiencyJobsResponse = zod.object({
   "crewName": zod.string().nullish()
 })).optional()
 })
-
 

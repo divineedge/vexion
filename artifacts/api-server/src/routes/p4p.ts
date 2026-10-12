@@ -17,8 +17,12 @@ import { db, jobsTable, blueprintsTable, tenantsTable, subTimersTable, usersTabl
 import { eq, and, gte, lte, sql, inArray } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { startOfDay, endOfDay, startOfWeek, endOfWeek, subDays } from "date-fns";
+import { payrollRouter } from "./payroll";
 
 const router: IRouter = Router();
+router.use(payrollRouter);
+export type PayrollDb = Pick<typeof db, "select" | "execute">;
+export type PayrollRange = { rangeStart: Date; rangeEnd: Date };
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -57,6 +61,22 @@ function getPeriodRange(period: string): { rangeStart: Date; rangeEnd: Date } {
   }
 }
 
+function requestRange(query: Record<string, unknown>): PayrollRange {
+  if (query.dateFrom || query.dateTo) {
+    const from = String(query.dateFrom);
+    const to = String(query.dateTo);
+    const rangeStart = new Date(`${from}T00:00:00.000Z`);
+    const rangeEnd = new Date(`${to}T23:59:59.999Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)
+      || !Number.isFinite(+rangeStart) || !Number.isFinite(+rangeEnd) || rangeStart > rangeEnd
+      || rangeStart.toISOString().slice(0, 10) !== from || rangeEnd.toISOString().slice(0, 10) !== to) {
+      throw Object.assign(new Error("Invalid payroll date range"), { status: 400 });
+    }
+    return { rangeStart, rangeEnd };
+  }
+  return getPeriodRange(String(query.period ?? "30d"));
+}
+
 // ── role helper ──────────────────────────────────────────────────────────────
 async function getCallerRole(tenantId: number, userId: number): Promise<string> {
   const [u] = await db.select({ role: usersTable.role }).from(usersTable).where(and(eq(usersTable.id, userId), eq(usersTable.tenantId, tenantId)));
@@ -75,7 +95,11 @@ router.get("/p4p/jobs", async (req, res): Promise<void> => {
   // Technicians may only view their own data; managers can filter by any userId or see all.
   const { period = "30d", userId: rawUserId } = req.query as Record<string, string>;
   const userId = isTech ? String(callerUserId) : rawUserId;
-  const { rangeStart, rangeEnd } = getPeriodRange(period);
+  const range = requestRange(req.query);
+  res.json(await calculatePayrollJobs(db, tenantId, range, userId));
+});
+
+export async function calculatePayrollJobs(db: PayrollDb, tenantId: number, { rangeStart, rangeEnd }: PayrollRange, userId?: string) {
 
   // Tenant global P4P rate
   const [tenant] = await db
@@ -99,7 +123,11 @@ router.get("/p4p/jobs", async (req, res): Promise<void> => {
         SELECT SUM((part->>'total')::numeric)
         FROM jsonb_array_elements(COALESCE(j.job_parts, '[]'::jsonb)) AS part
       ), 0) AS material_sell_amount,
-      COALESCE(b.p4p_percentage, s.p4p_percentage) AS blueprint_p4p_pct,
+      COALESCE(
+        payroll_rate_at(j.tenant_id, 'blueprint', j.blueprint_id, j.completed_at),
+        payroll_rate_at(j.tenant_id, 'service', j.service_id, j.completed_at)
+      ) AS blueprint_p4p_pct,
+      payroll_rate_at(j.tenant_id, 'global', j.tenant_id, j.completed_at) AS global_p4p_pct,
       b.name AS blueprint_name,
       c.name AS customer_name
     FROM jobs j
@@ -110,18 +138,18 @@ router.get("/p4p/jobs", async (req, res): Promise<void> => {
       AND j.status = 'completed'
       AND j.completed_at >= ${rangeStart.toISOString()}::timestamptz
       AND j.completed_at <= ${rangeEnd.toISOString()}::timestamptz
-    ORDER BY j.completed_at DESC
+    ORDER BY j.completed_at DESC, j.id DESC
   `);
 
   type JobRow = {
     id: number; title: string; total_amount: string; blueprint_id: number | null;
     assignee_id: number | null; crew_id: number | null; completed_at: string;
-    material_sell_amount: string; blueprint_p4p_pct: number | null; blueprint_name: string | null;
+    material_sell_amount: string; blueprint_p4p_pct: number | null; global_p4p_pct: number | null; blueprint_name: string | null;
     customer_name: string | null;
   };
   const jobs = jobRows.rows as JobRow[];
 
-  if (jobs.length === 0) { res.json([]); return; }
+  if (jobs.length === 0) return [];
 
   // Sub-timer contribution per (jobId, userId) — for splits
   const jobIds = jobs.map(j => Number(j.id));
@@ -138,6 +166,7 @@ router.get("/p4p/jobs", async (req, res): Promise<void> => {
     WHERE tenant_id = ${tenantId}
       AND job_id = ANY(${sql.raw(`ARRAY[${jobIds.join(",")}]::int[]`)})
     GROUP BY job_id, user_id
+    ORDER BY job_id, user_id
   `);
 
   type TimerRow = { job_id: number; user_id: number; seconds: string };
@@ -163,7 +192,7 @@ router.get("/p4p/jobs", async (req, res): Promise<void> => {
   const result = jobs.map(j => {
     const totalAmount = Number(j.total_amount ?? 0);
     const materialCost = Number(j.material_sell_amount ?? 0);
-    const p4pPct = j.blueprint_p4p_pct != null ? Number(j.blueprint_p4p_pct) : globalPct;
+    const p4pPct = Number(j.blueprint_p4p_pct ?? j.global_p4p_pct ?? 0);
     const { netLaborRevenue, p4pPool: unroundedP4pPool } = calculateP4pAmounts(totalAmount, materialCost, p4pPct);
     const p4pPool = Math.round(unroundedP4pPool * 100) / 100;
 
@@ -202,7 +231,7 @@ router.get("/p4p/jobs", async (req, res): Promise<void> => {
       jobTitle: j.title,
       customerName: j.customer_name ?? null,
       blueprintName: j.blueprint_name ?? null,
-      completedAt: j.completed_at,
+      completedAt: new Date(j.completed_at).toISOString(),
       totalAmount,
       materialCost: Math.round(materialCost * 100) / 100,
       netLaborRevenue: Math.round(netLaborRevenue * 100) / 100,
@@ -219,8 +248,8 @@ router.get("/p4p/jobs", async (req, res): Promise<void> => {
     return true;
   });
 
-  res.json(result);
-});
+  return result;
+}
 
 // ── GET /p4p/summary — per-technician totals for the period ──────────────────
 router.get("/p4p/summary", async (req, res): Promise<void> => {
@@ -236,7 +265,11 @@ router.get("/p4p/summary", async (req, res): Promise<void> => {
   const { period = "30d" } = req.query as Record<string, string>;
 
   // Reuse jobs endpoint logic via a sub-call is messy; re-derive here for clarity.
-  const { rangeStart, rangeEnd } = getPeriodRange(period);
+  const range = requestRange(req.query);
+  res.json(await calculatePayrollSummary(db, tenantId, range, period));
+});
+
+export async function calculatePayrollSummary(db: PayrollDb, tenantId: number, { rangeStart, rangeEnd }: PayrollRange, period = "custom") {
 
   const [tenant] = await db
     .select({ p4pMasterPercentage: tenantsTable.p4pMasterPercentage })
@@ -253,7 +286,11 @@ router.get("/p4p/summary", async (req, res): Promise<void> => {
         SELECT SUM((part->>'total')::numeric)
         FROM jsonb_array_elements(COALESCE(j.job_parts, '[]'::jsonb)) AS part
       ), 0) AS material_sell_amount,
-      COALESCE(b.p4p_percentage, s.p4p_percentage) AS blueprint_p4p_pct
+      COALESCE(
+        payroll_rate_at(j.tenant_id, 'blueprint', j.blueprint_id, j.completed_at),
+        payroll_rate_at(j.tenant_id, 'service', j.service_id, j.completed_at),
+        payroll_rate_at(j.tenant_id, 'global', j.tenant_id, j.completed_at), 0
+      ) AS blueprint_p4p_pct
     FROM jobs j
     LEFT JOIN blueprints b ON b.id = j.blueprint_id AND b.tenant_id = j.tenant_id
     LEFT JOIN services s ON s.id = j.service_id AND s.tenant_id = j.tenant_id
@@ -274,6 +311,7 @@ router.get("/p4p/summary", async (req, res): Promise<void> => {
     WHERE tenant_id = ${tenantId}
       AND job_id = ANY(${sql.raw(`ARRAY[${jobIds.join(",")}]::int[]`)})
     GROUP BY job_id, user_id
+    ORDER BY job_id, user_id
   `);
 
   type TimerRow2 = { job_id: number; user_id: number; seconds: string };
@@ -294,7 +332,8 @@ router.get("/p4p/summary", async (req, res): Promise<void> => {
     const totalAmount = Number(j.total_amount ?? 0);
     const materialCost = Number(j.material_sell_amount ?? 0);
     const p4pPct = j.blueprint_p4p_pct != null ? Number(j.blueprint_p4p_pct) : globalPct;
-    const { netLaborRevenue, p4pPool } = calculateP4pAmounts(totalAmount, materialCost, p4pPct);
+    const { netLaborRevenue, p4pPool: rawPool } = calculateP4pAmounts(totalAmount, materialCost, p4pPct);
+    const p4pPool = Math.round(rawPool * 100) / 100;
 
     const jobTimers = timerMap.get(Number(j.id)) ?? new Map<number, number>();
     const totalSeconds = Array.from(jobTimers.values()).reduce((s, v) => s + v, 0);
@@ -302,7 +341,7 @@ router.get("/p4p/summary", async (req, res): Promise<void> => {
     const addEarnings = (uid: number, earnings: number) => {
       const prev = userEarnings.get(uid) ?? { p4pEarnings: 0, jobCount: 0, totalRevenue: 0, totalMaterialCost: 0, netLaborRevenue: 0 };
       userEarnings.set(uid, {
-        p4pEarnings: prev.p4pEarnings + earnings,
+        p4pEarnings: prev.p4pEarnings + Math.round(earnings * 100) / 100,
         jobCount: prev.jobCount + 1,
         totalRevenue: prev.totalRevenue + totalAmount,
         totalMaterialCost: prev.totalMaterialCost + materialCost,
@@ -324,46 +363,74 @@ router.get("/p4p/summary", async (req, res): Promise<void> => {
 
   const [eligibility] = await db.select({ ownersSchedulable: tenantsTable.ownersSchedulable }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
   const allUsers = await db.select().from(usersTable).where(eq(usersTable.tenantId, tenantId));
+  // Split each closed clock entry at every effective-rate boundary. An average
+  // or the employee's current rate would misprice a raise in the middle of a shift.
   const clockRows = await db.execute(sql`
-    SELECT user_id, SUM(GREATEST(0, EXTRACT(EPOCH FROM (
-      LEAST(COALESCE(adjusted_clocked_out_at, clocked_out_at), ${rangeEnd.toISOString()}::timestamptz)
-      - GREATEST(COALESCE(adjusted_clocked_in_at, clocked_in_at), ${rangeStart.toISOString()}::timestamptz)
-    )))) / 3600 AS hours FROM time_entries
-    WHERE tenant_id = ${tenantId} AND is_master_clock = true
-      AND COALESCE(adjusted_clocked_out_at, clocked_out_at) IS NOT NULL
-      AND COALESCE(adjusted_clocked_in_at, clocked_in_at) <= ${rangeEnd.toISOString()}::timestamptz
-      AND COALESCE(adjusted_clocked_out_at, clocked_out_at) >= ${rangeStart.toISOString()}::timestamptz
-    GROUP BY user_id
+    WITH history AS (
+      SELECT id, source_id, value, effective_at FROM payroll_rates
+      WHERE tenant_id=${tenantId} AND source='hourly'
+      UNION ALL
+      SELECT -1, id, NULL::real, '1970-01-01'::timestamptz FROM users WHERE tenant_id=${tenantId}
+    ), versions AS (
+      SELECT source_id AS user_id, value, effective_at,
+        LEAD(effective_at, 1, 'infinity'::timestamptz)
+          OVER (PARTITION BY source_id ORDER BY effective_at, id) AS until
+      FROM history
+    ), segments AS (
+      SELECT t.user_id, v.value AS rate,
+        GREATEST(COALESCE(t.adjusted_clocked_in_at,t.clocked_in_at), ${rangeStart.toISOString()}::timestamptz, v.effective_at) AS starts,
+        LEAST(COALESCE(t.adjusted_clocked_out_at,t.clocked_out_at), ${rangeEnd.toISOString()}::timestamptz, v.until) AS ends
+      FROM time_entries t JOIN versions v ON v.user_id=t.user_id
+      WHERE t.tenant_id=${tenantId} AND t.is_master_clock=true
+        AND COALESCE(t.adjusted_clocked_out_at,t.clocked_out_at) IS NOT NULL
+    )
+    SELECT user_id, rate, SUM(EXTRACT(EPOCH FROM (ends-starts)))/3600 AS hours
+    FROM segments WHERE ends > starts GROUP BY user_id, rate
+    ORDER BY user_id, rate NULLS FIRST
   `);
-  const hoursByUser = new Map(clockRows.rows.map(r => [Number(r.user_id), Number(r.hours)]));
+  const segmentsByUser = new Map<number, { rate: number | null; hours: number }[]>();
+  for (const row of clockRows.rows) {
+    const id = Number(row.user_id);
+    segmentsByUser.set(id, [...(segmentsByUser.get(id) ?? []), { rate: row.rate == null ? null : Number(row.rate), hours: Number(row.hours) }]);
+  }
+  const endRates = await db.execute(sql`
+    SELECT id, payroll_rate_at(tenant_id, 'hourly', id, ${rangeEnd.toISOString()}::timestamptz) AS rate
+    FROM users WHERE tenant_id=${tenantId}
+  `);
+  const rateByUser = new Map(endRates.rows.map(r => [Number(r.id), r.rate == null ? null : Number(r.rate)]));
   const users = allUsers.filter(u => u.role === "technician" || u.role === "crew_manager"
     || (u.role === "company_owner" && eligibility?.ownersSchedulable));
 
   const technicians = users.map(u => {
     const stats = userEarnings.get(u.id) ?? { p4pEarnings: 0, jobCount: 0, totalRevenue: 0, totalMaterialCost: 0, netLaborRevenue: 0 };
+    const rateSegments = segmentsByUser.get(u.id) ?? [];
+    const clockHours = rateSegments.reduce((sum, s) => sum + s.hours, 0);
+    const basePay = rateSegments.some(s => s.rate == null) || (!rateSegments.length && rateByUser.get(u.id) == null)
+      ? null : rateSegments.reduce((sum, s) => sum + s.hours * (s.rate ?? 0), 0);
     return {
       userId: u.id,
       name: u.name,
       role: u.role,
-      baseHourlyRate: u.hourlyRate,
-      clockHours: Math.round((hoursByUser.get(u.id) ?? 0) * 100) / 100,
-      basePay: u.hourlyRate == null ? null : Math.round(u.hourlyRate * (hoursByUser.get(u.id) ?? 0) * 100) / 100,
-      grossPay: u.hourlyRate == null ? null : Math.round(Math.max(u.hourlyRate * (hoursByUser.get(u.id) ?? 0), stats.p4pEarnings) * 100) / 100,
+      baseHourlyRate: rateByUser.get(u.id) ?? null,
+      rateSegments,
+      clockHours: Math.round(clockHours * 100) / 100,
+      basePay: basePay == null ? null : Math.round(basePay * 100) / 100,
+      grossPay: basePay == null ? null : Math.round(Math.max(basePay, stats.p4pEarnings) * 100) / 100,
       p4pEarnings: Math.round(stats.p4pEarnings * 100) / 100,
       jobCount: stats.jobCount,
       totalRevenue: Math.round(stats.totalRevenue * 100) / 100,
       totalMaterialCost: Math.round(stats.totalMaterialCost * 100) / 100,
       netLaborRevenue: Math.round(stats.netLaborRevenue * 100) / 100,
     };
-  }).sort((a, b) => b.p4pEarnings - a.p4pEarnings);
+  }).sort((a, b) => b.p4pEarnings - a.p4pEarnings || a.userId - b.userId);
 
-  res.json({
+  return {
     period,
     rangeStart: rangeStart.toISOString(),
     rangeEnd: rangeEnd.toISOString(),
     globalP4pPct: globalPct,
     technicians,
-  });
-});
+  };
+}
 
 export default router;

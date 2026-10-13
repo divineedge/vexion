@@ -1,5 +1,6 @@
 import { acquisitionSettings, processAcquisitionRewards } from "../lib/acquisitionRewards";
 import { publicAppUrl } from "../lib/publicSite";
+import { estimatePaymentTerms } from "../lib/paymentPolicy";
 import { paymentGuardedJobInsert } from "../lib/paymentPolicy";
 import { invoiceBalance } from "../lib/customerCredit";
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
@@ -1984,7 +1985,7 @@ router.post("/portal/stripe-webhook", async (req: any, res): Promise<void> => {
 router.get("/portal/estimates", requirePortalAuth, async (req: any, res): Promise<void> => {
   const { portalCustomerId, portalTenantId } = req.portalLocals as PortalLocals;
 
-  const rows = await db
+  const storedRows = await db
     .select()
     .from(estimatesTable)
     .where(
@@ -1992,10 +1993,12 @@ router.get("/portal/estimates", requirePortalAuth, async (req: any, res): Promis
         eq(estimatesTable.customerId, portalCustomerId),
         eq(estimatesTable.tenantId, portalTenantId),
         ne(estimatesTable.status, "draft" as string),
+        isNull(estimatesTable.archivedAt),
       ),
     )
     .orderBy(desc(estimatesTable.createdAt));
 
+  const rows = await Promise.all(storedRows.map(estimate => estimatePaymentTerms(db, estimate)));
   res.json(
     rows.map(e => ({
       id: e.id,
@@ -2022,7 +2025,7 @@ router.get("/portal/estimates/:id", requirePortalAuth, async (req: any, res): Pr
   const estimateId = parseInt(req.params.id, 10);
   if (isNaN(estimateId)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const [estimate] = await db
+  let [estimate] = await db
     .select()
     .from(estimatesTable)
     .where(and(
@@ -2030,10 +2033,12 @@ router.get("/portal/estimates/:id", requirePortalAuth, async (req: any, res): Pr
       eq(estimatesTable.customerId, portalCustomerId),
       eq(estimatesTable.tenantId, portalTenantId),
       ne(estimatesTable.status, "draft" as string),
+      isNull(estimatesTable.archivedAt),
     ))
     .limit(1);
 
   if (!estimate) { res.status(404).json({ error: "Estimate not found" }); return; }
+  estimate = await estimatePaymentTerms(db, estimate);
 
   type RawItem = { id?: string; description?: string; qty?: number; quantity?: number; unitPrice?: number; markup?: number; discount?: number; isOptional?: boolean; optionalPitchLine?: string | null; acceptedByCustomer?: boolean; groupId?: string | null };
   const lineItems = ((estimate.lineItems as RawItem[]) ?? []).map((item, idx) => {
@@ -2159,7 +2164,7 @@ router.post("/portal/estimates/:id/pay-deposit", requirePortalAuth, async (req: 
   const estimateId = parseInt(req.params.id, 10);
   if (isNaN(estimateId)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const [estimate] = await db
+  let [estimate] = await db
     .select()
     .from(estimatesTable)
     .where(and(
@@ -2171,6 +2176,7 @@ router.post("/portal/estimates/:id/pay-deposit", requirePortalAuth, async (req: 
     .limit(1);
 
   if (!estimate) { res.status(404).json({ error: "Estimate not found or not open" }); return; }
+  estimate = await estimatePaymentTerms(db, estimate);
   if (estimate.expiresAt && estimate.expiresAt < new Date()) {
     res.status(410).json({ error: "Estimate has expired" });
     return;
@@ -2323,7 +2329,9 @@ router.post("/portal/estimates/:id/pay-deposit", requirePortalAuth, async (req: 
     sql`UPDATE estimates
         SET deposit_paid_at = ${now.toISOString()}::timestamptz,
             deposit_payment_intent_id = ${pi.id},
-            deposit_charged_amount = ${depositAmount}
+            deposit_charged_amount = ${depositAmount},
+            payment_requirement = ${paymentRequirement},
+            deposit_value = ${estimate.depositValue}
         WHERE id = ${estimateId}
           AND tenant_id = ${portalTenantId}
           AND status = 'sent'

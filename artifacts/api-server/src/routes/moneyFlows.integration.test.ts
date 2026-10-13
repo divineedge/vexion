@@ -2,7 +2,7 @@ import {afterAll,beforeAll,describe,expect,it,vi} from "vitest";
 import express from "express";
 import request from "supertest";
 import {drizzle} from "drizzle-orm/node-postgres";
-import {and,eq} from "drizzle-orm";
+import {and,eq,inArray} from "drizzle-orm";
 import {randomUUID,createHash} from "node:crypto";
 
 const scope=vi.hoisted(()=>({tenant:0,user:0,connection:null as any}));
@@ -26,11 +26,17 @@ import reminderSettings from "./estimateReminders";
 import portal from "./portal";
 import {processEstimateReminders} from "../lib/estimateReminderScheduler";
 import {sql} from "drizzle-orm";
+import sharing from "./documentSharing";
+import invoices from "./invoices";
+import estimates from "./estimates";
+import { propertiesTable, servicesTable } from "@workspace/db";
+import { recurringInvoiceTemplatesTable } from "@workspace/db";
+import { generateDueTemplate } from "../lib/billingScheduler";
 
 describe("rollback-only pricing, inventory and invoice recovery",()=>{
   let client:any,serial=0,customer:number,item:number,warehouse:number,job:number,otherTenant:number;
   const app=express();
-  app.use(express.json({verify:(req,_res,buffer)=>{(req as any).rawBody=buffer;}}),expenses,pricing,safety,policies,reminderSettings,portal);
+  app.use(express.json({verify:(req,_res,buffer)=>{(req as any).rawBody=buffer;}}),expenses,pricing,safety,policies,reminderSettings,portal,sharing,invoices,estimates);
   beforeAll(async()=>{
     client=await pool.connect();await client.query("BEGIN");
     const raw=drizzle(client);
@@ -169,5 +175,109 @@ describe("rollback-only pricing, inventory and invoice recovery",()=>{
     expect((await request(app).get(`/portal/tenant-info?tenantId=${scope.tenant}junk`).set("x-staff-session", staffToken)).status).toBe(404);
     expect((await request(app).get("/portal/tenant-info?slug=missing-qa-business").set("x-staff-session", staffToken)).status).toBe(404);
     expect((await request(app).get(`/portal/tenant-info?tenantId=${scope.tenant}`)).body.tenantId).toBe(scope.tenant);
+  });
+  it("publishes stable estimate links without email and lists the right customer's documents", async () => {
+    const [c] = await db.insert(customersTable).values({tenantId:scope.tenant,name:"Share QA",email:"share@example.invalid",phone:"5550101"}).returning();
+    const [e] = await db.insert(estimatesTable).values({tenantId:scope.tenant,customerId:c.id,status:"draft",subtotal:100,total:100,lineItems:[]}).returning();
+    const token = randomUUID();
+    await db.insert(customerOtpSessionsTable).values({tenantId:scope.tenant,customerId:c.id,email:c.email!,otpHash:"fixture",sessionToken:createHash("sha256").update(token).digest("hex"),expiresAt:new Date(Date.now()+300000)});
+    const before = await request(app).get("/portal/estimates").set("x-portal-token",token);
+    expect(before.body.some((row:any)=>row.id===e.id)).toBe(false);
+    expect((await request(app).get(`/estimates/${e.id}/share-link`)).body.publicLink).toBeNull();
+    const generated = await request(app).post(`/estimates/${e.id}/share-link`).send({});
+    expect(generated.status).toBe(200);
+    expect(generated.body.publicLink).toMatch(/^https:\/\/.*\/estimate\/[a-f0-9]+$/);
+    const repeated = await request(app).post(`/estimates/${e.id}/share-link`).send({});
+    expect(repeated.body.publicLink).toBe(generated.body.publicLink);
+    const after = await request(app).get("/portal/estimates").set("x-portal-token",token);
+    expect(after.body.some((row:any)=>row.id===e.id&&row.status==="sent")).toBe(true);
+    const [invoice] = await db.insert(invoicesTable).values({tenantId:scope.tenant,customerId:c.id,invoiceNumber:randomUUID(),status:"draft",total:100,subtotal:100}).returning();
+    const sharedInvoice = await request(app).post(`/invoices/${invoice.id}/share-link`);
+    expect(sharedInvoice.status).toBe(200);
+    expect(sharedInvoice.body.publicLink).toContain("/invoice/");
+    expect((await request(app).get(`/invoices/${invoice.id}/share-link`)).body.publicLink).toBe(sharedInvoice.body.publicLink);
+    const portalInvoices = await request(app).get("/portal/invoices").set("x-portal-token",token);
+    expect(portalInvoices.body.some((row:any)=>row.id===invoice.id)).toBe(true);
+    expect(portalInvoices.body.every((row:any)=>row.customerId===undefined||row.customerId===c.id)).toBe(true);
+    const hidden = await request(app).get(`/portal/invoices/${(await db.insert(invoicesTable).values({tenantId:scope.tenant,customerId:customer,invoiceNumber:randomUUID(),total:10}).returning())[0].id}`).set("x-portal-token",token);
+    expect(hidden.status).toBe(404);
+  });
+
+  it("matches ordered company rules at acceptance and preserves rules when defaults change", async () => {
+    const [c] = await db.insert(customersTable).values({tenantId:scope.tenant,name:"Deposit QA",email:"deposit@example.invalid",phone:""}).returning();
+    const [service] = await db.insert(servicesTable).values({tenantId:scope.tenant,name:"Deposit QA service",basePrice:600}).returning();
+    const rules = [
+      {id:randomUUID(),name:"Small",enabled:true,minTotal:0,maxTotal:500,serviceIds:[],serviceMatch:"any",depositType:"percent",depositValue:25},
+      {id:randomUUID(),name:"Large service",enabled:true,minTotal:500,maxTotal:null,serviceIds:[service.id],serviceMatch:"all",depositType:"percent",depositValue:50},
+    ];
+    expect((await request(app).patch("/billing/deposit-rules").send({rules})).status).toBe(200);
+    expect((await request(app).patch("/billing/payment-policy/company/0").send({depositType:"none",depositValue:null,requirePrepay:false,requireCard:false})).status).toBe(200);
+    expect((await request(app).get("/billing/deposit-rules")).body.rules).toEqual(rules);
+    expect((await request(app).patch("/billing/deposit-rules").send({rules:[{...rules[0],depositValue:101}]})).status).toBe(400);
+    const approvalToken=randomUUID();
+    const [e] = await db.insert(estimatesTable).values({tenantId:scope.tenant,customerId:c.id,status:"sent",approvalToken,total:600,subtotal:600,paymentRequirement:"none",
+      lineItems:[{id:randomUUID(),description:"Work",qty:1,unitPrice:600,markup:0,discount:0,isOptional:false,serviceId:service.id}]}).returning();
+    const view = await request(app).get(`/public/estimates/${approvalToken}`);
+    expect(view.status).toBe(200);expect(view.body.paymentRequirement).toBe("deposit_pct");expect(view.body.depositValue).toBe(50);
+    const approval = await request(app).post(`/public/estimates/${approvalToken}/respond`).send({action:"approve",acceptedOptionalItemIds:[]});
+    expect([402,503]).toContain(approval.status);
+    expect((await db.select().from(estimatesTable).where(eq(estimatesTable.id,e.id)))[0].status).toBe("sent");
+    await db.update(customersTable).set({paymentPolicy:{depositType:"none",depositValue:null,requirePrepay:null,requireCard:null}}).where(eq(customersTable.id,c.id));
+    expect((await request(app).get(`/public/estimates/${approvalToken}`)).body.paymentRequirement).toBe("none");
+    await request(app).patch("/billing/deposit-rules").send({rules:[]});
+  });
+
+  it("combines or splits property work atomically and refuses jobs already invoiced", async () => {
+    const make = async () => {
+      const [c] = await db.insert(customersTable).values({tenantId:scope.tenant,name:"Property invoice QA",email:"properties@example.invalid",phone:""}).returning();
+      const props = await db.insert(propertiesTable).values([{tenantId:scope.tenant,customerId:c.id,address:"10 QA Lane"},{tenantId:scope.tenant,customerId:c.id,address:"20 QA Lane"}]).returning();
+      const work = await db.insert(jobsTable).values(props.map((p,index)=>({tenantId:scope.tenant,customerId:c.id,propertyId:p.id,title:`QA property ${index}`,status:"completed",scheduledAt:new Date(),completedAt:new Date(),totalAmount:100*(index+1)}))).returning();
+      return {c,props,work,body:{customerId:c.id,jobIds:work.map(j=>j.id),lineItems:work.map(j=>({description:j.title,quantity:1,unitPrice:j.totalAmount,total:j.totalAmount,propertyId:j.propertyId,jobId:j.id}))}};
+    };
+    const combined=await make();
+    const saved=await request(app).post("/invoices").send(combined.body);
+    expect(saved.status).toBe(201);expect(saved.body.invoiceIds).toHaveLength(1);
+    expect(saved.body.lineItems.map((line:any)=>line.propertyId)).toEqual(combined.props.map(p=>p.id));
+    expect(saved.body.lineItems[0].description).toContain("10 QA Lane");
+    expect((await request(app).post("/invoices").send(combined.body)).status).toBe(409);
+    const split=await make();
+    expect((await request(app).patch(`/billing/customer-invoice-grouping/${split.c.id}`).send({mode:"by_property"})).status).toBe(200);
+    const separated=await request(app).post("/invoices").send(split.body);
+    expect(separated.status).toBe(201);expect(separated.body.invoiceIds).toHaveLength(2);
+    const linked=await db.select().from(jobsTable).where(inArray(jobsTable.id,split.work.map(j=>j.id)));
+    expect(new Set(linked.map(j=>j.invoiceId)).size).toBe(2);
+    const invalid=await request(app).post("/invoices").send({customerId:split.c.id,lineItems:[{description:"Wrong property",quantity:1,unitPrice:1,propertyId:combined.props[0].id}]});
+    expect(invalid.status).toBe(409);
+    const mixed = await make();
+    const mixedSaved = await request(app).post("/invoices").send({customerId:mixed.c.id,jobIds:[mixed.work[0].id],lineItems:[
+      mixed.body.lineItems[0],{description:"Manual work on the other property",quantity:1,unitPrice:50,propertyId:mixed.props[1].id},
+    ]});
+    expect(mixedSaved.status).toBe(201);
+    expect(mixedSaved.body.lineItems.map((line:any)=>line.propertyId)).toEqual(mixed.props.map(property=>property.id));
+  });
+
+  it("splits completed-work recurring billing by property and retains the retry barrier", async () => {
+    const [c]=await db.insert(customersTable).values({tenantId:scope.tenant,name:"Recurring properties QA",email:"recurring@example.invalid",phone:"",paymentPolicy:{invoiceGrouping:"by_property"}}).returning();
+    const props=await db.insert(propertiesTable).values([{tenantId:scope.tenant,customerId:c.id,address:"30 QA Lane"},{tenantId:scope.tenant,customerId:c.id,address:"40 QA Lane"}]).returning();
+    const work=await db.insert(jobsTable).values(props.map(property=>({tenantId:scope.tenant,customerId:c.id,propertyId:property.id,title:"Recurring QA",status:"completed",scheduledAt:new Date(),completedAt:new Date(),totalAmount:75}))).returning();
+    const [template]=await db.insert(recurringInvoiceTemplatesTable).values({tenantId:scope.tenant,customerId:c.id,name:"Property grouping QA",billingMode:"completed_work",billingCycleType:"daily",nextBillingDate:"2020-01-01",createdAt:new Date("2020-01-01")}).returning();
+    const ids=await db.transaction(tx=>generateDueTemplate(tx,template));
+    expect(ids).toHaveLength(2);
+    expect(new Set((await db.select().from(jobsTable).where(inArray(jobsTable.id,work.map(job=>job.id)))).map(job=>job.invoiceId)).size).toBe(2);
+    expect(await db.transaction(tx=>generateDueTemplate(tx,template))).toHaveLength(0);
+  });
+
+  it("applies deposits from several jobs on one invoice and protects their allocation record from edits", async () => {
+    const [c]=await db.insert(customersTable).values({tenantId:scope.tenant,name:"Multiple deposits QA",email:"multiple@example.invalid",phone:""}).returning();
+    const quotes=await db.insert(estimatesTable).values([10,20].map(amount=>({tenantId:scope.tenant,customerId:c.id,status:"approved",total:100,depositPaidAt:new Date(),depositChargedAmount:amount}))).returning();
+    const work=await db.insert(jobsTable).values(quotes.map(quote=>({tenantId:scope.tenant,customerId:c.id,estimateId:quote.id,title:"Deposit work",status:"completed",scheduledAt:new Date(),completedAt:new Date(),totalAmount:100}))).returning();
+    const saved=await request(app).post("/invoices").send({customerId:c.id,jobIds:work.map(job=>job.id),lineItems:work.map(job=>({jobId:job.id,description:job.title,quantity:1,unitPrice:100}))});
+    expect(saved.status).toBe(201);
+    const [original]=await db.select().from(invoicesTable).where(eq(invoicesTable.id,saved.body.id));
+    expect(original.depositApplied).toBe(30);
+    const edited=await request(app).patch(`/invoices/${original.id}`).send({lineItems:[{description:"Updated wording",quantity:1,unitPrice:200}]});
+    expect(edited.status).toBe(409);
+    const [updated]=await db.select().from(invoicesTable).where(eq(invoicesTable.id,original.id));
+    expect((updated.lineItems as any[])[0].depositAllocations).toEqual((original.lineItems as any[])[0].depositAllocations);
   });
 });

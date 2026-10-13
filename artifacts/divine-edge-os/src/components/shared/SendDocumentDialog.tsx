@@ -79,6 +79,10 @@ export function SendDocumentDialog({
     try {
       await onSendEmail();
       setEmailSent(true);
+      if (loadLinkRef.current) {
+        try { setLinkDetails(await loadLinkRef.current()); }
+        catch { toast.error('The email request finished, but the link could not be refreshed. Reopen this dialog to load it.'); }
+      }
       setTimeout(() => setEmailSent(false), 4000);
     } catch {
       setEmailSent(false);
@@ -133,7 +137,7 @@ export function SendDocumentDialog({
                 {emailSent ? <CheckCircle2 className="w-4 h-4" /> : <Mail className="w-4 h-4" />}
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-medium">{emailSent ? 'Email sent!' : 'Email'}</p>
+                <p className="text-sm font-medium">{emailSent ? 'Email requested' : 'Email'}</p>
                 <p className="text-xs text-muted-foreground">
                   {emailSent ? 'Customer has been notified.' : "Sends to the customer's email on file."}
                 </p>

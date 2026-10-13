@@ -1,6 +1,6 @@
 import { sendDocumentEmail } from "../lib/documentDelivery";
 import { publicAppUrl } from "../lib/publicSite";
-import { paymentGuardedJobInsert, effectivePaymentPolicy } from "../lib/paymentPolicy";
+import { paymentGuardedJobInsert, effectivePaymentPolicy, estimatePaymentTerms } from "../lib/paymentPolicy";
 import { creditedInvoiceInsert } from "../lib/customerCredit";
 import { Router, type IRouter } from "express";
 import { db, estimatesTable, visitsTable, jobsTable, customersTable, propertiesTable, usersTable, tenantsTable, blueprintsTable, communicationsLogTable, estimateTemplatesTable, invoicesTable } from "@workspace/db";
@@ -425,8 +425,6 @@ router.get("/estimates/pipeline", async (req, res): Promise<void> => {
 router.post("/estimates", async (req, res): Promise<void> => {
   const tenantId = getTenantId(req);
   const { customerId, propertyId, blueprintId, assigneeId, visitMode, scheduledAt, expiresAt, notes, lineItems, templateId, estimatedDurationMin, suppliesNeeded, paymentRequirement, depositValue } = req.body;
-  const { policy: depositPolicy } = await effectivePaymentPolicy(db, tenantId, customerId, req.body.serviceId ?? lineItems?.find((item: EstimateLineItem) => !item.isOptional && item.serviceId)?.serviceId);
-  const policyRequirement = depositPolicy.depositType === "fixed" ? "deposit_fixed" : depositPolicy.depositType === "percent" ? "deposit_pct" : depositPolicy.depositType === "full" ? "full" : null;
 
   let items: EstimateLineItem[] = lineItems ?? [];
   let resolvedTemplateId: number | null = null;
@@ -447,6 +445,10 @@ router.post("/estimates", async (req, res): Promise<void> => {
   }
 
   const { subtotal, tax, total } = calcTotals(items);
+  const { policy: depositPolicy, depositConfigured } = await effectivePaymentPolicy(db, tenantId, customerId, req.body.serviceId,
+    { total, serviceIds: items.filter(item => !item.isOptional || item.acceptedByCustomer).map(item => item.serviceId!).filter(Boolean) });
+  const policyRequirement = depositPolicy.requirePrepay || depositPolicy.depositType === "full" ? "full" : depositPolicy.depositType === "fixed"
+    ? "deposit_fixed" : depositPolicy.depositType === "percent" ? "deposit_pct" : "none";
 
   // Validate payment terms before persisting
   const payTermErr = validatePaymentTerms(paymentRequirement, depositValue != null ? parseFloat(String(depositValue)) : undefined);
@@ -473,8 +475,8 @@ router.post("/estimates", async (req, res): Promise<void> => {
     total,
     estimatedDurationMin: estimatedDurationMin != null ? parseInt(String(estimatedDurationMin), 10) : null,
     suppliesNeeded: normaliseSupplies(suppliesNeeded),
-    paymentRequirement: policyRequirement ?? paymentRequirement ?? "none",
-    depositValue: policyRequirement ? depositPolicy.depositValue : depositValue != null ? parseFloat(String(depositValue)) : null,
+    paymentRequirement: depositConfigured || depositPolicy.requirePrepay ? (total > 0 ? policyRequirement : "none") : paymentRequirement ?? "none",
+    depositValue: depositConfigured || depositPolicy.requirePrepay ? (policyRequirement === "deposit_fixed" ? Math.min(depositPolicy.depositValue ?? 0, total) : depositPolicy.depositValue) : depositValue != null ? parseFloat(String(depositValue)) : null,
     status: "draft",
   }).returning();
 
@@ -1174,6 +1176,7 @@ router.get("/public/estimates/:token", async (req, res): Promise<void> => {
     .where(eq(estimatesTable.approvalToken, token));
 
   if (!row) { res.status(404).json({ error: "Estimate not found" }); return; }
+  row.estimate = await estimatePaymentTerms(db, row.estimate);
 
   const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, row.estimate.tenantId));
 
@@ -1282,7 +1285,7 @@ router.post("/public/estimates/:token/respond", async (req, res): Promise<void> 
     return;
   }
 
-  const [estimate] = await db.select().from(estimatesTable).where(eq(estimatesTable.approvalToken, token));
+  let [estimate] = await db.select().from(estimatesTable).where(eq(estimatesTable.approvalToken, token));
   if (!estimate) { res.status(404).json({ error: "Estimate not found" }); return; }
   if (action === "decline") {
     const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, estimate.tenantId));
@@ -1306,6 +1309,16 @@ router.post("/public/estimates/:token/respond", async (req, res): Promise<void> 
   // Payment enforcement is checked independently of Stripe enablement so that a
   // required-payment estimate cannot be approved even if Stripe is misconfigured.
   if (action === "approve") {
+    if (acceptedOptionalItemIds != null && (!Array.isArray(acceptedOptionalItemIds) || acceptedOptionalItemIds.some((id: unknown) => typeof id !== "string"))) {
+      res.status(400).json({ error: "Optional selections must be a list of item IDs" }); return;
+    }
+    const selectedItems = normalizeGroupedSelections(((estimate.lineItems ?? []) as EstimateLineItem[]).map(item => ({
+      ...item, acceptedByCustomer: item.isOptional
+        ? estimate.depositPaidAt ? item.acceptedByCustomer ?? false : (acceptedOptionalItemIds ?? []).includes(item.id)
+        : true,
+    })));
+    const selectedTotal = calcTotals(selectedItems).total;
+    estimate = await estimatePaymentTerms(db, estimate, { total: selectedTotal, lineItems: selectedItems });
     const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, estimate.tenantId));
 
     // ── Payment-requirement gate (fail closed, outside Stripe branch) ──────────
@@ -1313,7 +1326,8 @@ router.post("/public/estimates/:token/respond", async (req, res): Promise<void> 
     // reject regardless of whether Stripe is enabled. The portal's authenticated
     // pay-deposit endpoint is the only path that legitimately sets depositPaidAt;
     // direct calls to this public endpoint that skip that step are blocked here.
-    if (estimate.paymentRequirement && estimate.paymentRequirement !== "none" && !estimate.depositPaidAt) {
+    if (estimate.paymentRequirement && estimate.paymentRequirement !== "none" &&
+      calcDepositAmount(estimate.paymentRequirement, estimate.depositValue, selectedTotal) > 0 && !estimate.depositPaidAt) {
       if (!tenant?.stripeEnabled) {
         res.status(503).json({ error: "This estimate requires payment before acceptance, but payment processing is not configured. Contact your service provider." });
       } else {
@@ -1437,6 +1451,7 @@ router.post("/public/estimates/:token/respond", async (req, res): Promise<void> 
       subtotal,
       tax,
       total,
+      ...(isApproved ? { paymentRequirement: estimate.paymentRequirement, depositValue: estimate.depositValue } : {}),
       approvedAt: isApproved ? now : null,
       declinedAt: isApproved ? null : now,
       declineReason: isApproved ? null : (declineReason ?? null),

@@ -1,5 +1,6 @@
 import { creditedInvoiceInsert } from "./customerCredit";
-import { db, tenantsTable, customersTable, jobsTable, servicesTable, recurringInvoiceTemplatesTable, invoicesTable, billingEmailQueueTable } from "@workspace/db";
+import { db, tenantsTable, customersTable, jobsTable, servicesTable, recurringInvoiceTemplatesTable, invoicesTable, billingEmailQueueTable, propertiesTable } from "@workspace/db";
+import { customerInvoiceGrouping, propertyInvoiceGroups, labelPropertyLine } from "./invoicePropertyGrouping";
 import { and, eq, isNull, sql, inArray } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import { recurringBillingDue } from "./billingAutomation";
@@ -27,21 +28,26 @@ export async function processRecurringJobBatches(now = new Date(), onlyTenantId?
       if (!jobs.length) return;
       const services = await tx.select().from(servicesTable).where(eq(servicesTable.tenantId, tenant.id));
       const requirements = new Map(services.map(service => [service.id, service.fieldRequirements]));
-      const lineItems = jobs.map(job => ({
+      const properties = await tx.select().from(propertiesTable).where(and(eq(propertiesTable.tenantId, tenant.id), eq(propertiesTable.customerId, customer.id)));
+      const addresses = new Map(properties.map(property => [property.id, property.address]));
+      const lineItems = jobs.map(job => labelPropertyLine({
         description: `${job.title} — ${invoiceServiceDate(job, requirements.get(job.serviceId ?? 0), tenant.timezone)}`,
-        quantity: 1, unitPrice: job.totalAmount, total: job.totalAmount,
-      }));
-      const subtotal = lineItems.reduce((sum, line) => sum + line.total, 0);
+        quantity: 1, unitPrice: job.totalAmount, total: job.totalAmount, propertyId: job.propertyId, jobId: job.id,
+      }, job.propertyId ? addresses.get(job.propertyId) : null));
+      for (const lines of propertyInvoiceGroups(lineItems, customerInvoiceGrouping(customer.paymentPolicy))) {
+      const groupJobIds = lines.map(line => line.jobId);
+      const subtotal = lines.reduce((sum, line) => sum + line.total, 0);
       const tax = Math.round(subtotal * (tenant.taxRate / 100) * 100) / 100;
       const send = tenant.invoiceDeliveryMode === "automatic" && !!customer.email;
-      const [invoice] = await creditedInvoiceInsert(tx).values({
+      const [invoice] = await creditedInvoiceInsert(tx, false, groupJobIds).values({
         ...await invoiceDocumentDefaults(tenant.id),
         tenantId: tenant.id, customerId: customer.id, invoiceNumber: `INV-${randomBytes(6).toString("hex").toUpperCase()}`,
         status: send ? "sent" : "draft", publicToken: send ? randomBytes(32).toString("hex") : null,
-        lineItems, subtotal, tax, total: subtotal + tax,
+        lineItems: lines, subtotal, tax, total: subtotal + tax,
       }).returning();
-      await tx.update(jobsTable).set({ invoiceId: invoice.id, pendingWeeklyInvoice: false }).where(inArray(jobsTable.id, jobs.map(job => job.id)));
+      await tx.update(jobsTable).set({ invoiceId: invoice.id, pendingWeeklyInvoice: false }).where(inArray(jobsTable.id, groupJobIds));
       if (send) await tx.insert(billingEmailQueueTable).values({ tenantId: tenant.id, invoiceId: invoice.id, status: "pending", attempts: 0 });
+      }
     });
   }
 }

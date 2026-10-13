@@ -33,6 +33,7 @@ import {
   useGetTenantSettings, getGetTenantSettingsQueryKey,
   useCreateInvoice,
   useListJobs, getListJobsQueryKey,
+  useListProperties, getListPropertiesQueryKey,
   useUpdateJob,
   useListInvoiceTemplates, getListInvoiceTemplatesQueryKey,
   customFetch,
@@ -80,7 +81,8 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: 'bg-gray-200 text-gray-500 border-transparent',
 };
 
-interface LineItemRow { description: string; quantity: number; unitPrice: number; total: number; }
+interface LineItemRow { description: string; quantity: number; unitPrice: number; total: number; propertyId?: number | null; jobId?: number | null; }
+type InvoiceGrouping = 'combined' | 'by_property';
 
 // ── Create Invoice Sheet ────────────────────────────────────────────────────────
 
@@ -106,8 +108,33 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
   const [templateId, setTemplateId] = useState('');
   const [termsText, setTermsText] = useState<string | null>(null);
   const [lineItems, setLineItems] = useState<LineItemRow[]>([{ description: '', quantity: 1, unitPrice: 0, total: 0 }]);
-  const [linkedJobId, setLinkedJobId] = useState('');
+  const [selectedJobIds, setSelectedJobIds] = useState<number[]>([]);
+  const [defaultPropertyId, setDefaultPropertyId] = useState<number | null>(null);
+  const [grouping, setGrouping] = useState<InvoiceGrouping>('combined');
+  const [groupingOverridden, setGroupingOverridden] = useState(false);
   const custNum = customerId ? parseInt(customerId, 10) : undefined;
+  const propParams = custNum ? { customerId: custNum } : undefined;
+  const propertiesQuery = useListProperties(propParams, {
+    query: { enabled: open && !!custNum, queryKey: getListPropertiesQueryKey(propParams) },
+  });
+  const customerProperties = React.useMemo(
+    () => (Array.isArray(propertiesQuery.data) ? propertiesQuery.data : []).filter(p => p.customerId === custNum),
+    [propertiesQuery.data, custNum],
+  );
+  const propertyLabel = (id: number | null | undefined) => {
+    if (id == null) return null;
+    const p = customerProperties.find(x => x.id === id);
+    return p ? [p.address, p.city].filter(Boolean).join(', ') : `Property #${id}`;
+  };
+  const groupingQuery = useQuery<{ mode: InvoiceGrouping }>({
+    queryKey: ['customer-invoice-grouping', custNum],
+    queryFn: () => customFetch<{ mode: InvoiceGrouping }>(`/api/billing/customer-invoice-grouping/${custNum}`),
+    enabled: open && !!custNum,
+  });
+  const savedGrouping: InvoiceGrouping = groupingQuery.data?.mode === 'by_property' ? 'by_property' : 'combined';
+  React.useEffect(() => {
+    if (!groupingOverridden) setGrouping(savedGrouping);
+  }, [savedGrouping, groupingOverridden]);
   const { data: customerJobs, isLoading: jobsLoading } = useListJobs(custNum ? { customerId: custNum } : undefined, {
     query: { enabled: open && !!custNum, queryKey: getListJobsQueryKey(custNum ? { customerId: custNum } : undefined) },
   });
@@ -144,24 +171,45 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
       setTemplateId('');
       setTermsText(null);
       setLineItems([{ description: '', quantity: 1, unitPrice: 0, total: 0 }]);
-      setLinkedJobId('');
+      setSelectedJobIds([]);
+      setDefaultPropertyId(null);
+      setGroupingOverridden(false);
+      setGrouping('combined');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, invoiceDueDays]);
 
-  // A linked job belongs to one customer; changing customer always clears it.
-  React.useEffect(() => { setLinkedJobId(''); }, [customerId]);
+  // Jobs and properties belong to one customer; changing customer clears job links and properties
+  // but keeps manually typed rows.
+  React.useEffect(() => {
+    setSelectedJobIds([]);
+    setDefaultPropertyId(null);
+    setGroupingOverridden(false);
+    setLineItems(prev => {
+      const kept = prev.filter(li => li.jobId == null).map(li => ({ ...li, propertyId: null, jobId: null }));
+      return kept.length ? kept : [{ description: '', quantity: 1, unitPrice: 0, total: 0 }];
+    });
+  }, [customerId]);
 
-  const handleLinkJob = (val: string) => {
-    const id = val === '__none__' ? '' : val;
-    setLinkedJobId(id);
-    if (!id) return;
-    const job = unbilledJobs.find(j => String(j.id) === id);
-    // Only prefill when no line item has been typed — never overwrite manual edits.
-    if (job && lineItems.every(li => !li.description.trim() && !li.unitPrice)) {
-      const price = Number(job.totalAmount ?? 0);
-      setLineItems([{ description: job.title, quantity: 1, unitPrice: price, total: price }]);
+  const isBlankRow = (li: LineItemRow) => li.jobId == null && !li.description.trim() && !li.unitPrice;
+  const toggleJob = (jobId: number) => {
+    const job = unbilledJobs.find(j => j.id === jobId);
+    if (!job) return;
+    if (selectedJobIds.includes(jobId)) {
+      setSelectedJobIds(ids => ids.filter(x => x !== jobId));
+      setLineItems(prev => {
+        const next = prev.filter(li => li.jobId !== jobId);
+        return next.length ? next : [{ description: '', quantity: 1, unitPrice: 0, total: 0 }];
+      });
+      return;
     }
+    setSelectedJobIds(ids => [...ids, jobId]);
+    const price = Number(job.totalAmount ?? 0);
+    const line: LineItemRow = { description: job.title, quantity: 1, unitPrice: price, total: price, jobId, propertyId: job.propertyId ?? null };
+    setLineItems(prev => {
+      if (prev.some(li => li.jobId === jobId)) return prev.map(li => (li.jobId === jobId ? line : li));
+      return [...prev.filter(li => !isBlankRow(li)), line];
+    });
   };
 
   // Pre-fill customer from external event (e.g. from customer detail page)
@@ -185,11 +233,12 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
         quantity: li.quantity ?? 1,
         unitPrice: li.unitPrice ?? 0,
         total: (li.quantity ?? 1) * (li.unitPrice ?? 0),
+        propertyId: null, jobId: null,
       })));
     }
   };
 
-  const updateLineItem = (index: number, field: keyof LineItemRow, value: string | number) => {
+  const updateLineItem = (index: number, field: keyof LineItemRow, value: string | number | null) => {
     setLineItems(prev => prev.map((li, i) => {
       if (i !== index) return li;
       const updated = { ...li, [field]: value };
@@ -215,10 +264,17 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
 
   const chosenDesign = (invoiceTemplates ?? []).find(t => String(t.id) === templateId) as any;
   const defaultTerms = (chosenDesign?.termsText ?? createSettings?.defaultInvoiceTerms ?? '') as string;
-  const buildDraftPreview = () => {
+  const previewPropertyFor = (li: LineItemRow) => li.jobId
+    ? unbilledJobs.find(job => job.id === li.jobId)?.propertyId ?? null
+    : li.propertyId ?? defaultPropertyId ?? null;
+  const previewPropertyIds = [...new Set(lineItems.map(previewPropertyFor))];
+  const buildDraftPreview = (property?: number | null) => {
     const cust = customers.find(c => String(c.id) === customerId);
     const base = buildPreviewInvoice({
-      lines: lineItems, notes, termsText: termsText === null ? defaultTerms : termsText,
+      lines: lineItems.filter(li => property === undefined || previewPropertyFor(li) === property).map(li => {
+        const label = propertyLabel(previewPropertyFor(li));
+        return label ? { ...li, description: `[${label}] ${li.description}` } : li;
+      }), notes, termsText: termsText === null ? defaultTerms : termsText,
       layout: chosenDesign?.layout ?? 'clean',
       lateFeeEnabled: chosenDesign?.lateFeeEnabled, lateFeeType: chosenDesign?.lateFeeType, lateFeeAmount: chosenDesign?.lateFeeAmount, lateFeeDaysGrace: chosenDesign?.lateFeeDaysGrace,
       customerName: cust?.name ?? null,
@@ -227,15 +283,36 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
     });
     return { ...base, createdAt: invoiceDate ? new Date(`${invoiceDate}T12:00:00`).toISOString() : base.createdAt, dueDate: dueDate ? new Date(`${dueDate}T12:00:00`).toISOString() : base.dueDate };
   };
+  const draftPreviews = () => grouping === 'by_property' && previewPropertyIds.length
+    ? previewPropertyIds.map(property => buildDraftPreview(property)) : [buildDraftPreview()];
+  const buildDraftPrintDocument = () => {
+    const documents = draftPreviews().map(invoice => buildInvoicePrintDocument(invoice as any, (createSettings ?? {}) as Record<string, unknown>));
+    // Same design/styles for every property; add each remaining document body
+    // on its own printed page rather than showing a misleading combined total.
+    return documents[0].replace('</body>', documents.slice(1).map(document =>
+      `<div style="break-before:page;page-break-before:always">${document.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] ?? ''}</div>`).join('') + '</body>');
+  };
 
   const handleSave = (andSend = false) => {
     if (!customerId) { toast.error('Customer is required'); return; }
-    const validLineItems = lineItems.filter(li => li.description.trim() !== '');
+    if (!groupingOverridden && (groupingQuery.isPending || groupingQuery.isError)) {
+      toast.error('Wait for the customer billing choice to load, or explicitly choose how to group this invoice.'); return;
+    }
+    const validLineItems = lineItems
+      .filter(li => li.description.trim() !== '')
+      .map(li => ({
+        description: li.description, quantity: li.quantity, unitPrice: li.unitPrice, total: li.total,
+        jobId: li.jobId ?? null,
+        propertyId: li.jobId != null ? (li.propertyId ?? null) : (li.propertyId ?? defaultPropertyId ?? null),
+      }));
     createInvoice.mutate(
       {
         data: {
           customerId: parseInt(customerId, 10),
-          ...(linkedJobId ? { jobId: parseInt(linkedJobId, 10) } : {}),
+          ...(selectedJobIds.length === 1 ? { jobId: selectedJobIds[0] } : {}),
+          jobIds: selectedJobIds,
+          propertyId: defaultPropertyId,
+          grouping,
           notes: notes || undefined,
           invoiceDate: invoiceDate || undefined,
           dueDate: dueDate || undefined,
@@ -246,12 +323,19 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
       },
       {
         onSuccess: (data: any) => {
-          toast.success('Invoice created');
+          const ids: number[] = Array.isArray(data?.invoiceIds) && data.invoiceIds.length ? data.invoiceIds : (data?.id ? [data.id] : []);
+          const count = Math.max(ids.length, 1);
+          toast.success(count > 1 ? `${count} invoices created, one per property` : 'Invoice created');
           qc.invalidateQueries({ queryKey: ['customer-credits'] });
+          qc.invalidateQueries({ queryKey: getListJobsQueryKey() });
           qc.invalidateQueries({ queryKey: getListInvoicesQueryKey() });
           qc.invalidateQueries({ queryKey: getGetFinancialsSummaryQueryKey() });
           onClose();
-          if (andSend && data?.id && onSaveAndSend) onSaveAndSend(data.id);
+          const firstId = data?.id ?? ids[0];
+          if (andSend && firstId && onSaveAndSend) {
+            onSaveAndSend(firstId);
+            if (count > 1) toast.info(`Opening the first invoice to send. The other ${count - 1} invoice${count - 1 === 1 ? ' is' : 's are'} in the invoice list; share each one individually.`, { duration: 9000 });
+          }
         },
         onError: (e: unknown) => {
           const d = (e as { data?: { error?: string; message?: string } })?.data;
@@ -272,8 +356,11 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
           <PreviewActions
             title="New invoice preview"
             sampleNotice={customerId ? 'Preview of this unsaved invoice. Not saved and not sent.' : SAMPLE_NOTICE}
-            renderCustomerView={() => <InvoiceDocument invoice={buildDraftPreview()} businessProfile={businessProfileFromSettings(createSettings)} preview />}
-            buildPrintDocument={() => buildInvoicePrintDocument(buildDraftPreview() as any, (createSettings ?? {}) as Record<string, unknown>)}
+            renderCustomerView={() => <div className="space-y-8">{draftPreviews().map((invoice, index) => <section key={index}>
+              {grouping === 'by_property' && <p className="mb-2 text-sm font-medium">Separate property invoice {index + 1} of {draftPreviews().length}</p>}
+              <InvoiceDocument invoice={invoice} businessProfile={businessProfileFromSettings(createSettings)} preview />
+            </section>)}</div>}
+            buildPrintDocument={buildDraftPrintDocument}
             testIdPrefix="create-invoice-preview"
           />
         </div>
@@ -303,28 +390,84 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
             </Select>
           </div>
 
-          {/* Linked job (optional) */}
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium flex items-center gap-1.5"><Briefcase className="w-3.5 h-3.5 text-muted-foreground" /> Link to job <span className="text-xs font-normal text-muted-foreground">(optional)</span></label>
-            <Select value={linkedJobId || '__none__'} onValueChange={handleLinkJob} disabled={!customerId}>
-              <SelectTrigger title="Associate this invoice with an unbilled job for this customer" data-testid="select-invoice-linked-job">
-                <SelectValue placeholder={customerId ? 'No linked job' : 'Pick a customer first'} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">— No linked job —</SelectItem>
-                {unbilledJobs.map(j => (
-                  <SelectItem key={j.id} value={String(j.id)}>
-                    {j.title} <span className="text-muted-foreground text-xs ml-1">{j.scheduledAt ? new Date(j.scheduledAt).toLocaleDateString() : ''} · ${Number(j.totalAmount ?? 0).toFixed(2)}</span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {customerId && !jobsLoading && unbilledJobs.length === 0 && <p className="text-xs text-muted-foreground">No unbilled jobs for this customer.</p>}
-            {linkedJobId && Number(unbilledJobs.find(j => String(j.id) === linkedJobId)?.totalAmount ?? 0) === 0 && (
-              <p className="text-xs text-amber-700">This job has no price. Zero-dollar jobs go to admin review instead of being billed automatically — set a price on the job if it should be billed.</p>
+          {/* Jobs to bill (optional, multiple) */}
+          <fieldset className="space-y-1.5" data-testid="fieldset-invoice-jobs">
+            <legend className="text-sm font-medium flex items-center gap-1.5"><Briefcase className="w-3.5 h-3.5 text-muted-foreground" /> Jobs to bill <span className="text-xs font-normal text-muted-foreground">(optional, select any)</span></legend>
+            {!customerId ? (
+              <p className="text-xs text-muted-foreground">Pick a customer first.</p>
+            ) : jobsLoading ? (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading unbilled jobs...</div>
+            ) : unbilledJobs.length === 0 ? (
+              <p className="text-xs text-muted-foreground" data-testid="text-no-unbilled-jobs">No unbilled jobs for this customer.</p>
+            ) : (
+              <div className="max-h-48 overflow-y-auto rounded-md border divide-y" data-testid="list-invoice-jobs">
+                {unbilledJobs.map(j => {
+                  const checked = selectedJobIds.includes(j.id);
+                  return (
+                    <label key={j.id} className={`flex items-center gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-muted/50 ${checked ? 'bg-primary/5' : ''}`}>
+                      <input type="checkbox" className="h-4 w-4 accent-[hsl(var(--primary))]" checked={checked} onChange={() => toggleJob(j.id)} data-testid={`checkbox-invoice-job-${j.id}`} />
+                      <span className="flex-1 min-w-0">
+                        <span className="block truncate font-medium">{j.title}</span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {j.scheduledAt ? new Date(j.scheduledAt).toLocaleDateString() + ' - ' : ''}{j.propertyAddress || propertyLabel(j.propertyId) || 'No property'}
+                        </span>
+                      </span>
+                      <span className={`text-xs tabular-nums ${Number(j.totalAmount ?? 0) === 0 ? 'text-amber-700' : 'text-muted-foreground'}`}>${Number(j.totalAmount ?? 0).toFixed(2)}</span>
+                    </label>
+                  );
+                })}
+              </div>
             )}
-            {linkedJobId && <p className="text-xs text-muted-foreground">The server checks the job isn't already invoiced. Line items you typed are kept.</p>}
-          </div>
+            {selectedJobIds.some(id => Number(unbilledJobs.find(j => j.id === id)?.totalAmount ?? 0) === 0) && (
+              <p className="text-xs text-amber-700">A selected job has no price. Set a price on the line or the job if it should be billed.</p>
+            )}
+            {selectedJobIds.length > 0 && <p className="text-xs text-muted-foreground">Each selected job adds one line at its own property. Lines you typed are kept. The server checks jobs are not already invoiced.</p>}
+          </fieldset>
+
+          {/* Property defaults and grouping */}
+          {customerId && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium flex items-center gap-1.5" htmlFor="select-invoice-default-property"><MapPin className="w-3.5 h-3.5 text-muted-foreground" /> Default property <span className="text-xs font-normal text-muted-foreground">(optional)</span></label>
+                {propertiesQuery.isLoading ? (
+                  <div className="h-9 rounded-md bg-muted animate-pulse" />
+                ) : propertiesQuery.isError ? (
+                  <div className="flex items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-xs text-destructive">
+                    <span className="flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" />Could not load properties.</span>
+                    <Button size="sm" variant="outline" className="h-7" onClick={() => propertiesQuery.refetch()} data-testid="button-retry-invoice-properties">Retry</Button>
+                  </div>
+                ) : (
+                  <Select value={defaultPropertyId != null ? String(defaultPropertyId) : '__none__'} onValueChange={v => setDefaultPropertyId(v === '__none__' ? null : Number(v))} disabled={customerProperties.length === 0}>
+                    <SelectTrigger id="select-invoice-default-property" data-testid="select-invoice-default-property"><SelectValue placeholder="No default property" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">No default (general)</SelectItem>
+                      {customerProperties.map(p => <SelectItem key={p.id} value={String(p.id)}>{propertyLabel(p.id)}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  {!propertiesQuery.isLoading && !propertiesQuery.isError && customerProperties.length === 0 ? 'This customer has no properties on file.' : 'Applies to typed lines without their own property.'}
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium flex items-center gap-1.5" htmlFor="select-invoice-grouping"><Layers className="w-3.5 h-3.5 text-muted-foreground" /> Invoice grouping</label>
+                <Select value={grouping} onValueChange={v => { setGrouping(v as InvoiceGrouping); setGroupingOverridden(true); }}>
+                  <SelectTrigger id="select-invoice-grouping" data-testid="select-invoice-grouping"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="combined">One invoice, all properties</SelectItem>
+                    <SelectItem value="by_property">Separate invoice per property</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground" data-testid="text-invoice-grouping-source">
+                  {groupingQuery.isLoading ? 'Loading customer preference...'
+                    : groupingQuery.isError ? 'Could not load customer preference; using combined.'
+                    : groupingOverridden && grouping !== savedGrouping ? 'Changed for this invoice only. Customer preference is unchanged.'
+                    : 'Customer preference.'}
+                  {grouping === 'by_property' && ' One invoice will be created per property.'}
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Template selector */}
           {(invoiceTemplates ?? []).length > 0 && (
@@ -401,6 +544,28 @@ function CreateInvoiceSheet({ open, onClose, customers, invoiceDueDays, onSaveAn
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
+                    </div>
+                  )}
+
+                  {/* Property */}
+                  {customerId && (
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden />
+                      {li.jobId != null ? (
+                        <span className="text-xs text-muted-foreground" data-testid={`text-line-property-${i}`}>
+                          Job line at {propertyLabel(li.propertyId) ?? 'no property'} (fixed to the job)
+                        </span>
+                      ) : (
+                        <Select value={li.propertyId != null ? String(li.propertyId) : '__none__'} onValueChange={v => updateLineItem(i, 'propertyId', v === '__none__' ? null : Number(v))} disabled={customerProperties.length === 0}>
+                          <SelectTrigger className="h-8 text-xs flex-1" aria-label={`Property for line ${i + 1}`} data-testid={`select-line-property-${i}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">{defaultPropertyId != null ? `Default: ${propertyLabel(defaultPropertyId)}` : 'General charge (no property)'}</SelectItem>
+                            {customerProperties.map(p => <SelectItem key={p.id} value={String(p.id)}>{propertyLabel(p.id)}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      )}
                     </div>
                   )}
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DefaultWordingCard } from '@/components/settings/DefaultWordingCard';
 import { PaymentPolicyCard } from '@/components/billing/PaymentPolicyCard';
+import { CompanyDepositRules } from '@/components/billing/CompanyDepositRules';
 import { EstimateReminderSettings } from '@/components/billing/EstimateReminderSettings';
 import { useLocation } from 'wouter';
 import {
@@ -1837,6 +1838,7 @@ export default function SettingsPage() {
                 </div>
               <DefaultWordingCard kind="invoice" />
               <PaymentPolicyCard scope="company" id={0} canEdit={!!canManageOffice} title="Deposits and prepayment (company default)" />
+              {canManageOffice && <CompanyDepositRules />}
               <div className="flex flex-wrap items-center gap-2 pt-2 border-t">
                 <Button onClick={saveInvoicingDefaults} disabled={updateSettings.isPending} data-testid="button-save-invoicing">Save Invoicing</Button>
                 <Button variant="outline" onClick={() => setLocation('/financials?tab=invoice-templates')} className="gap-1.5">

@@ -73,3 +73,4 @@
 - [Startup schema locks](startup-schema-locks.md) — start cross-table background scans after startup trigger/schema installation to avoid read/schema-lock deadlocks.
 - [Pricing review policy](pricing-review-policy.md) — separate Budget-guided historical pricing advice; configurable matrix threshold, never automatic price rewrites.
 - [Inventory receiving policy](inventory-receiving-policy.md) — atomic, retry-safe vendor receiving; preserve markup, legacy stock, and audit records; avoid duplicate costs.
+- [Property invoice billing](property-invoice-billing.md) — combine a customer's properties by default; offer separate-property billing and identify each property's work.

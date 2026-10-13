@@ -1,5 +1,6 @@
 import { db, tenantsTable, servicesTable, customersTable, jobsTable, estimatesTable, invoicesTable } from "@workspace/db";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, sql, inArray } from "drizzle-orm";
+import { firstMatchingDepositRule, validateDepositRules, type DepositRule } from "./companyDepositRules";
 import { creditBalance, creditedInvoiceInsert, invoiceBalance } from "./customerCredit";
 import { invoiceDocumentDefaults } from "./invoiceDocumentDefaults";
 import { randomUUID } from "node:crypto";
@@ -17,15 +18,49 @@ export function resolvePaymentPolicy(company: PaymentPolicy, service: PaymentPol
     requirePrepay: company.requirePrepay === true || (customer.requirePrepay ?? service.requirePrepay ?? false),
     requireCard: company.requireCard === true || (customer.requireCard ?? service.requireCard ?? false) };
 }
-export async function effectivePaymentPolicy(tx: Tx | typeof db, tenantId: number, customerId?: number | null, serviceId?: number | null) {
+export async function effectivePaymentPolicy(tx: Tx | typeof db, tenantId: number, customerId?: number | null, serviceId?: number | null,
+  context?: { total?: number; subtotal?: number; serviceIds?: number[] }) {
   const [company] = await tx.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
   const [customer] = customerId ? await tx.select().from(customersTable).where(and(eq(customersTable.id, customerId), eq(customersTable.tenantId, tenantId))) : [];
-  const [service] = serviceId ? await tx.select().from(servicesTable).where(and(eq(servicesTable.id, serviceId), eq(servicesTable.tenantId, tenantId))) : [];
-  return { policy: resolvePaymentPolicy(normalizePaymentPolicy(company?.paymentPolicy), normalizePaymentPolicy(service?.paymentPolicy), normalizePaymentPolicy(customer?.paymentPolicy)), customer, company };
+  const serviceIds = [...new Set([...(context?.serviceIds ?? []), ...(serviceId ? [serviceId] : [])])].filter(id => Number.isInteger(id) && id > 0);
+  const services = serviceIds.length ? await tx.select().from(servicesTable).where(and(inArray(servicesTable.id, serviceIds), eq(servicesTable.tenantId, tenantId))) : [];
+  const raw = company?.paymentPolicy as (PaymentPolicy & { depositRules?: DepositRule[] }) | null;
+  const rules = raw?.depositRules ?? [];
+  const ruleError = validateDepositRules(rules);
+  if (ruleError) throw new Error(`Company deposit rules need correction: ${ruleError}`);
+  const total = context?.total ?? (context?.subtotal !== undefined ? context.subtotal * (1 + (company?.taxRate ?? 0) / 100) : undefined);
+  const matchedRule = firstMatchingDepositRule(rules, total, services.map(service => service.id));
+  const companyPolicy = normalizePaymentPolicy(raw);
+  if (matchedRule) { companyPolicy.depositType = matchedRule.depositType; companyPolicy.depositValue = matchedRule.depositValue; }
+  const servicePolicies = services.map(service => normalizePaymentPolicy(service.paymentPolicy));
+  const amount = (policy: PaymentPolicy) => policy.depositType === "full" ? total ?? 1 : policy.depositType === "percent"
+    ? (total ?? 1) * (policy.depositValue ?? 0) / 100 : policy.depositType === "fixed" ? policy.depositValue ?? 0 : 0;
+  const servicePolicy = servicePolicies.filter(policy => policy.depositType !== null).sort((a, b) => amount(b) - amount(a))[0] ?? { ...emptyPaymentPolicy };
+  servicePolicy.requireCard = servicePolicies.some(policy => policy.requireCard === true) ? true : servicePolicies.some(policy => policy.requireCard === false) ? false : null;
+  servicePolicy.requirePrepay = servicePolicies.some(policy => policy.requirePrepay === true) ? true : servicePolicies.some(policy => policy.requirePrepay === false) ? false : null;
+  const customerPolicy = normalizePaymentPolicy(customer?.paymentPolicy);
+  return { policy: resolvePaymentPolicy(companyPolicy, servicePolicy, customerPolicy), customer, company, matchedRule,
+    depositConfigured: customerPolicy.depositType !== null || servicePolicy.depositType !== null || companyPolicy.depositType !== null };
+}
+
+/** Re-evaluate unpaid/open quotes against current rules; paid/accepted history stays fixed. */
+export async function estimatePaymentTerms(tx: Tx | typeof db, estimate: typeof estimatesTable.$inferSelect,
+  selection?: { total: number; lineItems: unknown[] }) {
+  if (estimate.depositPaidAt || !["draft", "sent"].includes(estimate.status)) return estimate;
+  const items = (selection?.lineItems ?? estimate.lineItems ?? []) as { serviceId?: number; isOptional?: boolean; acceptedByCustomer?: boolean }[];
+  const total = selection?.total ?? estimate.total;
+  const { policy, depositConfigured } = await effectivePaymentPolicy(tx, estimate.tenantId, estimate.customerId, null,
+    { total, serviceIds: items.filter(item => !item.isOptional || item.acceptedByCustomer).map(item => item.serviceId!).filter(Boolean) });
+  if (!depositConfigured && !policy.requirePrepay) return estimate;
+  const paymentRequirement = policy.requirePrepay || policy.depositType === "full" ? "full" : policy.depositType === "fixed"
+    ? "deposit_fixed" : policy.depositType === "percent" ? "deposit_pct" : "none";
+  return { ...estimate, paymentRequirement: total > 0 ? paymentRequirement : "none",
+    depositValue: paymentRequirement === "deposit_fixed" ? Math.min(policy.depositValue ?? 0, total)
+      : paymentRequirement === "deposit_pct" ? policy.depositValue : null };
 }
 export class SchedulingPaymentError extends Error { status = 422; }
 export async function schedulingPaymentCheck(tx: Tx, input: typeof jobsTable.$inferInsert) {
-  const { policy, customer, company } = await effectivePaymentPolicy(tx, input.tenantId, input.customerId, input.serviceId);
+  const { policy, customer, company } = await effectivePaymentPolicy(tx, input.tenantId, input.customerId, input.serviceId, { subtotal: input.totalAmount ?? 0 });
   if (!policy.requirePrepay && !policy.requireCard && policy.depositType === "none" && !input.estimateId) return { reserveCredit: false, total: 0 };
   if (!customer) throw new SchedulingPaymentError("A customer is required before scheduling under this payment policy");
   await tx.select({ id: customersTable.id }).from(customersTable).where(eq(customersTable.id, customer.id)).for("update");

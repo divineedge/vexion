@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ShieldCheck, AlertTriangle, Info, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { CustomerInvoiceGroupingCard } from './CustomerInvoiceGroupingCard';
 
 export type PolicyScope = 'company' | 'service' | 'customer';
 export type DepositType = 'none' | 'fixed' | 'percent' | 'full';
@@ -36,7 +37,12 @@ interface Props {
 export function PaymentPolicyCard(props: Props) {
   const { canManageOffice } = useAuth();
   if (!canManageOffice || !props.canEdit) return null;
-  return <PaymentPolicyCardInner {...props} />;
+  return (
+    <>
+      <PaymentPolicyCardInner {...props} />
+      {props.scope === 'customer' && props.id > 0 && <CustomerInvoiceGroupingCard customerId={props.id} />}
+    </>
+  );
 }
 
 function PaymentPolicyCardInner({ scope, id, canEdit, title }: Props) {

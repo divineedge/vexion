@@ -327,9 +327,10 @@ export function JobFormFields({ form, setForm, customers, properties, users, cre
       {form.customerId && properties.length > 0 && (
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Property</label>
-          <Select value={form.propertyId} onValueChange={v => setForm(f => ({ ...f, propertyId: v }))}>
-            <SelectTrigger title="Select the property where work will be done"><SelectValue placeholder="Select property..." /></SelectTrigger>
+          <Select value={form.propertyId || '__none__'} onValueChange={v => setForm(f => ({ ...f, propertyId: v === '__none__' ? '' : v }))}>
+            <SelectTrigger title="Select the property where work will be done" data-testid="select-job-property"><SelectValue placeholder="Select property..." /></SelectTrigger>
             <SelectContent>
+              <SelectItem value="__none__">Select property…</SelectItem>
               {properties.map(p => (
                 <SelectItem key={p.id} value={String(p.id)}>{p.address}</SelectItem>
               ))}

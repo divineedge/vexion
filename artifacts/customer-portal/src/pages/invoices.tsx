@@ -1,4 +1,4 @@
-import { usePortalListInvoices, customFetch } from "@workspace/api-client-react";
+import { usePortalListInvoices, getPortalListInvoicesQueryKey, customFetch } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { PayInvoiceAction } from "@/components/PayInvoiceAction";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,7 +15,10 @@ import { toast } from "sonner";
 
 export default function Invoices() {
   const [, navigate] = useLocation();
-  const { data: invoices, isLoading, refetch } = usePortalListInvoices();
+  const { data: invoices, isLoading, refetch } = usePortalListInvoices({ query: {
+    queryKey: [...getPortalListInvoicesQueryKey(), localStorage.getItem("portal_token")],
+    staleTime: 0, refetchOnMount: "always", refetchInterval: 30000,
+  } });
   const search = useSearch();
   const queryClient = useQueryClient();
   const [payingId, setPayingId] = useState<number | null>(null);

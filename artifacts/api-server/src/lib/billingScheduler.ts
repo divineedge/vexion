@@ -12,7 +12,8 @@ import { creditedInvoiceInsert } from "./customerCredit";
  *   2. Email Queue — send pending billing emails with retry logic (max 3 attempts).
  */
 
-import { db, recurringInvoiceTemplatesTable, billingEmailQueueTable, invoicesTable, customersTable, tenantsTable, jobsTable, activityLogTable, invoiceTemplatesTable, servicesTable } from "@workspace/db";
+import { db, recurringInvoiceTemplatesTable, billingEmailQueueTable, invoicesTable, customersTable, tenantsTable, jobsTable, activityLogTable, invoiceTemplatesTable, servicesTable, propertiesTable } from "@workspace/db";
+import { customerInvoiceGrouping, propertyInvoiceGroups, labelPropertyLine } from "./invoicePropertyGrouping";
 import { invoiceServiceDate, datedJobInvoiceItems } from "./invoiceServiceDate";
 import { automaticInvoiceSending, holdUnpricedJobs, recurringBillingDue } from "./billingAutomation";
 import { processRecurringJobBatches } from "./recurringJobBilling";
@@ -32,7 +33,7 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 /** Either an active transaction or the plain db handle — read helpers below accept both so previews can run outside a transaction. */
 type Queryable = Tx | typeof db;
 
-type BillingLineItem = { description: string; quantity: number; unitPrice: number; total: number };
+type BillingLineItem = { description: string; quantity: number; unitPrice: number; total: number; propertyId?: number | null; jobId?: number | null };
 
 // ── Atomic claim guard ───────────────────────────────────────────────────────
 
@@ -218,7 +219,7 @@ async function generateInvoiceForCustomer(
   excludeJobIds: number[] = [],
   billingDate?: string,
   excludeHeld = true,
-): Promise<number | null> {
+): Promise<number[] | null> {
   // ── Per-customer idempotency check ───────────────────────────────────────
   // When billingDate is set (scheduler runs only; manual runTemplateNow omits it),
   // verify no invoice for this exact (template, customer, billingDate) tuple exists.
@@ -324,13 +325,25 @@ async function generateInvoiceForCustomer(
     lineItems = (template.lineItems as BillingLineItem[]) ?? [];
   }
 
-  const subtotal = lineItems.reduce((sum, li) => sum + li.total, 0);
+  const [customer] = await tx.select().from(customersTable).where(and(eq(customersTable.id, customerId), eq(customersTable.tenantId, template.tenantId)));
+  const sourceJobs = jobIds.length ? await tx.select().from(jobsTable).where(inArray(jobsTable.id, jobIds)) : [];
+  const properties = await tx.select().from(propertiesTable).where(and(eq(propertiesTable.customerId, customerId), eq(propertiesTable.tenantId, template.tenantId)));
+  const addresses = new Map(properties.map(property => [property.id, property.address]));
+  const labelled = lineItems.map((line, index) => {
+    const job = sourceJobs.find(job => job.id === jobIds[index]);
+    const propertyId = job?.propertyId ?? line.propertyId ?? null;
+    return labelPropertyLine({ ...line, propertyId, jobId: job?.id ?? line.jobId ?? null }, propertyId ? addresses.get(propertyId) : null);
+  });
+  const groups = propertyInvoiceGroups(labelled, customerInvoiceGrouping(customer?.paymentPolicy));
+  const createdIds: number[] = [];
+  for (const [index, lines] of groups.entries()) {
+  const groupJobs = lines.map(line => line.jobId).filter((id): id is number => !!id);
+  const subtotal = lines.reduce((sum, li) => sum + li.total, 0);
   const tax = subtotal * (taxRate / 100);
   const total = subtotal + tax;
   const invoiceNum = generateInvoiceNumber();
   const sendAutomatically = total > 0 && await automaticInvoiceSending(template.tenantId);
-
-  const [invoice] = await creditedInvoiceInsert(tx)
+  const [invoice] = await creditedInvoiceInsert(tx, false, groupJobs)
     .values({
       tenantId: template.tenantId,
       ...documentDefaults,
@@ -341,11 +354,13 @@ async function generateInvoiceForCustomer(
       subtotal,
       tax,
       total,
-      lineItems,
+      lineItems: lines,
       notes: template.notes ?? documentDefaults.notes,
       termsText: template.termsText ?? documentDefaults.termsText,
       generatedFromTemplateId: template.id,
-      billingDate: billingDate ?? null,
+      // The first child is the unique batch marker. All children are committed
+      // atomically under the template lock, retaining the existing retry guard.
+      billingDate: index === 0 ? billingDate ?? null : null,
       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // net-30
       showJobCompletionDate: resolvedShowJobCompletionDate,
     })
@@ -356,14 +371,14 @@ async function generateInvoiceForCustomer(
     await tx.execute(sql`UPDATE invoices SET late_fee_schedule = ${JSON.stringify(resolvedLateFeeSchedule)}::jsonb WHERE id = ${invoice.id}`);
   }
 
-  if (jobIds.length > 0) {
+  if (groupJobs.length > 0) {
     // Write the real invoiceId and clear the claim lock.  Also clear holdFromBilling
     // now that the job has actually been billed — the hold was a "skip me in the
     // *next* run" signal, not a permanent exclusion.
     await tx
       .update(jobsTable)
       .set({ invoiceId: invoice.id, invoiceClaimLockAt: null, holdFromBilling: false })
-      .where(inArray(jobsTable.id, jobIds));
+      .where(inArray(jobsTable.id, groupJobs));
   }
 
   if (sendAutomatically) await tx.insert(billingEmailQueueTable).values({
@@ -373,7 +388,9 @@ async function generateInvoiceForCustomer(
     attempts: 0,
   });
 
-  return invoice.id;
+  createdIds.push(invoice.id);
+  }
+  return createdIds;
 }
 
 /**
@@ -420,7 +437,7 @@ export async function generateDueTemplate(tx: Tx, template: RecurringInvoiceTemp
     // Per-customer idempotency is handled inside generateInvoiceForCustomer using billingDate.
     // excludeHeld=true: the nightly run respects the per-job hold flag set by staff.
     const invoiceId = await generateInvoiceForCustomer(tx, template, template.customerId, taxRate, periodStart, periodEnd, [], today, true);
-    if (invoiceId != null) invoiceIds.push(invoiceId);
+    if (invoiceId != null) invoiceIds.push(...invoiceId);
   } else if (template.billingMode === "completed_work") {
     // Service-only scope: bill every customer who has qualifying completed work this period.
     // Each customer is checked individually so a partial prior run can continue
@@ -429,7 +446,7 @@ export async function generateDueTemplate(tx: Tx, template: RecurringInvoiceTemp
     const customerIds = await findCustomersWithCompletedWork(tx, template.tenantId, template.serviceId, periodStart, periodEnd, true);
     for (const customerId of customerIds) {
       const invoiceId = await generateInvoiceForCustomer(tx, template, customerId, taxRate, periodStart, periodEnd, [], today, true);
-      if (invoiceId != null) invoiceIds.push(invoiceId);
+      if (invoiceId != null) invoiceIds.push(...invoiceId);
     }
   }
 
@@ -854,13 +871,13 @@ export async function runTemplateNow(templateId: number, tenantId: number, exclu
       // excludeHeld=false: manual "Generate Now" respects only the staff-selected excludeJobIds;
       // a held job that staff leave checked in the preview should still be billed.
       const invoiceId = await generateInvoiceForCustomer(tx, template, template.customerId, taxRate, periodStart, periodEnd, excludeJobIds, undefined, false);
-      if (invoiceId != null) invoiceIds.push(invoiceId);
+      if (invoiceId != null) invoiceIds.push(...invoiceId);
     } else if (template.billingMode === "completed_work") {
       // excludeHeld=false so all customers with qualifying work appear; staff-selected excludeJobIds gate individual jobs.
       const customerIds = await findCustomersWithCompletedWork(tx, template.tenantId, template.serviceId, periodStart, periodEnd, false);
       for (const customerId of customerIds) {
         const invoiceId = await generateInvoiceForCustomer(tx, template, customerId, taxRate, periodStart, periodEnd, excludeJobIds, undefined, false);
-        if (invoiceId != null) invoiceIds.push(invoiceId);
+        if (invoiceId != null) invoiceIds.push(...invoiceId);
       }
     }
 

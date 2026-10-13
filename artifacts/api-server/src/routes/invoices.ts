@@ -7,6 +7,7 @@ import { eq, and, sql, inArray, ne, isNull } from "drizzle-orm";
 import crypto from "crypto";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { invoiceDocumentDefaults } from "../lib/invoiceDocumentDefaults";
+import { customerInvoiceGrouping, propertyInvoiceGroups, labelPropertyLine, type PropertyInvoiceLine } from "../lib/invoicePropertyGrouping";
 import { isAdminRole, isOwnerRole } from "../lib/roles";
 import { decryptSecretConfig } from "../lib/secretsCrypto";
 import { sendLobLetter, type LobConfig } from "../lib/lobProvider";
@@ -404,27 +405,70 @@ router.post("/invoices", async (req, res): Promise<void> => {
     ? bodyLineItems
     : templateFields.templateLineItems;
 
-  const invoiceNum = `INV-${Date.now().toString().slice(-6)}`;
-  const subtotal = (lineItems as { unitPrice: number; quantity: number }[]).reduce((sum, li) => sum + (li.unitPrice * li.quantity), 0);
-  const tax = subtotal * 0.085;
-  const total = subtotal + tax;
-
-  const [invoice] = await creditedInvoiceInsert(db, true).values({
+  const custId = Number(customerId);
+  const requestedIds: unknown[] = [...(Array.isArray(req.body.jobIds) ? req.body.jobIds : []),
+    ...(jobId ? [Number(jobId)] : []), ...(Array.isArray(lineItems) ? lineItems.filter((line: PropertyInvoiceLine) => line.jobId).map((line: PropertyInvoiceLine) => line.jobId) : [])];
+  if (!Number.isInteger(custId) || custId < 1 || requestedIds.length > 500 || requestedIds.some(id => !Number.isInteger(id) || Number(id) < 1) ||
+    !Array.isArray(lineItems) || req.body.grouping && !["combined", "by_property"].includes(req.body.grouping)) {
+    res.status(400).json({ error: "Invalid customer, job selection, line items, or billing grouping" }); return;
+  }
+  const sourceIds = [...new Set(requestedIds as number[])];
+  const defaults = await invoiceDocumentDefaults(tenantId, resolvedTemplateId);
+  try {
+    const invoices = await db.transaction(async tx => {
+      const sourceJobs = sourceIds.length ? await tx.select().from(jobsTable).where(and(eq(jobsTable.tenantId, tenantId), inArray(jobsTable.id, sourceIds))).orderBy(jobsTable.id).for("update") : [];
+      if (sourceJobs.length !== sourceIds.length || sourceJobs.some(job => job.customerId !== custId || job.status === "cancelled")) throw new Error("Every selected job must belong to this customer and business");
+      if (sourceJobs.some(job => !!job.invoiceId)) throw new Error("A selected job is already invoiced. Refresh the job list.");
+      const [customer] = await tx.select().from(customersTable).where(and(eq(customersTable.id, custId), eq(customersTable.tenantId, tenantId)));
+      if (!customer) throw new Error("Customer not found in this business");
+      const properties = await tx.select().from(propertiesTable).where(and(eq(propertiesTable.tenantId, tenantId), eq(propertiesTable.customerId, custId)));
+      const [billingTenant] = await tx.select({ taxRate: tenantsTable.taxRate }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+      const owned = new Map(properties.map(property => [property.id, property]));
+      const defaultProperty = req.body.propertyId ?? null;
+      if (defaultProperty !== null && (!Number.isInteger(defaultProperty) || !owned.has(defaultProperty))) throw new Error("Choose a property belonging to this customer");
+      let prepared = (lineItems as PropertyInvoiceLine[]).map(line => {
+        if (!line || typeof line.description !== "string" || !Number.isFinite(line.unitPrice) || !Number.isFinite(line.quantity) || line.quantity < 0) throw new Error("Every line needs a description and valid quantity and price");
+        const linked = line.jobId ? sourceJobs.find(job => job.id === line.jobId)
+          : req.body.jobIds === undefined && sourceJobs.length === 1 ? sourceJobs[0] : undefined;
+        if (line.jobId && !linked) throw new Error("Line item job was not selected");
+        const propertyId = linked ? linked.propertyId : line.propertyId ?? defaultProperty;
+        if (linked && line.propertyId != null && line.propertyId !== linked.propertyId) throw new Error("A job line must use that job's property");
+        if (propertyId !== null && (!Number.isInteger(propertyId) || !owned.has(propertyId))) throw new Error("Line property does not belong to this customer");
+        const safeLine = { ...line };
+        delete safeLine.depositAllocations;
+        return labelPropertyLine({ ...safeLine, jobId: linked?.id ?? null, propertyId,
+          total: Math.round(line.unitPrice * line.quantity * 100) / 100 }, propertyId ? owned.get(propertyId)?.address : null);
+      });
+      for (const job of sourceJobs) {
+        if (!prepared.some(line => line.jobId === job.id)) prepared.push(labelPropertyLine({
+          description: job.title, quantity: 1, unitPrice: job.totalAmount, total: job.totalAmount, jobId: job.id, propertyId: job.propertyId,
+        }, job.propertyId ? owned.get(job.propertyId)?.address : null));
+      }
+      const mode = req.body.grouping ?? customerInvoiceGrouping(customer.paymentPolicy);
+      const groups = propertyInvoiceGroups(prepared, mode);
+      if (!groups.length) groups.push([]);
+      const created: (typeof invoicesTable.$inferSelect)[] = [];
+      for (const group of groups) {
+        const groupJobIds = [...new Set(group.map(line => line.jobId).filter((id): id is number => !!id))];
+        const subtotal = Math.round(group.reduce((sum, line) => sum + line.total, 0) * 100) / 100;
+        const tax = Math.round(subtotal * (billingTenant?.taxRate ?? 0) / 100 * 100) / 100;
+        const total = subtotal + tax;
+        const [invoice] = await creditedInvoiceInsert(tx, false, groupJobIds).values({
     tenantId,
-    invoiceNumber: invoiceNum,
-    customerId: parseInt(customerId, 10),
-    jobId: jobId ? parseInt(jobId, 10) : null,
+    invoiceNumber: `INV-${generateInvoiceToken().slice(0, 12).toUpperCase()}`,
+    customerId: custId,
+    jobId: groupJobIds[0] ?? null,
     status: "draft",
     subtotal,
     tax,
     total,
-    notes: notes ?? (await invoiceDocumentDefaults(tenantId, resolvedTemplateId)).notes,
+    notes: notes ?? defaults.notes,
     invoiceDate: invoiceDate ? invoiceDate : null,
     dueDate: dueDate ? new Date(dueDate) : null,
-    lineItems,
+    lineItems: group,
     invoiceTemplateId: resolvedTemplateId,
     layout: templateFields.layout,
-    termsText: req.body.termsText ?? templateFields.termsText ?? (await invoiceDocumentDefaults(tenantId, resolvedTemplateId)).termsText,
+    termsText: req.body.termsText ?? templateFields.termsText ?? defaults.termsText,
     lateFeeEnabled: templateFields.lateFeeEnabled,
     lateFeeType: templateFields.lateFeeType,
     lateFeeAmount: templateFields.lateFeeAmount,
@@ -435,11 +479,19 @@ router.post("/invoices", async (req, res): Promise<void> => {
 
   // Write lateFeeSchedule via raw SQL (Drizzle silently drops new JSONB cols in set())
   if (templateFields.lateFeeSchedule.length > 0) {
-    await db.execute(sql`UPDATE invoices SET late_fee_schedule = ${JSON.stringify(templateFields.lateFeeSchedule)}::jsonb WHERE id = ${invoice.id}`);
+    await tx.execute(sql`UPDATE invoices SET late_fee_schedule = ${JSON.stringify(templateFields.lateFeeSchedule)}::jsonb WHERE id = ${invoice.id}`);
     invoice.lateFeeSchedule = templateFields.lateFeeSchedule;
   }
-
-  res.status(201).json(formatInvoice(invoice));
+        if (groupJobIds.length) await tx.update(jobsTable).set({ invoiceId: invoice.id, pendingWeeklyInvoice: false, holdFromBilling: false })
+          .where(and(eq(jobsTable.tenantId, tenantId), inArray(jobsTable.id, groupJobIds)));
+        created.push(invoice);
+      }
+      return created;
+    });
+    res.status(201).json({ ...formatInvoice(invoices[0]), invoiceIds: invoices.map(invoice => invoice.id) });
+  } catch (error) {
+    res.status(409).json({ error: (error as Error).message });
+  }
 });
 
 router.get("/invoices/:id", async (req, res): Promise<void> => {
@@ -506,14 +558,20 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
     const items = lineItems as { description: string; quantity: number; unitPrice: number; total?: number }[];
     const newSubtotal = items.reduce((s, li) => s + (li.quantity * li.unitPrice), 0);
     // Fetch existing to derive tax and tenant tax rate
-    const [existing] = await db.select({ tax: invoicesTable.tax, total: invoicesTable.total, subtotal: invoicesTable.subtotal, tenantId: invoicesTable.tenantId })
+    const [existing] = await db.select({ tax: invoicesTable.tax, total: invoicesTable.total, subtotal: invoicesTable.subtotal, tenantId: invoicesTable.tenantId, lineItems: invoicesTable.lineItems })
       .from(invoicesTable).where(and(eq(invoicesTable.id, id), eq(invoicesTable.tenantId, tenantId)));
     const oldTax = existing?.tax ?? 0;
     const oldSubtotal = existing?.subtotal ?? 0;
     // Preserve tax proportionally if there was a non-zero rate; otherwise zero
     const taxRate = oldSubtotal > 0 ? oldTax / oldSubtotal : 0;
     const newTax = Math.round(newSubtotal * taxRate * 100) / 100;
-    updates.lineItems = items.map(li => ({ ...li, total: li.quantity * li.unitPrice }));
+    const allocations = ((existing?.lineItems ?? []) as { depositAllocations?: unknown[] }[]).flatMap(line => line.depositAllocations ?? []);
+    if (allocations.length && !items.length) { res.status(409).json({ error: "Void an invoice with an applied deposit instead of removing all its work." }); return; }
+    updates.lineItems = items.map((li, index) => {
+      const safe = { ...li, total: li.quantity * li.unitPrice } as Record<string, unknown>;
+      delete safe.depositAllocations;
+      return { ...safe, ...(index === 0 && allocations.length ? { depositAllocations: allocations } : {}) };
+    });
     updates.subtotal = newSubtotal;
     updates.tax = newTax;
     updates.total = newSubtotal + newTax;

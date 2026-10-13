@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { db, customersTable, servicesTable, tenantsTable, estimatesTable, jobsTable } from "@workspace/db";
-import { and, eq, sql, desc } from "drizzle-orm";
+import { and, eq, sql, desc, inArray } from "drizzle-orm";
+import { validateDepositRules, type DepositRule } from "../lib/companyDepositRules";
+import { customerInvoiceGrouping } from "../lib/invoicePropertyGrouping";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { isAdminRole } from "../lib/roles";
 import { normalizePaymentPolicy, ensureScheduledJobPayment, SchedulingPaymentError } from "../lib/paymentPolicy";
@@ -26,6 +28,43 @@ router.use(["/billing/payment-policy", "/customers/:id/deposits"], async (req, r
   if (!await isAdminRole(getTenantId(req), getUserId(req))) { res.status(403).json({ error: "Office access required" }); return; }
   next();
 });
+router.get("/billing/customer-invoice-grouping/:id", async (req, res) => {
+  const tenantId = getTenantId(req);
+  if (!await isAdminRole(tenantId, getUserId(req))) { res.status(403).json({ error: "Office access required" }); return; }
+  const [customer] = await db.select().from(customersTable).where(and(eq(customersTable.id, Number(req.params.id)), eq(customersTable.tenantId, tenantId)));
+  if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
+  res.json({ mode: customerInvoiceGrouping(customer.paymentPolicy) });
+});
+router.patch("/billing/customer-invoice-grouping/:id", async (req, res) => {
+  const tenantId = getTenantId(req), mode = req.body?.mode;
+  if (!await isAdminRole(tenantId, getUserId(req))) { res.status(403).json({ error: "Office access required" }); return; }
+  if (!["combined", "by_property"].includes(mode)) { res.status(400).json({ error: "Choose combined or by_property" }); return; }
+  const result = await db.execute(sql`UPDATE customers SET payment_policy=jsonb_set(coalesce(payment_policy,'{}'::jsonb),'{invoiceGrouping}',${JSON.stringify(mode)}::jsonb,true) WHERE id=${Number(req.params.id)} AND tenant_id=${tenantId} RETURNING id`);
+  if (!result.rows.length) { res.status(404).json({ error: "Customer not found" }); return; }
+  res.json({ mode });
+});
+router.get("/billing/deposit-rules", async (req, res) => {
+  const tenantId = getTenantId(req);
+  if (!await isAdminRole(tenantId, getUserId(req))) { res.status(403).json({ error: "Office access required" }); return; }
+  const result = await db.execute(sql`SELECT payment_policy->'depositRules' AS rules FROM tenants WHERE id=${tenantId}`);
+  const rules = result.rows[0]?.rules ?? [];
+  const error = validateDepositRules(rules);
+  if (error) { res.status(422).json({ error }); return; }
+  res.json({ rules });
+});
+router.patch("/billing/deposit-rules", async (req, res) => {
+  const tenantId = getTenantId(req), rules = req.body?.rules;
+  if (!await isAdminRole(tenantId, getUserId(req))) { res.status(403).json({ error: "Office access required" }); return; }
+  const error = validateDepositRules(rules);
+  if (error) { res.status(400).json({ error }); return; }
+  const ids = [...new Set((rules as DepositRule[]).flatMap(rule => rule.serviceIds))];
+  if (ids.length) {
+    const owned = await db.select({ id: servicesTable.id }).from(servicesTable).where(and(eq(servicesTable.tenantId, tenantId), inArray(servicesTable.id, ids)));
+    if (owned.length !== ids.length) { res.status(400).json({ error: "All services must belong to your company" }); return; }
+  }
+  await db.execute(sql`UPDATE tenants SET payment_policy=jsonb_set(coalesce(payment_policy,'{}'::jsonb),'{depositRules}',${JSON.stringify(rules)}::jsonb,true) WHERE id=${tenantId}`);
+  res.json({ rules });
+});
 router.get("/billing/payment-policy/:scope/:id", async (req, res) => {
   const tenantId = getTenantId(req), id = Number(req.params.id);
   const result = req.params.scope === "company"
@@ -37,6 +76,7 @@ router.get("/billing/payment-policy/:scope/:id", async (req, res) => {
 });
 router.patch("/billing/payment-policy/:scope/:id", async (req, res) => {
   const tenantId = getTenantId(req), id = Number(req.params.id), body = req.body;
+  if (!await isAdminRole(tenantId, getUserId(req))) { res.status(403).json({ error: "Office access required" }); return; }
   if (!body || !["none","fixed","percent","full",null].includes(body.depositType) ||
       ![true,false,null].includes(body.requirePrepay) || ![true,false,null].includes(body.requireCard) ||
       body.depositValue != null && (typeof body.depositValue !== "number" || !Number.isFinite(body.depositValue) || body.depositValue < 0 || body.depositValue > 1000000) ||
@@ -44,9 +84,9 @@ router.patch("/billing/payment-policy/:scope/:id", async (req, res) => {
       body.depositType === "percent" && body.depositValue > 100) { res.status(400).json({ error: "Invalid payment policy" }); return; }
   const policy = normalizePaymentPolicy(body);
   const result = req.params.scope === "company"
-    ? await db.execute(sql`UPDATE tenants SET payment_policy=${JSON.stringify(policy)}::jsonb WHERE id=${tenantId} RETURNING id`)
+    ? await db.execute(sql`UPDATE tenants SET payment_policy=coalesce(payment_policy,'{}'::jsonb) || ${JSON.stringify(policy)}::jsonb WHERE id=${tenantId} RETURNING id`)
     : req.params.scope === "customer"
-    ? await db.execute(sql`UPDATE customers SET payment_policy=${JSON.stringify(policy)}::jsonb WHERE id=${id} AND tenant_id=${tenantId} RETURNING id`)
+    ? await db.execute(sql`UPDATE customers SET payment_policy=coalesce(payment_policy,'{}'::jsonb) || ${JSON.stringify(policy)}::jsonb WHERE id=${id} AND tenant_id=${tenantId} RETURNING id`)
     : req.params.scope === "service"
     ? await db.execute(sql`UPDATE services SET payment_policy=${JSON.stringify(policy)}::jsonb WHERE id=${id} AND tenant_id=${tenantId} RETURNING id`) : null;
   if (!result?.rows.length) { res.status(404).json({ error: "Record not found" }); return; }

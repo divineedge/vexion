@@ -5141,8 +5141,51 @@ export interface EquipmentPreTripInput {
   checklistResponses?: PreTripChecklistResponse[];
 }
 
+export type EquipmentInspectionListRecordsItemChecklistItem = {
+  id: string;
+  label: string;
+  checked: boolean;
+};
+
+export type EquipmentInspectionListRecordsItemFuel = {
+  gallons?: number;
+  cost?: number;
+  fuelSource?: string;
+  bulkFuelTankName?: string | null;
+} | null;
+
+export type EquipmentInspectionListRecordsItemReading = {
+  readingType?: string;
+  value?: number;
+} | null;
+
+export type EquipmentInspectionListRecordsItemReviewsItem = {
+  id: number;
+  notes: string;
+  reviewedAt: string;
+  reviewedBy: string;
+};
+
+export type EquipmentInspectionListRecordsItem = {
+  ref: string;
+  title: string;
+  description?: string | null;
+  recordedAt: string;
+  recordedBy: string;
+  checklist: EquipmentInspectionListRecordsItemChecklistItem[];
+  fuel?: EquipmentInspectionListRecordsItemFuel;
+  reading?: EquipmentInspectionListRecordsItemReading;
+  reviews: EquipmentInspectionListRecordsItemReviewsItem[];
+};
+
+export interface EquipmentInspectionList {
+  canReview: boolean;
+  records: EquipmentInspectionListRecordsItem[];
+}
+
 export interface EquipmentPreTripResult {
-  taskId: number;
+  /** Inspection reference; legacy name retained for older clients. New references are inspection-ID, not tasks. */
+  taskId: number | string;
   /** @nullable */
   fuelLogId?: number | null;
   /** @nullable */
@@ -7277,6 +7320,16 @@ export type ListBulkFuelTransactionsParams = {
  */
 limit?: number;
 cursor?: string;
+};
+
+export type ReviewEquipmentInspectionBody = {
+  /** @maxLength 4000 */
+  notes: string;
+};
+
+export type ReviewEquipmentInspection201 = {
+  id: number;
+  reviewedAt: string;
 };
 
 export type GetEquipmentLedgerParams = {

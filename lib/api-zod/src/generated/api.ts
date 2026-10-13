@@ -7501,7 +7501,7 @@ export const CreateEquipmentPreTripBody = zod.object({
 })
 
 export const CreateEquipmentPreTripResponse = zod.object({
-  "taskId": zod.number(),
+  "taskId": zod.union([zod.number(),zod.string()]).describe('Inspection reference; legacy name retained for older clients. New references are inspection-ID, not tasks.'),
   "fuelLogId": zod.number().nullish(),
   "readingLogId": zod.number().nullish(),
   "fuelCost": zod.number().nullish(),
@@ -7528,7 +7528,7 @@ export const RecoverMisassignedDivineEdgeEquipmentResponse = zod.object({
 
 
 export const ListEquipmentPreTripMediaParams = zod.object({
-  "id": zod.coerce.number()
+  "id": zod.union([zod.coerce.number(),zod.coerce.string()])
 })
 
 export const ListEquipmentPreTripMediaResponseItem = zod.object({
@@ -7552,7 +7552,7 @@ export const ListEquipmentPreTripMediaResponse = zod.array(ListEquipmentPreTripM
 
 
 export const AddEquipmentPreTripMediaParams = zod.object({
-  "id": zod.coerce.number()
+  "id": zod.union([zod.coerce.number(),zod.coerce.string()])
 })
 
 export const AddEquipmentPreTripMediaBody = zod.object({
@@ -7584,11 +7584,67 @@ export const AddEquipmentPreTripMediaResponse = zod.object({
 
 
 export const DeleteEquipmentPreTripMediaParams = zod.object({
-  "id": zod.coerce.number(),
+  "id": zod.union([zod.coerce.number(),zod.coerce.string()]),
   "mediaId": zod.coerce.number()
 })
 
 export const DeleteEquipmentPreTripMediaResponse = zod.void()
+
+
+export const ListEquipmentInspectionsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ListEquipmentInspectionsResponse = zod.object({
+  "canReview": zod.boolean(),
+  "records": zod.array(zod.object({
+  "ref": zod.string(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "recordedAt": zod.string(),
+  "recordedBy": zod.string(),
+  "checklist": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string(),
+  "checked": zod.boolean()
+})),
+  "fuel": zod.object({
+  "gallons": zod.number().optional(),
+  "cost": zod.number().optional(),
+  "fuelSource": zod.string().optional(),
+  "bulkFuelTankName": zod.string().nullish()
+}).nullish(),
+  "reading": zod.object({
+  "readingType": zod.string().optional(),
+  "value": zod.number().optional()
+}).nullish(),
+  "reviews": zod.array(zod.object({
+  "id": zod.number(),
+  "notes": zod.string(),
+  "reviewedAt": zod.string(),
+  "reviewedBy": zod.string()
+}))
+}))
+})
+
+
+export const ReviewEquipmentInspectionParams = zod.object({
+  "id": zod.coerce.number(),
+  "ref": zod.coerce.string()
+})
+
+export const reviewEquipmentInspectionBodyNotesMax = 4000;
+
+
+
+export const ReviewEquipmentInspectionBody = zod.object({
+  "notes": zod.string().max(reviewEquipmentInspectionBodyNotesMax)
+})
+
+export const ReviewEquipmentInspectionResponse = zod.object({
+  "id": zod.number(),
+  "reviewedAt": zod.string()
+})
 
 
 /**

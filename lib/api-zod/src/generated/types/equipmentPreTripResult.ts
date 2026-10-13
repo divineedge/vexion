@@ -7,7 +7,8 @@
  */
 
 export interface EquipmentPreTripResult {
-  taskId: number;
+  /** Inspection reference; legacy name retained for older clients. New references are inspection-ID, not tasks. */
+  taskId: number | string;
   /** @nullable */
   fuelLogId?: number | null;
   /** @nullable */

@@ -1,3 +1,4 @@
+- [Navigation homes](navigation-homes.md) — Dashboard is the only fixed top link; other pages have section homes and optional bookmarks; Team belongs under Employees.
 - [Employee records policy](employee-record-policy.md) — owner/designated-HR privacy, website and staff hiring intake, and human-reviewed employment evidence.
 - [Acquisition reward policy](acquisition-reward-policy.md) — first paid invoice earns rewards; business portal links survive company renames.
 - [Update and fixture safety](update-and-fixture-safety.md) — preserve production records during updates; roll back payroll-related test fixtures instead of deleting them.

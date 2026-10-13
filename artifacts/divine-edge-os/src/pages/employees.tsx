@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, Redirect } from 'wouter';
+import { useAuth } from '@/contexts/AuthContext';
 import { Users, Search, ChevronRight, ShieldCheck } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,7 @@ import { format } from 'date-fns';
 import { useHrMeta, useHrEmployees, EMPLOYMENT_STATUSES, type HrEmployeeRow } from '@/lib/hr';
 import { EmployeeTemplatesPanel } from '@/components/hr/EmployeeTemplatesPanel';
 import { CredentialsPanel } from '@/components/hr/CredentialsPanel';
+import { EmployeeAccountsPanel } from '@/components/hr/EmployeeAccountsPanel';
 
 const statusLabel = (s: HrEmployeeRow['employmentStatus']) => EMPLOYMENT_STATUSES.find(x => x.value === s)?.label ?? 'Not set';
 const statusTone: Record<string, string> = {
@@ -21,9 +23,14 @@ const roleLabel = (r: string) => r.replace(/_/g, ' ');
 
 export default function EmployeesPage() {
   const meta = useHrMeta();
+  const { canManageOffice } = useAuth();
   const hasHr = !!meta.data?.hasHrAccess;
   const list = useHrEmployees(hasHr);
   const [q, setQ] = useState('');
+  const [tab, setTab] = useState(() => {
+    const t = new URLSearchParams(window.location.search).get('tab');
+    return t && ['directory', 'accounts', 'forms', 'credentials'].includes(t) ? t : 'directory';
+  });
   const [status, setStatus] = useState<'all' | 'current' | 'former'>('current');
 
   const rows = useMemo(() => (list.data?.employees ?? []).filter(e => {
@@ -36,6 +43,19 @@ export default function EmployeesPage() {
   if (meta.isLoading) return <div className="space-y-3"><Skeleton className="h-9 w-56" /><Skeleton className="h-64" /></div>;
   if (meta.isError) return <div className="p-8 text-center space-y-3"><p className="text-sm text-destructive">Could not check your access.</p><Button size="sm" variant="outline" onClick={() => meta.refetch()}>Retry</Button></div>;
   // Non-HR staff only ever see their own record — no directory fallback.
+  // Office staff without HR access get the read-only account list only (no private HR data).
+  if (!hasHr && canManageOffice) return (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Employees</h1>
+        <p className="text-muted-foreground mt-1">Staff accounts and access. Personnel files are limited to the owner and HR staff.</p>
+      </div>
+      <Tabs value="accounts">
+        <TabsList><TabsTrigger value="accounts" data-testid="tab-employee-accounts">Accounts & access</TabsTrigger></TabsList>
+        <TabsContent value="accounts" className="mt-4"><EmployeeAccountsPanel showEmployeeFileLinks={false} /></TabsContent>
+      </Tabs>
+    </div>
+  );
   if (!hasHr) return meta.data?.ownUserId ? <Redirect to={`/employees/${meta.data.ownUserId}`} /> : null;
 
   return (
@@ -46,9 +66,10 @@ export default function EmployeesPage() {
           <p className="text-muted-foreground mt-1 flex items-center gap-1.5"><ShieldCheck className="w-4 h-4" /> Private personnel records. Only the owner and designated HR staff can see this page.</p>
         </div>
       </div>
-      <Tabs defaultValue="directory">
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="directory">Directory</TabsTrigger>
+          <TabsTrigger value="accounts" data-testid="tab-employee-accounts">Accounts & access</TabsTrigger>
           <TabsTrigger value="forms">Employee forms</TabsTrigger>
           <TabsTrigger value="credentials">Licenses & certificates</TabsTrigger>
         </TabsList>
@@ -91,6 +112,7 @@ export default function EmployeesPage() {
             )}
           </CardContent></Card>
         </TabsContent>
+        <TabsContent value="accounts" className="mt-4"><EmployeeAccountsPanel /></TabsContent>
         <TabsContent value="forms" className="mt-4"><EmployeeTemplatesPanel /></TabsContent>
         <TabsContent value="credentials" className="mt-4"><CredentialsPanel /></TabsContent>
       </Tabs>

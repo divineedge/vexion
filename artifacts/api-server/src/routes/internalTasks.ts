@@ -3,7 +3,8 @@ import {
   db, internalTasksTable, taskNotificationsTable, usersTable,
   customersTable, jobsTable, propertiesTable, equipmentTable,
 } from "@workspace/db";
-import { eq, and, desc, or, inArray, isNull } from "drizzle-orm";
+import { eq, and, desc, or, inArray, isNull, notInArray } from "drizzle-orm";
+import { legacyInspectionTypes } from "../lib/equipmentInspections";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
 import { ADMIN_ROLES, getCallerRole, getSingleAdmin } from "../lib/roles";
 import { validateTaskAssignment, roleBucketMatches } from "../lib/taskRouting";
@@ -105,6 +106,7 @@ async function notifyAssignment(tenantId: number, task: Task, actorName: string)
  * filter — do not add a new read endpoint that bypasses it.
  */
 function canViewTask(task: Task, userId: number, role: string, isAdmin: boolean, scope?: string): boolean {
+  if (legacyInspectionTypes.includes(task.taskType ?? "")) return false;
   if (isAdmin && scope !== "mine") return true;
   return (
     task.createdById === userId ||
@@ -121,7 +123,7 @@ router.get("/tasks", async (req, res): Promise<void> => {
 
   const { includeArchived } = req.query as Record<string, string>;
 
-  let where = eq(internalTasksTable.tenantId, tenantId) as ReturnType<typeof eq>;
+  let where = and(eq(internalTasksTable.tenantId, tenantId), or(isNull(internalTasksTable.taskType), notInArray(internalTasksTable.taskType, legacyInspectionTypes))) as ReturnType<typeof eq>;
   if (!includeArchived || includeArchived !== "true") {
     where = and(where, isNull(internalTasksTable.archivedAt)) as typeof where;
   }

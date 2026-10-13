@@ -24,8 +24,8 @@ interface MediaItem {
 }
 
 interface MediaGalleryProps {
-  entityType: 'property' | 'job' | 'equipment_maintenance';
-  entityId: number;
+  entityType: 'property' | 'job' | 'equipment_maintenance' | 'pre_trip_inspection';
+  entityId: number | string;
   media: MediaItem[];
   onMediaAdded: () => void;
   onMediaDeleted: () => void;
@@ -44,11 +44,12 @@ function resolveUrl(item: MediaItem): string {
   return `${base}/api/storage${item.fileUrl}`;
 }
 
-function mediaEndpointBase(entityType: MediaGalleryProps['entityType'], entityId: number): string {
+function mediaEndpointBase(entityType: MediaGalleryProps['entityType'], entityId: number | string): string {
   switch (entityType) {
     case 'property': return `/api/properties/${entityId}/media`;
     case 'job': return `/api/jobs/${entityId}/media`;
     case 'equipment_maintenance': return `/api/equipment/maintenance/${entityId}/media`;
+    case 'pre_trip_inspection': return `/api/equipment/pre-trip/${entityId}/media`;
   }
 }
 

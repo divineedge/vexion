@@ -619,7 +619,7 @@ export default function EfficiencyPage() {
                       {/* Links */}
                       <div className="flex gap-3 pt-0.5">
                         <button className="text-xs text-primary hover:underline"
-                          onClick={e => { e.stopPropagation(); window.location.href = `${import.meta.env.BASE_URL}settings?tab=users&userId=${tech.userId}`; }}>
+                          onClick={e => { e.stopPropagation(); window.location.href = `${import.meta.env.BASE_URL}employees?tab=accounts&userId=${tech.userId}`; }}>
                           Employee →
                         </button>
                         <button className="text-xs text-muted-foreground hover:underline"

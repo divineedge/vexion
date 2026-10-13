@@ -4,15 +4,18 @@ import request from "supertest";
 
 const transaction = vi.fn();
 const select = vi.fn();
+const insert = vi.fn();
+const callerRole = vi.fn();
 vi.mock("@workspace/db", () => ({
-  db: { select, transaction, update: vi.fn(), insert: vi.fn(), delete: vi.fn() },
+  db: { select, transaction, update: vi.fn(), insert, delete: vi.fn() },
   equipmentTable: {}, equipmentMaintenanceTable: {}, equipmentFuelLogsTable: {},
   equipmentReadingLogsTable: {}, equipmentLifecycleEventsTable: {}, tenantEquipmentTypesTable: {},
   bulkFuelTanksTable: {}, bulkFuelTransactionsTable: {},
   tenantsTable: {}, usersTable: {}, jobsTable: {}, taskBundlesItemsTable: {}, inventoryItemsTable: {},
   internalTasksTable: {}, crewsTable: {}, crewMembersTable: {},
+  equipmentInspectionsTable: {}, equipmentInspectionReviewsTable: {},
 }));
-vi.mock("../lib/roles", () => ({ isOwnerRole: vi.fn(), ADMIN_ROLES: new Set(["company_owner", "office_manager", "department_manager"]) }));
+vi.mock("../lib/roles", () => ({ isOwnerRole: vi.fn(), getCallerRole: callerRole, ADMIN_ROLES: new Set(["company_owner", "office_manager", "department_manager"]) }));
 vi.mock("../lib/verifiedStaff", () => ({
   requireVerifiedStaff: (req: { verifiedTenantId?: number; verifiedUserId?: number }, _res: unknown, next: () => void) => {
     req.verifiedTenantId = 1;
@@ -37,7 +40,31 @@ const authorizeAsAdmin = () => {
 };
 
 describe("POST /equipment/pre-trip", () => {
-  beforeEach(() => { vi.clearAllMocks(); select.mockReset(); transaction.mockReset(); });
+  beforeEach(() => { vi.clearAllMocks(); select.mockReset(); select.mockReturnValue(whereResult([])); transaction.mockReset(); insert.mockReset(); callerRole.mockReset(); });
+
+  it("records a manager review using verified identity without assigning a task", async () => {
+    callerRole.mockResolvedValue("company_owner");
+    authorizeAsAdmin();
+    select.mockReturnValueOnce(whereResult([{ id: 11, contextId: 7 }]));
+    const captured: any[] = [];
+    insert.mockReturnValue({ values: (value: any) => { captured.push(value); return { returning: () => Promise.resolve([{ id: 31, createdAt: new Date("2026-10-12T12:00:00Z") }]) }; } });
+    const app = express(); app.use(express.json());
+    const { default: router } = await import("./equipment"); app.use("/", router);
+    const response = await request(app).post("/equipment/7/inspections/inspection-11/review").send({ notes: " Checked fuel and condition. ", reviewedById: 999 });
+    expect(response.status).toBe(201);
+    expect(captured).toEqual([{ tenantId: 1, inspectionRef: "inspection-11", reviewedById: 2, notes: "Checked fuel and condition." }]);
+    expect(response.body.reviewedAt).toBe("2026-10-12T12:00:00.000Z");
+  });
+
+  it("blocks technician review before any record is written", async () => {
+    callerRole.mockResolvedValue("technician");
+    const app = express(); app.use(express.json());
+    const { default: router } = await import("./equipment"); app.use("/", router);
+    const response = await request(app).post("/equipment/7/inspections/inspection-11/review").send({ notes: "Reviewed" });
+    expect(response.status).toBe(403);
+    expect(insert).not.toHaveBeenCalled();
+    expect(select).not.toHaveBeenCalled();
+  });
 
   it("returns the prior successful task and performs no duplicate transaction", async () => {
     authorizeAsAdmin();
@@ -100,6 +127,8 @@ describe("POST /equipment/pre-trip", () => {
     expect(response.body.fuelLogId).toBe(44);
     expect(inserted.filter(value => value.type === "dispense")).toHaveLength(1);
     expect(inserted.filter(value => value.fuelSource === "bulk_tank")).toHaveLength(1);
+    expect(inserted.filter(value => value.assignedToRole || value.status === "open")).toHaveLength(0);
+    expect(response.body.taskId).toMatch(/^inspection-/);
   });
 
   it("rejects fuel cost without gallons before creating any records", async () => {

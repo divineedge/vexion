@@ -2,10 +2,10 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
-import { LogOut, Menu, X, LayoutDashboard, Settings, Bookmark, BookmarkCheck, Star } from 'lucide-react';
+import { LogOut, Menu, X, LayoutDashboard, Settings, Bookmark, BookmarkCheck, Star, IdCard } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { adminNavSections, pinnedNavItems, techNavItems as baseTechNavItems, hrNavItems, myRecordNavItem, type NavItem } from './navConfig';
+import { adminNavSections, techNavItems as baseTechNavItems, hrNavItems, myRecordNavItem, type NavItem } from './navConfig';
 import { useHrMeta } from '@/lib/hr';
 import { SidebarSection } from './SidebarSection';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -163,24 +163,26 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     })
     .map(section => ({
       ...section,
-      items: section.items.filter(item => !item.permissionKey || can(item.permissionKey as any)),
+      items: section.items.filter(item =>
+        (!item.roles || item.roles.some(r => roleMap[r])) && (!item.permissionKey || can(item.permissionKey as any)),
+      ),
     }))
     .filter(section => section.items.length > 0);
   // Non-HR office staff get a direct link to their own record (no directory fallback).
   if (!hasHrAccess && hrMeta.data) {
     const admin = visibleSections.find(s => s.id === 'admin') ?? visibleSections[visibleSections.length - 1];
-    if (admin) admin.items = [...admin.items, myRecordNavItem];
+    if (admin) admin.items = [
+      ...admin.items,
+      // Read-only staff accounts list; Hiring and HR records stay hidden.
+      ...(canManageOffice ? [{ name: 'Employees', href: '/employees', icon: IdCard } as NavItem] : []),
+      myRecordNavItem,
+    ];
   }
-
-  const visiblePinned = pinnedNavItems.filter(item =>
-    item.roles.some(r => roleMap[r]) && (!item.permissionKey || can(item.permissionKey as any)),
-  );
 
   // All nav items flat (for bookmark lookup)
   const allNavItems: NavItem[] = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Settings',  href: '/settings',  icon: Settings },
-    ...visiblePinned,
     ...visibleSections.flatMap(s => s.items),
     ...techNavItems,
   ];
@@ -188,8 +190,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   // Build bookmarked item objects from hrefs
   const bookmarkedItems = bookmarks
     .map(href => allNavItems.find(i => i.href === href))
-    .filter((i): i is NavItem => !!i)
-    .filter(i => !visiblePinned.some(p => p.href === i.href));
+    .filter((i): i is NavItem => !!i);
 
   const userInitials = user?.name.slice(0, 2).toUpperCase() ?? '??';
 
@@ -255,23 +256,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 onToggleBookmark={toggleBookmark}
                 onNavClick={onNavClick}
               />
-
-              {/* ── Pinned one-click links ── */}
-              {visiblePinned.length > 0 && (
-                <div className="space-y-0.5" data-testid="nav-pinned">
-                  {visiblePinned.map(item => (
-                    <StandaloneLink
-                      key={item.href}
-                      item={item}
-                      location={location}
-                      badgeCount={badgeCounts[item.href]}
-                      bookmarked={bookmarks.includes(item.href)}
-                      onToggleBookmark={toggleBookmark}
-                      onNavClick={onNavClick}
-                    />
-                  ))}
-                </div>
-              )}
 
               {/* ── Bookmarks (below Dashboard, no label) ── */}
               {bookmarkedItems.length > 0 && (

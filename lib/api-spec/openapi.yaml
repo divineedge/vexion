@@ -4377,7 +4377,7 @@ paths:
       operationId: listEquipmentPreTripMedia
       tags: [equipment]
       parameters:
-        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: id, in: path, required: true, schema: { oneOf: [{ type: integer }, { type: string }] } }
       responses:
         "200":
           description: Inspection media
@@ -4390,7 +4390,7 @@ paths:
       operationId: addEquipmentPreTripMedia
       tags: [equipment]
       parameters:
-        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: id, in: path, required: true, schema: { oneOf: [{ type: integer }, { type: string }] } }
       requestBody:
         required: true
         content:
@@ -4408,11 +4408,51 @@ paths:
       operationId: deleteEquipmentPreTripMedia
       tags: [equipment]
       parameters:
-        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: id, in: path, required: true, schema: { oneOf: [{ type: integer }, { type: string }] } }
         - { name: mediaId, in: path, required: true, schema: { type: integer } }
       responses:
         "204": { description: Media deleted }
 
+  /equipment/{id}/inspections:
+    get:
+      operationId: listEquipmentInspections
+      tags: [equipment]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Recorded inspections and manager reviews, including preserved legacy inspections
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EquipmentInspectionList"
+  /equipment/{id}/inspections/{ref}/review:
+    post:
+      operationId: reviewEquipmentInspection
+      tags: [equipment]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: ref, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [notes]
+              properties:
+                notes: { type: string, maxLength: 4000 }
+      responses:
+        "201":
+          description: Append-only review recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, reviewedAt]
+                properties:
+                  id: { type: integer }
+                  reviewedAt: { type: string }
   /equipment/{id}/ledger:
     get:
       operationId: getEquipmentLedger
@@ -14866,12 +14906,62 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PreTripChecklistResponse"
+    EquipmentInspectionList:
+      type: object
+      required: [canReview, records]
+      properties:
+        canReview: { type: boolean }
+        records:
+          type: array
+          items:
+            type: object
+            required: [ref, title, recordedAt, recordedBy, checklist, reviews]
+            properties:
+              ref: { type: string }
+              title: { type: string }
+              description: { type: string, nullable: true }
+              recordedAt: { type: string }
+              recordedBy: { type: string }
+              checklist:
+                type: array
+                items:
+                  type: object
+                  required: [id, label, checked]
+                  properties:
+                    id: { type: string }
+                    label: { type: string }
+                    checked: { type: boolean }
+              fuel:
+                type: object
+                nullable: true
+                properties:
+                  gallons: { type: number }
+                  cost: { type: number }
+                  fuelSource: { type: string }
+                  bulkFuelTankName: { type: string, nullable: true }
+              reading:
+                type: object
+                nullable: true
+                properties:
+                  readingType: { type: string }
+                  value: { type: number }
+              reviews:
+                type: array
+                items:
+                  type: object
+                  required: [id, notes, reviewedAt, reviewedBy]
+                  properties:
+                    id: { type: integer }
+                    notes: { type: string }
+                    reviewedAt: { type: string }
+                    reviewedBy: { type: string }
     EquipmentPreTripResult:
       type: object
       required: [taskId, duplicate]
       properties:
         taskId:
-          type: integer
+          description: Inspection reference; legacy name retained for older clients. New references are inspection-ID, not tasks.
+          oneOf: [{ type: integer }, { type: string }]
         fuelLogId:
           type: [integer, "null"]
         readingLogId:

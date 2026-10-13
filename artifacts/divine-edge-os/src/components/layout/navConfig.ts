@@ -18,10 +18,8 @@ export interface NavItem {
   permissionKey?: string;
   /** Other paths that should highlight this item (e.g. legacy routes) */
   aliases?: string[];
-}
-
-export interface PinnedNavItem extends NavItem {
-  roles: NonNullable<NavSection['roles']>;
+  /** Optional per-item role gate, applied on top of the section gate */
+  roles?: NavSection['roles'];
 }
 
 export interface NavSection {
@@ -54,17 +52,6 @@ export const standaloneNavItems: NavItem[] = [
   { name: 'Settings',  href: '/settings',  icon: Settings },
 ];
 
-/**
- * One-click links rendered directly under Dashboard (not inside a collapsible
- * section). Each carries the same role / permission gate it had in its section.
- */
-export const pinnedNavItems: PinnedNavItem[] = [
-  { name: 'Schedule',  href: '/schedule',  icon: CalendarDays, roles: ['canManageOffice', 'isCrewManager'] },
-  { name: 'Invoices',  href: '/invoices',  icon: DollarSign,   roles: ['canManageOffice'], permissionKey: 'pages.billing', aliases: ['/financials'] },
-  { name: 'Estimates', href: '/estimates', icon: FileText,     roles: ['canManageOffice', 'isCrewManager'] },
-  { name: 'Vendors',   href: '/vendors',   icon: Store,        roles: ['canManageOffice'], permissionKey: 'pages.billing' },
-];
-
 /** HR nav — shown only when GET /api/hr/meta says hasHrAccess (owner + designated HR). */
 export const hrNavItems: NavItem[] = [
   { name: 'Employees', href: '/employees', icon: IdCard },
@@ -92,6 +79,7 @@ export const adminNavSections: NavSection[] = [
       { name: 'Schedule',      href: '/schedule',      icon: CalendarDays },
       { name: 'Visits',        href: '/visits',        icon: Footprints },
       { name: 'Daily Tasks',   href: '/daily-tasks',   icon: ClipboardList },
+      { name: 'Equipment', href: '/equipment', icon: Wrench, roles: ['isCrewManager'] },
       { name: 'Forms',         href: '/forms',         icon: ClipboardCheck },
       { name: 'Crews',         href: '/crews',         icon: UserCheck },
       { name: 'Routes',        href: '/routes',        icon: Map },
@@ -113,10 +101,21 @@ export const adminNavSections: NavSection[] = [
   {
     id: 'finance',
     label: 'Finance',
+    // Crew managers see only Estimates here; everything else stays office-only.
+    roles: ['canManageOffice', 'isCrewManager'],
+    items: [
+      { name: 'Estimates',  href: '/estimates',  icon: FileText },
+      { name: 'Invoices',   href: '/invoices',   icon: DollarSign, permissionKey: 'pages.billing', aliases: ['/financials'], roles: ['canManageOffice'] },
+      { name: 'Reports',    href: '/reports',    icon: BarChart3,  permissionKey: 'pages.reports', roles: ['canManageOffice'] },
+      { name: 'Budget',     href: '/budget',     icon: Calculator, permissionKey: 'pages.billing', roles: ['canManageOffice'] },
+    ],
+  },
+  {
+    id: 'vendors',
+    label: 'Vendors',
     roles: ['canManageOffice'],
     items: [
-      { name: 'Reports',    href: '/reports',    icon: BarChart3,  permissionKey: 'pages.reports' },
-      { name: 'Budget',     href: '/budget',     icon: Calculator, permissionKey: 'pages.billing' },
+      { name: 'Vendors', href: '/vendors', icon: Store, permissionKey: 'pages.billing' },
     ],
   },
   {
@@ -167,9 +166,10 @@ export function buildNavIndex(sections: NavSection[]) {
       map[item.href] = { sectionLabel: section.label, itemName: item.name };
     }
   }
-  for (const item of pinnedNavItems) {
-    map[item.href] = { sectionLabel: '', itemName: item.name };
-    for (const a of item.aliases ?? []) map[a] = { sectionLabel: '', itemName: item.name };
+  for (const section of sections) {
+    for (const item of section.items) {
+      for (const a of item.aliases ?? []) map[a] = { sectionLabel: section.label, itemName: item.name };
+    }
   }
   // Include standalone items so breadcrumbs resolve them
   map['/dashboard'] = { sectionLabel: '', itemName: 'Dashboard' };

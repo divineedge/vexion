@@ -2,7 +2,10 @@ import { Router, type IRouter, type Request, type Response, type NextFunction } 
 import { db, equipmentTable, equipmentMaintenanceTable, equipmentFuelLogsTable, equipmentReadingLogsTable, equipmentLifecycleEventsTable, tenantEquipmentTypesTable, tenantsTable, usersTable, crewsTable, crewMembersTable, jobsTable, taskBundlesItemsTable, inventoryItemsTable, internalTasksTable, bulkFuelTanksTable, bulkFuelTransactionsTable } from "@workspace/db";
 import { eq, and, desc, sum, isNull, isNotNull, inArray, or, gte, lte, ilike, sql, lt } from "drizzle-orm";
 import { getTenantId, getUserId } from "../lib/tenantHelper";
-import { ADMIN_ROLES, isOwnerRole } from "../lib/roles";
+import { ADMIN_ROLES, isOwnerRole, getCallerRole } from "../lib/roles";
+import { equipmentInspectionsTable, equipmentInspectionReviewsTable } from "@workspace/db";
+import { findEquipmentInspection, legacyInspectionTypes } from "../lib/equipmentInspections";
+import { ListEquipmentInspectionsResponse, ReviewEquipmentInspectionBody } from "@workspace/api-zod";
 import { requireVerifiedStaff } from "../lib/verifiedStaff";
 import {
   importUpload,
@@ -1396,7 +1399,7 @@ router.post("/equipment/:id/reading-logs", async (req, res): Promise<void> => {
   res.status(201).json({ ...row, createdAt: row.createdAt.toISOString() });
 });
 
-// One atomic pre-trip submission. The inspection task stores the idempotency key:
+// One atomic pre-trip submission. The equipment record stores the idempotency key:
 // it is created last within the same transaction, so a duplicate key proves every
 // associated fuel and reading write committed as one unit.
 router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
@@ -1458,13 +1461,14 @@ router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
     concerns: typeof concerns === "string" ? concerns.trim() || null : null,
     checklist: checklist.map(item => ({ id: item.id, checked: item.checked })).sort((a, b) => a.id.localeCompare(b.id)),
   });
-  const existing = await db.select().from(internalTasksTable).where(and(eq(internalTasksTable.tenantId, tenantId), eq(internalTasksTable.idempotencyKey, normalizedIdempotencyKey))).limit(1);
+  const legacy = await db.select().from(internalTasksTable).where(and(eq(internalTasksTable.tenantId, tenantId), eq(internalTasksTable.idempotencyKey, normalizedIdempotencyKey))).limit(1);
+  const existing = legacy.length ? legacy : await db.select().from(equipmentInspectionsTable).where(and(eq(equipmentInspectionsTable.tenantId, tenantId), eq(equipmentInspectionsTable.idempotencyKey, normalizedIdempotencyKey))).limit(1);
   if (existing[0]) {
     if (existing[0].contextType !== "equipment" || existing[0].contextId !== equipmentId || existing[0].preTripRequestFingerprint == null || existing[0].preTripRequestFingerprint !== requestFingerprint) {
       res.status(409).json({ error: "Idempotency key was already used with different or unverifiable pre-trip details" }); return;
     }
     const [fuel] = existing[0].preTripFuelLogId == null ? [] : await db.select().from(equipmentFuelLogsTable).where(and(eq(equipmentFuelLogsTable.id, existing[0].preTripFuelLogId), eq(equipmentFuelLogsTable.tenantId, tenantId))).limit(1);
-    res.json({ taskId: existing[0].id, ...(existing[0].preTripFuelLogId != null ? { fuelLogId: existing[0].preTripFuelLogId } : {}), ...(existing[0].preTripReadingLogId != null ? { readingLogId: existing[0].preTripReadingLogId } : {}), ...(fuel ? { fuelCost: fuel.cost, fuelCostPerGallon: fuel.costPerGallon, fuelSource: fuel.fuelSource, bulkFuelTankName: fuel.bulkFuelTankName } : {}), duplicate: true }); return;
+    res.json({ taskId: legacy.length ? existing[0].id : `inspection-${existing[0].id}`, ...(existing[0].preTripFuelLogId != null ? { fuelLogId: existing[0].preTripFuelLogId } : {}), ...(existing[0].preTripReadingLogId != null ? { readingLogId: existing[0].preTripReadingLogId } : {}), ...(fuel ? { fuelCost: fuel.cost, fuelCostPerGallon: fuel.costPerGallon, fuelSource: fuel.fuelSource, bulkFuelTankName: fuel.bulkFuelTankName } : {}), duplicate: true }); return;
   }
 
   try {
@@ -1488,7 +1492,7 @@ router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
         }
       }
       if (reading != null) {
-        const [entry] = await tx.insert(equipmentReadingLogsTable).values({ equipmentId, tenantId, date: new Date().toISOString().slice(0, 10), readingType, value: reading, source: "manual" }).returning();
+        const [entry] = await tx.insert(equipmentReadingLogsTable).values({ equipmentId, tenantId, date: today, readingType, value: reading, source: "manual" }).returning();
         readingLogId = entry.id;
       }
       const updates: Partial<typeof equipmentTable.$inferInsert> = {};
@@ -1501,22 +1505,71 @@ router.post("/equipment/pre-trip", async (req, res): Promise<void> => {
       if (Object.keys(updates).length) await tx.update(equipmentTable).set(updates).where(and(eq(equipmentTable.id, equipmentId), eq(equipmentTable.tenantId, tenantId)));
       const isEndOfDay = inspectionType === "end_of_day";
       const fuelDescription = recordedFuel ? `\nFuel: ${recordedFuel.fuelSource === "bulk_tank" ? `Bulk tank ${recordedFuel.bulkFuelTankName}` : "Purchased"} — ${recordedFuel.gallons} gal at $${(recordedFuel.costPerGallon ?? 0).toFixed(2)}/gal ($${recordedFuel.cost.toFixed(2)}).` : "";
-      const [task] = await tx.insert(internalTasksTable).values({ tenantId, title: `${isEndOfDay ? "End-of-day" : tenant?.preTripChecklistName ?? "Pre-trip"} inspection: ${owned.name}`, description: `Condition: ${condition.replace("_", " ")}.${fuelDescription}${typeof concerns === "string" && concerns.trim() ? `\nConcerns: ${concerns.trim()}` : ""}`, taskType: isEndOfDay ? "end_of_day_inspection" : "pre_trip_inspection", createdById: userId, assignedToRole: "admin_office", priority: condition === "unsafe" ? "urgent" : condition === "needs_attention" ? "high" : "normal", status: "open", contextType: "equipment", contextId: equipmentId, idempotencyKey: normalizedIdempotencyKey, preTripRequestFingerprint: requestFingerprint, preTripFuelLogId: fuelLogId, preTripReadingLogId: readingLogId, preTripChecklistSnapshot: checklist }).returning();
-      return { taskId: task.id, ...(fuelLogId != null ? { fuelLogId } : {}), ...(readingLogId != null ? { readingLogId } : {}), ...(recordedFuel ? { fuelCost: recordedFuel.cost, fuelCostPerGallon: recordedFuel.costPerGallon, fuelSource: recordedFuel.fuelSource, bulkFuelTankName: recordedFuel.bulkFuelTankName } : {}), duplicate: false };
+      const [inspection] = await tx.insert(equipmentInspectionsTable).values({ tenantId, title: `${isEndOfDay ? "End-of-day" : tenant?.preTripChecklistName ?? "Pre-trip"} inspection: ${owned.name}`, description: `Condition: ${condition.replace("_", " ")}.${fuelDescription}${typeof concerns === "string" && concerns.trim() ? `\nConcerns: ${concerns.trim()}` : ""}`, taskType: isEndOfDay ? "end_of_day_inspection" : "pre_trip_inspection", createdById: userId, contextType: "equipment", contextId: equipmentId, idempotencyKey: normalizedIdempotencyKey, preTripRequestFingerprint: requestFingerprint, preTripFuelLogId: fuelLogId, preTripReadingLogId: readingLogId, preTripChecklistSnapshot: checklist }).returning();
+      return { taskId: `inspection-${inspection.id}`, ...(fuelLogId != null ? { fuelLogId } : {}), ...(readingLogId != null ? { readingLogId } : {}), ...(recordedFuel ? { fuelCost: recordedFuel.cost, fuelCostPerGallon: recordedFuel.costPerGallon, fuelSource: recordedFuel.fuelSource, bulkFuelTankName: recordedFuel.bulkFuelTankName } : {}), duplicate: false };
     });
     invalidateTenantReportCache(tenantId);
     res.status(201).json(result);
   } catch (error: any) {
     // A concurrent retry may have won after our initial lookup.
-    const [duplicate] = await db.select().from(internalTasksTable).where(and(eq(internalTasksTable.tenantId, tenantId), eq(internalTasksTable.idempotencyKey, normalizedIdempotencyKey))).limit(1);
+    const [duplicate] = await db.select().from(equipmentInspectionsTable).where(and(eq(equipmentInspectionsTable.tenantId, tenantId), eq(equipmentInspectionsTable.idempotencyKey, normalizedIdempotencyKey))).limit(1);
     if (duplicate) {
       if (duplicate.contextType !== "equipment" || duplicate.contextId !== equipmentId || duplicate.preTripRequestFingerprint == null || duplicate.preTripRequestFingerprint !== requestFingerprint) { res.status(409).json({ error: "Idempotency key was already used with different or unverifiable pre-trip details" }); return; }
       const [fuel] = duplicate.preTripFuelLogId == null ? [] : await db.select().from(equipmentFuelLogsTable).where(and(eq(equipmentFuelLogsTable.id, duplicate.preTripFuelLogId), eq(equipmentFuelLogsTable.tenantId, tenantId))).limit(1);
-      res.json({ taskId: duplicate.id, ...(duplicate.preTripFuelLogId != null ? { fuelLogId: duplicate.preTripFuelLogId } : {}), ...(duplicate.preTripReadingLogId != null ? { readingLogId: duplicate.preTripReadingLogId } : {}), ...(fuel ? { fuelCost: fuel.cost, fuelCostPerGallon: fuel.costPerGallon, fuelSource: fuel.fuelSource, bulkFuelTankName: fuel.bulkFuelTankName } : {}), duplicate: true }); return;
+      res.json({ taskId: `inspection-${duplicate.id}`, ...(duplicate.preTripFuelLogId != null ? { fuelLogId: duplicate.preTripFuelLogId } : {}), ...(duplicate.preTripReadingLogId != null ? { readingLogId: duplicate.preTripReadingLogId } : {}), ...(fuel ? { fuelCost: fuel.cost, fuelCostPerGallon: fuel.costPerGallon, fuelSource: fuel.fuelSource, bulkFuelTankName: fuel.bulkFuelTankName } : {}), duplicate: true }); return;
     }
     const message = error?.message ?? "Unable to save pre-trip";
     res.status(message === "Equipment not found" ? 404 : message.startsWith("Tank meter reading changed.") ? 409 : 400).json({ error: message });
   }
+});
+
+// Recorded inspections and manager review are equipment history, not task work.
+router.get("/equipment/:id/inspections", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req), userId = getUserId(req), equipmentId = Number(req.params.id);
+  if (!Number.isSafeInteger(equipmentId) || equipmentId <= 0) { res.status(400).json({ error: "Invalid equipment" }); return; }
+  if (!(await requireEquipmentOwnership(equipmentId, tenantId, userId, res))) return;
+  const [records, legacy, reviews, people, fuel, readings] = await Promise.all([
+    db.select().from(equipmentInspectionsTable).where(and(eq(equipmentInspectionsTable.tenantId, tenantId), eq(equipmentInspectionsTable.contextId, equipmentId))).orderBy(desc(equipmentInspectionsTable.createdAt)).limit(200),
+    db.select().from(internalTasksTable).where(and(eq(internalTasksTable.tenantId, tenantId), eq(internalTasksTable.contextType, "equipment"), eq(internalTasksTable.contextId, equipmentId), inArray(internalTasksTable.taskType, legacyInspectionTypes))).orderBy(desc(internalTasksTable.createdAt)).limit(200),
+    db.select().from(equipmentInspectionReviewsTable).where(eq(equipmentInspectionReviewsTable.tenantId, tenantId)).orderBy(desc(equipmentInspectionReviewsTable.createdAt)),
+    db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable).where(eq(usersTable.tenantId, tenantId)),
+    db.select().from(equipmentFuelLogsTable).where(and(eq(equipmentFuelLogsTable.tenantId, tenantId), eq(equipmentFuelLogsTable.equipmentId, equipmentId))),
+    db.select().from(equipmentReadingLogsTable).where(and(eq(equipmentReadingLogsTable.tenantId, tenantId), eq(equipmentReadingLogsTable.equipmentId, equipmentId))),
+  ]);
+  const names = new Map(people.map(p => [p.id, p.name]));
+  const rows = [
+    ...records.map(record => ({ ...record, ref: `inspection-${record.id}` })),
+    ...legacy.map(record => ({ ...record, ref: String(record.id) })),
+  ].sort((a,b) => b.createdAt.getTime()-a.createdAt.getTime()).slice(0,200);
+  const role = await getCallerRole(tenantId, userId);
+  res.json(ListEquipmentInspectionsResponse.parse({ canReview: ADMIN_ROLES.has(role) || role === "crew_manager", records: rows.map(record => ({
+    ref: record.ref, title: record.title, description: record.description,
+    recordedAt: record.createdAt.toISOString(), recordedBy: names.get(record.createdById) ?? "Former staff",
+    checklist: record.preTripChecklistSnapshot ?? [],
+    fuel: fuel.find(entry => entry.id === record.preTripFuelLogId) ?? null,
+    reading: readings.find(entry => entry.id === record.preTripReadingLogId) ?? null,
+    reviews: reviews.filter(review => review.inspectionRef === record.ref).map(review => ({
+      id: review.id, notes: review.notes, reviewedAt: review.createdAt.toISOString(),
+      reviewedBy: names.get(review.reviewedById) ?? "Former staff",
+    })),
+  })) }));
+});
+
+router.post("/equipment/:id/inspections/:ref/review", async (req, res): Promise<void> => {
+  const tenantId = getTenantId(req), userId = getUserId(req), equipmentId = Number(req.params.id);
+  const role = await getCallerRole(tenantId, userId);
+  if (!ADMIN_ROLES.has(role) && role !== "crew_manager") { res.status(403).json({ error: "A crew manager or office manager must review inspections" }); return; }
+  if (!Number.isSafeInteger(equipmentId) || equipmentId <= 0) { res.status(400).json({ error: "Invalid equipment" }); return; }
+  if (!(await requireEquipmentOwnership(equipmentId, tenantId, userId, res))) return;
+  const ref = String(req.params.ref);
+  const record = await findEquipmentInspection(tenantId, ref);
+  if (!record || record.contextId !== equipmentId) { res.status(404).json({ error: "Inspection not found" }); return; }
+  const parsed = ReviewEquipmentInspectionBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Review notes must be text up to 4000 characters" }); return; }
+  const [review] = await db.insert(equipmentInspectionReviewsTable).values({
+    tenantId, inspectionRef: ref, reviewedById: userId, notes: parsed.data.notes.trim(),
+  }).returning();
+  res.status(201).json({ id: review.id, reviewedAt: review.createdAt.toISOString() });
 });
 
 // ─── Cost Ledger: Operating vs. Maintenance & Repair ────────────────────────────

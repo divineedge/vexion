@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import EquipmentInspectionsPanel from '@/components/equipment/EquipmentInspectionsPanel';
 import { format } from 'date-fns';
 import {
   useListEquipment,
@@ -852,6 +853,10 @@ function EquipmentDetailPanel({ equipment, onClose, onEdit }: { equipment: Equip
           {/* Ledger tab — Operating vs Maintenance & Repair cost, side by side */}
           <TabsContent value="ledger" className="mt-4">
             <EquipmentLedgerPanel equipmentId={equipment.id} />
+            <div className="mt-6 space-y-3">
+              <h3 className="font-semibold">Morning checklist & inspection records</h3>
+              <EquipmentInspectionsPanel equipmentId={equipment.id} />
+            </div>
           </TabsContent>
 
           {/* Use History tab — all jobs this equipment has been used on */}

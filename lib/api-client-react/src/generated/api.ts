@@ -117,6 +117,7 @@ import type {
   EquipmentFuelLogInput,
   EquipmentFuelUsageReport,
   EquipmentInput,
+  EquipmentInspectionList,
   EquipmentLedger,
   EquipmentLifecycleEvent,
   EquipmentLinkedPart,
@@ -326,6 +327,8 @@ import type {
   ResolvePlanPriceInput,
   ResolvePlanPriceResult,
   RevenueTrendItem,
+  ReviewEquipmentInspection201,
+  ReviewEquipmentInspectionBody,
   ReviewRequest,
   ReviewRequestUpdate,
   ReviewsSummary,
@@ -15998,7 +16001,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       return useMutation(getRecoverMisassignedDivineEdgeEquipmentMutationOptions(options));
     }
 
-export const getListEquipmentPreTripMediaUrl = (id: number,) => {
+export const getListEquipmentPreTripMediaUrl = (id: number | string,) => {
 
 
 
@@ -16006,7 +16009,7 @@ export const getListEquipmentPreTripMediaUrl = (id: number,) => {
   return `/api/equipment/pre-trip/${id}/media`
 }
 
-export const listEquipmentPreTripMedia = async (id: number, options?: RequestInit): Promise<MediaAttachment[]> => {
+export const listEquipmentPreTripMedia = async (id: number | string, options?: RequestInit): Promise<MediaAttachment[]> => {
 
   return customFetch<MediaAttachment[]>(getListEquipmentPreTripMediaUrl(id),
   {
@@ -16021,14 +16024,14 @@ export const listEquipmentPreTripMedia = async (id: number, options?: RequestIni
 
 
 
-export const getListEquipmentPreTripMediaQueryKey = (id: number,) => {
+export const getListEquipmentPreTripMediaQueryKey = (id: number | string,) => {
     return [
     `/api/equipment/pre-trip/${id}/media`
     ] as const;
     }
 
 
-export const getListEquipmentPreTripMediaQueryOptions = <TData = Awaited<ReturnType<typeof listEquipmentPreTripMedia>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEquipmentPreTripMedia>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListEquipmentPreTripMediaQueryOptions = <TData = Awaited<ReturnType<typeof listEquipmentPreTripMedia>>, TError = ErrorType<unknown>>(id: number | string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEquipmentPreTripMedia>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -16052,7 +16055,7 @@ export type ListEquipmentPreTripMediaQueryError = ErrorType<unknown>
 
 
 export function useListEquipmentPreTripMedia<TData = Awaited<ReturnType<typeof listEquipmentPreTripMedia>>, TError = ErrorType<unknown>>(
- id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEquipmentPreTripMedia>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ id: number | string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEquipmentPreTripMedia>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
@@ -16069,7 +16072,7 @@ export function useListEquipmentPreTripMedia<TData = Awaited<ReturnType<typeof l
 
 
 
-export const getAddEquipmentPreTripMediaUrl = (id: number,) => {
+export const getAddEquipmentPreTripMediaUrl = (id: number | string,) => {
 
 
 
@@ -16077,7 +16080,7 @@ export const getAddEquipmentPreTripMediaUrl = (id: number,) => {
   return `/api/equipment/pre-trip/${id}/media`
 }
 
-export const addEquipmentPreTripMedia = async (id: number,
+export const addEquipmentPreTripMedia = async (id: number | string,
     addMediaInput: AddMediaInput, options?: RequestInit): Promise<MediaAttachment> => {
 
   return customFetch<MediaAttachment>(getAddEquipmentPreTripMediaUrl(id),
@@ -16094,8 +16097,8 @@ export const addEquipmentPreTripMedia = async (id: number,
 
 
 export const getAddEquipmentPreTripMediaMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addEquipmentPreTripMedia>>, TError,{id: number;data: BodyType<AddMediaInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof addEquipmentPreTripMedia>>, TError,{id: number;data: BodyType<AddMediaInput>}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addEquipmentPreTripMedia>>, TError,{id: number | string;data: BodyType<AddMediaInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof addEquipmentPreTripMedia>>, TError,{id: number | string;data: BodyType<AddMediaInput>}, TContext> => {
 
 const mutationKey = ['addEquipmentPreTripMedia'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -16107,7 +16110,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addEquipmentPreTripMedia>>, {id: number;data: BodyType<AddMediaInput>}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addEquipmentPreTripMedia>>, {id: number | string;data: BodyType<AddMediaInput>}> = (props) => {
           const {id,data} = props ?? {};
 
           return  addEquipmentPreTripMedia(id,data,requestOptions)
@@ -16125,17 +16128,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type AddEquipmentPreTripMediaMutationError = ErrorType<unknown>
 
     export const useAddEquipmentPreTripMedia = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addEquipmentPreTripMedia>>, TError,{id: number;data: BodyType<AddMediaInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addEquipmentPreTripMedia>>, TError,{id: number | string;data: BodyType<AddMediaInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof addEquipmentPreTripMedia>>,
         TError,
-        {id: number;data: BodyType<AddMediaInput>},
+        {id: number | string;data: BodyType<AddMediaInput>},
         TContext
       > => {
       return useMutation(getAddEquipmentPreTripMediaMutationOptions(options));
     }
 
-export const getDeleteEquipmentPreTripMediaUrl = (id: number,
+export const getDeleteEquipmentPreTripMediaUrl = (id: number | string,
     mediaId: number,) => {
 
 
@@ -16144,7 +16147,7 @@ export const getDeleteEquipmentPreTripMediaUrl = (id: number,
   return `/api/equipment/pre-trip/${id}/media/${mediaId}`
 }
 
-export const deleteEquipmentPreTripMedia = async (id: number,
+export const deleteEquipmentPreTripMedia = async (id: number | string,
     mediaId: number, options?: RequestInit): Promise<void> => {
 
   return customFetch<void>(getDeleteEquipmentPreTripMediaUrl(id,mediaId),
@@ -16161,8 +16164,8 @@ export const deleteEquipmentPreTripMedia = async (id: number,
 
 
 export const getDeleteEquipmentPreTripMediaMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteEquipmentPreTripMedia>>, TError,{id: number;mediaId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof deleteEquipmentPreTripMedia>>, TError,{id: number;mediaId: number}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteEquipmentPreTripMedia>>, TError,{id: number | string;mediaId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteEquipmentPreTripMedia>>, TError,{id: number | string;mediaId: number}, TContext> => {
 
 const mutationKey = ['deleteEquipmentPreTripMedia'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -16174,7 +16177,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteEquipmentPreTripMedia>>, {id: number;mediaId: number}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteEquipmentPreTripMedia>>, {id: number | string;mediaId: number}> = (props) => {
           const {id,mediaId} = props ?? {};
 
           return  deleteEquipmentPreTripMedia(id,mediaId,requestOptions)
@@ -16192,14 +16195,153 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type DeleteEquipmentPreTripMediaMutationError = ErrorType<unknown>
 
     export const useDeleteEquipmentPreTripMedia = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteEquipmentPreTripMedia>>, TError,{id: number;mediaId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteEquipmentPreTripMedia>>, TError,{id: number | string;mediaId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof deleteEquipmentPreTripMedia>>,
         TError,
-        {id: number;mediaId: number},
+        {id: number | string;mediaId: number},
         TContext
       > => {
       return useMutation(getDeleteEquipmentPreTripMediaMutationOptions(options));
+    }
+
+export const getListEquipmentInspectionsUrl = (id: number,) => {
+
+
+
+
+  return `/api/equipment/${id}/inspections`
+}
+
+export const listEquipmentInspections = async (id: number, options?: RequestInit): Promise<EquipmentInspectionList> => {
+
+  return customFetch<EquipmentInspectionList>(getListEquipmentInspectionsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListEquipmentInspectionsQueryKey = (id: number,) => {
+    return [
+    `/api/equipment/${id}/inspections`
+    ] as const;
+    }
+
+
+export const getListEquipmentInspectionsQueryOptions = <TData = Awaited<ReturnType<typeof listEquipmentInspections>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEquipmentInspections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListEquipmentInspectionsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listEquipmentInspections>>> = ({ signal }) => listEquipmentInspections(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listEquipmentInspections>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListEquipmentInspectionsQueryResult = NonNullable<Awaited<ReturnType<typeof listEquipmentInspections>>>
+export type ListEquipmentInspectionsQueryError = ErrorType<unknown>
+
+
+
+export function useListEquipmentInspections<TData = Awaited<ReturnType<typeof listEquipmentInspections>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEquipmentInspections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListEquipmentInspectionsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getReviewEquipmentInspectionUrl = (id: number,
+    ref: string,) => {
+
+
+
+
+  return `/api/equipment/${id}/inspections/${ref}/review`
+}
+
+export const reviewEquipmentInspection = async (id: number,
+    ref: string,
+    reviewEquipmentInspectionBody: ReviewEquipmentInspectionBody, options?: RequestInit): Promise<ReviewEquipmentInspection201> => {
+
+  return customFetch<ReviewEquipmentInspection201>(getReviewEquipmentInspectionUrl(id,ref),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(reviewEquipmentInspectionBody)
+  }
+);}
+
+
+
+
+
+export const getReviewEquipmentInspectionMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewEquipmentInspection>>, TError,{id: number;ref: string;data: BodyType<ReviewEquipmentInspectionBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reviewEquipmentInspection>>, TError,{id: number;ref: string;data: BodyType<ReviewEquipmentInspectionBody>}, TContext> => {
+
+const mutationKey = ['reviewEquipmentInspection'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reviewEquipmentInspection>>, {id: number;ref: string;data: BodyType<ReviewEquipmentInspectionBody>}> = (props) => {
+          const {id,ref,data} = props ?? {};
+
+          return  reviewEquipmentInspection(id,ref,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReviewEquipmentInspectionMutationResult = NonNullable<Awaited<ReturnType<typeof reviewEquipmentInspection>>>
+    export type ReviewEquipmentInspectionMutationBody = BodyType<ReviewEquipmentInspectionBody>
+    export type ReviewEquipmentInspectionMutationError = ErrorType<unknown>
+
+    export const useReviewEquipmentInspection = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewEquipmentInspection>>, TError,{id: number;ref: string;data: BodyType<ReviewEquipmentInspectionBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reviewEquipmentInspection>>,
+        TError,
+        {id: number;ref: string;data: BodyType<ReviewEquipmentInspectionBody>},
+        TContext
+      > => {
+      return useMutation(getReviewEquipmentInspectionMutationOptions(options));
     }
 
 export const getGetEquipmentLedgerUrl = (id: number,

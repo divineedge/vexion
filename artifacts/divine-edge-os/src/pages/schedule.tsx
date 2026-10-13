@@ -2237,7 +2237,7 @@ export default function SchedulePage() {
                       <div className="flex items-center gap-2">
                         <User className="w-4 h-4 text-muted-foreground" />
                         {(selectedJob as any).assigneeId
-                          ? <button title={selectedJob.assigneeName ?? undefined} className="hover:underline text-primary text-sm" onClick={() => window.location.href = `${import.meta.env.BASE_URL}settings?tab=users&userId=${(selectedJob as any).assigneeId}`}>{selectedJob.assigneeName}</button>
+                          ? <button title={selectedJob.assigneeName ?? undefined} className="hover:underline text-primary text-sm" onClick={() => window.location.href = `${import.meta.env.BASE_URL}employees?tab=accounts&userId=${(selectedJob as any).assigneeId}`}>{selectedJob.assigneeName}</button>
                           : <span title={selectedJob.assigneeName ?? undefined}>{selectedJob.assigneeName}</span>}
                       </div>
                     </div>

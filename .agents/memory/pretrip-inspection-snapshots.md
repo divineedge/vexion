@@ -7,4 +7,8 @@ description: Editable pre-trip questions and media evidence must preserve histor
 
 **Why:** Checklist templates can change over time, and evidence must remain attributable to the exact equipment inspection performed that day.
 
+Morning/pre-trip submissions must be equipment inspection records with equipment fuel costs, not additional tasks. Crew managers may review and record their review.
+
+**Why:** The user explicitly corrected the task-creation workflow and requested equipment/fuel recording with crew-manager review.
+
 **How to apply:** Resolve the current checklist by inspection and equipment type in the Field App, enforce the same applicability server-side, save server-authoritative labels and answers with the selected equipment, then register uploaded evidence against the resulting inspection identifier.

@@ -32,6 +32,8 @@ import {
 import { useColors } from '@/hooks/useColors';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { MediaAttachments } from '@/components/MediaAttachments';
+import { EquipmentInspectionHistory } from '@/components/EquipmentInspectionHistory';
+import { getListEquipmentInspectionsQueryKey } from '@workspace/api-client-react';
 import { FuelSourceFields, type FuelSource, useBulkMeterEntry, isMeterActive, isMeterStale, meterValidationError, meterPayload } from '@/components/FuelSourceFields';
 
 type Equipment = { id: number; name: string; type: string; currentHours: number; currentMiles?: number | null; isActive: boolean };
@@ -58,7 +60,7 @@ export default function PreTripScreen() {
   const [reading, setReading] = useState('');
   const [concerns, setConcerns] = useState('');
   const [answers, setAnswers] = useState<Record<string, boolean>>({});
-  const [savedTaskId, setSavedTaskId] = useState<number | null>(null);
+  const [savedTaskId, setSavedTaskId] = useState<number | string | null>(null);
   const [inspectionType, setInspectionType] = useState<'pre_trip' | 'end_of_day'>('pre_trip');
   const checklistName = settings?.preTripChecklistName?.trim() || 'Pre-trip';
   const preTripChecklist = (settings?.preTripChecklist ?? []) as ChecklistItem[];
@@ -213,6 +215,7 @@ export default function PreTripScreen() {
         queryClient.invalidateQueries({ queryKey: getGetEquipmentQueryKey(selected.id) }),
         queryClient.invalidateQueries({ queryKey: getListEquipmentFuelLogsQueryKey(selected.id) }),
         queryClient.invalidateQueries({ queryKey: getGetEquipmentLedgerQueryKey(selected.id) }),
+        queryClient.invalidateQueries({ queryKey: getListEquipmentInspectionsQueryKey(selected.id) }),
         queryClient.invalidateQueries({ queryKey: getGetEquipmentFuelUsageQueryKey() }),
       ]);
       const serverCost = result.fuelCost;
@@ -295,6 +298,7 @@ export default function PreTripScreen() {
         <TextInput value={reading} onChangeText={setReading} placeholder={readingType === 'hours' ? 'Current hour meter' : 'Current odometer'} keyboardType="decimal-pad" placeholderTextColor={colors.mutedForeground} style={[styles.fullInput, { color: colors.foreground, backgroundColor: colors.muted, borderColor: colors.border }]} />
         <Text style={[styles.label, { color: colors.foreground }]}>Concerns / follow-up</Text>
         <TextInput value={concerns} onChangeText={setConcerns} placeholder="Describe damage, leaks, or needed maintenance" multiline numberOfLines={4} placeholderTextColor={colors.mutedForeground} style={[styles.concerns, { color: colors.foreground, backgroundColor: colors.muted, borderColor: colors.border }]} testID="pre-trip-concerns-input" />
+        {selected && <EquipmentInspectionHistory key={selected.id} equipmentId={selected.id} />}
         {savedTaskId && <>
           <Text style={[styles.label, { color: colors.foreground }]}>Inspection photos & videos</Text>
           <MediaAttachments

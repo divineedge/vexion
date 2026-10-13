@@ -373,7 +373,7 @@ function JobProfitabilityReport() {
                     <TableCell className="font-medium" title={r.jobTitle}>{r.jobTitle}</TableCell>
                     <TableCell className="text-muted-foreground" title={r.customerName ?? undefined}>{r.customerName ?? '—'}</TableCell>
                     <TableCell className="text-muted-foreground" title={r.crewName ?? undefined}>{r.crewName ?? '—'}</TableCell>
-                    <TableCell className="text-muted-foreground">{r.assigneeName ? <button className="hover:underline text-primary" title={r.assigneeName} onClick={e => { e.stopPropagation(); window.location.href = `${import.meta.env.BASE_URL}settings?tab=users`; }}>{r.assigneeName}</button> : '—'}</TableCell>
+                    <TableCell className="text-muted-foreground">{r.assigneeName ? <button className="hover:underline text-primary" title={r.assigneeName} onClick={e => { e.stopPropagation(); window.location.href = `${import.meta.env.BASE_URL}employees?tab=accounts`; }}>{r.assigneeName}</button> : '—'}</TableCell>
                     <TableCell className="text-right" title={`Revenue: ${money(r.revenue)}`}>{money(r.revenue)}</TableCell>
                     <TableCell className="text-right" title={`Parts cost: ${money(r.partsCost)}`}>{money(r.partsCost)}</TableCell>
                     <TableCell className="text-right" title={`Labor cost: ${money(r.laborCost)}`}>{money(r.laborCost)}</TableCell>
@@ -503,7 +503,7 @@ function EmployeeRevenueReport() {
                 const revPerHr = laborHours > 0 ? r.totalRevenue / laborHours : null;
                 return (
                 <TableRow key={r.userId}>
-                  <TableCell className="font-medium"><button className="hover:underline text-primary" title={r.name} onClick={() => { window.location.href = `${import.meta.env.BASE_URL}settings?tab=users&userId=${r.userId}`; }}>{r.name}</button></TableCell>
+                  <TableCell className="font-medium"><button className="hover:underline text-primary" title={r.name} onClick={() => { window.location.href = `${import.meta.env.BASE_URL}employees?tab=accounts&userId=${r.userId}`; }}>{r.name}</button></TableCell>
                   <TableCell className="text-right" title={`${r.jobCount} job${r.jobCount !== 1 ? 's' : ''} completed`}>{r.jobCount}</TableCell>
                   <TableCell className="text-right" title={`Total revenue: ${money(r.totalRevenue)}`}>{money(r.totalRevenue)}</TableCell>
                   <TableCell className="text-right" title={`Average job value: ${money(r.averageJobValue)}`}>{money(r.averageJobValue)}</TableCell>

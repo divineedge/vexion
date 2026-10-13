@@ -191,8 +191,11 @@ export default function Estimates() {
   const [cardSetupSecret, setCardSetupSecret] = useState<string | null>(null);
 
   const { data: estimates, isLoading } = useQuery<PortalEstimate[]>({
-    queryKey: ["portal-estimates"],
+    queryKey: ["portal-estimates", localStorage.getItem("portal_token")],
     queryFn: () => customFetch<PortalEstimate[]>("/api/portal/estimates"),
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchInterval: 30000,
   });
 
   const pending = (estimates ?? []).filter(e => e.status === "sent");

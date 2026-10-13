@@ -11,3 +11,9 @@ Deposits belong to the related estimate and invoice, not the general customer pr
 **Why:** The user specifically asked to keep deposits distinct from prepayment and to support both payment and saved-card requirements.
 
 **How to apply:** Company-wide full-prepayment requirements cannot be waived by customer/service settings. Validate actual payment before all scheduling paths, including recurring generation, plan visits, imported future work, and date moves. General credits must be reserved atomically to prevent the same money satisfying two jobs.
+
+Companies need multiple configurable deposit rules, and estimate acceptance must enforce the applicable deposit requirement.
+
+**Why:** The user asked for multiple company rules and for deposits on accepted estimates to follow the company rule.
+
+**How to apply:** Resolve the applicable rule at acceptance; do not rely solely on manually entered estimate deposit wording.

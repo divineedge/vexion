@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
@@ -6,6 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { Mail, MessageSquare, Link2, CheckCircle2, Loader2, ExternalLink } from 'lucide-react';
+
+export interface DocumentLinkDetails {
+  publicLink: string | null;
+  customerName?: string | null;
+  customerPhone?: string | null;
+}
 
 export interface SendDocumentDialogProps {
   open: boolean;
@@ -17,6 +23,8 @@ export interface SendDocumentDialogProps {
   customerPhone?: string | null;
   /** Full public URL for the document */
   publicLink?: string | null;
+  loadPublicLink?: () => Promise<DocumentLinkDetails>;
+  generatePublicLink?: () => Promise<DocumentLinkDetails>;
   /** Portal URL (customer-facing) */
   portalUrl?: string | null;
   /** Called when the user clicks "Send Email" */
@@ -28,17 +36,54 @@ export interface SendDocumentDialogProps {
 
 export function SendDocumentDialog({
   open, onOpenChange,
-  type, docNumber, customerName, customerPhone, publicLink, portalUrl,
+  type, docNumber, customerName: initialName, customerPhone: initialPhone, publicLink: initialLink, portalUrl,
+  loadPublicLink, generatePublicLink,
   onSendEmail, isSendingEmail, children,
 }: SendDocumentDialogProps) {
   const [emailSent, setEmailSent] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [linkDetails, setLinkDetails] = useState<DocumentLinkDetails | null>(null);
+  const [loadingLink, setLoadingLink] = useState(false);
+  const loadLinkRef = useRef(loadPublicLink);
+  loadLinkRef.current = loadPublicLink;
+  const publicLink = linkDetails?.publicLink ?? initialLink;
+  const customerName = linkDetails?.customerName ?? initialName;
+  const customerPhone = linkDetails?.customerPhone ?? initialPhone;
   const label = type === 'invoice' ? 'Invoice' : 'Estimate';
 
+  useEffect(() => {
+    let active = true;
+    setLinkDetails(null); setEmailSent(false); setLinkCopied(false);
+    setLoadingLink(!!(open && loadLinkRef.current));
+    if (open && loadLinkRef.current) {
+      loadLinkRef.current().then(details => { if (active) setLinkDetails(details); })
+        .catch(() => { if (active) toast.error('Could not load the link. Try Generate Link again.'); })
+        .finally(() => { if (active) setLoadingLink(false); });
+    }
+    return () => { active = false; };
+  }, [open, docNumber, type]);
+
+  const handleGenerateLink = async () => {
+    if (!generatePublicLink) return;
+    setLoadingLink(true);
+    try {
+      const details = await generatePublicLink();
+      setLinkDetails(details);
+      toast.success('Link ready to share. No email or text was sent.');
+    } catch (error: any) {
+      toast.error(error?.data?.error ?? error?.message ?? 'Could not generate the link');
+    } finally { setLoadingLink(false); }
+  };
+
   const handleSendEmail = async () => {
-    await onSendEmail();
-    setEmailSent(true);
-    setTimeout(() => setEmailSent(false), 4000);
+    try {
+      await onSendEmail();
+      setEmailSent(true);
+      setTimeout(() => setEmailSent(false), 4000);
+    } catch {
+      setEmailSent(false);
+      toast.error('Email was not sent. You can copy the link or check delivery history.');
+    }
   };
 
   const handleCopyLink = () => {
@@ -47,7 +92,7 @@ export function SendDocumentDialog({
       setLinkCopied(true);
       toast.success('Link copied to clipboard');
       setTimeout(() => setLinkCopied(false), 3000);
-    });
+    }).catch(() => toast.error('Clipboard access was blocked. Select and copy the link below.'));
   };
 
   const smsBody = publicLink
@@ -99,7 +144,7 @@ export function SendDocumentDialog({
               variant={emailSent ? 'outline' : 'default'}
               className="shrink-0 gap-1.5"
               onClick={handleSendEmail}
-              disabled={isSendingEmail}
+              disabled={isSendingEmail || loadingLink}
             >
               {isSendingEmail ? (
                 <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Sending…</>
@@ -148,7 +193,9 @@ export function SendDocumentDialog({
                 {publicLink ? (
                   <p className="text-xs text-muted-foreground truncate max-w-[180px]" title={publicLink}>{publicLink}</p>
                 ) : (
-                  <p className="text-xs text-muted-foreground">Public link not yet generated.</p>
+                  <p className="text-xs text-muted-foreground">
+                    {loadingLink ? 'Loading link…' : type === 'estimate' ? 'Generate a link to publish this estimate in the customer portal. No email is sent.' : 'Generate a link to share this invoice.'}
+                  </p>
                 )}
               </div>
             </div>
@@ -156,12 +203,14 @@ export function SendDocumentDialog({
               size="sm"
               variant={linkCopied ? 'outline' : 'outline'}
               className="shrink-0"
-              onClick={handleCopyLink}
-              disabled={!publicLink}
+              onClick={publicLink ? handleCopyLink : handleGenerateLink}
+              disabled={loadingLink || isSendingEmail || (!publicLink && !generatePublicLink)}
             >
-              {linkCopied ? 'Copied' : 'Copy'}
+              {loadingLink ? 'Loading…' : linkCopied ? 'Copied' : publicLink ? 'Copy' : 'Generate Link'}
             </Button>
           </div>
+          {publicLink && <input aria-label={`${label} share link`} className="w-full rounded border bg-muted p-2 text-xs"
+            value={publicLink} readOnly onFocus={event => event.currentTarget.select()} />}
 
           {/* Customer Portal */}
           {portalUrl && (

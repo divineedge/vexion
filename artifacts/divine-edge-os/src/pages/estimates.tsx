@@ -50,7 +50,7 @@ import { DocumentPreviewDialog } from '@/components/documents/DocumentPreviewDia
 import { EstimateDocument } from '@/components/documents/EstimateDocument';
 import EstimateTemplatesSettings from '@/components/settings/EstimateTemplatesSettings';
 import { Sheet as TemplatesSheet, SheetContent as TemplatesSheetContent, SheetHeader as TemplatesSheetHeader, SheetTitle as TemplatesSheetTitle, SheetDescription as TemplatesSheetDescription } from '@/components/ui/sheet';
-import { SendDocumentDialog } from '@/components/shared/SendDocumentDialog';
+import { SendDocumentDialog, type DocumentLinkDetails } from '@/components/shared/SendDocumentDialog';
 const STATUS_COLORS: Record<string, string> = {
   draft:    'bg-gray-100 text-gray-700 border-gray-200',
   sent:     'bg-blue-100 text-blue-700 border-blue-200',
@@ -469,15 +469,16 @@ export default function EstimatesPage() {
     if (!sendDialogId) return;
     if (sendExpiresAt) {
       try {
-        await fetch(`${import.meta.env.BASE_URL}api/estimates/${sendDialogId}`, {
+        await customFetch(`/api/estimates/${sendDialogId}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', ...(window as any).__apiHeaders },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ expiresAt: sendExpiresAt }),
         });
-      } catch { /* non-fatal */ }
+      } catch { throw new Error('Could not save the estimate expiry date'); }
     }
+    const current = await customFetch<{ status: string }>(`/api/estimates/${sendDialogId}`);
     return new Promise<void>((resolve, reject) => {
-      sendEstimate.mutate({ id: sendDialogId }, {
+      (current.status === 'draft' ? sendEstimate : resendEstimate).mutate({ id: sendDialogId }, {
         onSuccess: (r) => {
           const result = r as typeof r & { emailSent?: boolean; emailError?: string | null };
           if (result.emailSent) {
@@ -488,6 +489,7 @@ export default function EstimatesPage() {
             toast.success('Estimate sent');
           }
           invalidate();
+          if (!result.emailSent) { reject(new Error(result.emailError ?? 'Email was not delivered')); return; }
           resolve();
         },
         onError: () => { toast.error('Failed to send estimate'); reject(new Error('Failed')); },
@@ -1388,9 +1390,9 @@ export default function EstimatesPage() {
               <div className="space-y-5">
                 {/* Actions */}
                 <div className="flex flex-wrap gap-2">
-                  {selectedEstimate.status === 'draft' && canManageOffice && (
+                  {canManageOffice && (
                     <Button size="sm" variant="outline" className="gap-2" title="Send this estimate to the customer by email" onClick={() => openSendDialog(selectedEstimate)} disabled={sendEstimate.isPending}>
-                      <Send className="w-3.5 h-3.5" /> Send to Customer
+                      <Send className="w-3.5 h-3.5" /> Share / Send
                     </Button>
                   )}
                   {selectedEstimate.status === 'approved' && !selectedEstimate.convertedToJobId && canManageOffice && (
@@ -1965,8 +1967,17 @@ export default function EstimatesPage() {
         type="estimate"
         docNumber={String(sendDialogId ?? '')}
         customerName={(estimates?.find(e => e.id === sendDialogId) as any)?.customerName ?? null}
+        loadPublicLink={() => customFetch<DocumentLinkDetails>(`/api/estimates/${sendDialogId}/share-link`)}
+        generatePublicLink={async () => {
+          const details = await customFetch<DocumentLinkDetails>(`/api/estimates/${sendDialogId}/share-link`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ expiresAt: sendExpiresAt || undefined }),
+          });
+          invalidate();
+          return details;
+        }}
         onSendEmail={handleSendForDialog}
-        isSendingEmail={sendEstimate.isPending}
+        isSendingEmail={sendEstimate.isPending || resendEstimate.isPending}
       >
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Expiry Date</label>

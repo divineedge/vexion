@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { DeliveryHistory } from '@/components/billing/DeliveryHistory';
 import { PaymentPolicyCard } from '@/components/billing/PaymentPolicyCard';
 import { BillingEmailDeliveries } from '@/components/financials/BillingEmailDeliveries';
-import { SendDocumentDialog } from '@/components/shared/SendDocumentDialog';
+import { SendDocumentDialog, type DocumentLinkDetails } from '@/components/shared/SendDocumentDialog';
 import {
   useListInvoices, getListInvoicesQueryKey,
   useGetInvoice, getGetInvoiceQueryKey,
@@ -906,25 +906,13 @@ function EditInvoiceSheet({ invoiceId, onClose, onRestored, autoOpenSend }: { in
               type="invoice"
               docNumber={(invoice as any).invoiceNumber ?? String(invoiceId)}
               customerName={(invoice as any).customerName ?? null}
-              publicLink={(invoice as any).publicToken
-                ? `${window.location.origin}/invoice/${(invoice as any).publicToken}`
-                : null}
+              loadPublicLink={() => customFetch<DocumentLinkDetails>(`/api/invoices/${invoiceId}/share-link`)}
+              generatePublicLink={() => customFetch<DocumentLinkDetails>(`/api/invoices/${invoiceId}/share-link`, { method: 'POST' })}
               onSendEmail={handleSendInvoiceEmail}
               isSendingEmail={isSendingEmail}
             />
 
             {/* Public link */}
-            {(invoice as any).publicToken && (
-              <div className="rounded-lg border p-3 flex items-center justify-between gap-2 bg-muted/30">
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-muted-foreground">Public Invoice Link</p>
-                  <p className="text-xs truncate text-primary">{window.location.origin}/invoice/{(invoice as any).publicToken}</p>
-                </div>
-                <Button size="sm" variant="ghost" className="shrink-0 gap-1" onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/invoice/${(invoice as any).publicToken}`); toast.success('Link copied'); }}>
-                  Copy
-                </Button>
-              </div>
-            )}
 
             {/* Due Date */}
             <div className="space-y-1.5">

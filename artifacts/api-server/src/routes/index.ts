@@ -42,6 +42,7 @@ import widgetRouter from "./widget";
 import portalRouter from "./portal";
 import communicationsRouter from "./communications";
 import estimatesRouter from "./estimates";
+import documentSharingRouter from "./documentSharing";
 import visitsRouter from "./visits";
 import estimateTemplatesRouter from "./estimateTemplates";
 import billingRouter from "./billing";
@@ -151,6 +152,7 @@ router.use(chemicalDocumentsRouter);
 // all of their staff handlers.
 router.use(communicationsRouter);
 router.use(estimatesRouter);
+router.use(documentSharingRouter);
 router.use(reviewsRouter);
 router.use(equipmentRouter);
 router.use(quotesRouter);

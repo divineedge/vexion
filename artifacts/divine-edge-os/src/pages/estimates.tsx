@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DeliveryHistory } from '@/components/billing/DeliveryHistory';
+import { EstimateCustomerPicker } from '@/components/customer/EstimateCustomerPicker';
 import { serverErrorMessage } from '@/lib/serverError';
 import { PreviewActions } from '@/components/documents/PreviewActions';
 import { WordingField } from '@/components/documents/WordingField';
@@ -31,7 +32,6 @@ import {
   useResendEstimate,
   useConvertEstimateToJob,
   useGetEstimatePipeline, getGetEstimatePipelineQueryKey,
-  useListCustomers, getListCustomersQueryKey,
   useListUsers, getListUsersQueryKey,
   useListProperties, getListPropertiesQueryKey,
   useListEstimateTemplates, getListEstimateTemplatesQueryKey,
@@ -257,7 +257,6 @@ export default function EstimatesPage() {
   const { data: selectedEstimate, isLoading: selectedLoading, isError: selectedError, refetch: refetchSelected } = useGetEstimate(selectedId!, {
     query: { enabled: selectedId != null, queryKey: getGetEstimateQueryKey(selectedId!) },
   });
-  const { data: customers } = useListCustomers({}, { query: { enabled: createOpen, queryKey: getListCustomersQueryKey({}) } });
   const { data: users } = useListUsers({ query: { queryKey: getListUsersQueryKey() } });
   const { data: properties } = useListProperties({}, { query: { enabled: createOpen, queryKey: getListPropertiesQueryKey({}) } });
   const { data: templates } = useListEstimateTemplates({ query: { enabled: createOpen, queryKey: getListEstimateTemplatesQueryKey() } });
@@ -884,10 +883,7 @@ export default function EstimatesPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Customer</label>
-                <Select value={form.customerId} onValueChange={v => setForm(f => ({ ...f, customerId: v }))}>
-                  <SelectTrigger title="Select the customer this estimate is for"><SelectValue placeholder="Select customer..." /></SelectTrigger>
-                  <SelectContent>{(customers?.items ?? []).map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent>
-                </Select>
+                <EstimateCustomerPicker value={form.customerId} onChange={customerId => setForm(f => ({ ...f, customerId, propertyId: f.customerId === customerId ? f.propertyId : '' }))} />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Assign To</label>

@@ -8,7 +8,7 @@ Private HR and hiring records belong to the business owner and explicitly design
 
 **How to apply:** Preserve these choices when adding employee or applicant features. Sharing an employee record must be deliberate; assigning a staff role alone does not grant HR access.
 
-Hiring and corrective actions remain human decisions. Clock-event GPS is recorded evidence, not continuous tracking or proof of presence. An acknowledgment means seen, not agreement.
+Hiring and corrective actions remain human decisions. Clock-event GPS is recorded evidence, not continuous tracking or proof of presence. An acknowledgment means seen, not agreement. A signature or acknowledgment must not automatically be presented as agreement or legal certification.
 
 **Why:** The requested records may support employee corrections or termination review; do not turn incomplete operational data into automatic employment decisions or claims of legal sufficiency.
 

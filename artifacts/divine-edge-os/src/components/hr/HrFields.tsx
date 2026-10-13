@@ -78,7 +78,7 @@ export function FieldsEditor({ fields, onChange }: { fields: FormField[]; onChan
             <Input className="flex-1" placeholder="Question label" value={f.label} onChange={e => upd(i, { label: e.target.value })} data-testid={`input-field-label-${i}`} />
             <Select value={f.type} onValueChange={t => upd(i, { type: t as FormFieldType })}>
               <SelectTrigger className="sm:w-44" data-testid={`select-field-type-${i}`}><SelectValue /></SelectTrigger>
-              <SelectContent>{FORM_FIELD_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
+              <SelectContent>{FORM_FIELD_TYPES.filter(t => !['photo','signature'].includes(t.value)).map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           {(f.type === 'select' || f.type === 'multi_select') && (

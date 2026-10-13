@@ -2,6 +2,7 @@ import { db,usersTable,employeeHistoryEntriesTable,employeeFormTemplatesTable,ti
 import { and,eq,inArray } from "drizzle-orm";
 import { HrDb,HrError,requireHr,hrAudit,boundedText,calendarDate } from "./hrAccess";
 import { validateFields,validateAnswers,FormField } from "./jobForms";
+import { resolveFormEvidence } from "./formEvidence";
 export function employeeFields(input:unknown):FormField[]{
  const fields=typeof input==="string"?JSON.parse(input):input;
  if(!Array.isArray(fields))throw new HrError("Invalid employee form questions");
@@ -35,6 +36,7 @@ export async function createEmployeeRecord(tenantId:number,actorId:number,userId
    const [template]=await tx.select().from(employeeFormTemplatesTable).where(and(eq(employeeFormTemplatesTable.tenantId,tenantId),eq(employeeFormTemplatesTable.id,formTemplateId),eq(employeeFormTemplatesTable.isActive,"true")));
    if(!template)throw new HrError("Active employee form template not found",404);
    const fields=employeeFields(template.fields);formData=employeeAnswers(fields,input.formData,true);
+   await resolveFormEvidence(tx,tenantId,{scope:"employee",scopeId:template.id,employeeId:userId},fields,formData);
    formSnapshot={name:template.name,description:template.description,fields};
   }
   const timeIds=selectedIds(input.timeEntryIds),timerIds=selectedIds(input.subTimerIds);

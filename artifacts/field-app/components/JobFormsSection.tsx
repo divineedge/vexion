@@ -4,9 +4,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
+import { FormEvidenceInput, type EvidenceAnswer } from './FormEvidenceInput';
 
-type FieldType = 'text' | 'textarea' | 'number' | 'select' | 'multi_select' | 'yes_no' | 'date';
-type Answer = string | number | boolean | string[] | null;
+type FieldType = 'text' | 'textarea' | 'number' | 'select' | 'multi_select' | 'yes_no' | 'date' | 'photo' | 'signature';
+type Answer = string | number | boolean | string[] | EvidenceAnswer | null;
 interface FormField { id: string; label: string; type: FieldType; required: boolean; options?: string[] }
 interface JobForm { id: number; templateId: number; name: string; description: string | null; fields: FormField[]; required: boolean; answers: Record<string, Answer>; submittedAt: string | null; submittedBy: string | null; submittedById?: number | null; updatedAt: string | null }
 interface JobFormsResponse { forms: JobForm[]; missingRequired: number[]; canManage: boolean }
@@ -42,10 +43,11 @@ function Chip({ label, on, onPress, disabled, colors }: { label: string; on: boo
   );
 }
 
-function FieldControl({ f, v, set, disabled, colors }: { f: FormField; v: Answer | undefined; set: (v: Answer) => void; disabled: boolean; colors: Colors }) {
+function FieldControl({ f, v, set, disabled, colors, formId, onUploading }: { f: FormField; v: Answer | undefined; set: (v: Answer) => void; disabled: boolean; colors: Colors; formId: number; onUploading:(delta:number)=>void }) {
   const input = [s.input, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.background }];
   const [numText, setNumText] = useState(v == null ? '' : String(v));
   switch (f.type) {
+    case 'photo': case 'signature': return <FormEvidenceInput formId={formId} fieldId={f.id} kind={f.type} value={v as EvidenceAnswer | undefined} set={set} disabled={disabled} onUploading={onUploading}/>;
     case 'textarea': return <TextInput editable={!disabled} multiline style={[...input, { minHeight: 80, textAlignVertical: 'top' }]} value={(v as string) ?? ''} onChangeText={set} />;
     case 'number': return <TextInput editable={!disabled} keyboardType="decimal-pad" style={input} value={numText} onChangeText={t => { setNumText(t); set(t.trim() === '' ? null : Number(t)); }} />;
     case 'date': return <TextInput editable={!disabled} placeholder="YYYY-MM-DD" placeholderTextColor={colors.mutedForeground} keyboardType="numbers-and-punctuation" style={input} value={(v as string) ?? ''} onChangeText={t => set(t || null)} />;
@@ -60,6 +62,7 @@ function FieldControl({ f, v, set, disabled, colors }: { f: FormField; v: Answer
 }
 
 function FormBody({ jobId, form, frozen, colors }: { jobId: number; form: JobForm; frozen: boolean; colors: Colors }) {
+  const [uploads, setUploads] = useState(0);
   const qc = useQueryClient();
   const [answers, setAnswers] = useState<Record<string, Answer>>(form.answers ?? {});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -72,6 +75,7 @@ function FormBody({ jobId, form, frozen, colors }: { jobId: number; form: JobFor
     onError: (e: any) => Alert.alert('Could not save form', e?.data?.error ?? e?.message ?? 'Please try again.'),
   });
   const run = (submit: boolean) => {
+    if(uploads){Alert.alert('Evidence upload in progress','Wait for evidence uploads to finish.');return;}
     const errs = validate(form.fields, answers, submit); setErrors(errs);
     if (Object.keys(errs).length) { Alert.alert(submit ? 'Answer the required questions' : 'Fix the highlighted answers'); return; }
     m.mutate(submit);
@@ -82,7 +86,7 @@ function FormBody({ jobId, form, frozen, colors }: { jobId: number; form: JobFor
       {form.fields.map(f => (
         <View key={f.id} style={{ gap: 6 }}>
           <Text style={{ color: colors.foreground, fontWeight: '600' }}>{f.label}{f.required ? <Text style={{ color: colors.destructive }}> *</Text> : null}</Text>
-          <FieldControl f={f} v={answers[f.id]} disabled={frozen || m.isPending} colors={colors} set={v => { setDirty(true); setAnswers(a => ({ ...a, [f.id]: v })); }} />
+          <FieldControl onUploading={delta=>setUploads(n=>n+delta)} formId={form.id} f={f} v={answers[f.id]} disabled={frozen || m.isPending} colors={colors} set={v => { setDirty(true); setAnswers(a => ({ ...a, [f.id]: v })); }} />
           {errors[f.id] ? <Text style={{ color: colors.destructive, fontSize: 12 }}>{errors[f.id]}</Text> : null}
         </View>
       ))}

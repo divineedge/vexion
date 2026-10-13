@@ -155,7 +155,7 @@ function HistoryList({ id, data, isSelf, onAdd }: { id: number; data: HrEmployee
             {h.formSnapshot?.fields?.length ? (
               <div className="rounded-md border bg-muted/20 p-3 space-y-1">
                 <p className="text-xs font-medium">{h.formSnapshot.name ?? 'Form'}</p>
-                {h.formSnapshot.fields.map(f => <p key={f.id} className="text-xs"><span className="text-muted-foreground">{f.label}:</span> {displayEmpAnswer(f, h.formData?.[f.id])}</p>)}
+                <EmpFormFields idPrefix={`record-${h.id}`} fields={h.formSnapshot.fields} answers={h.formData ?? {}} readOnly />
               </div>
             ) : null}
             <EvidenceView evidence={h.evidence} />
@@ -231,8 +231,10 @@ function AddHistorySheet({ id, open, onClose, evidence }: { id: number; open: bo
     if (open) { setType(evidence.timeEntryIds.length || evidence.subTimerIds.length ? 'yellow_card' : 'note'); setTitle(''); setNotes(''); setOccurredOn(today()); setShared(false); setTemplateId(''); setAnswers({}); setErrors({}); }
   }, [open, evidence]);
   const tmpl = (templates.data ?? []).find(t => String(t.id) === templateId);
+  const [uploads, setUploads] = useState(0);
   const evCount = evidence.timeEntryIds.length + evidence.subTimerIds.length;
   const submit = () => {
+    if (uploads) { toast.error('Wait for evidence uploads to finish'); return; }
     if (!title.trim()) { toast.error('Add a title'); return; }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(occurredOn)) { toast.error('Pick the date it happened'); return; }
     if (type === 'custom_form' && !tmpl) { toast.error('Pick the employee form for a Form record'); return; }
@@ -264,7 +266,7 @@ function AddHistorySheet({ id, open, onClose, evidence }: { id: number; open: bo
               <SelectContent><SelectItem value="__none__">— None —</SelectItem>{(templates.data ?? []).filter(templateActive).map(t => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}</SelectContent>
             </Select>
           </div>
-          {tmpl && <div className="rounded-lg border p-4"><EmpFormFields idPrefix="hist" fields={tmpl.fields} answers={answers} errors={errors} onChange={(k, v) => setAnswers(a => ({ ...a, [k]: v }))} /></div>}
+          {tmpl && <div className="rounded-lg border p-4"><EmpFormFields idPrefix="hist" onUploading={delta=>setUploads(n=>n+delta)} target={{scope:'employee',scopeId:tmpl.id,employeeId:id}} fields={tmpl.fields} answers={answers} errors={errors} onChange={(k, v) => setAnswers(a => ({ ...a, [k]: v }))} /></div>}
           {evCount > 0 && <p className="text-sm rounded-md border bg-muted/30 p-3">{evCount} clock/timer record{evCount === 1 ? '' : 's'} selected as evidence. The server saves a snapshot of them with this record.</p>}
           <label className="flex items-center justify-between gap-3 rounded-md border p-3">
             <span><span className="text-sm font-medium block">Share with employee</span><span className="text-xs text-muted-foreground">Off by default. Private records are never visible to the employee.</span></span>
@@ -380,6 +382,7 @@ function DocumentsTab({ id, data }: { id: number; data: HrEmployeeDetail }) {
 }
 
 function AssignmentCard({ id, a, canFill }: { id: number; a: HrAssignment; canFill: boolean }) {
+  const [uploads, setUploads] = useState(0);
   const save = useSaveAssignment(id);
   const [open, setOpen] = useState(false);
   const [answers, setAnswers] = useState<Record<string, EmpAnswer>>({});
@@ -387,6 +390,7 @@ function AssignmentCard({ id, a, canFill }: { id: number; a: HrAssignment; canFi
   const submitted = !!a.submittedAt;
   const start = () => { setAnswers({ ...(a.answers ?? {}) }); setErrors({}); setOpen(true); };
   const go = (submit: boolean) => {
+    if (uploads) { toast.error('Wait for evidence uploads to finish'); return; }
     if (submit) { const e = validateEmpAnswers(a.snapshot.fields, answers); setErrors(e); if (Object.keys(e).length) { toast.error('Complete the required questions'); return; } }
     save.mutate({ id: a.id, answers, submit }, { onSuccess: () => { toast.success(submit ? 'Form submitted' : 'Draft saved'); if (submit) setOpen(false); }, onError: e => toast.error(hrErr(e, 'Could not save form')) });
   };
@@ -402,7 +406,7 @@ function AssignmentCard({ id, a, canFill }: { id: number; a: HrAssignment; canFi
         {submitted ? <EmpFormFields idPrefix={`asg-${a.id}`} fields={a.snapshot.fields} answers={a.answers ?? {}} readOnly />
         : open ? (
           <>
-            <EmpFormFields idPrefix={`asg-${a.id}`} fields={a.snapshot.fields} answers={answers} errors={errors} onChange={(k, v) => setAnswers(x => ({ ...x, [k]: v }))} />
+            <EmpFormFields idPrefix={`asg-${a.id}`} onUploading={delta=>setUploads(n=>n+delta)} target={{scope:'assignment',scopeId:a.id}} fields={a.snapshot.fields} answers={answers} errors={errors} onChange={(k, v) => setAnswers(x => ({ ...x, [k]: v }))} />
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setOpen(false)}>Close</Button>
               <Button variant="outline" disabled={save.isPending} onClick={() => go(false)}>Save draft</Button>

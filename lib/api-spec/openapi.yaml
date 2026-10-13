@@ -8933,8 +8933,121 @@ paths:
                         propertyAddress: { type: string, nullable: true }
                         serviceName: { type: string }
                         crewName: { type: string, nullable: true }
+  /form-evidence/uploads:
+    post:
+      operationId: requestFormEvidenceUpload
+      tags: [Forms]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FormEvidenceUploadInput"
+      responses:
+        "201":
+          description: Upload directly to the returned URL, then finalize the evidence.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FormEvidenceUpload"
+  /form-evidence/{id}/finalize:
+    post:
+      operationId: finalizeFormEvidence
+      tags: [Forms]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Validated image copied to immutable private App Storage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FormEvidence"
+  /form-evidence/{id}:
+    get:
+      operationId: downloadFormEvidence
+      tags: [Forms]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Image bytes, protected by job assignment or HR access and explicit employee sharing.
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
 components:
   schemas:
+    FormEvidenceUploadInput:
+      type: object
+      required: [scope, scopeId, fieldId, fileName, mimeType]
+      properties:
+        scope:
+          type: string
+          enum: [job, assignment, employee]
+        scopeId:
+          type: integer
+          minimum: 1
+        employeeId:
+          type: integer
+          minimum: 1
+        fieldId:
+          type: string
+        fileName:
+          type: string
+          maxLength: 180
+        mimeType:
+          type: string
+          enum: [image/png, image/jpeg, image/webp]
+    FormEvidenceUpload:
+      type: object
+      required: [evidenceId, uploadURL]
+      properties:
+        evidenceId:
+          type: integer
+        uploadURL:
+          type: string
+    FormEvidence:
+      type: object
+      required: [evidenceId, fileName, kind, label, actorId, capturedAt, sha256, sizeBytes, mimeType]
+      properties:
+        evidenceId:
+          type: integer
+        fileName:
+          type: string
+        kind:
+          type: string
+          enum: [photo, signature]
+        label:
+          type: string
+        actorId:
+          type: integer
+        capturedAt:
+          type: string
+          format: date-time
+        sha256:
+          type: string
+        sizeBytes:
+          type: integer
+        mimeType:
+          type: string
     PaymentPolicy:
       type: object
       required: [depositType, depositValue, requirePrepay, requireCard]

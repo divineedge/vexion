@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { customFetch } from '@workspace/api-client-react';
 
-export type FormFieldType = 'text' | 'textarea' | 'number' | 'select' | 'multi_select' | 'yes_no' | 'date';
+export type FormFieldType = 'text' | 'textarea' | 'number' | 'select' | 'multi_select' | 'yes_no' | 'date' | 'photo' | 'signature';
 export const FORM_FIELD_TYPES: Array<{ value: FormFieldType; label: string }> = [
   { value: 'text', label: 'Short text' }, { value: 'textarea', label: 'Long text' }, { value: 'number', label: 'Number' },
   { value: 'select', label: 'Single choice' }, { value: 'multi_select', label: 'Multiple choice' }, { value: 'yes_no', label: 'Yes / No' }, { value: 'date', label: 'Date' },
+  { value: 'photo', label: 'Photo' }, { value: 'signature', label: 'Signature (not automatic agreement)' },
 ];
 export interface FormField { id: string; label: string; type: FormFieldType; required: boolean; options?: string[] }
 export type FormAssignment = 'manual' | 'all_jobs' | 'services';
@@ -13,7 +14,8 @@ export interface FormTemplate {
   assignment: FormAssignment; serviceIds: number[]; required: boolean; active: boolean;
 }
 export type FormTemplateInput = Omit<FormTemplate, 'id'>;
-export type AnswerValue = string | number | boolean | string[] | null;
+export interface EvidenceAnswer { evidenceId: number; fileName?: string; kind?: string; actorId?: number; capturedAt?: string; sha256?: string }
+export type AnswerValue = string | number | boolean | string[] | EvidenceAnswer | null;
 export interface JobForm {
   id: number; templateId: number; name: string; description: string | null; fields: FormField[]; required: boolean;
   answers: Record<string, AnswerValue>; submittedAt: string | null; submittedBy: string | null; submittedById?: number | null; updatedAt: string | null;
@@ -77,6 +79,7 @@ export function validateAnswers(fields: FormField[], answers: Record<string, Ans
     const empty = v == null || v === '' || (Array.isArray(v) && v.length === 0);
     if (empty) { if (forSubmit && f.required) errs[f.id] = 'Required'; continue; }
     switch (f.type) {
+      case 'photo': case 'signature': if (typeof v !== 'object' || Array.isArray(v) || !('evidenceId' in v)) errs[f.id] = 'Upload evidence'; break;
       case 'number': if (typeof v !== 'number' || !Number.isFinite(v)) errs[f.id] = 'Enter a number'; break;
       case 'yes_no': if (typeof v !== 'boolean') errs[f.id] = 'Choose yes or no'; break;
       case 'date': if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) errs[f.id] = 'Enter a date'; break;

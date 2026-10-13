@@ -147,6 +147,9 @@ import type {
   FollowupQueueItem,
   FollowupQueueItemContext,
   FollowupTriggerConfig,
+  FormEvidence,
+  FormEvidenceUpload,
+  FormEvidenceUploadInput,
   GenerateBlueprintAiZonesBody,
   GenerateBlueprintFromAiBody,
   GeocodeResult,
@@ -33023,6 +33026,207 @@ export function useGetEfficiencyJobs<TData = Awaited<ReturnType<typeof getEffici
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetEfficiencyJobsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRequestFormEvidenceUploadUrl = () => {
+
+
+
+
+  return `/api/form-evidence/uploads`
+}
+
+export const requestFormEvidenceUpload = async (formEvidenceUploadInput: FormEvidenceUploadInput, options?: RequestInit): Promise<FormEvidenceUpload> => {
+
+  return customFetch<FormEvidenceUpload>(getRequestFormEvidenceUploadUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(formEvidenceUploadInput)
+  }
+);}
+
+
+
+
+
+export const getRequestFormEvidenceUploadMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestFormEvidenceUpload>>, TError,{data: BodyType<FormEvidenceUploadInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestFormEvidenceUpload>>, TError,{data: BodyType<FormEvidenceUploadInput>}, TContext> => {
+
+const mutationKey = ['requestFormEvidenceUpload'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestFormEvidenceUpload>>, {data: BodyType<FormEvidenceUploadInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  requestFormEvidenceUpload(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestFormEvidenceUploadMutationResult = NonNullable<Awaited<ReturnType<typeof requestFormEvidenceUpload>>>
+    export type RequestFormEvidenceUploadMutationBody = BodyType<FormEvidenceUploadInput>
+    export type RequestFormEvidenceUploadMutationError = ErrorType<unknown>
+
+    export const useRequestFormEvidenceUpload = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestFormEvidenceUpload>>, TError,{data: BodyType<FormEvidenceUploadInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof requestFormEvidenceUpload>>,
+        TError,
+        {data: BodyType<FormEvidenceUploadInput>},
+        TContext
+      > => {
+      return useMutation(getRequestFormEvidenceUploadMutationOptions(options));
+    }
+
+export const getFinalizeFormEvidenceUrl = (id: number,) => {
+
+
+
+
+  return `/api/form-evidence/${id}/finalize`
+}
+
+export const finalizeFormEvidence = async (id: number, options?: RequestInit): Promise<FormEvidence> => {
+
+  return customFetch<FormEvidence>(getFinalizeFormEvidenceUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getFinalizeFormEvidenceMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof finalizeFormEvidence>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof finalizeFormEvidence>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['finalizeFormEvidence'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof finalizeFormEvidence>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  finalizeFormEvidence(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type FinalizeFormEvidenceMutationResult = NonNullable<Awaited<ReturnType<typeof finalizeFormEvidence>>>
+
+    export type FinalizeFormEvidenceMutationError = ErrorType<unknown>
+
+    export const useFinalizeFormEvidence = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof finalizeFormEvidence>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof finalizeFormEvidence>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getFinalizeFormEvidenceMutationOptions(options));
+    }
+
+export const getDownloadFormEvidenceUrl = (id: number,) => {
+
+
+
+
+  return `/api/form-evidence/${id}`
+}
+
+export const downloadFormEvidence = async (id: number, options?: RequestInit): Promise<Blob> => {
+
+  return customFetch<Blob>(getDownloadFormEvidenceUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getDownloadFormEvidenceQueryKey = (id: number,) => {
+    return [
+    `/api/form-evidence/${id}`
+    ] as const;
+    }
+
+
+export const getDownloadFormEvidenceQueryOptions = <TData = Awaited<ReturnType<typeof downloadFormEvidence>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof downloadFormEvidence>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getDownloadFormEvidenceQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof downloadFormEvidence>>> = ({ signal }) => downloadFormEvidence(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof downloadFormEvidence>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type DownloadFormEvidenceQueryResult = NonNullable<Awaited<ReturnType<typeof downloadFormEvidence>>>
+export type DownloadFormEvidenceQueryError = ErrorType<unknown>
+
+
+
+export function useDownloadFormEvidence<TData = Awaited<ReturnType<typeof downloadFormEvidence>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof downloadFormEvidence>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getDownloadFormEvidenceQueryOptions(id,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

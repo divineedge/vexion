@@ -3,17 +3,21 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { EmpAnswer, EmpFormField } from '@/lib/hr';
+import { EvidenceInput, type EvidenceTarget } from '@/components/forms/EvidenceInput';
 
 export function displayEmpAnswer(f: EmpFormField, v: EmpAnswer | undefined): string {
   if (v == null || v === '') return '—';
+  if (typeof v === 'object') return `${v.fileName ?? 'Image evidence'} (evidence #${v.evidenceId})`;
   if (f.type === 'checkbox') return v === true ? 'Yes' : 'No';
   return String(v);
 }
 
 /** Renders legacy employee-form fields (text/textarea/number/date/select/checkbox). */
-export function EmpFormFields({ fields, answers, onChange, readOnly, errors, idPrefix }: {
+export function EmpFormFields({ fields, answers, onChange, readOnly, errors, idPrefix, target, onUploading }: {
   fields: EmpFormField[]; answers: Record<string, EmpAnswer>; onChange?: (id: string, v: EmpAnswer) => void;
   readOnly?: boolean; errors?: Record<string, string>; idPrefix: string;
+  target?: EvidenceTarget;
+  onUploading?: (delta:number)=>void;
 }) {
   if (!fields.length) return <p className="text-sm text-muted-foreground">This form has no questions.</p>;
   return (
@@ -25,7 +29,9 @@ export function EmpFormFields({ fields, answers, onChange, readOnly, errors, idP
         return (
           <div key={f.id} className="space-y-1.5">
             <label className="text-sm font-medium" htmlFor={tid}>{f.label}{f.required && <span className="text-destructive"> *</span>}</label>
-            {readOnly ? (
+            {f.type === 'photo' || f.type === 'signature' ? (
+              <EvidenceInput kind={f.type} fieldId={f.id} target={target} value={v as import('@/lib/jobForms').EvidenceAnswer | undefined} onChange={set} disabled={readOnly} onUploading={onUploading} />
+            ) : readOnly ? (
               <p className="text-sm whitespace-pre-wrap rounded-md bg-muted/40 px-3 py-2">{displayEmpAnswer(f, v)}</p>
             ) : f.type === 'textarea' ? (
               <Textarea id={tid} rows={3} value={v == null ? '' : String(v)} onChange={e => set(e.target.value)} />

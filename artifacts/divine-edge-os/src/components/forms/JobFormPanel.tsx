@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { EvidenceInput, type EvidenceTarget } from './EvidenceInput';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ClipboardCheck, ChevronDown, ChevronRight, Plus, Lock, AlertTriangle, CheckCircle2 } from 'lucide-react';
@@ -22,10 +23,11 @@ export function useMissingRequiredForms(jobId: number | null | undefined): strin
   return data.forms.filter(f => data.missingRequired.includes(f.id)).map(f => f.name);
 }
 
-function FieldInput({ field, value, onChange, disabled, error }: { field: FormField; value: AnswerValue | undefined; onChange: (v: AnswerValue) => void; disabled: boolean; error?: string }) {
+function FieldInput({ field, value, onChange, disabled, error, target, onUploading }: { field: FormField; value: AnswerValue | undefined; onChange: (v: AnswerValue) => void; disabled: boolean; error?: string; target: EvidenceTarget; onUploading: (delta:number)=>void }) {
   const id = `jf-${field.id}`;
   let control: React.ReactNode;
   switch (field.type) {
+    case 'photo': case 'signature': control = <EvidenceInput kind={field.type} fieldId={field.id} target={target} value={value as import('@/lib/jobForms').EvidenceAnswer | undefined} onChange={onChange} disabled={disabled} onUploading={onUploading} />; break;
     case 'textarea': control = <Textarea id={id} rows={3} disabled={disabled} value={(value as string) ?? ''} onChange={e => onChange(e.target.value)} />; break;
     case 'number': control = <Input id={id} type="number" inputMode="decimal" disabled={disabled} value={value == null ? '' : String(value)} onChange={e => onChange(e.target.value === '' ? null : Number(e.target.value))} />; break;
     case 'date': control = <Input id={id} type="date" disabled={disabled} value={(value as string) ?? ''} onChange={e => onChange(e.target.value || null)} />; break;
@@ -59,6 +61,7 @@ function FieldInput({ field, value, onChange, disabled, error }: { field: FormFi
 }
 
 function FormEditor({ jobId, form, frozen }: { jobId: number; form: JobForm; frozen: boolean }) {
+  const [uploads, setUploads] = useState(0);
   const save = useSaveJobForm(jobId);
   const [answers, setAnswers] = useState<Record<string, AnswerValue>>(form.answers ?? {});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -68,6 +71,7 @@ function FormEditor({ jobId, form, frozen }: { jobId: number; form: JobForm; fro
   useEffect(() => { if (!dirty || initFor.current !== form.id) { initFor.current = form.id; setAnswers(form.answers ?? {}); } }, [form.answers, form.id, dirty]);
 
   const run = (submit: boolean) => {
+    if (uploads) { toast.error('Wait for evidence uploads to finish'); return; }
     const errs = validateAnswers(form.fields, answers, submit);
     setErrors(errs);
     if (Object.keys(errs).length) { toast.error(submit ? 'Fill in the required answers before submitting' : 'Fix the highlighted answers'); return; }
@@ -81,7 +85,7 @@ function FormEditor({ jobId, form, frozen }: { jobId: number; form: JobForm; fro
     <div className="space-y-4 pt-3">
       {form.description && <p className="text-xs text-muted-foreground">{form.description}</p>}
       {form.fields.map(f => (
-        <FieldInput key={f.id} field={f} value={answers[f.id]} disabled={frozen || save.isPending} error={errors[f.id]}
+        <FieldInput key={f.id} field={f} onUploading={delta=>setUploads(n=>n+delta)} target={{scope:'job',scopeId:form.id}} value={answers[f.id]} disabled={frozen || save.isPending} error={errors[f.id]}
           onChange={v => { setDirty(true); setAnswers(a => ({ ...a, [f.id]: v })); }} />
       ))}
       {frozen ? (

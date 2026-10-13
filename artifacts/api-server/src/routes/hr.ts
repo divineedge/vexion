@@ -5,6 +5,7 @@ import { getTenantId,getUserId } from "../lib/tenantHelper";
 import { requireVerifiedStaff } from "../lib/verifiedStaff";
 import { hrAccess,requireHr,requireOwnerHr,HrError,hrAudit,boundedText,calendarDate } from "../lib/hrAccess";
 import { createEmployeeRecord,employeeFields,employeeAnswers } from "../lib/employeeRecords";
+import { resolveFormEvidence } from "../lib/formEvidence";
 import { ensureTenantSlug } from "../lib/tenantSlug";
 import { publicAppUrl } from "../lib/publicSite";
 import { FormError } from "../lib/jobForms";
@@ -159,6 +160,7 @@ router.put("/hr/form-assignments/:id",async(req,res)=>{
   if(!access.hasHrAccess&&before.userId!==actorId)throw new HrError("You cannot submit another employee's form",403);
   if(before.submittedAt)throw new HrError("Submitted forms are preserved. Add a correction record instead.",409);
   const fields=employeeFields((before.snapshot as {fields:unknown}).fields),answers=employeeAnswers(fields,req.body.answers,req.body.submit===true);
+  await resolveFormEvidence(tx,tenantId,{scope:"assignment",scopeId:before.id},fields,answers);
   const [after]=await tx.update(employeeFormAssignmentsTable).set({answers,submittedAt:req.body.submit===true?new Date():null,submittedBy:req.body.submit===true?actorId:null})
    .where(eq(employeeFormAssignmentsTable.id,before.id)).returning();
   await hrAudit(tx,tenantId,actorId,req.body.submit===true?"employee_form_submitted":"employee_form_draft_saved",before.userId,null,before,after);return after;

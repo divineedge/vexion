@@ -14828,3 +14828,48 @@ export const GetEfficiencyJobsResponse = zod.object({
 })
 
 
+
+
+export const requestFormEvidenceUploadBodyFileNameMax = 180;
+
+
+
+export const RequestFormEvidenceUploadBody = zod.object({
+  "scope": zod.enum(['job', 'assignment', 'employee']),
+  "scopeId": zod.number().min(1),
+  "employeeId": zod.number().min(1).optional(),
+  "fieldId": zod.string(),
+  "fileName": zod.string().max(requestFormEvidenceUploadBodyFileNameMax),
+  "mimeType": zod.enum(['image/png', 'image/jpeg', 'image/webp'])
+})
+
+export const RequestFormEvidenceUploadResponse = zod.object({
+  "evidenceId": zod.number(),
+  "uploadURL": zod.string()
+})
+
+
+export const FinalizeFormEvidenceParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const FinalizeFormEvidenceResponse = zod.object({
+  "evidenceId": zod.number(),
+  "fileName": zod.string(),
+  "kind": zod.enum(['photo', 'signature']),
+  "label": zod.string(),
+  "actorId": zod.number(),
+  "capturedAt": zod.coerce.date(),
+  "sha256": zod.string(),
+  "sizeBytes": zod.number(),
+  "mimeType": zod.string()
+})
+
+
+export const DownloadFormEvidenceParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DownloadFormEvidenceResponse = zod.unknown()
+
+

@@ -5,6 +5,61 @@
  * Divine Edge OS - Field Service Management Platform API
  * OpenAPI spec version: 0.1.0
  */
+export type FormEvidenceUploadInputScope = typeof FormEvidenceUploadInputScope[keyof typeof FormEvidenceUploadInputScope];
+
+
+export const FormEvidenceUploadInputScope = {
+  job: 'job',
+  assignment: 'assignment',
+  employee: 'employee',
+} as const;
+
+export type FormEvidenceUploadInputMimeType = typeof FormEvidenceUploadInputMimeType[keyof typeof FormEvidenceUploadInputMimeType];
+
+
+export const FormEvidenceUploadInputMimeType = {
+  'image/png': 'image/png',
+  'image/jpeg': 'image/jpeg',
+  'image/webp': 'image/webp',
+} as const;
+
+export interface FormEvidenceUploadInput {
+  scope: FormEvidenceUploadInputScope;
+  /** @minimum 1 */
+  scopeId: number;
+  /** @minimum 1 */
+  employeeId?: number;
+  fieldId: string;
+  /** @maxLength 180 */
+  fileName: string;
+  mimeType: FormEvidenceUploadInputMimeType;
+}
+
+export interface FormEvidenceUpload {
+  evidenceId: number;
+  uploadURL: string;
+}
+
+export type FormEvidenceKind = typeof FormEvidenceKind[keyof typeof FormEvidenceKind];
+
+
+export const FormEvidenceKind = {
+  photo: 'photo',
+  signature: 'signature',
+} as const;
+
+export interface FormEvidence {
+  evidenceId: number;
+  fileName: string;
+  kind: FormEvidenceKind;
+  label: string;
+  actorId: number;
+  capturedAt: string;
+  sha256: string;
+  sizeBytes: number;
+  mimeType: string;
+}
+
 export type PaymentPolicyDepositType = typeof PaymentPolicyDepositType[keyof typeof PaymentPolicyDepositType] | null;
 
 

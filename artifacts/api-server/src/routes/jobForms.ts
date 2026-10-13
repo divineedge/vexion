@@ -4,6 +4,7 @@ import { and,eq,desc } from "drizzle-orm";
 import { getTenantId,getUserId } from "../lib/tenantHelper";
 import { getCallerRole } from "../lib/roles";
 import { ensureJobForms,FormError,validateFields,validateAnswers,type FormField } from "../lib/jobForms";
+import { resolveFormEvidence } from "../lib/formEvidence";
 const router=Router();
 const managers=new Set(["company_owner","office_manager","department_manager"]);
 const canManage=async(tenant:number,user:number)=>managers.has(await getCallerRole(tenant,user));
@@ -79,7 +80,8 @@ router.put("/jobs/:id/forms/:formId",async(req,res)=>{
   const [form]=await tx.select().from(jobFormsTable).where(and(eq(jobFormsTable.tenantId,tenantId),eq(jobFormsTable.jobId,job.id),eq(jobFormsTable.id,Number(req.params.formId)))).for("update");
   if(!form)throw Object.assign(new FormError("Form not found"),{status:404});
   const answers=validateAnswers((form.snapshot as {fields:FormField[]}).fields,req.body.answers,req.body.submit===true);
-  await tx.insert(jobFormAuditTable).values({tenantId,formId:form.id,actorId:userId,event:req.body.submit===true?"submitted":"draft_saved",previous:{answers:form.answers,submittedAt:form.submittedAt,submittedBy:form.submittedBy}});
+  await resolveFormEvidence(tx,tenantId,{scope:"job",scopeId:form.id},(form.snapshot as {fields:FormField[]}).fields,answers);
+  await tx.insert(jobFormAuditTable).values({tenantId,formId:form.id,actorId:userId,event:req.body.submit===true?"submitted":"draft_saved",previous:{snapshot:form.snapshot,answers:form.answers,submittedAt:form.submittedAt,submittedBy:form.submittedBy}});
   const [updated]=await tx.update(jobFormsTable).set({answers,submittedAt:req.body.submit===true?new Date():null,submittedBy:req.body.submit===true?userId:null,updatedAt:new Date()}).where(eq(jobFormsTable.id,form.id)).returning();return updated;
  });
  res.json(await formOutput(result));

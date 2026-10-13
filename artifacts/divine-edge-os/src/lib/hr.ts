@@ -26,13 +26,14 @@ export const HISTORY_TYPES: Array<{ value: HistoryType; label: string }> = [
 ];
 export const historyLabel = (t: string) => HISTORY_TYPES.find(x => x.value === t)?.label ?? t;
 
-export type LegacyFieldType = 'text' | 'textarea' | 'number' | 'date' | 'select' | 'checkbox';
+export type LegacyFieldType = 'text' | 'textarea' | 'number' | 'date' | 'select' | 'checkbox' | 'photo' | 'signature';
 export const LEGACY_FIELD_TYPES: Array<{ value: LegacyFieldType; label: string }> = [
   { value: 'text', label: 'Short text' }, { value: 'textarea', label: 'Long text' }, { value: 'number', label: 'Number' },
   { value: 'date', label: 'Date' }, { value: 'select', label: 'Single choice' }, { value: 'checkbox', label: 'Checkbox' },
+  { value: 'photo', label: 'Photo' }, { value: 'signature', label: 'Signature (not automatic agreement)' },
 ];
 export interface EmpFormField { id: string; label: string; type: LegacyFieldType; required?: boolean; options?: string[] }
-export type EmpAnswer = string | number | boolean | null;
+export type EmpAnswer = string | number | boolean | import('./jobForms').EvidenceAnswer | null;
 
 export interface HrHistoryEntry {
   id: number; type: HistoryType; title: string; notes: string | null; occurredOn: string | null; createdAt: string;
@@ -291,6 +292,7 @@ export function validateEmpAnswers(fields: EmpFormField[], answers: Record<strin
     const v = answers[f.id];
     const empty = v == null || v === '' || (f.type === 'checkbox' && v !== true && f.required);
     if (empty) { if (f.required) errs[f.id] = 'Required'; continue; }
+    if (['photo','signature'].includes(f.type) && (typeof v !== 'object' || !v || !('evidenceId' in v))) errs[f.id] = 'Upload evidence';
     if (f.type === 'number' && !Number.isFinite(Number(v))) errs[f.id] = 'Enter a number';
     if (f.type === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(String(v))) errs[f.id] = 'Enter a date';
     if (f.type === 'select' && !(f.options ?? []).includes(String(v))) errs[f.id] = 'Choose an option';
